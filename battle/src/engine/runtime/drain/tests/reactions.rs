@@ -623,6 +623,86 @@ fn entity_defeat_passive_executes_each_configured_sibling_slot() {
 }
 
 #[test]
+fn gorgon_death_kills_tentacles_and_exposes_the_core() {
+    crate::test_support::init_config();
+    let entity = |uid, model_id, position, hp, passive_skill| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        position: Some(position),
+        team_type: Some(2),
+        current_hp: Some(hp),
+        passive_skill,
+        attr: Some(HeroAttribute {
+            hp: Some(10_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                entity(-1, 150401, 1, 10_000, vec![114200141]),
+                entity(-2, 150402, 2, 10_000, vec![]),
+                entity(-3, 150403, 3, 10_000, vec![]),
+            ],
+            sp_entitys: vec![entity(-4, 150404, 4, 10_000, vec![114200143])],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    managers.hp.lose(-1, 10_000, 10);
+
+    run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
+            source_uid: 10,
+            target_uid: -1,
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(managers.hp.current(-2), 0);
+    assert_eq!(managers.hp.current(-3), 0);
+    assert_eq!(managers.hp.current(-1), 5_000);
+    assert!(managers.buff.has_buff_id(-4, 11410082));
+
+    run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
+            source_uid: 10,
+            target_uid: -2,
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(managers.hp.current(-1), 5_000);
+}
+
+#[test]
 fn active_skill_publishes_hits_between_after_damage_and_after_hit_rows() {
     crate::test_support::init_config();
     let fight = Fight {

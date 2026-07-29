@@ -89,6 +89,38 @@ fn alternating_monster_targets_keep_their_exact_label_rules() {
 }
 
 #[test]
+fn gorgon_tentacle_targets_keep_their_exact_label_rules() {
+    init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    model_id: Some(150401),
+                    ..entity_at(-1, 1)
+                },
+                FightEntityInfo {
+                    model_id: Some(150402),
+                    ..entity_at(-2, 2)
+                },
+                FightEntityInfo {
+                    model_id: Some(150403),
+                    ..entity_at(-3, 3)
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+
+    assert_eq!(resolve_code(1009, -1, &pool, &mut determinism), vec![-2]);
+    assert_eq!(resolve_code(1010, -1, &pool, &mut determinism), vec![-3]);
+    assert_eq!(targets_enemy(1009), Some(false));
+    assert_eq!(targets_enemy(1010), Some(false));
+}
+
+#[test]
 fn qualified_enemy_targets_do_not_substitute_an_unrelated_enemy() {
     let fight = Fight {
         attacker: Some(FightTeam {

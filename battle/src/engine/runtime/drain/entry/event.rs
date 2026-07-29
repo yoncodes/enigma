@@ -8,7 +8,7 @@ pub fn run_event(
     context: TargetContext,
     event: BattleEvent,
 ) -> Result<DrainResult, DrainError> {
-    let current_pool = pool.runtime_view(managers);
+    let current_pool = subscriber_view(pool, managers, &event);
     let initial = dispatch_reactions(
         &current_pool,
         managers,
@@ -60,7 +60,7 @@ pub fn run_group_event(
         | ReactionLane::BuffActsBeforeSettlement
         | ReactionLane::BuffActsAfterSettlement => root,
     };
-    let current_pool = pool.runtime_view(managers);
+    let current_pool = subscriber_view(pool, managers, &event);
     let mut queue = dispatch_reactions(
         &current_pool,
         managers,
@@ -121,7 +121,7 @@ pub fn run_grouped_owner_event(
                 ),
                 _ => root.clone(),
             };
-            let current_pool = pool.runtime_view(managers);
+            let current_pool = subscriber_view(pool, managers, &event);
             let mut queue = dispatch_reactions(
                 &current_pool,
                 managers,
@@ -168,7 +168,7 @@ pub fn run_owner_event(
     event: BattleEvent,
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
-    let current_pool = pool.runtime_view(managers);
+    let current_pool = subscriber_view(pool, managers, &event);
     let initial = dispatch_owner_reactions(
         &current_pool,
         managers,
@@ -186,6 +186,19 @@ pub fn run_owner_event(
         event,
         initial,
     )
+}
+
+fn subscriber_view(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    event: &BattleEvent,
+) -> TargetPool {
+    match event {
+        BattleEvent::EntityDied(death) => {
+            pool.runtime_view_including(managers, Some(death.target_uid))
+        }
+        _ => pool.runtime_view(managers),
+    }
 }
 
 fn run_event_queue(
