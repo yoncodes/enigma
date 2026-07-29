@@ -737,9 +737,10 @@ buff_act_definitions! {
     (791, "ShieldByBuffLayer") => ShieldByBuffLayer, effect_time_subscription: false,
         supports: super::shield::supports_by_buff_layer, state_consumer: true;
     (793, "BurnRealHurtFix") => BurnRealHurtFix, effect_time_subscription: false,
-        supports: |args| matches!(args, [_, floor] if (0..=1000).contains(floor)),
+        supports: |args| matches!(args, [modifier, floor]
+            if (-1000..=1000).contains(modifier) && (0..=1000).contains(floor)),
         state_consumer: true,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(793, "BurnRealHurtFix"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(793, "BurnRealHurtFix"), &[EffectType::Realhurtfixwithlimit as i32]));
     (794, "ModifyMaxBurnLayers") => ModifyMaxBurnLayers, effect_time_subscription: false,
         supports: |args| matches!(args, [bonus] if *bonus > 0), state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(794, "ModifyMaxBurnLayers"), &[EffectType::Bufftypenumlimitupdate as i32]));
