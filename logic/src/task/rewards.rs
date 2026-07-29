@@ -5,8 +5,8 @@ pub(super) async fn add_claim_activity_in_transaction(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     player_id: i64,
     task: &database::models::game::tasks::UserTask,
-) -> Result<Vec<UserTaskActivity>, AppError> {
-    Ok(task_db::add_activity_in_transaction(
+) -> Result<(Vec<UserTaskActivity>, reward::RewardSet), AppError> {
+    let Some(mut activity) = task_db::add_activity_in_transaction(
         tx,
         player_id,
         task.type_id,
@@ -14,8 +14,38 @@ pub(super) async fn add_claim_activity_in_transaction(
         task.expiry_time,
     )
     .await?
-    .into_iter()
-    .collect())
+    else {
+        return Ok((Vec::new(), reward::RewardSet::default()));
+    };
+    let mut rewards = reward::RewardSet::default();
+    if !matches!(
+        task_db::TaskType::from_id(task.type_id),
+        Some(task_db::TaskType::Daily | task_db::TaskType::Weekly)
+    ) {
+        return Ok((vec![activity], rewards));
+    }
+
+    loop {
+        let next_define_id = activity.define_id + 1;
+        let Some(bonus) = task_activity_bonus(task.type_id, next_define_id) else {
+            break;
+        };
+        let (updated, claimed) = task_db::claim_activity_bonus_in_transaction(
+            tx,
+            player_id,
+            task.type_id,
+            next_define_id,
+            bonus.need_activity,
+        )
+        .await?;
+        activity = updated;
+        if !claimed {
+            break;
+        }
+        rewards.extend(parse_task_reward(&bonus.bonus));
+    }
+
+    Ok((vec![activity], rewards))
 }
 
 pub(super) fn task_rewards(type_id: i32, task_id: i32) -> reward::RewardSet {
