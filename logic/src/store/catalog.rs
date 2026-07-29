@@ -22,12 +22,15 @@ pub(super) async fn store_infos(
     let store_infos = store_ids
         .into_iter()
         .filter_map(|store_id| {
-            let goods_infos = tables
+            let configured_goods = tables
                 .store_goods
+                .iter()
+                .filter(|goods| goods_store_id(&goods.store_id) == Some(store_id))
+                .collect::<Vec<_>>();
+            let goods_infos = configured_goods
                 .iter()
                 .filter(|goods| {
                     goods.is_online
-                        && goods_store_id(&goods.store_id) == Some(store_id)
                         && is_time_active(
                             &goods.online_time,
                             &goods.offline_time,
@@ -44,7 +47,9 @@ pub(super) async fn store_infos(
                 })
                 .collect::<Vec<_>>();
 
-            (!goods_infos.is_empty()).then_some(StoreInfo {
+            (!goods_infos.is_empty()
+                || (configured_goods.is_empty() && tables.store.get(store_id).is_some()))
+            .then_some(StoreInfo {
                 id: store_id,
                 next_refresh_time: 0,
                 goods_infos,
