@@ -1268,12 +1268,7 @@ impl BuffManager {
         {
             ConsumeAction::Remove {
                 buff_uid,
-                layer: layer.filter(|_| {
-                    active
-                        .definition
-                        .as_ref()
-                        .is_some_and(BuffDefinition::clears_layer_on_depletion)
-                }),
+                layer,
                 count,
             }
         } else {

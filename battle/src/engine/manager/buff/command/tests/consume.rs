@@ -107,7 +107,7 @@ fn layered_consume_publishes_only_the_resulting_amount() {
 }
 
 #[test]
-fn depleted_stacked_consume_keeps_the_last_visible_layer_in_the_delete_snapshot() {
+fn depleted_stacked_consume_reports_zero_in_the_delete_snapshot() {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();
     manager.seed(&Fight {
@@ -145,7 +145,7 @@ fn depleted_stacked_consume_keeps_the_last_visible_layer_in_the_delete_snapshot(
 
     assert!(manager.snapshot(10, 20).is_none());
     assert_eq!(changes.change.removed[0].before_amount, 1);
-    assert_eq!(changes.change.removed[0].buff.layer, Some(1));
+    assert_eq!(changes.change.removed[0].buff.layer, Some(0));
     assert!(matches!(
         changes.events().as_slice(),
         [BattleEvent::BuffRemoved(event)]
