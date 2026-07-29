@@ -166,6 +166,22 @@ fn after_attack_opcode_uses_the_skills_own_after_hit_phase() {
 }
 
 #[test]
+fn burn_overflow_keys_keep_their_exact_skill_phases() {
+    for (opcode, phase) in [
+        (564203, SkillPhase::Immediate),
+        (564210, SkillPhase::AfterHit),
+    ] {
+        assert_eq!(
+            find_key(opcode, "BurnOverflow").map(|definition| definition.role),
+            Some(ConditionRole::Trigger {
+                event: EventKind::SkillAction,
+                phase: Some(phase),
+            })
+        );
+    }
+}
+
+#[test]
 fn static_buff_gate_opcodes_have_distinct_setup_stages() {
     for (opcode, stage) in [(19103, SetupStage::BuffGate), (19104, SetupStage::BuffSync)] {
         let definition = find_key(opcode, "HasBuffId").unwrap();
@@ -1351,4 +1367,22 @@ fn nested_no_action_teammate_death_keeps_its_exact_event_key() {
         })
     );
     assert!(find_key(17013, "TeammateDead").is_none());
+}
+
+#[test]
+fn hp_less_round_start_keys_keep_their_distinct_lanes() {
+    assert_eq!(
+        find_key(1103, "LifeLess").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStart,
+            priority: 1,
+        })
+    );
+    assert_eq!(
+        find_key(1104, "LifeLess").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartLate,
+            priority: 0,
+        })
+    );
 }

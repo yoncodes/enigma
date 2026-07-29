@@ -311,6 +311,7 @@ fn condition_repeat_count(
                 })
                 .unwrap_or_default(),
         ),
+        ParsedConditionKind::BurnOverflow => Some(context.buff_overflow_amount),
         _ => None,
     }
 }

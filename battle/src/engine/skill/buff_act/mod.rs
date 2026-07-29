@@ -29,6 +29,7 @@ pub mod be_attack_by_emitter_damage;
 pub mod big_skill_no_use_action_point;
 pub mod blood_pool;
 pub mod bullet;
+pub mod burn_real_hurt_fix;
 pub mod butterfly_record_skill;
 pub mod card_record;
 pub mod career_ratio_fix;
@@ -74,6 +75,7 @@ pub mod injury_bank;
 pub mod life_attack_fix_rate;
 pub mod lost_hp_add_extra_blood_pool_value;
 pub mod lost_hp_count_add_buff;
+pub mod modify_attr_by_buff_layer;
 pub mod monitor_continue_channel;
 pub mod must_crit_and_fix_temp_attr;
 pub mod nuo_di_ka_cast_channel;
@@ -101,7 +103,7 @@ pub mod wire;
 
 use crate::engine::{
     entity::attr::AttrId,
-    event::payload::BattleEvent,
+    event::{kind::EventKind, payload::BattleEvent, subscription::SubscriptionKey},
     manager::{
         BattleManagers,
         buff::{ActiveBuffFeature, CommandOrigin},
@@ -173,6 +175,29 @@ pub fn command_origin(subscriber: &BuffActSubscriber) -> Option<CommandOrigin> {
 
 pub fn feature_command_origin(feature: &ActiveBuffFeature) -> Option<CommandOrigin> {
     origin(feature.act_id()?, &feature.act_type)
+}
+
+pub fn subscriber_from_feature(
+    feature: ActiveBuffFeature,
+    event: EventKind,
+) -> Option<BuffActSubscriber> {
+    let (&act_id, args) = feature.values.split_first()?;
+    let definition = registry::find(act_id, &feature.act_type)?;
+    Some(BuffActSubscriber {
+        owner_uid: feature.owner_uid,
+        source_uid: feature.source_uid,
+        buff_uid: feature.buff_uid,
+        buff_id: feature.buff_id,
+        team_type: feature.team_type,
+        owner_alive: feature.owner_alive,
+        amount: feature.amount,
+        key: SubscriptionKey::new(event, definition.key),
+        act_type: feature.act_type,
+        effect_time: feature.effect_time,
+        effect_condition: feature.effect_condition,
+        args: args.to_vec(),
+        raw: feature.raw,
+    })
 }
 
 pub fn feature_runtime_frame_scope(
@@ -838,6 +863,9 @@ pub fn dynamic_attribute_delta(
                 buffs,
                 include_trigger_history,
             )
+        }
+        Some(registry::BuffActKind::ModifyAttrByBuffLayer) => {
+            modify_attr_by_buff_layer::attribute_delta(feature, attr_id, buffs)
         }
         _ => 0,
     }

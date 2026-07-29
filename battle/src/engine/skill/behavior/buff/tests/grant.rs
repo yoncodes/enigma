@@ -1,6 +1,113 @@
 use super::*;
 
 #[test]
+fn layer_copy_uses_the_buff_limit_and_preserves_main_target_overflow() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(4150001),
+                    layer: Some(6),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    team_type: Some(2),
+                    buffs: vec![BuffInfo {
+                        uid: Some(21),
+                        buff_id: Some(4150001),
+                        layer: Some(28),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    team_type: Some(2),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let behavior = ParsedBehavior::new(60068, "AddBuffByBuffLayer", vec![4150001, 4150001, 1]);
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext {
+        runtime_target_uid: -1,
+        ..Default::default()
+    };
+
+    let main_ops = super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: -1,
+            active_skill_id: 30940132,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+    assert_eq!(target.buff_overflow_amount, 4);
+    let [RuleOp::Command(BattleCommand::Buff(command))] = main_ops.as_slice() else {
+        panic!("expected one buff command");
+    };
+    managers.execute_buff(command.clone()).unwrap();
+    assert_eq!(managers.buff.buff_id_amount(-1, 4150001), 30);
+
+    let secondary_ops = super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: -2,
+            active_skill_id: 30940132,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+    assert_eq!(target.buff_overflow_amount, 4);
+    let [RuleOp::Command(BattleCommand::Buff(command))] = secondary_ops.as_slice() else {
+        panic!("expected one buff command");
+    };
+    assert!(matches!(
+        command,
+        BuffCommand::Grant(BuffGrant {
+            target_uid: -2,
+            buff_id: 4150001,
+            amount: Some(6),
+            ..
+        })
+    ));
+}
+
+#[test]
 fn layer_range_replaces_the_selected_buff_too() {
     crate::test_support::init_config();
     let fight = Fight {

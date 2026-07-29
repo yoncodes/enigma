@@ -174,6 +174,7 @@ pub(super) fn dispel_commands(
             origin: super::command_origin(behavior).expect("registered dispel behavior"),
             target_uid,
             statuses,
+            excluded_ids_or_types: Vec::new(),
             count,
         })]);
     }
@@ -199,8 +200,41 @@ pub(super) fn dispel_commands(
     (!commands.is_empty()).then_some(commands)
 }
 
+pub(super) fn excluded_dispel_command(
+    target_uid: i64,
+    behavior: &ParsedBehavior,
+) -> Option<BuffCommand> {
+    let excluded_ids_or_types = behavior.arg_list(0)?;
+    let status_ids = behavior.arg_list(1)?;
+    let statuses = status_ids
+        .iter()
+        .copied()
+        .map(BuffStatus::from_id)
+        .collect::<Vec<_>>();
+    if excluded_ids_or_types.is_empty()
+        || excluded_ids_or_types.iter().any(|id| *id <= 0)
+        || statuses.is_empty()
+        || statuses.contains(&BuffStatus::Unknown)
+    {
+        return None;
+    }
+    Some(BuffCommand::Dispel(BuffDispel {
+        origin: super::command_origin(behavior)?,
+        target_uid,
+        statuses,
+        excluded_ids_or_types,
+        count: 0,
+    }))
+}
+
 pub(in crate::engine::skill::behavior) fn supports_dispel(behavior: &ParsedBehavior) -> bool {
     dispel_commands(0, behavior).is_some()
+}
+
+pub(in crate::engine::skill::behavior) fn supports_excluded_dispel(
+    behavior: &ParsedBehavior,
+) -> bool {
+    excluded_dispel_command(1, behavior).is_some()
 }
 
 pub(in crate::engine::skill::behavior) fn supports_status_dispel(

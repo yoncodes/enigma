@@ -81,6 +81,7 @@ pub enum BuffActKind {
     BeAttackByEmitterDamage,
     BeAttackedAssassinate,
     BeatBack,
+    BeatBackByCounter,
     BeatBackDependOnAttackMe,
     BuffAddAct,
     BuffAddActLimit,
@@ -93,6 +94,7 @@ pub enum BuffActKind {
     BanLostLife,
     Bullet,
     Burn,
+    BurnRealHurtFix,
     CardLimitAdd,
     CardNotCalSize,
     EntityExSkillNotCalSize,
@@ -167,6 +169,7 @@ pub enum BuffActKind {
     LostHpCountAddBuff,
     LifeAttackFixRate,
     MonitorContinueChannel,
+    ModifyAttrByBuffLayer,
     ModifyMaxBuffLayers,
     ModifyMaxBurnLayers,
     MasterHalo,
@@ -188,6 +191,7 @@ pub enum BuffActKind {
     Rebound,
     Revive,
     Shield,
+    ShieldByBuffLayer,
     ShareHurt,
     SlaveHalo,
     Shell,
@@ -672,6 +676,9 @@ buff_act_definitions! {
         supports: |args| matches!(args, [attr_id, amount, maximum]
             if crate::engine::entity::attr::AttrId::from_raw(*attr_id).is_some()
                 && *amount != 0 && *maximum > 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(801, "FixAttrByTeammateInjuryCountNotReset"), &[EffectType::None as i32]));
+    (802, "BeatBackByCounter") => BeatBackByCounter, frame: CausingFrame, actor: OpposingTeam,
+        runtime: |context| super::riposte::shielded_ally_rule_ops(context.pool, context.subscriber, context.event?),
+        supports: |args| matches!(args, [skill_id] if *skill_id > 0);
     (803, "Poison") => Poison, stat_read: OnGrant,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(803, "Poison"), &[EffectType::Poison as i32]));
@@ -725,7 +732,17 @@ buff_act_definitions! {
     (771, "MasterHalo") => MasterHalo, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(771, "MasterHalo"), &[EffectType::Masterhalo as i32]));
     (772, "SlaveHalo") => SlaveHalo, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(772, "SlaveHalo"), &[EffectType::Slavehalo as i32]));
     (781, "MockTaunt") => MockTaunt, effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(781, "MockTaunt"), &[EffectType::Mocktaunt as i32]));
-    (794, "ModifyMaxBurnLayers") => ModifyMaxBurnLayers, effect_time_subscription: false, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(794, "ModifyMaxBurnLayers"), &[EffectType::Bufftypenumlimitupdate as i32]));
+    (790, "ModifyAttrByBuffLayer") => ModifyAttrByBuffLayer, effect_time_subscription: false,
+        supports: super::modify_attr_by_buff_layer::supports, state_consumer: true;
+    (791, "ShieldByBuffLayer") => ShieldByBuffLayer, effect_time_subscription: false,
+        supports: super::shield::supports_by_buff_layer, state_consumer: true;
+    (793, "BurnRealHurtFix") => BurnRealHurtFix, effect_time_subscription: false,
+        supports: |args| matches!(args, [_, floor] if (0..=1000).contains(floor)),
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(793, "BurnRealHurtFix"), &[]));
+    (794, "ModifyMaxBurnLayers") => ModifyMaxBurnLayers, effect_time_subscription: false,
+        supports: |args| matches!(args, [bonus] if *bonus > 0), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(794, "ModifyMaxBurnLayers"), &[EffectType::Bufftypenumlimitupdate as i32]));
     (901, "ModifyMaxBuffLayers") => ModifyMaxBuffLayers, effect_time_subscription: false,
         supports: |args| matches!(args, [buff_id, bonus] if *buff_id > 0 && *bonus > 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(901, "ModifyMaxBuffLayers"), &[EffectType::Bufftypenumlimitupdate as i32]));
     (1104, "ButterflyRecordSkill") => ButterflyRecordSkill,

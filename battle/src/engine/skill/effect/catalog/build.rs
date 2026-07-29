@@ -214,6 +214,9 @@ impl SkillEffectCatalog {
                         Some(BuffActKind::BeatBack) => skills.extend(
                             crate::engine::skill::buff_act::riposte::holder_skill(&values[1..]),
                         ),
+                        Some(BuffActKind::BeatBackByCounter) => skills.extend(
+                            crate::engine::skill::buff_act::riposte::counter_skill(&values[1..]),
+                        ),
                         Some(BuffActKind::CardNotCalSize) => skills.extend(
                             values
                                 .iter()

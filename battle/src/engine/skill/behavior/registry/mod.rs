@@ -204,6 +204,10 @@ pub mod arguments {
         behavior.args.len() == 2
     }
 
+    pub fn exactly_three(behavior: &ParsedBehavior) -> bool {
+        behavior.args.len() == 3
+    }
+
     pub fn exactly_four(behavior: &ParsedBehavior) -> bool {
         behavior.args.len() == 4
     }
@@ -532,6 +536,7 @@ behavior_definitions! {
     [30003] "Disperse1" => super::buff::Handler, Disperse1, Immediate, destination, super::buff::supports_status_dispel;
     [30008] "Disperse1" => super::buff::Handler, Disperse1, Immediate, destination;
     [30009] "Disperse2" => super::buff::Handler, Disperse2, Immediate, destination, super::buff::supports_exact_buff_dispel;
+    [60060] "DisperseExclude" => super::buff::Handler, DisperseExclude, Immediate, destination, super::buff::supports_excluded_dispel;
     [60010] "DisperseForce2" => super::buff::Handler, DisperseForce2, Immediate, destination, super::buff::supports_disperse_force;
     [20003] "Purify1" => super::buff::Handler, Purify1, Immediate, destination, super::buff::supports_dispel;
     [20020] "PurifyX" => super::buff::Handler, PurifyX, Immediate, destination, super::buff::supports_dispel;
@@ -543,6 +548,8 @@ behavior_definitions! {
     [50032] "ReplaceBuff" => super::buff::Handler, ReplaceBuff, Immediate, destination, arguments::exactly_four;
     [60176] "ReplaceBuff2" => super::buff::Handler, ReplaceBuff2, Immediate, destination;
     [50035] "AddBuffBasedOnEnemyBurnUseCount" => super::buff::Handler, AddBuffBasedOnEnemyBurnUseCount, Immediate, destination, arguments::exactly_two;
+    [60059] "AddBurnBySkillAddBurnCount" => super::buff::Handler, AddBuffBySkillBuffAdditions, Immediate, destination, arguments::at_least_one;
+    [60068] "AddBuffByBuffLayer" => super::buff::Handler, AddBuffByBuffLayer, Immediate, destination, arguments::exactly_three;
     [60124] "AddBuffByBuffLayerRange" => super::buff::Handler, AddBuffByBuffLayerRange, Immediate, destination;
     [60205] "AddBuffAndAddSpecialCount" => super::special_count::Handler, AddBuffAndAddSpecialCount, Immediate, transfer;
     [60204] "AddBuffSpecialCount" => super::special_count::Handler, AddBuffSpecialCount, Immediate, transfer;
@@ -637,6 +644,7 @@ behavior_definitions! {
     [60134] "ShellRecycle" => super::shell::Handler, ShellRecycle, AfterDamage, destination;
     [60135] "ShellUseSkill" => super::shell::Handler, ShellUseSkill, Immediate, destination;
     [60245] "CrystalAddCard" => super::crystal_card::Handler, CrystalAddCard, Immediate, destination, super::crystal_card::supports_arguments;
+    [60065] "AttrFixByBurnLayerAndExtraBurnHurt" => super::attr_fix_by_burn_layer::Handler, AttrFixByBurnLayerAndExtraBurnHurt, Immediate, modifier;
     [60033] "AttrFixByLoseHp" => super::attr_fix_by_lost_hp::Handler, AttrFixByLoseHp, Immediate, modifier;
     [60246] "HeatScaleUseSkillAddCount" => crate::engine::mechanic::heat_scale::Handler, HeatScaleUseSkillAddCount, Immediate, destination, arguments::at_least_one;
     [60247] "AddCardRankNext" => crate::engine::mechanic::heat_scale::Handler, AddCardRankNext, Immediate, queue_preparation, arguments::exactly_two;

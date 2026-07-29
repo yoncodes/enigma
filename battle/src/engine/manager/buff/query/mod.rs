@@ -412,6 +412,26 @@ impl BuffManager {
             .unwrap_or_default()
     }
 
+    pub fn grant_overflow(
+        &self,
+        source_uid: i64,
+        target_uid: i64,
+        buff_id: i32,
+        amount: i32,
+    ) -> i32 {
+        let Some(definition) = BuffDefinition::get(buff_id) else {
+            return 0;
+        };
+        let limit =
+            self.grant_stack_limit(BuffRoute::new(source_uid, target_uid, buff_id), &definition);
+        if limit <= 0 {
+            return 0;
+        }
+        self.buff_id_amount(target_uid, buff_id)
+            .saturating_add(amount.max(0))
+            .saturating_sub(limit)
+    }
+
     pub fn buff_type_amount(&self, uid: i64, type_id: i32) -> i32 {
         self.buffs
             .iter()

@@ -148,3 +148,22 @@ fn enemy_purify_x_uses_its_exact_positive_status_row() {
     );
     assert!(command.origin.key.matches(60064, "PurifyX"));
 }
+
+#[test]
+fn excluded_dispel_preserves_matching_buff_ids_and_types() {
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(60060, "DisperseExclude"),
+        vec![4150001, 2, 6],
+        vec!["4150001".into(), "2,6".into()],
+    );
+
+    let BuffCommand::Dispel(command) = excluded_dispel_command(10, &behavior).unwrap() else {
+        panic!("expected an excluded dispel command");
+    };
+    assert_eq!(
+        command.statuses,
+        vec![BuffStatus::StatsDown, BuffStatus::NegativeStatus]
+    );
+    assert_eq!(command.excluded_ids_or_types, vec![4150001]);
+    assert!(command.origin.key.matches(60060, "DisperseExclude"));
+}

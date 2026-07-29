@@ -100,6 +100,7 @@ mod tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         })
     }
 
