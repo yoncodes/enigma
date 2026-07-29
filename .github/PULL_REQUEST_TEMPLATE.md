@@ -2,8 +2,6 @@
 
 Refs #
 
-Target branch: `dev`
-
 ## Change
 
 Describe the root cause and the smallest implemented fix.
