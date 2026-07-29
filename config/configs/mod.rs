@@ -256,6 +256,7 @@ pub mod magic_circle;
 pub mod manufacture_building;
 pub mod manufacture_building_level;
 pub mod manufacture_building_trade_level;
+pub mod manufacture_const;
 pub mod manufacture_item;
 pub mod monster;
 pub mod monster_group;
@@ -651,6 +652,7 @@ pub struct GameDB {
     pub manufacture_building: manufacture_building::ManufactureBuildingTable,
     pub manufacture_building_level: manufacture_building_level::ManufactureBuildingLevelTable,
     pub manufacture_building_trade_level: manufacture_building_trade_level::ManufactureBuildingTradeLevelTable,
+    pub manufacture_const: manufacture_const::ManufactureConstTable,
     pub manufacture_item: manufacture_item::ManufactureItemTable,
     pub monster: monster::MonsterTable,
     pub monster_group: monster_group::MonsterGroupTable,
@@ -1558,6 +1560,9 @@ impl GameDB {
         let manufacture_building_trade_level = manufacture_building_trade_level::ManufactureBuildingTradeLevelTable::load(
             &format!("{}/manufacture_building_trade_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load manufacture_building_trade_level.json: {}", e))?;
+        let manufacture_const = manufacture_const::ManufactureConstTable::load(
+            &format!("{}/manufacture_const.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load manufacture_const.json: {}", e))?;
         let manufacture_item = manufacture_item::ManufactureItemTable::load(
             &format!("{}/manufacture_item.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load manufacture_item.json: {}", e))?;
@@ -2221,6 +2226,7 @@ impl GameDB {
             manufacture_building,
             manufacture_building_level,
             manufacture_building_trade_level,
+            manufacture_const,
             manufacture_item,
             monster,
             monster_group,

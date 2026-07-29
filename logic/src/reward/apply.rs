@@ -257,6 +257,21 @@ pub(crate) async fn apply_dungeon_in_transaction(
             cloth_updates.push(cloths::unlock_in_transaction(tx, player_id, cloth_id).await?);
         }
     }
+    let mut room_buildings = Vec::new();
+    for (building_id, count) in rewards.room_buildings {
+        for _ in 0..count {
+            room_buildings
+                .push(buildings::create_building_in_transaction(tx, player_id, building_id).await?);
+        }
+    }
+    let mut block_packages = Vec::new();
+    for (package_id, count) in rewards.block_packages {
+        if count > 0 {
+            block_packages.push(
+                block_packages::add_block_package_in_transaction(tx, player_id, package_id).await?,
+            );
+        }
+    }
 
     Ok(AppliedRewards {
         player_info_changed,
@@ -264,6 +279,8 @@ pub(crate) async fn apply_dungeon_in_transaction(
         currency_ids,
         cloth_updates,
         equip_uids,
+        room_buildings,
+        block_packages,
         ..Default::default()
     })
 }
@@ -273,8 +290,6 @@ fn ensure_dungeon_rewards_supported(rewards: &RewardSet) -> Result<(), AppError>
         && rewards.skins.is_empty()
         && rewards.player_cloth_exp.is_empty()
         && rewards.power_items.is_empty()
-        && rewards.room_buildings.is_empty()
-        && rewards.block_packages.is_empty()
         && rewards.special_blocks.is_empty()
         && rewards.antiques.is_empty()
         && rewards.insight_items.is_empty()

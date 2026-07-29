@@ -25,6 +25,26 @@ impl ChapterKind {
 }
 
 impl GameDB {
+    pub fn initial_tutorial_final_episode(&self) -> Option<i32> {
+        let guide_id = self
+            .guide
+            .iter()
+            .find(|guide| guide.is_online != 0 && guide.trigger == "PlayerLv#1")?
+            .id;
+
+        self.guide_step
+            .iter()
+            .filter(|step| step.id == guide_id)
+            .flat_map(|step| step.action.split('|'))
+            .filter_map(|action| {
+                let mut fields = action.split('#');
+                (fields.next() == Some("102"))
+                    .then(|| fields.next()?.parse().ok())
+                    .flatten()
+            })
+            .next_back()
+    }
+
     pub fn story_episodes(&self) -> impl Iterator<Item = &Episode> {
         self.episodes_in_chapter_kind(ChapterKind::Story)
     }
@@ -80,5 +100,6 @@ mod tests {
         assert!(resources.contains(&40101));
         assert!(tutorials.iter().all(|episode| !story.contains(episode)));
         assert!(resources.iter().all(|episode| !story.contains(episode)));
+        assert_eq!(crate::get().initial_tutorial_final_episode(), Some(10003));
     }
 }

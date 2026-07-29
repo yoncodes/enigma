@@ -561,6 +561,7 @@ pub fn completion_rewards(
     star: i32,
     multiplier: i32,
 ) -> CompletionRewards {
+    let tables = config::configs::get();
     let cost = episode_cost_value(episode);
     let player_exp = episode_player_exp(episode, first_pass, multiplier);
     let mut normal_rewards = reward::parse_bonus_with_cost(episode.bonus, cost);
@@ -581,6 +582,15 @@ pub fn completion_rewards(
     let mut rewards = normal_rewards;
     rewards.extend(first_rewards);
     rewards.extend(advanced_rewards);
+    if first_pass && tables.initial_tutorial_final_episode() == Some(episode.id) {
+        let (packages, buildings) = tables.initial_room_rewards();
+        rewards
+            .block_packages
+            .extend(packages.into_iter().map(|id| (id, 1)));
+        rewards
+            .room_buildings
+            .extend(buildings.into_iter().map(|id| (id, 1)));
+    }
     rewards.player_exp = rewards.player_exp.saturating_add(player_exp);
 
     CompletionRewards {

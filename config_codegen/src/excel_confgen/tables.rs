@@ -127,6 +127,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "production_line_level",
     "block_package",
     "room_building",
+    "manufacture_const",
     "room_character_interaction",
     "room_character_dialog_select",
     "room_block_color",
