@@ -93,6 +93,107 @@ fn abort_push_carries_the_abort_result_and_required_fight_group() {
 }
 
 #[tokio::test]
+async fn instruction_open_refreshes_only_after_new_state() {
+    use crate::{
+        handlers::dungeon::on_instruction_dungeon_open,
+        net::{
+            app::AppState, context::ConnectionContext, outbound::CommandPacket,
+            packet::ClientPacket,
+        },
+        player::{Player, PlayerState},
+    };
+    use prost::Message;
+    use sonettobuf::{CmdId, InstructionDungeonOpenRequest};
+    use tokio::sync::mpsc;
+
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (30, 'instruction-open', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(4);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(30, PlayerState::new(30, 0)));
+    let open_id = configs::get()
+        .instruction_level
+        .iter()
+        .find(|level| level.pre_episode == 0)
+        .unwrap()
+        .episode_id;
+    let mut data = Vec::new();
+    InstructionDungeonOpenRequest {
+        open_id: vec![open_id],
+    }
+    .encode(&mut data)
+    .unwrap();
+
+    on_instruction_dungeon_open(
+        &mut ctx,
+        ClientPacket {
+            sequence: 0,
+            cmd_id: CmdId::InstructionDungeonOpenCmd as i16,
+            up_tag: 7,
+            data,
+        },
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Push {
+        cmd_id: CmdId::DungeonInstructionDungeonInfoPushCmd,
+        body,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("new open did not refresh instruction state");
+    };
+    let push = sonettobuf::InstructionDungeonInfoPush::decode(&*body).unwrap();
+    assert!(push.open_ids.contains(&open_id));
+    assert!(matches!(
+        packets.try_recv().unwrap(),
+        CommandPacket::Reply {
+            cmd_id: CmdId::InstructionDungeonOpenCmd,
+            ..
+        }
+    ));
+
+    let mut data = Vec::new();
+    InstructionDungeonOpenRequest::default()
+        .encode(&mut data)
+        .unwrap();
+    on_instruction_dungeon_open(
+        &mut ctx,
+        ClientPacket {
+            sequence: 0,
+            cmd_id: CmdId::InstructionDungeonOpenCmd as i16,
+            up_tag: 8,
+            data,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        packets.try_recv().unwrap(),
+        CommandPacket::Reply {
+            cmd_id: CmdId::InstructionDungeonOpenCmd,
+            ..
+        }
+    ));
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn dungeon_abort_sends_terminal_fight_push_before_reply() {
     use crate::{
         handlers::dungeon::on_dungeon_end_dungeon,

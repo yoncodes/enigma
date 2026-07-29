@@ -146,9 +146,9 @@ pub async fn instruction_dungeon_open(
     db: &SqlitePool,
     player_id: i64,
     open_ids: Vec<i32>,
-) -> Result<InstructionDungeonOpenReply, AppError> {
-    instruction_dungeon::add_open_ids(db, player_id, open_ids).await?;
-    Ok(InstructionDungeonOpenReply {})
+) -> Result<(InstructionDungeonOpenReply, bool), AppError> {
+    let changed = instruction_dungeon::add_open_ids(db, player_id, open_ids).await?;
+    Ok((InstructionDungeonOpenReply {}, changed))
 }
 
 pub async fn instruction_dungeon_reward(

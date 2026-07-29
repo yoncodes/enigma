@@ -425,9 +425,12 @@ pub async fn on_instruction_dungeon_open(
 ) -> Result<(), AppError> {
     let player_id = ctx.player()?.id;
     let msg = InstructionDungeonOpenRequest::decode(&req.data[..])?;
-    let reply = dungeon::instruction_dungeon_open(ctx.state.db, player_id, msg.open_id).await?;
+    let (reply, changed) =
+        dungeon::instruction_dungeon_open(ctx.state.db, player_id, msg.open_id).await?;
 
-    push::send_instruction_dungeon_info(ctx, player_id).await?;
+    if changed {
+        push::send_instruction_dungeon_info(ctx, player_id).await?;
+    }
     ctx.send_reply(CmdId::InstructionDungeonOpenCmd, reply, 0, req.up_tag)
         .await
 }
