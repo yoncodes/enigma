@@ -238,6 +238,33 @@ fn damage_cap_is_an_exact_static_consumer_with_its_captured_marker() {
 }
 
 #[test]
+fn burn_damage_fix_is_an_exact_static_consumer_with_its_add_marker() {
+    let definition = find(793, "BurnRealHurtFix").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::BurnRealHurtFix);
+    assert!(definition.state.consumer);
+    assert!(has_destination(793, "BurnRealHurtFix", &[500, 150]));
+    assert!(has_destination(793, "BurnRealHurtFix", &[-1000, 0]));
+    assert!(!has_destination(793, "BurnRealHurtFix", &[-1001, 0]));
+    assert!(!has_destination(793, "BurnRealHurtFix", &[1001, 0]));
+    assert!(!has_destination(793, "BurnRealHurtFix", &[500, 1001]));
+
+    let wire = super::super::wire::find(793, "BurnRealHurtFix").unwrap();
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::Realhurtfixwithlimit as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+}
+
+#[test]
 fn registered_exact_keys_are_unique() {
     let definitions = definitions().collect::<Vec<_>>();
     let unique = definitions
