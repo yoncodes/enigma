@@ -31,33 +31,6 @@ pub enum ActivityId {
 }
 
 impl ActivityId {
-    pub const ACTIVE_CATALOG: &'static [Self] = &[
-        Self::StoryShow,
-        Self::DreamShow,
-        Self::ClassShow,
-        Self::WeekWalkDeepShow,
-        Self::WeekWalkHeartShow,
-        Self::Tower,
-        Self::V2a9EnterView130501,
-        Self::V2a9Dungeon130502,
-        Self::V2a9DungeonStore130503,
-        Self::V2a9Outside,
-        Self::V2a9BossRush130505,
-        Self::V2a9EnterView2,
-        Self::V2a9Dungeon2,
-        Self::V2a9ReactivityStore130508,
-        Self::V3a6Abyss,
-        Self::V3a6DoubleDrop,
-        Self::V3a6EnterView,
-        Self::V3a6Dungeon,
-        Self::V3a6DungeonStore,
-        Self::V3a6YaMi,
-        Self::V3a6BossRush,
-        Self::V3a6CultivationDestiny,
-    ];
-
-    pub const ACT125: &'static [Self] = &[Self::V3a6CultivationDestiny];
-
     pub const fn id(self) -> i32 {
         self as i32
     }
