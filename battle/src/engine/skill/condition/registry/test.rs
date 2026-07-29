@@ -1146,6 +1146,76 @@ fn round_start_power_gate_keeps_its_exact_phase_and_payload_order() {
 }
 
 #[test]
+fn other_ally_extra_action_keeps_its_exact_route() {
+    assert_eq!(
+        parse(403212, "SkillExtraType", &["1".into()]),
+        Some(ParsedConditionKind::ExtraAction {
+            mode: super::super::extra::ExtraActionConditionMode::OtherAllyAction,
+            kinds: vec![1],
+        })
+    );
+    assert_eq!(
+        find_key(403212, "SkillExtraType").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        })
+    );
+    assert!(find_key(403212, "UseSkill").is_none());
+}
+
+#[test]
+fn owner_incantation_rank_keeps_its_exact_route() {
+    assert_eq!(
+        parse(659212, "UseSkill", &["1".into()]),
+        Some(ParsedConditionKind::UseSkillRank(vec![1]))
+    );
+    assert_eq!(
+        find_key(659212, "UseSkill").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        })
+    );
+    assert!(find_key(659212, "ActiveUseSkill").is_none());
+}
+
+#[test]
+fn eureka_threshold_keeps_same_and_opposing_action_routes_distinct() {
+    let expected = ParsedConditionKind::PowerCompare {
+        compare_code: 1,
+        power_id: 1,
+        threshold: 5,
+    };
+    for opcode in [180212999, 180213999] {
+        assert_eq!(
+            parse(
+                opcode,
+                "PowerCompare",
+                &["1".into(), "1".into(), "5".into()]
+            ),
+            Some(expected.clone())
+        );
+        assert_eq!(
+            find_key(opcode, "PowerCompare").map(|definition| definition.role),
+            Some(ConditionRole::Trigger {
+                event: EventKind::AllyAction,
+                phase: None,
+            })
+        );
+    }
+    assert_eq!(
+        find_key(180212999, "PowerCompare").map(|definition| definition.skill_action_observer),
+        Some(SkillActionObserver::Team)
+    );
+    assert_eq!(
+        find_key(180213999, "PowerCompare").map(|definition| definition.skill_action_observer),
+        Some(SkillActionObserver::OpposingTeam)
+    );
+    assert!(find_key(180212999, "PowerCompareOther").is_none());
+}
+
+#[test]
 fn enter_fight_team_career_threshold_keeps_its_exact_key() {
     assert_eq!(
         parse(562002, "CareerGroupHeroCountGE", &["3".into(), "3".into()]),

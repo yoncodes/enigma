@@ -72,6 +72,7 @@ pub enum SkillActionObserver {
     #[default]
     Actor,
     Team,
+    OpposingTeam,
     AllyOfAttackedTarget,
 }
 
@@ -258,6 +259,11 @@ pub const fn ally_of_attacked_target_observes(
 
 pub const fn team_observes(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.skill_action_observer = SkillActionObserver::Team;
+    metadata
+}
+
+pub const fn opposing_team_observes(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.skill_action_observer = SkillActionObserver::OpposingTeam;
     metadata
 }
 
@@ -499,6 +505,7 @@ condition_definitions! {
     [502203] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [502208] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [502210] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
+    [659212] "UseSkill" => active_skill::use_skill, event_trigger(EventKind::AllyAction, None);
     [66203] "UseSpecificSkill" => active_skill::specific_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [66208] "UseSpecificSkill" => active_skill::specific_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [66210] "UseSpecificSkill" => active_skill::specific_skill, predicate(&[EventKind::SkillAction]);
@@ -509,9 +516,12 @@ condition_definitions! {
     [403201, 403208] "SkillExtraType" => extra::active_action, predicate(&[]);
     [403203] "SkillExtraType" => extra::active_action, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [403210] "SkillExtraType" => extra::active_action, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
+    [403212] "SkillExtraType" => extra::other_ally_action, event_trigger(EventKind::AllyAction, None);
     [180203] "PowerCompare" => resource::power_compare, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [180208] "PowerCompare" => resource::power_compare, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [180210] "PowerCompare" => resource::power_compare, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
+    [180212999] "PowerCompare" => resource::power_compare, team_observes(event_trigger(EventKind::AllyAction, None));
+    [180213999] "PowerCompare" => resource::power_compare, opposing_team_observes(event_trigger(EventKind::AllyAction, None));
     [180102] "PowerCompare" => resource::power_compare, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [180104] "PowerCompare" => resource::power_compare, setup_route(SetupStage::RoundStart, 1, &[]);
     [180106] "PowerCompare" => resource::power_compare, setup_route(SetupStage::CardSetup, 0, &[]);

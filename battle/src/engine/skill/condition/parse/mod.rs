@@ -208,6 +208,7 @@ pub enum ParsedConditionKind {
     ActiveUseSkill {
         slot: i32,
     },
+    UseSkillRank(Vec<i32>),
     UseHurtSkill,
     SpecificSkill {
         group: i32,

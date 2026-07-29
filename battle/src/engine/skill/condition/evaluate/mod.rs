@@ -763,6 +763,11 @@ fn condition_kind_matches(
                 && active_skill_has_real_source(pool, context)
                 && (*slot == 0 || context.active_skill_slot == *slot)
         }
+        ParsedConditionKind::UseSkillRank(ranks) => {
+            context.active_skill_source_uid == source_uid
+                && context.active_skill_rank != 0
+                && ranks.contains(&context.active_skill_rank)
+        }
         ParsedConditionKind::UseHurtSkill => {
             context.active_skill_is_attack && active_skill_has_real_source(pool, context)
         }
@@ -910,8 +915,15 @@ fn condition_kind_matches(
             });
             found == *present
         }
-        ParsedConditionKind::ExtraAction { kinds, .. } => {
+        ParsedConditionKind::ExtraAction { mode, kinds } => {
             extra_action_kind_matches(context.extra_skill_kind, kinds)
+                && match mode {
+                    super::extra::ExtraActionConditionMode::OtherAllyAction => {
+                        context.active_skill_source_uid != 0
+                            && condition_targets.contains(&context.active_skill_source_uid)
+                    }
+                    _ => true,
+                }
         }
         ParsedConditionKind::InMagicCircleId(ids) => {
             let field_id = current_magic_circle_id(source_uid, managers, pool, context);
