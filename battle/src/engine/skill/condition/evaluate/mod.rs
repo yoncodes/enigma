@@ -64,7 +64,9 @@ pub fn satisfied_condition(
     trigger_key: DefinitionKey,
 ) -> ParsedCondition {
     let is_satisfiable_event_marker = match condition.kind {
-        ParsedConditionKind::Lifecycle(_) | ParsedConditionKind::AllyAttacked => true,
+        ParsedConditionKind::Lifecycle(_)
+        | ParsedConditionKind::AllyAttacked
+        | ParsedConditionKind::EntityDead => true,
         ParsedConditionKind::None(mode) => mode != super::none::NoneMode::AllyAction,
         _ => false,
     };

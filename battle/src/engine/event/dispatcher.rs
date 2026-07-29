@@ -206,6 +206,17 @@ fn dispatch_subscribers(
             .retain(|(subscriber, _)| subscriber.owner_uid == *target_uid);
     }
     if let BattleEvent::EntityDied(death) = event {
+        batch.skills.retain(|(subscriber, _)| {
+            crate::engine::skill::condition::registry::find_key(
+                subscriber.key.definition.opcode,
+                subscriber.key.definition.type_name,
+            )
+            .is_none_or(|definition| {
+                definition.reaction_frame_target
+                    != crate::engine::skill::condition::registry::ReactionFrameTarget::Owner
+                    || subscriber.owner_uid == death.target_uid
+            })
+        });
         batch
             .buff_acts
             .retain(|(subscriber, _)| subscriber.owner_uid == death.target_uid);
