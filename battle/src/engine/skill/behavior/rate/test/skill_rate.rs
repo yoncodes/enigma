@@ -423,7 +423,7 @@ fn target_count_rate_is_global_and_scales_with_living_enemies() {
 }
 
 #[test]
-fn conduit_rate_uses_the_selected_skills_committed_round_cost() {
+fn conduit_rate_survives_a_later_group_switch() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -464,6 +464,15 @@ fn conduit_rate_uses_the_selected_skills_committed_round_cost() {
                 source_uid: 10,
                 skill_id: 31490121,
                 cost_reduction: 0,
+            },
+        )
+        .unwrap();
+    managers
+        .conduit
+        .execute(
+            crate::engine::manager::conduit::ConduitCommand::SelectGroup {
+                source_uid: 10,
+                group: 2,
             },
         )
         .unwrap();

@@ -319,17 +319,23 @@ impl ConduitManager {
     }
 
     pub fn owns_skill(&self, source_uid: i64, skill_id: i32) -> bool {
-        self.areas
-            .values()
-            .flat_map(|area| &area.devices)
-            .find(|device| device.uid == source_uid)
-            .is_some_and(|device| {
-                device
-                    .skill_groups
-                    .iter()
-                    .flatten()
-                    .any(|skill| skill.skill_id == skill_id)
-            })
+        self.configured_skill(source_uid, skill_id).is_some()
+    }
+
+    fn configured_skill(&self, source_uid: i64, skill_id: i32) -> Option<(i32, ConduitSkill)> {
+        self.areas.iter().find_map(|(team, area)| {
+            let device = area
+                .devices
+                .iter()
+                .find(|device| device.uid == source_uid)?;
+            device
+                .skill_groups
+                .iter()
+                .flatten()
+                .find(|skill| skill.skill_id == skill_id)
+                .copied()
+                .map(|skill| (*team, skill))
+        })
     }
 
     pub fn consumed(&self, team: i32, power_id: i32) -> i32 {
@@ -340,7 +346,7 @@ impl ConduitManager {
     }
 
     pub fn consumed_for_skill(&self, source_uid: i64, skill_id: i32) -> Option<i32> {
-        let (team, skill) = self.skill(source_uid, skill_id)?;
+        let (team, skill) = self.configured_skill(source_uid, skill_id)?;
         Some(self.consumed(team, skill.cost_type))
     }
 
