@@ -217,7 +217,11 @@ pub async fn sync_visible_pools(pool: &SqlitePool, user_id: i64) -> Result<()> {
 }
 
 fn visible_pools() -> Vec<VisibleSummonPool> {
-    let mut visible = visible_scheduled_pools(ServerTime::now_sec_i32());
+    visible_pools_at(ServerTime::now_sec_i32())
+}
+
+fn visible_pools_at(now_sec: i32) -> Vec<VisibleSummonPool> {
+    let mut visible = visible_scheduled_pools(now_sec);
     visible.entry(1).or_insert(VisibleSummonPool {
         pool_id: 1,
         online_time: 0,
@@ -234,20 +238,40 @@ fn visible_pools() -> Vec<VisibleSummonPool> {
     visible.into_values().collect()
 }
 
+pub fn visible_summon_pool_ids_at(now_sec: i32) -> Vec<i32> {
+    visible_pools_at(now_sec)
+        .into_iter()
+        .map(|pool| pool.pool_id)
+        .collect()
+}
+
 fn visible_scheduled_pools(now_sec: i32) -> BTreeMap<i32, VisibleSummonPool> {
-    scheduled_pools()
+    let tables = config::configs::get();
+    let active = scheduled_pools()
         .into_iter()
         .filter(|pool| pool.online_time <= now_sec && now_sec <= pool.offline_time)
+        .collect::<Vec<_>>();
+    let version = active
+        .iter()
+        .max_by_key(|pool| pool.online_time)
+        .and_then(|pool| tables.summon_pool.get(pool.pool_id))
+        .and_then(|pool| summon_version(&pool.prefab_path));
+
+    active
+        .into_iter()
+        .filter(|visible| {
+            tables
+                .summon_pool
+                .get(visible.pool_id)
+                .and_then(|pool| summon_version(&pool.prefab_path))
+                == version
+        })
         .map(|pool| (pool.pool_id, pool))
         .collect()
 }
 
 fn scheduled_pools() -> Vec<VisibleSummonPool> {
     let tables = config::configs::get();
-    let current_pool_ids = tables
-        .current_summon_pools()
-        .map(|pool| pool.id)
-        .collect::<HashSet<_>>();
     let mut by_pool = BTreeMap::<i32, VisibleSummonPool>::new();
     for store in tables
         .store_recommend
@@ -257,9 +281,6 @@ fn scheduled_pools() -> Vec<VisibleSummonPool> {
         let Some(pool_id) = parse_pool_relation(&store.relations) else {
             continue;
         };
-        if !current_pool_ids.contains(&pool_id) {
-            continue;
-        }
         let Some(pool) = tables.summon_pool.get(pool_id) else {
             continue;
         };
@@ -273,6 +294,13 @@ fn scheduled_pools() -> Vec<VisibleSummonPool> {
     }
 
     by_pool.into_values().collect()
+}
+
+fn summon_version(prefab_path: &str) -> Option<&str> {
+    prefab_path
+        .split(['/', '\\'])
+        .next()
+        .filter(|version| version.starts_with("version_"))
 }
 
 fn parse_pool_relation(relations: &str) -> Option<i32> {
