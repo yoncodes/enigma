@@ -171,3 +171,68 @@ async fn strengthen_commits_cost_and_consumed_equipment_together() {
         0
     );
 }
+
+#[tokio::test]
+async fn break_uses_the_equipment_currency() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let tables = config::configs::get();
+    let equip = tables.equip.get(1571).unwrap();
+    let current = tables.equip_break_cost(equip.rare, 2).unwrap();
+    let next = tables.equip_break_cost(equip.rare, 3).unwrap();
+    let costs = crate::reward::parse(&next.cost);
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (23, 'break', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    database::db::game::currencies::add_currency(&pool, 23, 3, next.score_cost)
+        .await
+        .unwrap();
+    for (item_id, count) in &costs.items {
+        database::db::game::items::add_item_quantity(&pool, 23, *item_id, *count)
+            .await
+            .unwrap();
+    }
+    sqlx::query(
+        "INSERT INTO equipment
+         (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv,
+          created_at, updated_at)
+         VALUES (200, 23, ?, ?, 1100, 2, 1, 1, 1, 0, 0)",
+    )
+    .bind(equip.id)
+    .bind(current.level)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (_, currency_changes, changed_items, changed_uids) =
+        super::break_equip(&pool, 23, 200).await.unwrap();
+
+    assert_eq!(currency_changes, [(3, -next.score_cost)]);
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>(
+            "SELECT quantity FROM currencies WHERE user_id = 23 AND currency_id = 3"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        changed_items,
+        costs.items.iter().map(|(id, _)| *id).collect::<Vec<_>>()
+    );
+    assert_eq!(changed_uids, [200]);
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>("SELECT break_lv FROM equipment WHERE uid = 200")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        3
+    );
+}

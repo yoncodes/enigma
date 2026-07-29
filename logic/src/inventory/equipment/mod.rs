@@ -8,7 +8,7 @@ use sqlx::SqlitePool;
 use std::collections::HashSet;
 
 const DECOMPOSE_MAX_COUNT: usize = 100;
-const STRENGTHEN_CURRENCY_ID: i32 = 3;
+const EQUIPMENT_CURRENCY_ID: i32 = 3;
 
 pub struct StrengthenCompletion {
     pub reply: EquipStrengthenReply,
@@ -122,7 +122,7 @@ pub(super) async fn strengthen(
 
     let costs = reward::RewardSet {
         currencies: (score_cost > 0)
-            .then_some((STRENGTHEN_CURRENCY_ID, score_cost))
+            .then_some((EQUIPMENT_CURRENCY_ID, score_cost))
             .into_iter()
             .collect(),
         ..Default::default()
@@ -163,7 +163,7 @@ pub(super) async fn strengthen(
             eat_equips,
         },
         currency_changes: (score_cost > 0)
-            .then_some((STRENGTHEN_CURRENCY_ID, -score_cost))
+            .then_some((EQUIPMENT_CURRENCY_ID, -score_cost))
             .into_iter()
             .collect(),
         changed_uids,
@@ -281,7 +281,9 @@ pub(super) async fn break_equip(
     let costs = reward::parse(&next.cost);
     let mut all_costs = costs.clone();
     if next.score_cost > 0 {
-        all_costs.currencies.push((1, next.score_cost));
+        all_costs
+            .currencies
+            .push((EQUIPMENT_CURRENCY_ID, next.score_cost));
     }
     let mut tx = db.begin().await?;
     match reward::consume(&mut tx, player_id, &all_costs).await {
@@ -305,7 +307,7 @@ pub(super) async fn break_equip(
 
     let changed_items = costs.items.iter().map(|(id, _)| *id).collect::<Vec<_>>();
     let changed_currencies = if next.score_cost > 0 {
-        vec![(1, -next.score_cost)]
+        vec![(EQUIPMENT_CURRENCY_ID, -next.score_cost)]
     } else {
         Vec::new()
     };
