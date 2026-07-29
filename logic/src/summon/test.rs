@@ -156,7 +156,7 @@ async fn missing_summon_tickets_are_paid_from_the_configured_currency() {
 }
 
 #[tokio::test]
-async fn special_pool_reply_persists_its_configured_type() {
+async fn summon_info_uses_current_catalog_and_persists_special_pool_type() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -183,7 +183,17 @@ async fn special_pool_reply_persists_its_configured_type() {
     .await
     .unwrap();
 
-    let reply = super::commands::summon_info(&pool, 29).await.unwrap();
+    let reply = SummonManager::new(29).info(&pool).await.unwrap();
+    let current_pool_ids = config::configs::get()
+        .current_summon_pools()
+        .map(|pool| pool.id)
+        .collect::<std::collections::HashSet<_>>();
+    assert!(current_pool_ids.contains(&385141));
+    assert!(!current_pool_ids.contains(&38151));
+    assert!(reply.pool_infos.iter().all(|info| {
+        info.pool_id
+            .is_some_and(|pool_id| matches!(pool_id, 1 | 2) || current_pool_ids.contains(&pool_id))
+    }));
     let info = reply
         .pool_infos
         .iter()

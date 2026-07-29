@@ -235,27 +235,19 @@ fn visible_pools() -> Vec<VisibleSummonPool> {
 }
 
 fn visible_scheduled_pools(now_sec: i32) -> BTreeMap<i32, VisibleSummonPool> {
-    let mut pools = scheduled_pools();
-    let open = pools
-        .iter()
+    scheduled_pools()
+        .into_iter()
         .filter(|pool| pool.online_time <= now_sec && now_sec <= pool.offline_time)
-        .cloned()
-        .collect::<Vec<_>>();
-
-    if !open.is_empty() {
-        pools = open;
-    } else {
-        for pool in &mut pools {
-            pool.online_time = (now_sec - 3600).max(0);
-            pool.offline_time = now_sec.saturating_add(30 * 24 * 60 * 60);
-        }
-    }
-
-    pools.into_iter().map(|pool| (pool.pool_id, pool)).collect()
+        .map(|pool| (pool.pool_id, pool))
+        .collect()
 }
 
 fn scheduled_pools() -> Vec<VisibleSummonPool> {
     let tables = config::configs::get();
+    let current_pool_ids = tables
+        .current_summon_pools()
+        .map(|pool| pool.id)
+        .collect::<HashSet<_>>();
     let mut by_pool = BTreeMap::<i32, VisibleSummonPool>::new();
     for store in tables
         .store_recommend
@@ -265,6 +257,9 @@ fn scheduled_pools() -> Vec<VisibleSummonPool> {
         let Some(pool_id) = parse_pool_relation(&store.relations) else {
             continue;
         };
+        if !current_pool_ids.contains(&pool_id) {
+            continue;
+        }
         let Some(pool) = tables.summon_pool.get(pool_id) else {
             continue;
         };
