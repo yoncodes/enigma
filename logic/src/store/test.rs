@@ -86,6 +86,31 @@ async fn charge_infos_are_synthesized_without_purchase_rows() {
     assert_eq!(rows, 0);
 }
 
+#[tokio::test]
+async fn configured_container_store_is_returned_without_goods() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+    sqlx::query(
+        "CREATE TABLE user_store_goods (
+            user_id INTEGER NOT NULL,
+            goods_id INTEGER NOT NULL,
+            buy_count INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, goods_id)
+        )",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let reply = StoreManager::new(1).infos(&pool, &[410]).await.unwrap();
+
+    assert_eq!(reply.store_infos.len(), 1);
+    assert_eq!(reply.store_infos[0].id, 410);
+    assert!(reply.store_infos[0].goods_infos.is_empty());
+}
+
 #[test]
 fn maps_current_bp_charge_goods_to_pay_status() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
