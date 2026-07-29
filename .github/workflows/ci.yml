@@ -36,6 +36,11 @@ jobs:
       - name: Clone Sonetto data
         run: git clone --depth=1 https://gitlab.com/yoncodes/sonetto-data.git sonetto-data
 
+      - name: Prepare test data
+        run: |
+          mkdir -p data
+          cp -r sonetto-data/excel2json data/
+
       - name: Configure game data
         run: echo "JSON_DATA_DIR=${{ github.workspace }}/sonetto-data/excel2json" >> "$GITHUB_ENV"
 
