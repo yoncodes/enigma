@@ -127,6 +127,7 @@ pub fn draw_bag(fight: &Fight) -> Vec<CardInfo> {
 
 pub fn start_decks_from_fight(
     fight: &Fight,
+    ex_point: &crate::engine::manager::ex_point::ExPointManager,
     seed_value: i32,
     captured: Option<(Vec<CardInfo>, Vec<CardInfo>)>,
 ) -> (Vec<CardInfo>, Vec<CardInfo>) {
@@ -186,7 +187,7 @@ pub fn start_decks_from_fight(
     }
 
     let player = draw_guaranteed_by_uid(&candidates, &required_uids, hand_size, &mut rng);
-    let ai = generate_ai_deck(fight, &mut rng);
+    let ai = generate_ai_deck(fight, ex_point, &mut rng);
     (ai, player)
 }
 
@@ -233,7 +234,9 @@ mod tests {
             ..Default::default()
         };
 
-        let (ai, player) = start_decks_from_fight(&fight, 7, None);
+        let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
+        ex_point.seed(&fight);
+        let (ai, player) = start_decks_from_fight(&fight, &ex_point, 7, None);
 
         assert_eq!(player.len(), 5);
         assert!(player.iter().any(|card| card.uid == Some(10)));
@@ -313,7 +316,9 @@ mod tests {
             }],
         );
 
-        let (ai, player) = start_decks_from_fight(&fight, 0, Some(captured));
+        let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
+        ex_point.seed(&fight);
+        let (ai, player) = start_decks_from_fight(&fight, &ex_point, 0, Some(captured));
 
         assert_eq!(ai[0].skill_id, Some(302));
         assert_eq!(ai[0].card_effect, None);

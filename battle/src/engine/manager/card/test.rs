@@ -3,7 +3,7 @@ use rand::{SeedableRng, rngs::StdRng};
 use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
 #[test]
-fn enemy_ai_uses_ready_ultimates_and_falls_back_to_basic_skills() {
+fn enemy_ai_selects_ultimates_from_current_resource_state() {
     let fight = |ex_point, ex_skill| Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -29,15 +29,31 @@ fn enemy_ai_uses_ready_ultimates_and_falls_back_to_basic_skills() {
         ..Default::default()
     };
 
+    let points = |fight: &Fight| {
+        let mut points = crate::engine::manager::ex_point::ExPointManager::default();
+        points.seed(fight);
+        points
+    };
+
+    let ready = fight(5, Some(900));
     let mut ready_rng = StdRng::seed_from_u64(1);
     assert_eq!(
-        ai::generate_ai_deck(&fight(5, Some(900)), &mut ready_rng)[0].skill_id,
+        ai::generate_ai_deck(&ready, &points(&ready), &mut ready_rng)[0].skill_id,
         Some(900)
     );
 
+    let fallback = fight(5, None);
     let mut fallback_rng = StdRng::seed_from_u64(1);
     assert_eq!(
-        ai::generate_ai_deck(&fight(5, None), &mut fallback_rng)[0].skill_id,
+        ai::generate_ai_deck(&fallback, &points(&fallback), &mut fallback_rng)[0].skill_id,
+        Some(100)
+    );
+
+    let stale_fight = fight(5, Some(900));
+    let spent = points(&fight(0, Some(900)));
+    let mut spent_rng = StdRng::seed_from_u64(1);
+    assert_eq!(
+        ai::generate_ai_deck(&stale_fight, &spent, &mut spent_rng)[0].skill_id,
         Some(100)
     );
 }
