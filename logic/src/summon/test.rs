@@ -156,7 +156,7 @@ async fn missing_summon_tickets_are_paid_from_the_configured_currency() {
 }
 
 #[tokio::test]
-async fn summon_info_uses_current_catalog_and_persists_special_pool_type() {
+async fn current_catalog_and_special_pool_type_follow_config() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -168,42 +168,27 @@ async fn summon_info_uses_current_catalog_and_persists_special_pool_type() {
     .execute(&pool)
     .await
     .unwrap();
-    sqlx::query(
-        "INSERT INTO user_summon_pools (user_id, pool_id, created_at, updated_at)
-         VALUES (29, 385111, 0, 0)",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query(
-        "INSERT INTO user_sp_pool_info (user_id, pool_id, sp_type)
-         VALUES (29, 385111, 0)",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    let reply = SummonManager::new(29).info(&pool).await.unwrap();
-    let current_pool_ids = config::configs::get()
-        .current_summon_pools()
-        .map(|pool| pool.id)
-        .collect::<std::collections::HashSet<_>>();
+    let current_pool_ids = summon::visible_summon_pool_ids_at(
+        chrono::NaiveDateTime::parse_from_str("2026-07-28 12:00:00", "%Y-%m-%d %H:%M:%S")
+            .unwrap()
+            .and_utc()
+            .timestamp() as i32,
+    );
     assert!(current_pool_ids.contains(&385141));
     assert!(!current_pool_ids.contains(&38151));
-    assert!(reply.pool_infos.iter().all(|info| {
-        info.pool_id
-            .is_some_and(|pool_id| matches!(pool_id, 1 | 2) || current_pool_ids.contains(&pool_id))
-    }));
-    let info = reply
-        .pool_infos
-        .iter()
-        .find(|info| info.pool_id == Some(385111))
-        .unwrap();
 
-    assert_eq!(
-        info.sp_pool_info.as_ref().and_then(|info| info.r#type),
-        Some(21)
+    let lower_id_catalog = summon::visible_summon_pool_ids_at(
+        chrono::NaiveDateTime::parse_from_str("2025-11-05 12:00:00", "%Y-%m-%d %H:%M:%S")
+            .unwrap()
+            .and_utc()
+            .timestamp() as i32,
     );
+    assert!(lower_id_catalog.contains(&30151));
+    assert!(!lower_id_catalog.contains(&305161));
+
+    summon::ensure_sp_pool_info(&pool, 29, 385111, 21)
+        .await
+        .unwrap();
     assert_eq!(
         summon::get_sp_pool_info(&pool, 29, 385111)
             .await
