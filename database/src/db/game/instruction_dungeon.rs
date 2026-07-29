@@ -82,7 +82,7 @@ pub async fn get_info(pool: &SqlitePool, user_id: i64) -> Result<InstructionDung
     })
 }
 
-pub async fn add_open_ids(pool: &SqlitePool, user_id: i64, ids: Vec<i32>) -> Result<()> {
+pub async fn add_open_ids(pool: &SqlitePool, user_id: i64, ids: Vec<i32>) -> Result<bool> {
     reconcile_unlocks(pool, user_id).await?;
     let unlocked = sqlx::query_scalar::<_, i32>(
         "SELECT instruction_id FROM user_instruction_dungeon_unlocks WHERE user_id = ?",
@@ -92,19 +92,22 @@ pub async fn add_open_ids(pool: &SqlitePool, user_id: i64, ids: Vec<i32>) -> Res
     .await?
     .into_iter()
     .collect::<HashSet<_>>();
+    let mut changed = false;
 
     for id in ids {
         ensure!(unlocked.contains(&id), "instruction episode {id} is locked");
-        sqlx::query(
+        changed |= sqlx::query(
             "INSERT INTO user_instruction_dungeon_opens (user_id, instruction_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
         )
         .bind(user_id)
         .bind(id)
         .execute(pool)
-        .await?;
+        .await?
+        .rows_affected()
+            != 0;
     }
 
-    Ok(())
+    Ok(changed)
 }
 
 pub async fn claim_topic_reward(pool: &SqlitePool, user_id: i64, topic_id: i32) -> Result<bool> {
