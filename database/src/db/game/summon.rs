@@ -256,6 +256,10 @@ fn visible_scheduled_pools(now_sec: i32) -> BTreeMap<i32, VisibleSummonPool> {
 
 fn scheduled_pools() -> Vec<VisibleSummonPool> {
     let tables = config::configs::get();
+    let current_pool_ids = tables
+        .current_summon_pools()
+        .map(|pool| pool.id)
+        .collect::<HashSet<_>>();
     let mut by_pool = BTreeMap::<i32, VisibleSummonPool>::new();
     for store in tables
         .store_recommend
@@ -265,6 +269,9 @@ fn scheduled_pools() -> Vec<VisibleSummonPool> {
         let Some(pool_id) = parse_pool_relation(&store.relations) else {
             continue;
         };
+        if !current_pool_ids.contains(&pool_id) {
+            continue;
+        }
         let Some(pool) = tables.summon_pool.get(pool_id) else {
             continue;
         };
