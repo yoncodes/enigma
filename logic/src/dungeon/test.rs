@@ -102,3 +102,22 @@ async fn chapter_unlock_reports_missing_reward_character() {
         "Custom error: chapter 113 rewards unavailable heroes [3154]"
     );
 }
+
+#[test]
+fn final_initial_tutorial_battle_grants_room_inventory_outside_bonus_lists() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let tables = config::configs::get();
+    let episode = tables
+        .episode
+        .get(tables.initial_tutorial_final_episode().unwrap())
+        .unwrap();
+
+    let completion = completion_rewards(episode, true, 0, 2, 1);
+
+    assert_eq!(completion.rewards.block_packages, [(6, 1)]);
+    assert_eq!(completion.rewards.room_buildings, [(22201, 1)]);
+    assert!(completion.first_bonus.is_empty());
+    assert!(completion.normal_bonus.is_empty());
+    assert!(completion.advanced_bonus.is_empty());
+}

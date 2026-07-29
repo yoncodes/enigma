@@ -336,7 +336,7 @@ pub async fn on_start_dungeon(
         )
         .await?;
         ctx.player_mut()?.battle.clear_pending_record();
-        send_dungeon_settlement(ctx, player_id, settlement.dungeon).await?;
+        send_completed_dungeon(ctx, player_id, chapter_id, episode_id, settlement.dungeon).await?;
 
         return ctx
             .send_reply(
@@ -514,7 +514,6 @@ pub async fn on_fight_end_fight(
     let mut compose_push = None;
     let mut dungeon_settlement = None;
     let mut refund_settlement = None;
-    let mut completed_dungeon = None;
     if let Some(active) = active.as_ref() {
         let is_abort = msg.is_abort.unwrap_or(false);
         let compose_handled = tower_compose::matches_battle(active);
@@ -540,8 +539,7 @@ pub async fn on_fight_end_fight(
             .await?;
             compose_push = settlement.compose_push.take();
             ctx.player_mut()?.battle.complete_active(record.pending);
-            dungeon_settlement = Some(settlement);
-            completed_dungeon = Some((active.chapter_id, active.episode_id));
+            dungeon_settlement = Some((settlement, active.chapter_id, active.episode_id));
         } else if is_abort || !won {
             let mut settlement =
                 dungeon::settle_refund(ctx.state.db, player_id, active, !is_abort).await?;
@@ -557,17 +555,14 @@ pub async fn on_fight_end_fight(
         ctx.notify(CmdId::TowerComposeFightSettlePushCmd, settle)
             .await?;
     }
-    if let Some(settlement) = dungeon_settlement {
-        send_dungeon_settlement(ctx, player_id, settlement).await?;
+    if let Some((settlement, chapter_id, episode_id)) = dungeon_settlement {
+        send_completed_dungeon(ctx, player_id, chapter_id, episode_id, settlement).await?;
     }
     if let Some(settlement) = refund_settlement {
         send_refund(ctx, player_id, settlement).await?;
     }
     if let Some(end) = end {
         push::send_end_fight_push(ctx, end).await?;
-    }
-    if let Some((chapter_id, episode_id)) = completed_dungeon {
-        notify_dungeon_completion_tasks(ctx, player_id, chapter_id, episode_id).await?;
     }
     ctx.send_reply(CmdId::FightEndFightCmd, EndFightReply {}, 0, req.up_tag)
         .await
@@ -663,9 +658,14 @@ pub async fn on_dungeon_end_dungeon(
                 ctx.notify(CmdId::TowerComposeFightSettlePushCmd, compose)
                     .await?;
             }
-            send_dungeon_settlement(ctx, player_id, settlement).await?;
-            notify_dungeon_completion_tasks(ctx, player_id, active.chapter_id, active.episode_id)
-                .await?;
+            send_completed_dungeon(
+                ctx,
+                player_id,
+                active.chapter_id,
+                active.episode_id,
+                settlement,
+            )
+            .await?;
         } else {
             let mut refund = dungeon::settle_refund(ctx.state.db, player_id, active, true).await?;
             ctx.player_mut()?.battle.clear_active();
@@ -719,11 +719,6 @@ async fn send_dungeon_settlement(
     settlement: dungeon::DungeonSettlement,
 ) -> Result<(), AppError> {
     push::send_hero_update_push(ctx, player_id, settlement.hero_ids).await?;
-    push::send_dungeon_completion_reward_pushes(ctx, player_id, settlement.rewards).await?;
-    push::send_dungeon_map_progression(ctx, player_id).await?;
-    push::send_instruction_dungeon_progression(ctx, player_id).await?;
-    ctx.notify(CmdId::DungeonUpdatePushCmd, settlement.dungeon_update)
-        .await?;
     if !settlement.open_infos.is_empty() {
         ctx.notify(
             CmdId::UpdateOpenPushCmd,
@@ -733,15 +728,31 @@ async fn send_dungeon_settlement(
         )
         .await?;
     }
+    push::send_dungeon_completion_reward_pushes(ctx, player_id, settlement.rewards).await?;
+    push::send_dungeon_map_progression(ctx, player_id).await?;
+    push::send_instruction_dungeon_progression(ctx, player_id).await?;
+    ctx.notify(CmdId::DungeonUpdatePushCmd, settlement.dungeon_update)
+        .await?;
     ctx.notify(CmdId::DungeonEndDungeonPushCmd, settlement.end_dungeon)
         .await
 }
 
-async fn notify_dungeon_completion_tasks(
+pub(crate) async fn send_completed_dungeon(
     ctx: &mut ConnectionContext,
     player_id: i64,
     chapter_id: i32,
     episode_id: i32,
+    settlement: dungeon::DungeonSettlement,
+) -> Result<(), AppError> {
+    notify_dungeon_pass_tasks(ctx, player_id, chapter_id).await?;
+    send_dungeon_settlement(ctx, player_id, settlement).await?;
+    task_events::notify(ctx, player_id, TaskEvent::EpisodeFinish { episode_id }).await
+}
+
+async fn notify_dungeon_pass_tasks(
+    ctx: &mut ConnectionContext,
+    player_id: i64,
+    chapter_id: i32,
 ) -> Result<(), AppError> {
     for chapter_type in dungeon::dungeon_pass_types(chapter_id) {
         task_events::notify(
@@ -762,8 +773,7 @@ async fn notify_dungeon_completion_tasks(
             count: 1,
         },
     )
-    .await?;
-    task_events::notify(ctx, player_id, TaskEvent::EpisodeFinish { episode_id }).await
+    .await
 }
 
 async fn send_refund(
