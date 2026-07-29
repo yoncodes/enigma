@@ -344,6 +344,7 @@ impl BattleRuntime {
             )?);
             let (next_ai, _) = crate::engine::manager::card::start_decks_from_fight(
                 &self.fight,
+                &self.managers.ex_point,
                 self.fight.battle_id.unwrap_or_default(),
                 None,
             );
@@ -422,6 +423,7 @@ impl BattleRuntime {
         if !self.round_state.is_finish {
             let cards = crate::engine::manager::card::start_decks_from_fight(
                 &self.fight,
+                &self.managers.ex_point,
                 self.round_state.cur_round,
                 self.determinism
                     .take_next_ai_card_snapshot()
