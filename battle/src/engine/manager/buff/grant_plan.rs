@@ -70,9 +70,17 @@ impl BuffManager {
         args: BuffAddArgs,
     ) -> i32 {
         let layer = definition.raw_layer(args.layer, args.layer_specified, args.count);
+        let limit = self.grant_stack_limit(route, definition);
+        if limit <= 0 {
+            return definition.cap_layer(layer);
+        }
+        layer.min(limit)
+    }
+
+    pub(super) fn grant_stack_limit(&self, route: BuffRoute, definition: &BuffDefinition) -> i32 {
         let base_limit = definition.stack_max_layer();
         if base_limit <= 0 {
-            return definition.cap_layer(layer);
+            return base_limit;
         }
         let generic_bonus = self.max_buff_layer_bonus(route.source_uid, route.buff_id);
         let burn_bonus = if definition.features().iter().any(|feature| {
@@ -82,7 +90,7 @@ impl BuffManager {
         } else {
             0
         };
-        layer.min(base_limit + generic_bonus + burn_bonus)
+        base_limit + generic_bonus + burn_bonus
     }
 
     fn max_buff_layer_bonus(&self, source_uid: i64, buff_id: i32) -> i32 {
@@ -112,11 +120,10 @@ impl BuffManager {
     }
 
     fn max_burn_layer_bonus(&self, target_uid: i64) -> i32 {
-        let target_team = self.team_type(target_uid);
         let mut seen = std::collections::BTreeSet::new();
         self.buffs
             .iter()
-            .filter(|active| Some(active.team_type) == target_team)
+            .filter(|active| active.owner_uid == target_uid)
             .filter_map(|active| {
                 let definition = active.definition.as_ref()?;
                 let bonus = definition.features().iter().find_map(|feature| {

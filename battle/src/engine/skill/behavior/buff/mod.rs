@@ -41,9 +41,13 @@ pub(super) use super::{command_origin, registry};
 use application::*;
 use copy::copy_status_ops;
 pub(super) use copy::supports_status_copy;
-use dispel::{damage_window_remove_ops, dispel_commands, sort_buff_by_hp_ops, spread_buff_ops};
+use dispel::{
+    damage_window_remove_ops, dispel_commands, excluded_dispel_command, sort_buff_by_hp_ops,
+    spread_buff_ops,
+};
 pub(super) use dispel::{
-    supports_dispel, supports_disperse_force, supports_exact_buff_dispel, supports_status_dispel,
+    supports_dispel, supports_disperse_force, supports_exact_buff_dispel, supports_excluded_dispel,
+    supports_status_dispel,
 };
 use distribute::*;
 pub use grant::random_buff_pool;
@@ -67,6 +71,8 @@ impl BehaviorHandler for Handler {
             BehaviorKind::AddBuffByHeroId => hero_grant_command(&context, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::DisperseForce2 => damage_window_remove_ops(context.target_uid, behavior),
+            BehaviorKind::DisperseExclude => excluded_dispel_command(context.target_uid, behavior)
+                .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::Disperse1
             | BehaviorKind::Disperse2
             | BehaviorKind::Purify1
@@ -87,6 +93,10 @@ impl BehaviorHandler for Handler {
             BehaviorKind::AddBuffBasedOnEnemyBurnUseCount => {
                 add_buff_from_enemy_burn_ops(&context, behavior)
             }
+            BehaviorKind::AddBuffBySkillBuffAdditions => {
+                add_buff_from_skill_additions_ops(&context, behavior)
+            }
+            BehaviorKind::AddBuffByBuffLayer => add_buff_by_layer_ops(&mut context, behavior),
             BehaviorKind::BuffSpread => spread_buff_ops(&context, behavior),
             BehaviorKind::BuffSortByHp => sort_buff_by_hp_ops(&context, behavior),
             BehaviorKind::AddBuffByBuffLayerRange => {
@@ -181,6 +191,11 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
             .chain(behavior.arg(1))
             .collect(),
         BehaviorKind::AddBuffBasedOnEnemyBurnUseCount => behavior.arg(0).into_iter().collect(),
+        BehaviorKind::AddBuffBySkillBuffAdditions => behavior.arg(0).into_iter().collect(),
+        BehaviorKind::AddBuffByBuffLayer => [0, 1]
+            .into_iter()
+            .filter_map(|index| behavior.arg(index))
+            .collect(),
         BehaviorKind::AddBuffByBuffLayerRange => behavior
             .arg(0)
             .into_iter()
@@ -205,6 +220,31 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         buffs,
         models: Vec::new(),
     }
+}
+
+fn add_buff_from_skill_additions_ops(
+    context: &BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    let buff_id = behavior.arg(0)?;
+    let count = match context.event? {
+        crate::engine::event::payload::BattleEvent::SkillAction(action) => action
+            .buff_additions
+            .iter()
+            .find_map(|(added_id, amount)| (*added_id == buff_id).then_some(*amount))
+            .unwrap_or_default(),
+        _ => 0,
+    };
+    if count <= 0 {
+        return Some(Vec::new());
+    }
+    grant_command(
+        context.source_uid,
+        context.target_uid,
+        count as u32,
+        behavior,
+    )
+    .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
 }
 
 fn pool_buff_ids(raw: &str) -> Vec<i32> {

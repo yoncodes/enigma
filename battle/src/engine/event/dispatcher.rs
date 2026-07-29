@@ -544,6 +544,7 @@ mod tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         });
 
         let dispatched = dispatch_event(
@@ -613,6 +614,7 @@ mod tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         };
 
         assert!(skill_subscriber_observes_action(
@@ -692,6 +694,7 @@ mod tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         };
 
         assert!(skill_subscriber_observes_action(
@@ -758,6 +761,7 @@ mod tests {
             teammate_injury_count_not_reset: 1,
             team_injury_count_round: 1,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         });
 
         let dispatched = dispatch_event(
@@ -1045,6 +1049,7 @@ mod tests {
             target_uid: -1,
             skill_id: 100,
             amount: 50,
+            shield_absorbed: 0,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
             assassinate: false,
         });

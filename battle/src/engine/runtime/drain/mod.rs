@@ -741,15 +741,34 @@ fn drain_queue_with_deferred(
                             && queued.frame_path.as_ref() == Some(&frame_path)
                             && matches!(queued.op, RuleOp::Skill(_))
                     })
-                    && let Some(execution) = queued.skill_execution.as_mut()
                 {
-                    execution.record_attacks(events.iter().filter_map(|event| {
-                        let BattleEvent::Hit(hit) = event else {
-                            return None;
-                        };
-                        (hit.damage_from == crate::engine::manager::hp::HurtDamageFromType::Skill)
-                            .then_some(hit.target_uid)
-                    }));
+                    let source_uid = match &queued.op {
+                        RuleOp::Skill(invocation) => invocation.plan.source_uid,
+                        _ => 0,
+                    };
+                    if let Some(execution) = queued.skill_execution.as_mut() {
+                        execution.record_attacks(events.iter().filter_map(|event| {
+                            let BattleEvent::Hit(hit) = event else {
+                                return None;
+                            };
+                            (hit.damage_from
+                                == crate::engine::manager::hp::HurtDamageFromType::Skill)
+                                .then_some(hit.target_uid)
+                        }));
+                        execution.record_buff_additions(
+                            events.iter().filter_map(|event| {
+                                let (BattleEvent::BuffAdded(change)
+                                | BattleEvent::BuffChanged(change)) = event
+                                else {
+                                    return None;
+                                };
+                                (change.source_uid == source_uid).then_some((
+                                    change.buff_id,
+                                    change.after_amount.saturating_sub(change.before_amount),
+                                ))
+                            }),
+                        );
+                    }
                 }
 
                 let has_active_continuation = queue.iter().any(|queued| {

@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn burn_overflow_repeats_once_per_rejected_layer() {
+    init_config();
+    let condition = ParsedCondition {
+        opcode: 564203,
+        type_name: "BurnOverflow".into(),
+        kind: ParsedConditionKind::BurnOverflow,
+        raw_args: Vec::new(),
+    };
+
+    assert_eq!(
+        conditions_fire_count(
+            &[condition],
+            10,
+            &[-1],
+            None,
+            &TargetPool::default(),
+            TargetContext {
+                buff_overflow_amount: 4,
+                ..Default::default()
+            },
+        ),
+        4
+    );
+}
+
+#[test]
 fn current_card_enchant_preserves_exact_ids_and_supports_any_rewrite() {
     init_config();
     let condition = |enchant_id| ParsedCondition {

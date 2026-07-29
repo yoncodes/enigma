@@ -1,5 +1,6 @@
 pub mod action_point;
 pub mod additional_damage;
+pub mod attr_fix_by_burn_layer;
 pub mod attr_fix_by_lost_hp;
 pub mod buff;
 pub mod card;

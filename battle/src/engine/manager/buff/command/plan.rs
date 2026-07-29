@@ -1140,6 +1140,10 @@ impl BuffManager {
             .iter()
             .filter(|active| {
                 active.owner_uid == dispel.target_uid
+                    && !dispel
+                        .excluded_ids_or_types
+                        .iter()
+                        .any(|id| active.buff.buff_id == Some(*id) || active.type_id == *id)
                     && active
                         .definition
                         .as_ref()

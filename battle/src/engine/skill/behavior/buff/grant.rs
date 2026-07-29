@@ -13,6 +13,7 @@ pub(super) fn grant_command(
             | BehaviorKind::AddBuffPowerUse
             | BehaviorKind::AddBuffRound
             | BehaviorKind::AddBuffRound2
+            | BehaviorKind::AddBuffBySkillBuffAdditions
     )
     .then_some(BuffCommand::Grant(BuffGrant {
         origin: CommandOrigin {

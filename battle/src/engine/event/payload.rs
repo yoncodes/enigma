@@ -34,6 +34,7 @@ pub struct HitEvent {
     pub target_uid: i64,
     pub skill_id: i32,
     pub amount: i32,
+    pub shield_absorbed: i32,
     pub damage_from: crate::engine::manager::hp::HurtDamageFromType,
     pub assassinate: bool,
 }
@@ -338,6 +339,7 @@ mod subscription_tests {
             target_uid: -1,
             skill_id: 1,
             amount: 1,
+            shield_absorbed: 0,
             damage_from,
             assassinate: false,
         })
@@ -388,6 +390,7 @@ mod subscription_tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         };
 
         assert_eq!(
