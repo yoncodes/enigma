@@ -106,8 +106,9 @@ impl TaskManager {
         let task = task_db::finish_task_in_transaction(&mut tx, &task)
             .await?
             .ok_or(AppError::InvalidRequest)?;
-        let activity = add_claim_activity_in_transaction(&mut tx, self.player_id, &task).await?;
-        let mut reward_set = task_rewards(task.type_id, task.task_id);
+        let (activity, mut reward_set) =
+            add_claim_activity_in_transaction(&mut tx, self.player_id, &task).await?;
+        reward_set.extend(task_rewards(task.type_id, task.task_id));
         add_battle_pass_score(&mut reward_set, std::slice::from_ref(&task));
         let material_changes = reward_set.material_changes();
         let rewards = reward::apply_in_transaction(&mut tx, db, self.player_id, reward_set).await?;
@@ -156,8 +157,10 @@ impl TaskManager {
         let mut activity = Vec::new();
         let mut reward_set = reward::RewardSet::default();
         for task in &tasks {
-            activity
-                .extend(add_claim_activity_in_transaction(&mut tx, self.player_id, task).await?);
+            let (updated_activity, activity_rewards) =
+                add_claim_activity_in_transaction(&mut tx, self.player_id, task).await?;
+            activity.extend(updated_activity);
+            reward_set.extend(activity_rewards);
             reward_set.extend(task_rewards(task.type_id, task.task_id));
         }
         add_battle_pass_score(&mut reward_set, &tasks);

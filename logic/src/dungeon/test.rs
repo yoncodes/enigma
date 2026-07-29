@@ -90,6 +90,36 @@ async fn finished_map_element_unlocks_its_configured_dependent() {
 }
 
 #[tokio::test]
+async fn completed_episode_unlocks_maps_that_reference_its_chain_alias() {
+    let pool = test_pool(34).await;
+    sqlx::query("INSERT INTO user_dungeon_maps (user_id, map_id) VALUES (34, 10404)")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    for (chapter_id, episode_id, expected_map_id) in [(104, 10404, 10405), (105, 10502, 10503)] {
+        sqlx::query(
+            "INSERT INTO user_dungeons
+                (user_id, chapter_id, episode_id, star, created_at, updated_at)
+             VALUES (34, ?, ?, 1, 0, 0)",
+        )
+        .bind(chapter_id)
+        .bind(episode_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let (maps, elements) = dungeons::reconcile_map_progression(&pool, 34)
+            .await
+            .unwrap();
+        assert!(maps.contains(&expected_map_id));
+        if episode_id == 10404 {
+            assert!(elements.contains(&1040401));
+        }
+    }
+}
+
+#[tokio::test]
 async fn chapter_unlock_reports_missing_reward_character() {
     let pool = test_pool(33).await;
     let error = match DungeonManager::new(33).unlock_chapter(&pool, 113).await {
@@ -101,4 +131,23 @@ async fn chapter_unlock_reports_missing_reward_character() {
         error.to_string(),
         "Custom error: chapter 113 rewards unavailable heroes [3154]"
     );
+}
+
+#[test]
+fn final_initial_tutorial_battle_grants_room_inventory_outside_bonus_lists() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let tables = config::configs::get();
+    let episode = tables
+        .episode
+        .get(tables.initial_tutorial_final_episode().unwrap())
+        .unwrap();
+
+    let completion = completion_rewards(episode, true, 0, 2, 1);
+
+    assert_eq!(completion.rewards.block_packages, [(6, 1)]);
+    assert_eq!(completion.rewards.room_buildings, [(22201, 1)]);
+    assert!(completion.first_bonus.is_empty());
+    assert!(completion.normal_bonus.is_empty());
+    assert!(completion.advanced_bonus.is_empty());
 }

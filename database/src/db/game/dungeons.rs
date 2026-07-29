@@ -453,6 +453,17 @@ pub async fn reconcile_map_progression(
         .filter(|dungeon| dungeon.star > 0)
         .map(|dungeon| dungeon.episode_id)
         .collect::<HashSet<_>>();
+    let completed_conditions = completed
+        .iter()
+        .copied()
+        .chain(completed.iter().filter_map(|episode_id| {
+            game_data
+                .episode
+                .get(*episode_id)
+                .map(|episode| episode.chain_episode)
+                .filter(|chain_episode| *chain_episode > 0)
+        }))
+        .collect::<HashSet<_>>();
     let finished_stories = crate::db::game::stories::get_finished_stories(pool, user_id)
         .await?
         .into_iter()
@@ -471,7 +482,7 @@ pub async fn reconcile_map_progression(
 
     for map in game_data.chapter_map.iter() {
         let unlocked = if let Some(episode_id) = episode_finish(&map.unlock_condition) {
-            completed.contains(&episode_id)
+            completed_conditions.contains(&episode_id)
         } else if map.unlock_condition.is_empty() {
             game_data
                 .chapter
@@ -511,7 +522,11 @@ pub async fn reconcile_map_progression(
     let mut added_elements = Vec::new();
     for element in game_data.chapter_map_element.iter() {
         let unlocked = maps.contains(&element.map_id)
-            && element_condition_met(&element.condition, &completed, &finished_elements);
+            && element_condition_met(
+                &element.condition,
+                &completed_conditions,
+                &finished_elements,
+            );
         if unlocked && elements.insert(element.id) {
             sqlx::query(
                 "INSERT INTO user_dungeon_elements (user_id, element_id, is_finished)

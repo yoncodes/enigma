@@ -578,6 +578,8 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         132 => TargetRule::AlliesWithBattleTag,
         1007 => TargetRule::AlliesWithMonsterLabel(7),
         1008 => TargetRule::AlliesWithMonsterLabel(8),
+        1009 => TargetRule::AlliesWithMonsterLabel(9),
+        1010 => TargetRule::AlliesWithMonsterLabel(10),
         1 => TargetRule::SelectedTarget,
         203 | 204 | 205 | 233 | 303 | 1001 | 1002 => TargetRule::Runtime,
         7 => TargetRule::SynchronizationTarget,

@@ -218,6 +218,14 @@ impl TargetPool {
     }
 
     pub(crate) fn runtime_view(&self, managers: &BattleManagers) -> Self {
+        self.runtime_view_including(managers, None)
+    }
+
+    pub(crate) fn runtime_view_including(
+        &self,
+        managers: &BattleManagers,
+        included_uid: Option<i64>,
+    ) -> Self {
         let mut pool = self.clone();
         for entities in [
             &mut pool.attacker_main,
@@ -242,7 +250,7 @@ impl TargetPool {
                     .active_for(entity.uid)
                     .map(TargetBuff::from_buff_info)
                     .collect();
-                entity.current_hp > 0
+                entity.current_hp > 0 || included_uid == Some(entity.uid)
             });
         }
         for entity in &mut pool.virtual_entities {

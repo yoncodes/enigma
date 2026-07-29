@@ -101,6 +101,7 @@ impl BattleRuntime {
         let battle_id = self.fight.battle_id.unwrap_or_default();
         let (ai_deck, player_deck) = crate::engine::manager::card::start_decks_from_fight(
             &self.fight,
+            &self.managers.ex_point,
             battle_id,
             self.determinism.take_start_decks(),
         );

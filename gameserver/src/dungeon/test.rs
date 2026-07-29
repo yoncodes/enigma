@@ -93,6 +93,107 @@ fn abort_push_carries_the_abort_result_and_required_fight_group() {
 }
 
 #[tokio::test]
+async fn instruction_open_refreshes_only_after_new_state() {
+    use crate::{
+        handlers::dungeon::on_instruction_dungeon_open,
+        net::{
+            app::AppState, context::ConnectionContext, outbound::CommandPacket,
+            packet::ClientPacket,
+        },
+        player::{Player, PlayerState},
+    };
+    use prost::Message;
+    use sonettobuf::{CmdId, InstructionDungeonOpenRequest};
+    use tokio::sync::mpsc;
+
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (30, 'instruction-open', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(4);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(30, PlayerState::new(30, 0)));
+    let open_id = configs::get()
+        .instruction_level
+        .iter()
+        .find(|level| level.pre_episode == 0)
+        .unwrap()
+        .episode_id;
+    let mut data = Vec::new();
+    InstructionDungeonOpenRequest {
+        open_id: vec![open_id],
+    }
+    .encode(&mut data)
+    .unwrap();
+
+    on_instruction_dungeon_open(
+        &mut ctx,
+        ClientPacket {
+            sequence: 0,
+            cmd_id: CmdId::InstructionDungeonOpenCmd as i16,
+            up_tag: 7,
+            data,
+        },
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Push {
+        cmd_id: CmdId::DungeonInstructionDungeonInfoPushCmd,
+        body,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("new open did not refresh instruction state");
+    };
+    let push = sonettobuf::InstructionDungeonInfoPush::decode(&*body).unwrap();
+    assert!(push.open_ids.contains(&open_id));
+    assert!(matches!(
+        packets.try_recv().unwrap(),
+        CommandPacket::Reply {
+            cmd_id: CmdId::InstructionDungeonOpenCmd,
+            ..
+        }
+    ));
+
+    let mut data = Vec::new();
+    InstructionDungeonOpenRequest::default()
+        .encode(&mut data)
+        .unwrap();
+    on_instruction_dungeon_open(
+        &mut ctx,
+        ClientPacket {
+            sequence: 0,
+            cmd_id: CmdId::InstructionDungeonOpenCmd as i16,
+            up_tag: 8,
+            data,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        packets.try_recv().unwrap(),
+        CommandPacket::Reply {
+            cmd_id: CmdId::InstructionDungeonOpenCmd,
+            ..
+        }
+    ));
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn dungeon_abort_sends_terminal_fight_push_before_reply() {
     use crate::{
         handlers::dungeon::on_dungeon_end_dungeon,
@@ -214,6 +315,118 @@ async fn dungeon_abort_sends_terminal_fight_push_before_reply() {
     assert!(end_dungeon < end_fight);
     assert!(end_fight < reply);
     assert!(!ctx.player().unwrap().battle.has_active());
+}
+
+#[tokio::test]
+async fn completed_tutorial_sends_tasks_before_room_unlock() {
+    use crate::{
+        handlers::dungeon::send_completed_dungeon,
+        net::{app::AppState, context::ConnectionContext, outbound::CommandPacket},
+        player::{Player, PlayerState},
+    };
+    use database::models::game::{block_packages::BlockPackage, buildings::Building};
+    use logic::reward::AppliedRewards;
+    use sonettobuf::{CmdId, DungeonUpdatePush, EndDungeonPush, OpenInfo};
+    use tokio::sync::mpsc;
+
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (34, 'room-order', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    database::db::starter_data::load_all_starter_data(&pool, 34)
+        .await
+        .unwrap();
+
+    let episode = configs::get().episode.get(10003).unwrap();
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(64);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(34, PlayerState::new(34, 0)));
+
+    send_completed_dungeon(
+        &mut ctx,
+        34,
+        episode.chapter_id,
+        episode.id,
+        DungeonSettlement {
+            hero_ids: Vec::new(),
+            rewards: AppliedRewards {
+                block_packages: vec![BlockPackage {
+                    user_id: 34,
+                    block_package_id: 6,
+                    unused_block_ids: "[]".into(),
+                    used_block_ids: "[]".into(),
+                }],
+                room_buildings: vec![Building {
+                    uid: 1,
+                    user_id: 34,
+                    define_id: 22201,
+                    in_use: false,
+                    x: 0,
+                    y: 0,
+                    rotate: 0,
+                    level: 1,
+                    created_at: 0,
+                    updated_at: 0,
+                }],
+                ..Default::default()
+            },
+            dungeon_update: DungeonUpdatePush::default(),
+            open_infos: vec![OpenInfo::default()],
+            end_dungeon: EndDungeonPush::default(),
+            compose_push: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let mut relevant = Vec::new();
+    while let Ok(packet) = packets.try_recv() {
+        if let Some(cmd_id) = match packet {
+            CommandPacket::Push { cmd_id, .. }
+                if matches!(
+                    cmd_id,
+                    CmdId::UpdateTaskPushCmd
+                        | CmdId::UpdateOpenPushCmd
+                        | CmdId::BlockPackageGainPushCmd
+                        | CmdId::BuildingGainPushCmd
+                        | CmdId::DungeonUpdatePushCmd
+                        | CmdId::DungeonEndDungeonPushCmd
+                ) =>
+            {
+                Some(cmd_id)
+            }
+            _ => None,
+        } {
+            relevant.push(cmd_id);
+        }
+    }
+
+    let task_count = relevant
+        .iter()
+        .take_while(|cmd_id| **cmd_id == CmdId::UpdateTaskPushCmd)
+        .count();
+    assert!(task_count > 0);
+    assert_eq!(
+        &relevant[task_count..],
+        [
+            CmdId::UpdateOpenPushCmd,
+            CmdId::BlockPackageGainPushCmd,
+            CmdId::BuildingGainPushCmd,
+            CmdId::DungeonUpdatePushCmd,
+            CmdId::DungeonEndDungeonPushCmd,
+        ]
+    );
 }
 
 #[tokio::test]

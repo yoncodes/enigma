@@ -284,12 +284,12 @@ pub async fn send_room_reward_pushes(
     ctx: &mut ConnectionContext,
     rewards: &AppliedRewards,
 ) -> Result<(), AppError> {
-    if !rewards.room_buildings.is_empty() {
+    if !rewards.block_packages.is_empty() {
         ctx.notify(
-            CmdId::BuildingGainPushCmd,
-            BuildingGainPush {
-                building_infos: rewards
-                    .room_buildings
+            CmdId::BlockPackageGainPushCmd,
+            BlockPackageGainPush {
+                block_packages: rewards
+                    .block_packages
                     .iter()
                     .cloned()
                     .map(Into::into)
@@ -298,12 +298,12 @@ pub async fn send_room_reward_pushes(
         )
         .await?;
     }
-    if !rewards.block_packages.is_empty() {
+    if !rewards.room_buildings.is_empty() {
         ctx.notify(
-            CmdId::BlockPackageGainPushCmd,
-            BlockPackageGainPush {
-                block_packages: rewards
-                    .block_packages
+            CmdId::BuildingGainPushCmd,
+            BuildingGainPush {
+                building_infos: rewards
+                    .room_buildings
                     .iter()
                     .cloned()
                     .map(Into::into)
