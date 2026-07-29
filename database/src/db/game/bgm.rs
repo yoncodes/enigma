@@ -48,6 +48,41 @@ pub async fn load_user_bgm(
     ))
 }
 
+pub async fn unlock_bgms(
+    pool: &SqlitePool,
+    player_id: i64,
+    bgm_ids: &[i32],
+    unlock_time: i32,
+) -> Result<Vec<BgmInfo>> {
+    let mut tx = pool.begin().await?;
+    let mut unlocked = Vec::new();
+
+    for &bgm_id in bgm_ids {
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO user_bgm
+             (player_id, bgm_id, unlock_time, is_favorite, is_read)
+             VALUES (?, ?, ?, 0, 0)",
+        )
+        .bind(player_id)
+        .bind(bgm_id)
+        .bind(unlock_time)
+        .execute(&mut *tx)
+        .await?;
+
+        if result.rows_affected() != 0 {
+            unlocked.push(BgmInfo {
+                bgm_id: Some(bgm_id),
+                unlock_time: Some(unlock_time),
+                favorite: Some(false),
+                is_read: Some(false),
+            });
+        }
+    }
+
+    tx.commit().await?;
+    Ok(unlocked)
+}
+
 pub async fn set_active_bgm(pool: &SqlitePool, player_id: i64, bgm_id: i32) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
 
