@@ -115,14 +115,8 @@ You can use this to get all the currency and items in the game
 
 ## Contributing
 
-Submit a feature pr
-Example format
-
-Title: What was missing
-
-Description: What was added.
-
-Example: What does this do.
+Open an issue first, then submit a pull request into `dev`. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the contribution steps.
 
 ---
 

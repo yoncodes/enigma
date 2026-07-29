@@ -5,6 +5,14 @@ use std::collections::HashSet;
 
 pub use crate::models::game::equipment::Equipment;
 
+async fn next_equipment_uid(tx: &mut Transaction<'_, Sqlite>) -> Result<i64> {
+    Ok(
+        sqlx::query_scalar("SELECT COALESCE(MAX(uid), 29999999) + 1 FROM equipment")
+            .fetch_one(&mut **tx)
+            .await?,
+    )
+}
+
 /// Get all equipment for a user
 pub async fn get_user_equipment(pool: &SqlitePool, user_id: i64) -> Result<Vec<Equipment>> {
     let equipment = sqlx::query_as::<_, Equipment>(
@@ -299,12 +307,7 @@ pub async fn add_equipment_in_transaction(
 
             uids.push(uid);
         } else {
-            let uid = sqlx::query_scalar::<_, i64>(
-                "SELECT COALESCE(MAX(uid), 29999999) + 1 FROM equipment WHERE user_id = ?",
-            )
-            .bind(user_id)
-            .fetch_one(&mut **tx)
-            .await?;
+            let uid = next_equipment_uid(tx).await?;
 
             sqlx::query(
                 r#"
@@ -330,12 +333,7 @@ pub async fn add_equipment_in_transaction(
             uids.push(uid);
         }
     } else {
-        let mut next_uid = sqlx::query_scalar::<_, i64>(
-            "SELECT COALESCE(MAX(uid), 29999999) + 1 FROM equipment WHERE user_id = ?",
-        )
-        .bind(user_id)
-        .fetch_one(&mut **tx)
-        .await?;
+        let mut next_uid = next_equipment_uid(tx).await?;
 
         for _ in 0..count {
             sqlx::query(
@@ -622,12 +620,7 @@ pub async fn decompose_equipment(
         .await?;
         uid
     } else {
-        let uid = sqlx::query_scalar::<_, i64>(
-            "SELECT COALESCE(MAX(uid), 29999999) + 1 FROM equipment WHERE user_id = ?",
-        )
-        .bind(user_id)
-        .fetch_one(&mut *transaction)
-        .await?;
+        let uid = next_equipment_uid(&mut transaction).await?;
         sqlx::query(
             "INSERT INTO equipment \
              (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv, created_at, updated_at) \

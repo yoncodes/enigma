@@ -217,7 +217,11 @@ pub async fn sync_visible_pools(pool: &SqlitePool, user_id: i64) -> Result<()> {
 }
 
 fn visible_pools() -> Vec<VisibleSummonPool> {
-    let mut visible = visible_scheduled_pools(ServerTime::now_sec_i32());
+    visible_pools_at(ServerTime::now_sec_i32())
+}
+
+fn visible_pools_at(now_sec: i32) -> Vec<VisibleSummonPool> {
+    let mut visible = visible_scheduled_pools(now_sec);
     visible.entry(1).or_insert(VisibleSummonPool {
         pool_id: 1,
         online_time: 0,
@@ -234,24 +238,36 @@ fn visible_pools() -> Vec<VisibleSummonPool> {
     visible.into_values().collect()
 }
 
+pub fn visible_summon_pool_ids_at(now_sec: i32) -> Vec<i32> {
+    visible_pools_at(now_sec)
+        .into_iter()
+        .map(|pool| pool.pool_id)
+        .collect()
+}
+
 fn visible_scheduled_pools(now_sec: i32) -> BTreeMap<i32, VisibleSummonPool> {
-    let mut pools = scheduled_pools();
-    let open = pools
-        .iter()
+    let tables = config::configs::get();
+    let active = scheduled_pools()
+        .into_iter()
         .filter(|pool| pool.online_time <= now_sec && now_sec <= pool.offline_time)
-        .cloned()
         .collect::<Vec<_>>();
+    let version = active
+        .iter()
+        .max_by_key(|pool| pool.online_time)
+        .and_then(|pool| tables.summon_pool.get(pool.pool_id))
+        .and_then(|pool| summon_version(&pool.prefab_path));
 
-    if !open.is_empty() {
-        pools = open;
-    } else {
-        for pool in &mut pools {
-            pool.online_time = (now_sec - 3600).max(0);
-            pool.offline_time = now_sec.saturating_add(30 * 24 * 60 * 60);
-        }
-    }
-
-    pools.into_iter().map(|pool| (pool.pool_id, pool)).collect()
+    active
+        .into_iter()
+        .filter(|visible| {
+            tables
+                .summon_pool
+                .get(visible.pool_id)
+                .and_then(|pool| summon_version(&pool.prefab_path))
+                == version
+        })
+        .map(|pool| (pool.pool_id, pool))
+        .collect()
 }
 
 fn scheduled_pools() -> Vec<VisibleSummonPool> {
@@ -278,6 +294,13 @@ fn scheduled_pools() -> Vec<VisibleSummonPool> {
     }
 
     by_pool.into_values().collect()
+}
+
+fn summon_version(prefab_path: &str) -> Option<&str> {
+    prefab_path
+        .split(['/', '\\'])
+        .next()
+        .filter(|version| version.starts_with("version_"))
 }
 
 fn parse_pool_relation(relations: &str) -> Option<i32> {

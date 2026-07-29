@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and community support
+    url: https://discord.gg/CQCT2jVHZP
+    about: Use Discord for setup help and questions that are not actionable issues.

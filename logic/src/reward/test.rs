@@ -242,3 +242,24 @@ async fn reward_application_rejects_negative_grants() {
         .unwrap();
     assert_eq!(rows, 0);
 }
+
+#[tokio::test]
+async fn equipment_rewards_use_unique_uids_across_accounts() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (10, 'first-equip', 0, 0), (11, 'second-equip', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let first = apply(&pool, 10, parse("9#1000#1")).await.unwrap();
+    let second = apply(&pool, 11, parse("9#1000#1")).await.unwrap();
+
+    assert_eq!(first.equip_uids, [30_000_000]);
+    assert_eq!(second.equip_uids, [30_000_001]);
+}
