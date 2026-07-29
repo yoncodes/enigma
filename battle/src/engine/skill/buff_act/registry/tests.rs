@@ -15,6 +15,10 @@ fn registry_requires_exact_id_and_type() {
     );
     assert!(find(1137, "CardNotCalSize").is_none());
     assert_eq!(
+        destination(951, "CardNotCalSize", &[]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert_eq!(
         find(1028, "RealDamageKill").unwrap().kind,
         BuffActKind::RealDamageKill
     );
