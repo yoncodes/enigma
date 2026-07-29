@@ -46,24 +46,22 @@ pub(super) fn apply_act125_activity(infos: &mut Vec<ActivityInfo>) {
     }
 }
 
-pub(super) fn default_act125_activity_id() -> i32 {
-    act125_activity_ids()
-        .next()
-        .unwrap_or(ActivityId::V3a6CultivationDestiny.id())
+pub(super) fn default_act125_activity_id() -> Option<i32> {
+    act125_activity_ids().into_iter().next()
 }
 
-fn act125_activity_ids() -> impl Iterator<Item = i32> {
+fn act125_activity_ids() -> Vec<i32> {
     let tables = config::configs::get();
-
-    ActivityId::ACT125
+    let mut activity_ids = tables
+        .activity125
         .iter()
-        .map(|activity_id| activity_id.id())
-        .filter(move |activity_id| {
-            tables
-                .activity
-                .get(*activity_id)
-                .is_some_and(|activity| activity.type_id == 125 && is_open(activity.open_id))
-        })
+        .map(|row| row.activity_id)
+        .filter(|activity_id| is_activity_online(*activity_id))
+        .collect::<Vec<_>>();
+
+    activity_ids.sort_unstable_by(|left, right| right.cmp(left));
+    activity_ids.dedup();
+    activity_ids
 }
 
 pub(super) fn latest_act101_activity_id() -> i32 {
@@ -152,13 +150,11 @@ fn activity_info(activity_id: i32) -> ActivityInfo {
 }
 
 fn is_activity_online(activity_id: i32) -> bool {
-    let is_active_catalog = ActivityId::ACTIVE_CATALOG
-        .iter()
-        .any(|active| active.id() == activity_id);
+    let is_scheduled = super::schedule::get(activity_id).is_some();
     let is_current_bp = database::db::game::tasks::current_battle_pass()
         .is_some_and(|bp| bp.activity_id == activity_id);
 
-    (is_active_catalog || is_current_bp)
+    (is_scheduled || is_current_bp)
         && config::configs::get()
             .activity
             .get(activity_id)
@@ -166,6 +162,10 @@ fn is_activity_online(activity_id: i32) -> bool {
 }
 
 fn activity_time_range(activity_id: i32) -> (u64, u64) {
+    if let Some(schedule) = super::schedule::get(activity_id) {
+        return (schedule.start_time, schedule.end_time);
+    }
+
     let is_permanent = config::configs::get()
         .activity
         .get(activity_id)
@@ -208,6 +208,10 @@ fn parse_config_time_millis(value: &str) -> Option<u64> {
 pub(super) fn is_unlocked_by_default(activity_id: i32) -> bool {
     const PERMANENT_RETRO_TYPE: i32 = 2;
 
+    if let Some(schedule) = super::schedule::get(activity_id) {
+        return schedule.is_unlock;
+    }
+
     match config::configs::get().activity.get(activity_id) {
         Some(activity) => activity.is_retro_acitivity != PERMANENT_RETRO_TYPE,
         None => true,
@@ -234,22 +238,13 @@ mod tests {
     }
 
     #[test]
-    fn old_lua_activity_ids_are_present_but_not_online() {
+    fn current_schedule_replaces_the_old_version_catalog() {
         let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
         let _ = config::init(&data_dir);
 
-        let infos = catalog_infos();
-        let inactive_activity = infos
-            .iter()
-            .find(|info| info.id == Some(ActivityId::MoonlightGardening.id() as u32))
-            .unwrap();
-        let current_dungeon = infos
-            .iter()
-            .find(|info| info.id == Some(ActivityId::V3a6Dungeon.id() as u32))
-            .unwrap();
-
-        assert_eq!(inactive_activity.online, Some(false));
-        assert_eq!(current_dungeon.online, Some(true));
+        assert!(!is_activity_online(ActivityId::V3a6Dungeon.id()));
+        assert!(is_activity_online(138502));
+        assert!(!is_activity_online(138522));
     }
 
     #[test]
@@ -277,6 +272,22 @@ mod tests {
     }
 
     #[test]
+    fn schedule_preserves_per_activity_windows_and_unlocks() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+
+        assert_eq!(
+            activity_time_range(138502),
+            (1_784_800_800_000, 1_786_528_799_000)
+        );
+        assert_eq!(
+            activity_time_range(138501),
+            (1_784_800_800_000, 1_786_615_199_000)
+        );
+        assert!(!is_unlocked_by_default(12301));
+    }
+
+    #[test]
     fn empty_param_request_keeps_the_catalog_and_current_act125() {
         let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
         let _ = config::init(&data_dir);
@@ -285,12 +296,12 @@ mod tests {
         apply_act125_activity(&mut infos);
 
         assert!(infos.iter().any(|info| info.id.is_some()));
-        assert_eq!(default_act125_activity_id(), 13610);
-        assert!(infos.iter().any(|info| info.id == Some(13610)));
+        assert_eq!(default_act125_activity_id(), Some(138525));
+        assert!(infos.iter().any(|info| info.id == Some(138525)));
         assert!(
             infos
                 .iter()
-                .any(|info| info.id == Some(default_act125_activity_id() as u32))
+                .any(|info| info.id == default_act125_activity_id().map(|id| id as u32))
         );
         assert_eq!(
             infos
@@ -312,7 +323,7 @@ mod tests {
     fn current_act125_claim_has_material_reward() {
         let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
         let _ = config::init(&data_dir);
-        let activity_id = default_act125_activity_id();
+        let activity_id = default_act125_activity_id().unwrap();
         let row = config::configs::get()
             .activity125
             .iter()

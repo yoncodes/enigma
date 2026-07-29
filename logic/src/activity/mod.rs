@@ -31,6 +31,7 @@ use std::collections::{HashMap, HashSet};
 
 mod catalog;
 mod manager;
+mod schedule;
 pub use manager::ActivityManager;
 
 mod act101;

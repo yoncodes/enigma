@@ -11,7 +11,9 @@ pub async fn act125_infos(
     player_id: i64,
     activity_id: Option<i32>,
 ) -> Result<GetAct125InfosReply, AppError> {
-    let activity_id = activity_id.unwrap_or_else(default_act125_activity_id);
+    let activity_id = activity_id
+        .or_else(default_act125_activity_id)
+        .ok_or(AppError::InvalidRequest)?;
     let states =
         activity_state::get(db, player_id, activity_id, ActivityStateKind::Act125Episode).await?;
     let mut episodes = config::configs::get()
@@ -38,7 +40,9 @@ pub async fn finish_act125_episode(
     episode_id: Option<i32>,
     target_frequency: Option<i32>,
 ) -> Result<Act125Claim, AppError> {
-    let activity_id = activity_id.unwrap_or_else(default_act125_activity_id);
+    let activity_id = activity_id
+        .or_else(default_act125_activity_id)
+        .ok_or(AppError::InvalidRequest)?;
     let episode_id = episode_id.ok_or(AppError::InvalidRequest)?;
     let row = config::configs::get()
         .activity125

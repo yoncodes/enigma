@@ -347,7 +347,7 @@ impl ActivityManager {
         activity_id: Option<i32>,
     ) -> Result<GetAct125InfosReply, AppError> {
         let reply = act125_infos(db, self.player_id, activity_id).await?;
-        let activity_id = reply.activity_id.unwrap_or_else(default_act125_activity_id);
+        let activity_id = reply.activity_id.ok_or(AppError::InvalidRequest)?;
         self.refresh_states(db, activity_id, ActivityStateKind::Act125Episode)
             .await?;
         Ok(reply)
@@ -368,10 +368,7 @@ impl ActivityManager {
             target_frequency,
         )
         .await?;
-        let activity_id = reply
-            .reply
-            .activity_id
-            .unwrap_or_else(default_act125_activity_id);
+        let activity_id = reply.reply.activity_id.ok_or(AppError::InvalidRequest)?;
         self.refresh_states(db, activity_id, ActivityStateKind::Act125Episode)
             .await?;
         Ok(reply)
