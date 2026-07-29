@@ -481,9 +481,17 @@ mod tests {
 
     #[test]
     fn tower_plan_comes_from_the_client_request() {
-        let reply = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures/battles/battle12/StartTowerBattleReply.json");
+        let directory =
+            std::env::temp_dir().join(format!("enigma-tower-plan-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("StartTowerBattleRequest.json"),
+            r#"{"talentPlanId":401}"#,
+        )
+        .unwrap();
+        let reply = directory.join("StartTowerBattleReply.json");
 
         assert_eq!(super::tower_plan_id(&reply), Some(401));
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }
