@@ -387,6 +387,8 @@ condition_definitions! {
     [536210] "TypeIdBuffCountLessThan" => buff::buff_type_at_most, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [512032, 51004] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, predicate(&[EventKind::BuffChanged]);
     [51002] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::EnterFight, 0, &[]);
+    [51102] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::RoundStartCondition, 102, &[]);
+    [51103] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::RoundStart, 1, &[]);
     [511201] "HasTypeBuffIdsMoreThan" => buff::buff_status_at_least, predicate(&[EventKind::BuffChanged]);
     [51213999] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]);
     [51104] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_in_side_frame(setup_route(SetupStage::RoundStart, 4, &[EventKind::BuffChanged]));

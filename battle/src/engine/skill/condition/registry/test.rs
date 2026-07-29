@@ -246,6 +246,56 @@ fn round_start_buff_type_threshold_runs_after_duration() {
 }
 
 #[test]
+fn round_start_condition_buff_type_threshold_keeps_its_exact_lane() {
+    assert_eq!(
+        parse(
+            51102,
+            "HasTypeIdBuffMoreThan",
+            &["30530102".into(), "5".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![30530102],
+            compare: super::super::ConditionCompare::GreaterThanOrEqual,
+            threshold: 5,
+        })
+    );
+    assert_eq!(
+        find_key(51102, "HasTypeIdBuffMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 102,
+        })
+    );
+    assert!(find_key(51102, "TypeIdBuffCountMoreThan").is_none());
+}
+
+#[test]
+fn round_start_buff_type_threshold_keeps_its_entity_lane() {
+    assert_eq!(
+        parse(
+            51103,
+            "HasTypeIdBuffMoreThan",
+            &["30530102".into(), "5".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![30530102],
+            compare: super::super::ConditionCompare::GreaterThanOrEqual,
+            threshold: 5,
+        })
+    );
+    let definition = find_key(51103, "HasTypeIdBuffMoreThan").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Setup {
+            stage: SetupStage::RoundStart,
+            priority: 1,
+        }
+    );
+    assert_eq!(definition.setup_frame_scope, SetupFrameScope::Entity);
+    assert!(find_key(51103, "TypeIdBuffCountMoreThan").is_none());
+}
+
+#[test]
 fn round_start_none_103_keeps_its_entity_frame() {
     let definition = find_key(103, "None").unwrap();
     assert_eq!(
