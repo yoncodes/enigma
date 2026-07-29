@@ -1,0 +1,54 @@
+name: Feature request
+description: Propose a new supported system, handle, tool, or workflow improvement.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Game server
+        - Battle engine
+        - Database or progression
+        - MUIP
+        - SDK or launcher
+        - Config or game data
+        - Developer tooling
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the missing capability rather than only the proposed implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Game evidence or existing behavior
+      description: Include relevant Lua, config, protobuf, capture, or client behavior.
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched for an existing issue or planned subsystem.
+          required: true

@@ -1,0 +1,63 @@
+name: Pull request checks
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - dev
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch flow
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          if [[ "$HEAD_BRANCH" != "dev" && "$HEAD_BRANCH" != hotfix/* ]]; then
+            echo "Pull requests into main must come from dev or hotfix/*."
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Clone Sonetto data
+        run: git clone --depth=1 https://gitlab.com/yoncodes/sonetto-data.git sonetto-data
+
+      - name: Configure game data
+        run: echo "JSON_DATA_DIR=${{ github.workspace }}/sonetto-data/excel2json" >> "$GITHUB_ENV"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-12-06
+
+      - name: Cache Cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-ci-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --quiet

@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible problem.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Issue
+      description: What went wrong?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Gameserver terminal output
+      render: shell
