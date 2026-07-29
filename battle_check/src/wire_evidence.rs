@@ -30,7 +30,7 @@ impl MarkerKey {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Evidence {
     sources: BTreeMap<MarkerKey, BTreeSet<String>>,
 }
