@@ -6,6 +6,53 @@ use database::models::game::equipment::Equipment;
 use sonettobuf::EatEquip;
 use sqlx::SqlitePool;
 
+#[tokio::test]
+async fn lock_rejects_special_refine_equipment() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let tables = config::configs::get();
+    let normal = tables
+        .equip
+        .iter()
+        .find(|equip| equip.is_sp_refine == 0 && equip.rare < 4)
+        .unwrap();
+    let special = tables
+        .equip
+        .iter()
+        .find(|equip| equip.is_sp_refine != 0)
+        .unwrap();
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (24, 'lock-category', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let normal_uid = database::db::game::equipment::add_equipment(&pool, 24, normal.id, 1)
+        .await
+        .unwrap()[0];
+    let special_uid = database::db::game::equipment::add_equipment(&pool, 24, special.id, 1)
+        .await
+        .unwrap()[0];
+
+    super::equip_lock(&pool, 24, normal_uid, true)
+        .await
+        .unwrap();
+    assert!(
+        super::equip_lock(&pool, 24, special_uid, true)
+            .await
+            .is_err()
+    );
+    let states: Vec<(i64, bool)> =
+        sqlx::query_as("SELECT uid, is_lock FROM equipment ORDER BY uid")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(states, [(normal_uid, true), (special_uid, false)]);
+}
+
 #[test]
 fn decompose_reward_uses_configured_rarity_exp() {
     assert_eq!(decompose_count("2#200|3#300", [2, 3], 1), Some(5));

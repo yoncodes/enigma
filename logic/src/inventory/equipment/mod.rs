@@ -36,6 +36,16 @@ pub(super) async fn equip_lock(
     target_uid: i64,
     lock: bool,
 ) -> Result<EquipLockReply, AppError> {
+    let owned = equipment::get_equipment_by_uid(db, player_id, target_uid)
+        .await
+        .map_err(|_| AppError::InvalidRequest)?;
+    let equip = config::configs::get()
+        .equip
+        .get(owned.equip_id)
+        .ok_or(AppError::InvalidRequest)?;
+    if equip.is_sp_refine != 0 {
+        return Err(AppError::InvalidRequest);
+    }
     if !equipment::update_equipment_lock(db, player_id, target_uid, lock).await? {
         return Err(AppError::InvalidRequest);
     }
