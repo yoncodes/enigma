@@ -1,7 +1,8 @@
 use super::PreferenceManager;
 use crate::error::AppError;
+use common::time::ServerTime;
 use database::db::game::bgm;
-use sonettobuf::{GetBgmInfoReply, ReadBgmReply, SetFavoriteBgmReply, SetUseBgmReply};
+use sonettobuf::{BgmInfo, GetBgmInfoReply, ReadBgmReply, SetFavoriteBgmReply, SetUseBgmReply};
 use sqlx::SqlitePool;
 
 impl PreferenceManager {
@@ -43,4 +44,17 @@ impl PreferenceManager {
             favorite: Some(favorite),
         })
     }
+
+    pub async fn unlock_all_bgms(&self, db: &SqlitePool) -> Result<Vec<BgmInfo>, AppError> {
+        let bgm_ids = config::configs::get()
+            .bgm_switch
+            .iter()
+            .map(|bgm| bgm.id)
+            .collect::<Vec<_>>();
+
+        Ok(bgm::unlock_bgms(db, self.player_id, &bgm_ids, ServerTime::now_sec_i32()).await?)
+    }
 }
+
+#[cfg(test)]
+mod test;

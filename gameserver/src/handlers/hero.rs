@@ -404,8 +404,16 @@ pub async fn on_hero_rank_up(
     let heroes = player.hero;
     let msg = HeroRankUpRequest::decode(&req.data[..])?;
     let hero_id = msg.hero_id.ok_or(AppError::InvalidRequest)?;
-    let (reply, hero_info) = heroes.rank_up(ctx.state.db, hero_id).await?;
+    let (reply, hero_info, consumed) = heroes.rank_up(ctx.state.db, hero_id).await?;
 
+    push::send_cost_pushes(
+        ctx,
+        player_id,
+        consumed.item_ids,
+        consumed.currency_ids,
+        consumed.material_changes,
+    )
+    .await?;
     push::send_hero_updates(ctx, player_id, vec![hero_info]).await?;
     ctx.send_reply(CmdId::HeroRankUpCmd, reply, 0, req.up_tag)
         .await

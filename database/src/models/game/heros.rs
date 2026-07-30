@@ -40,7 +40,13 @@ pub trait HeroModel<T>: Send + Sync {
     async fn unmark_new(&self, hero_id: i32) -> Result<()>;
     async fn set_show_hero(&self, hero_uids: Vec<i64>) -> Result<()>;
     async fn talent_style_read(&self, hero_id: i32) -> Result<()>;
-    async fn update_talent(&self, hero_id: i32, talent_id: i32) -> Result<()>;
+    async fn update_talent(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        hero_id: i32,
+        current_talent: i32,
+        talent_id: i32,
+    ) -> Result<bool>;
     async fn remove_talent_cube(
         &self,
         hero_id: i32,
@@ -91,9 +97,10 @@ pub trait HeroModel<T>: Send + Sync {
     async fn has_talent_style(&self, hero_id: i32, style: i32) -> Result<bool>;
     async fn unlock_talent_style(
         &self,
+        tx: &mut Transaction<'_, Sqlite>,
         hero_id: i32,
         style: i32,
-    ) -> Result<(Vec<(u32, i32)>, Vec<(i32, i32)>)>;
+    ) -> Result<bool>;
     async fn apply_talent_style(&self, hero_id: i32, template_id: i32, style: i32) -> Result<()>;
     async fn switch_talent_template(
         &self,
@@ -654,9 +661,13 @@ impl UserHeroModel {
         Ok(())
     }
 
-    pub async fn rank_up_with_insight_skin(&self, hero_id: i32, current_rank: i32) -> Result<bool> {
+    pub async fn rank_up_with_insight_skin_in_transaction(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        hero_id: i32,
+        current_rank: i32,
+    ) -> Result<bool> {
         let new_rank = current_rank + 1;
-        let mut tx = self.pool.begin().await?;
         let updated = sqlx::query(
             "UPDATE heroes SET rank = ?, level = 1
              WHERE user_id = ? AND hero_id = ? AND rank = ?",
@@ -665,7 +676,7 @@ impl UserHeroModel {
         .bind(self.user_id)
         .bind(hero_id)
         .bind(current_rank)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
         if updated.rows_affected() != 1 {
             return Ok(false);
@@ -680,10 +691,9 @@ impl UserHeroModel {
                 })
                 .map(|skin| skin.id)
         {
-            self.unlock_skin_in_transaction(&mut tx, skin_id).await?;
+            self.unlock_skin_in_transaction(tx, skin_id).await?;
         }
 
-        tx.commit().await?;
         Ok(true)
     }
 
@@ -1729,17 +1739,25 @@ impl HeroModel<HeroData> for UserHeroModel {
         Ok(())
     }
 
-    async fn update_talent(&self, hero_id: i32, talent_id: i32) -> Result<()> {
-        let hero_data = self.get(hero_id).await?;
+    async fn update_talent(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        hero_id: i32,
+        current_talent: i32,
+        talent_id: i32,
+    ) -> Result<bool> {
+        let updated = sqlx::query(
+            "UPDATE heroes SET talent = ?
+             WHERE hero_id = ? AND user_id = ? AND talent = ?",
+        )
+        .bind(talent_id)
+        .bind(hero_id)
+        .bind(self.user_id)
+        .bind(current_talent)
+        .execute(&mut **tx)
+        .await?;
 
-        sqlx::query("UPDATE heroes SET talent = ? WHERE uid = ? AND user_id = ?")
-            .bind(talent_id)
-            .bind(hero_data.record.uid)
-            .bind(self.user_id)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(())
+        Ok(updated.rows_affected() == 1)
     }
 
     async fn remove_talent_cube(
@@ -2146,63 +2164,37 @@ impl HeroModel<HeroData> for UserHeroModel {
 
     async fn unlock_talent_style(
         &self,
+        tx: &mut Transaction<'_, Sqlite>,
         hero_id: i32,
         style: i32,
-    ) -> Result<(Vec<(u32, i32)>, Vec<(i32, i32)>)> {
-        let hero_data = self.get(hero_id).await?;
-        let game_data = config::configs::get();
-
-        let style_cost = game_data.talent_style_cost(hero_id, style).ok_or_else(|| {
-            tracing::error!("Style cost not found for hero {} style {}", hero_id, style);
-            anyhow::anyhow!("Style cost not found")
-        })?;
-
-        let mut cost_items = Vec::new();
-        let mut cost_currencies = Vec::new();
-
-        for cost_part in style_cost.consume.split('|') {
-            let parts: Vec<&str> = cost_part.split('#').collect();
-            if parts.len() >= 3 {
-                match parts[0] {
-                    "1" => {
-                        let item_id: u32 = parts[1].parse()?;
-                        let amount: i32 = parts[2].parse()?;
-                        cost_items.push((item_id, amount));
-                    }
-                    "2" => {
-                        let currency_id: i32 = parts[1].parse()?;
-                        let amount: i32 = parts[2].parse()?;
-                        cost_currencies.push((currency_id, amount));
-                    }
-                    _ => {}
-                }
-            }
+    ) -> Result<bool> {
+        let inserted = sqlx::query(
+            "INSERT OR IGNORE INTO hero_talent_styles (hero_uid, style_id)
+             SELECT uid, ? FROM heroes WHERE user_id = ? AND hero_id = ?",
+        )
+        .bind(style)
+        .bind(self.user_id)
+        .bind(hero_id)
+        .execute(&mut **tx)
+        .await?;
+        if inserted.rows_affected() != 1 {
+            return Ok(false);
         }
 
-        sqlx::query("INSERT INTO hero_talent_styles (hero_uid, style_id) VALUES (?, ?)")
-            .bind(hero_data.record.uid)
-            .bind(style)
-            .execute(&self.pool)
-            .await?;
+        let style_bit = 1_i32
+            .checked_shl(style.try_into()?)
+            .ok_or_else(|| anyhow!("invalid talent style {style}"))?;
+        let updated = sqlx::query(
+            "UPDATE heroes SET talent_style_unlock = talent_style_unlock | ?
+             WHERE user_id = ? AND hero_id = ?",
+        )
+        .bind(style_bit)
+        .bind(self.user_id)
+        .bind(hero_id)
+        .execute(&mut **tx)
+        .await?;
 
-        let style_bit = 1 << style;
-        let new_unlock = hero_data.record.talent_style_unlock | style_bit;
-
-        sqlx::query("UPDATE heroes SET talent_style_unlock = ? WHERE uid = ? AND user_id = ?")
-            .bind(new_unlock)
-            .bind(hero_data.record.uid)
-            .bind(self.user_id)
-            .execute(&self.pool)
-            .await?;
-
-        tracing::info!(
-            "User {} unlocked talent style {} for hero {}",
-            self.user_id,
-            style,
-            hero_id
-        );
-
-        Ok((cost_items, cost_currencies))
+        Ok(updated.rows_affected() == 1)
     }
 
     async fn apply_talent_style(&self, hero_id: i32, template_id: i32, style: i32) -> Result<()> {

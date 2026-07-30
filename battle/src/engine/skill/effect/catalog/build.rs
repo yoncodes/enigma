@@ -190,6 +190,9 @@ impl SkillEffectCatalog {
                     use crate::engine::skill::buff_act::registry::BuffActKind;
                     match crate::engine::skill::buff_act::registry::kind(act.id, &act.r#type) {
                         Some(BuffActKind::SubBuff) => buffs.extend(values.get(1).copied()),
+                        Some(BuffActKind::MasterHalo) => {
+                            buffs.extend(values.get(2).copied().filter(|id| *id > 0))
+                        }
                         Some(BuffActKind::AddBuffToEnter) => buffs.extend(
                             crate::engine::skill::buff_act::add_buff_to_enter::referenced_buff(
                                 &values[1..],

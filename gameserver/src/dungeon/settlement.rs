@@ -2,7 +2,6 @@ use super::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct DungeonRecordStatus {
-    pub updated: bool,
     pub can_update: bool,
     pub old_round: i32,
     pub new_round: i32,
@@ -64,12 +63,6 @@ pub async fn settle_active(
         record,
     )
     .await?;
-    let record_updated = if let Some(record) = &record.auto_save {
-        save_dungeon_record_if_faster_in_transaction(&mut tx, player_id, record).await?
-    } else {
-        false
-    };
-    settlement.end_dungeon.update_dungeon_record = Some(record_updated);
     settlement.compose_push =
         tower_compose::settle_in_transaction(&mut tx, player_id, active).await?;
     battle_db::finish_fight_instance_in_transaction(&mut tx, player_id, fight_id).await?;
@@ -129,10 +122,17 @@ async fn settle_completion_in_transaction(
 
     let previous_star = dungeons::episode_star_in_transaction(tx, player_id, episode_id).await?;
     let first_pass = previous_star == 0;
-    let (dungeon_info, chapter_type_nums) = dungeons::update_dungeon_progress_in_transaction(
+    let (mut dungeon_info, chapter_type_nums) = dungeons::update_dungeon_progress_in_transaction(
         tx, player_id, chapter_id, episode_id, star,
     )
     .await?;
+    let record_updated = if let Some(record) = &record.auto_save {
+        let updated = save_dungeon_record_if_faster_in_transaction(tx, player_id, record).await?;
+        dungeon_info.has_record = true;
+        updated
+    } else {
+        false
+    };
     let hero_ids = if let Some(fight_group) = fight_group {
         HeroManager::new(player_id)
             .gain_battle_faith_in_transaction(tx, fight_group, cost.saturating_mul(multiplier))
@@ -163,7 +163,7 @@ async fn settle_completion_in_transaction(
             normal_bonus: material_data(completion_rewards.normal_bonus),
             star: Some(star),
             advenced_bonus: material_data(completion_rewards.advanced_bonus),
-            update_dungeon_record: Some(record.updated),
+            update_dungeon_record: Some(record_updated),
             can_update_dungeon_record: Some(record.can_update),
             old_record_round: Some(record.old_round),
             new_record_round: Some(record.new_round),

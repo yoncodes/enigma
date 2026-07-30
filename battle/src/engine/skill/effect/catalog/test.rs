@@ -113,6 +113,15 @@ fn fight_catalog_follows_heat_scale_cast_skills() {
 }
 
 #[test]
+fn fight_catalog_follows_master_halo_linked_passives() {
+    init_config();
+
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31260143], []);
+
+    assert!(catalog.get(31260183).is_some());
+}
+
+#[test]
 fn fight_catalog_follows_paper_circle_continuation_skill() {
     init_config();
 

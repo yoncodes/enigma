@@ -1,6 +1,6 @@
 use super::*;
 use chrono::Datelike;
-use database::db::game::sign_in;
+use database::db::game::{equipment, sign_in};
 
 pub(crate) async fn snapshot_data(db: &SqlitePool, hero: HeroData) -> Result<HeroInfo, AppError> {
     Ok(battle::engine::entity::stats::hero_info(db, hero).await?)
@@ -230,6 +230,19 @@ impl HeroManager {
         hero_id: i32,
         equip_uid: i64,
     ) -> Result<(HeroDefaultEquipReply, HeroInfo), AppError> {
+        if equip_uid != 0 {
+            let owned = equipment::get_equipment_by_uid(db, self.player_id, equip_uid)
+                .await
+                .map_err(|_| AppError::InvalidRequest)?;
+            let tables = config::configs::get();
+            let equip = tables
+                .equip
+                .get(owned.equip_id)
+                .ok_or(AppError::InvalidRequest)?;
+            if !tables.is_normal_equipment(equip) {
+                return Err(AppError::InvalidRequest);
+            }
+        }
         let hero = UserHeroModel::new(self.player_id, db.clone());
         if !hero.update_equipped_gear(hero_id, equip_uid).await? {
             return Err(AppError::InvalidRequest);

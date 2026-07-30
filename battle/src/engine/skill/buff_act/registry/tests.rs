@@ -38,6 +38,10 @@ fn registry_requires_exact_id_and_type() {
     assert!(!has_destination(752, "AttrByDmgType", &[3, 203, 200]));
     assert!(find(752, "AttrByHeroId").is_none());
     assert!(find(922, "FixAttrBySubBuffLayer").is_none());
+    assert!(has_destination(865, "AddPassiveSkills", &[31260183]));
+    assert!(!has_destination(865, "AddPassiveSkills", &[0]));
+    assert!(has_destination(933, "SubBuff", &[31260201]));
+    assert!(!has_destination(933, "SubBuff", &[0]));
     assert!(find(1028, "AddToTarget").is_none());
     assert!(find(999, "RealDamageKill").is_none());
     assert!(reserves_trigger_child_uid(DefinitionKey::new(

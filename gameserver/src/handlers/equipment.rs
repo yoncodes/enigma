@@ -21,12 +21,15 @@ pub async fn on_get_equip_info(
 }
 
 pub async fn on_equip_lock(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
-    let inventory = ctx.player()?.inventory;
+    let player = ctx.player()?;
+    let player_id = player.id;
+    let inventory = player.inventory;
     let msg = EquipLockRequest::decode(&req.data[..])?;
     let target_uid = msg.target_uid.ok_or(AppError::InvalidRequest)?;
     let lock = msg.lock.ok_or(AppError::InvalidRequest)?;
     let reply = inventory.equip_lock(ctx.state.db, target_uid, lock).await?;
 
+    push::send_equip_update_push(ctx, player_id, vec![target_uid]).await?;
     ctx.send_reply(CmdId::EquipLockCmd, reply, 0, req.up_tag)
         .await
 }
@@ -135,3 +138,6 @@ pub async fn on_equip_decompose(
     ctx.send_reply(CmdId::EquipDecomposeCmd, reply, 0, req.up_tag)
         .await
 }
+
+#[cfg(test)]
+mod test;
