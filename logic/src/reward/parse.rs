@@ -89,6 +89,12 @@ pub fn parse_bonus_with_cost(bonus_id: i32, cost: i32) -> RewardSet {
     let mut rewards = parse_reward_id_with_cost(bonus_id, cost);
     if let Some(bonus) = config::configs::get().bonus.get(bonus_id) {
         rewards.extend(parse(&bonus.fix_bonus));
+        rewards.player_exp = rewards
+            .player_exp
+            .saturating_add(reward_count(&bonus.player_exp, cost).unwrap_or_default());
+        if let Some(score) = reward_count(&bonus.score, cost).filter(|score| *score > 0) {
+            rewards.currencies.push((3, score));
+        }
     }
     rewards
 }

@@ -151,3 +151,18 @@ fn final_initial_tutorial_battle_grants_room_inventory_outside_bonus_lists() {
     assert!(completion.normal_bonus.is_empty());
     assert!(completion.advanced_bonus.is_empty());
 }
+
+#[test]
+fn breakthrough_repeat_clear_grants_configured_normal_rewards() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let episode = config::configs::get().episode.get(70104).unwrap();
+
+    let completion = completion_rewards(episode, false, 2, 2, 1);
+
+    assert_eq!(completion.player_exp, 0);
+    assert!(completion.first_bonus.is_empty());
+    assert!(completion.normal_bonus.contains(&(1, 115012, 1)));
+    assert!(completion.normal_bonus.contains(&(2, 3, 240)));
+    assert!(completion.normal_bonus.contains(&(3, 0, 240)));
+}
