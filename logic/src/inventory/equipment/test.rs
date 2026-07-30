@@ -60,6 +60,20 @@ fn strengthen_uses_configured_base_exp_level_cost_and_score_cost() {
 
 #[tokio::test]
 async fn refine_rejects_the_whole_request_when_any_fodder_is_invalid() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let target = config::configs::get()
+        .equip
+        .iter()
+        .find(|equip| {
+            equip.is_exp_equip == 0
+                && equip.is_sp_refine == 0
+                && equip.rare
+                    > config::configs::get()
+                        .equip_refine_rarity_threshold()
+                        .unwrap()
+        })
+        .unwrap();
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     database::run_migrations(&pool).await.unwrap();
     sqlx::query(
@@ -68,14 +82,14 @@ async fn refine_rejects_the_whole_request_when_any_fodder_is_invalid() {
     .execute(&pool)
     .await
     .unwrap();
-    for (uid, equip_id, locked) in [(1_i64, 2000, false), (2, 2000, false), (3, 2000, true)] {
+    for (uid, locked) in [(1_i64, false), (2, false), (3, true)] {
         sqlx::query(
             "INSERT INTO equipment
              (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv, created_at, updated_at)
              VALUES (?, 20, ?, 1, 0, 0, 1, ?, 1, 0, 0)",
         )
         .bind(uid)
-        .bind(equip_id)
+        .bind(target.id)
         .bind(locked)
         .execute(&pool)
         .await
@@ -94,6 +108,186 @@ async fn refine_rejects_the_whole_request_when_any_fodder_is_invalid() {
             .unwrap();
     assert_eq!(target_level, 1);
     assert_eq!(fodder_count, 2);
+}
+
+#[tokio::test]
+async fn refine_rejects_fodder_after_reaching_the_configured_max() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let tables = config::configs::get();
+    let target = tables
+        .equip
+        .iter()
+        .find(|equip| {
+            equip.is_exp_equip == 0
+                && equip.is_sp_refine == 0
+                && equip.rare > tables.equip_refine_rarity_threshold().unwrap()
+        })
+        .unwrap();
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (24, 'refine-cap', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    for (uid, refine_level) in [(20_i64, 1), (21, 4), (22, 1)] {
+        sqlx::query(
+            "INSERT INTO equipment
+             (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv,
+              created_at, updated_at)
+             VALUES (?, 24, ?, 1, 0, 0, 1, 0, ?, 0, 0)",
+        )
+        .bind(uid)
+        .bind(target.id)
+        .bind(refine_level)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    assert!(refine(&pool, 24, 20, vec![21, 22]).await.is_err());
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>("SELECT refine_lv FROM equipment WHERE uid = 20")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM equipment WHERE uid IN (21, 22)")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn refine_rejects_non_normal_and_low_rarity_targets() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let tables = config::configs::get();
+    let material = tables
+        .equip
+        .iter()
+        .find(|equip| equip.is_exp_equip == 1)
+        .unwrap();
+    let low_rarity = tables
+        .equip
+        .iter()
+        .find(|equip| {
+            equip.is_exp_equip == 0
+                && equip.is_sp_refine == 0
+                && equip.rare <= tables.equip_refine_rarity_threshold().unwrap()
+        })
+        .unwrap();
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (25, 'refine-targets', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    for (uid, equip_id) in [
+        (30_i64, material.id),
+        (31, material.id),
+        (32, low_rarity.id),
+        (33, low_rarity.id),
+    ] {
+        sqlx::query(
+            "INSERT INTO equipment
+             (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv,
+              created_at, updated_at)
+             VALUES (?, 25, ?, 1, 0, 0, 1, 0, 1, 0, 0)",
+        )
+        .bind(uid)
+        .bind(equip_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    assert!(refine(&pool, 25, 30, vec![31]).await.is_err());
+    assert!(refine(&pool, 25, 32, vec![33]).await.is_err());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM equipment WHERE user_id = 25 AND uid IN (30, 31, 32, 33)"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        4
+    );
+}
+
+#[tokio::test]
+async fn refine_uses_fodder_levels_and_target_config() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let tables = config::configs::get();
+    let target = tables
+        .equip
+        .iter()
+        .find(|equip| !equip.use_sp_refine.is_empty())
+        .unwrap();
+    let special_id = target
+        .use_sp_refine
+        .split('#')
+        .next()
+        .unwrap()
+        .parse::<i32>()
+        .unwrap();
+    let universal_id = tables.equip_universal_refine_id().unwrap();
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (21, 'refine-levels', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    for (uid, equip_id, refine_level) in [
+        (10_i64, target.id, 1),
+        (11, target.id, 2),
+        (12, special_id, 1),
+        (13, universal_id, 1),
+    ] {
+        sqlx::query(
+            "INSERT INTO equipment
+             (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv,
+              created_at, updated_at)
+             VALUES (?, 21, ?, 1, 0, 0, 1, 0, ?, 0, 0)",
+        )
+        .bind(uid)
+        .bind(equip_id)
+        .bind(refine_level)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    refine(&pool, 21, 10, vec![11, 12, 13]).await.unwrap();
+
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>("SELECT refine_lv FROM equipment WHERE uid = 10")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        tables.equip_max_refine_level().unwrap()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM equipment WHERE uid IN (11, 12, 13)")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
 }
 
 #[tokio::test]
