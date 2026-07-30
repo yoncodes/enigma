@@ -352,10 +352,27 @@ async fn skin_can_be_owned_before_its_hero_but_not_equipped() {
 async fn profile_rejects_foreign_skins_and_equipment() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
-    let foreign_skin = config::configs::get()
+    let tables = config::configs::get();
+    let foreign_skin = tables
         .skin
         .iter()
         .find(|skin| skin.character_id == 3125)
+        .unwrap();
+    let normal = tables
+        .equip
+        .iter()
+        .find(|equip| tables.is_normal_equipment(equip))
+        .unwrap();
+    let experience = tables
+        .equip
+        .iter()
+        .find(|equip| equip.is_exp_equip == 1)
+        .unwrap();
+    let universal_id = tables.equip_universal_refine_id().unwrap();
+    let special_refine = tables
+        .equip
+        .iter()
+        .find(|equip| equip.is_sp_refine != 0 && equip.id != universal_id)
         .unwrap();
 
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -379,7 +396,7 @@ async fn profile_rejects_foreign_skins_and_equipment() {
             .is_err()
     );
 
-    let foreign_uid = database::db::game::equipment::add_equipment(&pool, 19, 1000, 1)
+    let foreign_uid = database::db::game::equipment::add_equipment(&pool, 19, normal.id, 1)
         .await
         .unwrap()[0];
     assert!(
@@ -388,6 +405,26 @@ async fn profile_rejects_foreign_skins_and_equipment() {
             .await
             .is_err()
     );
+    let normal_uid = database::db::game::equipment::add_equipment(&pool, 18, normal.id, 1)
+        .await
+        .unwrap()[0];
+    manager
+        .default_equip(&pool, 3003, normal_uid)
+        .await
+        .unwrap();
+    for equip_id in [experience.id, special_refine.id, universal_id] {
+        let uid = database::db::game::equipment::add_equipment(&pool, 18, equip_id, 1)
+            .await
+            .unwrap()[0];
+        assert!(manager.default_equip(&pool, 3003, uid).await.is_err());
+    }
+    let stored: i64 = sqlx::query_scalar(
+        "SELECT default_equip_uid FROM heroes WHERE user_id = 18 AND hero_id = 3003",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, normal_uid);
 }
 
 #[tokio::test]
