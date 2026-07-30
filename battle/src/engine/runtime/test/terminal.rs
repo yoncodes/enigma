@@ -220,3 +220,74 @@ fn configured_wave_advances_before_the_next_round_cue() {
         .unwrap();
     assert!(wave < round);
 }
+
+#[test]
+fn wave_clear_defers_card_refill_to_the_next_round_deal() {
+    crate::test_support::init_config();
+    let (entitys, sub_entitys) =
+        crate::engine::fight::defender::Defender::build_wave_entities(251401, 2, 2, 0).unwrap();
+    let card = |skill_id| sonettobuf::CardInfo {
+        uid: Some(10),
+        skill_id: Some(skill_id),
+        temp_card: Some(false),
+        energy: Some(0),
+        ..Default::default()
+    };
+    let remaining = card(30230111);
+    let dealt = vec![card(30230121), card(30230111)];
+    let mut runtime = BattleRuntime::new(Fight {
+        battle_id: Some(2514),
+        version: Some(7),
+        cur_round: Some(1),
+        cur_wave: Some(1),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                position: Some(1),
+                team_type: Some(1),
+                current_hp: Some(100),
+                skill_group1: vec![30230111, 30230112, 30230113],
+                skill_group2: vec![30230121, 30230122, 30230123],
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(100),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys,
+            sub_entitys,
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Setup(
+            CardSetup {
+                hand: vec![remaining.clone()],
+                draw_pile: dealt.clone(),
+                deck_num: dealt.len() as i32,
+            },
+        ))
+        .unwrap();
+    runtime.determinism.enqueue_card_draws(dealt.clone());
+    runtime.managers.hp.lose(-1, i32::MAX, 10);
+    runtime.managers.hp.lose(-2, i32::MAX, 10);
+
+    let round = runtime
+        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .unwrap();
+
+    assert_eq!(round.before_cards1, vec![remaining]);
+    assert_eq!(round.team_a_cards1, dealt);
+    assert!(round.before_cards2.is_empty());
+    assert!(round.team_a_cards2.is_empty());
+    assert!(round.fight_step.iter().all(|step| {
+        step.act_effect.iter().all(|effect| {
+            effect.effect_type != Some(sonettobuf::effect_type_enum::EffectType::Dealcard2 as i32)
+        })
+    }));
+}

@@ -86,7 +86,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn opcode_932_keeps_its_configured_attack_attribute() {
+    fn keeps_its_configured_attack_attribute() {
         assert_eq!(
             layer_attribute_delta(&[201, 300, 0], 2, AttrId::CriticalRate),
             300
@@ -94,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn opcode_932_applies_each_attribute_from_the_tracked_layer_count() {
+    fn applies_each_attribute_from_the_tracked_layer_count() {
         assert_eq!(
             layer_attribute_delta(&[104, -100, -20, 206, -100, -20], 3, AttrId::MentalDef),
             -140
@@ -110,9 +110,10 @@ mod tests {
     }
 
     #[test]
-    fn accepts_a_buff_id_followed_by_attribute_triples() {
+    fn validates_a_tracked_buff_and_attribute_triples() {
         assert!(supports(&[31260151, 201, 300, 0]));
         assert!(supports(&[31130122, 104, -100, -20, 206, -100, -20]));
+        assert!(!supports(&[0, 201, 600, 0]));
         assert!(!supports(&[31260151]));
         assert!(!supports(&[31260151, 999, 300, 0]));
         assert!(!supports(&[31260151, 201, 300]));

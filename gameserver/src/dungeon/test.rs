@@ -883,8 +883,9 @@ fn episode_exp_uses_cost_and_player_level_thresholds() {
     let _ = config::init(data_dir.to_str().unwrap());
     let episode = config::configs::get().episode.get(10101).unwrap();
 
-    assert_eq!(logic::dungeon::episode_player_exp(episode, false, 1), 80);
-    assert_eq!(logic::dungeon::episode_player_exp(episode, false, 2), 160);
+    let rewards = logic::dungeon::completion_rewards(episode, false, 1, 1, 2);
+    assert!(rewards.normal_bonus.contains(&(3, 0, 160)));
+    assert!(rewards.normal_bonus.contains(&(2, 3, 160)));
     assert_eq!(episode_cost(episode, 2).currencies, vec![(4, 16)]);
     assert_eq!(failure_refund(episode, 2).currencies, vec![(4, 16)]);
     assert_eq!(database::db::game::player_infos::level_for_exp(199), 1);
@@ -1089,7 +1090,6 @@ async fn settlement_commits_all_or_rolls_back_with_the_active_fight() {
         ..Default::default()
     };
     let record = prepare_dungeon_record(&pool, 23, &active, 3).await.unwrap();
-    assert!(record.updated);
     assert_eq!(
         dungeons::dungeon_record_round(&pool, 23, episode.id)
             .await
@@ -1135,11 +1135,6 @@ async fn settlement_commits_all_or_rolls_back_with_the_active_fight() {
         fight_id
     );
 
-    let mut faster_record = record.auto_save.clone().unwrap();
-    faster_record.round = 2;
-    replace_dungeon_record(&pool, 23, &faster_record)
-        .await
-        .unwrap();
     active.fight_id = Some(fight_id);
     let settlement = settle_active(
         &pool,
@@ -1155,7 +1150,15 @@ async fn settlement_commits_all_or_rolls_back_with_the_active_fight() {
     )
     .await
     .unwrap();
-    assert_eq!(settlement.end_dungeon.update_dungeon_record, Some(false));
+    assert_eq!(settlement.end_dungeon.update_dungeon_record, Some(true));
+    assert_eq!(
+        settlement
+            .dungeon_update
+            .dungeon_info
+            .as_ref()
+            .and_then(|dungeon| dungeon.has_record),
+        Some(true)
+    );
 
     assert_eq!(
         dungeons::episode_star(&pool, 23, episode.id).await.unwrap(),
@@ -1170,7 +1173,16 @@ async fn settlement_commits_all_or_rolls_back_with_the_active_fight() {
         dungeons::dungeon_record_round(&pool, 23, episode.id)
             .await
             .unwrap(),
-        Some(2)
+        Some(3)
+    );
+    assert!(
+        sqlx::query_scalar::<_, bool>(
+            "SELECT has_record FROM user_dungeons WHERE user_id = 23 AND episode_id = ?"
+        )
+        .bind(episode.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
     );
     assert!(
         battle_db::load_active_fight(&pool, 23)

@@ -63,6 +63,12 @@ impl GameDB {
         })
     }
 
+    pub fn is_breakthrough_episode(&self, episode: &Episode) -> bool {
+        self.chapter
+            .get(episode.chapter_id)
+            .is_some_and(|chapter| chapter.r#type == ChapterKind::Breakthrough as i32)
+    }
+
     fn episodes_in_chapter_kind(&self, kind: ChapterKind) -> impl Iterator<Item = &Episode> {
         self.episode.iter().filter(move |episode| {
             self.chapter

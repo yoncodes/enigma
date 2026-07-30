@@ -10,6 +10,139 @@ fn parent_owned_root_output_stays_in_the_root_frame() {
 }
 
 #[test]
+fn bloodtithe_spend_keeps_atomic_changes_in_their_semantic_frames() {
+    use crate::engine::{
+        manager::{
+            buff::BuffGrant,
+            gauge::{GaugeCommand, GaugeKey, GaugeKind, GaugeOperation, GaugeOwner},
+        },
+        mechanic::bloodtithe::spend::SpendCommand,
+        runtime::record::FrameItem,
+        skill::rule::SetupStage,
+    };
+
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(60210, "ConsumeBloodAddBuff"),
+    };
+    let gauge_key = GaugeKey {
+        kind: GaugeKind::Bloodtithe,
+        owner: GaugeOwner::Team(1),
+    };
+    managers
+        .gauge
+        .execute_command(GaugeCommand::new(
+            origin,
+            gauge_key,
+            GaugeOperation::Enable { max: Some(10) },
+        ))
+        .unwrap();
+    managers
+        .gauge
+        .execute_command(GaugeCommand::new(
+            origin,
+            gauge_key,
+            GaugeOperation::ChangeValue { delta: 1 },
+        ))
+        .unwrap();
+
+    let trigger = FrameTrigger::Setup {
+        stage: SetupStage::RoundStart,
+        priority: 3,
+    };
+    let mut frames = Vec::new();
+    let parent_path = push_root(&mut frames, FrameOwner::SetupMechanic, trigger.clone());
+    let skill_path = push_child(
+        &mut frames,
+        &parent_path,
+        FrameOwner::Skill {
+            source_uid: 10,
+            skill_id: 100,
+            card_index: -1,
+            target_uid: Some(20),
+        },
+        trigger.clone(),
+    );
+    let mut queue = VecDeque::from([QueuedOp {
+        op: RuleOp::Command(BattleCommand::BloodtitheSpend(SpendCommand {
+            gauge: GaugeCommand::new(origin, gauge_key, GaugeOperation::ChangeValue { delta: -1 }),
+            buff: BuffCommand::Grant(BuffGrant {
+                origin,
+                source_uid: 10,
+                target_uid: 20,
+                buff_id: 31260151,
+                amount: Some(1),
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        })),
+        trigger: SkillOpTrigger::Setup {
+            stage: SetupStage::RoundStart,
+            priority: 3,
+        },
+        skill_execution: None,
+        frame_path: Some(skill_path.clone()),
+        parent_path: None,
+        frame_group: None,
+        independent_parent_group: None,
+        frame_owner: None,
+    }]);
+
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 31260181,
+        slots: Vec::new(),
+    });
+    let result = drain_queue_with_frames(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &mut queue,
+        frames,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        result.events.as_slice(),
+        [BattleEvent::GaugeChanged(_), BattleEvent::BuffAdded(_)]
+    ));
+    assert_eq!(result.frames[0].trigger, trigger);
+    let FrameItem::Child(skill) = &result.frames[0].items[0] else {
+        panic!("expected the pre-existing skill frame")
+    };
+    assert_eq!(skill.trigger, trigger);
+    assert!(result.frames[0].items.iter().any(
+        |item| matches!(item, FrameItem::Change(change) if matches!(change.as_ref(), BattleChange::Gauge(_)))
+    ));
+    assert!(skill.items.iter().any(
+        |item| matches!(item, FrameItem::Change(change) if matches!(change.as_ref(), BattleChange::Buff(_)))
+    ));
+}
+
+#[test]
 fn one_skill_event_groups_all_of_its_subscribed_rules() {
     use crate::engine::{
         event::{kind::EventKind, subscription::SubscriptionKey},

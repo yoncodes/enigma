@@ -343,10 +343,12 @@ pub fn run_round_start_after_ai_split(
             0,
         )?,
     );
+    let refill_start = managers.card.refilled().len();
     append(
         &mut next_round_begin_steps,
         run_round_start_refill(managers, pool, catalog, determinism, context, hand_size, 1)?,
     );
+    let mut dealt_cards = managers.card.refilled()[refill_start..].to_vec();
     for take_stage in effect_time::ROUND_START_CARD_STAGES {
         append(
             &mut next_round_begin_steps,
@@ -384,6 +386,7 @@ pub fn run_round_start_after_ai_split(
             ))],
         )?,
     );
+    dealt_cards.extend_from_slice(managers.card.team_cards());
     let next_cards = managers
         .card
         .hand()
@@ -420,7 +423,7 @@ pub fn run_round_start_after_ai_split(
         fight_steps,
         next_round_begin_steps,
         hand_snapshot,
-        managers.card.team_cards().to_vec(),
+        dealt_cards,
     ))
 }
 

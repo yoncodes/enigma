@@ -563,8 +563,10 @@ pub fn completion_rewards(
 ) -> CompletionRewards {
     let tables = config::configs::get();
     let cost = episode_cost_value(episode);
-    let player_exp = episode_player_exp(episode, first_pass, multiplier);
     let mut normal_rewards = reward::parse_bonus_with_cost(episode.bonus, cost);
+    if tables.is_breakthrough_episode(episode) {
+        normal_rewards.extend(reward::parse(&episode.reward_list));
+    }
     normal_rewards.scale(multiplier);
     let first_rewards = if first_pass {
         reward::parse_bonus_with_cost(episode.first_bonus, cost)
@@ -591,36 +593,13 @@ pub fn completion_rewards(
             .room_buildings
             .extend(buildings.into_iter().map(|id| (id, 1)));
     }
-    rewards.player_exp = rewards.player_exp.saturating_add(player_exp);
-
     CompletionRewards {
         rewards,
-        player_exp,
+        player_exp: 0,
         first_bonus,
         normal_bonus,
         advanced_bonus,
     }
-}
-
-pub fn episode_player_exp(
-    episode: &config::episode::Episode,
-    first_pass: bool,
-    multiplier: i32,
-) -> i32 {
-    let cost = episode_cost_value(episode);
-    let normal = config::configs::get()
-        .bonus
-        .get(episode.bonus)
-        .map(|bonus| player_exp_value(&bonus.player_exp, cost))
-        .unwrap_or_default()
-        .saturating_mul(multiplier);
-    let first = first_pass
-        .then(|| config::configs::get().bonus.get(episode.first_bonus))
-        .flatten()
-        .map(|bonus| player_exp_value(&bonus.player_exp, cost))
-        .unwrap_or_default();
-
-    normal.saturating_add(first)
 }
 
 pub fn episode_cost_value(episode: &config::episode::Episode) -> i32 {
@@ -629,16 +608,6 @@ pub fn episode_cost_value(episode: &config::episode::Episode) -> i32 {
         .split('|')
         .find_map(|part| part.rsplit('#').next()?.parse::<i32>().ok())
         .unwrap_or_default()
-}
-
-fn player_exp_value(value: &str, cost: i32) -> i32 {
-    value.parse().unwrap_or_else(|_| {
-        value
-            .strip_suffix("*cost")
-            .and_then(|factor| factor.parse::<i32>().ok())
-            .map(|factor| factor.saturating_mul(cost))
-            .unwrap_or_default()
-    })
 }
 
 #[cfg(test)]

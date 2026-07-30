@@ -359,24 +359,22 @@ pub async fn set_hero_group_equip(
     index: i32,
     equip_uids: Vec<i64>,
 ) -> Result<()> {
-    // Get the DB group ID
+    let mut transaction = pool.begin().await?;
     let db_group_id: Option<i64> =
         sqlx::query_scalar("SELECT id FROM hero_groups_common WHERE user_id = ? AND group_id = ?")
             .bind(user_id)
             .bind(group_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *transaction)
             .await?;
 
     let db_group_id = db_group_id.ok_or_else(|| anyhow::anyhow!("Hero group not found"))?;
 
-    // Delete existing equips for this index
     sqlx::query("DELETE FROM hero_group_equips WHERE hero_group_id = ? AND index_slot = ?")
         .bind(db_group_id)
         .bind(index)
-        .execute(pool)
+        .execute(&mut *transaction)
         .await?;
 
-    // Insert new equips
     for equip_uid in equip_uids {
         sqlx::query(
             "INSERT INTO hero_group_equips (hero_group_id, index_slot, equip_uid) VALUES (?, ?, ?)",
@@ -384,9 +382,10 @@ pub async fn set_hero_group_equip(
         .bind(db_group_id)
         .bind(index)
         .bind(equip_uid)
-        .execute(pool)
+        .execute(&mut *transaction)
         .await?;
     }
 
+    transaction.commit().await?;
     Ok(())
 }

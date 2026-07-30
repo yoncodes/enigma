@@ -52,7 +52,6 @@ pub async fn prepare_dungeon_record(
 
     if should_save_record(old_round, round) {
         return Ok(DungeonRecordStatus {
-            updated: true,
             old_round: old_round.unwrap_or_default(),
             new_round: round,
             auto_save: Some(pending),

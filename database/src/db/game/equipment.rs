@@ -1,7 +1,6 @@
 use anyhow::Result;
 use sonettobuf::FightEquipRecord;
 use sqlx::{Sqlite, SqlitePool, Transaction};
-use std::collections::HashSet;
 
 pub use crate::models::game::equipment::Equipment;
 
@@ -81,6 +80,12 @@ pub struct StrengthenUpdate<'a> {
     pub level: i32,
     pub exp: i32,
     pub consumes: &'a [StrengthenConsume],
+}
+
+pub struct RefineConsume {
+    pub uid: i64,
+    pub equip_id: i32,
+    pub refine_level: i32,
 }
 
 pub async fn apply_strengthen_in_transaction(
@@ -267,15 +272,10 @@ pub async fn add_equipment_in_transaction(
         .get(equip_id)
         .ok_or_else(|| anyhow::anyhow!("Equipment {} not found", equip_id))?;
 
-    let (level, break_lv, refine_lv, mut is_lock) = match equip.rare {
-        5 => (1, 0, 1, true),
-        4 => (1, 0, 1, true),
-        _ => (1, 0, 1, false),
-    };
-
-    if matches!(equip.name_en.as_str(), "Enlighten" | "Gluttony" | "Greed") {
-        is_lock = false;
-    }
+    let level = 1;
+    let break_lv = 0;
+    let refine_lv = 1;
+    let is_lock = equip.rare >= 4 && equip.is_exp_equip == 0 && equip.is_sp_refine == 0;
 
     let is_stackable = equip.is_exp_equip == 1;
 
@@ -387,48 +387,10 @@ pub async fn refine_equipment(
     tx: &mut Transaction<'_, Sqlite>,
     user_id: i64,
     target_uid: i64,
-    consume_uids: &[i64],
-) -> Result<Option<i32>> {
-    if consume_uids.is_empty()
-        || consume_uids.iter().copied().collect::<HashSet<_>>().len() != consume_uids.len()
-    {
-        return Ok(None);
-    }
-
-    let Some((target_equip_id, current_level)) = sqlx::query_as::<_, (i32, i32)>(
-        "SELECT equip_id, refine_lv FROM equipment WHERE user_id = ? AND uid = ?",
-    )
-    .bind(user_id)
-    .bind(target_uid)
-    .fetch_optional(&mut **tx)
-    .await?
-    else {
-        return Ok(None);
-    };
-    let level = (current_level + consume_uids.len() as i32).min(5);
-    if level == current_level {
-        return Ok(None);
-    }
-
-    for uid in consume_uids {
-        let Some((equip_id, is_lock)) = sqlx::query_as::<_, (i32, bool)>(
-            "SELECT equip_id, is_lock FROM equipment WHERE user_id = ? AND uid = ?",
-        )
-        .bind(user_id)
-        .bind(uid)
-        .fetch_optional(&mut **tx)
-        .await?
-        else {
-            return Ok(None);
-        };
-        if *uid == target_uid
-            || is_lock
-            || (equip_id != target_equip_id && !matches!(equip_id, 1000 | 1001))
-        {
-            return Ok(None);
-        }
-    }
-
+    expected_level: i32,
+    level: i32,
+    consumes: &[RefineConsume],
+) -> Result<bool> {
     let result = sqlx::query(
         "UPDATE equipment SET refine_lv = ?, updated_at = ?
          WHERE user_id = ? AND uid = ? AND refine_lv = ?",
@@ -437,28 +399,31 @@ pub async fn refine_equipment(
     .bind(common::time::ServerTime::now_ms())
     .bind(user_id)
     .bind(target_uid)
-    .bind(current_level)
+    .bind(expected_level)
     .execute(&mut **tx)
     .await?;
     if result.rows_affected() != 1 {
-        return Ok(None);
+        return Ok(false);
     }
 
-    for uid in consume_uids {
+    for consume in consumes {
         let deleted = sqlx::query(
             "DELETE FROM equipment
-             WHERE user_id = ? AND uid = ? AND uid != ? AND is_lock = 0",
+             WHERE user_id = ? AND uid = ? AND uid != ? AND equip_id = ?
+               AND refine_lv = ? AND count > 0 AND is_lock = 0",
         )
         .bind(user_id)
-        .bind(uid)
+        .bind(consume.uid)
         .bind(target_uid)
+        .bind(consume.equip_id)
+        .bind(consume.refine_level)
         .execute(&mut **tx)
         .await?;
         if deleted.rows_affected() != 1 {
-            return Ok(None);
+            return Ok(false);
         }
     }
-    Ok(Some(level))
+    Ok(true)
 }
 
 /// Get total count of equipment by equip_id (counts all matching rows)

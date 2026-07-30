@@ -4,11 +4,7 @@ use crate::engine::{
         gauge::{GaugeCommand, GaugeKey, GaugeKind, GaugeOperation},
     },
     skill::{
-        behavior::{
-            BehaviorOpContext,
-            classify::BehaviorKind,
-            registry::{BehaviorHandler, OutputOwner},
-        },
+        behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
         effect::ParsedBehavior,
         rule::{
             RuleReferences,
@@ -27,26 +23,27 @@ impl BehaviorHandler for Handler {
             BehaviorKind::ConsumeBloodAddBuff | BehaviorKind::ConsumeBloodAddBuff2
         ) {
             let spend = ConsumeBloodAddBuff::from_behavior(behavior)?;
-            return Some(vec![
-                RuleOp::Command(BattleCommand::Gauge(
-                    GaugeCommand::new(
+            let gauge_key = crate::engine::mechanic::bloodtithe::rule::key(context.source_team);
+            return Some(vec![RuleOp::Command(BattleCommand::BloodtitheSpend(
+                crate::engine::mechanic::bloodtithe::spend::SpendCommand {
+                    gauge: GaugeCommand::new(
                         origin,
-                        crate::engine::mechanic::bloodtithe::rule::key(context.source_team),
+                        gauge_key,
                         GaugeOperation::ChangeValue { delta: -spend.cost },
                     )
                     .attributed_to(context.target_uid, 0)
                     .caused_by_skill(context.active_skill_id),
-                )),
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
-                    origin,
-                    source_uid: context.source_uid,
-                    target_uid: context.target_uid,
-                    buff_id: spend.buff_id,
-                    amount: spend.grant_amount(),
-                    occurrences: 1,
-                    child_uid_reservations: 0,
-                }))),
-            ]);
+                    buff: BuffCommand::Grant(BuffGrant {
+                        origin,
+                        source_uid: context.source_uid,
+                        target_uid: context.target_uid,
+                        buff_id: spend.buff_id,
+                        amount: spend.grant_amount(),
+                        occurrences: 1,
+                        child_uid_reservations: 0,
+                    }),
+                },
+            ))]);
         }
         let mutation = SharedPoolMutation::from_behavior(behavior, context.source_team)?;
         let mut command = GaugeCommand::new(origin, mutation.key, mutation.operation)
@@ -62,15 +59,6 @@ impl BehaviorHandler for Handler {
             command = command.with_progress_raw_delta(progress_raw_delta);
         }
         Some(route_shared_pool_change(context.managers, command))
-    }
-
-    fn output_owner(behavior: &ParsedBehavior, index: usize) -> Option<OutputOwner> {
-        match (behavior.spec.kind, index) {
-            (BehaviorKind::ConsumeBloodAddBuff | BehaviorKind::ConsumeBloodAddBuff2, 0) => {
-                Some(OutputOwner::Parent)
-            }
-            _ => None,
-        }
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
@@ -197,7 +185,17 @@ fn route_shared_pool_change(
 
 #[cfg(test)]
 mod tests {
-    use crate::engine::skill::{behavior::classify::BehaviorSpec, effect::ParsedBehavior};
+    use crate::engine::{
+        manager::{BattleManagers, buff::BuffCommand, gauge::GaugeOperation},
+        runtime::determinism::RoundDeterminism,
+        skill::{
+            action::SkillModifiers,
+            behavior::{BehaviorOpContext, classify::BehaviorSpec},
+            effect::ParsedBehavior,
+            rule::output::{BattleCommand, RuleOp},
+            target::{TargetContext, TargetPool},
+        },
+    };
 
     #[test]
     fn parses_consume_blood_add_buff_rule_behavior() {
@@ -240,6 +238,64 @@ mod tests {
             .grant_amount(),
             Some(6)
         );
+    }
+
+    #[test]
+    fn consume_blood_add_buff_emits_one_atomic_command() {
+        crate::test_support::init_config();
+
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60210, "ConsumeBloodAddBuff"),
+            vec![1, 31260151, 6],
+            Vec::new(),
+        );
+        let definition = super::super::registry::find(&behavior).unwrap();
+        assert_eq!(
+            definition.output_owner,
+            super::super::registry::OutputOwner::Skill
+        );
+        let key = crate::engine::mechanic::bloodtithe::rule::key(1);
+        let managers = BattleManagers::default();
+        let emit = |managers: &BattleManagers| {
+            let pool = TargetPool::default();
+            let mut determinism = RoundDeterminism::default();
+            let mut modifiers = SkillModifiers::default();
+            let mut target = TargetContext::default();
+
+            super::super::rule_ops(
+                BehaviorOpContext {
+                    source_uid: 10,
+                    source_team: 1,
+                    target_uid: 20,
+                    active_skill_id: 31260201,
+                    transfer_count: 1,
+                    event: None,
+                    managers,
+                    pool: &pool,
+                    determinism: &mut determinism,
+                    modifiers: &mut modifiers,
+                    target: &mut target,
+                },
+                &behavior,
+            )
+            .unwrap()
+        };
+
+        let ops = emit(&managers);
+        assert!(matches!(
+            ops.as_slice(),
+            [RuleOp::Command(BattleCommand::BloodtitheSpend(command))]
+                if command.gauge.key == key
+                && command.gauge.operation == GaugeOperation::ChangeValue { delta: -1 }
+                && matches!(
+                    &command.buff,
+                    BuffCommand::Grant(grant)
+                        if grant.source_uid == 10
+                            && grant.target_uid == 20
+                            && grant.buff_id == 31260151
+                            && grant.amount == Some(6)
+                )
+        ));
     }
 
     #[test]
