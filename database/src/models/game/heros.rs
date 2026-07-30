@@ -654,9 +654,13 @@ impl UserHeroModel {
         Ok(())
     }
 
-    pub async fn rank_up_with_insight_skin(&self, hero_id: i32, current_rank: i32) -> Result<bool> {
+    pub async fn rank_up_with_insight_skin_in_transaction(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        hero_id: i32,
+        current_rank: i32,
+    ) -> Result<bool> {
         let new_rank = current_rank + 1;
-        let mut tx = self.pool.begin().await?;
         let updated = sqlx::query(
             "UPDATE heroes SET rank = ?, level = 1
              WHERE user_id = ? AND hero_id = ? AND rank = ?",
@@ -665,7 +669,7 @@ impl UserHeroModel {
         .bind(self.user_id)
         .bind(hero_id)
         .bind(current_rank)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
         if updated.rows_affected() != 1 {
             return Ok(false);
@@ -680,10 +684,9 @@ impl UserHeroModel {
                 })
                 .map(|skin| skin.id)
         {
-            self.unlock_skin_in_transaction(&mut tx, skin_id).await?;
+            self.unlock_skin_in_transaction(tx, skin_id).await?;
         }
 
-        tx.commit().await?;
         Ok(true)
     }
 

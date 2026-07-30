@@ -200,16 +200,86 @@ async fn rank_and_insight_skin_commit_together() {
     .unwrap();
     let heroes = UserHeroModel::new(17, pool.clone());
     heroes.create_hero(skin.character_id).await.unwrap();
+    let rank = config::configs::get()
+        .character_rank(skin.character_id, 3)
+        .unwrap();
+    let required_level = super::progression::required_rank_level(&rank.requirement).unwrap();
+    let costs = crate::reward::parse(&rank.consume);
+    crate::reward::RewardManager::new(17)
+        .apply(&pool, costs.clone())
+        .await
+        .unwrap();
     heroes
-        .set_rank_and_level(skin.character_id, 2, 30)
+        .set_rank_and_level(skin.character_id, 2, required_level - 1)
         .await
         .unwrap();
 
-    HeroManager::new(17)
+    assert!(
+        HeroManager::new(17)
+            .rank_up(&pool, skin.character_id)
+            .await
+            .is_err()
+    );
+    assert_eq!(heroes.get(skin.character_id).await.unwrap().record.rank, 2);
+    for (item_id, amount) in &costs.items {
+        let quantity: i32 =
+            sqlx::query_scalar("SELECT quantity FROM items WHERE user_id = 17 AND item_id = ?")
+                .bind(item_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(quantity, *amount);
+    }
+    for (currency_id, amount) in &costs.currencies {
+        let quantity: i32 = sqlx::query_scalar(
+            "SELECT quantity FROM currencies WHERE user_id = 17 AND currency_id = ?",
+        )
+        .bind(currency_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(quantity, *amount);
+    }
+
+    heroes
+        .set_rank_and_level(skin.character_id, 2, required_level)
+        .await
+        .unwrap();
+    let (_, _, consumed) = HeroManager::new(17)
         .rank_up(&pool, skin.character_id)
         .await
         .unwrap();
 
+    let mut expected_item_ids = costs.items.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+    expected_item_ids.sort_unstable();
+    assert_eq!(consumed.item_ids, expected_item_ids);
+    assert_eq!(
+        consumed.currency_ids,
+        costs
+            .currencies
+            .iter()
+            .map(|(id, amount)| (*id, -*amount))
+            .collect::<Vec<_>>()
+    );
+    for (item_id, _) in &costs.items {
+        let quantity: i32 =
+            sqlx::query_scalar("SELECT quantity FROM items WHERE user_id = 17 AND item_id = ?")
+                .bind(item_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(quantity, 0);
+    }
+    for (currency_id, _) in &costs.currencies {
+        let quantity: i32 = sqlx::query_scalar(
+            "SELECT quantity FROM currencies WHERE user_id = 17 AND currency_id = ?",
+        )
+        .bind(currency_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(quantity, 0);
+    }
     let hero = heroes.get(skin.character_id).await.unwrap();
     assert_eq!(hero.record.rank, 3);
     assert_eq!(hero.record.skin, skin.id);

@@ -54,16 +54,31 @@ impl HeroManager {
         self,
         db: &SqlitePool,
         hero_id: i32,
-    ) -> Result<(HeroRankUpReply, HeroInfo), AppError> {
+    ) -> Result<(HeroRankUpReply, HeroInfo, ConsumedRewards), AppError> {
+        let tables = config::configs::get();
         let hero = UserHeroModel::new(self.player_id, db.clone());
-        let current_rank = hero.get(hero_id).await?.record.rank;
-        let new_rank = current_rank + 1;
+        let current = hero.get(hero_id).await?;
+        let current_rank = current.record.rank;
+        let new_rank = current_rank
+            .checked_add(1)
+            .ok_or(AppError::InvalidRequest)?;
+        let rank = tables
+            .character_rank(hero_id, new_rank)
+            .ok_or(AppError::InvalidRequest)?;
+        if required_rank_level(&rank.requirement) != Some(current.record.level) {
+            return Err(AppError::InvalidRequest);
+        }
+
+        let mut tx = db.begin().await?;
+        let consumed =
+            reward::consume(&mut tx, self.player_id, &reward::parse(&rank.consume)).await?;
         if !hero
-            .rank_up_with_insight_skin(hero_id, current_rank)
+            .rank_up_with_insight_skin_in_transaction(&mut tx, hero_id, current_rank)
             .await?
         {
             return Err(AppError::InvalidRequest);
         }
+        tx.commit().await?;
         let updated = snapshot(db, hero.get(hero_id).await?).await?;
 
         Ok((
@@ -72,6 +87,7 @@ impl HeroManager {
                 new_rank: Some(new_rank),
             },
             updated,
+            consumed,
         ))
     }
 
@@ -120,6 +136,10 @@ impl HeroManager {
 
         Ok((HeroUpgradeSkillReply {}, updated, consumed_item_id))
     }
+}
+
+pub(super) fn required_rank_level(requirement: &str) -> Option<i32> {
+    requirement.strip_prefix("1#")?.parse().ok()
 }
 
 pub(super) fn duplicate_item_id(hero_id: i32) -> Result<u32, AppError> {
