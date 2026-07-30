@@ -40,7 +40,13 @@ pub trait HeroModel<T>: Send + Sync {
     async fn unmark_new(&self, hero_id: i32) -> Result<()>;
     async fn set_show_hero(&self, hero_uids: Vec<i64>) -> Result<()>;
     async fn talent_style_read(&self, hero_id: i32) -> Result<()>;
-    async fn update_talent(&self, hero_id: i32, talent_id: i32) -> Result<()>;
+    async fn update_talent(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        hero_id: i32,
+        current_talent: i32,
+        talent_id: i32,
+    ) -> Result<bool>;
     async fn remove_talent_cube(
         &self,
         hero_id: i32,
@@ -1732,17 +1738,25 @@ impl HeroModel<HeroData> for UserHeroModel {
         Ok(())
     }
 
-    async fn update_talent(&self, hero_id: i32, talent_id: i32) -> Result<()> {
-        let hero_data = self.get(hero_id).await?;
+    async fn update_talent(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        hero_id: i32,
+        current_talent: i32,
+        talent_id: i32,
+    ) -> Result<bool> {
+        let updated = sqlx::query(
+            "UPDATE heroes SET talent = ?
+             WHERE hero_id = ? AND user_id = ? AND talent = ?",
+        )
+        .bind(talent_id)
+        .bind(hero_id)
+        .bind(self.user_id)
+        .bind(current_talent)
+        .execute(&mut **tx)
+        .await?;
 
-        sqlx::query("UPDATE heroes SET talent = ? WHERE uid = ? AND user_id = ?")
-            .bind(talent_id)
-            .bind(hero_data.record.uid)
-            .bind(self.user_id)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(())
+        Ok(updated.rows_affected() == 1)
     }
 
     async fn remove_talent_cube(
