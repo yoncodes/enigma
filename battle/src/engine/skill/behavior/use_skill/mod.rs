@@ -24,6 +24,10 @@ pub(super) fn supports_consume_power_direct_skill(behavior: &ParsedBehavior) -> 
     matches!(behavior.args.as_slice(), [cost, skill_id] if *cost > 0 && *skill_id > 0)
 }
 
+pub(super) fn supports_consume_power_skill(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [cost, skill_id] if *cost > 0 && *skill_id > 0)
+}
+
 pub(super) fn supports_random_skill(behavior: &ParsedBehavior) -> bool {
     matches!(
         behavior.raw_args.as_slice(),
