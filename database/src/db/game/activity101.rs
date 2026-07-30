@@ -99,17 +99,34 @@ pub async fn claim_activity101_day_in_transaction(
     if day_id <= 0 || day_id > login_count {
         return Ok(false);
     }
-    let result = sqlx::query(
-        "INSERT OR IGNORE INTO user_activity_state
-            (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
-         VALUES (?, ?, ?, ?, 2, 0, '', ?)",
+    let stored_state = sqlx::query_scalar::<_, i32>(
+        "SELECT state
+         FROM user_activity_state
+         WHERE user_id = ? AND activity_id = ? AND kind = ? AND entry_id = ?",
     )
     .bind(user_id)
     .bind(activity_id)
     .bind(ActivityStateKind::Act101Day.id())
     .bind(day_id)
-    .bind(common::time::ServerTime::now_ms())
-    .execute(&mut **tx)
-    .await?;
-    Ok(result.rows_affected() == 1)
+    .fetch_optional(&mut **tx)
+    .await?
+    .unwrap_or_default();
+    if stored_state == 2 {
+        return Ok(false);
+    }
+
+    activity_state::transition_in_transaction(
+        tx,
+        user_id,
+        activity_id,
+        stored_state,
+        ActivityStateSet {
+            kind: ActivityStateKind::Act101Day,
+            entry_id: day_id,
+            state: 2,
+            progress: 0,
+            ext: "",
+        },
+    )
+    .await
 }

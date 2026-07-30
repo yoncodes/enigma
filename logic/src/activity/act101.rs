@@ -182,3 +182,44 @@ fn sp_bonus_state(
         0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn stored_claimable_day_transitions_once() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (7, 'act101', 0, 0);
+             INSERT INTO user_sign_in_info
+                (user_id, addup_sign_in_day, open_function_time, reward_mark)
+             VALUES (7, 1, 0, 0);
+             INSERT INTO user_activity_state
+                (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+             VALUES (7, 101, ?, 1, 1, 0, '', 0);",
+        )
+        .bind(ActivityStateKind::Act101Day.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let mut tx = pool.begin().await.unwrap();
+        let claimed = activity101::claim_activity101_day_in_transaction(&mut tx, 7, 101, 1)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let mut retry = pool.begin().await.unwrap();
+        let claimed_again =
+            activity101::claim_activity101_day_in_transaction(&mut retry, 7, 101, 1)
+                .await
+                .unwrap();
+        retry.commit().await.unwrap();
+
+        assert!(claimed);
+        assert!(!claimed_again);
+    }
+}
