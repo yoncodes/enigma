@@ -242,6 +242,28 @@ fn damage_cap_is_an_exact_static_consumer_with_its_captured_marker() {
 }
 
 #[test]
+fn sentinel_sub_buff_chain_uses_exact_state_consumers() {
+    assert!(has_destination(
+        932,
+        "FixAttrBySubBuffLayer",
+        &[31260151, 201, 300, 0]
+    ));
+    assert!(has_destination(933, "SubBuff", &[31260201]));
+    assert!(has_destination(865, "AddPassiveSkills", &[31260181]));
+
+    assert!(!has_destination(
+        932,
+        "FixAttrBySubBuffLayer",
+        &[31260151, 201, 300]
+    ));
+    assert!(!has_destination(933, "SubBuff", &[-1]));
+    assert!(!has_destination(865, "AddPassiveSkills", &[0]));
+    assert!(find(932, "FixTempAttrByBuffLayer").is_none());
+    assert!(find(933, "AddPassiveSkills").is_none());
+    assert!(find(865, "SubBuff").is_none());
+}
+
+#[test]
 fn burn_damage_fix_is_an_exact_static_consumer_with_its_add_marker() {
     let definition = find(793, "BurnRealHurtFix").unwrap();
 
