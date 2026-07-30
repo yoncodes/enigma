@@ -73,6 +73,12 @@ pub(super) async fn strengthen(
         .equip
         .get(target.equip_id)
         .ok_or(AppError::InvalidRequest)?;
+    let universal_id = tables
+        .equip_universal_refine_id()
+        .ok_or(AppError::InvalidRequest)?;
+    if !is_strengthenable(target_config, universal_id) {
+        return Err(AppError::InvalidRequest);
+    }
     let max_level = tables
         .equip_break_cost(target_config.rare, target.break_lv)
         .map(|row| row.level)
@@ -98,6 +104,9 @@ pub(super) async fn strengthen(
             .equip
             .get(consumed.equip_id)
             .ok_or(AppError::InvalidRequest)?;
+        if !is_strengthen_fodder(consumed_config, universal_id) {
+            return Err(AppError::InvalidRequest);
+        }
         let exp = incremental_exp(tables, &consumed, consumed_config)
             .ok_or(AppError::InvalidRequest)?
             .checked_mul(*count)
@@ -180,6 +189,14 @@ fn valid_strengthen_consumes(consumes: &[(i64, i32)]) -> bool {
             .collect::<HashSet<_>>()
             .len()
             == consumes.len()
+}
+
+fn is_strengthenable(equip: &config::equip::Equip, universal_id: i32) -> bool {
+    equip.is_exp_equip == 0 && equip.is_sp_refine == 0 && equip.id != universal_id
+}
+
+fn is_strengthen_fodder(equip: &config::equip::Equip, universal_id: i32) -> bool {
+    equip.is_sp_refine == 0 && equip.id != universal_id
 }
 
 fn incremental_exp(
