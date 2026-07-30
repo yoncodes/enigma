@@ -678,7 +678,8 @@ buff_act_definitions! {
                 && *amount != 0 && *maximum > 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(801, "FixAttrByTeammateInjuryCountNotReset"), &[EffectType::None as i32]));
     (802, "BeatBackByCounter") => BeatBackByCounter, frame: CausingFrame, actor: OpposingTeam,
         runtime: |context| super::riposte::shielded_ally_rule_ops(context.pool, context.subscriber, context.event?),
-        supports: |args| matches!(args, [skill_id] if *skill_id > 0);
+        supports: |args| matches!(args, [skill_id] if *skill_id > 0),
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(802, "BeatBackByCounter"), &[EffectType::None as i32]));
     (803, "Poison") => Poison, stat_read: OnGrant,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(803, "Poison"), &[EffectType::Poison as i32]));
@@ -735,7 +736,8 @@ buff_act_definitions! {
     (790, "ModifyAttrByBuffLayer") => ModifyAttrByBuffLayer, effect_time_subscription: false,
         supports: super::modify_attr_by_buff_layer::supports, state_consumer: true;
     (791, "ShieldByBuffLayer") => ShieldByBuffLayer, effect_time_subscription: false,
-        supports: super::shield::supports_by_buff_layer, state_consumer: true;
+        supports: super::shield::supports_by_buff_layer, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(791, "ShieldByBuffLayer"), &[EffectType::Shield as i32]));
     (793, "BurnRealHurtFix") => BurnRealHurtFix, effect_time_subscription: false,
         supports: |args| matches!(args, [modifier, floor]
             if (-1000..=1000).contains(modifier) && (0..=1000).contains(floor)),
