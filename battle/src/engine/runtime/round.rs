@@ -154,12 +154,6 @@ impl BattleRuntime {
             &self.managers,
             &pool,
         );
-        let needs_refill = crate::engine::mechanic::card::CardMechanic
-            .refill_hand_len(&self.managers, &pool)
-            < hand_size;
-        if needs_refill {
-            self.round_state.before_cards2 = round_field_cards(self.managers.card.hand());
-        }
         fight_steps.extend(project_result(player, fight_version)?);
         fight_steps.extend(project_result(conduit, fight_version)?);
         let ended_during_attacker_actions = battle_ended(&self.fight, &pool, &self.managers);
@@ -207,10 +201,14 @@ impl BattleRuntime {
         .map_err(|error| format!("{error:?}"))?;
         fight_steps.extend(project_result(attacker_settlement, fight_version)?);
         let ended_after_attacker_settlement = battle_ended(&self.fight, &pool, &self.managers);
+        let current_wave_defeated =
+            crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
+        let runs_enemy_phase = !ended_after_attacker_settlement && !current_wave_defeated;
         let needs_refill = crate::engine::mechanic::card::CardMechanic
             .refill_hand_len(&self.managers, &pool)
             < hand_size;
-        if needs_refill && !ended_after_attacker_settlement {
+        if needs_refill && runs_enemy_phase {
+            self.round_state.before_cards2 = round_field_cards(self.managers.card.hand());
             fight_steps.extend(project_result(schedule::run_round_deal(2), fight_version)?);
         }
         if !ended_after_attacker_settlement {
@@ -233,7 +231,7 @@ impl BattleRuntime {
                 fight_version,
             )?);
         }
-        if needs_refill && !ended_after_attacker_settlement {
+        if needs_refill && runs_enemy_phase {
             let refill = schedule::run_round_refill(
                 &mut self.managers,
                 &pool,
@@ -248,7 +246,7 @@ impl BattleRuntime {
             fight_steps.extend(project_result(refill, fight_version)?);
             self.round_state.team_a_cards2 = round_field_cards(self.managers.card.refilled());
         }
-        if !ended_after_attacker_settlement {
+        if runs_enemy_phase {
             if uses_action_phase_power_clear {
                 fight_steps.extend(project_result(
                     schedule::run_action_phase_start(
@@ -309,8 +307,6 @@ impl BattleRuntime {
             fight_steps.extend(project_result(after_ai_round_end, fight_version)?);
         }
         let mut wave_entering_uids = Vec::new();
-        let current_wave_defeated =
-            crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         if current_wave_defeated {
             sync_attacker_team_state(
                 &mut self.fight,
