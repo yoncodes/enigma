@@ -51,13 +51,17 @@ impl GameDB {
     }
 
     pub fn character_rank_level_limit(&self, hero_id: i32, rank: i32) -> Option<i32> {
-        self.character_rank
-            .iter()
-            .find(|row| row.hero_id == hero_id && row.rank == rank)?
+        self.character_rank(hero_id, rank)?
             .effect
             .split('|')
             .filter_map(|entry| entry.split_once('#'))
             .find_map(|(kind, value)| (kind == "1").then(|| value.parse().ok()).flatten())
+    }
+
+    pub fn character_rank(&self, hero_id: i32, rank: i32) -> Option<&CharacterRank> {
+        self.character_rank
+            .iter()
+            .find(|row| row.hero_id == hero_id && row.rank == rank)
     }
 
     pub fn character_level_cost(&self, rare: i32, level: i32) -> Option<&CharacterCosume> {
