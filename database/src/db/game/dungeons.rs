@@ -1123,6 +1123,12 @@ async fn save_prepared_dungeon_record_in_transaction(
     .execute(&mut **tx)
     .await?;
 
+    sqlx::query("UPDATE user_dungeons SET has_record = 1 WHERE user_id = ? AND episode_id = ?")
+        .bind(user_id)
+        .bind(episode_id)
+        .execute(&mut **tx)
+        .await?;
+
     Ok(result.rows_affected() > 0)
 }
 

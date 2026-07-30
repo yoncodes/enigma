@@ -890,6 +890,13 @@ fn drain_queue_with_deferred(
                 for change in changes {
                     push_change(&mut result.frames, &frame_path, change);
                 }
+                for (owner, change) in outcome.owned_changes() {
+                    push_change(
+                        &mut result.frames,
+                        &output_frame_path(owner, &frame_path),
+                        change,
+                    );
+                }
                 for fanout in fanout {
                     let fanout_path = push_child(
                         &mut result.frames,
@@ -1183,29 +1190,39 @@ fn attach_buff_grant_relation(
     op: RuleOp,
     consequence: crate::engine::skill::condition::registry::ConsequencePolicy,
 ) -> RuleOp {
+    use crate::engine::skill::rule::output::BattleCommand;
+
+    match op {
+        RuleOp::Command(BattleCommand::Buff(command)) => {
+            RuleOp::Command(BattleCommand::Buff(attach_relation(command, consequence)))
+        }
+        RuleOp::Command(BattleCommand::BloodtitheSpend(mut command)) => {
+            command.buff = attach_relation(command.buff, consequence);
+            RuleOp::Command(BattleCommand::BloodtitheSpend(command))
+        }
+        other => other,
+    }
+}
+
+fn attach_relation(
+    command: crate::engine::manager::buff::BuffCommand,
+    consequence: crate::engine::skill::condition::registry::ConsequencePolicy,
+) -> crate::engine::manager::buff::BuffCommand {
     use crate::engine::manager::buff::{BuffCommand, BuffGrantRelation, RelatedBuffGrant};
     use crate::engine::skill::condition::registry::ConsequencePolicy;
 
-    match op {
-        RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
-            BuffCommand::Grant(grant),
-        )) if consequence == ConsequencePolicy::ChildBuffGrant => {
-            RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
-                BuffCommand::GrantRelated(RelatedBuffGrant {
-                    grant,
-                    relation: BuffGrantRelation::Child,
-                }),
-            ))
+    match command {
+        BuffCommand::Grant(grant) if consequence == ConsequencePolicy::ChildBuffGrant => {
+            BuffCommand::GrantRelated(RelatedBuffGrant {
+                grant,
+                relation: BuffGrantRelation::Child,
+            })
         }
-        RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
-            BuffCommand::Grant(grant),
-        )) if consequence == ConsequencePolicy::NormalBuffGrant => {
-            RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
-                BuffCommand::GrantRelated(RelatedBuffGrant {
-                    grant,
-                    relation: BuffGrantRelation::Normal,
-                }),
-            ))
+        BuffCommand::Grant(grant) if consequence == ConsequencePolicy::NormalBuffGrant => {
+            BuffCommand::GrantRelated(RelatedBuffGrant {
+                grant,
+                relation: BuffGrantRelation::Normal,
+            })
         }
         other => other,
     }
