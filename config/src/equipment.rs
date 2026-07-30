@@ -19,4 +19,16 @@ impl GameDB {
             .filter(|row| row.rare == rare)
             .max_by_key(|row| row.break_level)
     }
+
+    pub fn equip_universal_refine_id(&self) -> Option<i32> {
+        self.equip_const.get(14)?.value.parse().ok()
+    }
+
+    pub fn equip_max_refine_level(&self) -> Option<i32> {
+        self.equip_const.get(15)?.value.parse().ok()
+    }
+
+    pub fn equip_refine_rarity_threshold(&self) -> Option<i32> {
+        self.equip_const.get(16)?.value.parse().ok()
+    }
 }

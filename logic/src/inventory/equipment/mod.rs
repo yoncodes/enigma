@@ -333,10 +333,85 @@ pub(super) async fn refine(
         return Err(AppError::InvalidRequest);
     }
 
+    let tables = config::configs::get();
+    let equips = UserEquipmentModel::new(player_id, db.clone());
+    let target = equips
+        .get_equip(target_uid)
+        .await
+        .map_err(|_| AppError::InvalidRequest)?;
+    let target_config = tables
+        .equip
+        .get(target.equip_id)
+        .ok_or(AppError::InvalidRequest)?;
+    let universal_id = tables
+        .equip_universal_refine_id()
+        .ok_or(AppError::InvalidRequest)?;
+    let max_level = tables
+        .equip_max_refine_level()
+        .ok_or(AppError::InvalidRequest)?;
+    let rarity_threshold = tables
+        .equip_refine_rarity_threshold()
+        .ok_or(AppError::InvalidRequest)?;
+    if target_config.is_exp_equip == 1
+        || target.equip_id == universal_id
+        || target_config.is_sp_refine == 1
+        || target_config.rare <= rarity_threshold
+        || target.refine_lv >= max_level
+    {
+        return Err(AppError::InvalidRequest);
+    }
+    let special_ids = target_config
+        .use_sp_refine
+        .split('#')
+        .filter(|id| !id.is_empty())
+        .map(str::parse)
+        .collect::<Result<HashSet<i32>, _>>()
+        .map_err(|_| AppError::InvalidRequest)?;
+
+    let mut consumes = Vec::with_capacity(eat_uids.len());
+    let mut level = target.refine_lv;
+    for uid in &eat_uids {
+        if level >= max_level {
+            return Err(AppError::InvalidRequest);
+        }
+        let consumed = equips
+            .get_equip(*uid)
+            .await
+            .map_err(|_| AppError::InvalidRequest)?;
+        let consumed_config = tables
+            .equip
+            .get(consumed.equip_id)
+            .ok_or(AppError::InvalidRequest)?;
+        if *uid == target_uid
+            || consumed.is_lock
+            || consumed.refine_lv <= 0
+            || !(consumed.equip_id == universal_id
+                || (consumed.equip_id == target.equip_id && consumed_config.is_exp_equip != 1)
+                || special_ids.contains(&consumed.equip_id))
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        level = level
+            .checked_add(consumed.refine_lv)
+            .ok_or(AppError::InvalidRequest)?;
+        consumes.push(equipment::RefineConsume {
+            uid: *uid,
+            equip_id: consumed.equip_id,
+            refine_level: consumed.refine_lv,
+        });
+    }
+    level = level.min(max_level);
+
     let mut tx = db.begin().await?;
-    if equipment::refine_equipment(&mut tx, player_id, target_uid, &eat_uids)
-        .await?
-        .is_none()
+    if !equipment::refine_equipment(
+        &mut tx,
+        player_id,
+        target_uid,
+        target.refine_lv,
+        level,
+        &consumes,
+    )
+    .await?
     {
         return Err(AppError::InvalidRequest);
     }
