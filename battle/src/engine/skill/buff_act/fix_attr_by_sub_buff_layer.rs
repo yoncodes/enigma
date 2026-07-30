@@ -3,6 +3,18 @@ use crate::engine::{
     manager::buff::{ActiveBuffFeature, BuffManager},
 };
 
+pub fn supports(args: &[i32]) -> bool {
+    let [required_buff, attributes @ ..] = args else {
+        return false;
+    };
+    *required_buff > 0
+        && !attributes.is_empty()
+        && attributes.len().is_multiple_of(3)
+        && attributes
+            .chunks_exact(3)
+            .all(|values| AttrId::from_raw(values[0]).is_some())
+}
+
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, buffs: &BuffManager) -> i32 {
     let mut fields = feature.raw.split('#');
     let (Some(_), Some(required_buff)) = (fields.next(), fields.next()) else {
@@ -95,5 +107,14 @@ mod tests {
             ),
             -140
         );
+    }
+
+    #[test]
+    fn accepts_a_buff_id_followed_by_attribute_triples() {
+        assert!(supports(&[31260151, 201, 300, 0]));
+        assert!(supports(&[31130122, 104, -100, -20, 206, -100, -20]));
+        assert!(!supports(&[31260151]));
+        assert!(!supports(&[31260151, 999, 300, 0]));
+        assert!(!supports(&[31260151, 201, 300]));
     }
 }
