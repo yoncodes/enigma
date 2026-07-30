@@ -23,6 +23,7 @@ use crate::engine::{
     },
     runtime::change::BattleChange,
     skill::{
+        behavior::registry::OutputOwner,
         buff_act::raspberry::{CapacityError, CapacityResult},
         rule::output::{BattleCommand, RuleOp},
     },
@@ -54,6 +55,7 @@ pub(crate) enum RuleOutcome {
     ExPoint(ExPointChanges),
     Eureka(EurekaChanges),
     Gauge(GaugeChange),
+    BloodtitheSpend(Box<crate::engine::mechanic::bloodtithe::spend::SpendChanges>),
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaChange),
     Emitter(EmitterChange),
     Entity(Box<EntityChanges>),
@@ -75,6 +77,19 @@ impl RuleOutcome {
         match self {
             Self::Shell(changes) => changes.skills.iter().cloned().map(RuleOp::Skill).collect(),
             Self::ThresholdSkills(skills) => skills.iter().cloned().map(RuleOp::Skill).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    pub(crate) fn owned_changes(&self) -> Vec<(OutputOwner, BattleChange)> {
+        match self {
+            Self::BloodtitheSpend(changes) => vec![
+                (OutputOwner::Parent, BattleChange::Gauge(changes.gauge)),
+                (
+                    OutputOwner::Skill,
+                    BattleChange::Buff(Box::new(changes.buff.clone())),
+                ),
+            ],
             _ => Vec::new(),
         }
     }
@@ -167,6 +182,7 @@ impl RuleOutcome {
             Self::ExPoint(change) => vec![BattleChange::ExPoint(*change)],
             Self::Eureka(change) => vec![BattleChange::Eureka(change.clone())],
             Self::Gauge(change) => vec![BattleChange::Gauge(*change)],
+            Self::BloodtitheSpend(_) => Vec::new(),
             Self::NuoDiKa(change) => vec![BattleChange::NuoDiKa(*change)],
             Self::Emitter(change) => vec![BattleChange::Emitter(*change)],
             Self::Entity(change) => vec![BattleChange::Entity(change.clone())],
@@ -220,6 +236,7 @@ pub(crate) enum RuleExecutionError {
     Eureka(EurekaCommandError),
     Entity(EntityCommandError),
     Gauge(GaugeCommandError),
+    BloodtitheSpend(crate::engine::mechanic::bloodtithe::spend::SpendError),
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaError),
     Card(CardCommandError),
     BuffPrecast(BuffPrecastError),
@@ -273,6 +290,12 @@ impl From<EntityCommandError> for RuleExecutionError {
 impl From<GaugeCommandError> for RuleExecutionError {
     fn from(value: GaugeCommandError) -> Self {
         Self::Gauge(value)
+    }
+}
+
+impl From<crate::engine::mechanic::bloodtithe::spend::SpendError> for RuleExecutionError {
+    fn from(value: crate::engine::mechanic::bloodtithe::spend::SpendError) -> Self {
+        Self::BloodtitheSpend(value)
     }
 }
 
@@ -467,6 +490,22 @@ pub(crate) fn execute_rule_op(
                 events.push(event);
             }
             Ok(RuleOutcome::Gauge(change))
+        }
+        RuleOp::Command(BattleCommand::BloodtitheSpend(command)) => {
+            let Some(changes) =
+                crate::engine::mechanic::bloodtithe::spend::execute(managers, command)?
+            else {
+                return Ok(RuleOutcome::StateChanged);
+            };
+            for event in changes
+                .gauge
+                .events()
+                .into_iter()
+                .chain(changes.buff.events())
+            {
+                events.push(event);
+            }
+            Ok(RuleOutcome::BloodtitheSpend(Box::new(changes)))
         }
         RuleOp::Command(BattleCommand::ThresholdSkill(command)) => {
             let repeats = managers.advance_rule_progress(

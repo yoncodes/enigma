@@ -134,12 +134,17 @@ async fn group_equipment_rejects_invalid_assignments_without_clearing_the_slot()
     let normal = tables
         .equip
         .iter()
-        .find(|equip| equip.is_exp_equip == 0 && equip.id != universal_id)
+        .find(|equip| tables.is_normal_equipment(equip))
         .unwrap();
     let experience = tables
         .equip
         .iter()
         .find(|equip| equip.is_exp_equip == 1)
+        .unwrap();
+    let special_refine = tables
+        .equip
+        .iter()
+        .find(|equip| equip.is_sp_refine != 0 && equip.id != universal_id)
         .unwrap();
 
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -171,7 +176,11 @@ async fn group_equipment_rejects_invalid_assignments_without_clearing_the_slot()
         .await
         .unwrap();
     }
-    for (uid, equip_id) in [(100_i64, normal.id), (101, experience.id)] {
+    for (uid, equip_id) in [
+        (100_i64, normal.id),
+        (101, experience.id),
+        (102, special_refine.id),
+    ] {
         sqlx::query(
             "INSERT INTO equipment
                  (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv,
@@ -224,6 +233,19 @@ async fn group_equipment_rejects_invalid_assignments_without_clearing_the_slot()
                 HeroGroupEquip {
                     index: Some(0),
                     equip_uid: vec![101],
+                },
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        heroes
+            .set_group_equip(
+                &pool,
+                1,
+                HeroGroupEquip {
+                    index: Some(0),
+                    equip_uid: vec![102],
                 },
             )
             .await

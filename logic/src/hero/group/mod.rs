@@ -288,9 +288,6 @@ impl HeroManager {
         equips: &[HeroGroupEquip],
     ) -> Result<(), AppError> {
         let tables = config::configs::get();
-        let universal_id = tables
-            .equip_universal_refine_id()
-            .ok_or(AppError::InvalidRequest)?;
         let mut indexes = HashSet::with_capacity(equips.len());
         let mut assigned_uids = HashSet::with_capacity(equips.len());
 
@@ -315,7 +312,7 @@ impl HeroManager {
                 .equip
                 .get(owned.equip_id)
                 .ok_or(AppError::InvalidRequest)?;
-            if equip_config.is_exp_equip == 1 || owned.equip_id == universal_id {
+            if !tables.is_normal_equipment(equip_config) {
                 return Err(AppError::InvalidRequest);
             }
         }

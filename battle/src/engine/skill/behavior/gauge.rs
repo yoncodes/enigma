@@ -4,11 +4,7 @@ use crate::engine::{
         gauge::{GaugeCommand, GaugeKey, GaugeKind, GaugeOperation},
     },
     skill::{
-        behavior::{
-            BehaviorOpContext,
-            classify::BehaviorKind,
-            registry::{BehaviorHandler, OutputOwner},
-        },
+        behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
         effect::ParsedBehavior,
         rule::{
             RuleReferences,
@@ -28,29 +24,26 @@ impl BehaviorHandler for Handler {
         ) {
             let spend = ConsumeBloodAddBuff::from_behavior(behavior)?;
             let gauge_key = crate::engine::mechanic::bloodtithe::rule::key(context.source_team);
-            if !spend.can_apply(context.managers, gauge_key) {
-                return Some(Vec::new());
-            }
-            return Some(vec![
-                RuleOp::Command(BattleCommand::Gauge(
-                    GaugeCommand::new(
+            return Some(vec![RuleOp::Command(BattleCommand::BloodtitheSpend(
+                crate::engine::mechanic::bloodtithe::spend::SpendCommand {
+                    gauge: GaugeCommand::new(
                         origin,
                         gauge_key,
                         GaugeOperation::ChangeValue { delta: -spend.cost },
                     )
                     .attributed_to(context.target_uid, 0)
                     .caused_by_skill(context.active_skill_id),
-                )),
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
-                    origin,
-                    source_uid: context.source_uid,
-                    target_uid: context.target_uid,
-                    buff_id: spend.buff_id,
-                    amount: spend.grant_amount(),
-                    occurrences: 1,
-                    child_uid_reservations: 0,
-                }))),
-            ]);
+                    buff: BuffCommand::Grant(BuffGrant {
+                        origin,
+                        source_uid: context.source_uid,
+                        target_uid: context.target_uid,
+                        buff_id: spend.buff_id,
+                        amount: spend.grant_amount(),
+                        occurrences: 1,
+                        child_uid_reservations: 0,
+                    }),
+                },
+            ))]);
         }
         let mutation = SharedPoolMutation::from_behavior(behavior, context.source_team)?;
         let mut command = GaugeCommand::new(origin, mutation.key, mutation.operation)
@@ -66,15 +59,6 @@ impl BehaviorHandler for Handler {
             command = command.with_progress_raw_delta(progress_raw_delta);
         }
         Some(route_shared_pool_change(context.managers, command))
-    }
-
-    fn output_owner(behavior: &ParsedBehavior, index: usize) -> Option<OutputOwner> {
-        match (behavior.spec.kind, index) {
-            (BehaviorKind::ConsumeBloodAddBuff | BehaviorKind::ConsumeBloodAddBuff2, 0) => {
-                Some(OutputOwner::Parent)
-            }
-            _ => None,
-        }
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
@@ -128,13 +112,6 @@ impl ConsumeBloodAddBuff {
             self.buff_id,
         )
         .then_some(self.count)
-    }
-
-    fn can_apply(self, managers: &crate::engine::manager::BattleManagers, key: GaugeKey) -> bool {
-        managers
-            .gauge
-            .get(key)
-            .is_some_and(|state| state.current >= self.cost)
     }
 }
 
@@ -209,27 +186,15 @@ fn route_shared_pool_change(
 #[cfg(test)]
 mod tests {
     use crate::engine::{
-        manager::{
-            BattleManagers,
-            buff::BuffCommand,
-            gauge::{GaugeCommand, GaugeOperation},
-        },
+        manager::{BattleManagers, buff::BuffCommand, gauge::GaugeOperation},
         runtime::determinism::RoundDeterminism,
         skill::{
             action::SkillModifiers,
             behavior::{BehaviorOpContext, classify::BehaviorSpec},
             effect::ParsedBehavior,
-            rule::{
-                CommandOrigin, DefinitionKey, RuleDomain,
-                output::{BattleCommand, RuleOp},
-            },
+            rule::output::{BattleCommand, RuleOp},
             target::{TargetContext, TargetPool},
         },
-    };
-
-    const ORIGIN: CommandOrigin = CommandOrigin {
-        domain: RuleDomain::Behavior,
-        key: DefinitionKey::new(60210, "ConsumeBloodAddBuff"),
     };
 
     #[test]
@@ -276,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn consume_blood_add_buff_only_emits_when_bloodtithe_is_available() {
+    fn consume_blood_add_buff_emits_one_atomic_command() {
         crate::test_support::init_config();
 
         let behavior = ParsedBehavior::from_spec(
@@ -284,8 +249,13 @@ mod tests {
             vec![1, 31260151, 6],
             Vec::new(),
         );
+        let definition = super::super::registry::find(&behavior).unwrap();
+        assert_eq!(
+            definition.output_owner,
+            super::super::registry::OutputOwner::Skill
+        );
         let key = crate::engine::mechanic::bloodtithe::rule::key(1);
-        let mut managers = BattleManagers::default();
+        let managers = BattleManagers::default();
         let emit = |managers: &BattleManagers| {
             let pool = TargetPool::default();
             let mut determinism = RoundDeterminism::default();
@@ -311,40 +281,20 @@ mod tests {
             .unwrap()
         };
 
-        assert!(emit(&managers).is_empty());
-
-        managers
-            .gauge
-            .execute_command(GaugeCommand::new(
-                ORIGIN,
-                key,
-                GaugeOperation::Enable { max: Some(10) },
-            ))
-            .unwrap();
-        managers
-            .gauge
-            .execute_command(GaugeCommand::new(
-                ORIGIN,
-                key,
-                GaugeOperation::ChangeValue { delta: 1 },
-            ))
-            .unwrap();
-
         let ops = emit(&managers);
         assert!(matches!(
             ops.as_slice(),
-            [
-                RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
-                    key: actual_key,
-                    operation: GaugeOperation::ChangeValue { delta: -1 },
-                    ..
-                })),
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant))),
-            ] if *actual_key == key
-                && grant.source_uid == 10
-                && grant.target_uid == 20
-                && grant.buff_id == 31260151
-                && grant.amount == Some(6)
+            [RuleOp::Command(BattleCommand::BloodtitheSpend(command))]
+                if command.gauge.key == key
+                && command.gauge.operation == GaugeOperation::ChangeValue { delta: -1 }
+                && matches!(
+                    &command.buff,
+                    BuffCommand::Grant(grant)
+                        if grant.source_uid == 10
+                            && grant.target_uid == 20
+                            && grant.buff_id == 31260151
+                            && grant.amount == Some(6)
+                )
         ));
     }
 

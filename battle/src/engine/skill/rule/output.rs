@@ -64,6 +64,7 @@ pub enum BattleCommand {
     Summon(SummonCommand),
     Upgrade(UpgradeCommand),
     ThresholdSkill(ThresholdSkillCommand),
+    BloodtitheSpend(crate::engine::mechanic::bloodtithe::spend::SpendCommand),
 }
 
 #[derive(Debug, Clone, PartialEq)]
