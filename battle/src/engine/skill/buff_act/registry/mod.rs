@@ -1026,7 +1026,9 @@ buff_act_definitions! {
         scoped_runtime: |context| super::heat_scale_tag::rule_ops(context.managers, context.subscriber, context.event?),
         setup_handler: |context| super::heat_scale_tag::setup_rule_ops(context.managers, context.catalog, &context.subscriber.feature, context.subscriber.stage),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1052, "HeatScaleTag"), &[EffectType::None as i32]));
-    (1053, "AttrByHeatScale") => AttrByHeatScale, trigger_child_uid: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1053, "AttrByHeatScale"), &[EffectType::None as i32]));
+    (1053, "AttrByHeatScale") => AttrByHeatScale, trigger_child_uid: true,
+        supports: super::attr_by_heat_scale::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1053, "AttrByHeatScale"), &[EffectType::None as i32]));
     (1062, "HeatScaleDecrCounter") => HeatScaleDecrCounter, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1062, "HeatScaleDecrCounter"), &[EffectType::None as i32]));
     (1069, "ImmunityTimes") => ImmunityTimes,
         effect_time_subscription: false,

@@ -6,6 +6,17 @@ use sonettobuf::BuffActInfo;
 
 const RAW_GAUGE_PER_VISIBLE_POINT: i32 = 1_000;
 
+pub fn supports(args: &[i32]) -> bool {
+    let valid = |raw_attr: &i32, value: &i32, cap: &i32| {
+        AttrId::from_raw(*raw_attr).is_some() && *value > 0 && *cap > 0
+    };
+    match args {
+        [raw_attr, value, cap] => valid(raw_attr, value, cap),
+        [raw_attr, value, cap, step] => valid(raw_attr, value, cap) && *step > 0,
+        _ => false,
+    }
+}
+
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, buffs: &BuffManager) -> i32 {
     let [act_id, raw_attr_id, ..] = feature.values.as_slice() else {
         return 0;
@@ -114,5 +125,40 @@ mod tests {
         assert_eq!(infos.len(), 1);
         assert_eq!(infos[0].act_id, Some(1053));
         assert_eq!(infos[0].param, vec![32]);
+    }
+
+    #[test]
+    fn accepts_only_the_configured_operand_shapes() {
+        use super::super::registry::{BuffActDestination, destination};
+
+        assert!(supports(&[AttrId::CriticalDmg.id(), 1, 100_000]));
+        assert!(supports(&[AttrId::DmgBonus.id(), 25, 600_000, 100_000]));
+        assert!(!supports(&[999, 1, 100_000]));
+        assert!(!supports(&[AttrId::CriticalDmg.id(), 0, 100_000]));
+        assert!(!supports(&[AttrId::CriticalDmg.id(), 1, 100_000, 0]));
+        assert_eq!(
+            destination(
+                1053,
+                "AttrByHeatScale",
+                &[AttrId::CriticalDmg.id(), 1, 100_000],
+            ),
+            Some(BuffActDestination::StateConsumer)
+        );
+        assert_eq!(
+            destination(
+                1053,
+                "AttrByHeatScale",
+                &[AttrId::CriticalDmg.id(), 0, 100_000],
+            ),
+            None
+        );
+        assert_eq!(
+            destination(
+                1053,
+                "AttrByShield",
+                &[AttrId::CriticalDmg.id(), 1, 100_000],
+            ),
+            None
+        );
     }
 }
