@@ -103,7 +103,7 @@ impl HeroManager {
         db: &SqlitePool,
         hero_id: i32,
         style: i32,
-    ) -> Result<(UnlockTalentStyleReply, HeroInfo), AppError> {
+    ) -> Result<(UnlockTalentStyleReply, HeroInfo, reward::ConsumedRewards), AppError> {
         unlock_style(db, self.player_id, hero_id, style).await
     }
 
@@ -335,11 +335,22 @@ async fn unlock_style(
     player_id: i64,
     hero_id: i32,
     style: i32,
-) -> Result<(UnlockTalentStyleReply, HeroInfo), AppError> {
+) -> Result<(UnlockTalentStyleReply, HeroInfo, reward::ConsumedRewards), AppError> {
     let hero = UserHeroModel::new(player_id, db.clone());
-    if !hero.has_talent_style(hero_id, style).await? {
-        hero.unlock_talent_style(hero_id, style).await?;
-    }
+    let cost = config::configs::get()
+        .talent_style_cost(hero_id, style)
+        .ok_or(AppError::InvalidRequest)?;
+    let consumed = if hero.has_talent_style(hero_id, style).await? {
+        reward::ConsumedRewards::default()
+    } else {
+        let mut tx = db.begin().await?;
+        let consumed = reward::consume(&mut tx, player_id, &reward::parse(&cost.consume)).await?;
+        if !hero.unlock_talent_style(&mut tx, hero_id, style).await? {
+            return Err(AppError::InvalidRequest);
+        }
+        tx.commit().await?;
+        consumed
+    };
     let updated = super::snapshot(db, hero.get(hero_id).await?).await?;
 
     Ok((
@@ -348,6 +359,7 @@ async fn unlock_style(
             style: Some(style),
         },
         updated,
+        consumed,
     ))
 }
 
