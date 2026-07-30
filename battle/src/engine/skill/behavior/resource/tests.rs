@@ -3,6 +3,40 @@ use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute, PowerInfo};
 use super::*;
 
 #[test]
+fn barcarola_resources_require_one_nonzero_configured_delta() {
+    assert!(supports_recover_power(&ParsedBehavior::new(
+        60144,
+        "RecoverPower",
+        vec![3],
+    )));
+    assert!(!supports_recover_power(&ParsedBehavior::new(
+        60144,
+        "RecoverPower",
+        vec![0],
+    )));
+    assert!(!supports_recover_power(&ParsedBehavior::new(
+        60144,
+        "RecoverPower",
+        vec![1, 3],
+    )));
+    assert!(supports_team_energy(&ParsedBehavior::new(
+        60153,
+        "AddTeamEnergy",
+        vec![3],
+    )));
+    assert!(!supports_team_energy(&ParsedBehavior::new(
+        60153,
+        "AddTeamEnergy",
+        vec![0],
+    )));
+    assert!(!supports_team_energy(&ParsedBehavior::new(
+        60153,
+        "AddTeamEnergy",
+        vec![-1],
+    )));
+}
+
+#[test]
 fn add_ex_point_aggregates_fire_count_into_one_command() {
     let fight = Fight {
         attacker: Some(FightTeam {

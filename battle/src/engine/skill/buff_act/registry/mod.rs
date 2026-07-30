@@ -837,7 +837,9 @@ buff_act_definitions! {
         transaction: super::emitter_tag::transaction_rule_ops,
         setup_handler: |context| super::emitter_tag::setup_rule_ops(context.managers, &context.subscriber.feature, context.subscriber.stage),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(875, "EmitterTag"), &[EffectType::Emittertag as i32]));
-    (876, "EmitterCareerChange") => EmitterCareerChange, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(876, "EmitterCareerChange"), &[EffectType::Emittercareerchange as i32]));
+    (876, "EmitterCareerChange") => EmitterCareerChange,
+        supports: |args| matches!(args, [career] if *career > 0), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(876, "EmitterCareerChange"), &[EffectType::Emittercareerchange as i32]));
     (878, "EmitterNumChange") => EmitterNumChange, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(878, "EmitterNumChange"), &[EffectType::Emitternumchange as i32]));
     (879, "EmitterCardAllocateChange") => EmitterCardAllocateChange,
         supports: super::emitter_card_allocate_change::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(879, "EmitterCardAllocateChange"), &[EffectType::None as i32]));
