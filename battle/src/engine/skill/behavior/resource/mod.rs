@@ -297,7 +297,7 @@ pub(super) fn supports_conduit_power(behavior: &ParsedBehavior) -> bool {
     conduit_power_args(&behavior.args).is_some()
 }
 
-pub(super) fn supports_conduit_ex_point(behavior: &ParsedBehavior) -> bool {
+pub(super) fn supports_ex_point_gain(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [delta] if *delta > 0)
 }
 
