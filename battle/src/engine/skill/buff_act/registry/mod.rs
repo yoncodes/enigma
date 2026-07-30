@@ -777,7 +777,7 @@ buff_act_definitions! {
     (406, "Forbid") => Forbid, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(406, "Forbid"), &[]));
     (407, "Seal") => Seal, effect_time_subscription: false,
-        supports: |args| args.is_empty(), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(407, "Seal"), &[]));
+        supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(407, "Seal"), &[]));
     (10005, "Provoke") => Provoke, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10005, "Provoke"), &[EffectType::None as i32]));
     (10004, "BeAttackedAssassinate") => BeAttackedAssassinate,
         event: EventKind::BeAttacked, frame: CausingFrame,
