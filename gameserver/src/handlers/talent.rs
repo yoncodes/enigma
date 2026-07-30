@@ -179,12 +179,20 @@ pub async fn on_unlock_talent_style(
     let msg = UnlockTalentStyleRequest::decode(&req.data[..])?;
     let hero_id = msg.hero_id.ok_or(AppError::InvalidRequest)?;
     let style = msg.style.ok_or(AppError::InvalidRequest)?;
-    let (reply, hero_info) = ctx
+    let (reply, hero_info, consumed) = ctx
         .player()?
         .hero
         .unlock_talent_style(ctx.state.db, hero_id, style)
         .await?;
 
+    push::send_cost_pushes(
+        ctx,
+        player_id,
+        consumed.item_ids,
+        consumed.currency_ids,
+        consumed.material_changes,
+    )
+    .await?;
     push::send_hero_updates(ctx, player_id, vec![hero_info]).await?;
     ctx.send_reply(CmdId::UnlockTalentStyleCmd, reply, 0, req.up_tag)
         .await

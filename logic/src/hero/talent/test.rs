@@ -97,3 +97,75 @@ async fn talent_up_requires_rank_and_consumes_configured_costs() {
         assert_eq!(quantity, 0);
     }
 }
+
+#[tokio::test]
+async fn talent_style_unlock_consumes_configured_costs_once() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (26, 'talent-style', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let hero = UserHeroModel::new(26, pool.clone());
+    hero.create_hero(3003).await.unwrap();
+    let style = config::configs::get().talent_style_cost(3003, 1).unwrap();
+    let costs = crate::reward::parse(&style.consume);
+
+    assert!(
+        HeroManager::new(26)
+            .unlock_talent_style(&pool, 3003, 1)
+            .await
+            .is_err()
+    );
+    assert!(!hero.has_talent_style(3003, 1).await.unwrap());
+
+    crate::reward::RewardManager::new(26)
+        .apply(&pool, costs.clone())
+        .await
+        .unwrap();
+    let (_, updated, consumed) = HeroManager::new(26)
+        .unlock_talent_style(&pool, 3003, 1)
+        .await
+        .unwrap();
+
+    assert!(hero.has_talent_style(3003, 1).await.unwrap());
+    assert_eq!(updated.talent_style_unlock, Some(1 << 1),);
+    assert_eq!(
+        consumed.currency_ids,
+        costs
+            .currencies
+            .iter()
+            .map(|(id, amount)| (*id, -*amount))
+            .collect::<Vec<_>>()
+    );
+    for (item_id, _) in &costs.items {
+        let quantity: i32 =
+            sqlx::query_scalar("SELECT quantity FROM items WHERE user_id = 26 AND item_id = ?")
+                .bind(item_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(quantity, 0);
+    }
+    for (currency_id, _) in &costs.currencies {
+        let quantity: i32 = sqlx::query_scalar(
+            "SELECT quantity FROM currencies WHERE user_id = 26 AND currency_id = ?",
+        )
+        .bind(currency_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(quantity, 0);
+    }
+    let (_, _, repeated) = HeroManager::new(26)
+        .unlock_talent_style(&pool, 3003, 1)
+        .await
+        .unwrap();
+    assert!(repeated.item_ids.is_empty());
+    assert!(repeated.currency_ids.is_empty());
+}
