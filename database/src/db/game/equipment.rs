@@ -272,15 +272,10 @@ pub async fn add_equipment_in_transaction(
         .get(equip_id)
         .ok_or_else(|| anyhow::anyhow!("Equipment {} not found", equip_id))?;
 
-    let (level, break_lv, refine_lv, mut is_lock) = match equip.rare {
-        5 => (1, 0, 1, true),
-        4 => (1, 0, 1, true),
-        _ => (1, 0, 1, false),
-    };
-
-    if matches!(equip.name_en.as_str(), "Enlighten" | "Gluttony" | "Greed") {
-        is_lock = false;
-    }
+    let level = 1;
+    let break_lv = 0;
+    let refine_lv = 1;
+    let is_lock = equip.rare >= 4 && equip.is_exp_equip == 0 && equip.is_sp_refine == 0;
 
     let is_stackable = equip.is_exp_equip == 1;
 
