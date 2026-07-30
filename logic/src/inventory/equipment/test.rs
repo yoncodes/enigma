@@ -1,6 +1,6 @@
 use super::{
-    decompose_config, decompose_count, incremental_exp, is_strengthen_fodder, is_strengthenable,
-    refine, strengthened_level, valid_strengthen_consumes,
+    decompose_config, decompose_count, incremental_exp, is_strengthen_fodder, refine,
+    strengthened_level, valid_strengthen_consumes,
 };
 use database::models::game::equipment::Equipment;
 use sonettobuf::EatEquip;
@@ -45,10 +45,10 @@ fn strengthen_uses_the_configured_equipment_categories() {
         .unwrap();
     let universal = tables.equip.get(universal_id).unwrap();
 
-    assert!(is_strengthenable(normal, universal_id));
-    assert!(!is_strengthenable(experience, universal_id));
-    assert!(!is_strengthenable(special, universal_id));
-    assert!(!is_strengthenable(universal, universal_id));
+    assert!(tables.is_normal_equipment(normal));
+    assert!(!tables.is_normal_equipment(experience));
+    assert!(!tables.is_normal_equipment(special));
+    assert!(!tables.is_normal_equipment(universal));
     assert!(is_strengthen_fodder(normal, universal_id));
     assert!(is_strengthen_fodder(experience, universal_id));
     assert!(!is_strengthen_fodder(special, universal_id));
@@ -330,12 +330,11 @@ async fn strengthen_commits_cost_and_consumed_equipment_together() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
     let tables = config::configs::get();
-    let universal_id = tables.equip_universal_refine_id().unwrap();
     let target_config = tables
         .equip
         .iter()
         .find(|equip| {
-            is_strengthenable(equip, universal_id)
+            tables.is_normal_equipment(equip)
                 && tables
                     .equip_break_cost(equip.rare, 0)
                     .is_some_and(|cost| cost.level > 1)
