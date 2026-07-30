@@ -329,6 +329,10 @@ pub(crate) fn card_skill_is_blocked(
             .buff
             .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Disarm)
             && buff_act::disarm::blocks(effect_tag, is_big_skill))
+        || (managers
+            .buff
+            .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Seal)
+            && is_big_skill)
         || managers
             .buff
             .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::CastChannel)
