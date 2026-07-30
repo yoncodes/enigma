@@ -106,6 +106,54 @@ fn bloodlust_requires_one_positive_damage_rate() {
 }
 
 #[test]
+fn resource_driven_behaviors_validate_their_configured_operands() {
+    let supports = |opcode, type_name, args, raw_args| {
+        let behavior =
+            ParsedBehavior::from_spec(BehaviorSpec::new(opcode, type_name), args, raw_args);
+        find(&behavior).unwrap().supports.unwrap()(&behavior)
+    };
+
+    assert!(supports(
+        60142,
+        "ConsumePowerAddBuff",
+        vec![2],
+        vec!["2".into(), "31170011".into()]
+    ));
+    assert!(!supports(
+        60142,
+        "ConsumePowerAddBuff",
+        vec![2],
+        vec!["2".into(), "".into()]
+    ));
+    assert!(supports(60152, "AddEmitterEnergy", vec![6], Vec::new()));
+    assert!(!supports(60152, "AddEmitterEnergy", vec![-1], Vec::new()));
+    assert!(supports(
+        60187,
+        "AddPowerByCritCount",
+        vec![2, 1],
+        Vec::new()
+    ));
+    assert!(supports(
+        60188,
+        "ConsumePowerUseSkill",
+        vec![2, 311701210],
+        Vec::new()
+    ));
+    assert!(supports(
+        60189,
+        "AddEnergyToCard",
+        vec![1, -1, 1],
+        Vec::new()
+    ));
+    assert!(!supports(
+        60189,
+        "AddEnergyToCard",
+        vec![1, 1, 1],
+        Vec::new()
+    ));
+}
+
+#[test]
 fn add_team_energy_is_parent_owned_only_during_setup() {
     let definition = find_key(60153, "AddTeamEnergy").unwrap();
 

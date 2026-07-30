@@ -9,6 +9,10 @@ use super::{is_kind, registry::BuffActKind};
 const BASE_ATTACKS: i32 = 1;
 const DEFAULT_SPLIT_DAMAGE_REDUCTION: i32 = 700;
 
+pub fn supports(args: &[i32]) -> bool {
+    matches!(args, [count] if *count > 0)
+}
+
 pub fn attack_count(buffs: &BuffManager, hp: &HpManager) -> i32 {
     attack_count_for(buffs, hp, emitter::UID)
 }
@@ -113,6 +117,18 @@ mod tests {
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
     use super::*;
+
+    #[test]
+    fn exact_emitter_count_route_requires_one_positive_count() {
+        use super::super::registry::{BuffActDestination, destination};
+
+        assert_eq!(
+            destination(878, "EmitterNumChange", &[1]),
+            Some(BuffActDestination::StateConsumer)
+        );
+        assert_eq!(destination(878, "EmitterNumChange", &[0]), None);
+        assert_eq!(destination(878, "AttrByShield", &[1]), None);
+    }
 
     fn split_feature() -> ActiveBuffFeature {
         ActiveBuffFeature {

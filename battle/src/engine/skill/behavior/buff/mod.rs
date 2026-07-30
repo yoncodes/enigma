@@ -56,6 +56,16 @@ use layer::*;
 use poison::*;
 use replace::*;
 
+pub(super) fn supports_consume_power_add_buff(behavior: &ParsedBehavior) -> bool {
+    let exact_shape =
+        behavior.raw_args.is_empty() && behavior.args.len() == 2 || behavior.raw_args.len() == 2;
+    exact_shape
+        && behavior.arg(0).is_some_and(|cost| cost > 0)
+        && behavior
+            .arg_list(1)
+            .is_some_and(|buffs| buffs.iter().all(|buff_id| *buff_id > 0))
+}
+
 pub(super) fn supports_add_buff_round(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [buff_id, delta] if *buff_id > 0 && *delta != 0)
 }

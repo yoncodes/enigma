@@ -840,7 +840,9 @@ buff_act_definitions! {
     (876, "EmitterCareerChange") => EmitterCareerChange,
         supports: |args| matches!(args, [career] if *career > 0), state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(876, "EmitterCareerChange"), &[EffectType::Emittercareerchange as i32]));
-    (878, "EmitterNumChange") => EmitterNumChange, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(878, "EmitterNumChange"), &[EffectType::Emitternumchange as i32]));
+    (878, "EmitterNumChange") => EmitterNumChange,
+        supports: super::emitter_num_change::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(878, "EmitterNumChange"), &[EffectType::Emitternumchange as i32]));
     (879, "EmitterCardAllocateChange") => EmitterCardAllocateChange,
         supports: super::emitter_card_allocate_change::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(879, "EmitterCardAllocateChange"), &[EffectType::None as i32]));
     (880, "EmitterDamageUp") => EmitterDamageUp, effect_time_subscription: false, state_consumer: true;
@@ -913,7 +915,9 @@ buff_act_definitions! {
         scoped_runtime: |context| super::blood_pool::tag::rule_ops(context.managers, context.subscriber, context.event?),
         setup_handler: |context| super::blood_pool::tag::setup_rule_ops(context.managers, context.catalog, &context.subscriber.feature, context.subscriber.stage),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(953, "BloodPoolTag"), &[EffectType::None as i32]));
-    (955, "AttrByShield") => AttrByShield, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(955, "AttrByShield"), &[EffectType::Attr as i32]));
+    (955, "AttrByShield") => AttrByShield,
+        supports: super::attr_by_shield::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(955, "AttrByShield"), &[EffectType::Attr as i32]));
     (1005, "AttrOnlyCalDamageReplaceAttrADCreator") => AttrOnlyCalDamageReplaceAttrAdCreator,
         attack_replacement: super::attr_only_cal_damage_replace_attr_ad_creator::additional_damage_attack_replacement, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1005, "AttrOnlyCalDamageReplaceAttrADCreator"), &[EffectType::None as i32]));
     (1007, "AttrOnlyCalDamageReplaceAttr") => AttrOnlyCalDamageReplaceAttr,

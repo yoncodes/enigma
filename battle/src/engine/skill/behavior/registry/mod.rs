@@ -479,9 +479,9 @@ behavior_definitions! {
     [50037] "ChangePower" => super::resource::Handler, ChangePower, Immediate, destination;
     [60144] "RecoverPower" => super::resource::Handler, RecoverPower, Immediate, destination, super::resource::supports_recover_power;
     [60125] "RecoverPowerAndDelCardsUseSkill" => super::resource::Handler, RecoverPowerAndDelCardsUseSkill, Immediate, destination;
-    [60187] "AddPowerByCritCount" => super::resource::Handler, AddPowerByCritCount, Immediate, destination;
+    [60187] "AddPowerByCritCount" => super::resource::Handler, AddPowerByCritCount, Immediate, destination, super::resource::supports_power_by_critical_count;
     [60115] "TotalSkillRankToPower" => super::resource::Handler, TotalSkillRankToPower, Immediate, destination, super::resource::supports_total_skill_rank_power;
-    [60152] "AddEmitterEnergy" => super::resource::Handler, AddEmitterEnergy, Immediate, destination;
+    [60152] "AddEmitterEnergy" => super::resource::Handler, AddEmitterEnergy, Immediate, destination, super::resource::supports_emitter_energy;
     [60153] "AddTeamEnergy" => super::resource::Handler, AddTeamEnergy, Immediate, setup_parent_destination, super::resource::supports_team_energy;
     [60291] "AddDevicePower" => super::resource::Handler, AddConduitPower, Immediate, destination, super::resource::supports_conduit_power;
     [60292] "AddDeviceExPoint" => super::resource::Handler, AddConduitExPoint, Immediate, setup_parent_destination, super::resource::supports_conduit_ex_point;
@@ -489,7 +489,7 @@ behavior_definitions! {
     [100034] "StopDeviceSkill" => super::resource::Handler, StopConduitSkill, Immediate, destination, arguments::none;
     [60231] "RaspberryAddCount" => super::resource::Handler, RaspberryAddCount, Immediate, destination, super::resource::supports_raspberry_add_count;
     [60233] "RaspberryBigSkill" => super::resource::Handler, RaspberryBigSkill, Immediate, destination, super::resource::supports_raspberry_big_skill;
-    [60189] "AddEnergyToCard" => super::card::Handler, AddEnergyToCard, Immediate, destination;
+    [60189] "AddEnergyToCard" => super::card::Handler, AddEnergyToCard, Immediate, destination, super::card::supports_basic_card_energy;
     [60041] "Enchant" => super::card::Handler, EnchantHand, Immediate, once_destination, super::card::supports_enchant_hand;
     [50023] "ChangeToTempCards" => super::card::Handler, ChangeHandToTemporary, Immediate, once_destination, super::card::supports_mark_hand_temporary;
     [60075] "AroundChangeRank" => super::card::Handler, AroundChangeRank, Immediate, queue_preparation, super::card::supports_around_change_rank;
@@ -500,7 +500,7 @@ behavior_definitions! {
     [60070] "AddUseSkillCard" => super::card::Handler, AddQueuedSkillCard, Immediate, destination, super::card::supports_queued_skill_card;
     [100018] "ConsumeBuffCreateTempCardOrder" => super::precast::Handler, ConsumeBuffCreatePrecast, Immediate, destination, super::precast::supports_arguments;
     [50036] "ConsumePowerDirectUseSkill" => super::use_skill::Handler, ConsumePowerDirectUseSkill, Immediate, destination, super::use_skill::supports_consume_power_direct_skill;
-    [60188] "ConsumePowerUseSkill" => super::use_skill::Handler, ConsumePowerUseSkill, Immediate, destination;
+    [60188] "ConsumePowerUseSkill" => super::use_skill::Handler, ConsumePowerUseSkill, Immediate, destination, super::use_skill::supports_consume_power_skill;
     [60121] "ConsumeBuffUseSkill" => super::use_skill::Handler, ConsumeBuffUseSkill, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill;
     [60311] "ConsumeBuffUseSkill3" => super::use_skill::Handler, ConsumeBuffUseSkill3, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill3;
     [100007] "EzioReuse" => super::use_skill::Handler, ConsumeTargetBuffUseSkill, Immediate, destination, super::use_skill::supports_consume_target_buff_use_skill;
@@ -518,7 +518,7 @@ behavior_definitions! {
     [60242] "CrystalReuse" => super::use_skill::Handler, CrystalReuse, Immediate, destination;
     [60222] "ConsumeCardAddBuff" => super::buff::Handler, ConsumeCardAddBuff, Immediate, destination;
     [60112] "AddTargetBuffByPoison" => super::buff::Handler, AddTargetBuffByPoison, AfterDamage, destination;
-    [60142] "ConsumePowerAddBuff" => super::buff::Handler, ConsumePowerAddBuff, Immediate, destination;
+    [60142] "ConsumePowerAddBuff" => super::buff::Handler, ConsumePowerAddBuff, Immediate, destination, super::buff::supports_consume_power_add_buff;
     [60150] "ConsumePowerAddMultiBuff1" => super::buff::Handler, ConsumePowerAddMultiBuff1, Immediate, destination, super::buff::supports_consume_power_add_multi_buff;
     [1] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination, arguments::at_least_one;
     [2] "AddBuffPowerUse" => super::buff::Handler, AddBuffPowerUse, AfterDamage, aggregated_destination, arguments::at_least_one;

@@ -34,6 +34,10 @@ pub fn rule_op(behavior: &ParsedBehavior) -> Option<RuleOp> {
     )))
 }
 
+pub(super) fn supports_basic_card_energy(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [1, -1, count] if *count > 0)
+}
+
 pub(super) struct Handler;
 
 impl BehaviorHandler for Handler {
