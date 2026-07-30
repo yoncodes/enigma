@@ -308,6 +308,14 @@ pub(super) fn supports_conduit_skill_group(behavior: &ParsedBehavior) -> bool {
 pub(super) fn supports_power_change(behavior: &ParsedBehavior) -> bool {
     power_args(&behavior.args).is_some_and(|(power_id, _)| power_id > 0)
 }
+pub(super) fn supports_recover_power(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [amount] if *amount != 0)
+}
+
+pub(super) fn supports_team_energy(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [delta] if *delta > 0)
+}
+
 
 pub(super) fn supports_total_skill_rank_power(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [rate, power_id] if *rate > 0 && *power_id > 0)

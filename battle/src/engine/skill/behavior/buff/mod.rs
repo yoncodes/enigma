@@ -56,6 +56,24 @@ use layer::*;
 use poison::*;
 use replace::*;
 
+pub(super) fn supports_add_buff_round(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [buff_id, delta] if *buff_id > 0 && *delta != 0)
+}
+
+pub(super) fn supports_consume_power_add_multi_buff(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [cost, required_allies, required_buff, base_layer, bonus_layer, base_buff, bonus_buff]
+            if *cost > 0
+                && *required_allies > 0
+                && *required_buff > 0
+                && *base_layer > 0
+                && *bonus_layer > 0
+                && *base_buff > 0
+                && *bonus_buff > 0
+    )
+}
+
 pub(super) struct Handler;
 
 impl BehaviorHandler for Handler {
