@@ -1,7 +1,7 @@
 use super::HeroManager;
 use crate::{error::AppError, types::hero_group_snapshot_type::HeroGroupSnapshotType};
 use database::{
-    db::game::{hero_group_snapshots, hero_groups},
+    db::game::{equipment, hero_group_snapshots, hero_groups},
     models::game::hero_groups as model,
 };
 use sonettobuf::{
@@ -142,7 +142,7 @@ impl HeroManager {
             .copied()
             .filter(|uid| *uid != 0)
             .collect::<HashSet<_>>();
-        let valid_equips = |equips: &[HeroGroupEquip]| {
+        let valid_activity_equips = |equips: &[HeroGroupEquip]| {
             equips.iter().all(|equip| equip.index.unwrap_or(-1) >= 0)
                 && equips
                     .iter()
@@ -153,11 +153,12 @@ impl HeroManager {
         };
         if group.group_id <= 0
             || hero_uids.len() != group.hero_list.iter().filter(|uid| **uid != 0).count()
-            || !valid_equips(&group.equips)
-            || !valid_equips(&group.activity104_equips)
+            || !valid_activity_equips(&group.activity104_equips)
         {
             return Err(AppError::InvalidRequest);
         }
+        self.validate_group_equips(db, &group.hero_list, &group.equips)
+            .await?;
 
         let saved = model::HeroGroupInfo {
             group_id: group.group_id,
@@ -252,6 +253,21 @@ impl HeroManager {
     ) -> Result<SetHeroGroupEquipReply, AppError> {
         let index = equip.index.ok_or(AppError::InvalidRequest)?;
         let equip_uids = equip.equip_uid;
+        let group = hero_groups::get_hero_group(db, self.player_id, group_id)
+            .await?
+            .ok_or(AppError::InvalidRequest)?;
+        let mut assignments = group
+            .equips
+            .into_iter()
+            .filter(|assigned| assigned.index != index)
+            .map(Into::into)
+            .collect::<Vec<HeroGroupEquip>>();
+        assignments.push(HeroGroupEquip {
+            index: Some(index),
+            equip_uid: equip_uids.clone(),
+        });
+        self.validate_group_equips(db, &group.hero_list, &assignments)
+            .await?;
 
         hero_groups::set_hero_group_equip(db, self.player_id, group_id, index, equip_uids.clone())
             .await?;
@@ -263,6 +279,47 @@ impl HeroManager {
                 equip_uid: equip_uids,
             }),
         })
+    }
+
+    async fn validate_group_equips(
+        &self,
+        db: &SqlitePool,
+        hero_list: &[i64],
+        equips: &[HeroGroupEquip],
+    ) -> Result<(), AppError> {
+        let tables = config::configs::get();
+        let universal_id = tables
+            .equip_universal_refine_id()
+            .ok_or(AppError::InvalidRequest)?;
+        let mut indexes = HashSet::with_capacity(equips.len());
+        let mut assigned_uids = HashSet::with_capacity(equips.len());
+
+        for equip in equips {
+            let index = equip.index.ok_or(AppError::InvalidRequest)?;
+            let slot = usize::try_from(index).map_err(|_| AppError::InvalidRequest)?;
+            if !indexes.insert(index) || equip.equip_uid.len() != 1 || slot >= hero_list.len() {
+                return Err(AppError::InvalidRequest);
+            }
+
+            let equip_uid = equip.equip_uid[0];
+            if equip_uid == 0 {
+                continue;
+            }
+            if hero_list[slot] == 0 || !assigned_uids.insert(equip_uid) {
+                return Err(AppError::InvalidRequest);
+            }
+            let owned = equipment::get_equipment_by_uid(db, self.player_id, equip_uid)
+                .await
+                .map_err(|_| AppError::InvalidRequest)?;
+            let equip_config = tables
+                .equip
+                .get(owned.equip_id)
+                .ok_or(AppError::InvalidRequest)?;
+            if equip_config.is_exp_equip == 1 || owned.equip_id == universal_id {
+                return Err(AppError::InvalidRequest);
+            }
+        }
+        Ok(())
     }
 }
 

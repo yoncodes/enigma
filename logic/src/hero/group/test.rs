@@ -4,7 +4,7 @@ use super::{
 };
 use crate::types::hero_group_snapshot_type::HeroGroupSnapshotType;
 use database::models::game::hero_group_snapshots::HeroGroupSnapshotInfo;
-use sonettobuf::{FightEquip, FightGroup};
+use sonettobuf::{FightEquip, FightGroup, HeroGroupEquip};
 use sqlx::SqlitePool;
 
 const COMMON_SNAPSHOT_ID: i32 = HeroGroupSnapshotType::Common.id();
@@ -123,6 +123,162 @@ async fn common_group_rename_keeps_snapshot_in_sync() {
         .await
         .unwrap();
     assert_eq!((common.as_str(), snapshot.as_str()), ("Alpha", "Alpha"));
+}
+
+#[tokio::test]
+async fn group_equipment_rejects_invalid_assignments_without_clearing_the_slot() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let tables = config::configs::get();
+    let universal_id = tables.equip_universal_refine_id().unwrap();
+    let normal = tables
+        .equip
+        .iter()
+        .find(|equip| equip.is_exp_equip == 0 && equip.id != universal_id)
+        .unwrap();
+    let experience = tables
+        .equip
+        .iter()
+        .find(|equip| equip.is_exp_equip == 1)
+        .unwrap();
+
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at) VALUES (19, 'equip', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let group_row = sqlx::query(
+        "INSERT INTO hero_groups_common
+             (user_id, group_id, name, cloth_id, assist_boss_id, created_at, updated_at)
+         VALUES (19, 1, '', 1, 0, 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap()
+    .last_insert_rowid();
+    for (position, hero_uid) in [(0, 10_i64), (1, 11), (2, 0)] {
+        sqlx::query(
+            "INSERT INTO hero_group_members (hero_group_id, hero_uid, position)
+             VALUES (?, ?, ?)",
+        )
+        .bind(group_row)
+        .bind(hero_uid)
+        .bind(position)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    for (uid, equip_id) in [(100_i64, normal.id), (101, experience.id)] {
+        sqlx::query(
+            "INSERT INTO equipment
+                 (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv,
+                  created_at, updated_at)
+             VALUES (?, 19, ?, 1, 0, 0, 1, 0, 1, 0, 0)",
+        )
+        .bind(uid)
+        .bind(equip_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let heroes = HeroManager::new(19);
+    assert!(
+        heroes
+            .update_group(
+                &pool,
+                sonettobuf::HeroGroupInfo {
+                    group_id: 1,
+                    hero_list: vec![10, 11, 0],
+                    name: Some(String::new()),
+                    cloth_id: Some(0),
+                    equips: vec![HeroGroupEquip {
+                        index: Some(0),
+                        equip_uid: vec![101],
+                    }],
+                    ..Default::default()
+                },
+            )
+            .await
+            .is_err()
+    );
+    heroes
+        .set_group_equip(
+            &pool,
+            1,
+            HeroGroupEquip {
+                index: Some(0),
+                equip_uid: vec![100],
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        heroes
+            .set_group_equip(
+                &pool,
+                1,
+                HeroGroupEquip {
+                    index: Some(0),
+                    equip_uid: vec![101],
+                },
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        heroes
+            .set_group_equip(
+                &pool,
+                1,
+                HeroGroupEquip {
+                    index: Some(1),
+                    equip_uid: vec![100],
+                },
+            )
+            .await
+            .is_err()
+    );
+    for equip in [
+        HeroGroupEquip {
+            index: Some(-1),
+            equip_uid: vec![0],
+        },
+        HeroGroupEquip {
+            index: Some(0),
+            equip_uid: Vec::new(),
+        },
+        HeroGroupEquip {
+            index: Some(0),
+            equip_uid: vec![999],
+        },
+    ] {
+        assert!(heroes.set_group_equip(&pool, 1, equip).await.is_err());
+    }
+    heroes
+        .set_group_equip(
+            &pool,
+            1,
+            HeroGroupEquip {
+                index: Some(2),
+                equip_uid: vec![0],
+            },
+        )
+        .await
+        .unwrap();
+
+    let stored: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT index_slot, equip_uid FROM hero_group_equips
+         WHERE hero_group_id = ? ORDER BY index_slot",
+    )
+    .bind(group_row)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, [(0, 100), (2, 0)]);
 }
 
 #[tokio::test]
