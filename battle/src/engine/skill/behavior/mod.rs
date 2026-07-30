@@ -122,7 +122,7 @@ mod op_tests {
         let mut determinism = RoundDeterminism::default();
         let mut modifiers = SkillModifiers::default();
         let mut target = TargetContext::default();
-        let behavior = ParsedBehavior::new(60189, "AddEnergyToCard", vec![1, 2, 3]);
+        let behavior = ParsedBehavior::new(60189, "AddEnergyToCard", vec![1, -1, 3]);
 
         assert!(matches!(
             rule_ops(
@@ -143,7 +143,7 @@ mod op_tests {
             ),
             Some(ops) if matches!(ops.as_slice(), [RuleOp::Command(BattleCommand::Card(
                 CardCommand::ChangeBasicEnergy(CardEnergyChange {
-                    delta: 2,
+                    delta: -1,
                     count: 3,
                     ..
                 })
