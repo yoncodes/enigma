@@ -1,6 +1,6 @@
 use super::{
-    decompose_config, decompose_count, incremental_exp, refine, strengthened_level,
-    valid_strengthen_consumes,
+    decompose_config, decompose_count, incremental_exp, is_strengthen_fodder, is_strengthenable,
+    refine, strengthened_level, valid_strengthen_consumes,
 };
 use database::models::game::equipment::Equipment;
 use sonettobuf::EatEquip;
@@ -18,6 +18,41 @@ fn strengthen_rejects_empty_duplicate_and_non_positive_fodder() {
     assert!(!valid_strengthen_consumes(&[(1, 1), (1, 1)]));
     assert!(!valid_strengthen_consumes(&[(1, 0)]));
     assert!(valid_strengthen_consumes(&[(1, 1), (2, 2)]));
+}
+
+#[test]
+fn strengthen_uses_the_configured_equipment_categories() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let tables = config::configs::get();
+    let universal_id = tables.equip_universal_refine_id().unwrap();
+    let normal = tables
+        .equip
+        .iter()
+        .find(|equip| {
+            equip.is_exp_equip == 0 && equip.is_sp_refine == 0 && equip.id != universal_id
+        })
+        .unwrap();
+    let experience = tables
+        .equip
+        .iter()
+        .find(|equip| equip.is_exp_equip == 1)
+        .unwrap();
+    let special = tables
+        .equip
+        .iter()
+        .find(|equip| equip.is_sp_refine != 0)
+        .unwrap();
+    let universal = tables.equip.get(universal_id).unwrap();
+
+    assert!(is_strengthenable(normal, universal_id));
+    assert!(!is_strengthenable(experience, universal_id));
+    assert!(!is_strengthenable(special, universal_id));
+    assert!(!is_strengthenable(universal, universal_id));
+    assert!(is_strengthen_fodder(normal, universal_id));
+    assert!(is_strengthen_fodder(experience, universal_id));
+    assert!(!is_strengthen_fodder(special, universal_id));
+    assert!(!is_strengthen_fodder(universal, universal_id));
 }
 
 #[test]
@@ -295,11 +330,12 @@ async fn strengthen_commits_cost_and_consumed_equipment_together() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
     let tables = config::configs::get();
+    let universal_id = tables.equip_universal_refine_id().unwrap();
     let target_config = tables
         .equip
         .iter()
         .find(|equip| {
-            equip.is_exp_equip == 0
+            is_strengthenable(equip, universal_id)
                 && tables
                     .equip_break_cost(equip.rare, 0)
                     .is_some_and(|cost| cost.level > 1)
