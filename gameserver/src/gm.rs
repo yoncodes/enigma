@@ -9,8 +9,8 @@ use sonettobuf::{
     BlockPackageGainPush, ChapterMapElementUpdatePush, ChapterMapUpdatePush, CmdId,
     CurrencyChangePush, DungeonUpdatePush, EquipUpdatePush, HeroSkinGainPush, HeroUpdatePush,
     ItemChangePush, MapElementReply, MaterialChangePush, MaterialData, PlayerCardInfoPush,
-    PlayerCloth, PlayerClothInfo, RewardPointUpdatePush, StoryFinishPush, UpdateGuidePush,
-    UpdateOpenPush, prost::Message,
+    PlayerCloth, PlayerClothInfo, RewardPointUpdatePush, StoryFinishPush, UpdateBgmPush,
+    UpdateGuidePush, UpdateOpenPush, prost::Message,
 };
 use std::collections::{BTreeMap, HashSet};
 use tokio::{
@@ -237,6 +237,7 @@ async fn run_command(
     };
 
     let args = match first.to_ascii_lowercase().as_str() {
+        "bgm" => return unlock_bgms(state, player_id, &parts[1..]).await,
         "dungeon" => return unlock_dungeon(state, player_id, &parts[1..]).await,
         "guide" | "guides" => return complete_guides(state, player_id, &parts[1..]).await,
         "material" | "reward" | "give" | "add" => &parts[1..],
@@ -245,13 +246,46 @@ async fn run_command(
         "players" | "list" | "listplayers" | "list_players" => return Ok(list_players(state)),
         "help" | "?" => {
             return Ok(GmResponse::ok(
-                "commands: help, status, players, guide complete all, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
+                "commands: help, status, players, bgm unlock all, guide complete all, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
             ));
         }
         _ => anyhow::bail!("unknown command '{}'", first),
     };
 
     grant(state, player_id, args).await
+}
+
+async fn unlock_bgms(
+    state: &'static AppState,
+    player_id: i64,
+    args: &[&str],
+) -> Result<GmResponse> {
+    if !matches!(args, [unlock, all] if unlock.eq_ignore_ascii_case("unlock") && all.eq_ignore_ascii_case("all"))
+    {
+        anyhow::bail!("usage: bgm unlock all");
+    }
+
+    let bgm_infos = crate::logic::preferences::PreferenceManager::new(player_id)
+        .unlock_all_bgms(state.db)
+        .await?;
+    if bgm_infos.is_empty() {
+        return Ok(GmResponse::ok("all BGM tracks are already unlocked"));
+    }
+
+    send_push(
+        state,
+        player_id,
+        CmdId::UpdateBgmPushCmd,
+        UpdateBgmPush {
+            bgm_infos: bgm_infos.clone(),
+        },
+    )
+    .await?;
+
+    Ok(GmResponse::ok_data(
+        format!("unlocked {} BGM tracks", bgm_infos.len()),
+        bgm_infos,
+    ))
 }
 
 async fn complete_guides(

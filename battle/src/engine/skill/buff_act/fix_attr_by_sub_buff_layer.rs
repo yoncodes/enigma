@@ -3,6 +3,18 @@ use crate::engine::{
     manager::buff::{ActiveBuffFeature, BuffManager},
 };
 
+pub fn supports(args: &[i32]) -> bool {
+    let [required_buff, attributes @ ..] = args else {
+        return false;
+    };
+    *required_buff > 0
+        && !attributes.is_empty()
+        && attributes.len().is_multiple_of(3)
+        && attributes
+            .chunks_exact(3)
+            .all(|values| AttrId::from_raw(values[0]).is_some())
+}
+
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, buffs: &BuffManager) -> i32 {
     let mut fields = feature.raw.split('#');
     let (Some(_), Some(required_buff)) = (fields.next(), fields.next()) else {
@@ -74,7 +86,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn opcode_932_keeps_its_configured_attack_attribute() {
+    fn keeps_its_configured_attack_attribute() {
         assert_eq!(
             layer_attribute_delta(&[201, 300, 0], 2, AttrId::CriticalRate),
             300
@@ -82,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn opcode_932_applies_each_attribute_from_the_tracked_layer_count() {
+    fn applies_each_attribute_from_the_tracked_layer_count() {
         assert_eq!(
             layer_attribute_delta(&[104, -100, -20, 206, -100, -20], 3, AttrId::MentalDef),
             -140
@@ -95,5 +107,13 @@ mod tests {
             ),
             -140
         );
+    }
+
+    #[test]
+    fn validates_a_tracked_buff_and_attribute_triples() {
+        assert!(supports(&[31260151, 201, 600, 0]));
+        assert!(!supports(&[0, 201, 600, 0]));
+        assert!(!supports(&[31260151, 999, 600, 0]));
+        assert!(!supports(&[31260151, 201, 600]));
     }
 }

@@ -791,7 +791,9 @@ buff_act_definitions! {
         stat_read: OnTrigger,
         supports: super::must_crit_and_fix_temp_attr::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(860, "MustCritAndFixTempAttr"), &[EffectType::None as i32]));
     (863, "CreateAdditionalDamage") => CreateAdditionalDamage, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(863, "CreateAdditionalDamage"), &[EffectType::None as i32]));
-    (865, "AddPassiveSkills") => AddPassiveSkills, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(865, "AddPassiveSkills"), &[EffectType::None as i32]));
+    (865, "AddPassiveSkills") => AddPassiveSkills,
+        supports: |args| matches!(args, [skill_id] if *skill_id > 0), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(865, "AddPassiveSkills"), &[EffectType::None as i32]));
     (869, "ShellProcess") => ShellProcess, effect_time_subscription: false,
         events: [EventKind::ShellDeployed, EventKind::ShellRetrieved], frame: CausingFrame,
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
@@ -870,8 +872,12 @@ buff_act_definitions! {
         runtime: |context| super::add_buff_by_other_ex_skill::rule_ops(context.catalog, context.subscriber, context.event?),
         transaction: super::add_buff_by_other_ex_skill::grant_transaction_rule_ops,
         supports: super::add_buff_by_other_ex_skill::supports;
-    (932, "FixAttrBySubBuffLayer") => FixAttrBySubBuffLayer, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(932, "FixAttrBySubBuffLayer"), &[EffectType::None as i32]));
-    (933, "SubBuff") => SubBuff, effect_time_subscription: false, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(933, "SubBuff"), &[EffectType::None as i32]));
+    (932, "FixAttrBySubBuffLayer") => FixAttrBySubBuffLayer,
+        supports: super::fix_attr_by_sub_buff_layer::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(932, "FixAttrBySubBuffLayer"), &[EffectType::None as i32]));
+    (933, "SubBuff") => SubBuff, effect_time_subscription: false,
+        supports: |args| matches!(args, [buff_id] if *buff_id > 0), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(933, "SubBuff"), &[EffectType::None as i32]));
     (928, "AddToTarget") => AddToAttackTargets,
         event: EventKind::SkillAction, phase: AfterDamage,
         runtime: |context| super::add_to_target::rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
