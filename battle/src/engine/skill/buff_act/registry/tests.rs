@@ -13,6 +13,10 @@ fn registry_requires_exact_id_and_type() {
         find(1137, "EntityExSkillNotCalSize").unwrap().kind,
         BuffActKind::EntityExSkillNotCalSize
     );
+    assert_eq!(
+        destination(1137, "EntityExSkillNotCalSize", &[]),
+        Some(BuffActDestination::StateConsumer)
+    );
     assert!(find(1137, "CardNotCalSize").is_none());
     assert_eq!(
         destination(951, "CardNotCalSize", &[]),

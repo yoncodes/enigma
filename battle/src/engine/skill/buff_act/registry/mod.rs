@@ -900,7 +900,7 @@ buff_act_definitions! {
         runtime: |context| super::card_record::rule_ops(context.managers, context.catalog, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(929, "AddCardRecordByRound"), &[EffectType::Addcardrecordbyround as i32]));
     (951, "CardNotCalSize") => CardNotCalSize, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(951, "CardNotCalSize"), &[EffectType::None as i32]));
-    (1137, "EntityExSkillNotCalSize") => EntityExSkillNotCalSize, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1137, "EntityExSkillNotCalSize"), &[EffectType::None as i32]));
+    (1137, "EntityExSkillNotCalSize") => EntityExSkillNotCalSize, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1137, "EntityExSkillNotCalSize"), &[EffectType::None as i32]));
     (953, "BloodPoolTag") => BloodPoolTag,
         events: [EventKind::HpLost, EventKind::GaugeChanged],
         setup: [BattleStart(0), Unconditional(0), RoundStart(-1)], independent_setup: [BattleStart(0, 1), Unconditional(0, 0), RoundStart(-1, 0)],
