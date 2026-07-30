@@ -883,8 +883,9 @@ fn episode_exp_uses_cost_and_player_level_thresholds() {
     let _ = config::init(data_dir.to_str().unwrap());
     let episode = config::configs::get().episode.get(10101).unwrap();
 
-    assert_eq!(logic::dungeon::episode_player_exp(episode, false, 1), 80);
-    assert_eq!(logic::dungeon::episode_player_exp(episode, false, 2), 160);
+    let rewards = logic::dungeon::completion_rewards(episode, false, 1, 1, 2);
+    assert!(rewards.normal_bonus.contains(&(3, 0, 160)));
+    assert!(rewards.normal_bonus.contains(&(2, 3, 160)));
     assert_eq!(episode_cost(episode, 2).currencies, vec![(4, 16)]);
     assert_eq!(failure_refund(episode, 2).currencies, vec![(4, 16)]);
     assert_eq!(database::db::game::player_infos::level_for_exp(199), 1);
