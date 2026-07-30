@@ -467,7 +467,7 @@ macro_rules! behavior_definitions {
 
 behavior_definitions! {
     [20002] "AddExPoint" => super::resource::Handler, AddExPoint, AfterDamage, aggregated_destination, arguments::at_least_one;
-    [100004] "AddAdrenalineExPoint" => super::resource::Handler, AddAdrenalineExPoint, AfterDamage, destination;
+    [100004] "AddAdrenalineExPoint" => super::resource::Handler, AddAdrenalineExPoint, AfterDamage, destination, super::resource::supports_ex_point_gain;
     [100014] "EzioAddSynchronization" => super::resource::Handler, AddSynchronization, AfterDamage, destination;
     [10010] "AttrFixExPoint" => super::resource::Handler, AttrFixExPoint, Immediate, destination;
     [30001] "DelExPoint" => super::resource::Handler, DelExPoint, AfterDamage, destination, super::resource::supports_ex_point_loss;
@@ -484,7 +484,7 @@ behavior_definitions! {
     [60152] "AddEmitterEnergy" => super::resource::Handler, AddEmitterEnergy, Immediate, destination, super::resource::supports_emitter_energy;
     [60153] "AddTeamEnergy" => super::resource::Handler, AddTeamEnergy, Immediate, setup_parent_destination, super::resource::supports_team_energy;
     [60291] "AddDevicePower" => super::resource::Handler, AddConduitPower, Immediate, destination, super::resource::supports_conduit_power;
-    [60292] "AddDeviceExPoint" => super::resource::Handler, AddConduitExPoint, Immediate, setup_parent_destination, super::resource::supports_conduit_ex_point;
+    [60292] "AddDeviceExPoint" => super::resource::Handler, AddConduitExPoint, Immediate, setup_parent_destination, super::resource::supports_ex_point_gain;
     [60293] "SetDeviceSkillIndex" => super::resource::Handler, SetConduitSkillGroup, Immediate, destination, super::resource::supports_conduit_skill_group;
     [100034] "StopDeviceSkill" => super::resource::Handler, StopConduitSkill, Immediate, destination, arguments::none;
     [60231] "RaspberryAddCount" => super::resource::Handler, RaspberryAddCount, Immediate, destination, super::resource::supports_raspberry_add_count;
@@ -579,7 +579,7 @@ behavior_definitions! {
     [60074] "CatapultBuff" => super::poison::Handler, CatapultBuff, AfterDamage, destination;
     [60110] "PoisonConvertToTargetBuff" => super::poison::Handler, PoisonConvertToTargetBuff, AfterDamage, destination;
     [60111] "ConsumePoisonSettleDeadlyPoison" => super::poison::Handler, ConsumePoisonSettleDeadlyPoison, AfterDamage, destination;
-    [100005] "Assassinate" => super::general::AssassinateHandler, Assassinate, Immediate, destination;
+    [100005] "Assassinate" => super::general::AssassinateHandler, Assassinate, Immediate, destination, arguments::none;
     [60037] "NotifyUpgradeHero" => super::general::Handler, NotifyUpgradeHero, Immediate, destination;
     [60198] "ClientEffect" => super::general::Handler, ClientEffect, Immediate, destination, arguments::at_least_one;
     [60268] "ChangeScene" => super::scene::Handler, ChangeScene, Immediate, destination;

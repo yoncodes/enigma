@@ -151,6 +151,20 @@ fn resource_driven_behaviors_validate_their_configured_operands() {
         vec![1, 1, 1],
         Vec::new()
     ));
+    assert!(supports(
+        100004,
+        "AddAdrenalineExPoint",
+        vec![1],
+        Vec::new()
+    ));
+    assert!(!supports(
+        100004,
+        "AddAdrenalineExPoint",
+        vec![0],
+        Vec::new()
+    ));
+    assert!(supports(100005, "Assassinate", Vec::new(), Vec::new()));
+    assert!(!supports(100005, "Assassinate", vec![1], Vec::new()));
 }
 
 #[test]
