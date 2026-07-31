@@ -187,6 +187,8 @@ pub const FILTER_TABLES: &[&str] = &[
     "activity123_episode",
     "activity123_retail",
     "activity123_stage",
+    "activity128_countboss",
+    "activity128_episode",
     "activity128_task",
     "activity130_task",
     "activity131_task",

@@ -141,6 +141,13 @@ impl BattleRuntime {
         self.managers.entity_snapshot(uid)
     }
 
+    pub fn indicator_total(
+        &self,
+        indicator_id: crate::engine::manager::indicator::IndicatorId,
+    ) -> i32 {
+        self.managers.indicator.total(indicator_id)
+    }
+
     pub fn attack_statistics(&self) -> Vec<FightStatistics> {
         self.fight
             .attacker
@@ -203,6 +210,25 @@ impl BattleRuntime {
         sp_attributes: impl IntoIterator<Item = (i64, HeroSpAttribute)>,
     ) -> Self {
         let mut managers = BattleManagers::seeded(&fight);
+        if let Some(route) = config::configs::get().activity128_battle(
+            fight.episode_id.unwrap_or_default(),
+            fight.battle_id.unwrap_or_default(),
+        ) && let Some(target_uid) = fight.defender.as_ref().and_then(|team| {
+            team.entitys
+                .iter()
+                .chain(&team.sub_entitys)
+                .find(|entity| {
+                    entity
+                        .model_id
+                        .is_some_and(|model_id| route.target_model_ids.contains(&model_id))
+                })
+                .and_then(|entity| entity.uid)
+        }) {
+            managers.indicator.track_damage(
+                crate::engine::manager::indicator::IndicatorId::BossRushScore,
+                target_uid,
+            );
+        }
         for (uid, attributes) in ex_attributes {
             managers.attribute.override_ex(uid, &attributes);
         }
