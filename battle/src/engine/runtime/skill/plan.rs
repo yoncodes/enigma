@@ -117,6 +117,10 @@ impl SkillExecution {
         self.context.action_kill_count += count.max(0);
     }
 
+    pub(in crate::engine::runtime) fn record_guard_breaks(&mut self, count: i32) {
+        self.context.action_guard_break_count += count.max(0);
+    }
+
     pub(in crate::engine::runtime) fn record_damage(&mut self, amount: i32) {
         self.context.action_damage_amount += amount.max(0);
         self.context.action_dealt_damage = self.context.action_damage_amount > 0;
@@ -155,6 +159,7 @@ impl SkillExecution {
         event.damage_amount = self.context.action_damage_amount;
         event.kill_count = self.context.action_kill_count;
         event.crit_count = self.context.action_crit_count;
+        event.guard_break_count = self.context.action_guard_break_count;
         event.attacked_target_uids = self.attacked_targets.clone();
         event.teammate_injury_count = self.injured_allies.len() as i32;
         event.teammate_injury_count_not_reset = self.injured_allies.len() as i32;

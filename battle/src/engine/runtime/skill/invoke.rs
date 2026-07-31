@@ -105,6 +105,10 @@ pub(super) fn apply_event_context(context: &mut TargetContext, event: &BattleEve
         BattleEvent::HpLost { target_uid, .. } | BattleEvent::HpHealed { target_uid, .. } => {
             context.runtime_target_uid = *target_uid
         }
+        BattleEvent::ToughnessBroken { target_uid, .. } => {
+            context.runtime_target_uid = *target_uid;
+            context.toughness_broken_uid = *target_uid;
+        }
         BattleEvent::Hit(hit) => {
             context.runtime_target_uid = hit.target_uid;
             context.hit_source_uid = hit.source_uid;
@@ -193,6 +197,7 @@ pub(super) fn apply_event_context(context: &mut TargetContext, event: &BattleEve
             context.action_dealt_damage = action.damage_amount > 0;
             context.action_kill_count = action.kill_count;
             context.action_crit_count = action.crit_count;
+            context.action_guard_break_count = action.guard_break_count;
             context.additional_moxie = action.additional_moxie;
             context.extra_skill_kind = action.extra_skill_kind;
             context.teammate_injury_count = action.teammate_injury_count;

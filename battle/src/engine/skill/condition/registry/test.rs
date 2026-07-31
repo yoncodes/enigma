@@ -179,6 +179,24 @@ fn static_buff_gate_opcodes_have_distinct_setup_stages() {
 }
 
 #[test]
+fn round_start_field_presence_keeps_its_exact_key_and_route() {
+    let definition = find_key(542103, "InMagicCircleId").unwrap();
+
+    assert_eq!(
+        parse(542103, "InMagicCircleId", &["30003".into()]),
+        Some(ParsedConditionKind::InMagicCircleId(vec![30003]))
+    );
+    assert_eq!(
+        definition.role,
+        ConditionRole::Setup {
+            stage: SetupStage::RoundStart,
+            priority: 1,
+        }
+    );
+    assert!(find_key(542103, "NotInMagicCircleId").is_none());
+}
+
+#[test]
 fn static_team_battle_tag_threshold_runs_at_battle_start() {
     assert_eq!(
         find_key(762021, "BattleTagNum").map(|definition| definition.role),

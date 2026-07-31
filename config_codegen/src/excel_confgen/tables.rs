@@ -305,6 +305,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "activity229_const",
     "activity229_episode",
     "activity229_task",
+    "toughnessskill",
     "actvity204_task",
     "assassin_task",
     "autochess_task",

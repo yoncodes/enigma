@@ -9,6 +9,38 @@ use crate::engine::skill::{
 
 pub(super) struct Handler;
 
+pub(super) fn supports_add_buff_and_count(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        (
+            behavior.arg(0),
+            behavior.arg(1),
+            behavior.arg(2),
+            behavior.arg_list(3)
+        ),
+        (Some(buff_id), Some(buff_count), Some(special_count), Some(marker_ids))
+            if buff_id > 0
+                && buff_count > 0
+                && special_count > 0
+                && (marker_ids == [-1] || marker_ids.iter().all(|marker_id| *marker_id > 0))
+    )
+}
+
+pub(super) fn supports_add_count(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        (behavior.arg(0), behavior.arg_list(1)),
+        (Some(count), Some(marker_ids))
+            if count > 0 && marker_ids.iter().all(|marker_id| *marker_id > 0)
+    )
+}
+
+pub(super) fn supports_rate(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        (behavior.arg(0), behavior.arg_list(1)),
+        (Some(rate), Some(marker_ids))
+            if rate != 0 && marker_ids.iter().all(|marker_id| *marker_id > 0)
+    )
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         let origin = super::command_origin(behavior)?;

@@ -54,6 +54,14 @@ use replace::*;
 
 pub(super) struct Handler;
 
+pub(super) fn supports_distribute(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [source, output] if *source > 0 && *output > 0)
+}
+
+pub(super) fn supports_duration_change(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [buff_id_or_type, delta] if *buff_id_or_type > 0 && *delta != 0)
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(
         mut context: BehaviorOpContext<'_>,

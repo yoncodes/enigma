@@ -56,6 +56,7 @@ fn assist_boss_attack_passive_resolves_from_the_derived_skill_cast_event() {
         damage_amount: 1,
         kill_count: 0,
         crit_count: 0,
+        guard_break_count: 0,
         additional_moxie: 0,
         extra_skill_kind: 0,
         mode: crate::engine::skill::action::SkillExecutionMode::Active,
