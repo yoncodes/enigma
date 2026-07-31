@@ -925,6 +925,81 @@ fn ex_point_cant_add_blocks_gains_but_allows_spending() {
     ));
 }
 
+#[test]
+fn moxie_reduction_immunity_blocks_reduction_but_allows_spending() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                ex_point: Some(3),
+                current_hp: Some(100),
+                attr: Some(HeroAttribute {
+                    hp: Some(100),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let guard_origin = CommandOrigin {
+        domain: RuleDomain::BuffAct,
+        key: DefinitionKey::new(509, "ImmunityExpointChange"),
+    };
+    managers
+        .execute_buff(BuffCommand::Grant(BuffGrant {
+            origin: guard_origin,
+            source_uid: 10,
+            target_uid: 10,
+            buff_id: 5081,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }))
+        .unwrap();
+
+    let reduction = |delta| {
+        ExPointCommand::Change(ExPointChange {
+            origin: CommandOrigin {
+                domain: RuleDomain::BuffAct,
+                key: DefinitionKey::new(605, "ExPointDel"),
+            },
+            source_uid: 10,
+            target_uid: 10,
+            delta,
+            config_effect: 0,
+            effect_type: 0,
+        })
+    };
+    let blocked = managers.execute_ex_point(reduction(-2)).unwrap();
+    assert!(matches!(
+        blocked,
+        ExPointChanges::Value { change, .. }
+            if change.requested_delta == -2
+                && change.applied_delta == 0
+                && change.before == 3
+                && change.after == 3
+    ));
+    let spent = managers
+        .execute_ex_point(ExPointCommand::Spend(ExPointChange {
+            origin: crate::engine::manager::card::CARD_PLAY_ORIGIN,
+            source_uid: 10,
+            target_uid: 10,
+            delta: -2,
+            config_effect: 0,
+            effect_type: 0,
+        }))
+        .unwrap();
+    assert!(matches!(
+        spent,
+        ExPointChanges::Value { change, .. }
+            if change.applied_delta == -2 && change.after == 1
+    ));
+}
+
 fn entity_with_ex_point_type(uid: i64, ex_point_type: i32) -> FightEntityInfo {
     FightEntityInfo {
         uid: Some(uid),

@@ -433,3 +433,83 @@ fn dot_uses_its_exact_after_hit_route_and_known_argument_shapes() {
     assert!(has_destination(203, "Dot", &[1, 101, 200]));
     assert!(!has_destination(203, "Dot", &[0, 101, 200]));
 }
+
+#[test]
+fn holder_scaled_dot_keeps_its_exact_round_end_route() {
+    assert_eq!(runtime_event(202, "Dot", 302), Some(EventKind::RoundEnd));
+    assert!(has_destination(202, "Dot", &[1, 100, 30]));
+    assert!(find(202, "Dot").is_some());
+    assert!(find(202, "DotNoLimit").is_none());
+}
+
+#[test]
+fn moxie_loss_keeps_its_exact_round_end_route() {
+    assert_eq!(
+        runtime_event(605, "ExPointDel", 302),
+        Some(EventKind::RoundEnd)
+    );
+    assert!(has_destination(605, "ExPointDel", &[1]));
+    assert!(!has_destination(605, "ExPointDel", &[0]));
+}
+
+#[test]
+fn targeted_support_dispel_keeps_its_exact_skill_cast_route() {
+    assert_eq!(
+        runtime_event(804, "DisperseByTag", 208),
+        Some(EventKind::SkillCast)
+    );
+    assert_eq!(
+        runtime_actor_scope(804, "DisperseByTag"),
+        RuntimeActorScope::Team
+    );
+    assert!(has_destination(804, "DisperseByTag", &[1, 4, 5, 6, 9]));
+    assert!(!has_destination(804, "DisperseByTag", &[0, 4, 5, 6, 9]));
+}
+
+#[test]
+fn layer_gated_passive_keeps_its_exact_static_route() {
+    let definition = find(805, "AddPassiveSkillByLayer").unwrap();
+    assert!(definition.state.consumer);
+    assert!(has_destination(
+        805,
+        "AddPassiveSkillByLayer",
+        &[10, 12110011]
+    ));
+    assert!(!has_destination(
+        805,
+        "AddPassiveSkillByLayer",
+        &[0, 12110011]
+    ));
+}
+
+#[test]
+fn moxie_reduction_immunity_keeps_its_exact_static_identity() {
+    let definition = find(509, "ImmunityExpointChange").unwrap();
+    assert_eq!(definition.kind, BuffActKind::MoxieReductionImmunity);
+    assert!(definition.state.consumer);
+    assert!(has_destination(509, "ImmunityExpointChange", &[]));
+    assert!(find(509, "ExPointCantAdd").is_none());
+}
+
+#[test]
+fn incapacitating_control_buffs_keep_distinct_exact_routes() {
+    let dizzy = find(401, "Dizzy").unwrap();
+    assert_eq!(dizzy.kind, BuffActKind::Dizzy);
+    assert!(dizzy.state.consumer);
+    assert!(has_destination(401, "Dizzy", &[]));
+
+    let petrified = find(402, "Petrified").unwrap();
+    assert_eq!(petrified.kind, BuffActKind::Petrified);
+    assert!(petrified.state.consumer);
+    assert_eq!(
+        runtime_event(402, "Petrified", 0),
+        Some(EventKind::TargetAttacked)
+    );
+    assert!(has_destination(402, "Petrified", &[]));
+    assert!(
+        !super::super::wire::find(402, "Petrified")
+            .unwrap()
+            .has_output()
+    );
+    assert!(find(402, "Dizzy").is_none());
+}

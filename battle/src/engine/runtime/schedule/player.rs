@@ -321,6 +321,12 @@ pub(crate) fn card_skill_is_blocked(
     managers
         .buff
         .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Sleep)
+        || managers
+            .buff
+            .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Dizzy)
+        || managers
+            .buff
+            .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Petrified)
         || (managers
             .buff
             .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Forbid)
@@ -1002,7 +1008,7 @@ pub(super) fn run_active_action(
     }
     let ultimate_moxie = ultimate_cost.max(0);
     let action_cost = (ultimate_moxie > 0).then(|| {
-        ExPointCommand::Change(ExPointChange {
+        ExPointCommand::Spend(ExPointChange {
             origin: CARD_PLAY_ORIGIN,
             source_uid,
             target_uid: source_uid,

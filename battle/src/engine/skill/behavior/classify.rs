@@ -67,6 +67,7 @@ pub enum BehaviorKind {
     RaspberryBigSkill,
     SkillRateUp,
     SkillRateUp1,
+    SkillRateUp2,
     SkillRateUpCardLevel,
     AddSkillRateByTargetCount,
     SkillRateUpBySelfBuffType,

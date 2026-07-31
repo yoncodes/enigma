@@ -199,6 +199,36 @@ fn seal_blocks_only_ultimate_incantations() {
 }
 
 #[test]
+fn incapacitating_control_buffs_block_card_actions() {
+    init_config();
+    for (buff_id, kind) in [
+        (4011, buff_act::registry::BuffActKind::Dizzy),
+        (4020, buff_act::registry::BuffActKind::Petrified),
+    ] {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(buff_id),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let catalog = SkillEffectCatalog::default();
+        assert!(managers.buff.has_buff_act_kind(10, kind));
+        assert!(card_skill_is_blocked(&managers, &catalog, 10, 1));
+    }
+}
+
+#[test]
 fn channeling_blocks_active_card_actions() {
     init_config();
     let fight = Fight {

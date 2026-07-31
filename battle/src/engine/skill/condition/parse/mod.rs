@@ -75,6 +75,11 @@ pub enum ParsedConditionKind {
         compare: ConditionCompare,
         threshold: i32,
     },
+    PerTeamBuffStatusTypeCount {
+        status_ids: Vec<i32>,
+        divisor: i32,
+        max_count: i32,
+    },
     BuffAdded(Vec<i32>),
     BuffRemoved(Vec<i32>),
     AccBuffAddedCount {
