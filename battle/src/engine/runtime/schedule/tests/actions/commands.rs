@@ -321,6 +321,31 @@ fn continuous_action_changes_ap_without_increasing_card_moxie() {
 }
 
 #[test]
+fn named_boss_power_does_not_gain_card_moxie() {
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                power_infos: vec![PowerInfo {
+                    power_id: Some(
+                        crate::engine::manager::eureka::PowerType::ZongMaoBossEnergy.id(),
+                    ),
+                    num: Some(1),
+                    max: Some(3),
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+
+    assert_eq!(card_play_resource_delta(&managers, -1, true, false), None);
+}
+
+#[test]
 fn rewritten_card_executes_for_its_resolved_caster() {
     init_config();
     let fight = Fight {
