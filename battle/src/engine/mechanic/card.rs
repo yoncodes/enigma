@@ -1,7 +1,11 @@
 use sonettobuf::CardInfo;
 
 use crate::engine::{
-    manager::{BattleManagers, ex_point::ExPointKind},
+    manager::{
+        BattleManagers,
+        eureka::{EurekaState, PowerType},
+        ex_point::ExPointKind,
+    },
     skill::buff_act::{is_kind, registry::BuffActKind},
     skill::target::{TargetEntity, TargetPool},
 };
@@ -10,6 +14,17 @@ use crate::engine::{
 pub struct CardMechanic;
 
 impl CardMechanic {
+    pub fn boss_ultimate_power(
+        &self,
+        managers: &BattleManagers,
+        owner_uid: i64,
+    ) -> Option<EurekaState> {
+        let state = managers
+            .eureka
+            .get(owner_uid, PowerType::ZongMaoBossEnergy.id());
+        (state.max > 0).then_some(state)
+    }
+
     pub fn normal_hand_limit(
         &self,
         base: usize,
@@ -64,6 +79,12 @@ impl CardMechanic {
     pub fn ultimate_ready(&self, managers: &BattleManagers, entity: &TargetEntity) -> bool {
         if entity.ex_skill <= 0 {
             return false;
+        }
+        if let Some(power) = self.boss_ultimate_power(managers, entity.uid) {
+            return power.is_full()
+                && !managers
+                    .buff
+                    .has_buff_act_kind(entity.uid, BuffActKind::CantGetExskill);
         }
         let kind = ExPointKind::from_wire(managers.ex_point.kind(entity.uid));
         let required = self.required_ultimate_cost(managers, entity);
