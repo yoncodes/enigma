@@ -47,7 +47,7 @@ fn fight_catalog_includes_assist_boss_active_skills() {
 }
 
 #[test]
-fn fight_catalog_keeps_enemy_condition_route_gaps_after_behavior_support() {
+fn fight_catalog_compiles_enemy_condition_routes_after_registration() {
     init_config();
     let fight = Fight {
         defender: Some(sonettobuf::FightTeam {
@@ -64,11 +64,11 @@ fn fight_catalog_keeps_enemy_condition_route_gaps_after_behavior_support() {
     let effect = catalog.get(31430149).unwrap();
 
     assert!(catalog.issues(31430149).is_empty());
-    assert!(effect.slots.iter().any(|slot| slot.compiled_route.is_err()));
+    assert!(effect.slots.iter().all(|slot| slot.compiled_route.is_ok()));
 }
 
 #[test]
-fn dynamic_current_battle_roots_keep_their_condition_route_gaps() {
+fn dynamic_current_battle_roots_compile_registered_condition_routes() {
     init_config();
     let mut catalog = SkillEffectCatalog::default();
 
@@ -81,7 +81,7 @@ fn dynamic_current_battle_roots_keep_their_condition_route_gaps() {
             .unwrap()
             .slots
             .iter()
-            .any(|slot| slot.compiled_route.is_err())
+            .all(|slot| slot.compiled_route.is_ok())
     );
     assert!(catalog.get(31430149).is_some());
     assert!(catalog.get(31270148).is_none());
