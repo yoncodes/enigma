@@ -99,6 +99,7 @@ pub enum SkillTarget {
     Inherited,
     #[default]
     Configured,
+    LogicRule(i32),
     Explicit(i64),
 }
 

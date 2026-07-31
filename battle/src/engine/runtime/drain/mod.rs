@@ -1187,7 +1187,8 @@ fn invocation_frame_target(
             SkillOpTrigger::Event(event) => event.target_uid(),
             SkillOpTrigger::Active | SkillOpTrigger::Setup { .. } => None,
         },
-        crate::engine::skill::action::SkillTarget::Configured => None,
+        crate::engine::skill::action::SkillTarget::Configured
+        | crate::engine::skill::action::SkillTarget::LogicRule(_) => None,
     }
 }
 

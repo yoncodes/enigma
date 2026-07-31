@@ -86,6 +86,20 @@ pub(super) fn supports_consume_power_add_multi_buff(behavior: &ParsedBehavior) -
 
 pub(super) struct Handler;
 
+pub(super) fn supports_layer_range(behavior: &ParsedBehavior) -> bool {
+    let (Some(source_buff_id), Some(buff_ids), Some(thresholds)) =
+        (behavior.arg(0), behavior.arg_list(1), behavior.arg_list(2))
+    else {
+        return false;
+    };
+
+    source_buff_id > 0
+        && buff_ids.iter().all(|id| *id > 0)
+        && thresholds.len() == buff_ids.len() + 1
+        && thresholds.iter().all(|value| *value > 0)
+        && thresholds.windows(2).all(|pair| pair[0] < pair[1])
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(
         mut context: BehaviorOpContext<'_>,
