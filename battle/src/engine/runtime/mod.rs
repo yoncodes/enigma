@@ -137,8 +137,8 @@ impl BattleRuntime {
             .collect()
     }
 
-    pub fn entity_info(&self, uid: i64) -> Option<&sonettobuf::FightEntityInfo> {
-        crate::engine::manager::entities(&self.fight).find(|entity| entity.uid == Some(uid))
+    pub fn entity_info(&self, uid: i64) -> Option<sonettobuf::FightEntityInfo> {
+        self.managers.entity_snapshot(uid)
     }
 
     pub fn attack_statistics(&self) -> Vec<FightStatistics> {
