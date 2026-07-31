@@ -9,6 +9,20 @@ fn registry_requires_exact_id_and_type() {
         BuffActKind::CardLimitAdd
     );
     assert!(find(1075, "CardNotCalSize").is_none());
+    let leech_reduction = find(716, "InjuryAbsorb").unwrap();
+    assert_eq!(leech_reduction.kind, BuffActKind::InjuryAbsorb);
+    assert_eq!(
+        destination(716, "InjuryAbsorb", &[300]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(716, "InjuryAbsorb", &[1001]));
+    assert_eq!(
+        leech_reduction
+            .wire
+            .unwrap()
+            .markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::Injuryabsorb as i32]
+    );
     assert_eq!(
         find(1137, "EntityExSkillNotCalSize").unwrap().kind,
         BuffActKind::EntityExSkillNotCalSize
