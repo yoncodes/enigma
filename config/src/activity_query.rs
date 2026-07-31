@@ -4,6 +4,13 @@ use crate::{
     activity165_step::Activity165Step,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Activity128Battle {
+    pub activity_id: i32,
+    pub boss_id: i32,
+    pub target_model_ids: Vec<i32>,
+}
+
 impl GameDB {
     pub fn latest_open_activity_id(&self, type_id: i32) -> Option<i32> {
         self.activity
@@ -63,6 +70,31 @@ impl GameDB {
         self.activity104_trial
             .iter()
             .find(|row| row.activity_id == activity_id)
+    }
+
+    pub fn activity128_battle(&self, episode_id: i32, battle_id: i32) -> Option<Activity128Battle> {
+        if self.episode.get(episode_id)?.battle_id != battle_id {
+            return None;
+        }
+        let episode = self
+            .activity128_episode
+            .iter()
+            .find(|row| row.episode_id == episode_id)?;
+        let boss = self
+            .activity128_countboss
+            .iter()
+            .find(|row| row.battle_id == battle_id)?;
+
+        Some(Activity128Battle {
+            activity_id: episode.activity_id,
+            boss_id: episode.stage,
+            target_model_ids: boss
+                .monster_id
+                .split('#')
+                .map(str::parse)
+                .collect::<Result<_, _>>()
+                .ok()?,
+        })
     }
 
     pub fn activity165_step(&self, story_id: i32, step_id: i32) -> Option<&Activity165Step> {

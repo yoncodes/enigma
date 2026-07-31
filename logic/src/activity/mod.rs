@@ -17,14 +17,14 @@ use sonettobuf::{
     Act228Info, Act229BattleFinishPush, Act229HeroNo, Act229ResetStageReply, ActivityInfo,
     ActivityNewStageReadReply, EndingInfo, FinishAct125EpisodeReply, FinishAct146EpisodeReply,
     Get101BonusReply, Get101InfosReply, Get101SpBonusReply, Get104InfosReply, Get123InfosReply,
-    Get136InfoReply, Get152InfoReply, Get153InfosReply, Get154InfosReply, Get158InfosReply,
-    Get166InfosReply, Get196InfoReply, Get197InfoReply, Get199InfoReply, Get217InfosReply,
-    Get218InfoReply, Get221InfoReply, GetAct125InfosReply, GetAct146InfosReply, GetAct172InfoReply,
-    GetAct186InfoReply, GetAct186SpBonusInfoReply, GetAct189InfoReply, GetAct189OnceBonusReply,
-    GetAct208InfoReply, GetAct209InfoReply, GetAct212InfoReply, GetAct216InfoReply,
-    GetAct225InfoReply, GetAct228InfoReply, GetAct229InfoReply, GetActivityInfosReply,
-    GetActivityInfosWithParamReply, MarkActivity104StoryReply, MarkEpisodeAfterStoryReply,
-    MarkPopSummaryReply, StepInfo, UnlockPermanentReply,
+    Get128InfosReply, Get136InfoReply, Get152InfoReply, Get153InfosReply, Get154InfosReply,
+    Get158InfosReply, Get166InfosReply, Get196InfoReply, Get197InfoReply, Get199InfoReply,
+    Get217InfosReply, Get218InfoReply, Get221InfoReply, GetAct125InfosReply, GetAct146InfosReply,
+    GetAct172InfoReply, GetAct186InfoReply, GetAct186SpBonusInfoReply, GetAct189InfoReply,
+    GetAct189OnceBonusReply, GetAct208InfoReply, GetAct209InfoReply, GetAct212InfoReply,
+    GetAct216InfoReply, GetAct225InfoReply, GetAct228InfoReply, GetAct229InfoReply,
+    GetActivityInfosReply, GetActivityInfosWithParamReply, MarkActivity104StoryReply,
+    MarkEpisodeAfterStoryReply, MarkPopSummaryReply, StepInfo, UnlockPermanentReply,
 };
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
@@ -38,6 +38,7 @@ mod act101;
 mod act104;
 mod act123;
 mod act125;
+mod act128;
 mod act136;
 mod act146;
 mod act152;
@@ -71,6 +72,8 @@ use act101::{get101_bonus, get101_infos, get101_sp_bonus};
 use act104::{act104_infos, mark_activity104_story, mark_episode_after_story, mark_pop_summary};
 use act123::{act123_infos, act153_infos};
 use act125::{act125_infos, finish_act125_episode};
+use act128::act128_info;
+pub use act128::settle_act128_score_in_transaction;
 use act136::{act136_info, act136_select};
 use act146::{act146_episode_bonus, act146_infos, finish_act146_episode};
 use act152::{accept_act152_present, act152_info};

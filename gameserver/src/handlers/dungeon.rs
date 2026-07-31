@@ -548,8 +548,11 @@ pub async fn on_fight_end_fight(
             ctx.player_mut()?.battle.complete_active(record.pending);
             dungeon_settlement = Some((settlement, active.chapter_id, active.episode_id));
         } else if is_abort || !won {
-            let mut settlement =
-                dungeon::settle_refund(ctx.state.db, player_id, active, !is_abort).await?;
+            let mut settlement = if is_abort {
+                dungeon::settle_refund(ctx.state.db, player_id, active, false).await?
+            } else {
+                dungeon::settle_failed(ctx.state.db, player_id, active, true).await?
+            };
             compose_push = settlement.compose_push.take();
             refund_settlement = Some(settlement);
         } else if let Some(fight_id) = active.fight_id {
@@ -695,7 +698,7 @@ pub async fn on_dungeon_end_dungeon(
             )
             .await?;
         } else {
-            let mut refund = dungeon::settle_refund(ctx.state.db, player_id, active, true).await?;
+            let mut refund = dungeon::settle_failed(ctx.state.db, player_id, active, true).await?;
             ctx.player_mut()?.battle.clear_active();
             if let Some(compose) = refund.compose_push.take() {
                 ctx.notify(CmdId::TowerComposeFightSettlePushCmd, compose)

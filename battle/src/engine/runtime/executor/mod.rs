@@ -1,7 +1,7 @@
 use crate::engine::{
     event::bus::EventBus,
     manager::{
-        BattleManagers,
+        BattleManagers, HpExecution,
         buff::{BuffChanges, BuffCommandError},
         card::{CardChanges, CardCommandError},
         conduit::{ConduitChange, ConduitError},
@@ -47,8 +47,8 @@ pub(crate) enum RuleOutcome {
     BuffActInfoMarker(crate::engine::manager::buff::BuffActInfoMarkerResult),
     StateChanged,
     NuoDiKaHit(crate::engine::mechanic::nuo_di_ka::NuoDiKaHit),
-    Hp(Box<HpChanges>),
-    HpBatch(Vec<HpChanges>),
+    Hp(Box<HpExecution>),
+    HpBatch(Vec<HpExecution>),
     Injury(crate::engine::manager::injury::InjuryChange),
     Revive(Box<crate::engine::manager::revive::ReviveChanges>),
     Shield(Box<ShieldChanges>),
@@ -97,18 +97,21 @@ impl RuleOutcome {
 
     pub(crate) fn applied_damage(&self) -> i32 {
         match self {
-            Self::Hp(change) => change.applied_damage(),
-            Self::HpBatch(changes) => changes.iter().map(HpChanges::applied_damage).sum(),
+            Self::Hp(execution) => execution.changes.applied_damage(),
+            Self::HpBatch(changes) => changes
+                .iter()
+                .map(|execution| execution.changes.applied_damage())
+                .sum(),
             _ => 0,
         }
     }
 
     pub(crate) fn death_count(&self) -> i32 {
         match self {
-            Self::Hp(change) => i32::from(change.death.is_some()),
+            Self::Hp(execution) => i32::from(execution.changes.death.is_some()),
             Self::HpBatch(changes) => changes
                 .iter()
-                .filter(|change| change.death.is_some())
+                .filter(|execution| execution.changes.death.is_some())
                 .count() as i32,
             _ => 0,
         }
@@ -118,18 +121,21 @@ impl RuleOutcome {
         let broke =
             |change: &HpChanges| i32::from(change.toughness.is_some_and(|change| change.broke));
         match self {
-            Self::Hp(change) => broke(change),
-            Self::HpBatch(changes) => changes.iter().map(broke).sum(),
+            Self::Hp(execution) => broke(&execution.changes),
+            Self::HpBatch(changes) => changes
+                .iter()
+                .map(|execution| broke(&execution.changes))
+                .sum(),
             _ => 0,
         }
     }
 
     pub(crate) fn take_deaths(&mut self) -> Vec<crate::engine::manager::hp::DeathTransition> {
         match self {
-            Self::Hp(change) => change.death.take().into_iter().collect(),
+            Self::Hp(execution) => execution.changes.death.take().into_iter().collect(),
             Self::HpBatch(changes) => changes
                 .iter_mut()
-                .filter_map(|change| change.death.take())
+                .filter_map(|execution| execution.changes.death.take())
                 .collect(),
             _ => Vec::new(),
         }
@@ -139,8 +145,11 @@ impl RuleOutcome {
         let injured =
             |change: &HpChanges| change.hp.filter(|hp| hp.delta < 0).map(|hp| hp.target_uid);
         match self {
-            Self::Hp(change) => injured(change).into_iter().collect(),
-            Self::HpBatch(changes) => changes.iter().filter_map(injured).collect(),
+            Self::Hp(execution) => injured(&execution.changes).into_iter().collect(),
+            Self::HpBatch(changes) => changes
+                .iter()
+                .filter_map(|execution| injured(&execution.changes))
+                .collect(),
             _ => Vec::new(),
         }
     }
@@ -170,11 +179,17 @@ impl RuleOutcome {
             }
             Self::StateChanged => Vec::new(),
             Self::NuoDiKaHit(hit) => vec![BattleChange::NuoDiKaHit(*hit)],
-            Self::Hp(change) => vec![BattleChange::Hp(change.clone())],
+            Self::Hp(execution) => {
+                std::iter::once(BattleChange::Hp(Box::new(execution.changes.clone())))
+                    .chain(execution.indicator.map(BattleChange::EffectMarker))
+                    .collect()
+            }
             Self::HpBatch(changes) => changes
                 .iter()
-                .cloned()
-                .map(|change| BattleChange::Hp(Box::new(change)))
+                .flat_map(|execution| {
+                    std::iter::once(BattleChange::Hp(Box::new(execution.changes.clone())))
+                        .chain(execution.indicator.map(BattleChange::EffectMarker))
+                })
                 .collect(),
             Self::Injury(change) => vec![BattleChange::Injury(change.clone())],
             Self::Revive(changes) => changes
@@ -412,11 +427,11 @@ pub(crate) fn execute_rule_op(
                 &managers.hp,
                 command,
             );
-            let changes = managers.execute_hp(command)?;
-            for event in changes.events() {
+            let execution = managers.execute_rule_hp(command)?;
+            for event in execution.changes.events() {
                 events.push(event);
             }
-            Ok(RuleOutcome::Hp(Box::new(changes)))
+            Ok(RuleOutcome::Hp(Box::new(execution)))
         }
         RuleOp::Command(BattleCommand::HpBatch(commands)) => {
             let commands = commands
@@ -429,9 +444,9 @@ pub(crate) fn execute_rule_op(
                     )
                 })
                 .collect();
-            let batch = managers.execute_hp_batch(commands)?;
-            for changes in &batch {
-                for event in changes.events() {
+            let batch = managers.execute_rule_hp_batch(commands)?;
+            for execution in &batch {
+                for event in execution.changes.events() {
                     events.push(event);
                 }
             }

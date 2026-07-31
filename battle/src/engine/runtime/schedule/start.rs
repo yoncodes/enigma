@@ -1073,10 +1073,10 @@ pub(super) fn raspberry_losses(result: &DrainResult) -> std::collections::HashMa
     let mut losses = std::collections::HashMap::new();
     for outcome in &result.outcomes {
         match outcome {
-            RuleOutcome::Hp(changes) => record_raspberry_loss(changes, &mut losses),
+            RuleOutcome::Hp(execution) => record_raspberry_loss(&execution.changes, &mut losses),
             RuleOutcome::HpBatch(batch) => {
-                for changes in batch {
-                    record_raspberry_loss(changes, &mut losses);
+                for execution in batch {
+                    record_raspberry_loss(&execution.changes, &mut losses);
                 }
             }
             _ => {}
