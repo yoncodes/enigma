@@ -353,12 +353,12 @@ fn fixed_hurt_resolves_damage_before_hp_commit_but_not_hp_loss() {
             display_amount: None,
         },
     })));
-    let RuleOutcome::Hp(changes) = execute_rule_op(&mut managers, &mut events, damage).unwrap()
+    let RuleOutcome::Hp(execution) = execute_rule_op(&mut managers, &mut events, damage).unwrap()
     else {
         panic!("expected HP outcome");
     };
-    assert_eq!(changes.damage.as_ref().unwrap().amount, 1);
-    assert_eq!(changes.hp.as_ref().unwrap().delta, -1);
+    assert_eq!(execution.changes.damage.as_ref().unwrap().amount, 1);
+    assert_eq!(execution.changes.hp.as_ref().unwrap().delta, -1);
     assert_eq!(managers.hp.current(-3), 99);
 
     execute_rule_op(
