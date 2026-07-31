@@ -5,6 +5,14 @@ impl EffectPacket {
         change: HpChange,
         hurt_info_layout: HurtInfoWireLayout,
     ) -> ActEffect {
+        Self::hp_with_hurt_info_and_toughness_layout(change, None, hurt_info_layout)
+    }
+
+    pub(crate) fn hp_with_hurt_info_and_toughness_layout(
+        change: HpChange,
+        toughness: Option<crate::engine::manager::toughness::ToughnessChange>,
+        hurt_info_layout: HurtInfoWireLayout,
+    ) -> ActEffect {
         let effect_type = if change.effect_type != 0 {
             change.effect_type
         } else if let Some(hurt) = change.hurt {
@@ -37,16 +45,31 @@ impl EffectPacket {
             reserve_id: Some(0),
             team_type: Some(0),
             effect_num1: Some(0),
-            hurt_info: change
-                .hurt
-                .map(|hurt| Self::hurt_info(change, hurt, effect_type, hurt_info_layout)),
+            hurt_info: change.hurt.map(|hurt| {
+                Self::hurt_info(change, hurt, toughness, effect_type, hurt_info_layout)
+            }),
             ..Default::default()
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn fully_absorbed_damage_with_hurt_info_layout(
         target_uid: i64,
         damage: DamageRecord,
+        hurt_info_layout: HurtInfoWireLayout,
+    ) -> ActEffect {
+        Self::fully_absorbed_damage_with_toughness_layout(
+            target_uid,
+            damage,
+            None,
+            hurt_info_layout,
+        )
+    }
+
+    pub(crate) fn fully_absorbed_damage_with_toughness_layout(
+        target_uid: i64,
+        damage: DamageRecord,
+        toughness: Option<crate::engine::manager::toughness::ToughnessChange>,
         hurt_info_layout: HurtInfoWireLayout,
     ) -> ActEffect {
         let mut hurt = damage.hurt;
@@ -54,7 +77,7 @@ impl EffectPacket {
             HurtInfoWireLayout::Version6 => 0,
             HurtInfoWireLayout::Version7 => damage.amount,
         });
-        let mut effect = Self::hp_with_hurt_info_layout(
+        let mut effect = Self::hp_with_hurt_info_and_toughness_layout(
             HpChange {
                 target_uid,
                 before: 0,
@@ -67,6 +90,7 @@ impl EffectPacket {
                 effect_type: 0,
                 display_amount: Some(0),
             },
+            toughness,
             hurt_info_layout,
         );
         if hurt.damage_from == HurtDamageFromType::Buff {
@@ -121,6 +145,7 @@ impl EffectPacket {
     fn hurt_info(
         change: HpChange,
         hurt: HurtInfoData,
+        toughness: Option<crate::engine::manager::toughness::ToughnessChange>,
         effect_type: i32,
         layout: HurtInfoWireLayout,
     ) -> FightHurtInfo {
@@ -164,9 +189,9 @@ impl EffectPacket {
                 ..common
             },
             HurtInfoWireLayout::Version7 => FightHurtInfo {
-                toughness_value: Some(0),
-                toughness_point: Some(0),
-                broken: Some(false),
+                toughness_value: Some(toughness.map_or(0, |change| change.value_delta)),
+                toughness_point: Some(toughness.map_or(0, |change| change.point_delta)),
+                broken: Some(toughness.is_some_and(|change| change.broke)),
                 absorb_hurt_param: Some(
                     r#"{"consumeFakeHpBuffMap":"","reduceTeamShareShieldBuffMap":"","reduceShieldBuffMap":""}"#
                         .into(),

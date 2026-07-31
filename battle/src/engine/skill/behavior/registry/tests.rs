@@ -165,6 +165,40 @@ fn readiness_requires_and_runs_the_exact_argument_validator() {
 }
 
 #[test]
+fn field_transfer_behaviors_validate_grouped_marker_arguments() {
+    let cases = [
+        (
+            60202,
+            "AddSkillRateBySpecialCount",
+            vec!["250", "31070111,31070121"],
+        ),
+        (
+            60204,
+            "AddBuffSpecialCount",
+            vec!["5", "31070111,31070121,31070131"],
+        ),
+        (
+            60205,
+            "AddBuffAndAddSpecialCount",
+            vec!["90071", "5", "1", "31070111,31070121,31070131"],
+        ),
+    ];
+
+    for (opcode, type_name, raw_args) in cases {
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(opcode, type_name),
+            Vec::new(),
+            raw_args.into_iter().map(str::to_owned).collect(),
+        );
+        assert!(
+            find(&behavior)
+                .and_then(|definition| definition.supports)
+                .is_some_and(|supports| supports(&behavior))
+        );
+    }
+}
+
+#[test]
 fn configured_skill_without_a_target_override_emits_once_per_slot() {
     let behavior = ParsedBehavior::from_spec(
         BehaviorSpec::new(50012, "DirectUseSkillNoAct"),

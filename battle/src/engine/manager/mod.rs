@@ -15,6 +15,7 @@ pub mod injury;
 pub mod revive;
 pub mod shield;
 pub mod summon;
+pub mod toughness;
 pub mod upgrade;
 pub mod wave;
 
@@ -66,6 +67,7 @@ pub struct BattleManagers {
     pub field: field::FieldManager,
     pub upgrade: UpgradeManager,
     pub summon: SummonManager,
+    pub toughness: toughness::ToughnessManager,
     pub wave: wave::WaveManager,
     rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
     round_rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
@@ -336,10 +338,23 @@ impl BattleManagers {
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> hp::HpChanges {
+        let toughness = match plan.command {
+            hp::HpCommand::Damage(damage)
+                if damage.hurt.damage_from == hp::HurtDamageFromType::Skill =>
+            {
+                self.toughness.reduce(
+                    damage.target_uid,
+                    damage.amount,
+                    damage.hurt.career_restraint,
+                )
+            }
+            _ => None,
+        };
         let team_shared_shield_removed = plan.team_shared_buff.map(|plan| self.commit_buff(plan));
         let mut changes = self
             .hp
             .commit_validated_command_with_team_shared(plan.command, plan.team_shared);
+        changes.toughness = toughness;
         changes.team_shared_shield_removed = team_shared_shield_removed;
         if let Some(shield) = &mut changes.shield_absorbed {
             shield.buff_uid = self
@@ -704,6 +719,7 @@ impl BattleManagers {
         let team_type = entity.team_type.unwrap_or_default();
         self.attribute.register(entity);
         self.hp.register(entity);
+        self.toughness.register(entity);
         self.ex_point.register(entity);
         self.eureka.register(entity);
         self.buff.register_entity(entity, team_type);
@@ -849,6 +865,7 @@ impl BattleManagers {
         managers.attribute.seed(fight);
         managers.battle_rule = battle_rule::BattleRuleManager::seed(fight);
         managers.hp.seed(fight);
+        managers.toughness.seed(fight);
         managers.ex_point.seed(fight);
         managers.eureka.seed(fight);
         managers.buff.seed(fight);
@@ -895,6 +912,7 @@ impl BattleManagers {
         }
         self.project_primary_attributes(entity);
         self.hp.sync_entity(entity);
+        self.toughness.sync_entity(entity);
         self.ex_point.sync_entity(entity);
         entity.ex_skill_point_change =
             Some(crate::engine::mechanic::card::CardMechanic.ultimate_cost_offset(self, uid));

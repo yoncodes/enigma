@@ -6,6 +6,20 @@ use sonettobuf::BuffActInfo;
 
 const RAW_GAUGE_PER_VISIBLE_POINT: i32 = 1_000;
 
+pub fn supports(args: &[i32]) -> bool {
+    let [raw_attr_id, value_per_step, raw_cap, rest @ ..] = args else {
+        return false;
+    };
+    AttrId::from_raw(*raw_attr_id).is_some()
+        && *value_per_step != 0
+        && *raw_cap > 0
+        && match rest {
+            [] => true,
+            [step] => *step > 0,
+            _ => false,
+        }
+}
+
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, buffs: &BuffManager) -> i32 {
     let [act_id, raw_attr_id, ..] = feature.values.as_slice() else {
         return 0;

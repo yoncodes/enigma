@@ -14,6 +14,7 @@ pub enum EventKind {
     BuffFeatureTriggered,
     HpLost,
     HpHealed,
+    ToughnessBroken,
     TargetAttacked,
     ExPointChanged,
     EurekaChanged,

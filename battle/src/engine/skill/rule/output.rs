@@ -4,7 +4,7 @@ use crate::engine::{
         entity::EntityCommand, entity::EntitySkillCommand, eureka::EurekaCommand,
         ex_point::ExPointCommand, field::FieldCommand, gauge::GaugeCommand, hp::HpCommand,
         injury::InjuryCommand, revive::ReviveCommand, shield::ShieldCommand, summon::SummonCommand,
-        upgrade::UpgradeCommand,
+        toughness::ToughnessRecover, upgrade::UpgradeCommand,
     },
     mechanic::{
         buff_precast::BuffPrecastCommand, field_transfer::FieldTransferCommand,
@@ -63,6 +63,7 @@ pub enum BattleCommand {
     BloodPoolCountAddExPoint(BloodPoolCountAddExPointCommand),
     Summon(SummonCommand),
     Upgrade(UpgradeCommand),
+    ToughnessRecover(ToughnessRecover),
     ThresholdSkill(ThresholdSkillCommand),
     BloodtitheSpend(crate::engine::mechanic::bloodtithe::spend::SpendCommand),
 }
