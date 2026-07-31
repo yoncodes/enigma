@@ -114,6 +114,7 @@ pub(super) fn apply_event_context(context: &mut TargetContext, event: &BattleEve
             context.active_skill_source_uid = hit.source_uid;
         }
         BattleEvent::EntityDied(death) => context.runtime_target_uid = death.target_uid,
+        BattleEvent::ToughnessBroken { target_uid } => context.runtime_target_uid = *target_uid,
         BattleEvent::EntityEntered { target_uid }
         | BattleEvent::EntityTransformed { target_uid } => context.runtime_target_uid = *target_uid,
         BattleEvent::ExPointChanged(change) | BattleEvent::ExPointOverflow(change) => {

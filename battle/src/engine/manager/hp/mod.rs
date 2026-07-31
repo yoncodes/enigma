@@ -255,6 +255,7 @@ pub struct HpChanges {
     pub hp: Option<HpChange>,
     pub kill: Option<i32>,
     pub death: Option<DeathTransition>,
+    pub toughness: Option<super::toughness::ToughnessChange>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -335,6 +336,11 @@ impl HpChanges {
                 damage_from: damage.hurt.damage_from,
                 assassinate: damage.assassinate,
             }));
+        }
+        if self.toughness.is_some_and(|change| change.broken) {
+            events.push(BattleEvent::ToughnessBroken {
+                target_uid: self.target_uid,
+            });
         }
         if let Some(removed) = &self.team_shared_shield_removed {
             events.extend(removed.events());
@@ -622,6 +628,7 @@ impl HpManager {
             hp: None,
             kill: None,
             death: None,
+            toughness: None,
         };
         match command {
             HpCommand::Damage(value) => {

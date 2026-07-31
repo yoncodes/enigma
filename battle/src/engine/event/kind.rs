@@ -15,6 +15,7 @@ pub enum EventKind {
     HpLost,
     HpHealed,
     TargetAttacked,
+    ToughnessBroken,
     ExPointChanged,
     EurekaChanged,
     ConduitActivated,

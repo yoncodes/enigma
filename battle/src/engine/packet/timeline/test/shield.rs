@@ -29,6 +29,7 @@ fn fully_absorbed_damage_projects_shield_then_zero_damage() {
                 display_amount: None,
             },
         }),
+        toughness: None,
         team_shared_shield_absorbed: None,
         team_shared_shield_removed: None,
         shield_absorbed: Some(ShieldChange {
@@ -84,6 +85,7 @@ fn version_seven_embeds_shield_absorption_in_hurt_info() {
                     display_amount: None,
                 },
             }),
+            toughness: None,
             team_shared_shield_absorbed: None,
             team_shared_shield_removed: None,
             shield_absorbed: Some(ShieldChange {
@@ -151,6 +153,7 @@ fn version_seven_embeds_team_shared_shield_consumption_in_hurt_info() {
                     display_amount: None,
                 },
             }),
+            toughness: None,
             team_shared_shield_absorbed: Some(
                 crate::engine::manager::hp::TeamSharedShieldAbsorption {
                     buff_uid: 77,
@@ -199,6 +202,7 @@ fn reduce_hp_wire_value_is_gated_by_fight_protocol_version() {
         source_uid: 1,
         target_uid: 10,
         damage: None,
+        toughness: None,
         team_shared_shield_absorbed: None,
         team_shared_shield_removed: None,
         shield_absorbed: None,

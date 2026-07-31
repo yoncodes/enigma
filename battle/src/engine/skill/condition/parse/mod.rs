@@ -183,6 +183,7 @@ pub enum ParsedConditionKind {
     EntityDead,
     TeammateDead,
     EnemyDead,
+    TargetGuardBroken,
     SingleKillCount {
         threshold: i32,
     },

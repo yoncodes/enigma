@@ -128,6 +128,7 @@ pub struct TargetContext {
     pub action_crit_count: i32,
     pub critical_action_count: i32,
     pub action_kill_count: i32,
+    pub action_broken_target_count: i32,
     pub blood_pool_max: i32,
     pub blood_pool_value: i32,
     pub blood_sacrifice_points: i32,

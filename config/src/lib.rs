@@ -19,6 +19,7 @@ mod room;
 mod scene;
 mod summon_query;
 mod task;
+mod toughness;
 mod tower;
 
 pub mod configs {

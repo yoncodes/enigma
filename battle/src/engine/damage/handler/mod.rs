@@ -395,7 +395,8 @@ impl BehaviorHandler for Handler {
                     },
                 )))]);
             }
-            (30005 | 30006 | 30018 | 60288 | 60310, BehaviorKind::LostLife) => {
+            (30005 | 30006 | 30018 | 60288, BehaviorKind::LostLife)
+            | (60310, BehaviorKind::ToughnessOverflowDamage) => {
                 let amount = loss::amount(target_uid, context.managers, behavior)?;
                 if amount <= 0 {
                     return Some(Vec::new());

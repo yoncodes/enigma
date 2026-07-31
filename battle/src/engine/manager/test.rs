@@ -5,6 +5,7 @@ use sonettobuf::{
 use crate::engine::{
     manager::{
         buff::{BuffCommand, BuffGrant, CommandOrigin},
+        conduit::ConduitCommand,
         ex_point::{
             ExPointChange, ExPointChanges, ExPointCommand, ExPointConfigureSynchronization,
             ExPointRecordSynchronizationAction, SynchronizationDefinition,
@@ -923,6 +924,85 @@ fn ex_point_cant_add_blocks_gains_but_allows_spending() {
         ExPointChanges::Value { change, .. }
             if change.applied_delta == -2 && change.after == 1
     ));
+}
+
+#[test]
+fn skill_damage_reduces_guard_at_the_active_action_rate() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3149),
+                team_type: Some(1),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(10_000),
+                toughness_value: Some(5_000),
+                toughness_point: Some(3),
+                is_broken: Some(false),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let damage = || {
+        HpCommand::Damage(HpDamage {
+            origin: CommandOrigin {
+                domain: RuleDomain::Skill,
+                key: DefinitionKey::new(1, "Damage"),
+            },
+            source_uid: 10,
+            target_uid: -1,
+            amount: 1_000,
+            config_effect: -1,
+            effect_kind: DamageEffectKind::Normal,
+            assassinate: false,
+            hurt: HurtInfoData {
+                from_uid: 10,
+                is_crit: false,
+                career_restraint: false,
+                reduce_hp: -1_000,
+                effect_id: 1,
+                skill_id: 1,
+                damage_from: HurtDamageFromType::Skill,
+                buff_act_id: 0,
+                buff_uid: 0,
+                hurt_effect_type: 0,
+                display_amount: Some(1_000),
+            },
+        })
+    };
+
+    let normal = managers.execute_hp(damage()).unwrap();
+    assert_eq!(normal.toughness.unwrap().value_delta, 200);
+
+    managers
+        .conduit
+        .execute(ConduitCommand::SetRunning {
+            source_uid: 10,
+            running: true,
+        })
+        .unwrap();
+    let conduit = managers.execute_hp(damage()).unwrap();
+    assert_eq!(conduit.toughness.unwrap().value_delta, 1_000);
 }
 
 #[test]

@@ -336,6 +336,33 @@ fn per_buff_id_count_repeats_once_per_matching_layer() {
 }
 
 #[test]
+fn broken_enemy_reads_the_current_action_state() {
+    init_config();
+    let condition = ParsedCondition {
+        opcode: 791210,
+        type_name: "ToBrokenEnemy".into(),
+        kind: ParsedConditionKind::TargetGuardBroken,
+        raw_args: Vec::new(),
+    };
+    let matches = |action_broken_target_count| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[10],
+            None,
+            &TargetPool::default(),
+            TargetContext {
+                action_broken_target_count,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(!matches(0));
+    assert!(matches(1));
+}
+
+#[test]
 fn team_status_type_count_repeats_per_distinct_buff_type() {
     init_config();
     let fight = Fight {

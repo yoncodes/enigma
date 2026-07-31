@@ -25,6 +25,11 @@ pub fn parse_assassinate(_: i32, _: &str, args: &[String]) -> Option<ParsedCondi
     args.is_empty().then_some(ParsedConditionKind::Assassinate)
 }
 
+pub fn parse_target_guard_broken(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty()
+        .then_some(ParsedConditionKind::TargetGuardBroken)
+}
+
 pub fn parse_use_ex_skill(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::UseExSkill)
 }
@@ -68,6 +73,10 @@ mod tests {
         assert_eq!(
             parse_ally_attacked(22213, "BeAttacked", &[]),
             Some(ParsedConditionKind::AllyAttacked)
+        );
+        assert_eq!(
+            parse_target_guard_broken(791210, "ToBrokenEnemy", &[]),
+            Some(ParsedConditionKind::TargetGuardBroken)
         );
     }
 }

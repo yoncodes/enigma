@@ -632,7 +632,8 @@ behavior_definitions! {
     [30006] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
     [30018] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
     [60288] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
-    [60310] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
+    [60310] "LostLife" => crate::engine::damage::handler::Handler, ToughnessOverflowDamage, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
+    [60287] "ToughnessRecover" => super::toughness::Handler, ToughnessRecover, Immediate, destination;
     [60212] "LostAllLifeByAttr" => crate::engine::damage::handler::Handler, LostAllLifeByAttr, Immediate, destination, crate::engine::damage::handler::supports_lost_all_life_by_attr;
     [60216] "DamageRealLostLife" => crate::engine::damage::handler::Handler, DamageRealLostLife, Immediate, destination, crate::engine::damage::handler::supports_damage_real_lost_life;
     [60038] "OriginDamageFromInjuryBankBuff" => super::injury_bank::Handler, OriginDamageFromInjuryBankBuff, AfterDamage, destination;

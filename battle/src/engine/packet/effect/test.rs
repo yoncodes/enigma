@@ -125,7 +125,7 @@ fn crit_is_encoded_by_effect_type() {
 
 #[test]
 fn fully_absorbed_buff_damage_keeps_its_exact_buff_act_opcode() {
-    let effect = EffectPacket::fully_absorbed_damage_with_hurt_info_layout(
+    let effect = EffectPacket::fully_absorbed_damage_with_toughness_layout(
         20,
         DamageRecord {
             amount: 400,
@@ -146,12 +146,76 @@ fn fully_absorbed_buff_damage_keeps_its_exact_buff_act_opcode() {
                 display_amount: Some(400),
             },
         },
+        None,
         HurtInfoWireLayout::Version6,
     );
 
     assert_eq!(effect.effect_num, Some(0));
     assert_eq!(effect.buff_act_id, Some(721));
     assert_eq!(effect.hurt_info.as_ref().unwrap().buff_act_id, Some(721));
+}
+
+#[test]
+fn version_seven_damage_carries_the_committed_toughness_change() {
+    let effect = EffectPacket::hp_with_toughness_layout(
+        HpChange {
+            target_uid: -1,
+            before: 1_000,
+            delta: -100,
+            after: 900,
+            max: 1_000,
+            config_effect: -1,
+            hurt: Some(HurtInfoData {
+                from_uid: 10,
+                is_crit: false,
+                career_restraint: false,
+                reduce_hp: -100,
+                effect_id: 1,
+                skill_id: 1,
+                damage_from: HurtDamageFromType::Skill,
+                buff_act_id: 0,
+                buff_uid: 0,
+                hurt_effect_type: 0,
+                display_amount: Some(100),
+            }),
+            assassinate: false,
+            effect_type: 0,
+            display_amount: Some(100),
+        },
+        Some(crate::engine::manager::toughness::ToughnessChange {
+            target_uid: -1,
+            value_delta: -51_946,
+            point_delta: 2,
+            broken: false,
+        }),
+        HurtInfoWireLayout::Version7,
+    );
+
+    let hurt = effect.hurt_info.unwrap();
+    assert_eq!(hurt.toughness_value, Some(-51_946));
+    assert_eq!(hurt.toughness_point, Some(2));
+    assert_eq!(hurt.broken, Some(false));
+}
+
+#[test]
+fn toughness_recovery_uses_the_client_delta_shape() {
+    let effect =
+        EffectPacket::toughness_recovery(crate::engine::manager::toughness::ToughnessRecovery {
+            target_uid: -1,
+            value_delta: 60_900,
+            point_delta: 3,
+            config_effect: 60_287,
+            team_type: 2,
+        });
+
+    assert_eq!(effect.target_id, Some(-1));
+    assert_eq!(
+        effect.effect_type,
+        Some(EffectType::Toughnessrecover as i32)
+    );
+    assert_eq!(effect.config_effect, Some(60_287));
+    assert_eq!(effect.reserve_str.as_deref(), Some("3,60900"));
+    assert_eq!(effect.team_type, Some(2));
 }
 
 #[test]

@@ -1,6 +1,80 @@
 use super::*;
 
 #[test]
+fn toughness_break_passive_loses_hp_then_recovers_the_recorded_remainder() {
+    crate::test_support::init_config();
+    let mut fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(1_015_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_015_000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![116_362_200],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(116_362_200),
+                    from_uid: Some(-1),
+                    ..Default::default()
+                }],
+                toughness_value: Some(101_500),
+                toughness_point: Some(3),
+                is_broken: Some(false),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    managers.toughness.damage(-1, 304_500, 1_000);
+
+    let result = run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::ToughnessBroken { target_uid: -1 },
+    )
+    .unwrap();
+
+    managers.sync_entities(&mut fight);
+    let enemy = &fight.defender.as_ref().unwrap().entitys[0];
+    assert_eq!(managers.hp.current(-1), 812_000);
+    assert_eq!(enemy.toughness_point, Some(3));
+    assert_eq!(enemy.toughness_value, Some(60_900));
+    assert_eq!(enemy.is_broken, Some(false));
+    assert!(matches!(
+        result
+            .outcomes
+            .iter()
+            .find(|outcome| matches!(outcome, RuleOutcome::ToughnessRecovery(_))),
+        Some(RuleOutcome::ToughnessRecovery(change))
+            if change.point_delta == 3 && change.value_delta == 60_900
+    ));
+}
+
+#[test]
 fn assist_boss_attack_passive_resolves_from_the_derived_skill_cast_event() {
     crate::test_support::init_config();
     let fight = Fight {

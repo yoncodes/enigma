@@ -193,6 +193,9 @@ pub enum BattleEvent {
         amount: i32,
     },
     Hit(HitEvent),
+    ToughnessBroken {
+        target_uid: i64,
+    },
     EntityDied(EntityDiedEvent),
     BattleTerminalCommitted {
         outcome: crate::engine::round::outcome::BattleOutcome,
@@ -230,6 +233,7 @@ impl BattleEvent {
             }
             Self::BuffFeatureTriggered(trigger) => Some(trigger.target_uid),
             Self::Hit(hit) => Some(hit.target_uid),
+            Self::ToughnessBroken { target_uid } => Some(*target_uid),
             Self::EntityDied(death) => Some(death.target_uid),
             Self::ExPointChanged(change) | Self::ExPointOverflow(change) => Some(change.target_uid),
             Self::EurekaChanged(change) => Some(change.target_uid),
@@ -271,6 +275,7 @@ impl BattleEvent {
             Self::HpLost { .. } => EventKind::HpLost,
             Self::HpHealed { .. } => EventKind::HpHealed,
             Self::Hit(_) => EventKind::TargetAttacked,
+            Self::ToughnessBroken { .. } => EventKind::ToughnessBroken,
             Self::EntityDied(_) => EventKind::EntityDied,
             Self::BattleTerminalCommitted { .. } => EventKind::BattleTerminalCommitted,
             Self::ExPointChanged(_) => EventKind::ExPointChanged,
