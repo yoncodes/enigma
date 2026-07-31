@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use sonettobuf::{Fight, FightEntityInfo};
 
@@ -200,6 +200,7 @@ pub struct ConduitManager {
     initialized: Vec<i32>,
     consumed_this_round: BTreeMap<(i32, i32), i32>,
     uses_this_round: BTreeMap<i64, i32>,
+    running: HashSet<i64>,
 }
 
 impl ConduitManager {
@@ -357,6 +358,10 @@ impl ConduitManager {
             .unwrap_or_default()
     }
 
+    pub fn is_running(&self, source_uid: i64) -> bool {
+        self.running.contains(&source_uid)
+    }
+
     pub fn execute(&mut self, command: ConduitCommand) -> Result<ConduitChange, ConduitError> {
         if let Some(error) = self.initialization_errors.first() {
             return Err(*error);
@@ -473,6 +478,11 @@ impl ConduitManager {
                     .flat_map(|area| &area.devices)
                     .find(|device| device.uid == source_uid)
                     .ok_or(ConduitError::MissingDevice(source_uid))?;
+                if running {
+                    self.running.insert(source_uid);
+                } else {
+                    self.running.remove(&source_uid);
+                }
                 Ok(ConduitChange::RunningChanged {
                     source_uid,
                     running,

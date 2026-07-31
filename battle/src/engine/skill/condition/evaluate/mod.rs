@@ -727,6 +727,7 @@ fn condition_kind_matches(
                 && pool.source_is_attacker(source_uid)
                     != pool.source_is_attacker(context.runtime_target_uid)
         }
+        ParsedConditionKind::TargetGuardBroken => context.action_broken_target_count > 0,
         ParsedConditionKind::SingleKillCount { threshold } => {
             context.action_kill_count >= *threshold
         }

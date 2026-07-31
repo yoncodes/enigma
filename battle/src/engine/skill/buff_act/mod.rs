@@ -97,6 +97,7 @@ pub mod special_count_cast_channel;
 pub mod special_count_continue_channel;
 pub mod team_immunity_times;
 pub mod team_share_shield;
+pub mod toughness;
 pub mod transfer_energy_buff;
 pub mod use_damage_skill_add_to_target;
 pub mod use_skill;

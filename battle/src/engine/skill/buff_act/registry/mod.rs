@@ -214,6 +214,7 @@ pub enum BuffActKind {
     RecordTeamExElectricTransConsumeValue,
     TargetingTag,
     TeammateInjuryCount,
+    ToughnessOverflowRecord,
     TransferEnergyBuff,
     UseSkillTeamAddEmitterEnergy,
     UseSkillAttrFix,
@@ -782,6 +783,11 @@ buff_act_definitions! {
         runtime: |context| super::butterfly_record_skill::rule_ops(context.managers, context.pool, context.subscriber, context.event?),
         supports: |args| matches!(args, [count, enchant_id, allowed @ ..]
             if *count > 0 && *enchant_id > 0 && !allowed.is_empty()), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1104, "ButterflyRecordSkill"), &[EffectType::None as i32]).with_initial_state(super::wire::InitialStateRule::ButterflyAllowedSkillKinds));
+    (1111, "ToughnessOverflowRecord") => ToughnessOverflowRecord,
+        effect_time_subscription: false, transactions: [EventKind::HpLost],
+        transaction: super::toughness::transaction_rule_ops,
+        supports: |args| args.is_empty(),
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1111, "ToughnessOverflowRecord"), &[]));
     (806, "ExPointOverflowBank") => ExPointOverflowBank,
         scoped_runtime: |context| super::ex_point_overflow_bank::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(806, "ExPointOverflowBank"), &[EffectType::Expointoverflowbank as i32]));

@@ -26,6 +26,7 @@ pub enum BattleChange {
     BuffActTrigger(crate::engine::manager::buff::BuffActTriggerResult),
     BuffActInfoMarker(crate::engine::manager::buff::BuffActInfoMarkerResult),
     Hp(Box<HpChanges>),
+    ToughnessRecovery(crate::engine::manager::toughness::ToughnessRecovery),
     Death(crate::engine::manager::hp::DeathTransition),
     NuoDiKaHit(crate::engine::mechanic::nuo_di_ka::NuoDiKaHit),
     Injury(InjuryChange),

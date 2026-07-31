@@ -310,7 +310,11 @@ fn project_change(
                         )
                     })
                     .unwrap_or_else(|| {
-                        EffectPacket::hp_with_hurt_info_layout(hp, hurt_info_layout)
+                        EffectPacket::hp_with_toughness_layout(
+                            hp,
+                            changes.toughness,
+                            hurt_info_layout,
+                        )
                     });
                 apply_absorbed_shield_wire(
                     &mut effect,
@@ -320,9 +324,10 @@ fn project_change(
                 );
                 effects.push(effect);
             } else if let Some(damage) = changes.damage {
-                let mut effect = EffectPacket::fully_absorbed_damage_with_hurt_info_layout(
+                let mut effect = EffectPacket::fully_absorbed_damage_with_toughness_layout(
                     changes.target_uid,
                     damage,
+                    changes.toughness,
                     hurt_info_layout,
                 );
                 apply_absorbed_shield_wire(
@@ -363,6 +368,9 @@ fn project_change(
                 effects.push(EffectPacket::dead(death.target_uid));
             }
             effects
+        }
+        BattleChange::ToughnessRecovery(change) => {
+            vec![EffectPacket::toughness_recovery(*change)]
         }
         BattleChange::Death(death) => vec![EffectPacket::dead(death.target_uid)],
         BattleChange::NuoDiKaHit(hit) => vec![EffectPacket::nuo_di_ka_hit(*hit)],

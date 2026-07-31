@@ -27,6 +27,19 @@ mod buff;
 pub struct EffectPacket;
 
 impl EffectPacket {
+    pub fn toughness_recovery(
+        change: crate::engine::manager::toughness::ToughnessRecovery,
+    ) -> ActEffect {
+        ActEffect {
+            target_id: Some(change.target_uid),
+            effect_type: Some(EffectType::Toughnessrecover as i32),
+            config_effect: Some(change.config_effect),
+            reserve_str: Some(format!("{},{}", change.point_delta, change.value_delta)),
+            team_type: Some(change.team_type),
+            ..Default::default()
+        }
+    }
+
     pub fn effect_marker(marker: crate::engine::skill::rule::output::EffectMarker) -> ActEffect {
         ActEffect {
             target_id: Some(marker.target_uid),

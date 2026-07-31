@@ -4,7 +4,7 @@ use crate::engine::{
         entity::EntityCommand, entity::EntitySkillCommand, eureka::EurekaCommand,
         ex_point::ExPointCommand, field::FieldCommand, gauge::GaugeCommand, hp::HpCommand,
         injury::InjuryCommand, revive::ReviveCommand, shield::ShieldCommand, summon::SummonCommand,
-        upgrade::UpgradeCommand,
+        toughness::ToughnessCommand, upgrade::UpgradeCommand,
     },
     mechanic::{
         buff_precast::BuffPrecastCommand, field_transfer::FieldTransferCommand,
@@ -42,6 +42,7 @@ pub enum BattleCommand {
     BuffBatch(Vec<BuffCommand>),
     Hp(HpCommand),
     HpBatch(Vec<HpCommand>),
+    Toughness(ToughnessCommand),
     Injury(InjuryCommand),
     Revive(ReviveCommand),
     Shield(ShieldCommand),

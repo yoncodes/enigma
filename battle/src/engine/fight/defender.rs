@@ -149,6 +149,13 @@ impl Defender {
         let stats = crate::engine::entity::stats::monster_stats(monster_id, level)
             .ok_or_else(|| anyhow::anyhow!("Monster stats {} not found", monster_id))?;
         let attr = stats.base();
+        let (toughness_value, toughness_point) =
+            crate::engine::manager::toughness::configured_toughness(
+                monster.id,
+                attr.hp.unwrap_or(0),
+            )
+            .map(|(value, point)| (Some(value), Some(point)))
+            .unwrap_or_default();
 
         Ok(FightEntityInfo {
             uid: Some(uid),
@@ -168,6 +175,7 @@ impl Defender {
                 .into_iter()
                 .take(monster.passive_skill_count.max(0) as usize)
                 .chain(parse_passives(&monster.passive_skills_ex))
+                .chain(game_data.toughness_passive_skills(monster.toughness_skill))
                 .collect(),
             ex_skill: Some(
                 skill_template
@@ -200,6 +208,9 @@ impl Defender {
             destiny_stone: Some(0),
             destiny_rank: Some(0),
             custom_unit_id: Some(0),
+            toughness_value,
+            toughness_point,
+            is_broken: toughness_value.map(|_| false),
             ..Default::default()
         })
     }
@@ -250,6 +261,15 @@ mod tests {
         assert_eq!(attr.defense, Some(1_000));
         assert_eq!(attr.mdefense, Some(736));
         assert_eq!(attr.technic, Some(210));
+    }
+
+    #[test]
+    fn monster_toughness_skill_contributes_its_configured_passive() {
+        crate::test_support::init_config();
+
+        let entity = Defender::build_monster_with_uid(1_163_857_113, -1, 1, 2).unwrap();
+
+        assert!(entity.passive_skill.contains(&116_362_200));
     }
 
     #[test]

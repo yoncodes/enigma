@@ -53,6 +53,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "monster_sub",
     "monster_template",
     "monster_skill_template",
+    "toughnessskill",
     "cloth_level",
     "player_level",
     "player_bg",

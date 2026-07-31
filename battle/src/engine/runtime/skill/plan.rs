@@ -120,6 +120,10 @@ impl SkillExecution {
         self.context.action_kill_count += count.max(0);
     }
 
+    pub(in crate::engine::runtime) fn record_breaks(&mut self, count: i32) {
+        self.context.action_broken_target_count += count.max(0);
+    }
+
     pub(in crate::engine::runtime) fn record_damage(&mut self, amount: i32) {
         self.context.action_damage_amount += amount.max(0);
         self.context.action_dealt_damage = self.context.action_damage_amount > 0;

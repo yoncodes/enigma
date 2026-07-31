@@ -163,6 +163,8 @@ pub enum BehaviorKind {
     Bloodlust,
     Detonate2,
     LostLife,
+    ToughnessOverflowDamage,
+    ToughnessRecover,
     LostAllLifeByAttr,
     DamageRealLostLife,
     ConfiguredDamageTarget,

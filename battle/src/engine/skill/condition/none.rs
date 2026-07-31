@@ -22,6 +22,7 @@ pub enum NoneMode {
     SkillDamage,
     SkillAfterAttack,
     Attacked,
+    ToughnessBroken,
     AllyAction,
     ImpromptuResolved,
     EnemyAction,
@@ -63,6 +64,7 @@ parser!(skill_action_after_hit, SkillActionAfterHit);
 parser!(skill_cast, SkillCast);
 parser!(skill_after_attack, SkillAfterAttack);
 parser!(attacked, Attacked);
+parser!(toughness_broken, ToughnessBroken);
 parser!(ally_action, AllyAction);
 parser!(impromptu_resolved, ImpromptuResolved);
 parser!(shell_deploy, ShellDeploy);

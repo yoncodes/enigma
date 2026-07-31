@@ -49,6 +49,7 @@ pub(crate) enum RuleOutcome {
     NuoDiKaHit(crate::engine::mechanic::nuo_di_ka::NuoDiKaHit),
     Hp(Box<HpChanges>),
     HpBatch(Vec<HpChanges>),
+    ToughnessRecovery(crate::engine::manager::toughness::ToughnessRecovery),
     Injury(crate::engine::manager::injury::InjuryChange),
     Revive(Box<crate::engine::manager::revive::ReviveChanges>),
     Shield(Box<ShieldChanges>),
@@ -113,6 +114,16 @@ impl RuleOutcome {
         }
     }
 
+    pub(crate) fn broken_target_count(&self) -> i32 {
+        let broken =
+            |change: &HpChanges| i32::from(change.toughness.is_some_and(|change| change.broken));
+        match self {
+            Self::Hp(change) => broken(change),
+            Self::HpBatch(changes) => changes.iter().map(broken).sum(),
+            _ => 0,
+        }
+    }
+
     pub(crate) fn take_deaths(&mut self) -> Vec<crate::engine::manager::hp::DeathTransition> {
         match self {
             Self::Hp(change) => change.death.take().into_iter().collect(),
@@ -165,6 +176,7 @@ impl RuleOutcome {
                 .cloned()
                 .map(|change| BattleChange::Hp(Box::new(change)))
                 .collect(),
+            Self::ToughnessRecovery(change) => vec![BattleChange::ToughnessRecovery(*change)],
             Self::Injury(change) => vec![BattleChange::Injury(change.clone())],
             Self::Revive(changes) => changes
                 .hp
@@ -425,6 +437,10 @@ pub(crate) fn execute_rule_op(
             }
             Ok(RuleOutcome::HpBatch(batch))
         }
+        RuleOp::Command(BattleCommand::Toughness(command)) => Ok(managers
+            .execute_toughness(command)
+            .map(RuleOutcome::ToughnessRecovery)
+            .unwrap_or(RuleOutcome::StateChanged)),
         RuleOp::NuoDiKaHit(hit) => Ok(RuleOutcome::NuoDiKaHit(hit)),
         RuleOp::Command(BattleCommand::Injury(command)) => {
             Ok(RuleOutcome::Injury(managers.injury.execute(command)))
