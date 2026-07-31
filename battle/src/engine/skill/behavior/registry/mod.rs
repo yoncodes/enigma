@@ -535,6 +535,7 @@ behavior_definitions! {
     [60260] "ConsumeBuffLayerAndOtherAddBuff" => super::buff::Handler, ConsumeBuffLayerAndOtherAddBuff, AfterDamage, destination, arguments::exactly_four;
     [30003] "Disperse1" => super::buff::Handler, Disperse1, Immediate, destination, super::buff::supports_status_dispel;
     [30008] "Disperse1" => super::buff::Handler, Disperse1, Immediate, destination;
+    [30004] "Disperse2" => super::buff::Handler, Disperse2, Immediate, destination, super::buff::supports_exact_buff_dispel;
     [30009] "Disperse2" => super::buff::Handler, Disperse2, Immediate, destination, super::buff::supports_exact_buff_dispel;
     [60060] "DisperseExclude" => super::buff::Handler, DisperseExclude, Immediate, destination, super::buff::supports_excluded_dispel;
     [60010] "DisperseForce2" => super::buff::Handler, DisperseForce2, Immediate, destination, super::buff::supports_disperse_force;

@@ -103,6 +103,29 @@ fn disperse_unknown_status_arguments_are_exact_buff_ids() {
 }
 
 #[test]
+fn disperse_configured_buff_keeps_its_exact_registry_identity() {
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(30004, "Disperse2"),
+        vec![530000111],
+        vec!["530000111".into()],
+    );
+
+    let definition = registry::find(&behavior).unwrap();
+    assert!(
+        definition
+            .supports
+            .is_some_and(|supports| supports(&behavior))
+    );
+    let commands = dispel_commands(11, &behavior).unwrap();
+    let [BuffCommand::Remove(command)] = commands.as_slice() else {
+        panic!("expected one exact buff removal command");
+    };
+    assert_eq!(command.target_uid, 11);
+    assert_eq!(command.selector, BuffRemoveSelector::ExactId(530000111));
+    assert!(command.origin.key.matches(30004, "Disperse2"));
+}
+
+#[test]
 fn purify_x_keeps_the_limit_separate_from_status_arguments() {
     let behavior = ParsedBehavior::from_spec(
         crate::engine::skill::behavior::classify::BehaviorSpec::new(20020, "PurifyX"),
