@@ -608,6 +608,22 @@ fn none_round_start_opcodes_keep_their_exact_lanes() {
 }
 
 #[test]
+fn magic_circle_round_start_key_keeps_its_setup_lane() {
+    assert_eq!(
+        parse(542103, "InMagicCircleId", &["30003".into()]),
+        Some(ParsedConditionKind::InMagicCircleId(vec![30003]))
+    );
+    assert_eq!(
+        find_key(542103, "InMagicCircleId").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStart,
+            priority: 1,
+        })
+    );
+    assert!(parse(542103, "Other", &["30003".into()]).is_none());
+}
+
+#[test]
 fn exact_dead_alias_subscribes_to_entity_death() {
     assert_eq!(
         parse(812, "Dead", &[]),
