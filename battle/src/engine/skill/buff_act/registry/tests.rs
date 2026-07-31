@@ -246,6 +246,19 @@ fn damage_cap_is_an_exact_static_consumer_with_its_captured_marker() {
 }
 
 #[test]
+fn hp_loss_floor_is_an_exact_static_consumer() {
+    let definition = find(1008, "BanLostLife").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::BanLostLife);
+    assert!(definition.state.consumer);
+    assert!(has_destination(1008, "BanLostLife", &[150]));
+    assert!(!has_destination(1008, "BanLostLife", &[]));
+    assert!(!has_destination(1008, "BanLostLife", &[160]));
+    assert!(!has_destination(1008, "BanLostLife", &[500]));
+    assert!(find(1008, "DamageNotMoreThan").is_none());
+}
+
+#[test]
 fn sentinel_sub_buff_chain_uses_exact_state_consumers() {
     assert!(has_destination(
         932,
