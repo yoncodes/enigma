@@ -181,6 +181,7 @@ pub enum BehaviorKind {
     CrystalAddCardRank,
     CrystalAddSkillRate,
     CrystalReuse,
+    ToughnessRecover,
     Unknown,
 }
 

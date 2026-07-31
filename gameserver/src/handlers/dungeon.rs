@@ -517,6 +517,7 @@ pub async fn on_fight_end_fight(
     let mut compose_push = None;
     let mut dungeon_settlement = None;
     let mut refund_settlement = None;
+    let mut act229_finish = None;
     if let Some(active) = active.as_ref() {
         let is_abort = msg.is_abort.unwrap_or(false);
         let compose_handled = tower_compose::matches_battle(active);
@@ -552,6 +553,24 @@ pub async fn on_fight_end_fight(
             dungeon::finish_fight_instance(ctx.state.db, player_id, fight_id).await?;
         }
 
+        if !is_abort
+            && won
+            && let Some(context) = active.act229_context
+        {
+            act229_finish = Some(
+                ctx.player()?
+                    .activity
+                    .finish_act229_battle(
+                        ctx.state.db,
+                        context.activity_id,
+                        context.stage_id,
+                        active.current_round(),
+                        active.star(),
+                        &active.act229_heroes(),
+                    )
+                    .await?,
+            );
+        }
         ctx.player_mut()?.battle.clear_active();
     }
     if let Some(settle) = compose_push {
@@ -563,6 +582,9 @@ pub async fn on_fight_end_fight(
     }
     if let Some(settlement) = refund_settlement {
         send_refund(ctx, player_id, settlement).await?;
+    }
+    if let Some(finish) = act229_finish {
+        ctx.notify(CmdId::Act229BattleFinishPushCmd, finish).await?;
     }
     if let Some(end) = end {
         push::send_end_fight_push(ctx, end).await?;

@@ -690,13 +690,17 @@ fn drain_queue_with_deferred(
                 let followups = outcome.followups();
                 let damage_amount = outcome.applied_damage();
                 let death_count = outcome.death_count();
+                let guard_break_count = outcome.guard_break_count();
                 let injured_targets = outcome.injured_targets();
                 if !injured_targets.is_empty()
                     && let Some(action_path) = active_skill_scope_path(&result.frames, &frame_path)
                 {
                     state.record_injuries(action_path, &injured_targets);
                 }
-                if (damage_amount > 0 || death_count > 0 || !injured_targets.is_empty())
+                if (damage_amount > 0
+                    || death_count > 0
+                    || guard_break_count > 0
+                    || !injured_targets.is_empty())
                     && matches!(trigger, SkillOpTrigger::Active)
                     && let Some(queued) = queue.iter_mut().find(|queued| {
                         matches!(queued.trigger, SkillOpTrigger::Active)
@@ -714,6 +718,7 @@ fn drain_queue_with_deferred(
                     });
                     if let Some(execution) = queued.skill_execution.as_mut() {
                         execution.record_damage(damage_amount);
+                        execution.record_guard_breaks(guard_break_count);
                         execution.record_injuries(allied_injuries);
                     }
                 }
