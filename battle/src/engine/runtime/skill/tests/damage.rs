@@ -1062,7 +1062,7 @@ fn exact_attack_crit_row_gains_moxie_only_after_a_critical_hit() {
 }
 
 #[test]
-fn bloodlust_heals_from_committed_damage() {
+fn bloodlust_applies_leech_efficacy_modifiers_to_committed_damage() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -1094,6 +1094,14 @@ fn bloodlust_heals_from_committed_damage() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
+    managers.attribute.override_sp(
+        10,
+        &sonettobuf::HeroSpAttribute {
+            absorb: Some(100),
+            ..Default::default()
+        },
+    );
+    managers.buff.add(&managers.hp, 10, 10, 90120022, 0);
     let target_before = managers.hp.current(-1);
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
@@ -1114,7 +1122,13 @@ fn bloodlust_heals_from_committed_damage() {
 
     let dealt = target_before - managers.hp.current(-1);
     assert!(dealt > 0);
-    assert_eq!(managers.hp.current(10), 100 + dealt * 200 / 1_000);
+    assert_eq!(
+        managers.hp.current(10),
+        100 + crate::engine::damage::scale_permille(
+            crate::engine::damage::scale_permille(dealt, 300),
+            700,
+        )
+    );
     assert!(result.outcomes.iter().any(|outcome| matches!(
         outcome,
         crate::engine::runtime::executor::RuleOutcome::Hp(change)

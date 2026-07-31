@@ -165,6 +165,7 @@ pub enum BuffActKind {
     InjuryBank,
     InjuryLogback,
     ImmunityTimes,
+    InjuryAbsorb,
     AttrFixFromInjuryBank,
     AbsorbHurt,
     LayerMasterHalo,
@@ -656,6 +657,9 @@ buff_act_definitions! {
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(722, "CantGetExskill"), &[EffectType::Cantgetexskill as i32]));
     (709, "BuffAddAct") => BuffAddAct, effect_time_subscription: false,
         supports: super::add_action_point::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(709, "BuffAddAct"), &[EffectType::Buffaddact as i32]));
+    (716, "InjuryAbsorb") => InjuryAbsorb, effect_time_subscription: false,
+        supports: |args| matches!(args, [value] if (1..=1000).contains(value)),
+        state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(716, "InjuryAbsorb"), &[EffectType::Injuryabsorb as i32]));
     (719, "PowerMaxAdd") => PowerMaxAdd, effect_time_subscription: false,
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         frame: CausingFrame,
