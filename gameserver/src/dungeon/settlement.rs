@@ -63,6 +63,16 @@ pub async fn settle_active(
         record,
     )
     .await?;
+    logic::activity::settle_act128_score_in_transaction(
+        &mut tx,
+        player_id,
+        active.episode_id,
+        active.battle_id,
+        active
+            .runtime
+            .indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore),
+    )
+    .await?;
     settlement.compose_push =
         tower_compose::settle_in_transaction(&mut tx, player_id, active).await?;
     battle_db::finish_fight_instance_in_transaction(&mut tx, player_id, fight_id).await?;
@@ -198,6 +208,36 @@ pub async fn settle_refund(
         fight_id,
         refund,
         include_compose.then_some(active),
+        None,
+    )
+    .await
+}
+
+pub async fn settle_failed(
+    db: &SqlitePool,
+    player_id: i64,
+    active: &ActiveBattle,
+    include_compose: bool,
+) -> Result<RefundSettlement, AppError> {
+    let episode = configs::get()
+        .episode
+        .get(active.episode_id)
+        .ok_or(AppError::InvalidRequest)?;
+    let refund = failure_refund(episode, active.multiplication.unwrap_or(1).max(1));
+    let fight_id = active.fight_id.ok_or(AppError::InvalidRequest)?;
+    settle_refund_rewards(
+        db,
+        player_id,
+        fight_id,
+        refund,
+        include_compose.then_some(active),
+        Some((
+            active.episode_id,
+            active.battle_id,
+            active
+                .runtime
+                .indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore),
+        )),
     )
     .await
 }
@@ -208,7 +248,7 @@ pub async fn settle_checkpoint_refund(
     fight_id: i64,
     refund: reward::RewardSet,
 ) -> Result<RefundSettlement, AppError> {
-    settle_refund_rewards(db, player_id, fight_id, refund, None).await
+    settle_refund_rewards(db, player_id, fight_id, refund, None, None).await
 }
 
 async fn settle_refund_rewards(
@@ -217,6 +257,7 @@ async fn settle_refund_rewards(
     fight_id: i64,
     refund: reward::RewardSet,
     compose_active: Option<&ActiveBattle>,
+    activity128_score: Option<(i32, i32, i32)>,
 ) -> Result<RefundSettlement, AppError> {
     let material_changes = refund.material_changes();
     let mut tx = db.begin().await?;
@@ -227,6 +268,12 @@ async fn settle_refund_rewards(
         Some(active) => tower_compose::settle_in_transaction(&mut tx, player_id, active).await?,
         None => None,
     };
+    if let Some((episode_id, battle_id, score)) = activity128_score {
+        logic::activity::settle_act128_score_in_transaction(
+            &mut tx, player_id, episode_id, battle_id, score,
+        )
+        .await?;
+    }
     battle_db::finish_fight_instance_in_transaction(&mut tx, player_id, fight_id).await?;
     tx.commit().await?;
     Ok(RefundSettlement {

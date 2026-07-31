@@ -821,6 +821,14 @@ impl ActivityManager {
         act229_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn act128_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<Get128InfosReply, AppError> {
+        act128_info(db, self.player_id, activity_id).await
+    }
+
     pub fn act229_battle_episode(&self, activity_id: i32, stage_id: i32) -> Result<i32, AppError> {
         act229_battle_episode(activity_id, stage_id)
     }
