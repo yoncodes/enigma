@@ -259,6 +259,18 @@ fn hp_loss_floor_is_an_exact_static_consumer() {
 }
 
 #[test]
+fn missing_hp_healing_is_an_exact_static_consumer() {
+    let definition = find(1011, "CureUpByLostHp").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::CureUpByLostHp);
+    assert!(definition.state.consumer);
+    assert!(has_destination(1011, "CureUpByLostHp", &[200, 75, 8, 100]));
+    assert!(!has_destination(1011, "CureUpByLostHp", &[100, 50, 8, 100]));
+    assert!(!has_destination(1011, "CureUpByLostHp", &[]));
+    assert!(find(1011, "BanLostLife").is_none());
+}
+
+#[test]
 fn sentinel_sub_buff_chain_uses_exact_state_consumers() {
     assert!(has_destination(
         932,

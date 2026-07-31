@@ -939,7 +939,10 @@ buff_act_definitions! {
     (1010, "DyingHealDisperse1") => DyingHealDisperse1,
         runtime: |context| super::revive::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::revive::supports_dying_heal, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1010, "DyingHealDisperse1"), &[EffectType::None as i32]));
-    (1011, "CureUpByLostHp") => CureUpByLostHp, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1011, "CureUpByLostHp"), &[EffectType::Cureupbylosthp as i32]));
+    (1011, "CureUpByLostHp") => CureUpByLostHp,
+        supports: |args| matches!(args, [200, 75, 8, 100]),
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1011, "CureUpByLostHp"), &[EffectType::Cureupbylosthp as i32]));
     (1019, "LostHpCountAddBuff") => LostHpCountAddBuff,
         events: [EventKind::HpLost],
         runtime: |context| super::lost_hp_count_add_buff::rule_ops(context.managers, context.subscriber, context.event?),
