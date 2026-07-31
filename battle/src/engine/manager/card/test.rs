@@ -29,33 +29,90 @@ fn enemy_ai_selects_ultimates_from_current_resource_state() {
         ..Default::default()
     };
 
-    let points = |fight: &Fight| {
-        let mut points = crate::engine::manager::ex_point::ExPointManager::default();
-        points.seed(fight);
-        points
+    let resources = |fight: &Fight| {
+        let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
+        ex_point.seed(fight);
+        let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
+        eureka.seed(fight);
+        (ex_point, eureka)
     };
 
     let ready = fight(5, Some(900));
+    let (ready_ex_point, ready_eureka) = resources(&ready);
     let mut ready_rng = StdRng::seed_from_u64(1);
     assert_eq!(
-        ai::generate_ai_deck(&ready, &points(&ready), &mut ready_rng)[0].skill_id,
+        ai::generate_ai_deck(&ready, &ready_ex_point, &ready_eureka, &mut ready_rng,)[0].skill_id,
         Some(900)
     );
 
     let fallback = fight(5, None);
+    let (fallback_ex_point, fallback_eureka) = resources(&fallback);
     let mut fallback_rng = StdRng::seed_from_u64(1);
     assert_eq!(
-        ai::generate_ai_deck(&fallback, &points(&fallback), &mut fallback_rng)[0].skill_id,
+        ai::generate_ai_deck(
+            &fallback,
+            &fallback_ex_point,
+            &fallback_eureka,
+            &mut fallback_rng,
+        )[0]
+        .skill_id,
         Some(100)
     );
 
     let stale_fight = fight(5, Some(900));
-    let spent = points(&fight(0, Some(900)));
+    let (spent_ex_point, spent_eureka) = resources(&fight(0, Some(900)));
     let mut spent_rng = StdRng::seed_from_u64(1);
     assert_eq!(
-        ai::generate_ai_deck(&stale_fight, &spent, &mut spent_rng)[0].skill_id,
+        ai::generate_ai_deck(&stale_fight, &spent_ex_point, &spent_eureka, &mut spent_rng,)[0]
+            .skill_id,
         Some(100)
     );
+}
+
+#[test]
+fn enemy_ai_selects_boss_ultimate_from_full_named_power() {
+    let fight = |power| Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ex_point: Some(0),
+                ex_skill: Some(900),
+                skill_group1: vec![100],
+                power_infos: vec![sonettobuf::PowerInfo {
+                    power_id: Some(
+                        crate::engine::manager::eureka::PowerType::ZongMaoBossEnergy.id(),
+                    ),
+                    num: Some(power),
+                    max: Some(3),
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    for (power, expected) in [(2, 100), (3, 900)] {
+        let fight = fight(power);
+        let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
+        ex_point.seed(&fight);
+        let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
+        eureka.seed(&fight);
+        let mut rng = StdRng::seed_from_u64(1);
+        assert_eq!(
+            ai::generate_ai_deck(&fight, &ex_point, &eureka, &mut rng)[0].skill_id,
+            Some(expected)
+        );
+    }
 }
 
 #[test]

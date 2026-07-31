@@ -341,6 +341,7 @@ impl BattleRuntime {
             let (next_ai, _) = crate::engine::manager::card::start_decks_from_fight(
                 &self.fight,
                 &self.managers.ex_point,
+                &self.managers.eureka,
                 self.fight.battle_id.unwrap_or_default(),
                 None,
             );
@@ -420,6 +421,7 @@ impl BattleRuntime {
             let cards = crate::engine::manager::card::start_decks_from_fight(
                 &self.fight,
                 &self.managers.ex_point,
+                &self.managers.eureka,
                 self.round_state.cur_round,
                 self.determinism
                     .take_next_ai_card_snapshot()
