@@ -74,10 +74,26 @@ fn configured_target_rule_owns_slots_that_use_logic_target() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(80),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(100),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    current_hp: Some(20),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(100),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -102,7 +118,7 @@ fn configured_target_rule_owns_slots_that_use_logic_target() {
 
     assert!(matches!(
         emit_all_ops(
-            invocation,
+            invocation.clone(),
             &managers,
             &pool,
             &catalog,
@@ -115,6 +131,25 @@ fn configured_target_rule_owns_slots_that_use_logic_target() {
             [RuleOp::Command(BattleCommand::ExPoint(
                 crate::engine::manager::ex_point::ExPointCommand::Change(change)
             ))] if change.target_uid == 11
+        )
+    ));
+
+    invocation.target = SkillTarget::LogicRule(210);
+    assert!(matches!(
+        emit_all_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Active,
+        ),
+        Ok(ops) if matches!(
+            ops.as_slice(),
+            [RuleOp::Command(BattleCommand::ExPoint(
+                crate::engine::manager::ex_point::ExPointCommand::Change(change)
+            ))] if change.target_uid == -2
         )
     ));
 }

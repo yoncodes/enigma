@@ -1,6 +1,7 @@
 use crate::engine::{
     entity::attr::AttrId,
     manager::{
+        card::{CardCommand, CardConsumeForEffect},
         conduit::{ConduitCommand, ConduitPowerChange, ConduitPowerChangeKind},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand, EurekaProgress},
         ex_point::{ExPointChange, ExPointCommand},
@@ -8,10 +9,14 @@ use crate::engine::{
         hp::{CurrentHpSet, HpCommand},
     },
     skill::{
+        action::{SkillExecutionMode, SkillInvocation, SkillRequest, SkillTarget},
         behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
         buff_act,
         effect::ParsedBehavior,
-        rule::output::{BattleCommand, RuleOp},
+        rule::{
+            RuleReferences,
+            output::{BattleCommand, RuleOp},
+        },
     },
 };
 
@@ -21,9 +26,32 @@ use sonettobuf::effect_type_enum::EffectType;
 
 pub(super) struct Handler;
 
+pub(super) fn supports_recover_power_and_cast_cards(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [skill_id, target_rule]
+            if *skill_id > 0
+                && crate::engine::skill::target::is_mapped_target_code(*target_rule)
+    )
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         rule_ops(context, behavior)
+    }
+
+    fn references(behavior: &ParsedBehavior) -> RuleReferences {
+        RuleReferences {
+            skills: matches!(
+                behavior.spec.kind,
+                BehaviorKind::RecoverPowerAndDelCardsUseSkill
+            )
+            .then(|| behavior.arg(0))
+            .flatten()
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        }
     }
 }
 
@@ -122,16 +150,42 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
             power_args(&behavior.args).map(|(power_id, delta)| vec![eureka(power_id, delta)])
         }
         BehaviorKind::RecoverPowerAndDelCardsUseSkill => {
+            let [skill_id, target_rule] = behavior.args.as_slice() else {
+                return None;
+            };
             let state = context
                 .managers
                 .eureka
                 .get(context.target_uid, EUREKA_RESOURCE_ID);
             let delta = state.max - state.current;
-            Some(if delta != 0 {
-                vec![eureka(EUREKA_RESOURCE_ID, delta)]
-            } else {
-                Vec::new()
-            })
+            let cards = context
+                .managers
+                .card
+                .plan_effect_consumption(context.target_uid);
+            let mut ops = Vec::with_capacity(cards.len() + 2);
+            if delta != 0 {
+                ops.push(eureka(EUREKA_RESOURCE_ID, delta));
+            }
+            if !cards.is_empty() {
+                ops.push(RuleOp::Command(BattleCommand::Card(
+                    CardCommand::ConsumeForEffect(CardConsumeForEffect {
+                        origin,
+                        owner_uid: context.target_uid,
+                        indices: cards.iter().map(|(index, _)| *index).collect(),
+                    }),
+                )));
+            }
+            ops.extend(cards.into_iter().map(|_| {
+                let mut invocation: SkillInvocation = SkillRequest {
+                    source_uid: context.target_uid,
+                    skill_id: *skill_id,
+                }
+                .into();
+                invocation.target = SkillTarget::LogicRule(*target_rule);
+                invocation.mode = SkillExecutionMode::Active;
+                RuleOp::Skill(invocation)
+            }));
+            Some(ops)
         }
         BehaviorKind::AddPowerByCritCount => {
             let [threshold, gain] = behavior.args.as_slice() else {

@@ -1,4 +1,4 @@
-use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute, PowerInfo};
+use sonettobuf::{CardInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute, PowerInfo};
 
 use super::*;
 
@@ -34,6 +34,106 @@ fn barcarola_resources_require_one_nonzero_configured_delta() {
         "AddTeamEnergy",
         vec![-1],
     )));
+}
+
+#[test]
+fn recover_power_and_cast_cards_consumes_only_the_casters_incantations() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                skill_group1: vec![100, 101, 102],
+                power_infos: vec![PowerInfo {
+                    power_id: Some(EUREKA_RESOURCE_ID),
+                    num: Some(2),
+                    max: Some(5),
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.card = crate::engine::manager::card::CardManager::new(vec![
+        CardInfo {
+            uid: Some(10),
+            skill_id: Some(100),
+            ..Default::default()
+        },
+        CardInfo {
+            uid: Some(20),
+            skill_id: Some(200),
+            ..Default::default()
+        },
+        CardInfo {
+            uid: Some(10),
+            skill_id: Some(101),
+            ..Default::default()
+        },
+    ]);
+    managers.card.seed(&fight);
+    let behavior = ParsedBehavior::new(
+        60125,
+        "RecoverPowerAndDelCardsUseSkill",
+        vec![31050152, 210],
+    );
+    assert!(supports_recover_power_and_cast_cards(&behavior));
+    assert_eq!(
+        (super::super::registry::find(&behavior).unwrap().references)(&behavior).skills,
+        [31050152]
+    );
+
+    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let ops = rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 31050131,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &crate::engine::skill::target::TargetPool::from_fight(&fight),
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [
+            RuleOp::Command(BattleCommand::Eureka(EurekaCommand::Change(EurekaChange {
+                delta: 3,
+                ..
+            }))),
+            RuleOp::Command(BattleCommand::Card(CardCommand::ConsumeForEffect(
+                CardConsumeForEffect { indices, .. }
+            ))),
+            RuleOp::Skill(first),
+            RuleOp::Skill(second),
+        ] if indices == &[0, 2]
+            && first.plan.skill_id == 31050152
+            && first.target == SkillTarget::LogicRule(210)
+            && first.mode == SkillExecutionMode::Active
+            && second.plan.skill_id == 31050152
+            && second.target == SkillTarget::LogicRule(210)
+            && second.mode == SkillExecutionMode::Active
+    ));
 }
 
 #[test]

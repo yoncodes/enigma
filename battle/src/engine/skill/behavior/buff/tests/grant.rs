@@ -155,6 +155,19 @@ fn layer_range_replaces_the_selected_buff_too() {
             "5,15,25,100".into(),
         ],
     );
+    assert!(super::super::supports_layer_range(&behavior));
+
+    let malformed = ParsedBehavior::from_spec(
+        behavior.spec.clone(),
+        Vec::new(),
+        vec![
+            "31050111".into(),
+            "31050141,31050142,31050143".into(),
+            "5,25,15,100".into(),
+        ],
+    );
+    assert!(!super::super::supports_layer_range(&malformed));
+
     let mut determinism = RoundDeterminism::default();
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     let mut target = crate::engine::skill::target::TargetContext::default();
