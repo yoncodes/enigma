@@ -878,7 +878,7 @@ impl BattleManagers {
         self.eureka.sync_fight(fight);
     }
 
-    fn entity_snapshot(&self, uid: i64) -> Option<FightEntityInfo> {
+    pub(crate) fn entity_snapshot(&self, uid: i64) -> Option<FightEntityInfo> {
         let mut entity = self.entity.snapshot(uid)?;
         self.project_entity_state(&mut entity);
         self.eureka.sync_entity(uid, &mut entity);

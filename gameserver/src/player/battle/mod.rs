@@ -76,7 +76,6 @@ impl BattleState {
         self.active
             .as_ref()
             .and_then(|active| active.runtime.entity_info(uid))
-            .cloned()
             .ok_or(AppError::InvalidRequest)
     }
 
