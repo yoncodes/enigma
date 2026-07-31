@@ -523,7 +523,10 @@ pub async fn on_fight_end_fight(
         let compose_handled = tower_compose::matches_battle(active);
         let won = active.is_victory();
 
-        if !is_abort && won && (compose_handled || active.tower_type.is_none()) {
+        if !is_abort
+            && won
+            && (compose_handled || (active.tower_type.is_none() && active.act229_context.is_none()))
+        {
             let star = active.star();
             let round = active.current_round();
             let record =

@@ -863,6 +863,103 @@ fn normal_push_uses_the_runtime_outcome() {
     );
 }
 
+#[tokio::test]
+async fn act229_victory_uses_only_act229_settlement() {
+    use crate::{
+        handlers::dungeon::on_fight_end_fight,
+        net::{
+            app::AppState, context::ConnectionContext, outbound::CommandPacket,
+            packet::ClientPacket,
+        },
+        player::{Player, PlayerState, battle::Act229BattleContext},
+    };
+    use prost::Message;
+    use sonettobuf::{CmdId, EndFightRequest, Fight, FightEntityInfo, FightTeam};
+    use tokio::sync::mpsc;
+
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (35, 'act229-settlement', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let runtime = battle::engine::runtime::BattleRuntime::new(Fight {
+        cur_round: Some(2),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(0),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let active = ActiveBattle {
+        runtime,
+        act229_context: Some(Act229BattleContext {
+            activity_id: 138521,
+            stage_id: 1,
+        }),
+        ..Default::default()
+    };
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(8);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(35, PlayerState::new(35, 0)));
+    ctx.player_mut().unwrap().battle.restore_active(active);
+
+    let mut data = Vec::new();
+    EndFightRequest {
+        is_abort: Some(false),
+    }
+    .encode(&mut data)
+    .unwrap();
+    on_fight_end_fight(
+        &mut ctx,
+        ClientPacket {
+            sequence: 0,
+            cmd_id: CmdId::FightEndFightCmd as i16,
+            up_tag: 7,
+            data,
+        },
+    )
+    .await
+    .unwrap();
+
+    let commands = std::iter::from_fn(|| packets.try_recv().ok())
+        .map(|packet| match packet {
+            CommandPacket::Push { cmd_id, .. } | CommandPacket::Reply { cmd_id, .. } => cmd_id,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        commands,
+        [
+            CmdId::Act229BattleFinishPushCmd,
+            CmdId::FightEndFightPushCmd,
+            CmdId::FightEndFightCmd,
+        ]
+    );
+}
+
 #[test]
 fn episode_first_bonus_uses_bonus_config() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
