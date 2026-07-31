@@ -52,6 +52,14 @@ pub fn enemies_with_special_at_least(
     )
 }
 
+pub fn enemies_with_special_equal(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    entity_count(
+        EntityCountScope::AliveEnemiesIncludeSp,
+        ConditionCompare::Equal,
+        args,
+    )
+}
+
 pub fn enemies_with_special_at_most(
     _: i32,
     _: &str,

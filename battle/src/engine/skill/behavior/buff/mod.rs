@@ -33,6 +33,10 @@ mod copy;
 mod dispel;
 mod distribute;
 mod grant;
+
+pub(super) fn supports_random_pool(behavior: &ParsedBehavior) -> bool {
+    grant::supports_random_pool(behavior)
+}
 mod layer;
 mod poison;
 mod replace;

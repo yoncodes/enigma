@@ -239,6 +239,40 @@ fn active_buff_features_can_link_passive_skill_effects() {
 }
 
 #[test]
+fn passive_skill_link_activates_at_the_configured_buff_layer() {
+    init_config();
+    let manager = |layer| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        buff_id: Some(12110011),
+                        uid: Some(2),
+                        from_uid: Some(-1),
+                        layer: Some(layer),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut manager = BuffManager::default();
+        manager.seed(&fight);
+        manager
+    };
+
+    assert!(manager(9).passive_skill_links_for(10).is_empty());
+    assert_eq!(
+        manager(10).passive_skill_links_for(10)[0].skill_id,
+        12110011
+    );
+}
+
+#[test]
 fn settlement_advances_only_matching_take_stage_durations() {
     init_config();
     let fight = Fight {

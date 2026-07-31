@@ -207,6 +207,17 @@ fn condition_repeat_count(
         ParsedConditionKind::PerKillCount { divisor } => {
             Some(context.action_kill_count / (*divisor).max(1))
         }
+        ParsedConditionKind::PerTeamBuffStatusTypeCount {
+            status_ids,
+            divisor,
+            max_count,
+        } => managers.map(|managers| {
+            (managers
+                .buff
+                .team_buff_status_type_count(condition_targets, status_ids)
+                / (*divisor).max(1))
+            .clamp(0, *max_count)
+        }),
         ParsedConditionKind::PerHp { interval_permille } => managers.map(|managers| {
             condition_targets
                 .iter()
@@ -504,6 +515,17 @@ fn condition_kind_matches(
                 .map(|uid| managers.buff.buff_status_count(*uid, status_ids))
                 .sum();
             compare_value(amount, *compare, *threshold)
+        }),
+        ParsedConditionKind::PerTeamBuffStatusTypeCount {
+            status_ids,
+            divisor,
+            ..
+        } => managers.is_some_and(|managers| {
+            *divisor > 0
+                && managers
+                    .buff
+                    .team_buff_status_type_count(condition_targets, status_ids)
+                    >= *divisor
         }),
         ParsedConditionKind::BuffAdded(buff_ids) => {
             context.added_buff_amount > 0 && buff_ids.contains(&context.added_buff_id)

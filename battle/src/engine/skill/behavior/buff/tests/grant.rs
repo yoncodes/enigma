@@ -257,6 +257,28 @@ fn random_pool_add_emits_distinct_configured_buff_commands() {
 }
 
 #[test]
+fn random_pool_arguments_require_a_configured_distinct_draw() {
+    crate::test_support::init_config();
+    let behavior = |args| {
+        ParsedBehavior::from_spec(
+            crate::engine::skill::behavior::classify::BehaviorSpec::new(20021, "AddBuffRanId"),
+            args,
+            Vec::new(),
+        )
+    };
+
+    assert!(super::super::grant::supports_random_pool(&behavior(vec![
+        22301851, 5
+    ])));
+    assert!(!super::super::grant::supports_random_pool(&behavior(vec![
+        22301851, 0
+    ])));
+    assert!(!super::super::grant::supports_random_pool(&behavior(vec![
+        0, 5
+    ])));
+}
+
+#[test]
 fn ordinary_add_buff_rule_executes_without_a_battle_intent() {
     crate::test_support::init_config();
     let behavior = ParsedBehavior::from_spec(

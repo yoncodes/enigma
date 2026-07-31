@@ -56,6 +56,7 @@ pub enum BuffActKind {
     AddCardRecordByRound,
     AdrenalineAddCard,
     AddPassiveSkills,
+    AddPassiveSkillByLayer,
     AddSplitEmitterNum,
     AddSpTempCard,
     AddToBuffEntity2,
@@ -116,6 +117,7 @@ pub enum BuffActKind {
     CureUpByLostHp,
     DamageNotMoreThan,
     DeviceCostReduce,
+    DisperseByTag,
     Dot,
     DotNoLimit,
     DodgeDamageType,
@@ -137,6 +139,7 @@ pub enum BuffActKind {
     EzioBigSkill,
     EachChangeAttr,
     ExPointAddByHit,
+    ExPointDel,
     ExPointCardMove,
     ExPointCantAdd,
     ExSkillPointChange,
@@ -169,11 +172,13 @@ pub enum BuffActKind {
     LostHpCountAddBuff,
     LifeAttackFixRate,
     MonitorContinueChannel,
+    MoxieReductionImmunity,
     ModifyAttrByBuffLayer,
     ModifyMaxBuffLayers,
     ModifyMaxBurnLayers,
     MasterHalo,
     MockTaunt,
+    Petrified,
     MonsterLabel,
     NuoDiKaCastChannel,
     PowerMaxAdd,
@@ -552,6 +557,9 @@ buff_act_definitions! {
     (201, "Cure") => Cure,
         runtime: |context| super::cure::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |args| super::cure::supports(BuffActKind::Cure, args), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(201, "Cure"), &[EffectType::Cure as i32]));
+    (202, "Dot") => Dot, stat_read: ByArguments,
+        runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
+        supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(202, "Dot"), &[EffectType::Dot as i32]));
     (203, "Dot") => Dot, stat_read: ByArguments,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
         supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(203, "Dot"), &[EffectType::Dot as i32]));
@@ -584,7 +592,11 @@ buff_act_definitions! {
         runtime: |context| super::rebound::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::rebound::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(303, "Rebound"), &[EffectType::Rebound as i32]));
     (401, "Dizzy") => Dizzy, effect_time_subscription: false,
-        supports: |_| true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(401, "Dizzy"), &[EffectType::Dizzy as i32]));
+        supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(401, "Dizzy"), &[EffectType::Dizzy as i32]));
+    (402, "Petrified") => Petrified, event: EventKind::TargetAttacked, frame: CausingFrame,
+        runtime: |context| super::petrified::rule_ops(context.catalog, context.subscriber, context.event?),
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(402, "Petrified"), &[]));
     (403, "Sleep") => Sleep, event: EventKind::TargetAttacked, frame: CausingFrame,
         runtime: |context| super::sleep::rule_ops(context.subscriber, context.event?),
         supports: |args| args.is_empty(), wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(403, "Sleep"), &[EffectType::Sleep as i32]));
@@ -610,6 +622,9 @@ buff_act_definitions! {
         events: [EventKind::TargetAttacked],
         runtime: |context| super::damage_not_more_than::consume_after_hit(context.subscriber, context.event?),
         supports: super::damage_not_more_than::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(510, "DamageNotMoreThan"), &[EffectType::Damagenotmorethan as i32]));
+    (509, "ImmunityExpointChange") => MoxieReductionImmunity,
+        effect_time_subscription: false, supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(509, "ImmunityExpointChange"), &[EffectType::None as i32]));
     (518, "AddToTarget") => AddToTarget,
         scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
         supports: |_| true;
@@ -626,6 +641,17 @@ buff_act_definitions! {
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(607, "ExPointCardMove"), &[EffectType::Expointcardmove as i32]));
     (603, "ExPointCantAdd") => ExPointCantAdd,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(603, "ExPointCantAdd"), &[EffectType::Expointcantadd as i32]));
+    (605, "ExPointDel") => ExPointDel,
+        runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
+        supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(605, "ExPointDel"), &[]));
+    (804, "DisperseByTag") => DisperseByTag, actor: Team,
+        runtime: |context| super::disperse_by_tag::rule_ops(context.subscriber, context.event?),
+        supports: super::disperse_by_tag::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(804, "DisperseByTag"), &[]));
+    (805, "AddPassiveSkillByLayer") => AddPassiveSkillByLayer,
+        effect_time_subscription: false,
+        supports: |args| matches!(args, [threshold, skill_id] if *threshold > 0 && *skill_id > 0),
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(805, "AddPassiveSkillByLayer"), &[]));
     (722, "CantGetExskill") => CantGetExskill,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(722, "CantGetExskill"), &[EffectType::Cantgetexskill as i32]));
     (709, "BuffAddAct") => BuffAddAct, effect_time_subscription: false,

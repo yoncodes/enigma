@@ -166,6 +166,19 @@ impl BehaviorHandler for Handler {
             }
             return Some(Vec::new());
         }
+        if behavior.spec.kind == BehaviorKind::SkillRateUp2 {
+            let target_uid = context.target.runtime_target_uid;
+            let delta = status_skill_rate(&context.managers.buff, target_uid, behavior);
+            if context.active_skill_id != 0 && target_uid != 0 && delta != 0 {
+                context.modifiers.rates.push(SkillRateModifier::fixed(
+                    target_uid,
+                    behavior.spec.key.opcode,
+                    delta,
+                    true,
+                ));
+            }
+            return Some(Vec::new());
+        }
         let additional_moxie = context.target.additional_moxie;
         emit(
             context.modifiers,

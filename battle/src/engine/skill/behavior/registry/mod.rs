@@ -526,7 +526,7 @@ behavior_definitions! {
     [1210002] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination;
     [20005] "AddBuffRound" => super::buff::Handler, AddBuffRound, AfterDamage, aggregated_destination, super::buff::supports_add_buff_round;
     [20017] "AddBuffRound2" => super::buff::Handler, AddBuffRound2, AfterDamage, aggregated_destination;
-    [20021] "AddBuffRanId" => super::buff::Handler, AddBuffRanId, AfterDamage, destination;
+    [20021] "AddBuffRanId" => super::buff::Handler, AddBuffRanId, AfterDamage, destination, super::buff::supports_random_pool;
     [100006] "AddBuffByHeroId" => super::buff::Handler, AddBuffByHeroId, AfterDamage, destination;
     [60029] "RemoveBuffToAddBuff" => super::buff::Handler, RemoveBuffToAddBuff, AfterDamage, destination, arguments::exactly_two;
     [60145] "AddBuffDuration" => super::buff::Handler, AddBuffDuration, Immediate, destination, arguments::exactly_two;
@@ -601,6 +601,7 @@ behavior_definitions! {
     [10004] "AttrFix" => super::rate::Handler, AttrFix, Immediate, modifier, super::rate::supports_attr_fix;
     [10001] "SkillRateUp" => super::rate::Handler, SkillRateUp, Immediate, modifier, arguments::at_least_one;
     [10002] "SkillRateUp1" => super::rate::Handler, SkillRateUp1, Immediate, modifier, super::rate::supports_status_skill_rate;
+    [10003] "SkillRateUp2" => super::rate::Handler, SkillRateUp2, Immediate, modifier, super::rate::supports_status_skill_rate;
     [60067] "SkillRateUpCardLevel" => super::rate::Handler, SkillRateUpCardLevel, Immediate, modifier, super::rate::supports_card_rank_skill_rate;
     [60234] "AddSkillRateByTargetCount" => super::rate::Handler, AddSkillRateByTargetCount, Immediate, modifier, super::rate::supports_target_count_rate;
     [60182] "SkillRateUpBySelfBuffType" => super::rate::Handler, SkillRateUpBySelfBuffType, Immediate, modifier, super::rate::supports_self_buff_type_rate;
