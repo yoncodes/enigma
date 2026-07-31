@@ -1,20 +1,53 @@
 use super::*;
 
 #[test]
-fn entity_info_reads_the_runtime_fight_owner() {
-    let runtime = BattleRuntime::new(Fight {
+fn entity_info_projects_manager_owned_state() {
+    use crate::engine::{
+        manager::hp::{CurrentHpSet, HpCommand},
+        skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
+    };
+
+    crate::test_support::init_config();
+    let mut runtime = BattleRuntime::new(Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 model_id: Some(3127),
+                current_hp: Some(100),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(100),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            sp_entitys: vec![FightEntityInfo {
+                uid: Some(-6),
+                model_id: Some(900030304),
                 ..Default::default()
             }],
             ..Default::default()
         }),
         ..Default::default()
     });
+    runtime
+        .managers
+        .execute_hp(HpCommand::SetCurrent(CurrentHpSet {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "Test"),
+            },
+            source_uid: 10,
+            target_uid: 10,
+            value: 70,
+            config_effect: 0,
+            effect_type: 1,
+        }))
+        .unwrap();
 
-    assert_eq!(runtime.entity_info(10).unwrap().model_id, Some(3127));
+    let entity = runtime.entity_info(10).unwrap();
+    assert_eq!(entity.model_id, Some(3127));
+    assert_eq!(entity.current_hp, Some(70));
+    assert_eq!(runtime.entity_info(-6).unwrap().model_id, Some(900030304));
     assert!(runtime.entity_info(11).is_none());
 }
 
