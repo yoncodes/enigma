@@ -353,6 +353,7 @@ pub mod task_weekwalk;
 pub mod teaching_card;
 pub mod teaching_summon;
 pub mod test_server_task;
+pub mod toughnessskill;
 pub mod tower_assist_attribute;
 pub mod tower_assist_boss;
 pub mod tower_assist_boss_change;
@@ -749,6 +750,7 @@ pub struct GameDB {
     pub teaching_card: teaching_card::TeachingCardTable,
     pub teaching_summon: teaching_summon::TeachingSummonTable,
     pub test_server_task: test_server_task::TestServerTaskTable,
+    pub toughnessskill: toughnessskill::ToughnessskillTable,
     pub tower_assist_attribute: tower_assist_attribute::TowerAssistAttributeTable,
     pub tower_assist_boss: tower_assist_boss::TowerAssistBossTable,
     pub tower_assist_boss_change: tower_assist_boss_change::TowerAssistBossChangeTable,
@@ -1851,6 +1853,9 @@ impl GameDB {
         let test_server_task = test_server_task::TestServerTaskTable::load(
             &format!("{}/test_server_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load test_server_task.json: {}", e))?;
+        let toughnessskill = toughnessskill::ToughnessskillTable::load(
+            &format!("{}/toughnessskill.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load toughnessskill.json: {}", e))?;
         let tower_assist_attribute = tower_assist_attribute::TowerAssistAttributeTable::load(
             &format!("{}/tower_assist_attribute.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load tower_assist_attribute.json: {}", e))?;
@@ -2323,6 +2328,7 @@ impl GameDB {
             teaching_card,
             teaching_summon,
             test_server_task,
+            toughnessskill,
             tower_assist_attribute,
             tower_assist_boss,
             tower_assist_boss_change,

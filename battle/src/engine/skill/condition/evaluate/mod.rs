@@ -832,6 +832,11 @@ fn condition_kind_matches(
             .is_some_and(|attacker| attacker.damage_type == *damage_type),
         ParsedConditionKind::AttackCrit => context.action_crit_count > 0,
         ParsedConditionKind::BeforeCrit => context.action_crit_count > 0,
+        ParsedConditionKind::TargetGuardBroken => context.action_guard_break_count > 0,
+        ParsedConditionKind::GuardBroken => {
+            context.toughness_broken_uid != 0
+                && condition_targets.contains(&context.toughness_broken_uid)
+        }
         ParsedConditionKind::HurtRestrained | ParsedConditionKind::HurtNotRestrained => {
             let Some(attacker) = pool.entity(context.hit_source_uid) else {
                 return false;

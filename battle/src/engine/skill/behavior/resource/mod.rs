@@ -21,6 +21,10 @@ use sonettobuf::effect_type_enum::EffectType;
 
 pub(super) struct Handler;
 
+pub fn supports_average_life(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [0])
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         rule_ops(context, behavior)

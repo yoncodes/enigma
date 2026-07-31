@@ -49,6 +49,7 @@ pub async fn restore_active_fight(
 /// `is_restart` selects the client entry path; it does not change the saved dungeon inputs.
 pub fn matches_saved_dungeon_start(active: &ActiveBattle, request: &StartDungeonRequest) -> bool {
     active.tower_context.is_none()
+        && active.act229_context.is_none()
         && active.start_request.as_ref().is_some_and(|start| {
             start.chapter_id == request.chapter_id
                 && start.episode_id == request.episode_id

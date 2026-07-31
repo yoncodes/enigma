@@ -319,7 +319,8 @@ condition_definitions! {
     [205] "None" => none::skill_action_start, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [208] "None" => none::skill_action_after_damage, uses_hit_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [210] "None" => none::skill_action_after_hit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
-    [202, 204, 206, 207, 2011, 2082, 2092, 900, 901, 903, 905, 908, 910, 930, 1041] "None" => none::skill_action, event_trigger(EventKind::SkillAction, None);
+    [202, 204, 206, 207, 2011, 2082, 900, 901, 903, 905, 908, 910, 930, 1041] "None" => none::skill_action, event_trigger(EventKind::SkillAction, None);
+    [2092] "None" => trigger::parse_guard_broken, reaction_targets_owner(event_trigger(EventKind::ToughnessBroken, None));
     [1061] "None" => none::action_queue_committed, event_trigger(EventKind::ActionQueueCommitted, None);
     [2081] "None" => none::skill_cast, uses_active_skill_targets(event_trigger(EventKind::SkillCast, None));
     [209, 211] "None" => none::attacked, event_trigger(EventKind::BeAttacked, None);
@@ -488,6 +489,7 @@ condition_definitions! {
     [1001208] "Assassinate" => trigger::parse_assassinate, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [1001210] "Assassinate" => trigger::parse_assassinate, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [1001212] "Assassinate" => trigger::parse_assassinate, team_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit)));
+    [791210] "ToBrokenEnemy" => trigger::parse_target_guard_broken, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [25203] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [25208] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [25210] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
@@ -519,7 +521,7 @@ condition_definitions! {
     [1008101] "Synchronization" => resource::synchronization, predicate(&[EventKind::ExPointChanged]);
     [526203, 526210] "ExpointLessThan" => resource::ex_point_at_most, predicate(&[EventKind::ExPointChanged]);
     [544100] "NotInMagicCircleId" => magic_circle::absent, setup_route(SetupStage::RoundStartCondition, 100, &[EventKind::FieldChanged]);
-    [542104] "InMagicCircleId" => magic_circle::present, setup_route(SetupStage::RoundStart, 1, &[EventKind::FieldChanged]);
+    [542103, 542104] "InMagicCircleId" => magic_circle::present, setup_route(SetupStage::RoundStart, 1, &[EventKind::FieldChanged]);
     [542203] "InMagicCircleId" => magic_circle::present, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [542210] "InMagicCircleId" => magic_circle::present, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [542004] "InMagicCircleId" => magic_circle::present, predicate(&[EventKind::FieldChanged]);

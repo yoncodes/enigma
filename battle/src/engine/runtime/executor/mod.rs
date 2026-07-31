@@ -68,6 +68,7 @@ pub(crate) enum RuleOutcome {
     RaspberryCapacity(Box<CapacityResult>),
     Summon(SummonChanges),
     Upgrade(UpgradeChange),
+    ToughnessRecovered(crate::engine::manager::toughness::ToughnessRecovery),
     ThresholdSkills(Vec<crate::engine::skill::action::SkillInvocation>),
     ActiveSkillTargetsModified(i32),
 }
@@ -109,6 +110,16 @@ impl RuleOutcome {
                 .iter()
                 .filter(|change| change.death.is_some())
                 .count() as i32,
+            _ => 0,
+        }
+    }
+
+    pub(crate) fn guard_break_count(&self) -> i32 {
+        let broke =
+            |change: &HpChanges| i32::from(change.toughness.is_some_and(|change| change.broke));
+        match self {
+            Self::Hp(change) => broke(change),
+            Self::HpBatch(changes) => changes.iter().map(broke).sum(),
             _ => 0,
         }
     }
@@ -221,6 +232,7 @@ impl RuleOutcome {
             }
             Self::Summon(change) => vec![BattleChange::Summon(*change)],
             Self::Upgrade(change) => vec![BattleChange::Upgrade(change.clone())],
+            Self::ToughnessRecovered(change) => vec![BattleChange::ToughnessRecovered(*change)],
             Self::ThresholdSkills(_) => Vec::new(),
             Self::ActiveSkillTargetsModified(_) => Vec::new(),
         }
@@ -644,6 +656,11 @@ pub(crate) fn execute_rule_op(
             let change = managers.execute_upgrade(command)?;
             Ok(RuleOutcome::Upgrade(change))
         }
+        RuleOp::Command(BattleCommand::ToughnessRecover(command)) => Ok(managers
+            .toughness
+            .recover(command)
+            .map(RuleOutcome::ToughnessRecovered)
+            .unwrap_or(RuleOutcome::StateChanged)),
         RuleOp::Skill(_) => Err(RuleExecutionError::UnexpectedSkill),
         RuleOp::BeginSkillAction { lifecycle, cost } => {
             let changes = managers.execute_ex_point(cost)?;
