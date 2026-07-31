@@ -17,10 +17,11 @@ use crate::engine::{
         skill::{self, SkillExecution, SkillOpError, SkillOpTrigger},
     },
     skill::{
+        action::SkillTarget,
         effect::SkillEffectCatalog,
         rule::{SetupStage, output::RuleOp},
         subscriber::SubscriberError,
-        target::{TargetContext, TargetPool},
+        target::{TargetContext, TargetPool, TargetRequest, TargetResolver, targets_enemy},
     },
 };
 
@@ -349,16 +350,46 @@ fn drain_queue_with_deferred(
                 {
                     continue;
                 }
+                let logic_target = catalog.logic_target(invocation.plan.skill_id);
+                let attack_has_no_target = matches!(trigger, SkillOpTrigger::Active)
+                    && invocation
+                        .phase
+                        .unwrap_or(crate::engine::skill::action::SkillPhase::Immediate)
+                        == crate::engine::skill::action::SkillPhase::Immediate
+                    && catalog.is_attack(invocation.plan.skill_id)
+                    && match invocation.target {
+                        SkillTarget::Configured if targets_enemy(logic_target).is_some() => {
+                            TargetResolver::resolve_primary_candidates(
+                                &TargetRequest {
+                                    code: logic_target,
+                                    raw: Vec::new(),
+                                },
+                                invocation.plan.skill_id,
+                                invocation.plan.source_uid,
+                                pool,
+                                determinism,
+                                Some(managers),
+                                TargetContext {
+                                    active_skill_is_attack: true,
+                                    active_skill_id: invocation.plan.skill_id,
+                                    active_skill_source_uid: invocation.plan.source_uid,
+                                    logic_target,
+                                    ..context
+                                },
+                            )
+                            .is_empty()
+                        }
+                        SkillTarget::Configured
+                        | SkillTarget::Inherited
+                        | SkillTarget::Explicit(_) => {
+                            pool.enemies(invocation.plan.source_uid, false).is_empty()
+                        }
+                    };
                 if matches!(trigger, SkillOpTrigger::Active)
                     && base_pool.team_type(invocation.plan.source_uid).is_some()
                     && ((base_pool.entity(invocation.plan.source_uid).is_some()
                         && pool.entity(invocation.plan.source_uid).is_none())
-                        || (invocation
-                            .phase
-                            .unwrap_or(crate::engine::skill::action::SkillPhase::Immediate)
-                            == crate::engine::skill::action::SkillPhase::Immediate
-                            && catalog.is_attack(invocation.plan.skill_id)
-                            && pool.enemies(invocation.plan.source_uid, false).is_empty()))
+                        || attack_has_no_target)
                 {
                     continue;
                 }
