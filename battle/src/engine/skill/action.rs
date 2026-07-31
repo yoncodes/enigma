@@ -61,6 +61,7 @@ pub struct SkillActionEvent {
     pub damage_amount: i32,
     pub kill_count: i32,
     pub crit_count: i32,
+    pub guard_break_count: i32,
     pub additional_moxie: i32,
     pub extra_skill_kind: i32,
     pub mode: SkillExecutionMode,

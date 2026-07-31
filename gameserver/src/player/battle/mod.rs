@@ -6,10 +6,10 @@ use flate2::{Compression, read::GzEncoder};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use sonettobuf::{
-    AutoRoundReply, AutoRoundRequest, BeginRoundReply, BeginRoundRequest, CardInfo, CardInfoPush,
-    FightEntityInfo, FightReason, FightRoundOperRecord, ReconnectFightReply, RedealCardInfoPush,
-    ResetRoundReply, StartDungeonReply, StartDungeonRequest, UseClothSkillOperRecord,
-    UseClothSkillReply, UseClothSkillRequest, fight_reason,
+    Act229HeroNo, AutoRoundReply, AutoRoundRequest, BeginRoundReply, BeginRoundRequest, CardInfo,
+    CardInfoPush, FightEntityInfo, FightReason, FightRoundOperRecord, ReconnectFightReply,
+    RedealCardInfoPush, ResetRoundReply, StartDungeonReply, StartDungeonRequest,
+    UseClothSkillOperRecord, UseClothSkillReply, UseClothSkillRequest, fight_reason,
 };
 use sqlx::SqlitePool;
 use std::io::Read;
@@ -76,7 +76,6 @@ impl BattleState {
         self.active
             .as_ref()
             .and_then(|active| active.runtime.entity_info(uid))
-            .cloned()
             .ok_or(AppError::InvalidRequest)
     }
 
@@ -162,6 +161,13 @@ struct BattleCheckpoint {
     start_request: StartDungeonRequest,
     seed: u64,
     tower_context: Option<::battle::tower::BattleContext>,
+    act229_context: Option<Act229BattleContext>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Act229BattleContext {
+    pub activity_id: i32,
+    pub stage_id: i32,
 }
 
 #[allow(dead_code)]
@@ -190,6 +196,7 @@ pub struct ActiveBattle {
     pub(crate) seed: u64,
     pub(crate) start_request: Option<StartDungeonRequest>,
     pub(crate) tower_context: Option<::battle::tower::BattleContext>,
+    pub(crate) act229_context: Option<Act229BattleContext>,
     pub(crate) rounds: Vec<CommittedRound>,
     pub(crate) pending_cloth_skill_opers: Vec<UseClothSkillOperRecord>,
 }
@@ -251,7 +258,7 @@ impl ActiveBattle {
             request.params.as_deref(),
         )
         .await?;
-        Self::prepare_from_built(request, built, None)
+        Self::prepare_from_built(request, built, None, None)
     }
 
     pub async fn from_built(
@@ -261,7 +268,26 @@ impl ActiveBattle {
         built: ::battle::dungeon::BuiltFight,
         tower_context: Option<::battle::tower::BattleContext>,
     ) -> Result<Self, AppError> {
-        let mut active = Self::prepare_from_built(request, built, tower_context)?;
+        Self::persist_built(pool, player_id, request, built, tower_context, None).await
+    }
+
+    pub fn prepare_act229(
+        request: StartDungeonRequest,
+        built: ::battle::dungeon::BuiltFight,
+        context: Act229BattleContext,
+    ) -> Result<Self, AppError> {
+        Self::prepare_from_built(request, built, None, Some(context))
+    }
+
+    async fn persist_built(
+        pool: &SqlitePool,
+        player_id: i64,
+        request: StartDungeonRequest,
+        built: ::battle::dungeon::BuiltFight,
+        tower_context: Option<::battle::tower::BattleContext>,
+        act229_context: Option<Act229BattleContext>,
+    ) -> Result<Self, AppError> {
+        let mut active = Self::prepare_from_built(request, built, tower_context, act229_context)?;
         let checkpoint = active.checkpoint_json()?;
         active.fight_id = Some(
             battle::create_fight_instance(
@@ -285,15 +311,9 @@ impl ActiveBattle {
         request: StartDungeonRequest,
         built: ::battle::dungeon::BuiltFight,
         tower_context: Option<::battle::tower::BattleContext>,
+        act229_context: Option<Act229BattleContext>,
     ) -> Result<Self, AppError> {
         let episode_id = request.episode_id.ok_or(AppError::InvalidRequest)?;
-        let chapter_id = request.chapter_id.unwrap_or_else(|| {
-            config::configs::get()
-                .episode
-                .get(episode_id)
-                .map(|episode| episode.chapter_id)
-                .unwrap_or_default()
-        });
         let battle_id = built
             .fight
             .battle_id
@@ -301,12 +321,12 @@ impl ActiveBattle {
             .ok_or(AppError::InvalidRequest)?;
         let seed = rand::random();
         Self::from_built_with_seed(
-            chapter_id,
             episode_id,
             battle_id,
             request,
             built,
             tower_context,
+            act229_context,
             seed,
         )
     }
@@ -346,14 +366,21 @@ impl ActiveBattle {
     }
 
     fn from_built_with_seed(
-        chapter_id: i32,
         episode_id: i32,
         battle_id: i32,
         request: StartDungeonRequest,
         built: ::battle::dungeon::BuiltFight,
         tower_context: Option<::battle::tower::BattleContext>,
+        act229_context: Option<Act229BattleContext>,
         seed: u64,
     ) -> Result<Self, AppError> {
+        let chapter_id = request.chapter_id.unwrap_or_else(|| {
+            config::configs::get()
+                .episode
+                .get(episode_id)
+                .map(|episode| episode.chapter_id)
+                .unwrap_or_default()
+        });
         let use_record = request.use_record.unwrap_or(false);
         let fight_group = request
             .fight_group
@@ -396,6 +423,7 @@ impl ActiveBattle {
             seed,
             start_request: Some(request),
             tower_context,
+            act229_context,
             ..Default::default()
         })
     }
@@ -447,12 +475,12 @@ impl ActiveBattle {
             .await?
         };
         let mut active = Self::from_built_with_seed(
-            checkpoint.chapter_id,
             episode_id,
             record.battle_id,
             checkpoint.start_request,
             built,
             checkpoint.tower_context,
+            checkpoint.act229_context,
             checkpoint.seed,
         )?;
         active.fight_id = Some(record.id);
@@ -465,11 +493,22 @@ impl ActiveBattle {
             start_request: self.start_request.clone().ok_or(AppError::InvalidRequest)?,
             seed: self.seed,
             tower_context: self.tower_context,
+            act229_context: self.act229_context,
         })?)
     }
 
     pub fn reconnect_reply(&self) -> ReconnectFightReply {
         let (fight, last_round) = self.runtime.reconnect_state();
+        let data = self
+            .act229_context
+            .map(|context| {
+                serde_json::json!({
+                    "episodeId": self.episode_id,
+                    "stageId": context.stage_id,
+                })
+                .to_string()
+            })
+            .or_else(|| self.params.clone());
         ReconnectFightReply {
             fight: Some(fight),
             last_round,
@@ -482,10 +521,33 @@ impl ActiveBattle {
                 content: Some(self.episode_id.to_string()),
                 battle_id: Some(self.battle_id),
                 multiplication: self.multiplication,
-                data: self.params.clone(),
+                data,
             }),
             fight_group: self.fight_group.clone(),
         }
+    }
+
+    pub fn act229_heroes(&self) -> Vec<Act229HeroNo> {
+        let Some(group) = self.fight_group.as_ref() else {
+            return Vec::new();
+        };
+        group
+            .hero_list
+            .iter()
+            .filter_map(|uid| {
+                let hero_id = self.runtime.entity_info(*uid)?.model_id;
+                let equip_uids = group
+                    .equips
+                    .iter()
+                    .find(|equip| equip.hero_uid == Some(*uid))
+                    .map(|equip| equip.equip_uid.clone())
+                    .unwrap_or_default();
+                Some(Act229HeroNo {
+                    hero_id,
+                    equip_uids,
+                })
+            })
+            .collect()
     }
 
     pub fn oper_records(&self) -> Vec<FightRoundOperRecord> {

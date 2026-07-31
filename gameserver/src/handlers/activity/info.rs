@@ -165,13 +165,19 @@ info_handler!(
     Get126InfosCmd,
     126
 );
-info_handler!(
-    on_get_128_infos,
-    Get128InfosRequest,
-    Get128InfosReply,
-    Get128InfosCmd,
-    128
-);
+pub async fn on_get_128_infos(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = sonettobuf::Get128InfosRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .activity
+        .act128_info(ctx.state.db, msg.activity_id)
+        .await?;
+    ctx.send_reply(CmdId::Get128InfosCmd, reply, 0, req.up_tag)
+        .await
+}
 info_handler!(
     on_get_129_infos,
     Get129InfosRequest,

@@ -1117,8 +1117,8 @@ fn bloodlust_heals_from_committed_damage() {
     assert_eq!(managers.hp.current(10), 100 + dealt * 200 / 1_000);
     assert!(result.outcomes.iter().any(|outcome| matches!(
         outcome,
-        crate::engine::runtime::executor::RuleOutcome::Hp(change)
-            if change.hp.is_some_and(|hp| {
+        crate::engine::runtime::executor::RuleOutcome::Hp(execution)
+            if execution.changes.hp.is_some_and(|hp| {
                 hp.effect_type == sonettobuf::effect_type_enum::EffectType::Bloodlust as i32
             })
     )));

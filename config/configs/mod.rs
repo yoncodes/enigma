@@ -29,6 +29,8 @@ pub mod activity123_stage;
 pub mod activity125;
 pub mod activity125_link;
 pub mod activity125_task;
+pub mod activity128_countboss;
+pub mod activity128_episode;
 pub mod activity128_task;
 pub mod activity130_task;
 pub mod activity131_task;
@@ -353,6 +355,7 @@ pub mod task_weekwalk;
 pub mod teaching_card;
 pub mod teaching_summon;
 pub mod test_server_task;
+pub mod toughnessskill;
 pub mod tower_assist_attribute;
 pub mod tower_assist_boss;
 pub mod tower_assist_boss_change;
@@ -425,6 +428,8 @@ pub struct GameDB {
     pub activity125: activity125::Activity125Table,
     pub activity125_link: activity125_link::Activity125LinkTable,
     pub activity125_task: activity125_task::Activity125TaskTable,
+    pub activity128_countboss: activity128_countboss::Activity128CountbossTable,
+    pub activity128_episode: activity128_episode::Activity128EpisodeTable,
     pub activity128_task: activity128_task::Activity128TaskTable,
     pub activity130_task: activity130_task::Activity130TaskTable,
     pub activity131_task: activity131_task::Activity131TaskTable,
@@ -749,6 +754,7 @@ pub struct GameDB {
     pub teaching_card: teaching_card::TeachingCardTable,
     pub teaching_summon: teaching_summon::TeachingSummonTable,
     pub test_server_task: test_server_task::TestServerTaskTable,
+    pub toughnessskill: toughnessskill::ToughnessskillTable,
     pub tower_assist_attribute: tower_assist_attribute::TowerAssistAttributeTable,
     pub tower_assist_boss: tower_assist_boss::TowerAssistBossTable,
     pub tower_assist_boss_change: tower_assist_boss_change::TowerAssistBossChangeTable,
@@ -879,6 +885,12 @@ impl GameDB {
         let activity125_task = activity125_task::Activity125TaskTable::load(
             &format!("{}/activity125_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity125_task.json: {}", e))?;
+        let activity128_countboss = activity128_countboss::Activity128CountbossTable::load(
+            &format!("{}/activity128_countboss.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity128_countboss.json: {}", e))?;
+        let activity128_episode = activity128_episode::Activity128EpisodeTable::load(
+            &format!("{}/activity128_episode.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity128_episode.json: {}", e))?;
         let activity128_task = activity128_task::Activity128TaskTable::load(
             &format!("{}/activity128_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity128_task.json: {}", e))?;
@@ -1851,6 +1863,9 @@ impl GameDB {
         let test_server_task = test_server_task::TestServerTaskTable::load(
             &format!("{}/test_server_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load test_server_task.json: {}", e))?;
+        let toughnessskill = toughnessskill::ToughnessskillTable::load(
+            &format!("{}/toughnessskill.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load toughnessskill.json: {}", e))?;
         let tower_assist_attribute = tower_assist_attribute::TowerAssistAttributeTable::load(
             &format!("{}/tower_assist_attribute.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load tower_assist_attribute.json: {}", e))?;
@@ -1999,6 +2014,8 @@ impl GameDB {
             activity125,
             activity125_link,
             activity125_task,
+            activity128_countboss,
+            activity128_episode,
             activity128_task,
             activity130_task,
             activity131_task,
@@ -2323,6 +2340,7 @@ impl GameDB {
             teaching_card,
             teaching_summon,
             test_server_task,
+            toughnessskill,
             tower_assist_attribute,
             tower_assist_boss,
             tower_assist_boss_change,

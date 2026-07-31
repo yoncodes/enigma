@@ -191,6 +191,11 @@ pub enum BattleEvent {
         target_uid: i64,
         amount: i32,
     },
+    ToughnessBroken {
+        source_uid: i64,
+        target_uid: i64,
+        skill_id: i32,
+    },
     Hit(HitEvent),
     EntityDied(EntityDiedEvent),
     BattleTerminalCommitted {
@@ -221,7 +226,8 @@ impl BattleEvent {
             Self::EntityEntered { target_uid }
             | Self::EntityTransformed { target_uid }
             | Self::HpLost { target_uid, .. }
-            | Self::HpHealed { target_uid, .. } => Some(*target_uid),
+            | Self::HpHealed { target_uid, .. }
+            | Self::ToughnessBroken { target_uid, .. } => Some(*target_uid),
             Self::SkillEffectStarted(action) | Self::SkillAction(action) => Some(action.target_uid),
             Self::AllyAction(action) => Some(action.target_uid),
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
@@ -269,6 +275,7 @@ impl BattleEvent {
             Self::BuffFeatureTriggered(_) => EventKind::BuffFeatureTriggered,
             Self::HpLost { .. } => EventKind::HpLost,
             Self::HpHealed { .. } => EventKind::HpHealed,
+            Self::ToughnessBroken { .. } => EventKind::ToughnessBroken,
             Self::Hit(_) => EventKind::TargetAttacked,
             Self::EntityDied(_) => EventKind::EntityDied,
             Self::BattleTerminalCommitted { .. } => EventKind::BattleTerminalCommitted,
@@ -381,6 +388,7 @@ mod subscription_tests {
             damage_amount: 10,
             kill_count: 0,
             crit_count: 0,
+            guard_break_count: 0,
             additional_moxie: 0,
             extra_skill_kind: 0,
             mode: crate::engine::skill::action::SkillExecutionMode::Active,

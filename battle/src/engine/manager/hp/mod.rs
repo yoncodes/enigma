@@ -253,6 +253,7 @@ pub struct HpChanges {
     pub shield_granted: Option<ShieldGain>,
     pub max_hp: Option<MaxHpChange>,
     pub hp: Option<HpChange>,
+    pub toughness: Option<super::toughness::ToughnessChange>,
     pub kill: Option<i32>,
     pub death: Option<DeathTransition>,
 }
@@ -327,6 +328,16 @@ impl HpChanges {
                 damage_from: damage.hurt.damage_from,
                 assassinate: damage.assassinate,
             }));
+        }
+        if self.toughness.is_some_and(|change| change.broke) {
+            events.push(BattleEvent::ToughnessBroken {
+                source_uid: self.source_uid,
+                target_uid: self.target_uid,
+                skill_id: self
+                    .damage
+                    .map(|damage| damage.hurt.skill_id)
+                    .unwrap_or_default(),
+            });
         }
         if let Some(removed) = &self.team_shared_shield_removed {
             events.extend(removed.events());
@@ -612,6 +623,7 @@ impl HpManager {
             shield_granted: None,
             max_hp: None,
             hp: None,
+            toughness: None,
             kill: None,
             death: None,
         };

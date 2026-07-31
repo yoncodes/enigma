@@ -11,10 +11,12 @@ pub mod ex_point;
 pub mod field;
 pub mod gauge;
 pub mod hp;
+pub mod indicator;
 pub mod injury;
 pub mod revive;
 pub mod shield;
 pub mod summon;
+pub mod toughness;
 pub mod upgrade;
 pub mod wave;
 
@@ -58,6 +60,7 @@ pub struct BattleManagers {
     pub entity: entity::EntityManager,
     pub emanation: EmanationManager,
     pub hp: HpManager,
+    pub indicator: indicator::IndicatorManager,
     pub injury: injury::InjuryManager,
     pub ex_point: ExPointManager,
     pub eureka: EurekaManager,
@@ -66,6 +69,7 @@ pub struct BattleManagers {
     pub field: field::FieldManager,
     pub upgrade: UpgradeManager,
     pub summon: SummonManager,
+    pub toughness: toughness::ToughnessManager,
     pub wave: wave::WaveManager,
     rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
     round_rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
@@ -77,6 +81,11 @@ struct HpPlan {
     command: hp::HpCommand,
     team_shared: Option<hp::TeamSharedShieldPlan>,
     team_shared_buff: Option<BuffPlan>,
+}
+
+pub(crate) struct HpExecution {
+    pub changes: hp::HpChanges,
+    pub indicator: Option<crate::engine::skill::rule::output::EffectMarker>,
 }
 
 impl BattleManagers {
@@ -243,6 +252,17 @@ impl BattleManagers {
         self.execute_hp_with_target_count(command, 1)
     }
 
+    pub(crate) fn execute_rule_hp(
+        &mut self,
+        command: hp::HpCommand,
+    ) -> Result<HpExecution, hp::HpCommandError> {
+        let changes = self.execute_hp(command)?;
+        let indicator = self
+            .indicator
+            .record_damage(changes.target_uid, changes.applied_damage());
+        Ok(HpExecution { changes, indicator })
+    }
+
     pub(crate) fn execute_hp_batch(
         &mut self,
         commands: Vec<hp::HpCommand>,
@@ -277,6 +297,25 @@ impl BattleManagers {
             plans.push(plan);
         }
         Ok(plans.into_iter().map(|plan| self.commit_hp(plan)).collect())
+    }
+
+    pub(crate) fn execute_rule_hp_batch(
+        &mut self,
+        commands: Vec<hp::HpCommand>,
+    ) -> Result<Vec<HpExecution>, hp::HpCommandError> {
+        let changes = self.execute_hp_batch(commands)?;
+        Ok(changes
+            .into_iter()
+            .map(|change| {
+                let indicator = self
+                    .indicator
+                    .record_damage(change.target_uid, change.applied_damage());
+                HpExecution {
+                    changes: change,
+                    indicator,
+                }
+            })
+            .collect())
     }
 
     fn execute_hp_with_target_count(
@@ -336,10 +375,23 @@ impl BattleManagers {
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> hp::HpChanges {
+        let toughness = match plan.command {
+            hp::HpCommand::Damage(damage)
+                if damage.hurt.damage_from == hp::HurtDamageFromType::Skill =>
+            {
+                self.toughness.reduce(
+                    damage.target_uid,
+                    damage.amount,
+                    damage.hurt.career_restraint,
+                )
+            }
+            _ => None,
+        };
         let team_shared_shield_removed = plan.team_shared_buff.map(|plan| self.commit_buff(plan));
         let mut changes = self
             .hp
             .commit_validated_command_with_team_shared(plan.command, plan.team_shared);
+        changes.toughness = toughness;
         changes.team_shared_shield_removed = team_shared_shield_removed;
         if let Some(shield) = &mut changes.shield_absorbed {
             shield.buff_uid = self
@@ -704,6 +756,7 @@ impl BattleManagers {
         let team_type = entity.team_type.unwrap_or_default();
         self.attribute.register(entity);
         self.hp.register(entity);
+        self.toughness.register(entity);
         self.ex_point.register(entity);
         self.eureka.register(entity);
         self.buff.register_entity(entity, team_type);
@@ -849,6 +902,7 @@ impl BattleManagers {
         managers.attribute.seed(fight);
         managers.battle_rule = battle_rule::BattleRuleManager::seed(fight);
         managers.hp.seed(fight);
+        managers.toughness.seed(fight);
         managers.ex_point.seed(fight);
         managers.eureka.seed(fight);
         managers.buff.seed(fight);
@@ -878,7 +932,7 @@ impl BattleManagers {
         self.eureka.sync_fight(fight);
     }
 
-    fn entity_snapshot(&self, uid: i64) -> Option<FightEntityInfo> {
+    pub(crate) fn entity_snapshot(&self, uid: i64) -> Option<FightEntityInfo> {
         let mut entity = self.entity.snapshot(uid)?;
         self.project_entity_state(&mut entity);
         self.eureka.sync_entity(uid, &mut entity);
@@ -895,6 +949,7 @@ impl BattleManagers {
         }
         self.project_primary_attributes(entity);
         self.hp.sync_entity(entity);
+        self.toughness.sync_entity(entity);
         self.ex_point.sync_entity(entity);
         entity.ex_skill_point_change =
             Some(crate::engine::mechanic::card::CardMechanic.ultimate_cost_offset(self, uid));

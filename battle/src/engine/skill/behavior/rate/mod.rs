@@ -221,6 +221,14 @@ pub(super) fn supports_conduit_rate(behavior: &ParsedBehavior) -> bool {
     )
 }
 
+pub(super) fn supports_bullet_crit_rate(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [base_rate, bonus_rate, max_count]
+            if *base_rate >= 0 && *bonus_rate >= 0 && *max_count > 0
+    )
+}
+
 pub(super) fn supports_conduit_power_up(behavior: &ParsedBehavior) -> bool {
     conduit_power_up_args(behavior).is_some()
 }

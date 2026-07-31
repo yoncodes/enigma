@@ -230,12 +230,20 @@ fn dead_entity_cannot_execute_an_already_queued_active_skill() {
 }
 
 #[test]
-fn attack_followup_does_not_start_without_a_living_enemy() {
+fn attack_followup_does_not_start_without_a_living_configured_target() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            sub_entitys: vec![FightEntityInfo {
+                uid: Some(-20),
                 current_hp: Some(100),
                 ..Default::default()
             }],
@@ -251,6 +259,7 @@ fn attack_followup_does_not_start_without_a_living_enemy() {
         slots: Vec::new(),
     });
     catalog.insert_damage_rate(200, 1000);
+    catalog.insert_logic_target(200, 202);
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
         skill_id: 200,
