@@ -127,6 +127,7 @@ pub enum BehaviorKind {
     Summon,
     SummonSp2,
     Kill,
+    LethalHpLoss,
     KillTargets,
     MonsterChange,
     Assassinate,
