@@ -827,8 +827,10 @@ fn conduit_cost_uses_its_exact_activation_subscription() {
             phase: None,
         }
     );
-    assert_eq!(definition.reaction_timing, ReactionTiming::AfterSkill);
+    assert_eq!(definition.publication, PublicationPhase::AfterPublish);
+    assert_eq!(definition.reaction_timing, ReactionTiming::Immediate);
     assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert_eq!(definition.reaction_frame_scope, ReactionFrameScope::Causing);
 }
 
 #[test]

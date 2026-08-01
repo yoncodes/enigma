@@ -1,6 +1,193 @@
 use super::*;
 
 #[test]
+fn captured_twins_selection_has_a_committed_runtime_source() {
+    init_config().unwrap();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/battles/battle116385108/BeginRoundReply_1.json");
+    let value = captured_start_reply(&path).unwrap();
+    let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
+    let (ex_attributes, sp_attributes) = preview_attributes(&fight, &path).unwrap();
+    let mut runtime = BattleRuntime::new_with_attributes(fight, ex_attributes, sp_attributes);
+    runtime.start_round().unwrap();
+    let captured = captured_round(&path).unwrap();
+    seed_captured_randomness(&mut runtime, &captured);
+    let request = begin_round_request(&path.with_file_name("BeginRoundRequest_1.json")).unwrap();
+    let round = runtime.advance_round(request).unwrap();
+    let conduit = round
+        .fight_step
+        .iter()
+        .find(|step| {
+            step.act_effect.iter().any(|effect| {
+                effect
+                    .fight_step
+                    .as_ref()
+                    .is_some_and(|nested| nested.act_id == Some(31490121))
+            })
+        })
+        .unwrap();
+    assert_eq!(conduit.to_id, Some(-2));
+    assert_eq!(
+        conduit
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.effect_type)
+            .collect::<Vec<_>>(),
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Devicerunning as i32,
+            sonettobuf::effect_type_enum::EffectType::Devicepowerchange as i32,
+            sonettobuf::effect_type_enum::EffectType::Buffupdate as i32,
+            sonettobuf::effect_type_enum::EffectType::Counterchange as i32,
+            sonettobuf::effect_type_enum::EffectType::Fightstep as i32,
+        ]
+    );
+    let skill = conduit
+        .act_effect
+        .iter()
+        .find_map(|effect| effect.fight_step.as_ref())
+        .filter(|step| step.act_id == Some(31490121))
+        .unwrap();
+    let finish = skill
+        .act_effect
+        .iter()
+        .position(|effect| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Counterchange as i32)
+                && effect.effect_num == Some(63)
+        })
+        .unwrap();
+    let harmonization = skill
+        .act_effect
+        .iter()
+        .enumerate()
+        .filter(|(_, effect)| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
+                && effect.effect_num == Some(1)
+        })
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    assert_eq!(harmonization.len(), 3);
+    assert!(harmonization.into_iter().all(|index| index < finish));
+    assert!(!round.fight_step.iter().any(|step| {
+        step.act_effect.iter().any(|effect| {
+            effect
+                .fight_step
+                .as_ref()
+                .is_some_and(|nested| nested.act_id == Some(31490191))
+        })
+    }));
+}
+
+#[test]
+fn captured_version7_conduit_sentinel_keeps_activation_sequence() {
+    fn contains_act(step: &FightStep, act_id: i32) -> bool {
+        step.act_id == Some(act_id)
+            || step
+                .act_effect
+                .iter()
+                .filter_map(|effect| effect.fight_step.as_ref())
+                .any(|nested| contains_act(nested, act_id))
+    }
+    fn parent_of(step: &FightStep, act_id: i32) -> Option<&FightStep> {
+        if step.act_effect.iter().any(|effect| {
+            effect
+                .fight_step
+                .as_ref()
+                .is_some_and(|nested| nested.act_id == Some(act_id))
+        }) {
+            return Some(step);
+        }
+        step.act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .find_map(|nested| parent_of(nested, act_id))
+    }
+
+    init_config().unwrap();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/battles/battle72/BeginRoundReply_1.json");
+    let generated = generate_reply(&path).unwrap().0.round.unwrap();
+    let captured = captured_round(&path).unwrap();
+
+    assert!(
+        captured
+            .fight_step
+            .iter()
+            .any(|step| contains_act(step, 31490121))
+    );
+    let signature = |round: &FightRound| {
+        let parent = round
+            .fight_step
+            .iter()
+            .find_map(|step| parent_of(step, 31490121))
+            .unwrap();
+        let nested = parent
+            .act_effect
+            .iter()
+            .find_map(|effect| effect.fight_step.as_ref())
+            .filter(|step| step.act_id == Some(31490121))
+            .unwrap();
+        (
+            parent
+                .act_effect
+                .iter()
+                .map(|effect| {
+                    (
+                        effect.effect_type,
+                        effect.effect_num,
+                        effect.reserve_str.clone(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+            nested
+                .act_effect
+                .iter()
+                .map(|effect| (effect.effect_type, effect.effect_num))
+                .filter(|effect| {
+                    *effect
+                        == (
+                            Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32),
+                            Some(1),
+                        )
+                        || *effect
+                            == (
+                                Some(
+                                    sonettobuf::effect_type_enum::EffectType::Counterchange as i32,
+                                ),
+                                Some(63),
+                            )
+                })
+                .collect::<Vec<_>>(),
+        )
+    };
+
+    let captured = signature(&captured);
+    assert_eq!(signature(&generated), captured);
+    assert_eq!(
+        captured.1,
+        vec![
+            (
+                Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32),
+                Some(1),
+            ),
+            (
+                Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32),
+                Some(1),
+            ),
+            (
+                Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32),
+                Some(1),
+            ),
+            (
+                Some(sonettobuf::effect_type_enum::EffectType::Counterchange as i32),
+                Some(63),
+            ),
+        ]
+    );
+}
+
+#[test]
 fn generated_round_uses_captured_rng_but_not_damage_amounts() {
     init_config().unwrap();
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/battles/battle62");

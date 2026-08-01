@@ -168,8 +168,8 @@ fn one_skill_event_groups_all_of_its_subscribed_rules() {
         &TargetPool::default(),
         dispatcher::DispatchBatch {
             skills: vec![
-                (subscriber(0, DefinitionKey::new(1, "First")), op()),
-                (subscriber(1, DefinitionKey::new(2, "Second")), op()),
+                (subscriber(0, DefinitionKey::new(208, "None")), op()),
+                (subscriber(1, DefinitionKey::new(210, "None")), op()),
             ],
             ..Default::default()
         },
@@ -187,6 +187,58 @@ fn one_skill_event_groups_all_of_its_subscribed_rules() {
     assert!(Rc::ptr_eq(
         first.frame_group.as_ref().unwrap(),
         second.frame_group.as_ref().unwrap(),
+    ));
+}
+
+#[test]
+fn queued_reaction_rejects_an_unregistered_exact_condition() {
+    use crate::engine::{
+        event::{kind::EventKind, subscription::SubscriptionKey},
+        skill::{
+            rule::route::RouteError,
+            subscriber::{SkillSubscriber, SubscriberError},
+        },
+    };
+
+    let result = queued_reactions(
+        &TargetPool::default(),
+        dispatcher::DispatchBatch {
+            skills: vec![(
+                SkillSubscriber {
+                    owner_uid: 10,
+                    skill_id: 100,
+                    slot_index: Some(0),
+                    key: SubscriptionKey::new(
+                        EventKind::SkillAction,
+                        DefinitionKey::new(999_999, "Unknown"),
+                    ),
+                },
+                RuleOp::Skill(
+                    SkillRequest {
+                        source_uid: 10,
+                        skill_id: 100,
+                    }
+                    .into(),
+                ),
+            )],
+            ..Default::default()
+        },
+        &BattleEvent::Kind(EventKind::SkillAction),
+        Some(&[0]),
+        None,
+        None,
+        None,
+    );
+
+    assert!(matches!(
+        result,
+        Err(DrainError::Subscriber(SubscriberError::UncompiledRoute {
+            skill_id: 100,
+            route: RouteError::UnregisteredExactKey {
+                opcode: 999_999,
+                ..
+            },
+        }))
     ));
 }
 

@@ -34,6 +34,7 @@ pub(super) fn resource_event(event: &BattleEvent) -> Option<ResourceEvent> {
         BattleEvent::ConduitActivated(change) => Some(ResourceEvent::Conduit {
             target_uid: change.source_uid,
             power_id: change.power_id,
+            activation_cost: change.activation_cost,
             spent: change.spent,
         }),
         _ => None,

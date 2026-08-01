@@ -147,50 +147,74 @@ pub fn run_conduit_action(
         },
         FrameTrigger::Active,
     );
-    let skill = push_child(
-        &mut frames,
-        &root,
-        FrameOwner::Skill {
-            source_uid,
-            skill_id,
-            card_index: group,
-            target_uid: None,
-        },
-        FrameTrigger::Active,
-    );
     let cost_reduction = cost_modifier
         .as_ref()
         .map(|(reduction, _)| *reduction)
         .unwrap_or_default();
-    let mut queued = vec![
-        (
-            RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
+    let skill_frame = Rc::new(RefCell::new(None));
+    let mut queue = VecDeque::from([
+        QueuedOp {
+            op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
                 crate::engine::manager::conduit::ConduitCommand::SetRunning {
                     source_uid,
                     running: true,
                 },
             )),
-            root.clone(),
-            None,
-        ),
-        (
-            RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
+            trigger: SkillOpTrigger::Active,
+            skill_execution: None,
+            frame_path: Some(root.clone()),
+            parent_path: None,
+            frame_group: None,
+            independent_parent_group: None,
+            frame_owner: None,
+        },
+        QueuedOp {
+            op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
                 crate::engine::manager::conduit::ConduitCommand::BeginSkill {
                     source_uid,
                     skill_id,
                     cost_reduction,
                 },
             )),
-            root.clone(),
-            None,
-        ),
-    ];
+            trigger: SkillOpTrigger::Active,
+            skill_execution: None,
+            frame_path: Some(root.clone()),
+            parent_path: None,
+            frame_group: None,
+            independent_parent_group: None,
+            frame_owner: None,
+        },
+    ]);
     if let Some((_, consume)) = cost_modifier {
-        queued.push((consume, root, None));
+        queue.push_back(QueuedOp {
+            op: consume,
+            trigger: SkillOpTrigger::Active,
+            skill_execution: None,
+            frame_path: Some(root.clone()),
+            parent_path: None,
+            frame_group: None,
+            independent_parent_group: None,
+            frame_owner: None,
+        });
     }
-    queued.extend([
-        (
-            RuleOp::Skill(crate::engine::skill::action::SkillInvocation {
+    queue.extend([
+        QueuedOp {
+            op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
+                crate::engine::manager::conduit::ConduitCommand::CommitSkillCost {
+                    source_uid,
+                    skill_id,
+                },
+            )),
+            trigger: SkillOpTrigger::Active,
+            skill_execution: None,
+            frame_path: Some(root.clone()),
+            parent_path: None,
+            frame_group: None,
+            independent_parent_group: None,
+            frame_owner: None,
+        },
+        QueuedOp {
+            op: RuleOp::Skill(crate::engine::skill::action::SkillInvocation {
                 plan: crate::engine::skill::action::SkillRequest {
                     source_uid,
                     skill_id,
@@ -204,33 +228,50 @@ pub fn run_conduit_action(
                     },
                 )
             }),
-            skill.clone(),
-            Some(SkillExecution::new(context)),
-        ),
-        (
-            RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
+            trigger: SkillOpTrigger::Active,
+            skill_execution: Some(SkillExecution::new(context)),
+            frame_path: None,
+            parent_path: Some(root.clone()),
+            frame_group: Some(skill_frame.clone()),
+            independent_parent_group: None,
+            frame_owner: Some(FrameOwner::Skill {
+                source_uid,
+                skill_id,
+                card_index: group,
+                target_uid: None,
+            }),
+        },
+        QueuedOp {
+            op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
+                crate::engine::manager::conduit::ConduitCommand::CompleteActivation {
+                    source_uid,
+                    skill_id,
+                },
+            )),
+            trigger: SkillOpTrigger::Active,
+            skill_execution: None,
+            frame_path: None,
+            parent_path: Some(root.clone()),
+            frame_group: Some(skill_frame.clone()),
+            independent_parent_group: None,
+            frame_owner: None,
+        },
+        QueuedOp {
+            op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
                 crate::engine::manager::conduit::ConduitCommand::FinishSkill {
                     source_uid,
                     skill_id,
                 },
             )),
-            skill,
-            None,
-        ),
-    ]);
-    let mut queue = queued
-        .into_iter()
-        .map(|(op, frame_path, skill_execution)| QueuedOp {
-            op,
             trigger: SkillOpTrigger::Active,
-            skill_execution,
-            frame_path: Some(frame_path),
-            parent_path: None,
-            frame_group: None,
+            skill_execution: None,
+            frame_path: None,
+            parent_path: Some(root),
+            frame_group: Some(skill_frame),
             independent_parent_group: None,
             frame_owner: None,
-        })
-        .collect();
+        },
+    ]);
     drain_queue_with_frames(
         managers,
         pool,

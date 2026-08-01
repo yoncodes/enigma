@@ -74,6 +74,7 @@ impl SkillEffectCatalog {
                 }
             }
         }
+        skills.extend(crate::engine::manager::conduit::ConduitManager::seed(fight).skill_ids());
         let catalog = Self::from_roots(db, skills, buffs);
         catalog.warn_unsupported(db);
         catalog
