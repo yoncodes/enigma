@@ -1,8 +1,11 @@
 use crate::engine::{
     damage::AttackPlan,
-    manager::ex_point::{
-        ExPointCommand, ExPointConfigureSynchronization, ExPointRecordSynchronizationAction,
-        SynchronizationDefinition,
+    manager::{
+        buff::{BuffCommand, BuffSetState},
+        ex_point::{
+            ExPointCommand, ExPointConfigureSynchronization, ExPointRecordSynchronizationAction,
+            SynchronizationDefinition,
+        },
     },
     skill::{
         action::{SkillRequest, SkillTarget},
@@ -67,6 +70,7 @@ fn synchronization_progress_ops(
     let action_target_uid = context.target.runtime_target_uid;
     let damage = context.target.action_damage_amount.max(0);
     let completed_actions = before.completed_actions + 1;
+    let remaining_actions = definition.action_count.saturating_sub(completed_actions);
     let mut ops = vec![RuleOp::Command(BattleCommand::ExPoint(
         ExPointCommand::RecordSynchronizationAction(ExPointRecordSynchronizationAction {
             origin,
@@ -75,7 +79,26 @@ fn synchronization_progress_ops(
             damage,
         }),
     ))];
-    if completed_actions >= definition.action_count {
+    let (buff_uid, act_id, _) = context.managers.buff.buff_act_carrier(
+        context.source_uid,
+        crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
+    )?;
+    ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::SetState(
+        BuffSetState {
+            origin,
+            target_uid: context.source_uid,
+            buff_uid,
+            ex_info: None,
+            params: Some(format!(
+                "{act_id}#{},{},{}",
+                remaining_actions,
+                before.total_damage.saturating_add(damage),
+                i32::try_from(action_target_uid).ok()?
+            )),
+            act_info: None,
+        },
+    ))));
+    if remaining_actions == 0 {
         let mut finisher: crate::engine::skill::action::SkillInvocation = SkillRequest {
             source_uid: context.source_uid,
             skill_id: definition.skills[2],
@@ -83,25 +106,6 @@ fn synchronization_progress_ops(
         .into();
         finisher.target = SkillTarget::Explicit(action_target_uid);
         ops.push(RuleOp::Skill(finisher));
-    } else {
-        let (buff_uid, act_id, team_type) = context.managers.buff.buff_act_carrier(
-            context.source_uid,
-            crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
-        )?;
-        ops.push(RuleOp::BuffActInfoMarker(
-            crate::engine::manager::buff::BuffActInfoMarkerResult {
-                target_uid: context.source_uid,
-                buff_uid,
-                act_id,
-                params: vec![
-                    completed_actions + 1,
-                    before.total_damage.saturating_add(damage),
-                    i32::try_from(action_target_uid).ok()?,
-                ],
-                str_param: None,
-                team_type,
-            },
-        ));
     }
     Some(ops)
 }
