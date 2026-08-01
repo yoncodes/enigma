@@ -33,9 +33,10 @@ fn registry_requires_exact_id_and_type() {
     );
     assert!(find(1137, "CardNotCalSize").is_none());
     assert_eq!(
-        destination(951, "CardNotCalSize", &[]),
+        destination(951, "CardNotCalSize", &[1]),
         Some(BuffActDestination::StateConsumer)
     );
+    assert_eq!(destination(951, "CardNotCalSize", &[]), None);
     assert_eq!(
         find(1028, "RealDamageKill").unwrap().kind,
         BuffActKind::RealDamageKill
@@ -331,6 +332,32 @@ fn burn_damage_fix_is_an_exact_static_consumer_with_its_add_marker() {
         wire.markers(super::super::wire::WirePhase::Refresh)
             .is_empty()
     );
+}
+
+#[test]
+fn passive_state_consumers_reject_unsupported_argument_shapes() {
+    for (id, kind, valid, invalid) in [
+        (794, "ModifyMaxBurnLayers", vec![20], vec![]),
+        (865, "AddPassiveSkills", vec![31200221], vec![0]),
+        (
+            932,
+            "FixAttrBySubBuffLayer",
+            vec![31260151, 201, 300, 0],
+            vec![31260151, 999, 300, 0],
+        ),
+        (933, "SubBuff", vec![31260201], vec![0]),
+        (951, "CardNotCalSize", vec![31340161], vec![]),
+        (1137, "EntityExSkillNotCalSize", vec![], vec![1]),
+        (
+            1053,
+            "AttrByHeatScale",
+            vec![205, 25, 600_000, 100_000],
+            vec![205, 25, 600_000, 0],
+        ),
+    ] {
+        assert!(has_destination(id, kind, &valid), "{id} {kind}");
+        assert!(!has_destination(id, kind, &invalid), "{id} {kind}");
+    }
 }
 
 #[test]

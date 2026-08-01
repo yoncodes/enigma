@@ -82,6 +82,60 @@ fn single_kill_count_reads_the_current_action_state() {
 }
 
 #[test]
+fn target_guard_broken_reads_the_current_action_state() {
+    init_config();
+    let condition = ParsedCondition {
+        opcode: 791210,
+        type_name: "ToBrokenEnemy".into(),
+        kind: ParsedConditionKind::TargetGuardBroken,
+        raw_args: Vec::new(),
+    };
+    let matches = |action_guard_break_count| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[10],
+            None,
+            &TargetPool::default(),
+            TargetContext {
+                action_guard_break_count,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(!matches(0));
+    assert!(matches(1));
+}
+
+#[test]
+fn guard_broken_only_matches_the_entity_from_the_break_event() {
+    init_config();
+    let condition = ParsedCondition {
+        opcode: 2092,
+        type_name: "None".into(),
+        kind: ParsedConditionKind::GuardBroken,
+        raw_args: Vec::new(),
+    };
+    let matches = |condition_target, toughness_broken_uid| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            condition_target,
+            &[condition_target],
+            None,
+            &TargetPool::default(),
+            TargetContext {
+                toughness_broken_uid,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(-1, -1));
+    assert!(!matches(-1, -2));
+}
+
+#[test]
 fn per_kill_count_repeats_once_for_each_kill() {
     init_config();
     let condition = ParsedCondition {
@@ -333,33 +387,6 @@ fn per_buff_id_count_repeats_once_per_matching_layer() {
         ),
         5
     );
-}
-
-#[test]
-fn broken_enemy_reads_the_current_action_state() {
-    init_config();
-    let condition = ParsedCondition {
-        opcode: 791210,
-        type_name: "ToBrokenEnemy".into(),
-        kind: ParsedConditionKind::TargetGuardBroken,
-        raw_args: Vec::new(),
-    };
-    let matches = |action_broken_target_count| {
-        conditions_match(
-            std::slice::from_ref(&condition),
-            10,
-            &[10],
-            None,
-            &TargetPool::default(),
-            TargetContext {
-                action_broken_target_count,
-                ..Default::default()
-            },
-        )
-    };
-
-    assert!(!matches(0));
-    assert!(matches(1));
 }
 
 #[test]

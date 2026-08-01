@@ -1,5 +1,5 @@
 use crate::engine::{
-    manager::toughness::{ToughnessCommand, ToughnessRecover},
+    manager::toughness::ToughnessRecover,
     skill::{
         behavior::{BehaviorOpContext, registry::BehaviorHandler},
         effect::ParsedBehavior,
@@ -17,27 +17,15 @@ impl BehaviorHandler for Handler {
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+        let origin = super::command_origin(behavior)?;
         Self::supports(behavior).then(|| {
-            vec![RuleOp::Command(BattleCommand::Toughness(
-                ToughnessCommand::Recover(ToughnessRecover {
+            vec![RuleOp::Command(BattleCommand::ToughnessRecover(
+                ToughnessRecover {
+                    origin,
                     target_uid: context.target_uid,
                     config_effect: behavior.config_effect,
-                }),
+                },
             ))]
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn recovery_requires_the_exact_empty_shape() {
-        let behavior = ParsedBehavior::new(60_287, "ToughnessRecover", vec![]);
-        assert!(Handler::supports(&behavior));
-
-        let malformed = ParsedBehavior::new(60_287, "ToughnessRecover", vec![1]);
-        assert!(!Handler::supports(&malformed));
     }
 }

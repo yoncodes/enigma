@@ -909,6 +909,12 @@ pub(super) fn card_play_resource_delta(
     grants_ex_point: bool,
     is_ultimate: bool,
 ) -> Option<i32> {
+    if crate::engine::mechanic::card::CardMechanic
+        .boss_ultimate_power(managers, source_uid)
+        .is_some()
+    {
+        return None;
+    }
     (grants_ex_point && !is_ultimate).then(|| {
         1 + managers
             .buff
@@ -951,12 +957,18 @@ pub(super) fn run_active_action(
     let is_ultimate = pool.entity(source_uid).is_some_and(|entity| {
         crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(skill.plan.skill_id, entity)
     });
-    let current_resource = managers.ex_point.get(source_uid);
+    let boss_power =
+        crate::engine::mechanic::card::CardMechanic.boss_ultimate_power(managers, source_uid);
+    let current_resource = boss_power
+        .map(|power| power.current)
+        .unwrap_or_else(|| managers.ex_point.get(source_uid));
     let ultimate_cost = if is_ultimate {
-        let kind = crate::engine::manager::ex_point::ExPointKind::from_wire(
+        if let Some(power) = boss_power {
+            power.max
+        } else if crate::engine::manager::ex_point::ExPointKind::from_wire(
             managers.ex_point.kind(source_uid),
-        );
-        if kind == crate::engine::manager::ex_point::ExPointKind::Common {
+        ) == crate::engine::manager::ex_point::ExPointKind::Common
+        {
             pool.entity(source_uid)
                 .map(|entity| {
                     crate::engine::mechanic::card::CardMechanic
@@ -1006,7 +1018,11 @@ pub(super) fn run_active_action(
             )?,
         );
     }
-    let ultimate_moxie = ultimate_cost.max(0);
+    let ultimate_moxie = if boss_power.is_some() {
+        0
+    } else {
+        ultimate_cost.max(0)
+    };
     let action_cost = (ultimate_moxie > 0).then(|| {
         ExPointCommand::Spend(ExPointChange {
             origin: CARD_PLAY_ORIGIN,

@@ -5,10 +5,10 @@ impl EffectPacket {
         change: HpChange,
         hurt_info_layout: HurtInfoWireLayout,
     ) -> ActEffect {
-        Self::hp_with_toughness_layout(change, None, hurt_info_layout)
+        Self::hp_with_hurt_info_and_toughness_layout(change, None, hurt_info_layout)
     }
 
-    pub(crate) fn hp_with_toughness_layout(
+    pub(crate) fn hp_with_hurt_info_and_toughness_layout(
         change: HpChange,
         toughness: Option<crate::engine::manager::toughness::ToughnessChange>,
         hurt_info_layout: HurtInfoWireLayout,
@@ -46,7 +46,7 @@ impl EffectPacket {
             team_type: Some(0),
             effect_num1: Some(0),
             hurt_info: change.hurt.map(|hurt| {
-                Self::hurt_info(change, hurt, effect_type, toughness, hurt_info_layout)
+                Self::hurt_info(change, hurt, toughness, effect_type, hurt_info_layout)
             }),
             ..Default::default()
         }
@@ -63,7 +63,7 @@ impl EffectPacket {
             HurtInfoWireLayout::Version6 => 0,
             HurtInfoWireLayout::Version7 => damage.amount,
         });
-        let mut effect = Self::hp_with_toughness_layout(
+        let mut effect = Self::hp_with_hurt_info_and_toughness_layout(
             HpChange {
                 target_uid,
                 before: 0,
@@ -131,8 +131,8 @@ impl EffectPacket {
     fn hurt_info(
         change: HpChange,
         hurt: HurtInfoData,
-        effect_type: i32,
         toughness: Option<crate::engine::manager::toughness::ToughnessChange>,
+        effect_type: i32,
         layout: HurtInfoWireLayout,
     ) -> FightHurtInfo {
         let (effect_id, skill_id) = if hurt.damage_from == HurtDamageFromType::Skill {
@@ -177,7 +177,7 @@ impl EffectPacket {
             HurtInfoWireLayout::Version7 => FightHurtInfo {
                 toughness_value: Some(toughness.map_or(0, |change| change.value_delta)),
                 toughness_point: Some(toughness.map_or(0, |change| change.point_delta)),
-                broken: Some(toughness.is_some_and(|change| change.broken)),
+                broken: Some(toughness.is_some_and(|change| change.broke)),
                 absorb_hurt_param: Some(
                     r#"{"consumeFakeHpBuffMap":"","reduceTeamShareShieldBuffMap":"","reduceShieldBuffMap":""}"#
                         .into(),

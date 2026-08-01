@@ -233,6 +233,7 @@ pub enum ParsedConditionKind {
     AttackerDamageType(crate::engine::skill::target::EntityDamageType),
     AttackCrit,
     BeforeCrit,
+    GuardBroken,
     HurtRestrained,
     HurtNotRestrained,
     EntityCount {

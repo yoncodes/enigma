@@ -47,7 +47,7 @@ fn fight_catalog_includes_assist_boss_active_skills() {
 }
 
 #[test]
-fn fight_catalog_compiles_enemy_condition_routes_after_registration() {
+fn fight_catalog_compiles_enigmas_round_start_field_condition() {
     init_config();
     let fight = Fight {
         defender: Some(sonettobuf::FightTeam {
@@ -68,7 +68,7 @@ fn fight_catalog_compiles_enemy_condition_routes_after_registration() {
 }
 
 #[test]
-fn dynamic_current_battle_roots_compile_registered_condition_routes() {
+fn dynamic_current_battle_roots_compile_enigmas_field_condition() {
     init_config();
     let mut catalog = SkillEffectCatalog::default();
 

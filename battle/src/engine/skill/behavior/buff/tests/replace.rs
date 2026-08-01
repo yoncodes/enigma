@@ -2,12 +2,12 @@ use super::*;
 
 #[test]
 fn barcarola_buff_behaviors_require_their_configured_operands() {
-    assert!(supports_add_buff_round(&ParsedBehavior::new(
+    assert!(supports_duration_change(&ParsedBehavior::new(
         20005,
         "AddBuffRound",
         vec![31080131, 1],
     )));
-    assert!(!supports_add_buff_round(&ParsedBehavior::new(
+    assert!(!supports_duration_change(&ParsedBehavior::new(
         20005,
         "AddBuffRound",
         vec![31080131, 0],

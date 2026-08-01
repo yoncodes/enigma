@@ -70,10 +70,6 @@ pub(super) fn supports_consume_power_add_buff(behavior: &ParsedBehavior) -> bool
             .is_some_and(|buffs| buffs.iter().all(|buff_id| *buff_id > 0))
 }
 
-pub(super) fn supports_add_buff_round(behavior: &ParsedBehavior) -> bool {
-    matches!(behavior.args.as_slice(), [buff_id, delta] if *buff_id > 0 && *delta != 0)
-}
-
 pub(super) fn supports_consume_power_add_multi_buff(behavior: &ParsedBehavior) -> bool {
     matches!(
         behavior.args.as_slice(),
@@ -102,6 +98,14 @@ pub(super) fn supports_layer_range(behavior: &ParsedBehavior) -> bool {
         && thresholds.len() == buff_ids.len() + 1
         && thresholds.iter().all(|value| *value > 0)
         && thresholds.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+pub(super) fn supports_distribute(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [source, output] if *source > 0 && *output > 0)
+}
+
+pub(super) fn supports_duration_change(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [buff_id_or_type, delta] if *buff_id_or_type > 0 && *delta != 0)
 }
 
 impl BehaviorHandler for Handler {

@@ -12,6 +12,7 @@ use crate::engine::{
 pub enum PowerType {
     Eureka = 1,
     AssistBoss = 4,
+    ZongMaoBossEnergy = 9,
 }
 
 impl PowerType {
@@ -26,6 +27,12 @@ pub const EUREKA_RESOURCE_ID: i32 = PowerType::Eureka.id();
 pub struct EurekaState {
     pub current: i32,
     pub max: i32,
+}
+
+impl EurekaState {
+    pub fn is_full(self) -> bool {
+        self.max > 0 && self.current >= self.max
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -3,7 +3,7 @@ use crate::engine::{
     manager::{
         BattleManagers,
         buff::ActiveBuffFeature,
-        toughness::{STANDARD_DAMAGE_RATE_PERMILLE, ToughnessCommand},
+        toughness::{STANDARD_DAMAGE_RATE_PERMILLE, ToughnessRecord},
     },
     skill::{
         behavior::{classify::BehaviorKind, registry as behavior_registry},
@@ -48,13 +48,11 @@ pub fn transaction_rule_ops(
         .map(|feature| {
             (
                 feature,
-                RuleOp::Command(BattleCommand::Toughness(
-                    ToughnessCommand::RecordBrokenDamage {
-                        target_uid: *target_uid,
-                        damage: *amount,
-                        rate_permille: STANDARD_DAMAGE_RATE_PERMILLE,
-                    },
-                )),
+                RuleOp::Command(BattleCommand::ToughnessRecord(ToughnessRecord {
+                    target_uid: *target_uid,
+                    damage: *amount,
+                    rate_permille: STANDARD_DAMAGE_RATE_PERMILLE,
+                })),
             )
         })
         .into_iter()
@@ -89,7 +87,7 @@ mod tests {
             }),
             ..Default::default()
         });
-        managers.toughness.damage(-1, 1, 1_000);
+        managers.toughness.reduce(-1, 1, true);
         managers
     }
 
@@ -121,13 +119,11 @@ mod tests {
                     buff_id: 116_362_200,
                     ..
                 },
-                RuleOp::Command(BattleCommand::Toughness(
-                    ToughnessCommand::RecordBrokenDamage {
-                        target_uid: -1,
-                        damage: 203_000,
-                        rate_permille: STANDARD_DAMAGE_RATE_PERMILLE,
-                    }
-                ))
+                RuleOp::Command(BattleCommand::ToughnessRecord(ToughnessRecord {
+                    target_uid: -1,
+                    damage: 203_000,
+                    rate_permille: STANDARD_DAMAGE_RATE_PERMILLE,
+                }))
             )]
         ));
     }

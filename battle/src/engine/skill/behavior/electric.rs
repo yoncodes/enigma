@@ -10,6 +10,10 @@ use crate::engine::{
 
 pub(super) struct Handler;
 
+pub(super) fn supports(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [buff_type_id, max_count, 1] if *buff_type_id > 0 && *max_count > 0)
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         transfer_rule_ops(context, behavior)
@@ -23,9 +27,11 @@ fn transfer_rule_ops(
     if behavior.spec.kind != BehaviorKind::ElectricTransform {
         return None;
     }
-    let (Some(buff_type_id), Some(max_count)) = (behavior.arg(0), behavior.arg(1)) else {
+    if !supports(behavior) {
         return Some(Vec::new());
-    };
+    }
+    let buff_type_id = behavior.args[0];
+    let max_count = behavior.args[1];
     let amount = context
         .managers
         .buff

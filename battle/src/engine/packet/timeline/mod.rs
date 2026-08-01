@@ -310,7 +310,7 @@ fn project_change(
                         )
                     })
                     .unwrap_or_else(|| {
-                        EffectPacket::hp_with_toughness_layout(
+                        EffectPacket::hp_with_hurt_info_and_toughness_layout(
                             hp,
                             changes.toughness,
                             hurt_info_layout,
@@ -368,9 +368,6 @@ fn project_change(
                 effects.push(EffectPacket::dead(death.target_uid));
             }
             effects
-        }
-        BattleChange::ToughnessRecovery(change) => {
-            vec![EffectPacket::toughness_recovery(*change)]
         }
         BattleChange::Death(death) => vec![EffectPacket::dead(death.target_uid)],
         BattleChange::NuoDiKaHit(hit) => vec![EffectPacket::nuo_di_ka_hit(*hit)],
@@ -930,6 +927,9 @@ fn project_change(
                 )]
             }
         },
+        BattleChange::ToughnessRecovered(change) => {
+            vec![EffectPacket::toughness_recover(*change)]
+        }
         BattleChange::Upgrade(change)
             if matches!(change.operation, UpgradeOperation::Offer { .. }) =>
         {
