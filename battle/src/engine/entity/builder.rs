@@ -48,12 +48,17 @@ impl EntityBuilder {
         // in `PassiveSkill` for downstream consumers; the wire format only
         // carries raw skill ids.
         let passive_skill_ids = passives.iter().map(|p| p.skill_id).collect();
-        let equip_record = EquipRecord {
-            equip_uid: self.equip.as_ref().map(|e| e.uid),
-            equip_id: self.equip.as_ref().map(|e| e.equip_id),
-            equip_lv: self.equip.as_ref().map(|e| e.level),
-            refine_lv: self.equip.as_ref().map(|e| e.refine_lv),
-        };
+        let equips = self
+            .equip
+            .as_ref()
+            .map(|equip| EquipRecord {
+                equip_uid: Some(equip.uid),
+                equip_id: Some(equip.equip_id),
+                equip_lv: Some(equip.level),
+                refine_lv: Some(equip.refine_lv),
+            })
+            .into_iter()
+            .collect();
 
         FightEntityInfo {
             uid: Some(r.uid),
@@ -91,7 +96,7 @@ impl EntityBuilder {
             guard: Some(-1),
             sub_cd: Some(0),
             ex_point_type: Some(Self::ex_point_type(r.hero_id)),
-            equips: vec![equip_record],
+            equips,
             destiny_stone: Some(r.destiny_stone),
             destiny_rank: Some(r.destiny_rank),
             custom_unit_id: Some(0),
