@@ -93,6 +93,23 @@ pub fn run_conduit_phase(
             {
                 continue;
             }
+            let invocation: crate::engine::skill::action::SkillInvocation =
+                crate::engine::skill::action::SkillRequest {
+                    source_uid,
+                    skill_id: skill.skill_id,
+                }
+                .into();
+            let current_pool = pool.runtime_view(managers);
+            if drain::attack_has_no_target(
+                &invocation,
+                catalog,
+                &current_pool,
+                managers,
+                determinism,
+                context,
+            ) {
+                continue;
+            }
             append(
                 &mut result,
                 drain::run_conduit_action(
