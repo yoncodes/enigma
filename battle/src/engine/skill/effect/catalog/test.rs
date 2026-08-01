@@ -154,6 +154,31 @@ fn scoped_catalog_follows_configured_reinforced_skill_effects() {
 }
 
 #[test]
+fn scoped_catalog_follows_configured_hero_upgrade_outcomes() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(sonettobuf::FightTeam {
+            entitys: vec![sonettobuf::FightEntityInfo {
+                passive_skill: vec![30860151],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    assert!(catalog.get(30861111).is_some());
+    assert!(catalog.get(30861121).is_some());
+    assert!(catalog.get(30861131).is_some());
+    assert!(catalog.get(30861171).is_some());
+    assert!(catalog.issues(30861171).is_empty());
+    assert!(catalog.compiled_subscription_lanes(30861171).is_ok());
+    assert!(catalog.reachable_buffs.contains(&30860173));
+}
+
+#[test]
 fn parses_hash_cells_as_opcode_and_args() {
     assert_eq!(parse_i32_list("60002#1#2"), vec![60002, 1, 2]);
     assert_eq!(parse_i32_list(""), Vec::<i32>::new());
