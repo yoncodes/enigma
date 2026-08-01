@@ -263,6 +263,34 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
             )));
             Some(ops)
         }
+        BehaviorKind::AddRedOrBlueCount => {
+            let [color, count] = behavior.args.as_slice() else {
+                return None;
+            };
+            let (buff_uid, act_id, _) = context.managers.buff.buff_act_carrier(
+                context.target_uid,
+                buff_act::registry::BuffActKind::RedOrBlueCount,
+            )?;
+            let current = context
+                .managers
+                .buff
+                .snapshot(context.target_uid, buff_uid)?
+                .act_common_params;
+            let params =
+                buff_act::red_or_blue_count::append(current.as_deref(), act_id, *color, *count)?;
+            Some(vec![RuleOp::Command(BattleCommand::Buff(
+                crate::engine::manager::buff::BuffCommand::SetStateSnapshot(
+                    crate::engine::manager::buff::BuffSetState {
+                        origin,
+                        target_uid: context.target_uid,
+                        buff_uid,
+                        params: Some(params),
+                        act_info: None,
+                        ex_info: None,
+                    },
+                ),
+            ))])
+        }
         BehaviorKind::AddConduitPower => {
             let (power_id, delta, kind) = conduit_power_args(&behavior.args)?;
             Some(vec![RuleOp::Command(BattleCommand::Conduit(
@@ -369,6 +397,10 @@ pub(super) fn supports_recover_power(behavior: &ParsedBehavior) -> bool {
 
 pub(super) fn supports_team_energy(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [delta] if *delta > 0)
+}
+
+pub(super) fn supports_red_or_blue_count(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [color @ 1..=3, count] if *color > 0 && *count > 0)
 }
 
 pub(super) fn supports_total_skill_rank_power(behavior: &ParsedBehavior) -> bool {

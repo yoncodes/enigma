@@ -57,6 +57,8 @@ impl BehaviorHandler for Handler {
                     effect_type: sonettobuf::effect_type_enum::EffectType::Twinsupcount as i32,
                     effect_num: consumed,
                     config_effect: behavior.spec.key.opcode,
+                    reserve_id: None,
+                    reserve_str: None,
                 },
             ]);
         }
@@ -302,6 +304,8 @@ fn conduit_power_up_ops(
             effect_type: sonettobuf::effect_type_enum::EffectType::Twinspowerupcount as i32,
             effect_num: spent,
             config_effect: behavior.spec.key.opcode,
+            reserve_id: None,
+            reserve_str: None,
         },
     ])
 }

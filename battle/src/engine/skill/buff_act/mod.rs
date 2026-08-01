@@ -86,6 +86,7 @@ pub mod petrified;
 pub mod raspberry;
 pub mod real_damage_kill;
 pub mod rebound;
+pub mod red_or_blue_count;
 pub mod registry;
 pub mod revive;
 pub mod riposte;

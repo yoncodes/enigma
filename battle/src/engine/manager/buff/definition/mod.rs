@@ -263,6 +263,19 @@ impl BuffDefinition {
             .collect()
     }
 
+    pub(super) fn state_snapshot_wire(&self, params: Option<&str>) -> Vec<(i32, Option<String>)> {
+        self.features
+            .iter()
+            .filter_map(|feature| feature.wire)
+            .flat_map(|wire| {
+                wire.markers(crate::engine::skill::buff_act::wire::WirePhase::Refresh)
+                    .iter()
+                    .copied()
+                    .map(move |effect_type| (effect_type, wire.snapshot_reserve_str(params)))
+            })
+            .collect()
+    }
+
     pub(super) fn fanout_wire_markers(&self) -> Vec<i32> {
         use crate::engine::skill::buff_act::{registry::BuffActKind, wire::WirePhase};
 
