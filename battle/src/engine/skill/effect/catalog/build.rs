@@ -325,6 +325,12 @@ impl SkillEffectCatalog {
                     references.buffs.extend(found.buffs);
                     references.models.extend(found.models);
                 }
+                if slot.behavior.spec.kind == BehaviorKind::NotifyUpgradeHero {
+                    let found =
+                        hero_upgrade_references(db, slot.behavior.arg(0).unwrap_or_default());
+                    references.skills.extend(found.skills);
+                    references.buffs.extend(found.buffs);
+                }
                 slots.push(slot);
             } else {
                 self.issues.entry(row.id).or_default().push(rule_issue(
@@ -475,6 +481,40 @@ impl SkillEffectCatalog {
             }
         }
     }
+}
+
+fn hero_upgrade_references(
+    db: &GameDB,
+    upgrade_id: i32,
+) -> crate::engine::skill::rule::RuleReferences {
+    let mut references = crate::engine::skill::rule::RuleReferences::default();
+    let Some(upgrade) = db.hero_upgrade.get(upgrade_id) else {
+        return references;
+    };
+
+    for option_id in numeric_ids(&upgrade.options) {
+        let Some(option) = db.hero_upgrade_options.get(option_id) else {
+            continue;
+        };
+        references
+            .skills
+            .extend(numeric_ids(&option.replace_skill_group1));
+        references
+            .skills
+            .extend(numeric_ids(&option.replace_skill_group2));
+        references
+            .skills
+            .extend((option.replace_big_skill > 0).then_some(option.replace_big_skill));
+        references
+            .skills
+            .extend(numeric_ids(&option.replace_passive_skill));
+        references
+            .skills
+            .extend(numeric_ids(&option.add_passive_skill));
+        references.buffs.extend(numeric_ids(&option.add_buff));
+    }
+
+    references
 }
 
 fn warn_unsupported_conditions(
