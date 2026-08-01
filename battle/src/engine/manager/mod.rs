@@ -11,6 +11,7 @@ pub mod ex_point;
 pub mod field;
 pub mod gauge;
 pub mod hp;
+pub mod indicator;
 pub mod injury;
 pub mod revive;
 pub mod shield;
@@ -59,6 +60,7 @@ pub struct BattleManagers {
     pub entity: entity::EntityManager,
     pub emanation: EmanationManager,
     pub hp: HpManager,
+    pub indicator: indicator::IndicatorManager,
     pub injury: injury::InjuryManager,
     pub ex_point: ExPointManager,
     pub eureka: EurekaManager,
@@ -79,6 +81,11 @@ struct HpPlan {
     command: hp::HpCommand,
     team_shared: Option<hp::TeamSharedShieldPlan>,
     team_shared_buff: Option<BuffPlan>,
+}
+
+pub(crate) struct HpExecution {
+    pub changes: hp::HpChanges,
+    pub indicator: Option<crate::engine::skill::rule::output::EffectMarker>,
 }
 
 impl BattleManagers {
@@ -245,6 +252,17 @@ impl BattleManagers {
         self.execute_hp_with_target_count(command, 1)
     }
 
+    pub(crate) fn execute_rule_hp(
+        &mut self,
+        command: hp::HpCommand,
+    ) -> Result<HpExecution, hp::HpCommandError> {
+        let changes = self.execute_hp(command)?;
+        let indicator = self
+            .indicator
+            .record_damage(changes.target_uid, changes.applied_damage());
+        Ok(HpExecution { changes, indicator })
+    }
+
     pub(crate) fn execute_hp_batch(
         &mut self,
         commands: Vec<hp::HpCommand>,
@@ -279,6 +297,25 @@ impl BattleManagers {
             plans.push(plan);
         }
         Ok(plans.into_iter().map(|plan| self.commit_hp(plan)).collect())
+    }
+
+    pub(crate) fn execute_rule_hp_batch(
+        &mut self,
+        commands: Vec<hp::HpCommand>,
+    ) -> Result<Vec<HpExecution>, hp::HpCommandError> {
+        let changes = self.execute_hp_batch(commands)?;
+        Ok(changes
+            .into_iter()
+            .map(|change| {
+                let indicator = self
+                    .indicator
+                    .record_damage(change.target_uid, change.applied_damage());
+                HpExecution {
+                    changes: change,
+                    indicator,
+                }
+            })
+            .collect())
     }
 
     fn execute_hp_with_target_count(
@@ -338,24 +375,24 @@ impl BattleManagers {
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> hp::HpChanges {
+        let toughness = match plan.command {
+            hp::HpCommand::Damage(damage)
+                if damage.effect_kind != hp::DamageEffectKind::Avoided
+                    && damage.hurt.damage_from == hp::HurtDamageFromType::Skill =>
+            {
+                self.toughness.reduce(
+                    damage.target_uid,
+                    damage.amount,
+                    damage.hurt.career_restraint || self.conduit.is_running(damage.source_uid),
+                )
+            }
+            _ => None,
+        };
         let team_shared_shield_removed = plan.team_shared_buff.map(|plan| self.commit_buff(plan));
         let mut changes = self
             .hp
             .commit_validated_command_with_team_shared(plan.command, plan.team_shared);
-        changes.toughness = changes.damage.and_then(|damage| {
-            if damage.effect_kind == hp::DamageEffectKind::Avoided
-                || damage.hurt.damage_from != hp::HurtDamageFromType::Skill
-            {
-                return None;
-            }
-            let rate = if self.conduit.is_running(changes.source_uid) {
-                1000
-            } else {
-                toughness::STANDARD_DAMAGE_RATE_PERMILLE
-            };
-            self.toughness
-                .damage(changes.target_uid, damage.amount, rate)
-        });
+        changes.toughness = toughness;
         changes.team_shared_shield_removed = team_shared_shield_removed;
         if let Some(shield) = &mut changes.shield_absorbed {
             shield.buff_uid = self
@@ -364,18 +401,6 @@ impl BattleManagers {
                 .unwrap_or_default();
         }
         changes
-    }
-
-    pub(crate) fn execute_toughness(
-        &mut self,
-        command: toughness::ToughnessCommand,
-    ) -> Option<toughness::ToughnessRecovery> {
-        let target_uid = match command {
-            toughness::ToughnessCommand::RecordBrokenDamage { target_uid, .. } => target_uid,
-            toughness::ToughnessCommand::Recover(command) => command.target_uid,
-        };
-        let team_type = self.entity.team_type(target_uid).unwrap_or_default();
-        self.toughness.execute(command, team_type)
     }
 
     fn team_shared_shield_plans(
@@ -916,7 +941,7 @@ impl BattleManagers {
         self.eureka.sync_fight(fight);
     }
 
-    fn entity_snapshot(&self, uid: i64) -> Option<FightEntityInfo> {
+    pub(crate) fn entity_snapshot(&self, uid: i64) -> Option<FightEntityInfo> {
         let mut entity = self.entity.snapshot(uid)?;
         self.project_entity_state(&mut entity);
         self.eureka.sync_entity(uid, &mut entity);

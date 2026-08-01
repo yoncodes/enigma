@@ -149,13 +149,12 @@ impl Defender {
         let stats = crate::engine::entity::stats::monster_stats(monster_id, level)
             .ok_or_else(|| anyhow::anyhow!("Monster stats {} not found", monster_id))?;
         let attr = stats.base();
-        let (toughness_value, toughness_point) =
-            crate::engine::manager::toughness::configured_toughness(
-                monster.id,
-                attr.hp.unwrap_or(0),
-            )
-            .map(|(value, point)| (Some(value), Some(point)))
-            .unwrap_or_default();
+        let (toughness_value, toughness_point) = crate::engine::manager::toughness::initial_values(
+            &monster.toughness,
+            attr.hp.unwrap_or_default(),
+        )
+        .map(|(value, point)| (Some(value), Some(point)))
+        .unwrap_or_default();
 
         Ok(FightEntityInfo {
             uid: Some(uid),
@@ -208,9 +207,10 @@ impl Defender {
             destiny_stone: Some(0),
             destiny_rank: Some(0),
             custom_unit_id: Some(0),
+            weak_careers: monster_ids(&monster.career_weak),
             toughness_value,
             toughness_point,
-            is_broken: toughness_value.map(|_| false),
+            is_broken: Some(false),
             ..Default::default()
         })
     }

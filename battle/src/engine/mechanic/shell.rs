@@ -337,6 +337,55 @@ mod tests {
     };
 
     #[test]
+    fn negative_deploy_amount_moves_all_stock() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    team_type: Some(1),
+                    buffs: vec![BuffInfo {
+                        uid: Some(52),
+                        buff_id: Some(31090117),
+                        layer: Some(8),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    team_type: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+
+        let changes = execute(
+            &mut managers,
+            ShellCommand::Deploy {
+                origin: ORIGIN,
+                source_uid: 10,
+                target_uid: -1,
+                stock_buff_id: 31090117,
+                amount: -1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(managers.buff.buff_id_amount(10, 31090117), 0);
+        assert_eq!(managers.buff.buff_id_amount(-1, 31090118), 8);
+        assert_eq!(changes.events[0].amount, 8);
+    }
+
+    #[test]
     fn retrieve_all_returns_every_deployed_stack_to_the_configured_stock() {
         crate::test_support::init_config();
         let entity = |uid, team_type, buff_id, buff_uid, layer| FightEntityInfo {

@@ -177,6 +177,7 @@ mod tests {
             damage_amount: 100,
             kill_count: 0,
             crit_count: 0,
+            guard_break_count: 0,
             additional_moxie: 0,
             extra_skill_kind: 0,
             mode: crate::engine::skill::action::SkillExecutionMode::Active,

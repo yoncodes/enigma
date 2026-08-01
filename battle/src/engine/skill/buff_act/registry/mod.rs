@@ -776,7 +776,8 @@ buff_act_definitions! {
         state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(793, "BurnRealHurtFix"), &[EffectType::Realhurtfixwithlimit as i32]));
     (794, "ModifyMaxBurnLayers") => ModifyMaxBurnLayers, effect_time_subscription: false,
-        supports: |args| matches!(args, [bonus] if *bonus > 0), state_consumer: true,
+        supports: |args| matches!(args, [bonus] if *bonus > 0),
+        state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(794, "ModifyMaxBurnLayers"), &[EffectType::Bufftypenumlimitupdate as i32]));
     (901, "ModifyMaxBuffLayers") => ModifyMaxBuffLayers, effect_time_subscription: false,
         supports: |args| matches!(args, [buff_id, bonus] if *buff_id > 0 && *bonus > 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(901, "ModifyMaxBuffLayers"), &[EffectType::Bufftypenumlimitupdate as i32]));
@@ -962,8 +963,12 @@ buff_act_definitions! {
         frame: IndependentEvent,
         runtime: |context| super::card_record::rule_ops(context.managers, context.catalog, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(929, "AddCardRecordByRound"), &[EffectType::Addcardrecordbyround as i32]));
-    (951, "CardNotCalSize") => CardNotCalSize, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(951, "CardNotCalSize"), &[EffectType::None as i32]));
-    (1137, "EntityExSkillNotCalSize") => EntityExSkillNotCalSize, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1137, "EntityExSkillNotCalSize"), &[EffectType::None as i32]));
+    (951, "CardNotCalSize") => CardNotCalSize,
+        supports: |args| !args.is_empty() && args.iter().all(|skill_id| *skill_id > 0), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(951, "CardNotCalSize"), &[EffectType::None as i32]));
+    (1137, "EntityExSkillNotCalSize") => EntityExSkillNotCalSize,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1137, "EntityExSkillNotCalSize"), &[EffectType::None as i32]));
     (953, "BloodPoolTag") => BloodPoolTag,
         events: [EventKind::HpLost, EventKind::GaugeChanged],
         setup: [BattleStart(0), Unconditional(0), RoundStart(-1)], independent_setup: [BattleStart(0, 1), Unconditional(0, 0), RoundStart(-1, 0)],
@@ -1091,7 +1096,8 @@ buff_act_definitions! {
         setup_handler: |context| super::heat_scale_tag::setup_rule_ops(context.managers, context.catalog, &context.subscriber.feature, context.subscriber.stage),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1052, "HeatScaleTag"), &[EffectType::None as i32]));
     (1053, "AttrByHeatScale") => AttrByHeatScale, trigger_child_uid: true,
-        supports: super::attr_by_heat_scale::supports, state_consumer: true,
+        supports: super::attr_by_heat_scale::supports,
+        state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1053, "AttrByHeatScale"), &[EffectType::None as i32]));
     (1062, "HeatScaleDecrCounter") => HeatScaleDecrCounter, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1062, "HeatScaleDecrCounter"), &[EffectType::None as i32]));
     (1069, "ImmunityTimes") => ImmunityTimes,

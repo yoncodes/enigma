@@ -92,6 +92,7 @@ fn action_event(
         damage_amount: execution.context.action_damage_amount,
         kill_count: execution.context.action_kill_count,
         crit_count: execution.context.action_crit_count,
+        guard_break_count: execution.context.action_guard_break_count,
         additional_moxie: invocation.additional_moxie,
         extra_skill_kind: invocation
             .extra_skill_kind

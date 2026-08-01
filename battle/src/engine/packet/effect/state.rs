@@ -248,4 +248,21 @@ impl EffectPacket {
             ..Default::default()
         }
     }
+
+    pub fn toughness_recover(
+        change: crate::engine::manager::toughness::ToughnessRecovery,
+    ) -> ActEffect {
+        ActEffect {
+            target_id: Some(change.target_uid),
+            effect_type: Some(EffectType::Toughnessrecover as i32),
+            effect_num: Some(0),
+            config_effect: Some(change.config_effect),
+            buff_act_id: Some(0),
+            reserve_id: Some(0),
+            reserve_str: Some(format!("{},{}", change.point, change.value)),
+            team_type: Some(change.team_type),
+            effect_num1: Some(0),
+            ..Default::default()
+        }
+    }
 }

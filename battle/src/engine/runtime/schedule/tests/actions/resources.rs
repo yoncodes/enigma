@@ -1,6 +1,93 @@
 use super::*;
 
 #[test]
+fn full_named_boss_power_authorizes_an_ultimate_without_moxie() {
+    let build_fight = |power| Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ex_point: Some(0),
+                ex_skill: Some(900),
+                power_infos: vec![PowerInfo {
+                    power_id: Some(
+                        crate::engine::manager::eureka::PowerType::ZongMaoBossEnergy.id(),
+                    ),
+                    num: Some(power),
+                    max: Some(3),
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = build_fight(3);
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 900,
+        slots: Vec::new(),
+    });
+
+    run_active_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        ActiveActionRequest {
+            skill: crate::engine::skill::action::SkillRequest {
+                source_uid: -1,
+                skill_id: 900,
+            }
+            .into(),
+            grants_ex_point: true,
+            grant_after_action: false,
+            queued_resource_delta: 0,
+            prelude: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(-1), 0);
+
+    let underfilled = build_fight(2);
+    let error = match run_active_action(
+        &mut BattleManagers::seeded(&underfilled),
+        &TargetPool::from_fight(&underfilled),
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        ActiveActionRequest {
+            skill: crate::engine::skill::action::SkillRequest {
+                source_uid: -1,
+                skill_id: 900,
+            }
+            .into(),
+            grants_ex_point: true,
+            grant_after_action: false,
+            queued_resource_delta: 0,
+            prelude: Vec::new(),
+        },
+    ) {
+        Ok(_) => panic!("underfilled boss power accepted an ultimate"),
+        Err(error) => error,
+    };
+
+    assert_eq!(
+        error,
+        DrainError::InsufficientUltimateResource {
+            owner_uid: -1,
+            skill_id: 900,
+            required: 3,
+            current: 2,
+        }
+    );
+}
+
+#[test]
 fn player_owned_negative_uid_gains_card_play_moxie() {
     init_config();
     let fight = Fight {

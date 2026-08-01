@@ -325,6 +325,8 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         CmdId::Act228FlipGridCmd => activity::on_act228_flip_grid,
         CmdId::Act228GetFinalBonusCmd => activity::on_act228_get_final_bonus,
         CmdId::GetAct229InfoCmd => activity::on_get_act229_info,
+        CmdId::StartAct229BattleCmd => activity::on_start_act229_battle,
+        CmdId::Act229ResetStageCmd => activity::on_reset_act229_stage,
         CmdId::GetAct231InfoCmd => activity::on_get_act231_info,
         CmdId::GetAct235InfoCmd => activity::on_get_act235_info,
         CmdId::Act240GetInfoCmd => activity::on_act240_get_info,

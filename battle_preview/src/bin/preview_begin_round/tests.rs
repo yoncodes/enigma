@@ -190,7 +190,7 @@ fn captured_version7_conduit_sentinel_keeps_activation_sequence() {
 #[test]
 fn generated_round_uses_captured_rng_but_not_damage_amounts() {
     init_config().unwrap();
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/battles/battle62");
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/battles/battle71");
     let temporary = std::env::temp_dir().join(format!(
         "enigma-preview-{}-{}",
         std::process::id(),
@@ -233,8 +233,8 @@ fn generated_round_uses_captured_rng_but_not_damage_amounts() {
 fn reads_dungeon_and_tower_start_reply_envelopes() {
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/battles");
 
-    let dungeon = captured_start_reply(&fixtures.join("battle6/BeginRoundReply_1.json"));
-    let tower = captured_start_reply(&fixtures.join("battle12/BeginRoundReply_1.json"));
+    let dungeon = captured_start_reply(&fixtures.join("battle69/BeginRoundReply_1.json"));
+    let tower = captured_start_reply(&fixtures.join("battle74/BeginRoundReply_1.json"));
 
     assert!(dungeon.unwrap().get("fight").is_some());
     assert!(tower.unwrap().get("fight").is_some());

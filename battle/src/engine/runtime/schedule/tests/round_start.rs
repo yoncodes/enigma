@@ -57,8 +57,11 @@ fn round_start_settles_unlisted_capacity_owner_before_its_after_settlement_act()
         .position(|outcome| {
             matches!(
                 outcome,
-                RuleOutcome::Hp(changes)
-                    if changes.hp.is_some_and(|hp| hp.target_uid == 99 && hp.delta < 0)
+                RuleOutcome::Hp(execution)
+                    if execution
+                        .changes
+                        .hp
+                        .is_some_and(|hp| hp.target_uid == 99 && hp.delta < 0)
             )
         })
         .unwrap();
@@ -70,43 +73,46 @@ fn round_start_capacity_uses_only_exact_raspberry_loss_instances() {
     use crate::engine::manager::hp::{HpChange, HpChanges, HurtDamageFromType, HurtInfoData};
 
     let hp_outcome = |domain, key, delta| {
-        RuleOutcome::Hp(Box::new(HpChanges {
-            origin: CommandOrigin { domain, key },
-            source_uid: 10,
-            target_uid: 10,
-            damage: None,
-            toughness: None,
-            team_shared_shield_absorbed: None,
-            team_shared_shield_removed: None,
-            shield_absorbed: None,
-            shield_granted: None,
-            max_hp: None,
-            hp: Some(HpChange {
+        RuleOutcome::Hp(Box::new(crate::engine::manager::HpExecution {
+            changes: HpChanges {
+                origin: CommandOrigin { domain, key },
+                source_uid: 10,
                 target_uid: 10,
-                before: 100,
-                delta,
-                after: 100 + delta,
-                max: 100,
-                config_effect: 0,
-                hurt: Some(HurtInfoData {
-                    from_uid: 10,
-                    is_crit: false,
-                    career_restraint: false,
-                    reduce_hp: 0,
-                    effect_id: 0,
-                    skill_id: 0,
-                    damage_from: HurtDamageFromType::Buff,
-                    buff_act_id: 1042,
-                    buff_uid: 20,
-                    hurt_effect_type: 0,
+                damage: None,
+                team_shared_shield_absorbed: None,
+                team_shared_shield_removed: None,
+                shield_absorbed: None,
+                shield_granted: None,
+                max_hp: None,
+                hp: Some(HpChange {
+                    target_uid: 10,
+                    before: 100,
+                    delta,
+                    after: 100 + delta,
+                    max: 100,
+                    config_effect: 0,
+                    hurt: Some(HurtInfoData {
+                        from_uid: 10,
+                        is_crit: false,
+                        career_restraint: false,
+                        reduce_hp: 0,
+                        effect_id: 0,
+                        skill_id: 0,
+                        damage_from: HurtDamageFromType::Buff,
+                        buff_act_id: 1042,
+                        buff_uid: 20,
+                        hurt_effect_type: 0,
+                        display_amount: None,
+                    }),
+                    assassinate: false,
+                    effect_type: 0,
                     display_amount: None,
                 }),
-                assassinate: false,
-                effect_type: 0,
-                display_amount: None,
-            }),
-            kill: None,
-            death: None,
+                toughness: None,
+                kill: None,
+                death: None,
+            },
+            indicator: None,
         }))
     };
     let result = DrainResult {

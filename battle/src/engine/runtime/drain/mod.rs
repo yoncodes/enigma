@@ -17,10 +17,11 @@ use crate::engine::{
         skill::{self, SkillExecution, SkillOpError, SkillOpTrigger},
     },
     skill::{
+        action::SkillTarget,
         effect::SkillEffectCatalog,
         rule::{SetupStage, output::RuleOp},
         subscriber::SubscriberError,
-        target::{TargetContext, TargetPool},
+        target::{TargetContext, TargetPool, TargetRequest, TargetResolver, targets_enemy},
     },
 };
 
@@ -349,16 +350,53 @@ fn drain_queue_with_deferred(
                 {
                     continue;
                 }
+                let logic_target = catalog.logic_target(invocation.plan.skill_id);
+                let requested_logic_target = match invocation.target {
+                    SkillTarget::LogicRule(code) => code,
+                    _ => logic_target,
+                };
+                let attack_has_no_target = matches!(trigger, SkillOpTrigger::Active)
+                    && invocation
+                        .phase
+                        .unwrap_or(crate::engine::skill::action::SkillPhase::Immediate)
+                        == crate::engine::skill::action::SkillPhase::Immediate
+                    && catalog.is_attack(invocation.plan.skill_id)
+                    && match invocation.target {
+                        SkillTarget::Configured | SkillTarget::LogicRule(_)
+                            if targets_enemy(requested_logic_target).is_some() =>
+                        {
+                            TargetResolver::resolve_primary_candidates(
+                                &TargetRequest {
+                                    code: requested_logic_target,
+                                    raw: Vec::new(),
+                                },
+                                invocation.plan.skill_id,
+                                invocation.plan.source_uid,
+                                pool,
+                                determinism,
+                                Some(managers),
+                                TargetContext {
+                                    active_skill_is_attack: true,
+                                    active_skill_id: invocation.plan.skill_id,
+                                    active_skill_source_uid: invocation.plan.source_uid,
+                                    logic_target: requested_logic_target,
+                                    ..context
+                                },
+                            )
+                            .is_empty()
+                        }
+                        SkillTarget::Configured
+                        | SkillTarget::LogicRule(_)
+                        | SkillTarget::Inherited
+                        | SkillTarget::Explicit(_) => {
+                            pool.enemies(invocation.plan.source_uid, false).is_empty()
+                        }
+                    };
                 if matches!(trigger, SkillOpTrigger::Active)
                     && base_pool.team_type(invocation.plan.source_uid).is_some()
                     && ((base_pool.entity(invocation.plan.source_uid).is_some()
                         && pool.entity(invocation.plan.source_uid).is_none())
-                        || (invocation
-                            .phase
-                            .unwrap_or(crate::engine::skill::action::SkillPhase::Immediate)
-                            == crate::engine::skill::action::SkillPhase::Immediate
-                            && catalog.is_attack(invocation.plan.skill_id)
-                            && pool.enemies(invocation.plan.source_uid, false).is_empty()))
+                        || attack_has_no_target)
                 {
                     continue;
                 }
@@ -690,7 +728,7 @@ fn drain_queue_with_deferred(
                 let followups = outcome.followups();
                 let damage_amount = outcome.applied_damage();
                 let death_count = outcome.death_count();
-                let broken_target_count = outcome.broken_target_count();
+                let guard_break_count = outcome.guard_break_count();
                 let injured_targets = outcome.injured_targets();
                 if !injured_targets.is_empty()
                     && let Some(action_path) = active_skill_scope_path(&result.frames, &frame_path)
@@ -699,7 +737,7 @@ fn drain_queue_with_deferred(
                 }
                 if (damage_amount > 0
                     || death_count > 0
-                    || broken_target_count > 0
+                    || guard_break_count > 0
                     || !injured_targets.is_empty())
                     && matches!(trigger, SkillOpTrigger::Active)
                     && let Some(queued) = queue.iter_mut().find(|queued| {
@@ -718,7 +756,7 @@ fn drain_queue_with_deferred(
                     });
                     if let Some(execution) = queued.skill_execution.as_mut() {
                         execution.record_damage(damage_amount);
-                        execution.record_breaks(broken_target_count);
+                        execution.record_guard_breaks(guard_break_count);
                         execution.record_injuries(allied_injuries);
                     }
                 }
@@ -746,34 +784,27 @@ fn drain_queue_with_deferred(
                             && queued.frame_path.as_ref() == Some(&frame_path)
                             && matches!(queued.op, RuleOp::Skill(_))
                     })
+                    && let Some(execution) = queued.skill_execution.as_mut()
                 {
-                    let source_uid = match &queued.op {
-                        RuleOp::Skill(invocation) => invocation.plan.source_uid,
-                        _ => 0,
-                    };
-                    if let Some(execution) = queued.skill_execution.as_mut() {
-                        execution.record_attacks(events.iter().filter_map(|event| {
-                            let BattleEvent::Hit(hit) = event else {
-                                return None;
-                            };
-                            (hit.damage_from
-                                == crate::engine::manager::hp::HurtDamageFromType::Skill)
-                                .then_some(hit.target_uid)
-                        }));
-                        execution.record_buff_additions(
-                            events.iter().filter_map(|event| {
-                                let (BattleEvent::BuffAdded(change)
-                                | BattleEvent::BuffChanged(change)) = event
-                                else {
-                                    return None;
-                                };
-                                (change.source_uid == source_uid).then_some((
-                                    change.buff_id,
-                                    change.after_amount.saturating_sub(change.before_amount),
-                                ))
-                            }),
-                        );
-                    }
+                    execution.record_attacks(events.iter().filter_map(|event| {
+                        let BattleEvent::Hit(hit) = event else {
+                            return None;
+                        };
+                        (hit.damage_from == crate::engine::manager::hp::HurtDamageFromType::Skill)
+                            .then_some(hit.target_uid)
+                    }));
+                    let source_uid = current_skill.map(|skill| skill.0).unwrap_or_default();
+                    execution.record_buff_additions(events.iter().filter_map(|event| {
+                        let (BattleEvent::BuffAdded(change) | BattleEvent::BuffChanged(change)) =
+                            event
+                        else {
+                            return None;
+                        };
+                        (change.source_uid == source_uid).then_some((
+                            change.buff_id,
+                            change.after_amount.saturating_sub(change.before_amount),
+                        ))
+                    }));
                 }
 
                 let has_active_continuation = queue.iter().any(|queued| {

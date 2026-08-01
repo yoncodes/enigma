@@ -1,4 +1,78 @@
 use super::*;
+use crate::engine::runtime::record::FrameItem;
+
+#[test]
+fn tracked_damage_records_the_indicator_immediately_after_hp() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.indicator.track_damage(
+        crate::engine::manager::indicator::IndicatorId::BossRushScore,
+        -1,
+    );
+    let result = run_command_group(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Command(BattleCommand::Hp(
+            crate::engine::manager::hp::HpCommand::Damage(crate::engine::manager::hp::HpDamage {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "TestDamage"),
+                },
+                source_uid: 10,
+                target_uid: -1,
+                amount: 75,
+                config_effect: 1,
+                effect_kind: crate::engine::manager::hp::DamageEffectKind::Normal,
+                assassinate: false,
+                hurt: crate::engine::manager::hp::HurtInfoData {
+                    from_uid: 10,
+                    is_crit: false,
+                    career_restraint: false,
+                    reduce_hp: 75,
+                    effect_id: 1,
+                    skill_id: 1,
+                    damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+                    buff_act_id: 0,
+                    buff_uid: 0,
+                    hurt_effect_type: 0,
+                    display_amount: None,
+                },
+            }),
+        ))],
+    )
+    .unwrap();
+
+    let items = &result.frames[0].items;
+    assert!(matches!(
+        (&items[0], &items[1]),
+        (FrameItem::Change(hp), FrameItem::Change(indicator))
+            if matches!(hp.as_ref(), BattleChange::Hp(_))
+                && matches!(indicator.as_ref(), BattleChange::EffectMarker(marker)
+                    if marker.target_uid == 4 && marker.effect_num == 75)
+    ));
+}
 
 #[test]
 fn parent_owned_root_output_stays_in_the_root_frame() {
@@ -589,7 +663,11 @@ fn active_skill_commits_immediate_ops_and_keeps_cast_state() {
     )));
     assert!(result.outcomes.iter().any(|outcome| matches!(
         outcome,
-        RuleOutcome::Hp(hp) if hp.hp.is_some_and(|change| change.delta == -150)
+        RuleOutcome::Hp(execution)
+            if execution
+                .changes
+                .hp
+                .is_some_and(|change| change.delta == -150)
     )));
 }
 

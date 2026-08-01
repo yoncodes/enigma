@@ -108,6 +108,7 @@ pub async fn on_start_battle(
     .await?;
 
     let start_dungeon_reply = active.start_reply();
+    let cards = active.card_info_push();
     ctx.player_mut()?.battle.start_active(active);
 
     ctx.send_reply(
@@ -123,7 +124,8 @@ pub async fn on_start_battle(
         0,
         req.up_tag,
     )
-    .await
+    .await?;
+    ctx.notify(CmdId::CardInfoPushCmd, cards).await
 }
 
 pub async fn on_active_talent(

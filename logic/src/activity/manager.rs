@@ -821,6 +821,58 @@ impl ActivityManager {
         act229_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn act128_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<Get128InfosReply, AppError> {
+        act128_info(db, self.player_id, activity_id).await
+    }
+
+    pub fn act229_battle_episode(&self, activity_id: i32, stage_id: i32) -> Result<i32, AppError> {
+        act229_battle_episode(activity_id, stage_id)
+    }
+
+    pub async fn ensure_act229_heroes_available(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        stage_id: i32,
+        heroes: &[Act229HeroNo],
+    ) -> Result<(), AppError> {
+        act229_heroes_available(db, self.player_id, activity_id, stage_id, heroes).await
+    }
+
+    pub async fn finish_act229_battle(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        stage_id: i32,
+        round: i32,
+        star: i32,
+        heroes: &[Act229HeroNo],
+    ) -> Result<Act229BattleFinishPush, AppError> {
+        finish_act229_battle(
+            db,
+            self.player_id,
+            activity_id,
+            stage_id,
+            round,
+            star,
+            heroes,
+        )
+        .await
+    }
+
+    pub async fn reset_act229_stage(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        stage_id: i32,
+    ) -> Result<Act229ResetStageReply, AppError> {
+        reset_act229_stage(db, self.player_id, activity_id, stage_id).await
+    }
+
     async fn refresh_states(
         &mut self,
         db: &SqlitePool,

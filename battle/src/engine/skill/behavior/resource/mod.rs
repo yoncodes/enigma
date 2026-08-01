@@ -35,6 +35,10 @@ pub(super) fn supports_recover_power_and_cast_cards(behavior: &ParsedBehavior) -
     )
 }
 
+pub fn supports_average_life(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [0])
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         rule_ops(context, behavior)

@@ -12,11 +12,26 @@ use crate::engine::{
 
 pub(super) struct Handler;
 
+pub fn supports_assign(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [amount, stock_buff_id] if (*amount == -1 || *amount > 0) && *stock_buff_id > 0
+    )
+}
+
+pub fn supports_recycle(behavior: &ParsedBehavior) -> bool {
+    behavior.args.is_empty()
+}
+
+pub fn supports_use_skill(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [threshold, skill_id] if *threshold > 0 && *skill_id > 0)
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         let origin = super::command_origin(behavior)?;
         let command = match behavior.spec.kind {
-            BehaviorKind::ShellAssign => {
+            BehaviorKind::ShellAssign if supports_assign(behavior) => {
                 let [amount, stock_buff_id] = behavior.args.as_slice() else {
                     return None;
                 };

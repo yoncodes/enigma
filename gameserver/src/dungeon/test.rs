@@ -863,6 +863,103 @@ fn normal_push_uses_the_runtime_outcome() {
     );
 }
 
+#[tokio::test]
+async fn act229_victory_uses_only_act229_settlement() {
+    use crate::{
+        handlers::dungeon::on_fight_end_fight,
+        net::{
+            app::AppState, context::ConnectionContext, outbound::CommandPacket,
+            packet::ClientPacket,
+        },
+        player::{Player, PlayerState, battle::Act229BattleContext},
+    };
+    use prost::Message;
+    use sonettobuf::{CmdId, EndFightRequest, Fight, FightEntityInfo, FightTeam};
+    use tokio::sync::mpsc;
+
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (35, 'act229-settlement', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let runtime = battle::engine::runtime::BattleRuntime::new(Fight {
+        cur_round: Some(2),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(0),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let active = ActiveBattle {
+        runtime,
+        act229_context: Some(Act229BattleContext {
+            activity_id: 138521,
+            stage_id: 1,
+        }),
+        ..Default::default()
+    };
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(8);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(35, PlayerState::new(35, 0)));
+    ctx.player_mut().unwrap().battle.restore_active(active);
+
+    let mut data = Vec::new();
+    EndFightRequest {
+        is_abort: Some(false),
+    }
+    .encode(&mut data)
+    .unwrap();
+    on_fight_end_fight(
+        &mut ctx,
+        ClientPacket {
+            sequence: 0,
+            cmd_id: CmdId::FightEndFightCmd as i16,
+            up_tag: 7,
+            data,
+        },
+    )
+    .await
+    .unwrap();
+
+    let commands = std::iter::from_fn(|| packets.try_recv().ok())
+        .map(|packet| match packet {
+            CommandPacket::Push { cmd_id, .. } | CommandPacket::Reply { cmd_id, .. } => cmd_id,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        commands,
+        [
+            CmdId::Act229BattleFinishPushCmd,
+            CmdId::FightEndFightPushCmd,
+            CmdId::FightEndFightCmd,
+        ]
+    );
+}
+
 #[test]
 fn episode_first_bonus_uses_bonus_config() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1443,4 +1540,175 @@ async fn point_reward_claim_uses_shared_progress_and_is_idempotent() {
     .await
     .unwrap();
     assert_eq!(currency_after_retry, currency_after);
+}
+
+#[tokio::test]
+async fn out_of_round_act128_settlement_persists_score_without_dungeon_completion() {
+    fn runtime_with_score() -> ::battle::engine::runtime::BattleRuntime {
+        use ::battle::engine::manager::card::{CardOpType, CardSetup};
+        use sonettobuf::{
+            BeginRoundOper, BeginRoundRequest, CardInfo, Fight, FightEntityInfo, FightTeam,
+        };
+
+        let mut runtime = ::battle::engine::runtime::BattleRuntime::new(Fight {
+            episode_id: Some(13500420),
+            battle_id: Some(118353100),
+            version: Some(7),
+            cur_round: Some(19),
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3023),
+                    team_type: Some(1),
+                    current_hp: Some(1_000_000),
+                    skill_group1: vec![30230111],
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(1_000_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    model_id: Some(118353111),
+                    team_type: Some(2),
+                    current_hp: Some(1_000_000),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(1_000_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        runtime
+            .build_start_steps(CardSetup {
+                hand: vec![CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(30230111),
+                    temp_card: Some(false),
+                    ..Default::default()
+                }],
+                draw_pile: Vec::new(),
+                deck_num: 0,
+            })
+            .unwrap();
+        runtime
+            .advance_round(BeginRoundRequest {
+                opers: vec![BeginRoundOper {
+                    oper_type: Some(CardOpType::PlayCard.id()),
+                    param1: Some(1),
+                    to_id: Some(-1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            runtime.outcome(),
+            ::battle::engine::runtime::BattleOutcome::OutOfRounds
+        );
+        assert!(
+            runtime
+                .indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore)
+                > 0
+        );
+        runtime
+    }
+
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at) VALUES
+         (27, 'act128-failure', 0, 0),
+         (28, 'act128-abort', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let fight_id = battle_db::create_fight_instance(
+        &pool,
+        battle_db::NewFightInstance {
+            user_id: 27,
+            episode_id: 13500420,
+            battle_id: 118353100,
+            multiplication: 1,
+            entry_cost: "{}",
+            checkpoint: "{}",
+            created_at: 0,
+        },
+    )
+    .await
+    .unwrap();
+
+    let runtime = runtime_with_score();
+    let expected_score =
+        runtime.indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore);
+    let active = ActiveBattle {
+        fight_id: Some(fight_id),
+        chapter_id: 128003,
+        episode_id: 13500420,
+        battle_id: 118353100,
+        runtime,
+        ..Default::default()
+    };
+    settle_failed(&pool, 27, &active, true).await.unwrap();
+
+    let reply = logic::activity::ActivityManager::new(27)
+        .act128_info(&pool, Some(138520))
+        .await
+        .unwrap();
+    let boss = reply
+        .boss_detail
+        .iter()
+        .find(|boss| boss.boss_id == Some(2))
+        .unwrap();
+    assert_eq!(boss.total_point, Some(expected_score));
+    assert_eq!(boss.highest_point, Some(expected_score));
+    assert!(
+        battle_db::load_active_fight(&pool, 27)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let abort_fight_id = battle_db::create_fight_instance(
+        &pool,
+        battle_db::NewFightInstance {
+            user_id: 28,
+            episode_id: 13500420,
+            battle_id: 118353100,
+            multiplication: 1,
+            entry_cost: "{}",
+            checkpoint: "{}",
+            created_at: 0,
+        },
+    )
+    .await
+    .unwrap();
+    let abort = ActiveBattle {
+        fight_id: Some(abort_fight_id),
+        chapter_id: 128003,
+        episode_id: 13500420,
+        battle_id: 118353100,
+        runtime: runtime_with_score(),
+        ..Default::default()
+    };
+    settle_refund(&pool, 28, &abort, false).await.unwrap();
+    let abort_reply = logic::activity::ActivityManager::new(28)
+        .act128_info(&pool, Some(138520))
+        .await
+        .unwrap();
+    assert_eq!(abort_reply.boss_detail[1].total_point, Some(0));
 }

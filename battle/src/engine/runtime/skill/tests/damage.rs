@@ -1131,8 +1131,8 @@ fn bloodlust_applies_leech_efficacy_modifiers_to_committed_damage() {
     );
     assert!(result.outcomes.iter().any(|outcome| matches!(
         outcome,
-        crate::engine::runtime::executor::RuleOutcome::Hp(change)
-            if change.hp.is_some_and(|hp| {
+        crate::engine::runtime::executor::RuleOutcome::Hp(execution)
+            if execution.changes.hp.is_some_and(|hp| {
                 hp.effect_type == sonettobuf::effect_type_enum::EffectType::Bloodlust as i32
             })
     )));

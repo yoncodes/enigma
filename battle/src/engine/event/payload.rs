@@ -193,10 +193,12 @@ pub enum BattleEvent {
         target_uid: i64,
         amount: i32,
     },
-    Hit(HitEvent),
     ToughnessBroken {
+        source_uid: i64,
         target_uid: i64,
+        skill_id: i32,
     },
+    Hit(HitEvent),
     EntityDied(EntityDiedEvent),
     BattleTerminalCommitted {
         outcome: crate::engine::round::outcome::BattleOutcome,
@@ -226,7 +228,8 @@ impl BattleEvent {
             Self::EntityEntered { target_uid }
             | Self::EntityTransformed { target_uid }
             | Self::HpLost { target_uid, .. }
-            | Self::HpHealed { target_uid, .. } => Some(*target_uid),
+            | Self::HpHealed { target_uid, .. }
+            | Self::ToughnessBroken { target_uid, .. } => Some(*target_uid),
             Self::SkillEffectStarted(action) | Self::SkillAction(action) => Some(action.target_uid),
             Self::AllyAction(action) => Some(action.target_uid),
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
@@ -234,7 +237,6 @@ impl BattleEvent {
             }
             Self::BuffFeatureTriggered(trigger) => Some(trigger.target_uid),
             Self::Hit(hit) => Some(hit.target_uid),
-            Self::ToughnessBroken { target_uid } => Some(*target_uid),
             Self::EntityDied(death) => Some(death.target_uid),
             Self::ExPointChanged(change) | Self::ExPointOverflow(change) => Some(change.target_uid),
             Self::EurekaChanged(change) => Some(change.target_uid),
@@ -389,6 +391,7 @@ mod subscription_tests {
             damage_amount: 10,
             kill_count: 0,
             crit_count: 0,
+            guard_break_count: 0,
             additional_moxie: 0,
             extra_skill_kind: 0,
             mode: crate::engine::skill::action::SkillExecutionMode::Active,
