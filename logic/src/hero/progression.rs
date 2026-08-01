@@ -1,6 +1,104 @@
 use super::*;
 
 impl HeroManager {
+    pub async fn upgrade_materials(
+        self,
+        db: &SqlitePool,
+        target_level: i32,
+        target_talent: i32,
+    ) -> Result<reward::RewardSet, AppError> {
+        let tables = config::configs::get();
+        if !(1..=tables.max_character_level()).contains(&target_level)
+            || !(1..=15).contains(&target_talent)
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        let heroes = UserHeroModel::new(self.player_id, db.clone())
+            .get_all_heroes()
+            .await?;
+        let mut items = BTreeMap::<u32, i32>::new();
+        let mut currencies = BTreeMap::<i32, i32>::new();
+
+        for hero in heroes {
+            let hero_id = hero.record.hero_id;
+            let rare = tables
+                .character
+                .get(hero_id)
+                .map(|row| row.rare)
+                .ok_or_else(|| {
+                    AppError::Custom(format!("hero {hero_id} has no character config"))
+                })?;
+            let max_level = tables
+                .character_rank
+                .iter()
+                .filter(|row| row.hero_id == hero_id)
+                .filter_map(|row| tables.character_rank_level_limit(hero_id, row.rank))
+                .max()
+                .ok_or_else(|| {
+                    AppError::Custom(format!("hero {hero_id} has no character_rank config"))
+                })?;
+            let target_level = target_level.min(max_level);
+            let mut level = hero.record.level;
+
+            for rank in hero.record.rank.. {
+                if level >= target_level {
+                    break;
+                }
+                let level_limit = tables
+                    .character_rank_level_limit(hero_id, rank)
+                    .ok_or_else(|| {
+                        AppError::Custom(format!("hero {hero_id} rank {rank} has no level limit"))
+                    })?;
+                for next_level in level + 1..=target_level.min(level_limit) {
+                    let row = tables
+                        .character_level_cost(rare, next_level)
+                        .ok_or_else(|| {
+                            AppError::Custom(format!(
+                                "rarity {rare} level {next_level} has no character cost"
+                            ))
+                        })?;
+                    add_material_costs(reward::parse(&row.cosume), &mut items, &mut currencies);
+                }
+                level = target_level.min(level_limit);
+                if level >= target_level {
+                    break;
+                }
+
+                let next_rank = tables.character_rank(hero_id, rank + 1).ok_or_else(|| {
+                    AppError::Custom(format!("hero {hero_id} has no rank {} config", rank + 1))
+                })?;
+                add_material_costs(
+                    reward::parse(&next_rank.consume),
+                    &mut items,
+                    &mut currencies,
+                );
+                level = level_limit.saturating_add(1);
+            }
+
+            let max_talent = tables
+                .character_talent
+                .iter()
+                .filter(|row| row.hero_id == hero_id)
+                .map(|row| row.talent_id)
+                .max()
+                .ok_or_else(|| {
+                    AppError::Custom(format!("hero {hero_id} has no character_talent config"))
+                })?;
+            for talent in hero.record.talent + 1..=target_talent.min(max_talent) {
+                let row = tables.character_talent(hero_id, talent).ok_or_else(|| {
+                    AppError::Custom(format!("hero {hero_id} has no talent {talent} config"))
+                })?;
+                add_material_costs(reward::parse(&row.consume), &mut items, &mut currencies);
+            }
+        }
+
+        Ok(reward::RewardSet {
+            items: items.into_iter().collect(),
+            currencies: currencies.into_iter().collect(),
+            ..Default::default()
+        })
+    }
+
     pub async fn level_up(
         self,
         db: &SqlitePool,
@@ -135,6 +233,21 @@ impl HeroManager {
         let updated = snapshot(db, hero.get(hero_id).await?).await?;
 
         Ok((HeroUpgradeSkillReply {}, updated, consumed_item_id))
+    }
+}
+
+fn add_material_costs(
+    costs: reward::RewardSet,
+    items: &mut BTreeMap<u32, i32>,
+    currencies: &mut BTreeMap<i32, i32>,
+) {
+    for (id, amount) in costs.items {
+        let total = items.entry(id).or_default();
+        *total = total.saturating_add(amount);
+    }
+    for (id, amount) in costs.currencies {
+        let total = currencies.entry(id).or_default();
+        *total = total.saturating_add(amount);
     }
 }
 
