@@ -12,6 +12,12 @@ pub struct ConduitSkill {
     pub is_stopped: bool,
 }
 
+impl ConduitSkill {
+    pub(crate) fn cost_after_reduction(self, reduction: i32) -> i32 {
+        reduced_cost(self.cost_value, reduction)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConduitDevice {
     pub uid: i64,
@@ -51,7 +57,15 @@ pub enum ConduitCommand {
         skill_id: i32,
         cost_reduction: i32,
     },
+    CommitSkillCost {
+        source_uid: i64,
+        skill_id: i32,
+    },
     FinishSkill {
+        source_uid: i64,
+        skill_id: i32,
+    },
+    CompleteActivation {
         source_uid: i64,
         skill_id: i32,
     },
@@ -116,7 +130,14 @@ pub enum ConduitChange {
         team: i32,
         skill_id: i32,
         power_id: i32,
+        activation_cost: i32,
         spent: i32,
+    },
+    SkillCostCommitted {
+        source_uid: i64,
+        team: i32,
+        skill_id: i32,
+        activation_cost: i32,
         consumed_this_round: i32,
     },
     SkillFinished {
@@ -125,6 +146,7 @@ pub enum ConduitChange {
         skill_id: i32,
         uses_this_round: i32,
     },
+    ActivationCompleted(crate::engine::event::payload::ConduitActivatedEvent),
     RunningChanged {
         source_uid: i64,
         running: bool,
@@ -177,6 +199,10 @@ pub enum ConduitError {
         group: i32,
     },
     MissingSkill(i32),
+    MissingActivation(i32),
+    ActivationInProgress(i32),
+    ActivationAlreadyCommitted(i32),
+    ActivationNotCommitted(i32),
     StoppedSkill(i32),
     UnsupportedCostType(i32),
     InsufficientPower {
@@ -184,6 +210,12 @@ pub enum ConduitError {
         available: i32,
         required: i32,
     },
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PendingActivation {
+    event: crate::engine::event::payload::ConduitActivatedEvent,
+    cost_committed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,6 +232,7 @@ pub struct ConduitManager {
     initialized: Vec<i32>,
     consumed_this_round: BTreeMap<(i32, i32), i32>,
     uses_this_round: BTreeMap<i64, i32>,
+    pending_activations: BTreeMap<(i64, i32), PendingActivation>,
     running: HashSet<i64>,
 }
 
@@ -266,6 +299,7 @@ impl ConduitManager {
     pub fn begin_round(&mut self) {
         self.consumed_this_round.clear();
         self.uses_this_round.clear();
+        self.pending_activations.clear();
         for skill in self
             .areas
             .values_mut()
@@ -310,10 +344,19 @@ impl ConduitManager {
             .collect()
     }
 
+    pub fn skill_ids(&self) -> impl Iterator<Item = i32> + '_ {
+        self.areas
+            .values()
+            .flat_map(|area| &area.devices)
+            .flat_map(|device| &device.skill_groups)
+            .flatten()
+            .map(|skill| skill.skill_id)
+    }
+
     pub fn can_begin_skill(&self, source_uid: i64, skill_id: i32, cost_reduction: i32) -> bool {
         self.skill(source_uid, skill_id)
             .is_some_and(|(team, skill)| {
-                let cost = reduced_cost(skill.cost_value, cost_reduction);
+                let cost = skill.cost_after_reduction(cost_reduction);
                 !skill.is_stopped
                     && (skill.cost_type == 999 || self.power(team, skill.cost_type) >= cost)
             })
@@ -405,19 +448,25 @@ impl ConduitManager {
                 skill_id,
                 cost_reduction,
             } => {
+                if self
+                    .pending_activations
+                    .contains_key(&(source_uid, skill_id))
+                {
+                    return Err(ConduitError::ActivationInProgress(skill_id));
+                }
                 let (team, skill) = self
                     .skill(source_uid, skill_id)
                     .ok_or(ConduitError::MissingSkill(skill_id))?;
                 if skill.is_stopped {
                     return Err(ConduitError::StoppedSkill(skill_id));
                 }
-                let cost = reduced_cost(skill.cost_value, cost_reduction);
+                let spent = skill.cost_after_reduction(cost_reduction);
                 let available = self.power(team, skill.cost_type);
-                if skill.cost_type != 999 && available < cost {
+                if skill.cost_type != 999 && available < spent {
                     return Err(ConduitError::InsufficientPower {
                         power_id: skill.cost_type,
                         available,
-                        required: cost,
+                        required: spent,
                     });
                 }
                 if skill.cost_type != 999 {
@@ -430,26 +479,65 @@ impl ConduitManager {
                         .iter_mut()
                         .find(|power| power.id == skill.cost_type);
                     if let Some(power) = power {
-                        power.value -= cost;
-                    } else if cost > 0 {
+                        power.value -= spent;
+                    } else if spent > 0 {
                         return Err(ConduitError::InsufficientPower {
                             power_id: skill.cost_type,
                             available: 0,
-                            required: cost,
+                            required: spent,
                         });
                     }
                 }
-                let consumed = self
-                    .consumed_this_round
-                    .entry((team, skill.cost_type))
-                    .or_default();
-                *consumed = consumed.saturating_add(cost);
+                self.pending_activations.insert(
+                    (source_uid, skill_id),
+                    PendingActivation {
+                        event: crate::engine::event::payload::ConduitActivatedEvent {
+                            source_uid,
+                            team,
+                            skill_id,
+                            power_id: skill.cost_type,
+                            activation_cost: skill.cost_value,
+                            spent,
+                        },
+                        cost_committed: false,
+                    },
+                );
                 Ok(ConduitChange::SkillBegan {
                     source_uid,
                     team,
                     skill_id,
                     power_id: skill.cost_type,
-                    spent: cost,
+                    activation_cost: skill.cost_value,
+                    spent,
+                })
+            }
+            ConduitCommand::CommitSkillCost {
+                source_uid,
+                skill_id,
+            } => {
+                let pending = self
+                    .pending_activations
+                    .get(&(source_uid, skill_id))
+                    .copied()
+                    .ok_or(ConduitError::MissingActivation(skill_id))?;
+                if pending.cost_committed {
+                    return Err(ConduitError::ActivationAlreadyCommitted(skill_id));
+                }
+                let activation = pending.event;
+                let consumed = self
+                    .consumed_this_round
+                    .entry((activation.team, activation.power_id))
+                    .or_default();
+                *consumed = consumed.saturating_add(activation.activation_cost);
+                self.pending_activations
+                    .get_mut(&(source_uid, skill_id))
+                    .expect("the checked activation remains pending")
+                    .cost_committed = true;
+                Ok(ConduitChange::SkillCostCommitted {
+                    source_uid,
+                    team: activation.team,
+                    skill_id,
+                    activation_cost: activation.activation_cost,
                     consumed_this_round: *consumed,
                 })
             }
@@ -468,6 +556,21 @@ impl ConduitManager {
                     skill_id,
                     uses_this_round: *uses,
                 })
+            }
+            ConduitCommand::CompleteActivation {
+                source_uid,
+                skill_id,
+            } => {
+                let pending = self
+                    .pending_activations
+                    .get(&(source_uid, skill_id))
+                    .copied()
+                    .ok_or(ConduitError::MissingActivation(skill_id))?;
+                if !pending.cost_committed {
+                    return Err(ConduitError::ActivationNotCommitted(skill_id));
+                }
+                self.pending_activations.remove(&(source_uid, skill_id));
+                Ok(ConduitChange::ActivationCompleted(pending.event))
             }
             ConduitCommand::SetRunning {
                 source_uid,
@@ -706,22 +809,22 @@ fn reduced_cost(cost: i32, reduction: i32) -> i32 {
 
 impl ConduitChange {
     pub fn events(&self) -> Vec<crate::engine::event::payload::BattleEvent> {
-        let (source_uid, team, skill_id, power_id, spent) = match self {
-            Self::SkillBegan {
-                source_uid,
-                team,
-                skill_id,
-                power_id,
-                spent,
-                ..
-            } => (*source_uid, *team, *skill_id, *power_id, *spent),
+        let (source_uid, team, skill_id, power_id, activation_cost, spent) = match self {
+            Self::ActivationCompleted(event) => (
+                event.source_uid,
+                event.team,
+                event.skill_id,
+                event.power_id,
+                event.activation_cost,
+                event.spent,
+            ),
             Self::PowersCleared {
                 source_uid,
                 team,
                 skill_id,
                 spent,
                 ..
-            } => (*source_uid, *team, *skill_id, 0, *spent),
+            } => (*source_uid, *team, *skill_id, 0, *spent, *spent),
             _ => return Vec::new(),
         };
         (spent > 0)
@@ -732,6 +835,7 @@ impl ConduitChange {
                         team,
                         skill_id,
                         power_id,
+                        activation_cost,
                         spent,
                     },
                 ),
@@ -889,6 +993,18 @@ mod tests {
             })
             .unwrap();
         manager
+            .execute(ConduitCommand::CommitSkillCost {
+                source_uid: 10,
+                skill_id: 31490121,
+            })
+            .unwrap();
+        manager
+            .execute(ConduitCommand::CompleteActivation {
+                source_uid: 10,
+                skill_id: 31490121,
+            })
+            .unwrap();
+        manager
             .execute(ConduitCommand::FinishSkill {
                 source_uid: 10,
                 skill_id: 31490121,
@@ -898,6 +1014,83 @@ mod tests {
         assert_eq!(manager.power(1, 1), 1);
         assert_eq!(manager.consumed(1, 1), 3);
         assert_eq!(manager.uses(10), 1);
+    }
+
+    #[test]
+    fn reduced_spend_keeps_the_configured_activation_cost() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3149),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut manager = ConduitManager::seed(&fight);
+        manager
+            .execute(ConduitCommand::ChangePower(ConduitPowerChange {
+                origin: ORIGIN,
+                source_uid: 10,
+                team: 1,
+                power_id: 1,
+                delta: 3,
+                kind: ConduitPowerChangeKind::Standard,
+            }))
+            .unwrap();
+
+        manager
+            .execute(ConduitCommand::BeginSkill {
+                source_uid: 10,
+                skill_id: 31490121,
+                cost_reduction: 1,
+            })
+            .unwrap();
+        assert_eq!(
+            manager.execute(ConduitCommand::BeginSkill {
+                source_uid: 10,
+                skill_id: 31490121,
+                cost_reduction: 1,
+            }),
+            Err(ConduitError::ActivationInProgress(31490121))
+        );
+        assert_eq!(
+            manager.execute(ConduitCommand::CompleteActivation {
+                source_uid: 10,
+                skill_id: 31490121,
+            }),
+            Err(ConduitError::ActivationNotCommitted(31490121))
+        );
+        manager
+            .execute(ConduitCommand::CommitSkillCost {
+                source_uid: 10,
+                skill_id: 31490121,
+            })
+            .unwrap();
+        assert_eq!(
+            manager.execute(ConduitCommand::CommitSkillCost {
+                source_uid: 10,
+                skill_id: 31490121,
+            }),
+            Err(ConduitError::ActivationAlreadyCommitted(31490121))
+        );
+        let change = manager
+            .execute(ConduitCommand::CompleteActivation {
+                source_uid: 10,
+                skill_id: 31490121,
+            })
+            .unwrap();
+
+        assert_eq!(manager.power(1, 1), 1);
+        assert_eq!(manager.consumed(1, 1), 3);
+        assert!(matches!(
+            change.events().as_slice(),
+            [crate::engine::event::payload::BattleEvent::ConduitActivated(event)]
+                if event.activation_cost == 3 && event.spent == 2
+        ));
     }
 
     #[test]

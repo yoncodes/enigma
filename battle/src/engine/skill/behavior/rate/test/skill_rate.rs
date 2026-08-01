@@ -532,6 +532,15 @@ fn conduit_rate_survives_a_later_group_switch() {
     managers
         .conduit
         .execute(
+            crate::engine::manager::conduit::ConduitCommand::CommitSkillCost {
+                source_uid: 10,
+                skill_id: 31490121,
+            },
+        )
+        .unwrap();
+    managers
+        .conduit
+        .execute(
             crate::engine::manager::conduit::ConduitCommand::SelectGroup {
                 source_uid: 10,
                 group: 2,

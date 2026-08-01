@@ -374,7 +374,12 @@ fn reactive_skill_frame_targets_the_other_team_of_a_hit() {
     assert_eq!(reaction_counterparty(&pool, &event, -3), Some(10));
     assert_eq!(reaction_counterparty(&pool, &event, 10), Some(-2));
     assert_eq!(
-        reaction_skill_target(&pool, &event, -3, DefinitionKey::new(22213, "BeAttacked"),),
+        reaction_skill_target(
+            &pool,
+            &event,
+            -3,
+            crate::engine::skill::condition::registry::ReactionFrameTarget::Counterparty,
+        ),
         Some(10)
     );
 }
@@ -610,7 +615,7 @@ fn eureka_reaction_frame_stays_owned_by_the_subscriber() {
             &TargetPool::default(),
             &event,
             99,
-            DefinitionKey::new(721017, "CurEntityPowerDel"),
+            crate::engine::skill::condition::registry::ReactionFrameTarget::Owner,
         ),
         Some(99)
     );

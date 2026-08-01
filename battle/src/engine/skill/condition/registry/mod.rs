@@ -68,6 +68,13 @@ pub enum ReactionFrameTarget {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReactionFrameScope {
+    #[default]
+    Subscriber,
+    Causing,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SkillActionObserver {
     #[default]
     Actor,
@@ -93,6 +100,7 @@ pub struct ConditionDefinition {
     pub filters_behavior_targets: bool,
     pub behavior_target_source: BehaviorTargetSource,
     pub reaction_frame_target: ReactionFrameTarget,
+    pub reaction_frame_scope: ReactionFrameScope,
     pub skill_action_observer: SkillActionObserver,
     pub attack_modifier_side: Option<AttackModifierSide>,
     pub companion_setup: &'static [(SetupStage, i32)],
@@ -111,6 +119,7 @@ pub struct ConditionMetadata {
     pub filters_behavior_targets: bool,
     pub behavior_target_source: BehaviorTargetSource,
     pub reaction_frame_target: ReactionFrameTarget,
+    pub reaction_frame_scope: ReactionFrameScope,
     pub skill_action_observer: SkillActionObserver,
     pub attack_modifier_side: Option<AttackModifierSide>,
     pub companion_setup: &'static [(SetupStage, i32)],
@@ -136,6 +145,7 @@ pub const fn definition(
         filters_behavior_targets: metadata.filters_behavior_targets,
         behavior_target_source: metadata.behavior_target_source,
         reaction_frame_target: metadata.reaction_frame_target,
+        reaction_frame_scope: metadata.reaction_frame_scope,
         skill_action_observer: metadata.skill_action_observer,
         attack_modifier_side: metadata.attack_modifier_side,
         companion_setup: metadata.companion_setup,
@@ -155,6 +165,7 @@ pub const fn predicate(dependencies: &'static [EventKind]) -> ConditionMetadata 
         filters_behavior_targets: false,
         behavior_target_source: BehaviorTargetSource::Resolved,
         reaction_frame_target: ReactionFrameTarget::Counterparty,
+        reaction_frame_scope: ReactionFrameScope::Subscriber,
         skill_action_observer: SkillActionObserver::Actor,
         attack_modifier_side: None,
         companion_setup: &[],
@@ -174,6 +185,7 @@ pub const fn event_trigger(event: EventKind, phase: Option<SkillPhase>) -> Condi
         filters_behavior_targets: false,
         behavior_target_source: BehaviorTargetSource::Resolved,
         reaction_frame_target: ReactionFrameTarget::Counterparty,
+        reaction_frame_scope: ReactionFrameScope::Subscriber,
         skill_action_observer: SkillActionObserver::Actor,
         attack_modifier_side: None,
         companion_setup: &[],
@@ -197,6 +209,7 @@ pub const fn setup_route(
         filters_behavior_targets: false,
         behavior_target_source: BehaviorTargetSource::Resolved,
         reaction_frame_target: ReactionFrameTarget::Counterparty,
+        reaction_frame_scope: ReactionFrameScope::Subscriber,
         skill_action_observer: SkillActionObserver::Actor,
         attack_modifier_side: None,
         companion_setup: &[],
@@ -247,6 +260,11 @@ pub const fn uses_hit_targets(mut metadata: ConditionMetadata) -> ConditionMetad
 
 pub const fn reaction_targets_owner(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_frame_target = ReactionFrameTarget::Owner;
+    metadata
+}
+
+pub const fn in_causing_frame(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_frame_scope = ReactionFrameScope::Causing;
     metadata
 }
 
@@ -442,7 +460,7 @@ condition_definitions! {
     [726210] "BloodPoolValue" => resource::blood_pool_value, predicate(&[]);
     [589] "PowerIncrChange" => resource::power_increase, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
     [571017] "LostPower" => resource::lost_power, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
-    [788210] "PerDeviceCurrCost" => resource::per_conduit_current_cost, after_skill(reaction_targets_owner(event_trigger(EventKind::ConduitActivated, None)));
+    [788210] "PerDeviceCurrCost" => resource::per_conduit_current_cost, in_causing_frame(reaction_targets_owner(event_trigger(EventKind::ConduitActivated, None)));
     [787103] "DeviceExPoint" => conduit::ex_point, setup_route(SetupStage::RoundStart, 1, &[]);
     [787105] "DeviceExPoint" => conduit::ex_point, setup_route(SetupStage::AfterRoundStart, 0, &[]);
     [794103] "DeviceSkillIndex" => conduit::selected_group, setup_route(SetupStage::RoundStart, 1, &[]);

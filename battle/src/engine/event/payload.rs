@@ -77,6 +77,7 @@ pub struct ConduitActivatedEvent {
     pub team: i32,
     pub skill_id: i32,
     pub power_id: i32,
+    pub activation_cost: i32,
     pub spent: i32,
 }
 

@@ -652,6 +652,23 @@ pub(super) fn queued_reactions(
         .skills
         .into_iter()
         .map(|(subscriber, op)| {
+            let definition = crate::engine::skill::condition::registry::find_key(
+                subscriber.key.definition.opcode,
+                subscriber.key.definition.type_name,
+            )
+            .ok_or_else(|| {
+                DrainError::Subscriber(
+                    crate::engine::skill::subscriber::SubscriberError::UncompiledRoute {
+                        skill_id: subscriber.skill_id,
+                        route:
+                            crate::engine::skill::rule::route::RouteError::UnregisteredExactKey {
+                                opcode: subscriber.key.definition.opcode,
+                                type_name: subscriber.key.definition.type_name.to_owned(),
+                            },
+                    },
+                )
+            })?;
+            let frame_scope = definition.reaction_frame_scope;
             let reentry_target = reentry_skill.and_then(|(owner_uid, skill_id, target_uid)| {
                 (owner_uid == subscriber.owner_uid && skill_id == subscriber.skill_id)
                     .then_some(target_uid)
@@ -660,20 +677,26 @@ pub(super) fn queued_reactions(
             let reenters_current_skill = reentry_skill.is_some_and(|(owner_uid, skill_id, _)| {
                 owner_uid == subscriber.owner_uid && skill_id == subscriber.skill_id
             });
-            let (frame_path, parent_path) = if reenters_current_skill {
+            let (frame_path, parent_path) = if frame_scope
+                == crate::engine::skill::condition::registry::ReactionFrameScope::Causing
+            {
+                (reuse_path.or(parent_path).map(|path| path.to_vec()), None)
+            } else if reenters_current_skill {
                 let parent = reuse_path
                     .and_then(|path| (path.len() > 1).then(|| path[..path.len() - 1].to_vec()));
                 (None, parent)
             } else {
                 (None, parent_path.map(|path| path.to_vec()))
             };
-            let frame_group = Some(
-                skill_groups
-                    .entry((subscriber.owner_uid, subscriber.skill_id))
-                    .or_default()
-                    .clone(),
-            );
-            QueuedOp {
+            let frame_group = (frame_scope
+                == crate::engine::skill::condition::registry::ReactionFrameScope::Subscriber)
+                .then(|| {
+                    skill_groups
+                        .entry((subscriber.owner_uid, subscriber.skill_id))
+                        .or_default()
+                        .clone()
+                });
+            Ok(QueuedOp {
                 op,
                 trigger: SkillOpTrigger::Event(event.clone()),
                 skill_execution: None,
@@ -690,13 +713,13 @@ pub(super) fn queued_reactions(
                             pool,
                             event,
                             subscriber.owner_uid,
-                            subscriber.key.definition,
+                            definition.reaction_frame_target,
                         )
                     }),
                 }),
-            }
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, DrainError>>()?;
     for (subscriber, ops) in dispatched.buff_acts {
         let ops = ops.ok_or(DrainError::MissingBuffActOp(
             subscriber.key.definition.opcode,
@@ -876,17 +899,11 @@ pub(super) fn reaction_skill_target(
     pool: &TargetPool,
     event: &BattleEvent,
     owner_uid: i64,
-    condition_key: crate::engine::skill::rule::DefinitionKey,
+    target: crate::engine::skill::condition::registry::ReactionFrameTarget,
 ) -> Option<i64> {
     use crate::engine::skill::condition::registry::ReactionFrameTarget;
 
-    match crate::engine::skill::condition::registry::find_key(
-        condition_key.opcode,
-        condition_key.type_name,
-    )
-    .map(|definition| definition.reaction_frame_target)
-    .unwrap_or_default()
-    {
+    match target {
         ReactionFrameTarget::Counterparty => reaction_counterparty(pool, event, owner_uid),
         ReactionFrameTarget::Owner => Some(owner_uid),
     }
