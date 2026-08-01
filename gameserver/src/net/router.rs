@@ -206,6 +206,7 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         CmdId::Get121InfosCmd => activity::on_get_121_infos,
         CmdId::GetAct122InfosCmd => activity::on_get_act122_infos,
         CmdId::Get101BonusCmd => activity::on_get_101_bonus,
+        CmdId::Get101BonusListCmd => activity::on_get_101_bonus_list,
         CmdId::Get101SpBonusCmd => activity::on_get_101_sp_bonus,
         CmdId::Get104InfosCmd => activity::on_get_104_infos,
         CmdId::MarkEpisodeAfterStoryCmd => activity::on_mark_episode_after_story,
