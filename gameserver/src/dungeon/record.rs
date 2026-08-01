@@ -40,6 +40,7 @@ pub async fn prepare_dungeon_record(
         db,
         player_id,
         active.runtime.fight_version(),
+        active.seed,
         &fight_group,
         &active.oper_records(),
     )

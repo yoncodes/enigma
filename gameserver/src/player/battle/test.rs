@@ -46,6 +46,45 @@ fn replay_record_keeps_cloth_and_card_operations_in_the_same_round() {
 }
 
 #[test]
+fn replay_mode_is_projected_from_the_active_battle() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let active = ActiveBattle {
+        is_replay: Some(true),
+        runtime: ::battle::engine::runtime::BattleRuntime::new(sonettobuf::Fight {
+            is_record: Some(false),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    assert_eq!(active.start_reply().fight.unwrap().is_record, Some(true));
+    assert_eq!(
+        active.reconnect_reply().fight.unwrap().is_record,
+        Some(true)
+    );
+}
+
+#[tokio::test]
+async fn replay_uses_the_saved_battle_seed() {
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    sqlx::query("CREATE TABLE dungeon_records (user_id INTEGER, episode_id INTEGER, seed TEXT)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO dungeon_records VALUES (7, 60107, ?)")
+        .bind(u64::MAX.to_string())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        initial_battle_seed(&pool, 7, 60107, true).await.unwrap(),
+        u64::MAX
+    );
+}
+
+#[test]
 fn begin_round_steps_use_the_clients_compressed_framing() {
     let reply = compress_round_steps(BeginRoundReply {
         round: Some(sonettobuf::FightRound {
