@@ -48,6 +48,24 @@ impl ActivityManager {
         Ok(claim)
     }
 
+    pub async fn get101_bonus_list(
+        &mut self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        day_ids: Vec<u32>,
+    ) -> Result<act101::Activity101ListClaim, AppError> {
+        let claim = get101_bonus_list(db, self.player_id, activity_id, day_ids).await?;
+        let activity_id = claim
+            .reply
+            .activity_id
+            .unwrap_or_else(latest_act101_activity_id);
+        self.refresh_states(db, activity_id, ActivityStateKind::Act101Day)
+            .await?;
+        self.refresh_states(db, activity_id, ActivityStateKind::Act101Once)
+            .await?;
+        Ok(claim)
+    }
+
     pub async fn get101_sp_bonus(
         &mut self,
         db: &SqlitePool,

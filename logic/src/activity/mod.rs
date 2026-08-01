@@ -16,15 +16,16 @@ use sonettobuf::{
     Act218FinishGameReply, Act221SummonReply, Act228FlipGridGridReply, Act228GetFinalBonusReply,
     Act228Info, Act229BattleFinishPush, Act229HeroNo, Act229ResetStageReply, ActivityInfo,
     ActivityNewStageReadReply, EndingInfo, FinishAct125EpisodeReply, FinishAct146EpisodeReply,
-    Get101BonusReply, Get101InfosReply, Get101SpBonusReply, Get104InfosReply, Get123InfosReply,
-    Get128InfosReply, Get136InfoReply, Get152InfoReply, Get153InfosReply, Get154InfosReply,
-    Get158InfosReply, Get166InfosReply, Get196InfoReply, Get197InfoReply, Get199InfoReply,
-    Get217InfosReply, Get218InfoReply, Get221InfoReply, GetAct125InfosReply, GetAct146InfosReply,
-    GetAct172InfoReply, GetAct186InfoReply, GetAct186SpBonusInfoReply, GetAct189InfoReply,
-    GetAct189OnceBonusReply, GetAct208InfoReply, GetAct209InfoReply, GetAct212InfoReply,
-    GetAct216InfoReply, GetAct225InfoReply, GetAct228InfoReply, GetAct229InfoReply,
-    GetActivityInfosReply, GetActivityInfosWithParamReply, MarkActivity104StoryReply,
-    MarkEpisodeAfterStoryReply, MarkPopSummaryReply, StepInfo, UnlockPermanentReply,
+    Get101BonusListReply, Get101BonusReply, Get101InfosReply, Get101SpBonusReply, Get104InfosReply,
+    Get123InfosReply, Get128InfosReply, Get136InfoReply, Get152InfoReply, Get153InfosReply,
+    Get154InfosReply, Get158InfosReply, Get166InfosReply, Get196InfoReply, Get197InfoReply,
+    Get199InfoReply, Get217InfosReply, Get218InfoReply, Get221InfoReply, GetAct125InfosReply,
+    GetAct146InfosReply, GetAct172InfoReply, GetAct186InfoReply, GetAct186SpBonusInfoReply,
+    GetAct189InfoReply, GetAct189OnceBonusReply, GetAct208InfoReply, GetAct209InfoReply,
+    GetAct212InfoReply, GetAct216InfoReply, GetAct225InfoReply, GetAct228InfoReply,
+    GetAct229InfoReply, GetActivityInfosReply, GetActivityInfosWithParamReply,
+    MarkActivity104StoryReply, MarkEpisodeAfterStoryReply, MarkPopSummaryReply, StepInfo,
+    UnlockPermanentReply,
 };
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
@@ -68,7 +69,7 @@ mod act228;
 mod act229;
 mod dice_hero;
 
-use act101::{get101_bonus, get101_infos, get101_sp_bonus};
+use act101::{get101_bonus, get101_bonus_list, get101_infos, get101_sp_bonus};
 use act104::{act104_infos, mark_activity104_story, mark_episode_after_story, mark_pop_summary};
 use act123::{act123_infos, act153_infos};
 use act125::{act125_infos, finish_act125_episode};
