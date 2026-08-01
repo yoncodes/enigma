@@ -123,5 +123,55 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         &replies.last().unwrap().round.as_ref().unwrap().fight_step,
         312301343,
     ));
+    fn buff_lifecycle(
+        steps: &[sonettobuf::FightStep],
+        buff_id: i32,
+        lifecycle: &mut Vec<(i32, String)>,
+    ) {
+        for effect in steps.iter().flat_map(|step| &step.act_effect) {
+            if let Some(buff) = effect
+                .buff
+                .as_ref()
+                .filter(|buff| buff.buff_id == Some(buff_id))
+            {
+                lifecycle.push((
+                    effect.effect_type.unwrap_or_default(),
+                    buff.act_common_params.clone().unwrap_or_default(),
+                ));
+            }
+            if let Some(nested) = effect.fight_step.as_ref() {
+                buff_lifecycle(std::slice::from_ref(nested), buff_id, lifecycle);
+            }
+        }
+    }
+    let mut lifecycle = Vec::new();
+    buff_lifecycle(
+        &replies.last().unwrap().round.as_ref().unwrap().fight_step,
+        229100,
+        &mut lifecycle,
+    );
+    assert_eq!(
+        lifecycle
+            .iter()
+            .map(|(effect, _)| *effect)
+            .collect::<Vec<_>>(),
+        [
+            sonettobuf::effect_type_enum::EffectType::Buffupdate as i32,
+            sonettobuf::effect_type_enum::EffectType::Buffupdate as i32,
+            sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+        ],
+    );
+    assert!(lifecycle[0].1.starts_with("10000#0,"));
+    assert!(lifecycle[1].1.starts_with("10000#-1,"));
+    assert_eq!(lifecycle[1].1, lifecycle[2].1);
+    let terminal = lifecycle[1]
+        .1
+        .split(['#', ','])
+        .map(str::parse::<i32>)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!((terminal[1], terminal[3]), (-1, -1));
+    assert!(terminal[2] > progress.total_damage);
+    assert!(!runtime.managers.buff.has_buff_id(10, 229100));
     assert!(runtime.use_cloth_skill(request).is_none());
 }
