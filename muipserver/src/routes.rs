@@ -151,7 +151,7 @@ async fn gm_handler(
             return (
                 StatusCode::OK,
                 Json(GmResponse::ok(
-                    "commands: help, status, players, bgm unlock all, guide complete all, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
+                    "commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials <1-180> <resonance 1-15>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
                 )),
             )
                 .into_response();

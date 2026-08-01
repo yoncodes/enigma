@@ -240,19 +240,91 @@ async fn run_command(
         "bgm" => return unlock_bgms(state, player_id, &parts[1..]).await,
         "dungeon" => return unlock_dungeon(state, player_id, &parts[1..]).await,
         "guide" | "guides" => return complete_guides(state, player_id, &parts[1..]).await,
+        "hero"
+            if parts
+                .get(1)
+                .is_some_and(|arg| arg.eq_ignore_ascii_case("upgrade")) =>
+        {
+            return grant_hero_upgrade_materials(state, player_id, &parts[1..]).await;
+        }
         "material" | "reward" | "give" | "add" => &parts[1..],
         kind if MaterialKind::parse(kind).is_some() => &parts[..],
         "status" => return Ok(status(state).await),
         "players" | "list" | "listplayers" | "list_players" => return Ok(list_players(state)),
         "help" | "?" => {
             return Ok(GmResponse::ok(
-                "commands: help, status, players, bgm unlock all, guide complete all, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
+                "commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials <1-180> <resonance 1-15>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
             ));
         }
         _ => anyhow::bail!("unknown command '{}'", first),
     };
 
     grant(state, player_id, args).await
+}
+
+async fn grant_hero_upgrade_materials(
+    state: &'static AppState,
+    player_id: i64,
+    args: &[&str],
+) -> Result<GmResponse> {
+    let [upgrade, materials, target_level, target_talent] = args else {
+        anyhow::bail!("usage: hero upgrade materials <1-180> <resonance 1-15>");
+    };
+    if !upgrade.eq_ignore_ascii_case("upgrade") || !materials.eq_ignore_ascii_case("materials") {
+        anyhow::bail!("usage: hero upgrade materials <1-180> <resonance 1-15>");
+    }
+    let target_level = target_level
+        .parse::<i32>()
+        .ok()
+        .filter(|level| (1..=config::configs::get().max_character_level()).contains(level))
+        .ok_or_else(|| anyhow::anyhow!("target level must be between 1 and 180"))?;
+    let target_talent = target_talent
+        .parse::<i32>()
+        .ok()
+        .filter(|talent| (1..=15).contains(talent))
+        .ok_or_else(|| anyhow::anyhow!("resonance must be between 1 and 15"))?;
+
+    let rewards = crate::logic::hero::HeroManager::new(player_id)
+        .upgrade_materials(state.db, target_level, target_talent)
+        .await?;
+    let material_changes = rewards.material_changes();
+    if material_changes.is_empty() {
+        return Ok(GmResponse::ok("no hero upgrade materials are required"));
+    }
+    let applied = reward::RewardManager::new(player_id)
+        .apply(state.db, rewards)
+        .await?;
+    let mut data = GrantData {
+        user_id: player_id,
+        rewards: material_changes
+            .into_iter()
+            .map(|(kind, id, amount)| RewardData {
+                r#type: kind as i32,
+                id: id as i32,
+                amount,
+            })
+            .collect(),
+        changed_item_ids: Vec::new(),
+        changed_power_item_ids: Vec::new(),
+        changed_insight_item_ids: Vec::new(),
+        changed_currency_ids: Vec::new(),
+        changed_hero_ids: Vec::new(),
+        changed_skin_ids: Vec::new(),
+        changed_equip_ids: Vec::new(),
+        cloth_updates: Vec::new(),
+        player_info_changed: false,
+    };
+    data.merge_rewards(applied);
+    data.deduplicate();
+    send_material_push(state, player_id, data.rewards.iter().cloned()).await?;
+    send_snapshot_pushes(state, &data).await?;
+
+    Ok(GmResponse::ok_data(
+        format!(
+            "granted hero upgrade materials through level {target_level} and resonance {target_talent}"
+        ),
+        data,
+    ))
 }
 
 async fn unlock_bgms(

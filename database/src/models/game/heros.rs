@@ -669,7 +669,7 @@ impl UserHeroModel {
     ) -> Result<bool> {
         let new_rank = current_rank + 1;
         let updated = sqlx::query(
-            "UPDATE heroes SET rank = ?, level = 1
+            "UPDATE heroes SET rank = ?, level = level + 1
              WHERE user_id = ? AND hero_id = ? AND rank = ?",
         )
         .bind(new_rank)
