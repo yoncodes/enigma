@@ -160,7 +160,7 @@ impl RuleOutcome {
                 .map(|change| BattleChange::Buff(Box::new(change)))
                 .collect(),
             Self::BuffFeatureMarker(change) => vec![BattleChange::BuffFeatureMarker(*change)],
-            Self::EffectMarker(change) => vec![BattleChange::EffectMarker(*change)],
+            Self::EffectMarker(change) => vec![BattleChange::EffectMarker(change.clone())],
             Self::SceneChange { scene_id } => vec![BattleChange::SceneChange {
                 scene_id: *scene_id,
             }],
@@ -724,12 +724,16 @@ pub(crate) fn execute_rule_op(
             effect_type,
             effect_num,
             config_effect,
+            reserve_id,
+            reserve_str,
         } => Ok(RuleOutcome::EffectMarker(
             crate::engine::skill::rule::output::EffectMarker {
                 target_uid,
                 effect_type,
                 effect_num,
                 config_effect,
+                reserve_id,
+                reserve_str,
             },
         )),
         RuleOp::SceneChange { scene_id } => Ok(RuleOutcome::SceneChange { scene_id }),

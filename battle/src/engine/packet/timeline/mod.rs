@@ -256,7 +256,7 @@ fn project_change(
             ],
         },
         BattleChange::BuffFeatureMarker(marker) => vec![EffectPacket::buff_marker(marker)],
-        BattleChange::EffectMarker(marker) => vec![EffectPacket::effect_marker(*marker)],
+        BattleChange::EffectMarker(marker) => vec![EffectPacket::effect_marker(marker.clone())],
         BattleChange::SceneChange { scene_id } => EffectPacket::scene_change(*scene_id).to_vec(),
         BattleChange::BuffActTrigger(trigger) => {
             vec![EffectPacket::buff_act_trigger(*trigger)]

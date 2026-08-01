@@ -1,4 +1,4 @@
-use sonettobuf::{CardInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute, PowerInfo};
+use sonettobuf::{BuffInfo, CardInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute, PowerInfo};
 
 use super::*;
 
@@ -34,6 +34,68 @@ fn barcarola_resources_require_one_nonzero_configured_delta() {
         "AddTeamEnergy",
         vec![-1],
     )));
+}
+
+#[test]
+fn exact_red_or_blue_behavior_updates_its_registered_carrier() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(1),
+                team_type: Some(1),
+                current_hp: Some(1),
+                buffs: vec![BuffInfo {
+                    uid: Some(1195),
+                    buff_id: Some(31100551),
+                    from_uid: Some(1),
+                    act_common_params: Some(String::new()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::new(60154, "AddRedOrBlueCount", vec![1, 1]);
+
+    let ops = super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 1,
+            source_team: 1,
+            target_uid: 1,
+            active_skill_id: 0,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .expect("exact behavior registry row must emit its state command");
+    let [RuleOp::Command(BattleCommand::Buff(command))] = ops.as_slice() else {
+        panic!("expected one carrier state command")
+    };
+
+    managers.execute_buff(command.clone()).unwrap();
+
+    assert_eq!(
+        managers
+            .buff
+            .snapshot(1, 1195)
+            .and_then(|buff| buff.act_common_params),
+        Some("897#1".to_owned())
+    );
 }
 
 #[test]

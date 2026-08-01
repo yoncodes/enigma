@@ -130,6 +130,7 @@ impl EffectPacket {
                         refreshed.target_uid,
                         wire.effect_type,
                         refreshed.after.clone(),
+                        wire.reserve_str.clone(),
                     )
                 }));
                 continue;
@@ -304,7 +305,12 @@ impl EffectPacket {
         }
     }
 
-    pub fn buff_snapshot_marker(target_uid: i64, effect_type: i32, buff: BuffInfo) -> ActEffect {
+    pub fn buff_snapshot_marker(
+        target_uid: i64,
+        effect_type: i32,
+        buff: BuffInfo,
+        reserve_str: Option<String>,
+    ) -> ActEffect {
         ActEffect {
             target_id: Some(target_uid),
             effect_type: Some(effect_type),
@@ -316,6 +322,7 @@ impl EffectPacket {
             team_type: Some(0),
             effect_num1: Some(0),
             buff: Some(buff),
+            reserve_str,
             ..Default::default()
         }
     }

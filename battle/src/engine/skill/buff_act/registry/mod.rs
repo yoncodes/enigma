@@ -190,6 +190,7 @@ pub enum BuffActKind {
     RaspberryBigSkill,
     Raspberry,
     Radiance,
+    RedOrBlueCount,
     RealHarmFix,
     RealHarmSkillEffectFix,
     RealHurtFix,
@@ -889,6 +890,15 @@ buff_act_definitions! {
     (879, "EmitterCardAllocateChange") => EmitterCardAllocateChange,
         supports: super::emitter_card_allocate_change::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(879, "EmitterCardAllocateChange"), &[EffectType::None as i32]));
     (880, "EmitterDamageUp") => EmitterDamageUp, effect_time_subscription: false, state_consumer: true;
+    (897, "RedOrBlueCount") => RedOrBlueCount, source: Owner, actor: Team,
+        runtime: |context| super::red_or_blue_count::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::red_or_blue_count::supports,
+        wire: (super::wire::BuffActWireDefinition::new(
+            DefinitionKey::new(897, "RedOrBlueCount"),
+            &[EffectType::Redorbluecount as i32],
+            &[],
+            &[EffectType::Redorbluecountchange as i32],
+        ).with_snapshot_reserve(super::wire::SnapshotReserveRule::ActCommonParamsTail));
     (881, "UseSkillTeamAddEmitterEnergy") => UseSkillTeamAddEmitterEnergy,
         publication: BeforePublish, frame: CausingFrame,
         runtime: |context| super::use_skill_team_add_emitter_energy::rule_ops(context.managers, context.subscriber, context.event?, context.catalog),

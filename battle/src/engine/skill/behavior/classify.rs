@@ -59,6 +59,7 @@ pub enum BehaviorKind {
     AddQueuedSkillCard,
     AddEmitterEnergy,
     AddTeamEnergy,
+    AddRedOrBlueCount,
     AddConduitPower,
     AddConduitExPoint,
     SetConduitSkillGroup,

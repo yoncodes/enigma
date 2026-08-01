@@ -46,6 +46,8 @@ impl EffectPacket {
             effect_type: Some(marker.effect_type),
             effect_num: Some(marker.effect_num),
             config_effect: Some(marker.config_effect),
+            reserve_id: marker.reserve_id,
+            reserve_str: marker.reserve_str,
             ..Default::default()
         }
     }
