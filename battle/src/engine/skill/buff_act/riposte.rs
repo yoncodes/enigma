@@ -22,6 +22,7 @@ pub fn shielded_ally_rule_ops(
         return Some(Vec::new());
     };
     if !subscriber.owner_alive
+        || hit.ignore_riposte
         || pool.source_is_attacker(hit.source_uid) == pool.source_is_attacker(subscriber.owner_uid)
         || pool.source_is_attacker(hit.target_uid) != pool.source_is_attacker(subscriber.owner_uid)
         || hit.shield_absorbed <= 0
@@ -58,6 +59,7 @@ pub fn rule_ops(
     let owner_team = pool.source_is_attacker(subscriber.owner_uid);
     if !subscriber.owner_alive
         || !action.is_attack
+        || action.ignore_riposte
         || pool.source_is_attacker(action.source_uid) == owner_team
     {
         return Some(Vec::new());
@@ -99,6 +101,7 @@ pub fn holder_rule_ops(
     let owner_team = pool.source_is_attacker(subscriber.owner_uid);
     if !subscriber.owner_alive
         || !action.is_attack
+        || action.ignore_riposte
         || !action.attacked_target_uids.contains(&subscriber.owner_uid)
         || pool.source_is_attacker(action.source_uid) == owner_team
     {
@@ -230,6 +233,7 @@ mod tests {
             shield_absorbed: 0,
             damage_from: HurtDamageFromType::Skill,
             assassinate: false,
+            ignore_riposte: false,
         })
     }
 
@@ -247,6 +251,7 @@ mod tests {
             skill_type: 1,
             effect_tag: 1,
             assassinate: false,
+            ignore_riposte: false,
             damage_amount,
             kill_count: 0,
             crit_count: 0,
@@ -305,6 +310,42 @@ mod tests {
         assert_eq!(self_counter.extra_skill_kind, Some(ExtraSkillKind::Riposte));
         assert_eq!(skill(vec![11]).plan.skill_id, 312301621);
         assert_eq!(skill(vec![11, 10]).plan.skill_id, 312301611);
+    }
+
+    #[test]
+    fn ignored_riposte_does_not_schedule_a_counter() {
+        init_config();
+        let pool = TargetPool::from_fight(&Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        let mut event = attack(vec![10], 10);
+        let BattleEvent::SkillAction(action) = &mut event else {
+            unreachable!()
+        };
+        action.ignore_riposte = true;
+
+        assert!(
+            holder_rule_ops(&pool, &holder_subscriber(), &event)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(rule_ops(&pool, &subscriber(), &event).unwrap().is_empty());
     }
 
     #[test]
@@ -427,6 +468,17 @@ mod tests {
         assert_eq!(invocation.plan.skill_id, 30940172);
         assert_eq!(invocation.target, SkillTarget::Explicit(-1));
         assert_eq!(invocation.extra_skill_kind, Some(ExtraSkillKind::Riposte));
+
+        let mut ignored_hit = shielded_hit.clone();
+        let BattleEvent::Hit(ignored) = &mut ignored_hit else {
+            unreachable!()
+        };
+        ignored.ignore_riposte = true;
+        assert!(
+            shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &ignored_hit)
+                .unwrap()
+                .is_empty()
+        );
 
         assert!(
             shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &hit(-1, 11))

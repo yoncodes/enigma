@@ -587,6 +587,7 @@ condition_definitions! {
     [53201] "HurtNumType" => parse::damage_target_count_kind, predicate(&[]);
     [53210] "HurtNumType" => parse::damage_target_count_kind, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [20202] "HurtReal" => parse::reality_damage, incoming_attack_modifier(predicate(&[]));
+    [20204] "HurtReal" => parse::reality_damage, incoming_attack_modifier(predicate(&[]));
     [20209] "HurtReal" => parse::reality_damage, predicate(&[EventKind::TargetAttacked]);
     [21204] "HurtMagic" => parse::mental_damage, incoming_attack_modifier(predicate(&[]));
     [21209] "HurtMagic" => parse::mental_damage, predicate(&[EventKind::TargetAttacked]);

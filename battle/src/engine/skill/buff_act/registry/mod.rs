@@ -121,6 +121,8 @@ pub enum BuffActKind {
     Dot,
     DotNoLimit,
     DodgeDamageType,
+    IgnoreDodgeSpecSkill,
+    IgnoreRebound,
     DodgeSpecSkill,
     DuduBoneContinueChannel,
     DyingHealDisperse1,
@@ -742,7 +744,15 @@ buff_act_definitions! {
         event: EventKind::HpLost, publication: BeforePublish,
         scoped_runtime: |context| super::control_team_injury_count_round::scoped_rule_ops(context.managers, context.pool, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(760, "ControlTeamInjuryCountRound"), &[EffectType::Recordteaminjurycount as i32]));
-    (764, "CareerRestraint") => CareerRestraint;
+    (761, "IgnoreDodgeSpecSkill") => IgnoreDodgeSpecSkill, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(761, "IgnoreDodgeSpecSkill"), &[EffectType::Ignoredodgespecskill as i32]));
+    (763, "IgnoreRebound") => IgnoreRebound, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(763, "IgnoreRebound"), &[EffectType::Ignorerebound as i32]));
+    (764, "CareerRestraint") => CareerRestraint, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(764, "CareerRestraint"), &[EffectType::Careerrestraint as i32]));
     (765, "CareerRatioFix") => CareerRatioFix, effect_time_subscription: false,
         supports: super::career_ratio_fix::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(765, "CareerRatioFix"), &[EffectType::None as i32]));
     (766, "AddToBuffEntity2") => AddToBuffEntity2,

@@ -215,6 +215,7 @@ fn fully_absorbed_buff_damage_keeps_its_exact_buff_act_opcode() {
             config_effect: 0,
             effect_kind: DamageEffectKind::Genesis,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: 10,
                 is_crit: false,

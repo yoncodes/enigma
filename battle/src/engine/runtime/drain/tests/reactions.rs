@@ -53,6 +53,7 @@ fn assist_boss_attack_passive_resolves_from_the_derived_skill_cast_event() {
         skill_type: 0,
         effect_tag: 2,
         assassinate: false,
+        ignore_riposte: false,
         damage_amount: 1,
         kill_count: 0,
         crit_count: 0,
@@ -295,6 +296,7 @@ fn reactive_skill_frame_targets_the_other_team_of_a_hit() {
         shield_absorbed: 0,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
         assassinate: false,
+        ignore_riposte: false,
     });
 
     assert_eq!(reaction_counterparty(&pool, &event, -2), Some(10));
@@ -326,6 +328,7 @@ fn attack_consumption_keeps_first_hit_entity_order() {
             shield_absorbed: 0,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
             assassinate: false,
+            ignore_riposte: false,
         })
     };
     let events = [hit(10, -2), hit(10, -1), hit(11, -2)];
@@ -677,6 +680,7 @@ fn target_attacked_passive_and_be_attacked_buff_act_share_one_hit_payload() {
         shield_absorbed: 0,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
         assassinate: false,
+        ignore_riposte: false,
     });
 
     let result = run_event(

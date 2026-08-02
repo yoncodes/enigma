@@ -194,10 +194,14 @@ impl Evidence {
 }
 
 fn fight_version(battle_dir: &Path) -> Option<i32> {
-    let value: Value =
-        serde_json::from_str(&fs::read_to_string(battle_dir.join("StartDungeonReply.json")).ok()?)
-            .ok()?;
+    let path = ["StartDungeonReply.json", "StartTowerBattleReply.json"]
+        .into_iter()
+        .map(|name| battle_dir.join(name))
+        .find(|path| path.exists())?;
+    let value: Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
     value
+        .get("startDungeonReply")
+        .unwrap_or(&value)
         .get("fight")?
         .get("version")?
         .as_i64()
@@ -237,12 +241,38 @@ fn response_files(root: &Path) -> Vec<PathBuf> {
                 .is_some_and(|extension| extension == "json")
                 && !name.contains("request")
                 && (name.contains("startdungeonreply")
+                    || name.contains("starttowerbattlereply")
                     || name.contains("beginroundreply")
                     || name.starts_with("begin_round_")))
             .then_some(path)
         }));
     }
     files
+}
+
+#[cfg(test)]
+mod format_tests {
+    use super::*;
+
+    #[test]
+    fn tower_wrapper_supplies_the_embedded_fight_version() {
+        let root =
+            std::env::temp_dir().join(format!("enigma-wire-evidence-{}", std::process::id()));
+        let path = root.join("tower");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(
+            path.join("StartTowerBattleReply.json"),
+            r#"{"startDungeonReply":{"fight":{"version":7}}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(fight_version(&path), Some(7));
+        assert_eq!(
+            response_files(&root),
+            vec![path.join("StartTowerBattleReply.json")]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 }
 
 #[cfg(all(test, feature = "private-fixtures"))]

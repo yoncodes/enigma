@@ -46,6 +46,7 @@ fn tracked_damage_records_the_indicator_immediately_after_hp() {
                 config_effect: 1,
                 effect_kind: crate::engine::manager::hp::DamageEffectKind::Normal,
                 assassinate: false,
+                ignore_riposte: false,
                 hurt: crate::engine::manager::hp::HurtInfoData {
                     from_uid: 10,
                     is_crit: false,

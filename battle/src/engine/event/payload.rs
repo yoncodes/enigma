@@ -37,6 +37,7 @@ pub struct HitEvent {
     pub shield_absorbed: i32,
     pub damage_from: crate::engine::manager::hp::HurtDamageFromType,
     pub assassinate: bool,
+    pub ignore_riposte: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -350,6 +351,7 @@ mod subscription_tests {
             shield_absorbed: 0,
             damage_from,
             assassinate: false,
+            ignore_riposte: false,
         })
     }
 
@@ -388,6 +390,7 @@ mod subscription_tests {
             skill_type: 0,
             effect_tag: 1,
             assassinate: false,
+            ignore_riposte: false,
             damage_amount: 10,
             kill_count: 0,
             crit_count: 0,

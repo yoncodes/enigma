@@ -617,6 +617,7 @@ behavior_definitions! {
     [100023] "CritRateAlter2" => super::rate::Handler, CritRateAlter2, Immediate, modifier, super::rate::supports_crit_rate_alter;
     [60228] "CritRateAlter2" => super::rate::Handler, CritRateAlter2, Immediate, modifier, super::rate::supports_crit_rate_alter;
     [60069] "MustCrit" => super::skill_modifier::Handler, MustCrit, Immediate, modifier, arguments::none;
+    [60054] "IgnoreBeatBack" => super::skill_modifier::Handler, IgnoreBeatBack, Immediate, modifier, arguments::none;
     [10006] "Damage" => crate::engine::damage::handler::Handler, Damage, Immediate, plain;
     [10008] "Damage2" => crate::engine::damage::handler::Handler, Damage2, Immediate, plain;
     [30014] "OriginDamage" => crate::engine::damage::handler::Handler, OriginDamage, AfterDamage, destination, crate::engine::damage::handler::supports_origin_damage;

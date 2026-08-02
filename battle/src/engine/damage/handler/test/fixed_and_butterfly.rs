@@ -107,6 +107,7 @@ fn butterfly_damage_uses_allied_round_skill_damage_and_capped_lingering_glow() {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: source_uid,
                 is_crit: false,

@@ -163,6 +163,7 @@ fn lethal_damage_is_settled_after_a_configured_survival_reaction() {
                 config_effect: 1,
                 effect_kind: crate::engine::manager::hp::DamageEffectKind::Normal,
                 assassinate: false,
+                ignore_riposte: false,
                 hurt: crate::engine::manager::hp::HurtInfoData {
                     from_uid: 10,
                     is_crit: false,

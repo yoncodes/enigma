@@ -47,6 +47,25 @@ fn resource_spend_buff_grant_keeps_its_exact_behavior_key() {
 }
 
 #[test]
+fn ignore_beat_back_is_an_exact_argumentless_modifier() {
+    let definition = find_key(60054, "IgnoreBeatBack").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::IgnoreBeatBack);
+    assert!(supports(&ParsedBehavior::new(
+        60054,
+        "IgnoreBeatBack",
+        Vec::new()
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60054,
+        "IgnoreBeatBack",
+        vec![1]
+    )));
+    assert!(find_key(60054, "IgnoreRebound").is_none());
+}
+
+#[test]
 fn implemented_skill_casts_own_destinations_but_unimplemented_siblings_do_not() {
     for (opcode, type_name) in [
         (50008, "DirectUseSkill"),

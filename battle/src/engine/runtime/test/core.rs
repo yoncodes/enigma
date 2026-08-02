@@ -163,6 +163,7 @@ fn end_fight_statistics_project_owned_runtime_history() {
             config_effect: 1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: 10,
                 is_crit: false,

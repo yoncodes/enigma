@@ -176,6 +176,7 @@ mod tests {
             skill_type: 0,
             effect_tag: 0,
             assassinate: false,
+            ignore_riposte: false,
             damage_amount: 0,
             kill_count: 0,
             crit_count: 0,
