@@ -369,6 +369,16 @@ impl BuffManager {
         })
     }
 
+    pub fn has_active_buff_id(&self, uid: i64, buff_id: i32) -> bool {
+        self.buffs.iter().any(|active| {
+            active.owner_uid == uid
+                && active.definition.as_ref().is_none_or(|definition| {
+                    definition.duration <= 0 || active.buff.duration.unwrap_or_default() > 0
+                })
+                && active.buff.buff_id == Some(buff_id)
+        })
+    }
+
     pub fn buff_id_amount(&self, uid: i64, buff_id: i32) -> i32 {
         self.active_for(uid)
             .filter(|buff| buff.buff_id == Some(buff_id))

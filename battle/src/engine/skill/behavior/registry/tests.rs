@@ -112,6 +112,31 @@ fn destination_readiness_belongs_to_the_exact_registry_row() {
 }
 
 #[test]
+fn attribute_damage_is_an_exact_targeted_genesis_route() {
+    let definition = find_key(10006, "Damage").unwrap();
+    let supported = ParsedBehavior::from_spec(
+        BehaviorSpec::new(10006, "Damage"),
+        vec![1, crate::engine::entity::attr::AttrId::Hp.id(), 100],
+        Vec::new(),
+    );
+
+    assert!(definition.destination);
+    assert!(definition.supports.unwrap()(&supported));
+    for args in [
+        vec![0, crate::engine::entity::attr::AttrId::Hp.id(), 100],
+        vec![1, crate::engine::entity::attr::AttrId::Attack.id(), 100],
+        vec![1, crate::engine::entity::attr::AttrId::Hp.id(), 200],
+    ] {
+        assert!(!definition.supports.unwrap()(&ParsedBehavior::from_spec(
+            BehaviorSpec::new(10006, "Damage"),
+            args,
+            Vec::new(),
+        )));
+    }
+    assert!(find_key(10006, "Damage2").is_none());
+}
+
+#[test]
 fn bloodlust_requires_one_positive_damage_rate() {
     let definition = find_key(20010, "Bloodlust").unwrap();
     let supports = definition.supports.unwrap();

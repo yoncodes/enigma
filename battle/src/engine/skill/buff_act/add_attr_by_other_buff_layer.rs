@@ -3,6 +3,19 @@ use crate::engine::{
     manager::buff::{ActiveBuffFeature, BuffManager},
 };
 
+pub fn supports(args: &[i32]) -> bool {
+    matches!(
+        args,
+        [primary_attr, base, other_buff_id, per_layer, layer_limit, capped_attr, _]
+            if AttrId::from_raw(*primary_attr).is_some()
+                && *base != 0
+                && *other_buff_id > 0
+                && *per_layer != 0
+                && *layer_limit > 0
+                && AttrId::from_raw(*capped_attr).is_some()
+    )
+}
+
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, buffs: &BuffManager) -> i32 {
     let [
         _,

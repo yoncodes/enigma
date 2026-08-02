@@ -104,6 +104,45 @@ fn burn_applies_its_unstackable_healing_taken_reduction() {
 }
 
 #[test]
+fn nasty_wound_reduces_healing_taken_by_its_configured_value() {
+    crate::test_support::init_config();
+    let fight = sonettobuf::Fight {
+        attacker: Some(sonettobuf::FightTeam {
+            entitys: vec![sonettobuf::FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(sonettobuf::FightTeam {
+            entitys: vec![sonettobuf::FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                buffs: vec![sonettobuf::BuffInfo {
+                    buff_id: Some(5112),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+
+    assert_eq!(super::heal::modified(1_000, 10, -1, &managers), 500);
+}
+
+#[test]
 fn missing_hp_healing_uses_the_configured_base_bucket_and_cap() {
     crate::test_support::init_config();
     let fight = sonettobuf::Fight {

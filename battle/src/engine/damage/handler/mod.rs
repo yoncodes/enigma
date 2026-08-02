@@ -54,6 +54,13 @@ pub fn supports_origin_damage(behavior: &ParsedBehavior) -> bool {
     )
 }
 
+pub fn supports_attribute_damage(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [1, raw_attr, 100] if AttrId::from_raw(*raw_attr) == Some(AttrId::Hp)
+    )
+}
+
 pub fn supports_bloodlust(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [rate] if *rate > 0)
 }
@@ -595,9 +602,51 @@ impl BehaviorHandler for Handler {
             }
             _ => {}
         }
+        if matches!(
+            (behavior.spec.key.opcode, behavior.spec.kind),
+            (10006, BehaviorKind::Damage)
+        ) {
+            let amount = origin::amount(
+                context.source_uid,
+                context.target_uid,
+                origin::OriginRuntime {
+                    managers: context.managers,
+                    pool: context.pool,
+                    extra_action,
+                },
+                &context.modifiers.attack_attributes,
+                false,
+                behavior,
+            )?;
+            return Some(vec![RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(
+                HpDamage {
+                    origin,
+                    source_uid: context.source_uid,
+                    target_uid: context.target_uid,
+                    amount,
+                    config_effect: behavior.config_effect,
+                    effect_kind: DamageEffectKind::Genesis,
+                    assassinate: false,
+                    ignore_riposte: false,
+                    hurt: HurtInfoData {
+                        from_uid: context.source_uid,
+                        is_crit: false,
+                        career_restraint: false,
+                        reduce_hp: 0,
+                        effect_id: context.active_skill_id,
+                        skill_id: context.target.active_skill_id,
+                        damage_from: HurtDamageFromType::SkillEffect,
+                        buff_act_id: 0,
+                        buff_uid: 0,
+                        hurt_effect_type: EffectType::Origindamage as i32,
+                        display_amount: None,
+                    },
+                },
+            )))]);
+        }
         if !matches!(
             (behavior.spec.key.opcode, behavior.spec.kind),
-            (10006, BehaviorKind::Damage) | (10008, BehaviorKind::Damage2)
+            (10008, BehaviorKind::Damage2)
         ) {
             return None;
         }

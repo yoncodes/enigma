@@ -400,6 +400,77 @@ fn passive_state_consumers_reject_unsupported_argument_shapes() {
 }
 
 #[test]
+fn layered_attribute_bonus_is_an_exact_static_consumer() {
+    let args = [201, 300, 31280114, 75, 4, 206, 0];
+    let definition = find(1029, "AddAttrByOtherBuffLayer").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::AddAttrByOtherBuffLayer);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        definition.destination(),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(1029, "AddAttrByOtherBuffLayer", &args));
+    assert!(!has_destination(
+        1029,
+        "AddAttrByOtherBuffLayer",
+        &args[..6]
+    ));
+    assert!(find(1036, "AddAttrByOtherBuffLayer").is_some());
+}
+
+#[test]
+fn layered_attribute_penalty_is_an_exact_static_consumer() {
+    let args = [204, -200, 31280114, -75, 4, 206, -400];
+    let definition = find(1036, "AddAttrByOtherBuffLayer").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::AddAttrByOtherBuffLayer);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        definition.destination(),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(1036, "AddAttrByOtherBuffLayer", &args));
+    assert!(!has_destination(
+        1036,
+        "AddAttrByOtherBuffLayer",
+        &args[..6]
+    ));
+    assert!(find(1029, "AddAttrByOtherBuffLayer").is_some());
+}
+
+#[test]
+fn field_upgrade_modifier_is_an_exact_static_consumer() {
+    let definition = find(1032, "FixElectricUpgrade").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::FixElectricUpgrade);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        definition.destination(),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(1032, "FixElectricUpgrade", &[2, 40, 3]));
+    assert!(!has_destination(1032, "FixElectricUpgrade", &[2, 40, 2]));
+    assert!(find(1032, "AddAttrByOtherBuffLayer").is_none());
+}
+
+#[test]
+fn healing_taken_modifier_is_an_exact_static_consumer() {
+    let definition = find(601, "Injury").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::Injury);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        definition.destination(),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(601, "Injury", &[500]));
+    assert!(has_destination(601, "Injury", &[-250]));
+    assert!(!has_destination(601, "Injury", &[0]));
+    assert!(find(601, "InjuryAbsorb").is_none());
+}
+
+#[test]
 fn registered_exact_keys_are_unique() {
     let definitions = definitions().collect::<Vec<_>>();
     let unique = definitions

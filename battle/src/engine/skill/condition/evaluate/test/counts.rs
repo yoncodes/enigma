@@ -209,6 +209,62 @@ fn per_hp_repeats_for_each_complete_target_hp_interval() {
 }
 
 #[test]
+fn lost_life_per_repeats_for_each_complete_missing_hp_interval() {
+    init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(750),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    current_hp: Some(1_000),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let condition = ParsedCondition {
+        opcode: 12203,
+        type_name: "LostLifePer".into(),
+        kind: ParsedConditionKind::PerLostHp {
+            interval_permille: 100,
+        },
+        raw_args: vec!["100".into()],
+    };
+
+    assert_eq!(
+        conditions_fire_count(
+            std::slice::from_ref(&condition),
+            10,
+            &[-1, -2],
+            Some(&managers),
+            &pool,
+            TargetContext {
+                hit_target_uid: -1,
+                ..Default::default()
+            },
+        ),
+        2
+    );
+}
+
+#[test]
 fn empty_condition_list_fires_once() {
     init_config();
     assert_eq!(

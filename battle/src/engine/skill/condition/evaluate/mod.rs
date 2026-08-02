@@ -233,6 +233,20 @@ fn condition_repeat_count(
                 .min()
                 .unwrap_or_default()
         }),
+        ParsedConditionKind::PerLostHp { interval_permille } => managers.map(|managers| {
+            if context.hit_target_uid != 0 && condition_targets.contains(&context.hit_target_uid) {
+                return super::hp::lost_hp_interval_count(
+                    context.hit_target_uid,
+                    *interval_permille,
+                    managers,
+                );
+            }
+            condition_targets
+                .iter()
+                .map(|uid| super::hp::lost_hp_interval_count(*uid, *interval_permille, managers))
+                .min()
+                .unwrap_or_default()
+        }),
         ParsedConditionKind::TeamLostHpPercent {
             team_type,
             interval_permille,
@@ -421,6 +435,16 @@ fn condition_kind_matches(
                             .has_active_buff_id_or_type(*target_uid, *buff_id)
                     })
                 }),
+                BuffConditionMode::ExactPresent => condition_targets.iter().any(|target_uid| {
+                    buff_ids
+                        .iter()
+                        .any(|buff_id| managers.buff.has_active_buff_id(*target_uid, *buff_id))
+                }),
+                BuffConditionMode::ExactAbsent => condition_targets.iter().all(|target_uid| {
+                    !buff_ids
+                        .iter()
+                        .any(|buff_id| managers.buff.has_active_buff_id(*target_uid, *buff_id))
+                }),
             }
         }
         ParsedConditionKind::BuffIdCount {
@@ -557,6 +581,19 @@ fn condition_kind_matches(
                 && condition_targets
                     .iter()
                     .any(|uid| managers.hp.current(*uid) > 0)
+        }),
+        ParsedConditionKind::PerLostHp { interval_permille } => managers.is_some_and(|managers| {
+            let hit_uid = (context.hit_target_uid != 0
+                && condition_targets.contains(&context.hit_target_uid))
+            .then_some(context.hit_target_uid);
+            hit_uid.map_or_else(
+                || {
+                    condition_targets.iter().any(|uid| {
+                        super::hp::lost_hp_interval_count(*uid, *interval_permille, managers) > 0
+                    })
+                },
+                |uid| super::hp::lost_hp_interval_count(uid, *interval_permille, managers) > 0,
+            )
         }),
         ParsedConditionKind::TeamLostHpPercent {
             team_type,
