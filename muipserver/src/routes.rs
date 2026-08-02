@@ -37,6 +37,12 @@ struct GmBody {
     command: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct HeroQuery {
+    token: String,
+    player_uid: i64,
+}
+
 pub fn router(token: String, gm_addr: String) -> Router {
     let state = AppState {
         token: Arc::from(token),
@@ -51,6 +57,7 @@ pub fn router(token: String, gm_addr: String) -> Router {
         .route("/api/players", get(players_handler))
         .route("/api/sessions", get(players_handler))
         .route("/api/dungeons", get(dungeons_handler))
+        .route("/api/heroes", get(heroes_handler))
         .route("/api/materials", get(materials_handler))
         .route("/muip/gm", get(gm_query_handler))
         .route("/api/run_gm_cmd", post(gm_body_handler))
@@ -91,6 +98,46 @@ async fn dungeons_handler(State(state): State<AppState>) -> Response {
                 Json(serde_json::json!({
                     "chapters": [],
                     "episodes": [],
+                    "error": format!("GM bridge unavailable: {err}")
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn heroes_handler(State(state): State<AppState>, Query(query): Query<HeroQuery>) -> Response {
+    if query.token != *state.token {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "heroes": [], "error": "invalid MUIP token" })),
+        )
+            .into_response();
+    }
+    match send_gm(
+        &state.gm_addr,
+        GmRequest::Heroes {
+            player_uid: query.player_uid,
+        },
+    )
+    .await
+    {
+        Ok(response) if response.retcode == 0 => (
+            StatusCode::OK,
+            Json(response.data.unwrap_or_else(|| serde_json::json!({}))),
+        )
+            .into_response(),
+        Ok(response) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "heroes": [], "error": response.message })),
+        )
+            .into_response(),
+        Err(err) => {
+            error!("GM forwarding failed: {err}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "heroes": [],
                     "error": format!("GM bridge unavailable: {err}")
                 })),
             )
@@ -151,7 +198,7 @@ async fn gm_handler(
             return (
                 StatusCode::OK,
                 Json(GmResponse::ok(
-                    "commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials <1-180> <resonance 1-15>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
+                    "commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
                 )),
             )
                 .into_response();

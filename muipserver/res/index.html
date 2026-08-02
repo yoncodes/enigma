@@ -12,7 +12,8 @@
     .grid { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
     .grant { margin-top: 14px; display: grid; gap: 10px; grid-template-columns: 150px minmax(130px, .8fr) minmax(180px, 1.2fr) 90px auto; }
     .dungeon { margin-top: 10px; display: grid; gap: 10px; grid-template-columns: minmax(150px, 1fr) 110px minmax(180px, 1.4fr) auto; }
-    .grant > *, .dungeon > *, .grid > *, .cmd > * { min-width: 0; }
+    .actions { margin-top: 10px; display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grant > *, .dungeon > *, .actions > *, .grid > *, .cmd > * { min-width: 0; }
     select { min-width: 0; max-width: 100%; font: inherit; border: 1px solid #393d46; background: #1c2028; color: #ece7de; padding: 10px 12px; box-sizing: border-box; text-overflow: ellipsis; }
     .cmd { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
     .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
@@ -22,8 +23,21 @@
     .online.is-online .dot { background: #4fb86a; box-shadow: 0 0 12px #4fb86a; }
     .status { margin: 14px 0; display: flex; gap: 12px; flex-wrap: wrap; color: #aeb6c4; }
     .status span { border: 1px solid #393d46; background: #181b22; padding: 6px 10px; }
+    dialog { width: min(560px, calc(100% - 32px)); color: #ece7de; background: #181b22; border: 1px solid #4b5260; padding: 0; }
+    dialog::backdrop { background: rgb(0 0 0 / 70%); }
+    .dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid #393d46; }
+    .dialog-head h2 { margin: 0; font-size: 20px; }
+    .dialog-head button { padding: 6px 10px; }
+    .dialog-body { padding: 18px; }
+    .dialog-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .dialog-grid label { display: grid; gap: 6px; color: #aeb6c4; }
+    .dialog-grid .wide { grid-column: 1 / -1; }
+    .current-hero { margin: 0; padding: 10px 12px; color: #aeb6c4; background: #111318; border: 1px solid #393d46; }
+    .destiny { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 6px; border-top: 1px solid #393d46; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+    [hidden] { display: none !important; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #1c2028; border: 1px solid #393d46; padding: 16px; min-height: 180px; }
-    @media (max-width: 640px) { .top { align-items: flex-start; flex-direction: column; } .grid, .cmd, .grant, .dungeon { display: block; } input, button, select { width: 100%; box-sizing: border-box; margin: 0 0 10px; } }
+    @media (max-width: 640px) { .top { align-items: flex-start; flex-direction: column; } .grid, .cmd, .grant, .dungeon, .actions, .dialog-grid, .destiny { display: block; } input, button, select { width: 100%; box-sizing: border-box; margin: 0 0 10px; } .dialog-head button { width: auto; margin: 0; } }
   </style>
 </head>
 <body>
@@ -59,30 +73,46 @@
       <select id="dungeonEpisode"></select>
       <button type="button" onclick="unlockDungeon()">Unlock selected</button>
     </div>
-    <div class="dungeon">
+    <div class="actions">
       <button type="button" onclick="completeGuides()">Complete all guides</button>
       <button type="button" onclick="unlockBgms()">Unlock all BGM</button>
-      <select id="heroPromotionRank">
-        <option value="0">R0</option>
-        <option value="1">R1</option>
-        <option value="2">R2</option>
-        <option value="3" selected>R3</option>
-      </select>
-      <select id="heroPromotionLevel"></select>
-      <select id="heroResonance"></select>
-      <button type="button" onclick="grantHeroPromotionMaterials()">Grant owned hero materials</button>
+      <button type="button" onclick="openHeroUpgrade()">Hero upgrade materials</button>
     </div>
     <div class="status">
       <span id="server">server: checking</span>
       <span id="players">players: checking</span>
     </div>
-    <pre id="out">commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials &lt;1-180&gt; &lt;resonance 1-15&gt;, dungeon unlock &lt;stage|chapter&gt; &lt;id&gt;, material &lt;type&gt; &lt;id&gt; &lt;amount&gt;</pre>
+    <pre id="out">commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials &lt;hero id&gt; &lt;1-180&gt; &lt;resonance 1-15&gt; [destiny rank] [destiny stone id], dungeon unlock &lt;stage|chapter&gt; &lt;id&gt;, material &lt;type&gt; &lt;id&gt; &lt;amount&gt;</pre>
+    <dialog id="heroUpgradeDialog">
+      <div class="dialog-head">
+        <h2>Hero upgrade materials</h2>
+        <button type="button" aria-label="Close" onclick="closeHeroUpgrade()">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="dialog-grid">
+          <label class="wide">Owned hero<select id="heroUpgradeHero"></select></label>
+          <p id="heroUpgradeCurrent" class="current-hero wide"></p>
+          <label>Target rank<select id="heroUpgradeRank"></select></label>
+          <label>Target level<select id="heroUpgradeLevel"></select></label>
+          <label>Target Resonance<select id="heroUpgradeResonance"></select></label>
+          <div id="heroUpgradeDestiny" class="destiny wide" hidden>
+            <label>Target Destiny rank<select id="heroUpgradeDestinyRank"></select></label>
+            <label>Destiny stone<select id="heroUpgradeDestinyStone"></select></label>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" onclick="closeHeroUpgrade()">Cancel</button>
+          <button type="button" onclick="grantHeroUpgradeMaterials()">Grant missing materials</button>
+        </div>
+      </div>
+    </dialog>
   </main>
   <script>
     document.getElementById('token').value = localStorage.getItem('enigmaMuipToken') || '__MUIP_TOKEN__';
     let statusTimer = 0;
     const catalog = { types: [], items: [] };
     const dungeonCatalog = { chapters: [], episodes: [] };
+    const heroCatalog = { heroes: [] };
     const out = document.getElementById('out');
     async function refreshStatus() {
       try {
@@ -202,25 +232,92 @@
       document.getElementById('command').value = 'bgm unlock all';
       await run();
     }
-    function loadHeroPromotionLevels() {
-      const rank = Number(document.getElementById('heroPromotionRank').value);
-      const limits = [30, 40, 50, 60];
-      document.getElementById('heroPromotionLevel').innerHTML = Array.from(
-        { length: limits[rank] },
-        (_, index) => `<option value="${index + 1}"${index + 1 === limits[rank] ? ' selected' : ''}>Lv${index + 1}</option>`
-      ).join('');
+    async function openHeroUpgrade() {
+      try {
+        const uid = document.getElementById('uid').value.trim();
+        if (!/^\d+$/.test(uid)) throw new Error('Enter a player uid first.');
+        const token = document.getElementById('token').value;
+        const res = await fetch('/api/heroes?' + new URLSearchParams({ token, player_uid: uid }), { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `hero list failed: ${res.status}`);
+        heroCatalog.heroes = data.heroes || [];
+        if (heroCatalog.heroes.length === 0) throw new Error('This player has no owned heroes.');
+        document.getElementById('heroUpgradeHero').innerHTML = heroCatalog.heroes
+          .map(hero => `<option value="${hero.id}">${hero.id} - ${escapeHtml(hero.name)}</option>`)
+          .join('');
+        updateHeroUpgradeTargets();
+        document.getElementById('heroUpgradeDialog').showModal();
+      } catch (err) {
+        out.textContent = `Unable to load owned heroes: ${err.message}`;
+      }
     }
-    document.getElementById('heroResonance').innerHTML = Array.from(
-      { length: 15 },
-      (_, index) => `<option value="${index + 1}"${index === 14 ? ' selected' : ''}>Resonance ${index + 1}</option>`
-    ).join('');
-    async function grantHeroPromotionMaterials() {
-      const rank = Number(document.getElementById('heroPromotionRank').value);
-      const level = Number(document.getElementById('heroPromotionLevel').value);
-      const resonance = Number(document.getElementById('heroResonance').value);
-      const rankStarts = [0, 30, 70, 120];
-      document.getElementById('command').value = `hero upgrade materials ${rankStarts[rank] + level} ${resonance}`;
+    function closeHeroUpgrade() {
+      document.getElementById('heroUpgradeDialog').close();
+    }
+    function selectedUpgradeHero() {
+      const heroId = Number(document.getElementById('heroUpgradeHero').value);
+      return heroCatalog.heroes.find(hero => hero.id === heroId);
+    }
+    function updateHeroUpgradeTargets() {
+      const hero = selectedUpgradeHero();
+      if (!hero) return;
+      document.getElementById('heroUpgradeCurrent').textContent =
+        `Current: R${hero.rank} Lv${hero.level} · Resonance ${hero.resonance}`;
+      const ranks = hero.ranks.filter(rank => rank.rank >= hero.rank);
+      document.getElementById('heroUpgradeRank').innerHTML = ranks
+        .map((rank, index) => `<option value="${rank.rank}"${index === ranks.length - 1 ? ' selected' : ''}>R${rank.rank}</option>`)
+        .join('');
+      document.getElementById('heroUpgradeResonance').innerHTML = Array.from(
+        { length: hero.maxResonance - hero.resonance + 1 },
+        (_, index) => hero.resonance + index
+      ).map(level => `<option value="${level}"${level === hero.maxResonance ? ' selected' : ''}>${level}</option>`)
+        .join('');
+      const destiny = document.getElementById('heroUpgradeDestiny');
+      const stones = hero.destinyStones || [];
+      destiny.hidden = stones.length === 0;
+      document.getElementById('heroUpgradeDestinyStone').innerHTML = [
+        '<option value="0">Do not include Destiny</option>',
+        ...stones.map(stone => `<option value="${stone.id}">${stone.id} - ${escapeHtml(stone.name)}${stone.unlocked ? ' (unlocked)' : ''}</option>`)
+      ].join('');
+      const firstDestinyRank = Math.max(hero.destinyRank, 1);
+      document.getElementById('heroUpgradeDestinyRank').innerHTML = Array.from(
+        { length: Math.max(0, hero.maxDestinyRank - firstDestinyRank + 1) },
+        (_, index) => firstDestinyRank + index
+      ).map(rank => `<option value="${rank}"${rank === hero.maxDestinyRank ? ' selected' : ''}>Rank ${rank}</option>`)
+        .join('');
+      updateHeroDestinyTarget();
+      updateHeroUpgradeLevels();
+    }
+    function updateHeroUpgradeLevels() {
+      const hero = selectedUpgradeHero();
+      const targetRank = Number(document.getElementById('heroUpgradeRank').value);
+      const rank = hero?.ranks.find(entry => entry.rank === targetRank);
+      if (!hero || !rank) return;
+      const firstLevel = targetRank === hero.rank ? hero.level : 1;
+      document.getElementById('heroUpgradeLevel').innerHTML = Array.from(
+        { length: rank.maxLevel - firstLevel + 1 },
+        (_, index) => firstLevel + index
+      ).map(level => `<option value="${level}"${level === rank.maxLevel ? ' selected' : ''}>Lv${level}</option>`)
+        .join('');
+    }
+    async function grantHeroUpgradeMaterials() {
+      const hero = selectedUpgradeHero();
+      const rankId = Number(document.getElementById('heroUpgradeRank').value);
+      const rank = hero?.ranks.find(entry => entry.rank === rankId);
+      if (!hero || !rank) return;
+      const level = Number(document.getElementById('heroUpgradeLevel').value);
+      const resonance = Number(document.getElementById('heroUpgradeResonance').value);
+      const stoneId = Number(document.getElementById('heroUpgradeDestinyStone').value);
+      const destinyRank = Number(document.getElementById('heroUpgradeDestinyRank').value);
+      const destinyArgs = stoneId ? ` ${destinyRank} ${stoneId}` : '';
+      document.getElementById('command').value =
+        `hero upgrade materials ${hero.id} ${rank.levelOffset + level} ${resonance}${destinyArgs}`;
+      closeHeroUpgrade();
       await run();
+    }
+    function updateHeroDestinyTarget() {
+      document.getElementById('heroUpgradeDestinyRank').disabled =
+        Number(document.getElementById('heroUpgradeDestinyStone').value) === 0;
     }
     function selectedMaterial() {
       const id = Number(document.getElementById('material').value || 0);
@@ -278,8 +375,9 @@
     document.getElementById('amount').addEventListener('input', updateCommandPreview);
     document.getElementById('dungeonKind').addEventListener('change', updateDungeonMode);
     document.getElementById('dungeonChapter').addEventListener('change', loadDungeonEpisodes);
-    document.getElementById('heroPromotionRank').addEventListener('change', loadHeroPromotionLevels);
-    loadHeroPromotionLevels();
+    document.getElementById('heroUpgradeHero').addEventListener('change', updateHeroUpgradeTargets);
+    document.getElementById('heroUpgradeRank').addEventListener('change', updateHeroUpgradeLevels);
+    document.getElementById('heroUpgradeDestinyStone').addEventListener('change', updateHeroDestinyTarget);
     loadTypes();
     loadDungeons();
     refreshStatus();

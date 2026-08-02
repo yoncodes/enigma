@@ -36,7 +36,6 @@ pub async fn on_start_production_line(
         player_id,
         outcome.consumed_item_ids,
         outcome.consumed_currency_ids,
-        outcome.material_changes,
     )
     .await?;
     task_events::notify(
@@ -106,7 +105,6 @@ pub async fn on_production_line_lv_up(
         player_id,
         reply.consumed_item_ids,
         reply.consumed_currency_ids,
-        reply.material_changes,
     )
     .await?;
     ctx.send_reply(CmdId::ProductionLineLvUpCmd, reply.reply, 0, req.up_tag)
@@ -125,7 +123,6 @@ pub async fn on_room_level_up(
         player_id,
         reply.consumed_item_ids,
         reply.consumed_currency_ids,
-        reply.material_changes,
     )
     .await?;
     let open_infos = ctx

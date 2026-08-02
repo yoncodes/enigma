@@ -30,6 +30,7 @@ pub enum GmRequest {
     Status,
     ListPlayers,
     Dungeons,
+    Heroes { player_uid: i64 },
     Materials { query: MaterialQuery },
     Execute { player_uid: String, command: String },
 }

@@ -33,12 +33,19 @@ mod progression;
 mod specialization;
 mod talent;
 
+pub use destiny::{destiny_available, destiny_stones};
 pub(crate) use profile::snapshot_data;
 pub(crate) use profile::snapshot_data as snapshot;
 
 #[derive(Clone, Copy, Debug)]
 pub struct HeroManager {
     player_id: i64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct DestinyMaterialTarget {
+    pub rank: i32,
+    pub stone_id: i32,
 }
 
 impl HeroManager {
@@ -48,7 +55,7 @@ impl HeroManager {
 }
 
 #[cfg(test)]
-use destiny::{destiny_stones, next_destiny_slot};
+use destiny::next_destiny_slot;
 #[cfg(test)]
 use progression::duplicate_item_id;
 #[cfg(test)]

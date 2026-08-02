@@ -55,14 +55,7 @@ pub async fn on_buy_manufacture_building(
         req.up_tag,
     )
     .await?;
-    push::send_cost_pushes(
-        ctx,
-        player_id,
-        update.item_ids,
-        update.currency_ids,
-        update.material_changes,
-    )
-    .await
+    push::send_cost_pushes(ctx, player_id, update.item_ids, update.currency_ids).await
 }
 
 pub async fn on_manu_building_upgrade(
@@ -78,14 +71,7 @@ pub async fn on_manu_building_upgrade(
         .await?;
     ctx.send_reply(CmdId::ManuBuildingUpgradeCmd, update.reply, 0, req.up_tag)
         .await?;
-    push::send_cost_pushes(
-        ctx,
-        player_id,
-        update.item_ids,
-        update.currency_ids,
-        update.material_changes,
-    )
-    .await
+    push::send_cost_pushes(ctx, player_id, update.item_ids, update.currency_ids).await
 }
 
 pub async fn on_select_slot_production_plan(
@@ -126,14 +112,7 @@ pub async fn on_manufacture_accelerate(
         .await?;
     ctx.send_reply(CmdId::ManufactureAccelerateCmd, update.reply, 0, req.up_tag)
         .await?;
-    push::send_cost_pushes(
-        ctx,
-        player_id,
-        update.item_ids,
-        update.currency_ids,
-        update.material_changes,
-    )
-    .await
+    push::send_cost_pushes(ctx, player_id, update.item_ids, update.currency_ids).await
 }
 
 pub async fn on_reap_finish_slot(
