@@ -208,7 +208,13 @@ pub async fn settle_refund(
         fight_id,
         refund,
         include_compose.then_some(active),
-        None,
+        Some((
+            active.episode_id,
+            active.battle_id,
+            active
+                .runtime
+                .indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore),
+        )),
     )
     .await
 }
