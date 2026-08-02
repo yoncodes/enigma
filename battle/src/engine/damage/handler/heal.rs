@@ -65,6 +65,9 @@ pub(crate) fn modified(
     } else {
         0
     };
+    let injury = managers
+        .buff
+        .buff_act_scalar(target_uid, BuffActKind::Injury);
     let healing_taken: i32 = managers
         .buff
         .active_features(&managers.hp)
@@ -90,6 +93,7 @@ pub(crate) fn modified(
                     .has_active_buff_id_or_type(target_uid, *type_id)
             })
             .map_or(0, |_| BURN_HEALING_TAKEN);
+    let healing_taken = healing_taken.saturating_sub(injury);
     scale_permille(
         scale_permille(base, 1000_i32.saturating_add(healing_done)),
         1000_i32.saturating_add(healing_taken),

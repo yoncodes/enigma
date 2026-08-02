@@ -88,6 +88,24 @@ fn dynamic_current_battle_roots_compile_enigmas_field_condition() {
 }
 
 #[test]
+fn exact_enemy_damage_routes_compile_without_runtime_gaps() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [260341, 750331], [5112]);
+
+    for skill_id in [260341, 750331] {
+        let effect = catalog.get(skill_id).unwrap();
+        assert!(catalog.issues(skill_id).is_empty());
+        assert!(effect.slots.iter().all(|slot| slot.compiled_route.is_ok()));
+        assert!(
+            effect
+                .slots
+                .iter()
+                .all(|slot| crate::engine::skill::behavior::has_destination(&slot.behavior))
+        );
+    }
+}
+
+#[test]
 fn entering_entities_extend_the_scoped_catalog_from_their_own_roots() {
     init_config();
     let mut catalog = SkillEffectCatalog::default();

@@ -94,6 +94,9 @@ pub enum ParsedConditionKind {
     PerHp {
         interval_permille: i32,
     },
+    PerLostHp {
+        interval_permille: i32,
+    },
     TeamLostHpPercent {
         team_type: i32,
         interval_permille: i32,
@@ -485,6 +488,8 @@ fn negate_kind(kind: ParsedConditionKind) -> ParsedConditionKind {
                     BuffConditionMode::Absent
                 }
                 BuffConditionMode::Absent => BuffConditionMode::Present,
+                BuffConditionMode::ExactPresent => BuffConditionMode::ExactAbsent,
+                BuffConditionMode::ExactAbsent => BuffConditionMode::ExactPresent,
             },
             buff_ids,
         },

@@ -1,6 +1,47 @@
 use super::*;
 
 #[test]
+fn exact_buff_id_condition_does_not_match_a_buff_type() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(26030),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let condition = ParsedCondition {
+        opcode: 19205,
+        type_name: "HasBuffId".into(),
+        kind: ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::ExactPresent,
+            buff_ids: vec![5022],
+        },
+        raw_args: vec!["5022".into()],
+    };
+
+    assert!(managers.buff.has_active_buff_id_or_type(10, 5022));
+    assert!(!conditions_match(
+        &[condition],
+        10,
+        &[10],
+        Some(&managers),
+        &TargetPool::from_fight(&fight),
+        TargetContext::default(),
+    ));
+}
+
+#[test]
 fn repeated_absence_conditions_require_every_buff_to_be_absent() {
     init_config();
     let fight = Fight {
