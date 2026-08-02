@@ -10,6 +10,40 @@ use crate::engine::{
     },
 };
 
+pub fn shielded_ally_rule_ops(
+    pool: &TargetPool,
+    subscriber: &BuffActSubscriber,
+    event: &BattleEvent,
+) -> Option<Vec<RuleOp>> {
+    if !super::subscriber_is_kind(subscriber, BuffActKind::BeatBackByCounter) {
+        return None;
+    }
+    let BattleEvent::Hit(hit) = event else {
+        return Some(Vec::new());
+    };
+    if !subscriber.owner_alive
+        || pool.source_is_attacker(hit.source_uid) == pool.source_is_attacker(subscriber.owner_uid)
+        || pool.source_is_attacker(hit.target_uid) != pool.source_is_attacker(subscriber.owner_uid)
+        || hit.shield_absorbed <= 0
+    {
+        return Some(Vec::new());
+    }
+    let [skill_id] = subscriber.args.as_slice() else {
+        return None;
+    };
+    if *skill_id <= 0 {
+        return None;
+    }
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: subscriber.owner_uid,
+        skill_id: *skill_id,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(hit.source_uid);
+    invocation.extra_skill_kind = Some(ExtraSkillKind::Riposte);
+    Some(vec![RuleOp::Skill(invocation)])
+}
+
 pub fn rule_ops(
     pool: &TargetPool,
     subscriber: &BuffActSubscriber,
@@ -88,6 +122,13 @@ pub fn holder_skill(args: &[i32]) -> Option<i32> {
     }
 }
 
+pub fn counter_skill(args: &[i32]) -> Option<i32> {
+    match args {
+        [skill_id] if *skill_id > 0 => Some(*skill_id),
+        _ => None,
+    }
+}
+
 pub fn supports_holder(args: &[i32]) -> bool {
     holder_skill(args).is_some()
 }
@@ -102,10 +143,11 @@ mod tests {
 
     use super::*;
     use crate::engine::{
-        event::{kind::EventKind, subscription::SubscriptionKey},
+        event::{kind::EventKind, payload::HitEvent, subscription::SubscriptionKey},
+        manager::hp::HurtDamageFromType,
         skill::{
             action::{SkillActionEvent, SkillPhase},
-            rule::DefinitionKey,
+            rule::{CommandOrigin, DefinitionKey, RuleDomain},
         },
     };
     use crate::test_support::init_config;
@@ -154,6 +196,43 @@ mod tests {
         }
     }
 
+    fn shield_counter_subscriber() -> BuffActSubscriber {
+        BuffActSubscriber {
+            owner_uid: 10,
+            source_uid: 10,
+            buff_uid: 22,
+            buff_id: 30940182,
+            team_type: 1,
+            owner_alive: true,
+            amount: 1,
+            key: SubscriptionKey::new(
+                EventKind::Riposte,
+                DefinitionKey::new(802, "BeatBackByCounter"),
+            ),
+            act_type: "BeatBackByCounter".into(),
+            effect_time: 401,
+            effect_condition: 0,
+            args: vec![30940172],
+            raw: "802#30940172".into(),
+        }
+    }
+
+    fn hit(source_uid: i64, target_uid: i64) -> BattleEvent {
+        BattleEvent::Hit(HitEvent {
+            origin: CommandOrigin {
+                domain: RuleDomain::Skill,
+                key: DefinitionKey::new(1, "SkillDamage"),
+            },
+            source_uid,
+            target_uid,
+            skill_id: 1,
+            amount: 10,
+            shield_absorbed: 0,
+            damage_from: HurtDamageFromType::Skill,
+            assassinate: false,
+        })
+    }
+
     fn attack(attacked_target_uids: Vec<i64>, damage_amount: i32) -> BattleEvent {
         BattleEvent::SkillAction(SkillActionEvent {
             source_uid: -1,
@@ -179,6 +258,7 @@ mod tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         })
     }
 
@@ -298,6 +378,68 @@ mod tests {
         assert_eq!(invocation.extra_skill_kind, Some(ExtraSkillKind::Riposte));
         assert!(
             holder_rule_ops(&pool, &holder_subscriber(), &attack(vec![11], 10))
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn shield_counter_uses_the_configured_skill_when_the_hit_absorbed_a_shield() {
+        init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![
+                    FightEntityInfo {
+                        uid: Some(10),
+                        current_hp: Some(100),
+                        ..Default::default()
+                    },
+                    FightEntityInfo {
+                        uid: Some(11),
+                        current_hp: Some(100),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut shielded_hit = hit(-1, 11);
+        let BattleEvent::Hit(shielded) = &mut shielded_hit else {
+            unreachable!()
+        };
+        shielded.shield_absorbed = 20;
+
+        let output =
+            shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &shielded_hit).unwrap();
+        let [RuleOp::Skill(invocation)] = output.as_slice() else {
+            panic!("expected one shield counter, got {output:?}");
+        };
+        assert_eq!(invocation.plan.skill_id, 30940172);
+        assert_eq!(invocation.target, SkillTarget::Explicit(-1));
+        assert_eq!(invocation.extra_skill_kind, Some(ExtraSkillKind::Riposte));
+
+        assert!(
+            shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &hit(-1, 11))
+                .unwrap()
+                .is_empty()
+        );
+        let mut allied_hit = hit(10, 11);
+        let BattleEvent::Hit(allied) = &mut allied_hit else {
+            unreachable!()
+        };
+        allied.shield_absorbed = 20;
+        assert!(
+            shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &allied_hit)
                 .unwrap()
                 .is_empty()
         );

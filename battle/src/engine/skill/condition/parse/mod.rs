@@ -75,6 +75,11 @@ pub enum ParsedConditionKind {
         compare: ConditionCompare,
         threshold: i32,
     },
+    PerTeamBuffStatusTypeCount {
+        status_ids: Vec<i32>,
+        divisor: i32,
+        max_count: i32,
+    },
     BuffAdded(Vec<i32>),
     BuffRemoved(Vec<i32>),
     AccBuffAddedCount {
@@ -178,6 +183,7 @@ pub enum ParsedConditionKind {
     EntityDead,
     TeammateDead,
     EnemyDead,
+    TargetGuardBroken,
     SingleKillCount {
         threshold: i32,
     },
@@ -208,6 +214,7 @@ pub enum ParsedConditionKind {
     ActiveUseSkill {
         slot: i32,
     },
+    UseSkillRank(Vec<i32>),
     UseHurtSkill,
     SpecificSkill {
         group: i32,
@@ -226,7 +233,6 @@ pub enum ParsedConditionKind {
     AttackerDamageType(crate::engine::skill::target::EntityDamageType),
     AttackCrit,
     BeforeCrit,
-    TargetGuardBroken,
     GuardBroken,
     HurtRestrained,
     HurtNotRestrained,

@@ -21,6 +21,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) injured_allies: Vec<i64>,
     pub(super) affected_targets: Vec<i64>,
     pub(super) attacked_targets: Vec<i64>,
+    pub(super) buff_additions: Vec<(i32, i32)>,
     pub(super) team_injury_count_round: i32,
     team_injury_count_consumed: Option<DefinitionKey>,
     pub(super) activated_additional_damage: Vec<PlannedAdditionalDamage>,
@@ -43,6 +44,7 @@ impl SkillExecution {
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
+            buff_additions: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
             activated_additional_damage: Vec::new(),
@@ -68,6 +70,7 @@ impl SkillExecution {
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
+            buff_additions: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
             activated_additional_damage: Vec::new(),
@@ -152,6 +155,26 @@ impl SkillExecution {
         }
     }
 
+    pub(in crate::engine::runtime) fn record_buff_additions(
+        &mut self,
+        additions: impl IntoIterator<Item = (i32, i32)>,
+    ) {
+        for (buff_id, amount) in additions {
+            if amount <= 0 {
+                continue;
+            }
+            if let Some((_, total)) = self
+                .buff_additions
+                .iter_mut()
+                .find(|(active_id, _)| *active_id == buff_id)
+            {
+                *total = total.saturating_add(amount);
+            } else {
+                self.buff_additions.push((buff_id, amount));
+            }
+        }
+    }
+
     pub(in crate::engine::runtime) fn sync_lifecycle_event(
         &self,
         event: &mut crate::engine::skill::action::SkillActionEvent,
@@ -164,6 +187,7 @@ impl SkillExecution {
         event.teammate_injury_count = self.injured_allies.len() as i32;
         event.teammate_injury_count_not_reset = self.injured_allies.len() as i32;
         event.team_injury_count_round = self.team_injury_count_round;
+        event.buff_additions.clone_from(&self.buff_additions);
     }
 
     pub(super) fn take_live_additional_damage(

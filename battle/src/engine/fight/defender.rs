@@ -174,7 +174,7 @@ impl Defender {
                 .into_iter()
                 .take(monster.passive_skill_count.max(0) as usize)
                 .chain(parse_passives(&monster.passive_skills_ex))
-                .chain(game_data.toughness_passive_skill(monster.toughness_skill))
+                .chain(game_data.toughness_passive_skills(monster.toughness_skill))
                 .collect(),
             ex_skill: Some(
                 skill_template
@@ -261,6 +261,15 @@ mod tests {
         assert_eq!(attr.defense, Some(1_000));
         assert_eq!(attr.mdefense, Some(736));
         assert_eq!(attr.technic, Some(210));
+    }
+
+    #[test]
+    fn monster_toughness_skill_contributes_its_configured_passive() {
+        crate::test_support::init_config();
+
+        let entity = Defender::build_monster_with_uid(1_163_857_113, -1, 1, 2).unwrap();
+
+        assert!(entity.passive_skill.contains(&116_362_200));
     }
 
     #[test]

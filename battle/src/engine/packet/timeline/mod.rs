@@ -256,7 +256,7 @@ fn project_change(
             ],
         },
         BattleChange::BuffFeatureMarker(marker) => vec![EffectPacket::buff_marker(marker)],
-        BattleChange::EffectMarker(marker) => vec![EffectPacket::effect_marker(*marker)],
+        BattleChange::EffectMarker(marker) => vec![EffectPacket::effect_marker(marker.clone())],
         BattleChange::SceneChange { scene_id } => EffectPacket::scene_change(*scene_id).to_vec(),
         BattleChange::BuffActTrigger(trigger) => {
             vec![EffectPacket::buff_act_trigger(*trigger)]
@@ -548,19 +548,30 @@ fn project_change(
             origin.key.opcode,
         )],
         BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::SkillBegan {
-            source_uid,
             team,
             power_id,
             spent,
-            consumed_this_round,
             ..
-        }) => EffectPacket::conduit_skill_began(
+        }) if *spent > 0 => vec![EffectPacket::conduit_skill_began(*team, *power_id, *spent)],
+        BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::SkillBegan {
+            ..
+        }) => Vec::new(),
+        BattleChange::Conduit(
+            crate::engine::manager::conduit::ConduitChange::SkillCostCommitted {
+                source_uid,
+                team,
+                activation_cost,
+                consumed_this_round,
+                ..
+            },
+        ) if *activation_cost > 0 => vec![EffectPacket::conduit_skill_cost_committed(
             *source_uid,
             *team,
-            *power_id,
-            *spent,
             *consumed_this_round,
-        ),
+        )],
+        BattleChange::Conduit(
+            crate::engine::manager::conduit::ConduitChange::SkillCostCommitted { .. },
+        ) => Vec::new(),
         BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::SkillFinished {
             source_uid,
             team,
@@ -571,6 +582,9 @@ fn project_change(
             *team,
             *uses_this_round,
         )],
+        BattleChange::Conduit(
+            crate::engine::manager::conduit::ConduitChange::ActivationCompleted(_),
+        ) => Vec::new(),
         BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::RunningChanged {
             running,
             ..

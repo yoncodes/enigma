@@ -1,6 +1,28 @@
 use super::*;
 
 #[test]
+fn barcarola_buff_behaviors_require_their_configured_operands() {
+    assert!(supports_duration_change(&ParsedBehavior::new(
+        20005,
+        "AddBuffRound",
+        vec![31080131, 1],
+    )));
+    assert!(!supports_duration_change(&ParsedBehavior::new(
+        20005,
+        "AddBuffRound",
+        vec![31080131, 0],
+    )));
+    assert!(supports_consume_power_add_multi_buff(&ParsedBehavior::new(
+        60150,
+        "ConsumePowerAddMultiBuff1",
+        vec![2, 3, 31080131, 1, 1, 31080111, 31080111],
+    )));
+    assert!(!supports_consume_power_add_multi_buff(
+        &ParsedBehavior::new(60150, "ConsumePowerAddMultiBuff1", vec![2, 3, 31080131],)
+    ));
+}
+
+#[test]
 fn descriptor_reports_all_multi_buff_dependencies() {
     let behavior = ParsedBehavior::new(
         60150,

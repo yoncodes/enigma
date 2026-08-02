@@ -4,6 +4,8 @@ use sonettobuf::{Fight, FightEntityInfo};
 
 use super::entities;
 
+pub const STANDARD_DAMAGE_RATE_PERMILLE: i32 = 200;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ToughnessState {
     pub value: i32,
@@ -28,6 +30,14 @@ pub struct ToughnessChange {
 pub struct ToughnessRecover {
     pub origin: crate::engine::skill::rule::CommandOrigin,
     pub target_uid: i64,
+    pub config_effect: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToughnessRecord {
+    pub target_uid: i64,
+    pub damage: i32,
+    pub rate_permille: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,17 +45,20 @@ pub struct ToughnessRecovery {
     pub target_uid: i64,
     pub point: i32,
     pub value: i32,
+    pub config_effect: i32,
     pub team_type: i32,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ToughnessManager {
     states: HashMap<i64, ToughnessState>,
+    recovery_penalties: HashMap<i64, i32>,
 }
 
 impl ToughnessManager {
     pub fn seed(&mut self, fight: &Fight) {
         self.states.clear();
+        self.recovery_penalties.clear();
         for entity in entities(fight) {
             self.register(entity);
         }
@@ -123,18 +136,55 @@ impl ToughnessManager {
         })
     }
 
+    pub fn is_broken(&self, target_uid: i64) -> bool {
+        self.states
+            .get(&target_uid)
+            .is_some_and(|state| state.broken)
+    }
+
+    pub fn record_broken_damage(&mut self, command: ToughnessRecord) {
+        if !self.is_broken(command.target_uid) {
+            return;
+        }
+        let penalty = (i64::from(command.damage.max(0)) * i64::from(command.rate_permille.max(0))
+            / 1000)
+            .clamp(0, i64::from(i32::MAX)) as i32;
+        let recorded = self
+            .recovery_penalties
+            .entry(command.target_uid)
+            .or_default();
+        *recorded = recorded.saturating_add(penalty);
+    }
+
     pub fn recover(&mut self, command: ToughnessRecover) -> Option<ToughnessRecovery> {
         let state = self.states.get_mut(&command.target_uid)?;
         if !state.broken {
             return None;
         }
-        state.value = state.segment_value;
-        state.point = state.max_point;
+        let max_total = i64::from(state.max_point) * i64::from(state.segment_value);
+        let after_total = (max_total
+            - i64::from(
+                self.recovery_penalties
+                    .remove(&command.target_uid)
+                    .unwrap_or_default(),
+            ))
+        .max(0);
+        state.point = if after_total == 0 {
+            0
+        } else {
+            ((after_total - 1) / i64::from(state.segment_value) + 1) as i32
+        };
+        state.value = if state.point == 0 {
+            0
+        } else {
+            (after_total - i64::from(state.point - 1) * i64::from(state.segment_value)) as i32
+        };
         state.broken = false;
         Some(ToughnessRecovery {
             target_uid: command.target_uid,
             point: state.point,
             value: state.value,
+            config_effect: command.config_effect,
             team_type: state.team_type,
         })
     }
@@ -258,12 +308,18 @@ mod tests {
                     key: DefinitionKey::new(60287, "ToughnessRecover"),
                 },
                 target_uid: -1,
+                config_effect: 60287,
             })
             .unwrap();
 
         assert_eq!(
-            (recovery.point, recovery.value, recovery.team_type),
-            (3, 100, 2)
+            (
+                recovery.point,
+                recovery.value,
+                recovery.config_effect,
+                recovery.team_type,
+            ),
+            (3, 100, 60287, 2)
         );
         assert_eq!(
             manager.get(-1),
@@ -276,6 +332,41 @@ mod tests {
                 broken: false,
             })
         );
+    }
+
+    #[test]
+    fn recorded_break_damage_reduces_the_recovered_segment() {
+        let mut manager = ToughnessManager::default();
+        manager.states.insert(
+            -1,
+            ToughnessState {
+                value: 0,
+                point: 0,
+                segment_value: 101_500,
+                max_point: 3,
+                team_type: 2,
+                broken: true,
+            },
+        );
+        manager.record_broken_damage(ToughnessRecord {
+            target_uid: -1,
+            damage: 203_000,
+            rate_permille: STANDARD_DAMAGE_RATE_PERMILLE,
+        });
+
+        let recovery = manager
+            .recover(ToughnessRecover {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60_287, "ToughnessRecover"),
+                },
+                target_uid: -1,
+                config_effect: 60_287,
+            })
+            .unwrap();
+
+        assert_eq!((recovery.point, recovery.value), (3, 60_900));
+        assert_eq!(manager.get(-1).unwrap().value, 60_900);
     }
 
     #[test]

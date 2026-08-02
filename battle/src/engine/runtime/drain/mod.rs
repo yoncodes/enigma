@@ -165,9 +165,14 @@ pub(super) fn attack_has_no_target(
     {
         return false;
     }
-    let logic_target = catalog.logic_target(invocation.plan.skill_id);
+    let logic_target = match invocation.target {
+        SkillTarget::LogicRule(code) => code,
+        _ => catalog.logic_target(invocation.plan.skill_id),
+    };
     match invocation.target {
-        SkillTarget::Configured if targets_enemy(logic_target).is_some() => {
+        SkillTarget::Configured | SkillTarget::LogicRule(_)
+            if targets_enemy(logic_target).is_some() =>
+        {
             TargetResolver::resolve_primary_candidates(
                 &TargetRequest {
                     code: logic_target,
@@ -188,9 +193,10 @@ pub(super) fn attack_has_no_target(
             )
             .is_empty()
         }
-        SkillTarget::Configured | SkillTarget::Inherited | SkillTarget::Explicit(_) => {
-            pool.enemies(invocation.plan.source_uid, false).is_empty()
-        }
+        SkillTarget::Configured
+        | SkillTarget::LogicRule(_)
+        | SkillTarget::Inherited
+        | SkillTarget::Explicit(_) => pool.enemies(invocation.plan.source_uid, false).is_empty(),
     }
 }
 
@@ -805,6 +811,18 @@ fn drain_queue_with_deferred(
                         (hit.damage_from == crate::engine::manager::hp::HurtDamageFromType::Skill)
                             .then_some(hit.target_uid)
                     }));
+                    let source_uid = current_skill.map(|skill| skill.0).unwrap_or_default();
+                    execution.record_buff_additions(events.iter().filter_map(|event| {
+                        let (BattleEvent::BuffAdded(change) | BattleEvent::BuffChanged(change)) =
+                            event
+                        else {
+                            return None;
+                        };
+                        (change.source_uid == source_uid).then_some((
+                            change.buff_id,
+                            change.after_amount.saturating_sub(change.before_amount),
+                        ))
+                    }));
                 }
 
                 let has_active_continuation = queue.iter().any(|queued| {
@@ -1223,7 +1241,8 @@ fn invocation_frame_target(
             SkillOpTrigger::Event(event) => event.target_uid(),
             SkillOpTrigger::Active | SkillOpTrigger::Setup { .. } => None,
         },
-        crate::engine::skill::action::SkillTarget::Configured => None,
+        crate::engine::skill::action::SkillTarget::Configured
+        | crate::engine::skill::action::SkillTarget::LogicRule(_) => None,
     }
 }
 

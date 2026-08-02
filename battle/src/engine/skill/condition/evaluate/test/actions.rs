@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn owner_incantation_rank_rejects_an_ally_action() {
+    init_config();
+    let condition = ParsedCondition {
+        opcode: 659212,
+        type_name: "UseSkill".into(),
+        kind: ParsedConditionKind::UseSkillRank(vec![1, 2, 3]),
+        raw_args: vec!["1,2,3".into()],
+    };
+    let matches = |active_skill_source_uid, active_skill_rank| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[10],
+            None,
+            &TargetPool::default(),
+            TargetContext {
+                active_skill_source_uid,
+                active_skill_rank,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(!matches(11, 1));
+    assert!(!matches(10, 0));
+    assert!(matches(10, 1));
+    assert!(matches(10, 2));
+    assert!(matches(10, 3));
+}
+
+#[test]
 fn synthetic_emitter_is_not_an_active_incantation_user() {
     init_config();
     let fight = Fight {

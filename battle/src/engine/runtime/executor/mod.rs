@@ -169,7 +169,7 @@ impl RuleOutcome {
                 .map(|change| BattleChange::Buff(Box::new(change)))
                 .collect(),
             Self::BuffFeatureMarker(change) => vec![BattleChange::BuffFeatureMarker(*change)],
-            Self::EffectMarker(change) => vec![BattleChange::EffectMarker(*change)],
+            Self::EffectMarker(change) => vec![BattleChange::EffectMarker(change.clone())],
             Self::SceneChange { scene_id } => vec![BattleChange::SceneChange {
                 scene_id: *scene_id,
             }],
@@ -181,14 +181,14 @@ impl RuleOutcome {
             Self::NuoDiKaHit(hit) => vec![BattleChange::NuoDiKaHit(*hit)],
             Self::Hp(execution) => {
                 std::iter::once(BattleChange::Hp(Box::new(execution.changes.clone())))
-                    .chain(execution.indicator.map(BattleChange::EffectMarker))
+                    .chain(execution.indicator.clone().map(BattleChange::EffectMarker))
                     .collect()
             }
             Self::HpBatch(changes) => changes
                 .iter()
                 .flat_map(|execution| {
                     std::iter::once(BattleChange::Hp(Box::new(execution.changes.clone())))
-                        .chain(execution.indicator.map(BattleChange::EffectMarker))
+                        .chain(execution.indicator.clone().map(BattleChange::EffectMarker))
                 })
                 .collect(),
             Self::Injury(change) => vec![BattleChange::Injury(change.clone())],
@@ -676,6 +676,10 @@ pub(crate) fn execute_rule_op(
             .recover(command)
             .map(RuleOutcome::ToughnessRecovered)
             .unwrap_or(RuleOutcome::StateChanged)),
+        RuleOp::Command(BattleCommand::ToughnessRecord(command)) => {
+            managers.toughness.record_broken_damage(command);
+            Ok(RuleOutcome::StateChanged)
+        }
         RuleOp::Skill(_) => Err(RuleExecutionError::UnexpectedSkill),
         RuleOp::BeginSkillAction { lifecycle, cost } => {
             let changes = managers.execute_ex_point(cost)?;
@@ -740,12 +744,16 @@ pub(crate) fn execute_rule_op(
             effect_type,
             effect_num,
             config_effect,
+            reserve_id,
+            reserve_str,
         } => Ok(RuleOutcome::EffectMarker(
             crate::engine::skill::rule::output::EffectMarker {
                 target_uid,
                 effect_type,
                 effect_num,
                 config_effect,
+                reserve_id,
+                reserve_str,
             },
         )),
         RuleOp::SceneChange { scene_id } => Ok(RuleOutcome::SceneChange { scene_id }),

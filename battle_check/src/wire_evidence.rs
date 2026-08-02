@@ -30,7 +30,7 @@ impl MarkerKey {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Evidence {
     sources: BTreeMap<MarkerKey, BTreeSet<String>>,
 }
@@ -53,9 +53,12 @@ impl Evidence {
             let Ok(contents) = fs::read_to_string(&path) else {
                 continue;
             };
-            let Ok(value) = serde_json::from_str(&contents) else {
+            let Ok(mut value) = serde_json::from_str(&contents) else {
                 continue;
             };
+            if battle_preview::expand_compressed_fight_steps(&mut value).is_err() {
+                continue;
+            }
             evidence.inspect(&value, db, source);
         }
         evidence
@@ -94,6 +97,7 @@ impl Evidence {
 
     fn inspect_effects(&mut self, effects: &[Value], db: &GameDB, source: &str) {
         for (index, effect) in effects.iter().enumerate() {
+            self.inspect_direct_marker(effect, db, source);
             let Some(phase) = effect_phase(effect) else {
                 continue;
             };
@@ -148,6 +152,43 @@ impl Evidence {
                     .or_default()
                     .insert(source.to_owned());
             }
+        }
+    }
+
+    fn inspect_direct_marker(&mut self, effect: &Value, db: &GameDB, source: &str) {
+        let Some((buff, effect_type)) = effect
+            .get("buff")
+            .and_then(|buff| buff.get("buffId"))
+            .and_then(Value::as_i64)
+            .and_then(|id| i32::try_from(id).ok())
+            .and_then(|id| db.skill_buff.get(id))
+            .zip(
+                effect
+                    .get("effectType")
+                    .and_then(Value::as_i64)
+                    .and_then(|id| i32::try_from(id).ok()),
+            )
+        else {
+            return;
+        };
+        let candidates = buff
+            .features
+            .split('|')
+            .filter_map(|feature| split_ids(feature).first().copied())
+            .filter_map(|id| db.buff_act.get(id))
+            .filter_map(|act| wire::find(act.id, &act.r#type).map(|definition| (act, definition)))
+            .flat_map(|(act, definition)| {
+                [WirePhase::Add, WirePhase::Static, WirePhase::Refresh]
+                    .into_iter()
+                    .filter(move |phase| definition.markers(*phase).contains(&effect_type))
+                    .map(move |phase| MarkerKey::new(act.id, &act.r#type, phase, effect_type))
+            })
+            .collect::<Vec<_>>();
+        if let [key] = candidates.as_slice() {
+            self.sources
+                .entry(key.clone())
+                .or_default()
+                .insert(source.to_owned());
         }
     }
 }
@@ -226,8 +267,7 @@ mod tests {
         );
         let fixtures =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../battle_preview/fixtures/battles");
-        assert_eq!(fight_version(&fixtures.join("battle6")), Some(6));
-        assert_eq!(fight_version(&fixtures.join("battle8")), Some(7));
+        assert_eq!(fight_version(&fixtures.join("battle75")), Some(7));
         assert!(
             evidence
                 .source(
@@ -238,5 +278,14 @@ mod tests {
                 )
                 .is_none()
         );
+        for (phase, effect_type) in [
+            (WirePhase::Add, EffectType::Redorbluecount as i32),
+            (WirePhase::Refresh, EffectType::Redorbluecountchange as i32),
+        ] {
+            assert_eq!(
+                evidence.source(897, "RedOrBlueCount", phase, effect_type),
+                Some("battle75".to_owned())
+            );
+        }
     }
 }

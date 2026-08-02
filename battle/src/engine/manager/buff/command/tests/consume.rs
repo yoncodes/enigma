@@ -107,7 +107,7 @@ fn layered_consume_publishes_only_the_resulting_amount() {
 }
 
 #[test]
-fn depleted_stacked_consume_keeps_the_last_visible_layer_in_the_delete_snapshot() {
+fn depleted_stacked_consume_reports_zero_in_the_delete_snapshot() {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();
     manager.seed(&Fight {
@@ -145,7 +145,7 @@ fn depleted_stacked_consume_keeps_the_last_visible_layer_in_the_delete_snapshot(
 
     assert!(manager.snapshot(10, 20).is_none());
     assert_eq!(changes.change.removed[0].before_amount, 1);
-    assert_eq!(changes.change.removed[0].buff.layer, Some(1));
+    assert_eq!(changes.change.removed[0].buff.layer, Some(0));
     assert!(matches!(
         changes.events().as_slice(),
         [BattleEvent::BuffRemoved(event)]
@@ -628,6 +628,7 @@ fn dispel_plans_matching_statuses_and_preserves_behavior_provenance() {
                 },
                 target_uid: -1,
                 statuses: vec![super::super::BuffStatus::PositiveStatus],
+                excluded_ids_or_types: Vec::new(),
                 count: 0,
             }),
         )
@@ -639,4 +640,54 @@ fn dispel_plans_matching_statuses_and_preserves_behavior_provenance() {
     assert_eq!(changes.change.removed[0].buff.uid, Some(1));
     assert_eq!(changes.change.removed[0].config_effect, 30003);
     assert!(manager.has_buff_id(-1, 530000112));
+}
+
+#[test]
+fn dispel_exclusions_preserve_matching_ids_or_types() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                buffs: vec![
+                    BuffInfo {
+                        buff_id: Some(4150001),
+                        uid: Some(1),
+                        count: Some(1),
+                        layer: Some(3),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(303),
+                        uid: Some(2),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    let plan = manager
+        .plan(
+            &HpManager::default(),
+            BuffCommand::Dispel(BuffDispel {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60060, "DisperseExclude"),
+                },
+                target_uid: 10,
+                statuses: vec![super::super::BuffStatus::NegativeStatus],
+                excluded_ids_or_types: vec![4150001],
+                count: 0,
+            }),
+        )
+        .unwrap();
+    manager.commit(&HpManager::default(), plan);
+
+    assert!(manager.has_buff_id(10, 4150001));
+    assert!(!manager.has_buff_id(10, 303));
 }

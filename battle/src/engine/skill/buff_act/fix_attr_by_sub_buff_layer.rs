@@ -111,9 +111,11 @@ mod tests {
 
     #[test]
     fn validates_a_tracked_buff_and_attribute_triples() {
-        assert!(supports(&[31260151, 201, 600, 0]));
+        assert!(supports(&[31260151, 201, 300, 0]));
+        assert!(supports(&[31130122, 104, -100, -20, 206, -100, -20]));
         assert!(!supports(&[0, 201, 600, 0]));
-        assert!(!supports(&[31260151, 999, 600, 0]));
-        assert!(!supports(&[31260151, 201, 600]));
+        assert!(!supports(&[31260151]));
+        assert!(!supports(&[31260151, 999, 300, 0]));
+        assert!(!supports(&[31260151, 201, 300]));
     }
 }

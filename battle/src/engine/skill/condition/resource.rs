@@ -162,6 +162,7 @@ pub(crate) enum ResourceEvent {
     Conduit {
         target_uid: i64,
         power_id: i32,
+        activation_cost: i32,
         spent: i32,
     },
 }
@@ -374,7 +375,9 @@ fn event_condition_count(
         }
         ParsedConditionKind::PerConduitCurrentCost { threshold } => {
             let ResourceEvent::Conduit {
-                target_uid, spent, ..
+                target_uid,
+                activation_cost,
+                ..
             } = event
             else {
                 return 0;
@@ -386,7 +389,7 @@ fn event_condition_count(
                 condition_target_code,
                 pool,
             ) {
-                spent.max(0) / (*threshold).max(1)
+                activation_cost.max(0) / (*threshold).max(1)
             } else {
                 0
             }
@@ -790,7 +793,8 @@ mod tests {
                     ResourceEvent::Conduit {
                         target_uid: 10,
                         power_id: 1,
-                        spent: 3,
+                        activation_cost: 3,
+                        spent: 2,
                     },
                     10,
                     &[10],

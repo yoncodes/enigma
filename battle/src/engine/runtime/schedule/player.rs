@@ -338,6 +338,12 @@ pub(crate) fn card_skill_is_blocked(
     managers
         .buff
         .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Sleep)
+        || managers
+            .buff
+            .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Dizzy)
+        || managers
+            .buff
+            .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Petrified)
         || (managers
             .buff
             .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Forbid)
@@ -346,6 +352,10 @@ pub(crate) fn card_skill_is_blocked(
             .buff
             .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Disarm)
             && buff_act::disarm::blocks(effect_tag, is_big_skill))
+        || (managers
+            .buff
+            .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Seal)
+            && is_big_skill)
         || managers
             .buff
             .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::CastChannel)
@@ -685,15 +695,19 @@ fn run_player_card_ops(
         {
             skill.target = crate::engine::skill::action::SkillTarget::Explicit(replacement_uid);
         }
-        let configured_targets_enemy =
-            crate::engine::skill::target::targets_enemy(catalog.logic_target(skill.plan.skill_id));
+        let logic_target = match skill.target {
+            crate::engine::skill::action::SkillTarget::LogicRule(code) => code,
+            _ => catalog.logic_target(skill.plan.skill_id),
+        };
+        let configured_targets_enemy = crate::engine::skill::target::targets_enemy(logic_target);
         let explicit_targets_enemy = match skill.target {
             crate::engine::skill::action::SkillTarget::Explicit(target_uid) => pool
                 .team_type(source_uid)
                 .zip(pool.team_type(target_uid))
                 .map(|(source_team, target_team)| source_team != target_team),
             crate::engine::skill::action::SkillTarget::Inherited
-            | crate::engine::skill::action::SkillTarget::Configured => None,
+            | crate::engine::skill::action::SkillTarget::Configured
+            | crate::engine::skill::action::SkillTarget::LogicRule(_) => None,
         };
         let targets_enemy = configured_targets_enemy
             .or(explicit_targets_enemy)
@@ -704,7 +718,8 @@ fn run_player_card_ops(
             }
             (Some(_), _)
             | (None, crate::engine::skill::action::SkillTarget::Inherited)
-            | (None, crate::engine::skill::action::SkillTarget::Configured) => true,
+            | (None, crate::engine::skill::action::SkillTarget::Configured)
+            | (None, crate::engine::skill::action::SkillTarget::LogicRule(_)) => true,
         };
         let current_opponents = pool.enemies(source_uid, false);
         let current_opponents_defeated = !current_opponents.is_empty()
@@ -1026,7 +1041,7 @@ pub(super) fn run_active_action(
         ultimate_cost.max(0)
     };
     let action_cost = (ultimate_moxie > 0).then(|| {
-        ExPointCommand::Change(ExPointChange {
+        ExPointCommand::Spend(ExPointChange {
             origin: CARD_PLAY_ORIGIN,
             source_uid,
             target_uid: source_uid,

@@ -46,7 +46,11 @@ pub(super) fn shield_grant_ops(
         return None;
     }
     let buff_id = behavior.arg(0)?;
-    let (attr, rate) = crate::engine::skill::buff_act::shield::configured_attr_rate(buff_id)?;
+    let (attr, rate) = crate::engine::skill::buff_act::shield::configured_attr_rate(
+        buff_id,
+        context.source_uid,
+        &context.managers.buff,
+    )?;
     let origin = super::command_origin(behavior)?;
     Some(
         (0..context.transfer_count.max(0))

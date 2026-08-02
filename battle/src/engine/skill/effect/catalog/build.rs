@@ -74,6 +74,7 @@ impl SkillEffectCatalog {
                 }
             }
         }
+        skills.extend(crate::engine::manager::conduit::ConduitManager::seed(fight).skill_ids());
         let catalog = Self::from_roots(db, skills, buffs);
         catalog.warn_unsupported(db);
         catalog
@@ -216,6 +217,9 @@ impl SkillEffectCatalog {
                         ),
                         Some(BuffActKind::BeatBack) => skills.extend(
                             crate::engine::skill::buff_act::riposte::holder_skill(&values[1..]),
+                        ),
+                        Some(BuffActKind::BeatBackByCounter) => skills.extend(
+                            crate::engine::skill::buff_act::riposte::counter_skill(&values[1..]),
                         ),
                         Some(BuffActKind::CardNotCalSize) => skills.extend(
                             values

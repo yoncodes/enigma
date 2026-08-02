@@ -1,6 +1,6 @@
 use super::super::{
     BuffFanoutResult, BuffRemoveResult, BuffUpdateResult, emits_existing_layer_on_refresh,
-    wire_markers,
+    state_snapshot_wire,
 };
 use super::*;
 
@@ -29,10 +29,11 @@ pub struct BuffRefreshWire {
     pub markers: Vec<BuffMarkerResult>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuffStateSnapshotWire {
     pub refresh_index: usize,
     pub effect_type: i32,
+    pub reserve_str: Option<String>,
 }
 
 impl BuffChanges {
@@ -156,14 +157,15 @@ impl BuffChanges {
             .iter()
             .enumerate()
             .flat_map(|(refresh_index, refresh)| {
-                wire_markers(
+                state_snapshot_wire(
                     refresh.after.buff_id.unwrap_or_default(),
-                    crate::engine::skill::buff_act::wire::WirePhase::Refresh,
+                    refresh.after.act_common_params.as_deref(),
                 )
                 .into_iter()
-                .map(move |effect_type| BuffStateSnapshotWire {
+                .map(move |(effect_type, reserve_str)| BuffStateSnapshotWire {
                     refresh_index,
                     effect_type,
+                    reserve_str,
                 })
             })
             .collect();

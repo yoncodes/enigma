@@ -3,6 +3,11 @@ use crate::engine::{
     manager::{buff::ActiveBuffFeature, hp::HpManager},
 };
 
+pub fn supports(args: &[i32]) -> bool {
+    matches!(args, [raw_attr, rate]
+        if AttrId::from_raw(*raw_attr).is_some() && *rate > 0)
+}
+
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, hp: &HpManager) -> i32 {
     let [_, configured_attr, rate, ..] = feature.values.as_slice() else {
         return 0;
@@ -37,5 +42,27 @@ mod tests {
         };
 
         assert_eq!(attribute_delta(&feature, AttrId::DmgBonus, &hp), 120);
+    }
+
+    #[test]
+    fn accepts_only_an_attribute_and_positive_rate() {
+        use super::super::registry::{BuffActDestination, destination};
+
+        assert!(supports(&[AttrId::DmgBonus.id(), 25]));
+        assert!(!supports(&[999, 25]));
+        assert!(!supports(&[AttrId::DmgBonus.id(), 0]));
+        assert!(!supports(&[AttrId::DmgBonus.id(), 25, 1]));
+        assert_eq!(
+            destination(955, "AttrByShield", &[AttrId::DmgBonus.id(), 25],),
+            Some(BuffActDestination::StateConsumer)
+        );
+        assert_eq!(
+            destination(955, "AttrByShield", &[AttrId::DmgBonus.id(), 0]),
+            None
+        );
+        assert_eq!(
+            destination(955, "AttrByHeatScale", &[AttrId::DmgBonus.id(), 25],),
+            None
+        );
     }
 }

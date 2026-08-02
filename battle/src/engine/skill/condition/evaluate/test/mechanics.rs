@@ -201,6 +201,39 @@ fn follow_up_and_riposte_are_also_extra_actions() {
 }
 
 #[test]
+fn other_ally_extra_action_rejects_the_passive_owner() {
+    init_config();
+    let condition = ParsedCondition {
+        opcode: 403212,
+        type_name: "SkillExtraType".into(),
+        kind: ParsedConditionKind::ExtraAction {
+            mode: crate::engine::skill::condition::extra::ExtraActionConditionMode::OtherAllyAction,
+            kinds: vec![1],
+        },
+        raw_args: vec!["1".into()],
+    };
+    let matches = |active_skill_source_uid, extra_skill_kind| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[11],
+            None,
+            &TargetPool::default(),
+            TargetContext {
+                active_skill_source_uid,
+                extra_skill_kind,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(!matches(10, 1));
+    assert!(!matches(11, 0));
+    assert!(matches(11, 1));
+    assert!(matches(11, 2));
+}
+
+#[test]
 fn power_compare_codes_form_inclusive_config_ranges() {
     init_config();
     assert!(compare_resource(30, 1, 30));

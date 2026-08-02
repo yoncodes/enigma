@@ -28,6 +28,8 @@ impl WaveStartAction {
             effect_type: sonettobuf::effect_type_enum::EffectType::Trigger as i32,
             effect_num: self.action_id,
             config_effect: 0,
+            reserve_id: None,
+            reserve_str: None,
         }
     }
 }

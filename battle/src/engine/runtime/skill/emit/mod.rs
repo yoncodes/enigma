@@ -103,6 +103,7 @@ fn action_event(
         teammate_injury_count_not_reset: execution.injured_allies.len() as i32,
         team_injury_count_round: execution.team_injury_count_round,
         card_enchants: invocation.card_enchants.clone(),
+        buff_additions: execution.buff_additions.clone(),
     }
 }
 

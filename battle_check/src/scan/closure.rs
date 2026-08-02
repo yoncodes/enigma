@@ -249,7 +249,7 @@ pub(super) fn enqueue_monster_skills(
         .chain(split_ids(&template.passive_skill))
         .chain(split_ids(&monster.passive_skills_ex))
         .chain(split_ids(&template.unique_skill))
-        .chain(db.toughness_passive_skill(monster.toughness_skill))
+        .chain(db.toughness_passive_skills(monster.toughness_skill))
     {
         enqueue(skills, skill_id, path.to_owned());
     }

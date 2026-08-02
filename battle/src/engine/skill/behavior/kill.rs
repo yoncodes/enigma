@@ -1,5 +1,5 @@
 use crate::engine::{
-    manager::hp::{HpCommand, HpKill, HpManager},
+    manager::hp::{HpCommand, HpKill, HpLoss, HpManager, HurtDamageFromType, HurtInfoData},
     skill::{
         behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
         effect::ParsedBehavior,
@@ -7,6 +7,7 @@ use crate::engine::{
         target::{TargetRequest, TargetResolver},
     },
 };
+use sonettobuf::effect_type_enum::EffectType;
 
 pub fn rule_op(
     source_uid: i64,
@@ -70,6 +71,34 @@ impl BehaviorHandler for Handler {
                     })
                     .collect(),
             );
+        }
+        if behavior.spec.kind == BehaviorKind::LethalHpLoss {
+            let amount = context.managers.hp.current(context.target_uid);
+            return Some(if amount <= 0 {
+                Vec::new()
+            } else {
+                let loss = HpLoss {
+                    origin: super::command_origin(behavior)?,
+                    source_uid: context.source_uid,
+                    target_uid: context.target_uid,
+                    amount,
+                    config_effect: behavior.spec.key.opcode,
+                    hurt: Some(HurtInfoData {
+                        from_uid: context.source_uid,
+                        is_crit: false,
+                        career_restraint: false,
+                        reduce_hp: 0,
+                        effect_id: context.active_skill_id,
+                        skill_id: context.active_skill_id,
+                        damage_from: HurtDamageFromType::SkillEffect,
+                        buff_act_id: 0,
+                        buff_uid: 0,
+                        hurt_effect_type: EffectType::Kill as i32,
+                        display_amount: None,
+                    }),
+                };
+                vec![RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(loss)))]
+            });
         }
         if context.managers.hp.current(context.target_uid) <= 0 {
             return Some(Vec::new());
@@ -226,5 +255,92 @@ mod tests {
             ),
             Some(Vec::new())
         );
+    }
+
+    #[test]
+    fn lethal_hp_loss_keeps_hurt_attribution_and_bypasses_shield() {
+        let fight = Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-4),
+                    current_hp: Some(12_893),
+                    shield_value: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let mut determinism = RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext::default();
+        let behavior = ParsedBehavior::new(60018, "Kill", Vec::new());
+
+        let ops = super::super::rule_ops(
+            BehaviorOpContext {
+                source_uid: 0,
+                source_team: 1,
+                target_uid: -4,
+                active_skill_id: 530_000_157,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+        let [RuleOp::Command(BattleCommand::Hp(command))] = ops.as_slice() else {
+            panic!("lethal HP loss must emit one HP command");
+        };
+        let HpCommand::Lose(loss) = *command else {
+            panic!("lethal HP loss must use the loss path");
+        };
+        let changes = managers.hp.execute_command(HpCommand::Lose(loss)).unwrap();
+        let hp = changes.hp.unwrap();
+        let hurt = hp.hurt.unwrap();
+
+        assert_eq!(behavior.spec.kind, BehaviorKind::LethalHpLoss);
+        assert_eq!(hp.delta, -12_893);
+        assert_eq!(hurt.reduce_hp, -12_893);
+        assert_eq!(hurt.effect_id, 530_000_157);
+        assert_eq!(hurt.skill_id, 530_000_157);
+        assert_eq!(hurt.damage_from, HurtDamageFromType::SkillEffect);
+        assert_eq!(hurt.hurt_effect_type, EffectType::Kill as i32);
+        assert_eq!(managers.hp.current(-4), 0);
+        assert_eq!(managers.hp.shield(-4), 100);
+        assert!(changes.death.is_some());
+        assert!(changes.kill.is_none());
+
+        let frame = crate::engine::runtime::record::SemanticFrame {
+            owner: crate::engine::runtime::record::FrameOwner::Skill {
+                source_uid: 0,
+                skill_id: 530_000_157,
+                card_index: 0,
+                target_uid: Some(-4),
+            },
+            trigger: crate::engine::runtime::record::FrameTrigger::Active,
+            items: vec![crate::engine::runtime::record::FrameItem::Change(Box::new(
+                crate::engine::runtime::change::BattleChange::Hp(Box::new(changes)),
+            ))],
+        };
+        let steps = crate::engine::packet::timeline::project_for_version(&[frame], 7).unwrap();
+        let effects = &steps[0].act_effect;
+        let projected_hurt = effects[0].hurt_info.as_ref().unwrap();
+
+        assert_eq!(effects.len(), 2);
+        assert_eq!(effects[0].effect_type, Some(EffectType::Kill as i32));
+        assert_eq!(effects[0].effect_num, Some(12_893));
+        assert_eq!(effects[0].config_effect, Some(60018));
+        assert_eq!(projected_hurt.damage, Some(12_893));
+        assert_eq!(projected_hurt.reduce_hp, Some(-12_893));
+        assert_eq!(projected_hurt.effect_id, Some(530_000_157));
+        assert_eq!(projected_hurt.skill_id, Some(530_000_157));
+        assert_eq!(effects[1].effect_type, Some(EffectType::Dead as i32));
     }
 }

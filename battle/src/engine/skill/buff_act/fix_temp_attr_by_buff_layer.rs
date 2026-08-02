@@ -3,7 +3,23 @@ use crate::engine::{
     manager::buff::{ActiveBuffFeature, BuffManager},
 };
 
+pub fn supports(args: &[i32]) -> bool {
+    matches!(
+        args,
+        [tracked_buff_id, 1, configured_attr, per_layer]
+            if *tracked_buff_id > 0
+                && matches!(
+                    AttrId::from_raw(*configured_attr),
+                    Some(AttrId::DmgBonus | AttrId::GenesisDmgBonus)
+                )
+                && *per_layer > 0
+    )
+}
+
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, buffs: &BuffManager) -> i32 {
+    if !supports(feature.values.get(1..).unwrap_or_default()) {
+        return 0;
+    }
     let [_, tracked_buff_id, 1, configured_attr, per_layer, ..] = feature.values.as_slice() else {
         return 0;
     };
@@ -109,5 +125,9 @@ mod tests {
             attribute_delta(&feature, AttrId::GenesisDmgBonus, &buffs),
             0
         );
+        assert!(supports(&[31050111, 1, AttrId::DmgBonus.id(), 25]));
+        assert!(supports(&[31050111, 1, AttrId::GenesisDmgBonus.id(), 25]));
+        assert!(!supports(&[31050111, 0, AttrId::DmgBonus.id(), 25]));
+        assert!(!supports(&[31050111, 1, AttrId::Attack.id(), 25]));
     }
 }
