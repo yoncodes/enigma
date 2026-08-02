@@ -1,6 +1,10 @@
 use crate::engine::{
     event::kind::EventKind,
-    skill::condition::parse::{ParsedConditionKind, first_i32, parse_i32},
+    skill::condition::{
+        ParsedCondition,
+        parse::{ParsedConditionKind, first_i32, parse_fixed, parse_i32},
+        query,
+    },
 };
 
 pub fn enter_fight(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind> {
@@ -31,7 +35,18 @@ pub fn entity_dead(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind>
 }
 
 pub fn team_entity_exited(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
-    (args.len() == 2).then_some(ParsedConditionKind::TeamEntityExited)
+    let [max_count, _unknown] = parse_fixed(args)?;
+    Some(ParsedConditionKind::TeamEntityExited { max_count })
+}
+
+pub fn team_entity_exit_limit(conditions: &[ParsedCondition]) -> Option<i32> {
+    query::find(conditions, &|condition| {
+        matches!(condition.kind, ParsedConditionKind::TeamEntityExited { .. })
+    })
+    .and_then(|condition| match condition.kind {
+        ParsedConditionKind::TeamEntityExited { max_count } if max_count > 0 => Some(max_count),
+        _ => None,
+    })
 }
 
 pub fn period_then_start(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {

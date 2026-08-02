@@ -770,7 +770,7 @@ fn condition_kind_matches(
         ParsedConditionKind::PerKillCount { divisor } => {
             *divisor > 0 && context.action_kill_count >= *divisor
         }
-        ParsedConditionKind::TeamEntityExited => managers.is_some_and(|managers| {
+        ParsedConditionKind::TeamEntityExited { .. } => managers.is_some_and(|managers| {
             context.runtime_target_uid != 0
                 && managers.hp.current(context.runtime_target_uid) <= 0
                 && pool.source_is_attacker(source_uid)

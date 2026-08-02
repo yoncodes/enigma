@@ -418,6 +418,21 @@ fn from_game_db_keeps_slot_round_limits() {
 }
 
 #[test]
+fn team_entity_exit_conditions_supply_their_round_limit() {
+    init_config();
+
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let base = catalog.get(30865171).unwrap();
+    let upgraded = catalog.get(30865175).unwrap();
+    let euphoria = catalog.get(30865186).unwrap();
+
+    assert_eq!(base.slots[4].round_limit, 99);
+    assert_eq!(base.slots[5].round_limit, 2);
+    assert_eq!(upgraded.slots[5].round_limit, 4);
+    assert_eq!(euphoria.slots[5].round_limit, 4);
+}
+
+#[test]
 fn active_skill_filters_share_the_exact_skill_action_driver() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
