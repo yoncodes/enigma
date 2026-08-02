@@ -32,7 +32,6 @@ pub struct BattlelessSettlement {
 
 pub struct RefundSettlement {
     pub rewards: AppliedRewards,
-    pub material_changes: Vec<(u32, u32, i32)>,
     pub compose_push: Option<sonettobuf::TowerComposeFightSettlePush>,
 }
 
@@ -265,7 +264,6 @@ async fn settle_refund_rewards(
     compose_active: Option<&ActiveBattle>,
     activity128_score: Option<(i32, i32, i32)>,
 ) -> Result<RefundSettlement, AppError> {
-    let material_changes = refund.material_changes();
     let mut tx = db.begin().await?;
     let rewards = reward::RewardManager::new(player_id)
         .apply_dungeon_in_transaction(&mut tx, refund)
@@ -284,7 +282,6 @@ async fn settle_refund_rewards(
     tx.commit().await?;
     Ok(RefundSettlement {
         rewards,
-        material_changes,
         compose_push,
     })
 }

@@ -804,12 +804,5 @@ async fn send_refund(
     player_id: i64,
     settlement: dungeon::RefundSettlement,
 ) -> Result<(), AppError> {
-    push::send_applied_reward_pushes(
-        ctx,
-        player_id,
-        settlement.rewards,
-        settlement.material_changes,
-        None,
-    )
-    .await
+    push::send_applied_reward_pushes(ctx, player_id, settlement.rewards, Vec::new(), None).await
 }
