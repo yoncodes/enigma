@@ -1592,7 +1592,7 @@ async fn point_reward_claim_uses_shared_progress_and_is_idempotent() {
 }
 
 #[tokio::test]
-async fn out_of_round_act128_settlement_persists_score_without_dungeon_completion() {
+async fn incomplete_act128_settlement_persists_score_without_dungeon_completion() {
     fn runtime_with_score() -> ::battle::engine::runtime::BattleRuntime {
         use ::battle::engine::manager::card::{CardOpType, CardSetup};
         use sonettobuf::{
@@ -1746,12 +1746,15 @@ async fn out_of_round_act128_settlement_persists_score_without_dungeon_completio
     )
     .await
     .unwrap();
+    let abort_runtime = runtime_with_score();
+    let abort_expected_score = abort_runtime
+        .indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore);
     let abort = ActiveBattle {
         fight_id: Some(abort_fight_id),
         chapter_id: 128003,
         episode_id: 13500420,
         battle_id: 118353100,
-        runtime: runtime_with_score(),
+        runtime: abort_runtime,
         ..Default::default()
     };
     settle_refund(&pool, 28, &abort, false).await.unwrap();
@@ -1759,5 +1762,11 @@ async fn out_of_round_act128_settlement_persists_score_without_dungeon_completio
         .act128_info(&pool, Some(138520))
         .await
         .unwrap();
-    assert_eq!(abort_reply.boss_detail[1].total_point, Some(0));
+    let abort_boss = abort_reply
+        .boss_detail
+        .iter()
+        .find(|boss| boss.boss_id == Some(2))
+        .unwrap();
+    assert_eq!(abort_boss.total_point, Some(abort_expected_score));
+    assert_eq!(abort_boss.highest_point, Some(abort_expected_score));
 }
