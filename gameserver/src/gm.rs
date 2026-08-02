@@ -67,6 +67,7 @@ async fn handle_connection(stream: TcpStream, state: &'static AppState) -> std::
         GmRequest::Status => status(state).await,
         GmRequest::ListPlayers => list_players(state),
         GmRequest::Dungeons => dungeon_catalog(),
+        GmRequest::Heroes { player_uid } => hero_upgrade_catalog(state, player_uid).await,
         GmRequest::Materials { query } => materials(state, query).await,
         GmRequest::Execute {
             player_uid,
@@ -203,6 +204,13 @@ async fn materials(state: &AppState, query: MaterialQuery) -> GmResponse {
     }
 }
 
+async fn hero_upgrade_catalog(state: &AppState, player_id: i64) -> GmResponse {
+    match build_hero_upgrade_catalog(state, player_id).await {
+        Ok(catalog) => GmResponse::ok_data("heroes", catalog),
+        Err(err) => GmResponse::err(400, err.to_string()),
+    }
+}
+
 async fn execute(state: &'static AppState, player_uid: String, command: String) -> GmResponse {
     let Ok(player_id) = player_uid.parse::<i64>() else {
         return GmResponse::err(400, format!("invalid player_uid `{player_uid}`"));
@@ -253,7 +261,7 @@ async fn run_command(
         "players" | "list" | "listplayers" | "list_players" => return Ok(list_players(state)),
         "help" | "?" => {
             return Ok(GmResponse::ok(
-                "commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials <1-180> <resonance 1-15>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
+                "commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
             ));
         }
         _ => anyhow::bail!("unknown command '{}'", first),
@@ -267,12 +275,32 @@ async fn grant_hero_upgrade_materials(
     player_id: i64,
     args: &[&str],
 ) -> Result<GmResponse> {
-    let [upgrade, materials, target_level, target_talent] = args else {
-        anyhow::bail!("usage: hero upgrade materials <1-180> <resonance 1-15>");
+    let [upgrade, materials, values @ ..] = args else {
+        anyhow::bail!(
+            "usage: hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id]"
+        );
     };
     if !upgrade.eq_ignore_ascii_case("upgrade") || !materials.eq_ignore_ascii_case("materials") {
-        anyhow::bail!("usage: hero upgrade materials <1-180> <resonance 1-15>");
+        anyhow::bail!(
+            "usage: hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id]"
+        );
     }
+    let (hero_id, target_level, target_talent, destiny_target) = match values {
+        [hero_id, target_level, target_talent] => (hero_id, target_level, target_talent, None),
+        [hero_id, target_level, target_talent, destiny_rank, stone_id] => (
+            hero_id,
+            target_level,
+            target_talent,
+            Some(crate::logic::hero::DestinyMaterialTarget {
+                rank: destiny_rank.parse::<i32>()?,
+                stone_id: stone_id.parse::<i32>()?,
+            }),
+        ),
+        _ => anyhow::bail!(
+            "usage: hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id]"
+        ),
+    };
+    let hero_id = hero_id.parse::<i32>()?;
     let target_level = target_level
         .parse::<i32>()
         .ok()
@@ -285,7 +313,13 @@ async fn grant_hero_upgrade_materials(
         .ok_or_else(|| anyhow::anyhow!("resonance must be between 1 and 15"))?;
 
     let rewards = crate::logic::hero::HeroManager::new(player_id)
-        .upgrade_materials(state.db, target_level, target_talent)
+        .upgrade_materials(
+            state.db,
+            hero_id,
+            target_level,
+            target_talent,
+            destiny_target,
+        )
         .await?;
     let material_changes = rewards.material_changes();
     if material_changes.is_empty() {
@@ -319,12 +353,20 @@ async fn grant_hero_upgrade_materials(
     send_material_push(state, player_id, data.rewards.iter().cloned()).await?;
     send_snapshot_pushes(state, &data).await?;
 
-    Ok(GmResponse::ok_data(
-        format!(
-            "granted hero upgrade materials through level {target_level} and resonance {target_talent}"
-        ),
-        data,
-    ))
+    let message = destiny_target.map_or_else(
+        || {
+            format!(
+                "granted hero upgrade materials through level {target_level} and resonance {target_talent}"
+            )
+        },
+        |destiny| {
+            format!(
+                "granted materials for destiny stone {} through rank {}",
+                destiny.stone_id, destiny.rank
+            )
+        },
+    );
+    Ok(GmResponse::ok_data(message, data))
 }
 
 async fn unlock_bgms(
@@ -1046,6 +1088,155 @@ struct DungeonCatalogEpisode {
     name: String,
 }
 
+#[derive(Debug, Serialize)]
+struct HeroUpgradeCatalog {
+    heroes: Vec<HeroUpgradeEntry>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HeroUpgradeEntry {
+    id: i32,
+    name: String,
+    rank: i32,
+    level: i32,
+    resonance: i32,
+    max_resonance: i32,
+    ranks: Vec<HeroUpgradeRank>,
+    destiny_rank: i32,
+    destiny_level: i32,
+    max_destiny_rank: i32,
+    destiny_stones: Vec<HeroUpgradeDestinyStone>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HeroUpgradeRank {
+    rank: i32,
+    level_offset: i32,
+    max_level: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct HeroUpgradeDestinyStone {
+    id: i32,
+    name: String,
+    unlocked: bool,
+}
+
+async fn build_hero_upgrade_catalog(
+    state: &AppState,
+    player_id: i64,
+) -> Result<HeroUpgradeCatalog> {
+    let exists = sqlx::query_scalar::<_, i64>("SELECT 1 FROM users WHERE id = ?")
+        .bind(player_id)
+        .fetch_optional(state.db)
+        .await?;
+    if exists.is_none() {
+        anyhow::bail!("player `{player_id}` was not found");
+    }
+
+    let tables = state.tables;
+    let mut heroes = Vec::new();
+    for hero in UserHeroModel::new(player_id, (*state.db).clone())
+        .get_all_heroes()
+        .await?
+    {
+        let hero_id = hero.record.hero_id;
+        let character = tables
+            .character
+            .get(hero_id)
+            .ok_or_else(|| anyhow::anyhow!("hero {hero_id} has no character config"))?;
+        let mut rank_rows = tables
+            .character_rank
+            .iter()
+            .filter(|row| row.hero_id == hero_id)
+            .collect::<Vec<_>>();
+        rank_rows.sort_unstable_by_key(|row| row.rank);
+        let mut level_offset = 0;
+        let mut ranks = Vec::with_capacity(rank_rows.len());
+        for row in rank_rows {
+            let level_limit = tables
+                .character_rank_level_limit(hero_id, row.rank)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("hero {hero_id} rank {} has no level limit", row.rank)
+                })?;
+            ranks.push(HeroUpgradeRank {
+                rank: row.rank - 1,
+                level_offset,
+                max_level: level_limit - level_offset,
+            });
+            level_offset = level_limit;
+        }
+        let rank = hero.record.rank - 1;
+        let current_offset = ranks
+            .iter()
+            .find(|entry| entry.rank == rank)
+            .map(|entry| entry.level_offset)
+            .ok_or_else(|| {
+                anyhow::anyhow!("hero {hero_id} has no rank {} config", hero.record.rank)
+            })?;
+        let max_resonance = tables
+            .character_talent
+            .iter()
+            .filter(|row| row.hero_id == hero_id)
+            .map(|row| row.talent_id)
+            .max()
+            .ok_or_else(|| anyhow::anyhow!("hero {hero_id} has no character_talent config"))?;
+        let raw_name = if character.name_eng.is_empty() {
+            &character.name
+        } else {
+            &character.name_eng
+        };
+        let destiny_stones = if crate::logic::hero::destiny_available(
+            hero_id,
+            hero.record.rank,
+            hero.record.level,
+        ) {
+            crate::logic::hero::destiny_stones(hero_id)
+                .into_iter()
+                .filter_map(|stone_id| {
+                    let stone = tables.character_destiny_stone_cost(stone_id)?;
+                    Some(HeroUpgradeDestinyStone {
+                        id: stone_id,
+                        name: resolve_name(tables, &stone.name),
+                        unlocked: hero.destiny_stone_unlocks.contains(&stone_id),
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let max_destiny_rank = tables
+            .character_destiny(hero_id)
+            .and_then(|destiny| {
+                tables
+                    .character_destiny_slots
+                    .iter()
+                    .filter(|slot| slot.slots_id == destiny.slots_id)
+                    .map(|slot| slot.stage)
+                    .max()
+            })
+            .unwrap_or_default();
+        heroes.push(HeroUpgradeEntry {
+            id: hero_id,
+            name: resolve_name(tables, raw_name),
+            rank,
+            level: (hero.record.level - current_offset).max(1),
+            resonance: hero.record.talent,
+            max_resonance,
+            ranks,
+            destiny_rank: hero.record.destiny_rank,
+            destiny_level: hero.record.destiny_level,
+            max_destiny_rank,
+            destiny_stones,
+        });
+    }
+    heroes.sort_unstable_by(|left, right| left.name.cmp(&right.name).then(left.id.cmp(&right.id)));
+
+    Ok(HeroUpgradeCatalog { heroes })
+}
+
 async fn material_catalog(state: &AppState, query: MaterialQuery) -> Result<CatalogResponse> {
     let Some(kind) = query.r#type.and_then(MaterialKind::from_raw) else {
         return Ok(CatalogResponse {
@@ -1305,7 +1496,12 @@ fn parse_positive(value: &str, label: &str) -> Result<i32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MaterialKind, dungeon_catalog, entries_for_kind, is_premium_hero_skin};
+    use super::{
+        MaterialKind, build_hero_upgrade_catalog, dungeon_catalog, entries_for_kind,
+        is_premium_hero_skin,
+    };
+    use crate::net::app::AppState;
+    use database::models::game::heros::UserHeroModel;
     use std::collections::HashSet;
 
     #[test]
@@ -1346,5 +1542,59 @@ mod tests {
         }));
         assert!(all.iter().any(|entry| entry.id == first_skin_id));
         assert!(!unowned.iter().any(|entry| entry.id == first_skin_id));
+    }
+
+    #[tokio::test]
+    async fn hero_upgrade_catalog_reports_only_owned_current_progression() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (31, 'hero-upgrade-catalog', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let heroes = UserHeroModel::new(31, pool.clone());
+        heroes.create_hero(3003).await.unwrap();
+        heroes.create_hero(3052).await.unwrap();
+        heroes.set_rank_and_level(3003, 3, 75).await.unwrap();
+        heroes.set_rank_and_level(3052, 4, 150).await.unwrap();
+        sqlx::query("UPDATE heroes SET talent = 5 WHERE user_id = 31 AND hero_id = 3003")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let state = AppState::new(pool, config::configs::get());
+
+        let catalog = build_hero_upgrade_catalog(&state, 31).await.unwrap();
+
+        assert_eq!(catalog.heroes.len(), 2);
+        let hero = catalog.heroes.iter().find(|hero| hero.id == 3003).unwrap();
+        assert_eq!(
+            (hero.id, hero.rank, hero.level, hero.resonance),
+            (3003, 2, 5, 5)
+        );
+        assert_eq!(
+            hero.ranks
+                .iter()
+                .map(|rank| (rank.rank, rank.level_offset, rank.max_level))
+                .collect::<Vec<_>>(),
+            vec![(0, 0, 30), (1, 30, 40), (2, 70, 50), (3, 120, 60)]
+        );
+        assert!(hero.destiny_stones.is_empty());
+        let destiny_hero = catalog.heroes.iter().find(|hero| hero.id == 3052).unwrap();
+        assert_eq!(
+            (
+                destiny_hero.destiny_rank,
+                destiny_hero.destiny_level,
+                destiny_hero.max_destiny_rank,
+            ),
+            (0, 0, 4)
+        );
+        assert_eq!(destiny_hero.destiny_stones.len(), 1);
+        assert_eq!(destiny_hero.destiny_stones[0].id, 305201);
+        assert!(!destiny_hero.destiny_stones[0].unlocked);
     }
 }

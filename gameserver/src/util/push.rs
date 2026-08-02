@@ -333,11 +333,9 @@ pub async fn send_cost_pushes(
     player_id: i64,
     item_ids: Vec<u32>,
     currency_ids: Vec<(i32, i32)>,
-    material_changes: Vec<(u32, u32, i32)>,
 ) -> Result<(), AppError> {
     send_item_change_push(ctx, player_id, item_ids, Vec::new(), Vec::new()).await?;
-    send_currency_change_push(ctx, player_id, currency_ids).await?;
-    send_material_change_push(ctx, material_changes, None).await
+    send_currency_change_push(ctx, player_id, currency_ids).await
 }
 
 pub async fn send_cloth_update_push(

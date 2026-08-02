@@ -34,6 +34,9 @@ impl HeroManager {
     ) -> Result<(DestinyRankUpReply, HeroInfo, ConsumedRewards), AppError> {
         let hero = UserHeroModel::new(self.player_id, db.clone());
         let current = hero.get(hero_id).await?;
+        if !destiny_available(hero_id, current.record.rank, current.record.level) {
+            return Err(AppError::InvalidRequest);
+        }
         let slot = next_destiny_slot(
             hero_id,
             current.record.destiny_rank,
@@ -136,7 +139,8 @@ impl HeroManager {
     ) -> Result<(DestinyStoneUnlockReply, HeroInfo, ConsumedRewards), AppError> {
         let hero = UserHeroModel::new(self.player_id, db.clone());
         let current = hero.get(hero_id).await?;
-        if current.record.destiny_rank <= 0
+        if !destiny_available(hero_id, current.record.rank, current.record.level)
+            || current.record.destiny_rank <= 0
             || !destiny_stones(hero_id).contains(&stone_id)
             || current.destiny_stone_unlocks.contains(&stone_id)
         {
@@ -168,7 +172,7 @@ impl HeroManager {
     }
 }
 
-pub(super) fn destiny_stones(hero_id: i32) -> Vec<i32> {
+pub fn destiny_stones(hero_id: i32) -> Vec<i32> {
     config::configs::get()
         .character_destiny(hero_id)
         .map(|row| {
@@ -178,6 +182,23 @@ pub(super) fn destiny_stones(hero_id: i32) -> Vec<i32> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+pub fn destiny_available(hero_id: i32, rank: i32, level: i32) -> bool {
+    let tables = config::configs::get();
+    let Some(character) = tables.character.get(hero_id) else {
+        return false;
+    };
+    let required_level = match character.rare {
+        4 => 1,
+        5 => 30,
+        _ => return false,
+    };
+    let Some(level_offset) = tables.character_rank_level_limit(hero_id, 3) else {
+        return false;
+    };
+
+    rank >= 4 && level >= level_offset + required_level
 }
 
 pub(super) fn next_destiny_slot(
