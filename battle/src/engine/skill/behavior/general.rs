@@ -34,6 +34,13 @@ pub(super) struct Handler;
 
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+        if behavior.spec.kind == BehaviorKind::NotifyUpgradeHero {
+            let upgrade_id = behavior.arg(0)?;
+            let entity = context.managers.entity_snapshot(context.target_uid)?;
+            if !crate::engine::manager::upgrade::has_available_option(&entity, upgrade_id)? {
+                return Some(Vec::new());
+            }
+        }
         rule_op(context.target_uid, behavior).map(|op| vec![op])
     }
 }
@@ -88,6 +95,58 @@ mod tests {
                 },
                 ..
             })))
+        ));
+    }
+
+    #[test]
+    fn notification_skips_exhausted_options_and_keeps_the_terminal_upgrade() {
+        crate::test_support::init_config();
+        let mut managers = BattleManagers::default();
+        managers.register_entity(&sonettobuf::FightEntityInfo {
+            uid: Some(10),
+            team_type: Some(1),
+            enhance_info_box: Some(sonettobuf::EnhanceInfoBox {
+                uid: Some(10),
+                upgraded_options: vec![3086515, 3086525, 3086535],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        let pool = TargetPool::default();
+        let mut determinism = RoundDeterminism::default();
+        let mut modifiers = SkillModifiers::default();
+        let mut target = TargetContext::default();
+
+        let mut emit = |upgrade_id| {
+            behavior::rule_ops(
+                BehaviorOpContext {
+                    source_uid: 10,
+                    source_team: 1,
+                    target_uid: 10,
+                    active_skill_id: 30864156,
+                    transfer_count: 1,
+                    event: None,
+                    managers: &managers,
+                    pool: &pool,
+                    determinism: &mut determinism,
+                    modifiers: &mut modifiers,
+                    target: &mut target,
+                },
+                &ParsedBehavior::new(60037, "NotifyUpgradeHero", vec![upgrade_id]),
+            )
+            .unwrap()
+        };
+
+        assert!(emit(308665).is_empty());
+        assert!(matches!(
+            emit(308675).as_slice(),
+            [RuleOp::Command(BattleCommand::Upgrade(UpgradeCommand {
+                operation: UpgradeOperation::Offer {
+                    upgrade_id: 308675,
+                    ..
+                },
+                ..
+            }))]
         ));
     }
 

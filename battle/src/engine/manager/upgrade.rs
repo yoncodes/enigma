@@ -167,6 +167,20 @@ impl UpgradeManager {
     }
 }
 
+pub(crate) fn has_available_option(entity: &FightEntityInfo, upgrade_id: i32) -> Option<bool> {
+    let upgrade = config::try_get()?.hero_upgrade.get(upgrade_id)?;
+    let selected = entity
+        .enhance_info_box
+        .as_ref()
+        .map(|info| info.upgraded_options.as_slice())
+        .unwrap_or_default();
+    Some(
+        parse_ids(&upgrade.options)
+            .into_iter()
+            .any(|option_id| !selected.contains(&option_id)),
+    )
+}
+
 fn parse_ids(raw: &str) -> Vec<i32> {
     raw.split(['|', '#', ','])
         .filter_map(|value| value.trim().parse().ok())
