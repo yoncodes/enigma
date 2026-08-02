@@ -90,7 +90,7 @@ fn shield_event_observes_the_committed_team_shared_value() {
             buff_id: 31430144,
             amount_attr: crate::engine::entity::attr::AttrId::Attack,
             amount_rate: 2_800,
-            bonus: None,
+            multiplier_bonus: None,
             max_attr: crate::engine::entity::attr::AttrId::Attack,
             max_rate: 12_500,
             scope: ShieldScope::TeamShared,
