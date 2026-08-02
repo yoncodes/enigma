@@ -1007,7 +1007,7 @@ fn battle_star_uses_configured_round_condition() {
         .parent()
         .unwrap()
         .join("data/excel2json");
-    let _ = config::init(data_dir.to_str().unwrap());
+    config::init(data_dir.to_str().unwrap()).unwrap();
     let runtime = battle::engine::runtime::BattleRuntime::new(sonettobuf::Fight {
         cur_round: Some(3),
         attacker: Some(sonettobuf::FightTeam {
@@ -1022,6 +1022,7 @@ fn battle_star_uses_configured_round_condition() {
     });
 
     assert_eq!(battle_star(&runtime, 301110), 2);
+    assert_eq!(battle_star(&runtime, 70202), 2);
 }
 
 #[tokio::test]
