@@ -20,6 +20,7 @@ pub mod cloth_skill;
 pub mod determinism;
 pub(crate) mod drain;
 pub(crate) mod executor;
+mod objective;
 pub(crate) mod record;
 mod round;
 pub(crate) mod schedule;
@@ -42,6 +43,7 @@ pub struct BattleRuntime {
     determinism: RoundDeterminism,
     pending_redeal: Option<RedealCardInfoPush>,
     cloth_skill_uses: HashMap<i32, usize>,
+    objectives: objective::ObjectiveProgress,
 }
 
 impl BattleRuntime {
@@ -250,6 +252,7 @@ impl BattleRuntime {
             determinism,
             pending_redeal: None,
             cloth_skill_uses: HashMap::new(),
+            objectives: Default::default(),
         }
     }
 }

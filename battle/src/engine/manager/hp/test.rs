@@ -498,7 +498,7 @@ fn kill_bypasses_shield_and_publishes_only_the_death_transition() {
         },
     );
     hp.set_shield(10, 50);
-    let changes = hp
+    let mut changes = hp
         .execute_command(HpCommand::Kill(HpKill {
             origin: CommandOrigin {
                 domain: RuleDomain::Behavior,
@@ -513,6 +513,7 @@ fn kill_bypasses_shield_and_publishes_only_the_death_transition() {
     assert_eq!(hp.current(10), 0);
     assert_eq!(hp.shield(10), 50);
     assert_eq!(changes.kill, Some(60019));
+    assert!(changes.caused_death());
     assert!(matches!(
         changes.events().as_slice(),
         [BattleEvent::EntityDied(EntityDiedEvent {
@@ -520,4 +521,6 @@ fn kill_bypasses_shield_and_publishes_only_the_death_transition() {
             target_uid: 10,
         })]
     ));
+    changes.death.take();
+    assert!(changes.caused_death());
 }
