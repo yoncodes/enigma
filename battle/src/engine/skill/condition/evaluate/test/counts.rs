@@ -163,6 +163,53 @@ fn per_kill_count_repeats_once_for_each_kill() {
 }
 
 #[test]
+fn team_entity_exit_matches_a_dead_enemy_relative_to_the_source() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(0),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let matches = |source_uid| {
+        conditions_match(
+            &[ParsedCondition {
+                opcode: 613403,
+                type_name: "PerTeamEntityExitCount".into(),
+                kind: ParsedConditionKind::TeamEntityExited { max_count: 2 },
+                raw_args: vec!["2".into(), "2".into()],
+            }],
+            source_uid,
+            &[-1],
+            Some(&managers),
+            &pool,
+            TargetContext {
+                runtime_target_uid: -1,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(10));
+    assert!(!matches(-1));
+}
+
+#[test]
 fn per_hp_repeats_for_each_complete_target_hp_interval() {
     init_config();
     let fight = Fight {

@@ -193,7 +193,9 @@ pub enum ParsedConditionKind {
     PerKillCount {
         divisor: i32,
     },
-    TeamEntityExited,
+    TeamEntityExited {
+        max_count: i32,
+    },
     MultiHpSegment(i32),
     TargetCareer(Vec<i32>),
     TargetSharesCasterCareer {

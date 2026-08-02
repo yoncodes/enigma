@@ -793,6 +793,142 @@ fn entity_defeat_passive_executes_each_configured_sibling_slot() {
 }
 
 #[test]
+fn lucy_entity_defeat_follow_up_respects_its_configured_round_limit() {
+    crate::test_support::init_config();
+
+    let fires = |passive_skill, round_limit| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    team_type: Some(1),
+                    current_hp: Some(10_000),
+                    passive_skill: vec![passive_skill],
+                    attr: Some(HeroAttribute {
+                        attack: Some(100),
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![
+                    FightEntityInfo {
+                        uid: Some(-1),
+                        team_type: Some(2),
+                        current_hp: Some(0),
+                        attr: Some(HeroAttribute {
+                            hp: Some(10_000),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    FightEntityInfo {
+                        uid: Some(-2),
+                        team_type: Some(2),
+                        current_hp: Some(1_000_000),
+                        attr: Some(HeroAttribute {
+                            hp: Some(1_000_000),
+                            defense: Some(100),
+                            mdefense: Some(100),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+        let mut managers = BattleManagers::seeded(&fight);
+        let event = BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
+            source_uid: 10,
+            target_uid: -1,
+        });
+        let dispatched = dispatcher::dispatch_event(
+            &pool.runtime_view(&managers),
+            &managers,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            &event,
+        )
+        .unwrap();
+        let effect = catalog.get(passive_skill).unwrap();
+        let subscriber = dispatched
+            .skills
+            .iter()
+            .map(|(subscriber, _)| subscriber)
+            .find(|subscriber| {
+                subscriber.skill_id == passive_skill
+                    && subscriber
+                        .slot_index
+                        .is_some_and(|slot| effect.slots[slot].round_limit == round_limit)
+            })
+            .unwrap();
+        let slot_index = subscriber.slot_index.unwrap();
+        let slot = &effect.slots[slot_index];
+        assert_eq!(slot.round_limit, round_limit);
+        let can_fire = |managers: &BattleManagers| {
+            managers.can_fire_rule(
+                10,
+                passive_skill,
+                slot_index,
+                subscriber.key.definition,
+                slot.limit,
+                slot.round_limit,
+            )
+        };
+
+        for _ in 0..round_limit {
+            assert!(can_fire(&managers));
+            run_event(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+                event.clone(),
+            )
+            .unwrap();
+        }
+
+        assert!(!can_fire(&managers));
+        for _ in 0..2 {
+            run_event(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+                event.clone(),
+            )
+            .unwrap();
+        }
+        assert!(!can_fire(&managers));
+        managers.begin_round();
+        assert!(can_fire(&managers));
+        run_event(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            event,
+        )
+        .unwrap();
+        assert_eq!(can_fire(&managers), round_limit > 1);
+    };
+
+    fires(30865171, 2);
+    fires(30865175, 4);
+    fires(30865186, 4);
+}
+
+#[test]
 fn gorgon_death_kills_tentacles_and_exposes_the_core() {
     crate::test_support::init_config();
     let entity = |uid, model_id, position, hp, passive_skill| FightEntityInfo {
