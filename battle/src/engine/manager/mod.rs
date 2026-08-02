@@ -83,6 +83,44 @@ struct HpPlan {
     team_shared_buff: Option<BuffPlan>,
 }
 
+pub(crate) fn persistent_attribute_delta(
+    buffs: &BuffManager,
+    hp: &HpManager,
+    uid: i64,
+    attr_id: crate::engine::entity::attr::AttrId,
+) -> i32 {
+    use crate::engine::skill::buff_act::{self, registry::BuffActKind};
+
+    let active_features = buffs.active_features(hp);
+    buffs.attribute_delta(uid, attr_id)
+        + active_features
+            .iter()
+            .filter(|feature| {
+                feature.owner_uid == uid
+                    && buff_act::is_kind(feature, BuffActKind::AddAttrByOtherBuffLayer)
+            })
+            .map(|feature| {
+                buff_act::add_attr_by_other_buff_layer::attribute_delta(feature, attr_id, buffs)
+            })
+            .sum::<i32>()
+        + active_features
+            .iter()
+            .filter(|feature| {
+                feature.owner_uid == uid
+                    && buff_act::is_kind(feature, BuffActKind::FixAttrBySubBuffLayer)
+            })
+            .map(|feature| {
+                buff_act::fix_attr_by_sub_buff_layer::attribute_delta(feature, attr_id, buffs)
+            })
+            .sum::<i32>()
+        + active_features
+            .iter()
+            .filter(|feature| feature.owner_uid == uid)
+            .map(|feature| buff_act::dynamic_attribute_delta(feature, attr_id, buffs, hp, true))
+            .sum::<i32>()
+        + buff_act::raspberry::attribute_delta(buffs, uid, attr_id)
+}
+
 pub(crate) struct HpExecution {
     pub changes: hp::HpChanges,
     pub indicator: Option<crate::engine::skill::rule::output::EffectMarker>,
@@ -122,12 +160,21 @@ impl BattleManagers {
             AttrId::Attack | AttrId::RealityDef | AttrId::MentalDef | AttrId::CriticalTechnique => {
                 let base = i64::from(self.attribute.base(uid, attr_id));
                 let delta = i64::from(
-                    self.attribute.get(uid, attr_id) + self.buff.attribute_delta(uid, attr_id),
+                    self.attribute.get(uid, attr_id)
+                        + self.persistent_attribute_delta(uid, attr_id),
                 );
                 (base + base * delta / 1000).clamp(0, i64::from(i32::MAX)) as i32
             }
-            _ => self.attribute.get(uid, attr_id) + self.buff.attribute_delta(uid, attr_id),
+            _ => self.attribute.get(uid, attr_id) + self.persistent_attribute_delta(uid, attr_id),
         }
+    }
+
+    pub(crate) fn persistent_attribute_delta(
+        &self,
+        uid: i64,
+        attr_id: crate::engine::entity::attr::AttrId,
+    ) -> i32 {
+        persistent_attribute_delta(&self.buff, &self.hp, uid, attr_id)
     }
 
     /// Commits one buff transaction and returns its ordered semantic changes.
