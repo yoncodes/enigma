@@ -815,6 +815,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unequipped_character_has_no_equip_record() {
+        crate::test_support::init_config();
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (1, 'unequipped', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let heroes = UserHeroModel::new(1, pool.clone());
+        let hero_uid = heroes.create_hero(3028).await.unwrap();
+        let hero = heroes.get_uid(hero_uid).await.unwrap();
+        assert_eq!(hero.record.default_equip_uid, 0);
+        let group = sonettobuf::FightGroup {
+            hero_list: vec![hero.record.uid],
+            ..Default::default()
+        };
+
+        let built = super::super::build_fight(&pool, 1, 10101, 10101, false, &group, None)
+            .await
+            .unwrap();
+        let entity = &built.fight.attacker.unwrap().entitys[0];
+
+        assert_eq!(entity.equip_uid, Some(0));
+        assert!(entity.equips.is_empty());
+    }
+
+    #[tokio::test]
     async fn compose_support_is_built_before_defender_uids() {
         crate::test_support::init_config();
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();

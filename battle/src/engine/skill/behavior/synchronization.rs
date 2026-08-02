@@ -1,8 +1,11 @@
 use crate::engine::{
     damage::AttackPlan,
-    manager::ex_point::{
-        ExPointCommand, ExPointConfigureSynchronization, ExPointRecordSynchronizationAction,
-        SynchronizationDefinition,
+    manager::{
+        buff::{BuffCommand, BuffRemove, BuffRemoveSelector, BuffSetState},
+        ex_point::{
+            ExPointCommand, ExPointConfigureSynchronization, ExPointRecordSynchronizationAction,
+            SynchronizationDefinition,
+        },
     },
     skill::{
         action::{SkillRequest, SkillTarget},
@@ -67,6 +70,7 @@ fn synchronization_progress_ops(
     let action_target_uid = context.target.runtime_target_uid;
     let damage = context.target.action_damage_amount.max(0);
     let completed_actions = before.completed_actions + 1;
+    let remaining_actions = definition.action_count.saturating_sub(completed_actions);
     let mut ops = vec![RuleOp::Command(BattleCommand::ExPoint(
         ExPointCommand::RecordSynchronizationAction(ExPointRecordSynchronizationAction {
             origin,
@@ -75,7 +79,26 @@ fn synchronization_progress_ops(
             damage,
         }),
     ))];
-    if completed_actions >= definition.action_count {
+    let (buff_uid, act_id, _) = context.managers.buff.buff_act_carrier(
+        context.source_uid,
+        crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
+    )?;
+    ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::SetState(
+        BuffSetState {
+            origin,
+            target_uid: context.source_uid,
+            buff_uid,
+            ex_info: None,
+            params: Some(format!(
+                "{act_id}#{},{},{}",
+                remaining_actions,
+                before.total_damage.saturating_add(damage),
+                i32::try_from(action_target_uid).ok()?
+            )),
+            act_info: None,
+        },
+    ))));
+    if remaining_actions == 0 {
         let mut finisher: crate::engine::skill::action::SkillInvocation = SkillRequest {
             source_uid: context.source_uid,
             skill_id: definition.skills[2],
@@ -83,25 +106,6 @@ fn synchronization_progress_ops(
         .into();
         finisher.target = SkillTarget::Explicit(action_target_uid);
         ops.push(RuleOp::Skill(finisher));
-    } else {
-        let (buff_uid, act_id, team_type) = context.managers.buff.buff_act_carrier(
-            context.source_uid,
-            crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
-        )?;
-        ops.push(RuleOp::BuffActInfoMarker(
-            crate::engine::manager::buff::BuffActInfoMarkerResult {
-                target_uid: context.source_uid,
-                buff_uid,
-                act_id,
-                params: vec![
-                    completed_actions + 1,
-                    before.total_damage.saturating_add(damage),
-                    i32::try_from(action_target_uid).ok()?,
-                ],
-                str_param: None,
-                team_type,
-            },
-        ));
     }
     Some(ops)
 }
@@ -110,6 +114,21 @@ fn damage_rule_ops(
     context: BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
 ) -> Option<Vec<RuleOp>> {
+    let origin = super::command_origin(behavior)?;
+    let terminal = if behavior.spec.kind == BehaviorKind::EzioBigSkillEnd {
+        Some((
+            context
+                .managers
+                .ex_point
+                .synchronization_progress(context.source_uid)?,
+            context.managers.buff.buff_act_carrier(
+                context.source_uid,
+                crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
+            )?,
+        ))
+    } else {
+        None
+    };
     let hp = context.managers.hp.get(context.target_uid);
     let (rate, hurt_effect_type) = damage_rate(behavior, hp.current, hp.max)?;
     let is_crit = context.determinism.roll_hidden_crit(
@@ -160,7 +179,7 @@ fn damage_rule_ops(
             emitter: None,
             team_inspiration: 0,
         },
-        super::command_origin(behavior)?,
+        origin,
     )?;
     let crate::engine::manager::hp::HpCommand::Damage(damage) = &mut command else {
         return None;
@@ -168,7 +187,32 @@ fn damage_rule_ops(
     damage.config_effect = behavior.config_effect;
     damage.hurt.damage_from = crate::engine::manager::hp::HurtDamageFromType::SkillEffect;
     damage.hurt.hurt_effect_type = hurt_effect_type;
-    Some(vec![RuleOp::Command(BattleCommand::Hp(command))])
+    let finisher_damage = damage.amount.max(0);
+    let mut ops = vec![RuleOp::Command(BattleCommand::Hp(command))];
+    if let Some((progress, (buff_uid, act_id, _))) = terminal {
+        ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::SetState(
+            BuffSetState {
+                origin,
+                target_uid: context.source_uid,
+                buff_uid,
+                ex_info: None,
+                params: Some(format!(
+                    "{act_id}#-1,{},{}",
+                    progress.total_damage.saturating_add(finisher_damage),
+                    progress.target_uid,
+                )),
+                act_info: None,
+            },
+        ))));
+        ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(
+            BuffRemove {
+                origin,
+                target_uid: context.source_uid,
+                selector: BuffRemoveSelector::Uid(buff_uid),
+            },
+        ))));
+    }
+    Some(ops)
 }
 
 fn damage_rate(behavior: &ParsedBehavior, current_hp: i32, max_hp: i32) -> Option<(i32, i32)> {
@@ -292,6 +336,65 @@ mod tests {
         );
 
         assert!(definition(&behavior).is_none());
+    }
+
+    #[test]
+    fn finisher_requires_the_owned_qte_carrier() {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(1),
+                    ex_point_type: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+        let origin = crate::engine::skill::rule::CommandOrigin {
+            domain: crate::engine::skill::rule::RuleDomain::Behavior,
+            key: crate::engine::skill::rule::DefinitionKey::new(100000, "EzioProps"),
+        };
+        managers
+            .execute_ex_point(ExPointCommand::ConfigureSynchronization(
+                ExPointConfigureSynchronization {
+                    origin,
+                    target_uid: 10,
+                    definition: SynchronizationDefinition::new([101, 102, 103], 4, 100).unwrap(),
+                },
+            ))
+            .unwrap();
+        let pool = TargetPool::from_fight(&fight);
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(100003, "EzioBigSkillEnd"),
+            vec![9000],
+            Vec::new(),
+        );
+        let mut determinism = RoundDeterminism::default();
+        let mut modifiers = SkillModifiers::default();
+        let mut target = TargetContext::default();
+
+        assert!(
+            Handler::emit_ops(
+                BehaviorOpContext {
+                    source_uid: 10,
+                    source_team: 1,
+                    target_uid: -1,
+                    active_skill_id: 103,
+                    transfer_count: 1,
+                    event: None,
+                    managers: &managers,
+                    pool: &pool,
+                    determinism: &mut determinism,
+                    modifiers: &mut modifiers,
+                    target: &mut target,
+                },
+                &behavior,
+            )
+            .is_none()
+        );
     }
 
     #[test]

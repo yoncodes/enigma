@@ -49,6 +49,74 @@ async fn hero_level_up_accepts_levels_between_stat_breakpoints_and_consumes_curr
     assert!(consumed.material_changes.is_empty());
 }
 
+#[tokio::test]
+async fn upgrade_materials_fund_the_selected_level_and_resonance() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (30, 'promotion-materials', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let heroes = UserHeroModel::new(30, pool.clone());
+    heroes.create_hero(3003).await.unwrap();
+    let manager = HeroManager::new(30);
+    let costs = manager.upgrade_materials(&pool, 75, 5).await.unwrap();
+    assert!(!costs.items.is_empty());
+    assert!(!costs.currencies.is_empty());
+    crate::reward::RewardManager::new(30)
+        .apply(&pool, costs.clone())
+        .await
+        .unwrap();
+
+    while heroes.get(3003).await.unwrap().record.level < 75 {
+        let current = heroes.get(3003).await.unwrap();
+        let level_limit = config::configs::get()
+            .character_rank_level_limit(3003, current.record.rank)
+            .unwrap();
+        if 75 <= level_limit {
+            manager.level_up(&pool, 3003, 75).await.unwrap();
+            break;
+        }
+        manager.level_up(&pool, 3003, level_limit).await.unwrap();
+        manager.rank_up(&pool, 3003).await.unwrap();
+        assert_eq!(
+            heroes.get(3003).await.unwrap().record.level,
+            level_limit + 1
+        );
+    }
+    let current = heroes.get(3003).await.unwrap();
+    assert_eq!((current.record.rank, current.record.level), (3, 75));
+    while heroes.get(3003).await.unwrap().record.talent < 5 {
+        manager.talent_up(&pool, 3003).await.unwrap();
+    }
+    assert_eq!(heroes.get(3003).await.unwrap().record.talent, 5);
+
+    for (item_id, _) in costs.items {
+        let quantity: i32 =
+            sqlx::query_scalar("SELECT quantity FROM items WHERE user_id = 30 AND item_id = ?")
+                .bind(item_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(quantity, 0);
+    }
+    for (currency_id, _) in costs.currencies {
+        let quantity: i32 = sqlx::query_scalar(
+            "SELECT quantity FROM currencies WHERE user_id = 30 AND currency_id = ?",
+        )
+        .bind(currency_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(quantity, 0);
+    }
+}
+
 #[test]
 fn destiny_progression_follows_the_configured_slot_order() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
@@ -287,7 +355,7 @@ async fn rank_and_insight_skin_commit_together() {
 }
 
 #[tokio::test]
-async fn skin_can_be_owned_before_its_hero_but_not_equipped() {
+async fn non_default_skin_requires_ownership_but_default_skin_does_not() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
     let game_data = config::configs::get();
@@ -304,13 +372,22 @@ async fn skin_can_be_owned_before_its_hero_but_not_equipped() {
         .unwrap();
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     database::run_migrations(&pool).await.unwrap();
-    sqlx::query(
-        "INSERT INTO users (id, username, created_at, updated_at)
-         VALUES (20, 'skin-before-hero', 0, 0)",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    for (id, name) in [(20_i64, "skin-before-hero"), (21, "unowned-skin")] {
+        sqlx::query("INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, 0, 0)")
+            .bind(id)
+            .bind(name)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let unowned = UserHeroModel::new(21, pool.clone());
+    unowned.create_hero(skin.character_id).await.unwrap();
+    assert!(
+        HeroManager::new(21)
+            .use_skin(&pool, skin.character_id, skin.id)
+            .await
+            .is_err()
+    );
 
     let heroes = UserHeroModel::new(20, pool.clone());
     let applied = crate::reward::RewardManager::new(20)
@@ -345,6 +422,19 @@ async fn skin_can_be_owned_before_its_hero_but_not_equipped() {
     assert_eq!(
         heroes.get(skin.character_id).await.unwrap().record.skin,
         skin.id
+    );
+    let default_skin = game_data
+        .default_character_skin(skin.character_id)
+        .unwrap()
+        .id;
+    assert!(!heroes.has_skin(default_skin).await.unwrap());
+    HeroManager::new(20)
+        .use_skin(&pool, skin.character_id, default_skin)
+        .await
+        .unwrap();
+    assert_eq!(
+        heroes.get(skin.character_id).await.unwrap().record.skin,
+        default_skin
     );
 }
 
@@ -387,6 +477,7 @@ async fn profile_rejects_foreign_skins_and_equipment() {
     }
     let heroes = UserHeroModel::new(18, pool.clone());
     heroes.create_hero(3003).await.unwrap();
+    assert!(heroes.unlock_skin(foreign_skin.id).await.unwrap());
 
     let manager = HeroManager::new(18);
     assert!(

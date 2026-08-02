@@ -78,6 +78,17 @@ pub fn run_action_with_cost(
     action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
+    let current_pool = pool.runtime_view(managers);
+    if attack_has_no_target(
+        &invocation,
+        catalog,
+        &current_pool,
+        managers,
+        determinism,
+        context,
+    ) {
+        return Ok(DrainResult::default());
+    }
     let mut frames = Vec::new();
     let root = push_root(
         &mut frames,
@@ -136,6 +147,20 @@ pub fn run_conduit_action(
     skill_id: i32,
     cost_modifier: Option<(i32, RuleOp)>,
 ) -> Result<DrainResult, DrainError> {
+    let invocation = crate::engine::skill::action::SkillInvocation {
+        plan: crate::engine::skill::action::SkillRequest {
+            source_uid,
+            skill_id,
+        },
+        card_index: group,
+        mode: crate::engine::skill::action::SkillExecutionMode::Active,
+        ..crate::engine::skill::action::SkillInvocation::from(
+            crate::engine::skill::action::SkillRequest {
+                source_uid,
+                skill_id,
+            },
+        )
+    };
     let mut frames = Vec::new();
     let root = push_root(
         &mut frames,
@@ -190,20 +215,7 @@ pub fn run_conduit_action(
     }
     queued.extend([
         (
-            RuleOp::Skill(crate::engine::skill::action::SkillInvocation {
-                plan: crate::engine::skill::action::SkillRequest {
-                    source_uid,
-                    skill_id,
-                },
-                card_index: group,
-                mode: crate::engine::skill::action::SkillExecutionMode::Active,
-                ..crate::engine::skill::action::SkillInvocation::from(
-                    crate::engine::skill::action::SkillRequest {
-                        source_uid,
-                        skill_id,
-                    },
-                )
-            }),
+            RuleOp::Skill(invocation),
             skill.clone(),
             Some(SkillExecution::new(context)),
         ),

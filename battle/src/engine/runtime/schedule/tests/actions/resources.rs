@@ -501,3 +501,61 @@ fn ultimate_spends_the_required_cost_derived_from_its_active_buff() {
 
     assert_eq!(managers.ex_point.get(10), 0);
 }
+
+#[test]
+fn conduit_attack_does_not_begin_without_a_living_enemy() {
+    init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(100),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut twins = entity(10, 3149);
+    twins.ex_skill = Some(31490151);
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![twins],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 1001)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.hp.lose(-1, 100, 0);
+    managers
+        .conduit
+        .execute(
+            crate::engine::manager::conduit::ConduitCommand::SelectGroup {
+                source_uid: 10,
+                group: 3,
+            },
+        )
+        .unwrap();
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    let result = run_conduit_phase(
+        &fight,
+        &mut managers,
+        &pool,
+        &mut catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[sonettobuf::FightDeviceOper {
+            uid: Some(10),
+            index: Some(3),
+        }],
+    )
+    .unwrap();
+
+    assert!(result.frames.is_empty());
+    assert_eq!(managers.conduit.uses(10), 0);
+}
