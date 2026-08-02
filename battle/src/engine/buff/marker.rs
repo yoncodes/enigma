@@ -373,4 +373,26 @@ mod tests {
         );
         assert!(refresh_markers(31280112).is_empty());
     }
+
+    #[test]
+    fn joe_shield_counter_marks_only_its_initial_add() {
+        crate::test_support::init_config();
+
+        assert_eq!(
+            add_markers(30940121),
+            vec![BuffMarker {
+                effect_type: EffectType::Shield as i32,
+            }]
+        );
+        assert_eq!(
+            add_markers(30940181),
+            vec![BuffMarker {
+                effect_type: EffectType::None as i32,
+            }]
+        );
+        assert!(static_markers(30940121).is_empty());
+        assert!(refresh_markers(30940121).is_empty());
+        assert!(static_markers(30940181).is_empty());
+        assert!(refresh_markers(30940181).is_empty());
+    }
 }

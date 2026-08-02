@@ -170,6 +170,7 @@ pub struct ExPointMaxApplyResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExPointCommand {
     Change(ExPointChange),
+    Spend(ExPointChange),
     Set(ExPointSet),
     ChangeMax(ExPointMaxChange),
     ConfigureSynchronization(ExPointConfigureSynchronization),
@@ -243,6 +244,7 @@ impl ExPointManager {
         &mut self,
         command: ExPointCommand,
         gain_allowed: bool,
+        reduction_allowed: bool,
     ) -> Result<ExPointChanges, ExPointCommandError> {
         if let ExPointCommand::ConfigureSynchronization(configure) = command {
             let state = self
@@ -309,30 +311,42 @@ impl ExPointManager {
                 },
             });
         }
-        let (origin, source_uid, target_uid, value, config_effect, effect_type, set) = match command
-        {
-            ExPointCommand::Change(value) => (
-                value.origin,
-                value.source_uid,
-                value.target_uid,
-                value.delta,
-                value.config_effect,
-                value.effect_type,
-                false,
-            ),
-            ExPointCommand::Set(value) => (
-                value.origin,
-                value.source_uid,
-                value.target_uid,
-                value.value,
-                value.config_effect,
-                value.effect_type,
-                true,
-            ),
-            ExPointCommand::ChangeMax(_) => unreachable!(),
-            ExPointCommand::ConfigureSynchronization(_) => unreachable!(),
-            ExPointCommand::RecordSynchronizationAction(_) => unreachable!(),
-        };
+        let (origin, source_uid, target_uid, value, config_effect, effect_type, set, spend) =
+            match command {
+                ExPointCommand::Change(value) => (
+                    value.origin,
+                    value.source_uid,
+                    value.target_uid,
+                    value.delta,
+                    value.config_effect,
+                    value.effect_type,
+                    false,
+                    false,
+                ),
+                ExPointCommand::Spend(value) => (
+                    value.origin,
+                    value.source_uid,
+                    value.target_uid,
+                    value.delta,
+                    value.config_effect,
+                    value.effect_type,
+                    false,
+                    true,
+                ),
+                ExPointCommand::Set(value) => (
+                    value.origin,
+                    value.source_uid,
+                    value.target_uid,
+                    value.value,
+                    value.config_effect,
+                    value.effect_type,
+                    true,
+                    false,
+                ),
+                ExPointCommand::ChangeMax(_) => unreachable!(),
+                ExPointCommand::ConfigureSynchronization(_) => unreachable!(),
+                ExPointCommand::RecordSynchronizationAction(_) => unreachable!(),
+            };
         if target_uid == 0 || (!set && value == 0) || (set && value < 0) {
             return Err(ExPointCommandError::InvalidCommand);
         }
@@ -344,7 +358,7 @@ impl ExPointManager {
         } else {
             value
         };
-        if delta > 0 && !gain_allowed {
+        if (delta > 0 && !gain_allowed) || (delta < 0 && !spend && !reduction_allowed) {
             let state = self.states[&target_uid];
             return Ok(ExPointChanges::Value {
                 origin,

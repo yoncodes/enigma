@@ -1,5 +1,5 @@
 use crate::engine::{
-    event::{kind::EventKind, subscription::SubscriptionKey},
+    event::kind::EventKind,
     manager::{
         buff::{BuffCommand, BuffRemove, BuffRemoveSelector},
         hp::HpCommand,
@@ -9,7 +9,6 @@ use crate::engine::{
         buff_act::{self, registry::BuffActKind},
         effect::ParsedBehavior,
         rule::output::{BattleCommand, RuleOp},
-        subscriber::BuffActSubscriber,
     },
 };
 
@@ -35,7 +34,8 @@ impl BehaviorHandler for Handler {
         let mut effects = Vec::new();
         let mut consumed = Vec::new();
         for feature in features {
-            let Some(subscriber) = subscriber(feature) else {
+            let Some(subscriber) = buff_act::subscriber_from_feature(feature, EventKind::RoundEnd)
+            else {
                 continue;
             };
             let Some(kind) = buff_act::subscriber_kind(&subscriber) else {
@@ -96,28 +96,6 @@ impl BehaviorHandler for Handler {
         }
         Some(effects)
     }
-}
-
-fn subscriber(
-    feature: crate::engine::manager::buff::ActiveBuffFeature,
-) -> Option<BuffActSubscriber> {
-    let (&act_id, args) = feature.values.split_first()?;
-    let definition = buff_act::registry::find(act_id, &feature.act_type)?;
-    Some(BuffActSubscriber {
-        owner_uid: feature.owner_uid,
-        source_uid: feature.source_uid,
-        buff_uid: feature.buff_uid,
-        buff_id: feature.buff_id,
-        team_type: feature.team_type,
-        owner_alive: feature.owner_alive,
-        amount: feature.amount,
-        key: SubscriptionKey::new(EventKind::RoundEnd, definition.key),
-        act_type: feature.act_type,
-        effect_time: feature.effect_time,
-        effect_condition: feature.effect_condition,
-        args: args.to_vec(),
-        raw: feature.raw,
-    })
 }
 
 fn scaled(

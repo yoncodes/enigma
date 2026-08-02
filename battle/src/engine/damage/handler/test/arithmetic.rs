@@ -102,3 +102,55 @@ fn burn_applies_its_unstackable_healing_taken_reduction() {
     assert!(managers.buff.has_active_buff_id_or_type(-1, burn_type));
     assert_eq!(super::heal::modified(1_000, 10, -1, &managers), 850);
 }
+
+#[test]
+fn missing_hp_healing_uses_the_configured_base_bucket_and_cap() {
+    crate::test_support::init_config();
+    let fight = sonettobuf::Fight {
+        attacker: Some(sonettobuf::FightTeam {
+            entitys: vec![
+                sonettobuf::FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(1_000),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                sonettobuf::FightEntityInfo {
+                    uid: Some(11),
+                    current_hp: Some(5_000),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![sonettobuf::BuffInfo {
+                        buff_id: Some(31200124),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                sonettobuf::FightEntityInfo {
+                    uid: Some(12),
+                    current_hp: Some(500),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![sonettobuf::BuffInfo {
+                        buff_id: Some(31200124),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+
+    assert_eq!(super::heal::modified(1_000, 10, 11, &managers), 1_575);
+    assert_eq!(super::heal::modified(1_000, 10, 12, &managers), 1_800);
+}

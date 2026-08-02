@@ -28,6 +28,7 @@ impl ExtraSkillKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExtraActionConditionMode {
     ActiveAction,
+    OtherAllyAction,
     DamageAction,
     IncomingAttack,
 }
@@ -46,6 +47,13 @@ pub fn skill_kind_from_is_extra(is_extra: i32) -> Option<ExtraSkillKind> {
 pub fn active_action(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::ExtraAction {
         mode: ExtraActionConditionMode::ActiveAction,
+        kinds: parse_i32_list(args.first()?)?,
+    })
+}
+
+pub fn other_ally_action(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::ExtraAction {
+        mode: ExtraActionConditionMode::OtherAllyAction,
         kinds: parse_i32_list(args.first()?)?,
     })
 }

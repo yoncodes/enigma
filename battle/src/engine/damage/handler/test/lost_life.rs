@@ -102,3 +102,36 @@ fn lost_life_attack_uses_all_characters_and_the_configured_hp_basis() {
         )))]
     ));
 }
+
+#[test]
+fn configured_hp_loss_floor_clamps_loss_at_fifteen_percent() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(1),
+                current_hp: Some(2_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(31200145),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let behavior = ParsedBehavior::from_spec(
+        BehaviorSpec::new(30006, "LostLifeByAttr"),
+        vec![1, AttrId::CurrentHp as i32, 1_000],
+        Vec::new(),
+    );
+
+    assert_eq!(managers.buff.lost_life_floor_permille(1), 150);
+    assert_eq!(loss::amount(1, &managers, &behavior), Some(500));
+}

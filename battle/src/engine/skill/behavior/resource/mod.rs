@@ -1,6 +1,7 @@
 use crate::engine::{
     entity::attr::AttrId,
     manager::{
+        card::{CardCommand, CardConsumeForEffect},
         conduit::{ConduitCommand, ConduitPowerChange, ConduitPowerChangeKind},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand, EurekaProgress},
         ex_point::{ExPointChange, ExPointCommand},
@@ -8,10 +9,14 @@ use crate::engine::{
         hp::{CurrentHpSet, HpCommand},
     },
     skill::{
+        action::{SkillExecutionMode, SkillInvocation, SkillRequest, SkillTarget},
         behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
         buff_act,
         effect::ParsedBehavior,
-        rule::output::{BattleCommand, RuleOp},
+        rule::{
+            RuleReferences,
+            output::{BattleCommand, RuleOp},
+        },
     },
 };
 
@@ -21,6 +26,15 @@ use sonettobuf::effect_type_enum::EffectType;
 
 pub(super) struct Handler;
 
+pub(super) fn supports_recover_power_and_cast_cards(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [skill_id, target_rule]
+            if *skill_id > 0
+                && crate::engine::skill::target::is_mapped_target_code(*target_rule)
+    )
+}
+
 pub fn supports_average_life(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [0])
 }
@@ -28,6 +42,20 @@ pub fn supports_average_life(behavior: &ParsedBehavior) -> bool {
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         rule_ops(context, behavior)
+    }
+
+    fn references(behavior: &ParsedBehavior) -> RuleReferences {
+        RuleReferences {
+            skills: matches!(
+                behavior.spec.kind,
+                BehaviorKind::RecoverPowerAndDelCardsUseSkill
+            )
+            .then(|| behavior.arg(0))
+            .flatten()
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        }
     }
 }
 
@@ -126,16 +154,42 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
             power_args(&behavior.args).map(|(power_id, delta)| vec![eureka(power_id, delta)])
         }
         BehaviorKind::RecoverPowerAndDelCardsUseSkill => {
+            let [skill_id, target_rule] = behavior.args.as_slice() else {
+                return None;
+            };
             let state = context
                 .managers
                 .eureka
                 .get(context.target_uid, EUREKA_RESOURCE_ID);
             let delta = state.max - state.current;
-            Some(if delta != 0 {
-                vec![eureka(EUREKA_RESOURCE_ID, delta)]
-            } else {
-                Vec::new()
-            })
+            let cards = context
+                .managers
+                .card
+                .plan_effect_consumption(context.target_uid);
+            let mut ops = Vec::with_capacity(cards.len() + 2);
+            if delta != 0 {
+                ops.push(eureka(EUREKA_RESOURCE_ID, delta));
+            }
+            if !cards.is_empty() {
+                ops.push(RuleOp::Command(BattleCommand::Card(
+                    CardCommand::ConsumeForEffect(CardConsumeForEffect {
+                        origin,
+                        owner_uid: context.target_uid,
+                        indices: cards.iter().map(|(index, _)| *index).collect(),
+                    }),
+                )));
+            }
+            ops.extend(cards.into_iter().map(|_| {
+                let mut invocation: SkillInvocation = SkillRequest {
+                    source_uid: context.target_uid,
+                    skill_id: *skill_id,
+                }
+                .into();
+                invocation.target = SkillTarget::LogicRule(*target_rule);
+                invocation.mode = SkillExecutionMode::Active;
+                RuleOp::Skill(invocation)
+            }));
+            Some(ops)
         }
         BehaviorKind::AddPowerByCritCount => {
             let [threshold, gain] = behavior.args.as_slice() else {
@@ -212,6 +266,34 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                     .attributed_to(context.source_uid, behavior.config_effect),
             )));
             Some(ops)
+        }
+        BehaviorKind::AddRedOrBlueCount => {
+            let [color, count] = behavior.args.as_slice() else {
+                return None;
+            };
+            let (buff_uid, act_id, _) = context.managers.buff.buff_act_carrier(
+                context.target_uid,
+                buff_act::registry::BuffActKind::RedOrBlueCount,
+            )?;
+            let current = context
+                .managers
+                .buff
+                .snapshot(context.target_uid, buff_uid)?
+                .act_common_params;
+            let params =
+                buff_act::red_or_blue_count::append(current.as_deref(), act_id, *color, *count)?;
+            Some(vec![RuleOp::Command(BattleCommand::Buff(
+                crate::engine::manager::buff::BuffCommand::SetStateSnapshot(
+                    crate::engine::manager::buff::BuffSetState {
+                        origin,
+                        target_uid: context.target_uid,
+                        buff_uid,
+                        params: Some(params),
+                        act_info: None,
+                        ex_info: None,
+                    },
+                ),
+            ))])
         }
         BehaviorKind::AddConduitPower => {
             let (power_id, delta, kind) = conduit_power_args(&behavior.args)?;
@@ -301,7 +383,7 @@ pub(super) fn supports_conduit_power(behavior: &ParsedBehavior) -> bool {
     conduit_power_args(&behavior.args).is_some()
 }
 
-pub(super) fn supports_conduit_ex_point(behavior: &ParsedBehavior) -> bool {
+pub(super) fn supports_ex_point_gain(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [delta] if *delta > 0)
 }
 
@@ -313,8 +395,28 @@ pub(super) fn supports_power_change(behavior: &ParsedBehavior) -> bool {
     power_args(&behavior.args).is_some_and(|(power_id, _)| power_id > 0)
 }
 
+pub(super) fn supports_recover_power(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [amount] if *amount != 0)
+}
+
+pub(super) fn supports_team_energy(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [delta] if *delta > 0)
+}
+
+pub(super) fn supports_red_or_blue_count(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [color @ 1..=3, count] if *color > 0 && *count > 0)
+}
+
 pub(super) fn supports_total_skill_rank_power(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [rate, power_id] if *rate > 0 && *power_id > 0)
+}
+
+pub(super) fn supports_power_by_critical_count(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [threshold, gain] if *threshold > 0 && *gain > 0)
+}
+
+pub(super) fn supports_emitter_energy(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [delta] if *delta > 0)
 }
 
 pub(super) fn supports_ex_point_loss(behavior: &ParsedBehavior) -> bool {

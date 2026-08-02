@@ -90,31 +90,27 @@ impl EffectPacket {
         }
     }
 
-    pub fn conduit_skill_began(
+    pub fn conduit_skill_began(team: i32, power_id: i32, spent: i32) -> ActEffect {
+        ActEffect {
+            target_id: Some(0),
+            effect_type: Some(EffectType::Devicepowerchange as i32),
+            effect_num: Some(-1),
+            config_effect: Some(0),
+            buff_act_id: Some(0),
+            reserve_id: Some(0),
+            reserve_str: Some(format!("{power_id}#{}", -spent)),
+            team_type: Some(team),
+            effect_num1: Some(0),
+            ..Default::default()
+        }
+    }
+
+    pub fn conduit_skill_cost_committed(
         source_uid: i64,
         team: i32,
-        power_id: i32,
-        spent: i32,
         consumed_this_round: i32,
-    ) -> Vec<ActEffect> {
-        if spent == 0 {
-            return Vec::new();
-        }
-        vec![
-            ActEffect {
-                target_id: Some(0),
-                effect_type: Some(EffectType::Devicepowerchange as i32),
-                effect_num: Some(-1),
-                config_effect: Some(0),
-                buff_act_id: Some(0),
-                reserve_id: Some(0),
-                reserve_str: Some(format!("{power_id}#{}", -spent)),
-                team_type: Some(team),
-                effect_num1: Some(0),
-                ..Default::default()
-            },
-            Self::conduit_counter(source_uid, team, 62, consumed_this_round),
-        ]
+    ) -> ActEffect {
+        Self::conduit_counter(source_uid, team, 62, consumed_this_round)
     }
 
     pub fn conduit_powers_cleared(source_uid: i64, team: i32, config_effect: i32) -> ActEffect {

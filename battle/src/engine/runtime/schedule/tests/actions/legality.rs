@@ -168,6 +168,67 @@ fn disarm_blocks_basic_attack_incantations_through_card_legality() {
 }
 
 #[test]
+fn seal_blocks_only_ultimate_incantations() {
+    init_config();
+    assert_eq!(
+        buff_act::registry::destination(407, "Seal", &[]),
+        Some(buff_act::registry::BuffActDestination::StateConsumer)
+    );
+
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1),
+                    buff_id: Some(4071),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let catalog = crate::engine::skill::effect::catalog::global();
+
+    assert!(card_skill_is_blocked(&managers, catalog, 10, 30480131));
+    assert!(!card_skill_is_blocked(&managers, catalog, 10, 30480111));
+}
+
+#[test]
+fn incapacitating_control_buffs_block_card_actions() {
+    init_config();
+    for (buff_id, kind) in [
+        (4011, buff_act::registry::BuffActKind::Dizzy),
+        (4020, buff_act::registry::BuffActKind::Petrified),
+    ] {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(buff_id),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let catalog = SkillEffectCatalog::default();
+        assert!(managers.buff.has_buff_act_kind(10, kind));
+        assert!(card_skill_is_blocked(&managers, &catalog, 10, 1));
+    }
+}
+
+#[test]
 fn channeling_blocks_active_card_actions() {
     init_config();
     let fight = Fight {

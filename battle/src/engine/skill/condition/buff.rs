@@ -166,6 +166,26 @@ pub fn buff_status_at_least(_: i32, _: &str, raw_args: &[String]) -> Option<Pars
     )
 }
 
+pub fn buff_status_at_most(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::BuffStatusCount {
+        status_ids: parse_buff_ids(raw_args.get(1..2)?)?,
+        compare: ConditionCompare::LessThanOrEqual,
+        threshold: raw_args.first()?.parse().ok()?,
+    })
+}
+
+pub fn per_team_status_type_count(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::PerTeamBuffStatusTypeCount {
+        divisor: raw_args.first()?.parse().ok()?,
+        max_count: raw_args.get(1)?.parse().ok()?,
+        status_ids: parse_buff_ids(raw_args.get(2..3)?)?,
+    })
+}
+
 pub fn enemy_highest_buff_type_at_least(
     _: i32,
     _: &str,

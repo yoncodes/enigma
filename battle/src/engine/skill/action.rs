@@ -69,6 +69,7 @@ pub struct SkillActionEvent {
     pub teammate_injury_count_not_reset: i32,
     pub team_injury_count_round: i32,
     pub card_enchants: Vec<i32>,
+    pub buff_additions: Vec<(i32, i32)>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -99,6 +100,7 @@ pub enum SkillTarget {
     Inherited,
     #[default]
     Configured,
+    LogicRule(i32),
     Explicit(i64),
 }
 

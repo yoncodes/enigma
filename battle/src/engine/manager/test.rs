@@ -5,6 +5,7 @@ use sonettobuf::{
 use crate::engine::{
     manager::{
         buff::{BuffCommand, BuffGrant, CommandOrigin},
+        conduit::ConduitCommand,
         ex_point::{
             ExPointChange, ExPointChanges, ExPointCommand, ExPointConfigureSynchronization,
             ExPointRecordSynchronizationAction, SynchronizationDefinition,
@@ -918,6 +919,160 @@ fn ex_point_cant_add_blocks_gains_but_allows_spending() {
                 && change.after == 3
     ));
     let spent = managers.execute_ex_point(change(-2)).unwrap();
+    assert!(matches!(
+        spent,
+        ExPointChanges::Value { change, .. }
+            if change.applied_delta == -2 && change.after == 1
+    ));
+}
+
+#[test]
+fn skill_damage_reduces_guard_at_the_active_action_rate() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3149),
+                team_type: Some(1),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(10_000),
+                toughness_value: Some(5_000),
+                toughness_point: Some(3),
+                is_broken: Some(false),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let damage = || {
+        HpCommand::Damage(HpDamage {
+            origin: CommandOrigin {
+                domain: RuleDomain::Skill,
+                key: DefinitionKey::new(1, "Damage"),
+            },
+            source_uid: 10,
+            target_uid: -1,
+            amount: 1_000,
+            config_effect: -1,
+            effect_kind: DamageEffectKind::Normal,
+            assassinate: false,
+            hurt: HurtInfoData {
+                from_uid: 10,
+                is_crit: false,
+                career_restraint: false,
+                reduce_hp: -1_000,
+                effect_id: 1,
+                skill_id: 1,
+                damage_from: HurtDamageFromType::Skill,
+                buff_act_id: 0,
+                buff_uid: 0,
+                hurt_effect_type: 0,
+                display_amount: Some(1_000),
+            },
+        })
+    };
+
+    let normal = managers.execute_hp(damage()).unwrap();
+    assert_eq!(normal.toughness.unwrap().value_delta, 200);
+
+    managers
+        .conduit
+        .execute(ConduitCommand::SetRunning {
+            source_uid: 10,
+            running: true,
+        })
+        .unwrap();
+    let conduit = managers.execute_hp(damage()).unwrap();
+    assert_eq!(conduit.toughness.unwrap().value_delta, 1_000);
+}
+
+#[test]
+fn moxie_reduction_immunity_blocks_reduction_but_allows_spending() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                ex_point: Some(3),
+                current_hp: Some(100),
+                attr: Some(HeroAttribute {
+                    hp: Some(100),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let guard_origin = CommandOrigin {
+        domain: RuleDomain::BuffAct,
+        key: DefinitionKey::new(509, "ImmunityExpointChange"),
+    };
+    managers
+        .execute_buff(BuffCommand::Grant(BuffGrant {
+            origin: guard_origin,
+            source_uid: 10,
+            target_uid: 10,
+            buff_id: 5081,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }))
+        .unwrap();
+
+    let reduction = |delta| {
+        ExPointCommand::Change(ExPointChange {
+            origin: CommandOrigin {
+                domain: RuleDomain::BuffAct,
+                key: DefinitionKey::new(605, "ExPointDel"),
+            },
+            source_uid: 10,
+            target_uid: 10,
+            delta,
+            config_effect: 0,
+            effect_type: 0,
+        })
+    };
+    let blocked = managers.execute_ex_point(reduction(-2)).unwrap();
+    assert!(matches!(
+        blocked,
+        ExPointChanges::Value { change, .. }
+            if change.requested_delta == -2
+                && change.applied_delta == 0
+                && change.before == 3
+                && change.after == 3
+    ));
+    let spent = managers
+        .execute_ex_point(ExPointCommand::Spend(ExPointChange {
+            origin: crate::engine::manager::card::CARD_PLAY_ORIGIN,
+            source_uid: 10,
+            target_uid: 10,
+            delta: -2,
+            config_effect: 0,
+            effect_type: 0,
+        }))
+        .unwrap();
     assert!(matches!(
         spent,
         ExPointChanges::Value { change, .. }

@@ -71,6 +71,7 @@ mod tests {
             target_uid,
             skill_id: 1,
             amount: 1,
+            shield_absorbed: 0,
             damage_from: HurtDamageFromType::Skill,
             assassinate: false,
         })

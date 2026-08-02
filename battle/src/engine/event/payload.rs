@@ -34,6 +34,7 @@ pub struct HitEvent {
     pub target_uid: i64,
     pub skill_id: i32,
     pub amount: i32,
+    pub shield_absorbed: i32,
     pub damage_from: crate::engine::manager::hp::HurtDamageFromType,
     pub assassinate: bool,
 }
@@ -76,6 +77,7 @@ pub struct ConduitActivatedEvent {
     pub team: i32,
     pub skill_id: i32,
     pub power_id: i32,
+    pub activation_cost: i32,
     pub spent: i32,
 }
 
@@ -275,8 +277,8 @@ impl BattleEvent {
             Self::BuffFeatureTriggered(_) => EventKind::BuffFeatureTriggered,
             Self::HpLost { .. } => EventKind::HpLost,
             Self::HpHealed { .. } => EventKind::HpHealed,
-            Self::ToughnessBroken { .. } => EventKind::ToughnessBroken,
             Self::Hit(_) => EventKind::TargetAttacked,
+            Self::ToughnessBroken { .. } => EventKind::ToughnessBroken,
             Self::EntityDied(_) => EventKind::EntityDied,
             Self::BattleTerminalCommitted { .. } => EventKind::BattleTerminalCommitted,
             Self::ExPointChanged(_) => EventKind::ExPointChanged,
@@ -345,6 +347,7 @@ mod subscription_tests {
             target_uid: -1,
             skill_id: 1,
             amount: 1,
+            shield_absorbed: 0,
             damage_from,
             assassinate: false,
         })
@@ -396,6 +399,7 @@ mod subscription_tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         };
 
         assert_eq!(

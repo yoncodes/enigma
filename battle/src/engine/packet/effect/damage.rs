@@ -52,20 +52,6 @@ impl EffectPacket {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn fully_absorbed_damage_with_hurt_info_layout(
-        target_uid: i64,
-        damage: DamageRecord,
-        hurt_info_layout: HurtInfoWireLayout,
-    ) -> ActEffect {
-        Self::fully_absorbed_damage_with_toughness_layout(
-            target_uid,
-            damage,
-            None,
-            hurt_info_layout,
-        )
-    }
-
     pub(crate) fn fully_absorbed_damage_with_toughness_layout(
         target_uid: i64,
         damage: DamageRecord,

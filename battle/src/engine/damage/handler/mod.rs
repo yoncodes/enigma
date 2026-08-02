@@ -152,10 +152,34 @@ impl BehaviorHandler for Handler {
                 let [rate] = behavior.args.as_slice() else {
                     return None;
                 };
+                let leech_rate = rate
+                    .saturating_add(
+                        context
+                            .managers
+                            .attribute
+                            .get(source_uid, AttrId::LeechRate),
+                    )
+                    .saturating_add(
+                        context
+                            .managers
+                            .buff
+                            .attribute_delta(source_uid, AttrId::LeechRate),
+                    );
+                let efficacy = 1000_i32
+                    .saturating_sub(
+                        context
+                            .managers
+                            .buff
+                            .buff_act_scalar(source_uid, BuffActKind::InjuryAbsorb),
+                    )
+                    .max(0);
                 return Some(heal(
                     crate::engine::damage::scale_permille(
-                        context.target.action_damage_amount,
-                        *rate,
+                        crate::engine::damage::scale_permille(
+                            context.target.action_damage_amount,
+                            leech_rate,
+                        ),
+                        efficacy,
                     ),
                     HpHealKind::Bloodlust,
                 ));
@@ -371,7 +395,8 @@ impl BehaviorHandler for Handler {
                     },
                 )))]);
             }
-            (30005 | 30006 | 30018 | 60288 | 60310, BehaviorKind::LostLife) => {
+            (30005 | 30006 | 30018 | 60288, BehaviorKind::LostLife)
+            | (60310, BehaviorKind::ToughnessOverflowDamage) => {
                 let amount = loss::amount(target_uid, context.managers, behavior)?;
                 if amount <= 0 {
                     return Some(Vec::new());

@@ -87,6 +87,7 @@ fn damage_command_commits_shield_hp_crit_and_death_once() {
                 target_uid: 10,
                 skill_id: 0,
                 amount: 50,
+                shield_absorbed: 20,
                 damage_from: HurtDamageFromType::Skill,
                 assassinate: false,
             }),
@@ -153,6 +154,7 @@ fn shield_only_damage_is_a_hit_but_not_hp_loss() {
             target_uid: 10,
             skill_id: 123,
             amount: 0,
+            shield_absorbed: 10,
             damage_from: HurtDamageFromType::Skill,
             assassinate: false,
         })]

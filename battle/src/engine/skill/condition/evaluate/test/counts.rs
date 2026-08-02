@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn burn_overflow_repeats_once_per_rejected_layer() {
+    init_config();
+    let condition = ParsedCondition {
+        opcode: 564203,
+        type_name: "BurnOverflow".into(),
+        kind: ParsedConditionKind::BurnOverflow,
+        raw_args: Vec::new(),
+    };
+
+    assert_eq!(
+        conditions_fire_count(
+            &[condition],
+            10,
+            &[-1],
+            None,
+            &TargetPool::default(),
+            TargetContext {
+                buff_overflow_amount: 4,
+                ..Default::default()
+            },
+        ),
+        4
+    );
+}
+
+#[test]
 fn current_card_enchant_preserves_exact_ids_and_supports_any_rewrite() {
     init_config();
     let condition = |enchant_id| ParsedCondition {
@@ -360,6 +386,74 @@ fn per_buff_id_count_repeats_once_per_matching_layer() {
             TargetContext::default(),
         ),
         5
+    );
+}
+
+#[test]
+fn team_status_type_count_repeats_per_distinct_buff_type() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    buffs: vec![
+                        BuffInfo {
+                            buff_id: Some(400901),
+                            uid: Some(1),
+                            ..Default::default()
+                        },
+                        BuffInfo {
+                            buff_id: Some(400902),
+                            uid: Some(2),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    buffs: vec![
+                        BuffInfo {
+                            buff_id: Some(31340007),
+                            uid: Some(3),
+                            ..Default::default()
+                        },
+                        BuffInfo {
+                            buff_id: Some(712313),
+                            uid: Some(4),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let condition = ParsedCondition {
+        opcode: 539301,
+        type_name: "PerSelfTeamTypeType2BuffTypeIdNum".into(),
+        kind: ParsedConditionKind::PerTeamBuffStatusTypeCount {
+            status_ids: vec![1, 3, 5, 7, 14],
+            divisor: 3,
+            max_count: 5,
+        },
+        raw_args: vec!["3".into(), "5".into(), "1,3,5,7,14".into()],
+    };
+
+    assert_eq!(
+        conditions_fire_count(
+            &[condition],
+            10,
+            &[10, 11],
+            Some(&managers),
+            &TargetPool::from_fight(&fight),
+            TargetContext::default(),
+        ),
+        1
     );
 }
 

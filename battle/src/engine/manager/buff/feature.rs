@@ -189,28 +189,35 @@ pub(super) fn hp_max_add_rate(
 pub(super) fn passive_skill_links(
     owner_uid: i64,
     features: &[ResolvedBuffFeature],
+    amount: i32,
 ) -> Vec<BuffPassiveSkillLink> {
     let mut output = Vec::new();
-    collect_passive_skill_links(owner_uid, features, &mut Vec::new(), &mut output);
+    collect_passive_skill_links(owner_uid, features, amount, &mut Vec::new(), &mut output);
     output
 }
 
 fn collect_passive_skill_links(
     owner_uid: i64,
     features: &[ResolvedBuffFeature],
+    amount: i32,
     visited: &mut Vec<i32>,
     output: &mut Vec<BuffPassiveSkillLink>,
 ) {
     for feature in features {
-        if let [act_id, skill_id] = feature.values.as_slice()
-            && crate::engine::skill::buff_act::registry::kind(*act_id, &feature.act_type)
-                == Some(crate::engine::skill::buff_act::registry::BuffActKind::AddPassiveSkills)
-            && *skill_id > 0
-        {
+        let skill_id = match (feature.kind, feature.values.as_slice()) {
+            (Some(BuffActKind::AddPassiveSkills), [_, skill_id]) => Some(*skill_id),
+            (Some(BuffActKind::AddPassiveSkillByLayer), [_, threshold, skill_id])
+                if amount >= *threshold =>
+            {
+                Some(*skill_id)
+            }
+            _ => None,
+        };
+        if let Some(skill_id) = skill_id.filter(|skill_id| *skill_id > 0) {
             output.push(BuffPassiveSkillLink {
                 owner_uid,
                 runtime_target_uid: owner_uid,
-                skill_id: *skill_id,
+                skill_id,
             });
         }
         if feature.kind != Some(crate::engine::skill::buff_act::registry::BuffActKind::SubBuff) {
@@ -226,7 +233,7 @@ fn collect_passive_skill_links(
             continue;
         };
         visited.push(child_buff_id);
-        collect_passive_skill_links(owner_uid, child.features(), visited, output);
+        collect_passive_skill_links(owner_uid, child.features(), amount, visited, output);
         visited.pop();
     }
 }
@@ -320,7 +327,7 @@ mod tests {
                 .any(|feature| { feature.buff_id == 31260201 && feature.act_id() == Some(865) })
         );
         assert_eq!(
-            passive_skill_links(10, definition.features()),
+            passive_skill_links(10, definition.features(), 1),
             vec![BuffPassiveSkillLink {
                 owner_uid: 10,
                 runtime_target_uid: 10,

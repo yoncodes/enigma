@@ -377,12 +377,13 @@ impl BattleManagers {
     fn commit_hp(&mut self, plan: HpPlan) -> hp::HpChanges {
         let toughness = match plan.command {
             hp::HpCommand::Damage(damage)
-                if damage.hurt.damage_from == hp::HurtDamageFromType::Skill =>
+                if damage.effect_kind != hp::DamageEffectKind::Avoided
+                    && damage.hurt.damage_from == hp::HurtDamageFromType::Skill =>
             {
                 self.toughness.reduce(
                     damage.target_uid,
                     damage.amount,
-                    damage.hurt.career_restraint,
+                    damage.hurt.career_restraint || self.conduit.is_running(damage.source_uid),
                 )
             }
             _ => None,
@@ -495,6 +496,7 @@ impl BattleManagers {
     ) -> Result<ex_point::ExPointChanges, ex_point::ExPointCommandError> {
         let target_uid = match command {
             ex_point::ExPointCommand::Change(change) => Some(change.target_uid),
+            ex_point::ExPointCommand::Spend(change) => Some(change.target_uid),
             ex_point::ExPointCommand::Set(change) => Some(change.target_uid),
             ex_point::ExPointCommand::ChangeMax(_)
             | ex_point::ExPointCommand::ConfigureSynchronization(_)
@@ -506,7 +508,14 @@ impl BattleManagers {
                 crate::engine::skill::buff_act::registry::BuffActKind::ExPointCantAdd,
             )
         });
-        self.ex_point.execute_command(command, gain_allowed)
+        let reduction_allowed = target_uid.is_none_or(|target_uid| {
+            !self.buff.has_buff_act_kind(
+                target_uid,
+                crate::engine::skill::buff_act::registry::BuffActKind::MoxieReductionImmunity,
+            )
+        });
+        self.ex_point
+            .execute_command(command, gain_allowed, reduction_allowed)
     }
 
     pub(crate) fn execute_eureka(

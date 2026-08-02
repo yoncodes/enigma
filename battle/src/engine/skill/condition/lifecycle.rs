@@ -18,6 +18,14 @@ pub fn round_interval(_: i32, _: &str, args: &[String]) -> Option<ParsedConditio
     })
 }
 
+pub fn after_round(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    (args.len() == 1).then_some(())?;
+    Some(ParsedConditionKind::RoundInterval {
+        start_round: first_i32(args)?,
+        period: 1,
+    })
+}
+
 pub fn entity_dead(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::EntityDead)
 }

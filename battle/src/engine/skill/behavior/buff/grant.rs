@@ -13,6 +13,7 @@ pub(super) fn grant_command(
             | BehaviorKind::AddBuffPowerUse
             | BehaviorKind::AddBuffRound
             | BehaviorKind::AddBuffRound2
+            | BehaviorKind::AddBuffBySkillBuffAdditions
     )
     .then_some(BuffCommand::Grant(BuffGrant {
         origin: CommandOrigin {
@@ -76,6 +77,15 @@ pub(super) fn random_pool_grant_commands(
         ))));
     }
     Some(ops)
+}
+
+pub(super) fn supports_random_pool(behavior: &ParsedBehavior) -> bool {
+    let [pool_buff_id, count] = behavior.args.as_slice() else {
+        return false;
+    };
+    *pool_buff_id > 0
+        && *count > 0
+        && random_buff_pool(behavior).is_some_and(|pool| *count as usize <= pool.len())
 }
 
 pub fn random_buff_pool(behavior: &ParsedBehavior) -> Option<Vec<i32>> {

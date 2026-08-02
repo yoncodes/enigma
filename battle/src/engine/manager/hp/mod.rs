@@ -325,6 +325,15 @@ impl HpChanges {
                     .filter(|change| change.delta < 0)
                     .map(|change| change.delta.saturating_abs())
                     .unwrap_or_default(),
+                shield_absorbed: self
+                    .shield_absorbed
+                    .map(|change| change.absorbed)
+                    .unwrap_or_default()
+                    .saturating_add(
+                        self.team_shared_shield_absorbed
+                            .map(|change| change.absorbed)
+                            .unwrap_or_default(),
+                    ),
                 damage_from: damage.hurt.damage_from,
                 assassinate: damage.assassinate,
             }));

@@ -64,6 +64,7 @@ fn assist_boss_attack_passive_resolves_from_the_derived_skill_cast_event() {
         teammate_injury_count_not_reset: 0,
         team_injury_count_round: 0,
         card_enchants: Vec::new(),
+        buff_additions: Vec::new(),
     });
 
     run_event(
@@ -291,6 +292,7 @@ fn reactive_skill_frame_targets_the_other_team_of_a_hit() {
         target_uid: -2,
         skill_id: 100,
         amount: 50,
+        shield_absorbed: 0,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
         assassinate: false,
     });
@@ -299,7 +301,12 @@ fn reactive_skill_frame_targets_the_other_team_of_a_hit() {
     assert_eq!(reaction_counterparty(&pool, &event, -3), Some(10));
     assert_eq!(reaction_counterparty(&pool, &event, 10), Some(-2));
     assert_eq!(
-        reaction_skill_target(&pool, &event, -3, DefinitionKey::new(22213, "BeAttacked"),),
+        reaction_skill_target(
+            &pool,
+            &event,
+            -3,
+            crate::engine::skill::condition::registry::ReactionFrameTarget::Counterparty,
+        ),
         Some(10)
     );
 }
@@ -316,6 +323,7 @@ fn attack_consumption_keeps_first_hit_entity_order() {
             target_uid,
             skill_id: 100,
             amount: 50,
+            shield_absorbed: 0,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
             assassinate: false,
         })
@@ -357,6 +365,162 @@ fn allied_action_observer_keeps_the_triggering_action_target() {
 }
 
 #[test]
+fn eureka_threshold_reaction_observes_the_gain_from_the_same_action() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(10_000),
+                passive_skill: vec![30660143, 30660193],
+                power_infos: vec![PowerInfo {
+                    power_id: Some(EUREKA_RESOURCE_ID),
+                    num: Some(4),
+                    max: Some(5),
+                }],
+                attr: Some(HeroAttribute {
+                    attack: Some(1_000),
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    let result = run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::AllyAction(ActionEvent {
+            source_uid: 10,
+            skill_id: 30660111,
+            target_uid: -1,
+            target_uids: vec![-1],
+            skill_slot: 1,
+            is_attack: true,
+            rank: 1,
+            ..Default::default()
+        }),
+    )
+    .unwrap();
+
+    let deltas = result
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            BattleEvent::EurekaChanged(change) if change.target_uid == 10 => {
+                Some(change.applied_delta)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(deltas, [1, -5]);
+    assert_eq!(managers.eureka.get(10, EUREKA_RESOURCE_ID).current, 0);
+    assert!(managers.hp.current(-1) < 10_000);
+}
+
+#[test]
+fn after_hit_passive_uses_the_active_skills_successful_buff_additions() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                passive_skill: vec![200],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: [-1, -2, -3]
+                .into_iter()
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut passive_slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(60059, "AddBurnBySkillAddBurnCount"),
+            vec![4150001],
+            Vec::new(),
+        ),
+        TargetRequest::self_only(),
+    );
+    passive_slot.conditions = vec![ParsedCondition {
+        opcode: 210,
+        type_name: "None".to_owned(),
+        kind: ParsedConditionKind::None(NoneMode::SkillActionAfterHit),
+        raw_args: Vec::new(),
+    }];
+    passive_slot.compiled_route = ConditionRoute::compile(&passive_slot.conditions);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::from_spec(BehaviorSpec::new(1, "AddBuff"), vec![4150001], Vec::new()),
+            TargetRequest {
+                code: 202,
+                raw: Vec::new(),
+            },
+        )],
+    });
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 200,
+        slots: vec![passive_slot],
+    });
+
+    run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(
+            SkillRequest {
+                source_uid: 10,
+                skill_id: 100,
+            }
+            .into(),
+        )],
+    )
+    .unwrap();
+
+    assert_eq!(managers.buff.max_id_or_type_layer(10, 4150001), 3);
+    assert!(managers.buff.has_buff_id(-1, 4150001));
+    assert!(managers.buff.has_buff_id(-2, 4150001));
+    assert!(managers.buff.has_buff_id(-3, 4150001));
+}
+
+#[test]
 fn eureka_reaction_frame_stays_owned_by_the_subscriber() {
     let event = BattleEvent::EurekaChanged(crate::engine::event::payload::EurekaChangeEvent {
         origin: CommandOrigin {
@@ -378,7 +542,7 @@ fn eureka_reaction_frame_stays_owned_by_the_subscriber() {
             &TargetPool::default(),
             &event,
             99,
-            DefinitionKey::new(721017, "CurEntityPowerDel"),
+            crate::engine::skill::condition::registry::ReactionFrameTarget::Owner,
         ),
         Some(99)
     );
@@ -510,6 +674,7 @@ fn target_attacked_passive_and_be_attacked_buff_act_share_one_hit_payload() {
         target_uid: -1,
         skill_id: 100,
         amount: 50,
+        shield_absorbed: 0,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
         assassinate: false,
     });
