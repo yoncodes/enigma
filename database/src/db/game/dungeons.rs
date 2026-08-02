@@ -945,7 +945,7 @@ pub async fn load_dungeon_record(
         r#"
         SELECT record_round, hero_list, sub_hero_list, cloth_id, equips, version
         FROM dungeon_records
-        WHERE user_id = ? AND episode_id = ?
+        WHERE user_id = ? AND episode_id = ? AND seed IS NOT NULL
         "#,
     )
     .bind(user_id)
@@ -1021,12 +1021,14 @@ pub struct PreparedDungeonRecord {
     equips: String,
     version: i32,
     oper_records: String,
+    seed: String,
 }
 
 pub async fn prepare_dungeon_record(
     pool: &SqlitePool,
     user_id: i64,
     version: i32,
+    seed: u64,
     fight_group: &sonettobuf::FightGroup,
     oper_records: &[sonettobuf::FightRoundOperRecord],
 ) -> Result<PreparedDungeonRecord> {
@@ -1045,6 +1047,7 @@ pub async fn prepare_dungeon_record(
         equips: serde_json::to_string(&equips)?,
         version,
         oper_records: serde_json::to_string(oper_records)?,
+        seed: seed.to_string(),
     })
 }
 
@@ -1095,8 +1098,8 @@ async fn save_prepared_dungeon_record_in_transaction(
 ) -> Result<bool> {
     let result = sqlx::query(
         r#"
-        INSERT INTO dungeon_records (user_id, episode_id, record_round, hero_list, sub_hero_list, cloth_id, equips, version, created_at, oper_records)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO dungeon_records (user_id, episode_id, record_round, hero_list, sub_hero_list, cloth_id, equips, version, created_at, oper_records, seed)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, episode_id) DO UPDATE SET
             record_round = excluded.record_round,
             hero_list = excluded.hero_list,
@@ -1105,8 +1108,9 @@ async fn save_prepared_dungeon_record_in_transaction(
             equips = excluded.equips,
             version = excluded.version,
             created_at = excluded.created_at,
-            oper_records = excluded.oper_records
-        WHERE ? OR excluded.record_round <= dungeon_records.record_round
+            oper_records = excluded.oper_records,
+            seed = excluded.seed
+        WHERE ? OR dungeon_records.seed IS NULL OR excluded.record_round <= dungeon_records.record_round
         "#,
     )
     .bind(user_id)
@@ -1119,6 +1123,7 @@ async fn save_prepared_dungeon_record_in_transaction(
     .bind(record.version)
     .bind(common::time::ServerTime::now_ms())
     .bind(&record.oper_records)
+    .bind(&record.seed)
     .bind(replace)
     .execute(&mut **tx)
     .await?;
@@ -1130,6 +1135,24 @@ async fn save_prepared_dungeon_record_in_transaction(
         .await?;
 
     Ok(result.rows_affected() > 0)
+}
+
+pub async fn load_dungeon_record_seed(
+    pool: &SqlitePool,
+    user_id: i64,
+    episode_id: i32,
+) -> Result<Option<u64>> {
+    let seed: Option<String> =
+        sqlx::query_scalar("SELECT seed FROM dungeon_records WHERE user_id = ? AND episode_id = ?")
+            .bind(user_id)
+            .bind(episode_id)
+            .fetch_optional(pool)
+            .await?
+            .flatten();
+
+    seed.map(|seed| seed.parse())
+        .transpose()
+        .map_err(Into::into)
 }
 
 pub async fn load_dungeon_record_operations(
@@ -1157,7 +1180,7 @@ pub async fn dungeon_record_round(
     episode_id: i32,
 ) -> Result<Option<i32>> {
     Ok(sqlx::query_scalar(
-        "SELECT record_round FROM dungeon_records WHERE user_id = ? AND episode_id = ?",
+        "SELECT record_round FROM dungeon_records WHERE user_id = ? AND episode_id = ? AND seed IS NOT NULL",
     )
     .bind(user_id)
     .bind(episode_id)
