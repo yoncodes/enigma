@@ -892,10 +892,13 @@ fn project_change(
             let Some(applied) = magic_circle_snapshot(change) else {
                 return Err(ProjectionError::Field(change.kind));
             };
-            let mut effect = if change.kind == FieldChangeKind::Deployed {
-                EffectPacket::magic_circle_add(&applied)
-            } else {
-                EffectPacket::magic_circle_update(&applied)
+            let mut effect = match change.kind {
+                FieldChangeKind::Deployed => EffectPacket::magic_circle_add(&applied),
+                FieldChangeKind::Level => EffectPacket::magic_circle_upgrade(&applied),
+                FieldChangeKind::Progress | FieldChangeKind::Duration => {
+                    EffectPacket::magic_circle_update(&applied)
+                }
+                FieldChangeKind::Removed => unreachable!(),
             };
             if change.kind == FieldChangeKind::Duration {
                 effect.reserve_str = Some(change.applied_delta.to_string());

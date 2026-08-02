@@ -58,26 +58,35 @@ fn field_deploy_projects_the_complete_committed_snapshot() {
         })
         .unwrap();
     let effects = project_change_for_test(&BattleChange::Field(duration)).unwrap();
+    assert_eq!(
+        effects[0].effect_type,
+        Some(EffectType::Magiccircleupdate as i32)
+    );
     assert_eq!(effects[0].reserve_str.as_deref(), Some("-1"));
     assert_eq!(effects[0].magic_circle.as_ref().unwrap().round, Some(2));
 
-    fields
+    let progress = fields
         .execute_command(FieldCommand {
             origin,
             team: 1,
             operation: FieldOperation::ChangeProgress { delta: 120 },
         })
         .unwrap();
+    let effects = project_change_for_test(&BattleChange::Field(progress)).unwrap();
+    assert_eq!(
+        effects[0].effect_type,
+        Some(EffectType::Magiccircleupdate as i32)
+    );
     let level = fields
         .execute_command(FieldCommand {
             origin,
             team: 1,
             operation: FieldOperation::ResolveLevel {
                 thresholds: vec![FieldThreshold {
-                    level: 2,
-                    progress: 90,
+                    level: 3,
+                    progress: 120,
                     definition: FieldDefinition {
-                        field_id: 30002,
+                        field_id: 30003,
                         duration: 2,
                     },
                 }],
@@ -88,11 +97,12 @@ fn field_deploy_projects_the_complete_committed_snapshot() {
     let info = effects[0].magic_circle.as_ref().unwrap();
     assert_eq!(
         effects[0].effect_type,
-        Some(EffectType::Magiccircleupdate as i32)
+        Some(EffectType::Magiccircleupgrade as i32)
     );
-    assert_eq!(info.magic_circle_id, Some(30002));
-    assert_eq!(info.electric_level, Some(2));
+    assert_eq!(info.magic_circle_id, Some(30003));
+    assert_eq!(info.electric_level, Some(3));
     assert_eq!(info.electric_progress, Some(120));
+    assert_eq!(info.max_electric_progress, Some(120));
 }
 
 #[test]
