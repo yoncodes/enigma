@@ -133,6 +133,7 @@ mod tests {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: -1,
                 is_crit: false,

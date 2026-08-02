@@ -58,6 +58,7 @@ pub struct SkillActionEvent {
     pub skill_type: i32,
     pub effect_tag: i32,
     pub assassinate: bool,
+    pub ignore_riposte: bool,
     pub damage_amount: i32,
     pub kill_count: i32,
     pub crit_count: i32,
@@ -320,6 +321,7 @@ pub struct SkillModifiers {
     pub attack_attributes: Vec<(AttrId, i32)>,
     pub redirected_damage_targets: Vec<i64>,
     pub force_critical: bool,
+    pub ignore_riposte: bool,
     pub excess_crit_conversion_rate: i32,
     pub career_ratio_bonus: i32,
     pub attack_career: Option<i32>,
@@ -337,6 +339,7 @@ impl SkillModifiers {
             }
         }
         self.force_critical |= other.force_critical;
+        self.ignore_riposte |= other.ignore_riposte;
         self.excess_crit_conversion_rate += other.excess_crit_conversion_rate;
         self.career_ratio_bonus += other.career_ratio_bonus;
         self.attack_career = self.attack_career.or(other.attack_career);

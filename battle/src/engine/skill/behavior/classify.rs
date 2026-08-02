@@ -41,6 +41,7 @@ pub enum BehaviorKind {
     CritRateAlter,
     CritRateAlter2,
     MustCrit,
+    IgnoreBeatBack,
     DelExPoint,
     DelExPointNotImmunity,
     ChangePower,

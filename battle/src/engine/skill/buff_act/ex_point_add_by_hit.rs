@@ -127,6 +127,7 @@ mod tests {
             shield_absorbed: 0,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
             assassinate: false,
+            ignore_riposte: false,
         });
 
         assert!(super::super::registry::has_destination(

@@ -27,6 +27,7 @@ impl DamageSettlement {
             config_effect: self.config_effect,
             effect_kind: self.effect_kind,
             assassinate: false,
+            ignore_riposte: false,
             hurt: self.hurt,
         }))
     }

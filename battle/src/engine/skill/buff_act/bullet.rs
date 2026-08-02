@@ -75,6 +75,7 @@ mod tests {
             skill_type: 0,
             effect_tag: 1,
             assassinate: false,
+            ignore_riposte: false,
             damage_amount: 1,
             kill_count: 0,
             crit_count: 0,

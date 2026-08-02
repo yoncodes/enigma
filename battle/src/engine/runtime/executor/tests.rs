@@ -208,6 +208,7 @@ fn committed_damage_publishes_hp_loss_hit_then_death() {
         config_effect: 7,
         effect_kind: DamageEffectKind::Normal,
         assassinate: false,
+        ignore_riposte: false,
         hurt: HurtInfoData {
             from_uid: 1,
             is_crit: false,
@@ -339,6 +340,7 @@ fn fixed_hurt_resolves_damage_before_hp_commit_but_not_hp_loss() {
         config_effect: 0,
         effect_kind: DamageEffectKind::Critical,
         assassinate: false,
+        ignore_riposte: false,
         hurt: HurtInfoData {
             from_uid: 10,
             is_crit: true,

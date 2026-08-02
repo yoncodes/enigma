@@ -175,6 +175,153 @@ fn configured_damage_routing_preserves_condition_derived_action_targets() {
 }
 
 #[test]
+fn configured_ignore_beat_back_reaches_the_committed_hit() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.hp.set_shield(-1, 100);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::from_spec(
+                BehaviorSpec::new(60054, "IgnoreBeatBack"),
+                Vec::new(),
+                Vec::new(),
+            ),
+            TargetRequest::self_only(),
+        )],
+    });
+    catalog.insert_damage_rate(100, 1_000);
+    catalog.insert_logic_target(100, 1);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+
+    let ops = emit_all_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+    let commands = ops
+        .into_iter()
+        .find_map(|op| match op {
+            RuleOp::Command(BattleCommand::HpBatch(commands)) => Some(commands),
+            _ => None,
+        })
+        .expect("configured attack should emit damage");
+    assert!(matches!(
+        commands.as_slice(),
+        [HpCommand::Damage(crate::engine::manager::hp::HpDamage {
+            ignore_riposte: true,
+            ..
+        })]
+    ));
+
+    let events = managers
+        .execute_hp_batch(commands)
+        .unwrap()
+        .into_iter()
+        .flat_map(|changes| changes.events())
+        .collect::<Vec<_>>();
+    let hit_event = events
+        .into_iter()
+        .find(|event| matches!(event, BattleEvent::Hit(_)))
+        .expect("committed damage should publish a hit");
+    let BattleEvent::Hit(hit) = hit_event else {
+        unreachable!()
+    };
+    assert!(hit.ignore_riposte);
+    assert_eq!(hit.shield_absorbed, 100);
+    let kinds = BattleEvent::Hit(hit)
+        .subscription_kinds()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        kinds,
+        vec![
+            EventKind::TargetAttacked,
+            EventKind::BeAttacked,
+            EventKind::Riposte,
+        ]
+    );
+
+    let subscriber = crate::engine::skill::subscriber::BuffActSubscriber {
+        owner_uid: -1,
+        source_uid: -1,
+        buff_uid: -20,
+        buff_id: 1,
+        team_type: 2,
+        owner_alive: true,
+        amount: 1,
+        key: crate::engine::event::subscription::SubscriptionKey::new(
+            EventKind::Riposte,
+            DefinitionKey::new(802, "BeatBackByCounter"),
+        ),
+        act_type: "BeatBackByCounter".to_owned(),
+        effect_time: 401,
+        effect_condition: 0,
+        args: vec![200],
+        raw: "802#200".to_owned(),
+    };
+    assert!(
+        crate::engine::skill::buff_act::riposte::shielded_ally_rule_ops(
+            &pool,
+            &subscriber,
+            &BattleEvent::Hit(hit),
+        )
+        .unwrap()
+        .is_empty()
+    );
+    let mut counterable = hit;
+    counterable.ignore_riposte = false;
+    assert!(matches!(
+        crate::engine::skill::buff_act::riposte::shielded_ally_rule_ops(
+            &pool,
+            &subscriber,
+            &BattleEvent::Hit(counterable),
+        )
+        .unwrap()
+        .as_slice(),
+        [RuleOp::Skill(_)]
+    ));
+}
+
+#[test]
 fn row_damage_applies_configured_excess_crit_conversion() {
     crate::test_support::init_config();
     let fight = Fight {

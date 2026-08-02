@@ -945,6 +945,16 @@ fn hurt_kind_opcodes_keep_exact_attacker_type_predicates() {
         Some(AttackModifierSide::IncomingTarget)
     );
     assert_eq!(
+        parse(20204, "HurtReal", &[]),
+        Some(ParsedConditionKind::AttackerDamageType(
+            crate::engine::skill::target::EntityDamageType::Reality,
+        ))
+    );
+    assert_eq!(
+        find_key(20204, "HurtReal").and_then(|definition| definition.attack_modifier_side),
+        Some(AttackModifierSide::IncomingTarget)
+    );
+    assert_eq!(
         parse(20209, "HurtReal", &[]),
         Some(ParsedConditionKind::AttackerDamageType(
             crate::engine::skill::target::EntityDamageType::Reality,

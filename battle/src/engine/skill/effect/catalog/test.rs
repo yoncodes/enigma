@@ -160,6 +160,7 @@ fn scoped_catalog_follows_configured_reinforced_skill_effects() {
 
     assert_eq!(catalog.reinforced_skill(30860143), Some(30861143));
     assert!(catalog.get(30861143).is_some());
+    assert!(catalog.issues(30861143).is_empty());
 }
 
 #[test]

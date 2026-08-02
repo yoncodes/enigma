@@ -15,6 +15,7 @@ fn fully_absorbed_damage_projects_shield_then_zero_damage() {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: 1,
                 is_crit: false,
@@ -71,6 +72,7 @@ fn version_seven_embeds_shield_absorption_in_hurt_info() {
                 config_effect: -1,
                 effect_kind: DamageEffectKind::Normal,
                 assassinate: false,
+                ignore_riposte: false,
                 hurt: HurtInfoData {
                     from_uid: 1,
                     is_crit: false,
@@ -139,6 +141,7 @@ fn version_seven_embeds_team_shared_shield_consumption_in_hurt_info() {
                 config_effect: -1,
                 effect_kind: DamageEffectKind::Normal,
                 assassinate: false,
+                ignore_riposte: false,
                 hurt: HurtInfoData {
                     from_uid: 1,
                     is_crit: false,
@@ -476,6 +479,7 @@ fn depleted_team_shared_shield_projects_its_committed_removal() {
                 config_effect: -1,
                 effect_kind: DamageEffectKind::Normal,
                 assassinate: false,
+                ignore_riposte: false,
                 hurt: HurtInfoData {
                     from_uid: -1,
                     is_crit: false,

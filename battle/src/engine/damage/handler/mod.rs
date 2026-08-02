@@ -234,6 +234,7 @@ impl BehaviorHandler for Handler {
                         config_effect: behavior.config_effect,
                         effect_kind: DamageEffectKind::Genesis,
                         assassinate: false,
+                        ignore_riposte: false,
                         hurt,
                     }),
                     BehaviorKind::OriginDamageCanCrit => HpCommand::Lose(HpLoss {
@@ -379,6 +380,7 @@ impl BehaviorHandler for Handler {
                         config_effect: behavior.config_effect,
                         effect_kind: DamageEffectKind::Genesis,
                         assassinate: false,
+                        ignore_riposte: false,
                         hurt: HurtInfoData {
                             from_uid: source_uid,
                             is_crit: false,
@@ -564,6 +566,7 @@ impl BehaviorHandler for Handler {
                                     DamageEffectKind::Normal
                                 },
                                 assassinate: false,
+                                ignore_riposte: false,
                                 hurt: HurtInfoData {
                                     from_uid: source_uid,
                                     is_crit,

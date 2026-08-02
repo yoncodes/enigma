@@ -534,6 +534,7 @@ mod tests {
             skill_type: 0,
             effect_tag: 2,
             assassinate: false,
+            ignore_riposte: false,
             damage_amount: 1,
             kill_count: 0,
             crit_count: 0,
@@ -605,6 +606,7 @@ mod tests {
             skill_type: 1,
             effect_tag: 1,
             assassinate: false,
+            ignore_riposte: false,
             damage_amount: 1,
             kill_count: 0,
             crit_count: 0,
@@ -686,6 +688,7 @@ mod tests {
             skill_type: 1,
             effect_tag: 1,
             assassinate: true,
+            ignore_riposte: false,
             damage_amount: 1,
             kill_count: 0,
             crit_count: 0,
@@ -754,6 +757,7 @@ mod tests {
             skill_type: 1,
             effect_tag: 1,
             assassinate: false,
+            ignore_riposte: false,
             damage_amount: 1,
             kill_count: 0,
             crit_count: 0,
@@ -1056,6 +1060,7 @@ mod tests {
             shield_absorbed: 0,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
             assassinate: false,
+            ignore_riposte: false,
         });
 
         let dispatched = dispatch_event(

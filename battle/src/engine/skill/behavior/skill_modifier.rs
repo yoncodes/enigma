@@ -16,6 +16,10 @@ impl BehaviorHandler for Handler {
             context.modifiers.force_critical = true;
             return Some(Vec::new());
         }
+        if behavior.spec.kind == BehaviorKind::IgnoreBeatBack {
+            context.modifiers.ignore_riposte = true;
+            return Some(Vec::new());
+        }
         if behavior.spec.kind == BehaviorKind::ConsumeBuffFixMixedRate {
             return mixed_rate_ops(context, behavior);
         }
@@ -470,5 +474,40 @@ mod tests {
             ]
         ));
         assert_eq!(target.additional_skill_target_count, 0);
+    }
+
+    #[test]
+    fn ignore_beat_back_marks_only_the_current_skill() {
+        let managers = BattleManagers::default();
+        let pool = TargetPool::default();
+        let mut determinism = RoundDeterminism::default();
+        let mut modifiers = SkillModifiers::default();
+        let mut target = TargetContext::default();
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60054, "IgnoreBeatBack"),
+            Vec::new(),
+            Vec::new(),
+        );
+
+        let ops = behavior::rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 30861141,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+
+        assert!(ops.is_empty());
+        assert!(modifiers.ignore_riposte);
     }
 }

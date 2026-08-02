@@ -371,6 +371,7 @@ mod tests {
             shield_absorbed: 0,
             damage_from: HurtDamageFromType::ShareHurt,
             assassinate: false,
+            ignore_riposte: false,
         });
 
         let pool = TargetPool::from_fight(&fight);

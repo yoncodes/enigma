@@ -90,6 +90,7 @@ pub struct HpDamage {
     pub config_effect: i32,
     pub effect_kind: DamageEffectKind,
     pub assassinate: bool,
+    pub ignore_riposte: bool,
     pub hurt: HurtInfoData,
 }
 
@@ -264,6 +265,7 @@ pub struct DamageRecord {
     pub config_effect: i32,
     pub effect_kind: DamageEffectKind,
     pub assassinate: bool,
+    pub ignore_riposte: bool,
     pub hurt: HurtInfoData,
 }
 
@@ -336,6 +338,7 @@ impl HpChanges {
                     ),
                 damage_from: damage.hurt.damage_from,
                 assassinate: damage.assassinate,
+                ignore_riposte: damage.ignore_riposte,
             }));
         }
         if self.toughness.is_some_and(|change| change.broke) {
@@ -643,6 +646,7 @@ impl HpManager {
                     config_effect: value.config_effect,
                     effect_kind: value.effect_kind,
                     assassinate: value.assassinate,
+                    ignore_riposte: value.ignore_riposte,
                     hurt: value.hurt,
                 });
                 changes.team_shared_shield_absorbed = team_shared.and_then(|plan| {

@@ -335,6 +335,45 @@ fn burn_damage_fix_is_an_exact_static_consumer_with_its_add_marker() {
 }
 
 #[test]
+fn lucy_static_combat_rules_keep_distinct_add_markers() {
+    for (act_id, act_type, kind, effect_type) in [
+        (
+            761,
+            "IgnoreDodgeSpecSkill",
+            BuffActKind::IgnoreDodgeSpecSkill,
+            sonettobuf::effect_type_enum::EffectType::Ignoredodgespecskill,
+        ),
+        (
+            763,
+            "IgnoreRebound",
+            BuffActKind::IgnoreRebound,
+            sonettobuf::effect_type_enum::EffectType::Ignorerebound,
+        ),
+        (
+            764,
+            "CareerRestraint",
+            BuffActKind::CareerRestraint,
+            sonettobuf::effect_type_enum::EffectType::Careerrestraint,
+        ),
+    ] {
+        let definition = find(act_id, act_type).unwrap();
+        assert_eq!(definition.kind, kind);
+        assert_eq!(
+            destination(act_id, act_type, &[]),
+            Some(BuffActDestination::StateConsumer)
+        );
+        assert!(!has_destination(act_id, act_type, &[1]));
+        assert_eq!(
+            definition
+                .wire
+                .unwrap()
+                .markers(super::super::wire::WirePhase::Add),
+            &[effect_type as i32]
+        );
+    }
+}
+
+#[test]
 fn passive_state_consumers_reject_unsupported_argument_shapes() {
     for (id, kind, valid, invalid) in [
         (794, "ModifyMaxBurnLayers", vec![20], vec![]),

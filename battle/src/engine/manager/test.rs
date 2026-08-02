@@ -219,6 +219,7 @@ fn damage_batch_consumes_team_shared_shield_at_the_configured_target_count_rate(
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: -1,
                 is_crit: false,
@@ -326,6 +327,7 @@ fn damage_cap_applies_to_every_damage_instance_above_the_configured_limit() {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: -1,
                 is_crit: false,
@@ -436,6 +438,7 @@ fn depleted_team_shared_shield_removes_its_exact_carrier_before_reseed() {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: -1,
                 is_crit: false,
@@ -975,6 +978,7 @@ fn skill_damage_reduces_guard_at_the_active_action_rate() {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: 10,
                 is_crit: false,

@@ -89,6 +89,7 @@ fn action_event(
         skill_type: catalog.skill_type(invocation.plan.skill_id),
         effect_tag: catalog.effect_tag(invocation.plan.skill_id),
         assassinate: execution.context.active_skill_assassinate,
+        ignore_riposte: execution.modifiers.ignore_riposte,
         damage_amount: execution.context.action_damage_amount,
         kill_count: execution.context.action_kill_count,
         crit_count: execution.context.action_crit_count,
