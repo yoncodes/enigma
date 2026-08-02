@@ -741,6 +741,12 @@ impl BattleManagers {
         if selection.replace_big_skill > 0 {
             entity.ex_skill = Some(selection.replace_big_skill);
         }
+        if !selection.replace_skill_group1.is_empty() {
+            entity.skill_group1 = selection.replace_skill_group1.clone();
+        }
+        if !selection.replace_skill_group2.is_empty() {
+            entity.skill_group2 = selection.replace_skill_group2.clone();
+        }
         self.entity.update(entity);
 
         self.execute_card(card::CardCommand::ReplaceOwnerSkills(
