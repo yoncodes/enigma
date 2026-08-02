@@ -86,6 +86,7 @@ pub struct ActionEvent {
     pub effect_tag: i32,
     pub additional_moxie: i32,
     pub extra_skill_kind: i32,
+    pub mode: SkillExecutionMode,
     pub assassinate: bool,
     pub damage_amount: i32,
     pub kill_count: i32,

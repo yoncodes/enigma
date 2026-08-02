@@ -958,6 +958,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                             .extra_skill_kind
                             .map(|kind| kind.id())
                             .unwrap_or_default(),
+                        mode: invocation.mode,
                         assassinate: execution.context.active_skill_assassinate,
                         damage_amount: execution.context.action_damage_amount,
                         kill_count: execution.context.action_kill_count,

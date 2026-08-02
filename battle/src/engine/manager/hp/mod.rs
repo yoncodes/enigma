@@ -270,6 +270,11 @@ pub struct DamageRecord {
 }
 
 impl HpChanges {
+    pub fn caused_death(&self) -> bool {
+        self.hp
+            .is_some_and(|change| change.before > 0 && change.after == 0)
+    }
+
     pub fn applied_damage(&self) -> i32 {
         if self.kill.is_some() {
             return 0;

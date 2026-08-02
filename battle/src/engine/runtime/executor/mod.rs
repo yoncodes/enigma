@@ -108,10 +108,10 @@ impl RuleOutcome {
 
     pub(crate) fn death_count(&self) -> i32 {
         match self {
-            Self::Hp(execution) => i32::from(execution.changes.death.is_some()),
+            Self::Hp(execution) => i32::from(execution.changes.caused_death()),
             Self::HpBatch(changes) => changes
                 .iter()
-                .filter(|execution| execution.changes.death.is_some())
+                .filter(|execution| execution.changes.caused_death())
                 .count() as i32,
             _ => 0,
         }
