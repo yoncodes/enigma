@@ -1184,6 +1184,7 @@ async fn settlement_commits_all_or_rolls_back_with_the_active_fight() {
             hero_list: vec![hero_uid],
             ..Default::default()
         }),
+        seed: u64::MAX - 7,
         ..Default::default()
     };
     let record = prepare_dungeon_record(&pool, 23, &active, 3).await.unwrap();
@@ -1272,6 +1273,12 @@ async fn settlement_commits_all_or_rolls_back_with_the_active_fight() {
             .unwrap(),
         Some(3)
     );
+    assert_eq!(
+        dungeons::load_dungeon_record_seed(&pool, 23, episode.id)
+            .await
+            .unwrap(),
+        Some(active.seed)
+    );
     assert!(
         sqlx::query_scalar::<_, bool>(
             "SELECT has_record FROM user_dungeons WHERE user_id = 23 AND episode_id = ?"
@@ -1286,6 +1293,47 @@ async fn settlement_commits_all_or_rolls_back_with_the_active_fight() {
             .await
             .unwrap()
             .is_none()
+    );
+}
+
+#[tokio::test]
+async fn seedless_record_does_not_block_its_first_replayable_replacement() {
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO dungeon_records
+         (user_id, episode_id, record_round, hero_list, sub_hero_list, cloth_id, equips, version, created_at, oper_records)
+         VALUES (9, 10101, 1, '[]', '[]', 1, '[]', 7, 0, '[]')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        dungeons::dungeon_record_round(&pool, 9, 10101)
+            .await
+            .unwrap(),
+        None
+    );
+
+    let seed = u64::MAX - 9;
+    let record = dungeons::prepare_dungeon_record(&pool, 9, 7, seed, &Default::default(), &[])
+        .await
+        .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    assert!(
+        dungeons::save_prepared_dungeon_record_if_faster_in_transaction(
+            &mut tx, 9, 10101, 5, &record,
+        )
+        .await
+        .unwrap()
+    );
+    tx.commit().await.unwrap();
+    assert_eq!(
+        dungeons::load_dungeon_record_seed(&pool, 9, 10101)
+            .await
+            .unwrap(),
+        Some(seed)
     );
 }
 

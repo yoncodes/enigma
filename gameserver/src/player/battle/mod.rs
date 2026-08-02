@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::logic::reward::{self, ConsumedRewards, RewardSet};
 use common::time::ServerTime;
-use database::db::game::battle;
+use database::db::game::{battle, dungeons};
 use flate2::{Compression, read::GzEncoder};
 use prost::Message;
 use serde::{Deserialize, Serialize};
@@ -258,7 +258,8 @@ impl ActiveBattle {
             request.params.as_deref(),
         )
         .await?;
-        Self::prepare_from_built(request, built, None, None)
+        let seed = initial_battle_seed(pool, player_id, episode_id, use_record).await?;
+        Self::prepare_from_built(request, built, None, None, Some(seed))
     }
 
     pub async fn from_built(
@@ -268,7 +269,24 @@ impl ActiveBattle {
         built: ::battle::dungeon::BuiltFight,
         tower_context: Option<::battle::tower::BattleContext>,
     ) -> Result<Self, AppError> {
-        Self::persist_built(pool, player_id, request, built, tower_context, None).await
+        let episode_id = request.episode_id.ok_or(AppError::InvalidRequest)?;
+        let seed = initial_battle_seed(
+            pool,
+            player_id,
+            episode_id,
+            request.use_record.unwrap_or(false),
+        )
+        .await?;
+        Self::persist_built(
+            pool,
+            player_id,
+            request,
+            built,
+            tower_context,
+            None,
+            Some(seed),
+        )
+        .await
     }
 
     pub fn prepare_act229(
@@ -276,7 +294,7 @@ impl ActiveBattle {
         built: ::battle::dungeon::BuiltFight,
         context: Act229BattleContext,
     ) -> Result<Self, AppError> {
-        Self::prepare_from_built(request, built, None, Some(context))
+        Self::prepare_from_built(request, built, None, Some(context), None)
     }
 
     async fn persist_built(
@@ -286,8 +304,10 @@ impl ActiveBattle {
         built: ::battle::dungeon::BuiltFight,
         tower_context: Option<::battle::tower::BattleContext>,
         act229_context: Option<Act229BattleContext>,
+        seed: Option<u64>,
     ) -> Result<Self, AppError> {
-        let mut active = Self::prepare_from_built(request, built, tower_context, act229_context)?;
+        let mut active =
+            Self::prepare_from_built(request, built, tower_context, act229_context, seed)?;
         let checkpoint = active.checkpoint_json()?;
         active.fight_id = Some(
             battle::create_fight_instance(
@@ -312,6 +332,7 @@ impl ActiveBattle {
         built: ::battle::dungeon::BuiltFight,
         tower_context: Option<::battle::tower::BattleContext>,
         act229_context: Option<Act229BattleContext>,
+        seed: Option<u64>,
     ) -> Result<Self, AppError> {
         let episode_id = request.episode_id.ok_or(AppError::InvalidRequest)?;
         let battle_id = built
@@ -319,7 +340,7 @@ impl ActiveBattle {
             .battle_id
             .filter(|battle_id| *battle_id > 0)
             .ok_or(AppError::InvalidRequest)?;
-        let seed = rand::random();
+        let seed = seed.unwrap_or_else(rand::random);
         Self::from_built_with_seed(
             episode_id,
             battle_id,
@@ -498,7 +519,8 @@ impl ActiveBattle {
     }
 
     pub fn reconnect_reply(&self) -> ReconnectFightReply {
-        let (fight, last_round) = self.runtime.reconnect_state();
+        let (mut fight, last_round) = self.runtime.reconnect_state();
+        fight.is_record = self.is_replay;
         let data = self
             .act229_context
             .map(|context| {
@@ -561,7 +583,11 @@ impl ActiveBattle {
     }
 
     pub fn start_reply(&self) -> StartDungeonReply {
-        ::battle::dungeon::start_reply(&self.runtime)
+        let mut reply = ::battle::dungeon::start_reply(&self.runtime);
+        if let Some(fight) = reply.fight.as_mut() {
+            fight.is_record = self.is_replay;
+        }
+        reply
     }
 
     pub fn card_info_push(&self) -> CardInfoPush {
@@ -581,6 +607,20 @@ impl ActiveBattle {
             cloth_skill_opers: std::mem::take(&mut self.pending_cloth_skill_opers),
         });
     }
+}
+
+async fn initial_battle_seed(
+    pool: &SqlitePool,
+    player_id: i64,
+    episode_id: i32,
+    use_record: bool,
+) -> Result<u64, AppError> {
+    if use_record {
+        return dungeons::load_dungeon_record_seed(pool, player_id, episode_id)
+            .await?
+            .ok_or(AppError::InvalidRequest);
+    }
+    Ok(rand::random())
 }
 
 fn average_team_level(team: &sonettobuf::FightTeam) -> Option<i32> {
