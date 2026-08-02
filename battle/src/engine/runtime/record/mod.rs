@@ -108,6 +108,9 @@ pub enum RoundCue {
     CardsCompose {
         team_type: i32,
     },
+    RedealHandSync {
+        cards: Vec<sonettobuf::CardInfo>,
+    },
     SmallRoundEnd {
         team_type: i32,
     },

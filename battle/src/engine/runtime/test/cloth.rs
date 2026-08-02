@@ -99,12 +99,70 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
             r#type: Some(ClothSkillType::ClothSkill as i32),
         })
         .unwrap();
-    assert_eq!(redeal.round.unwrap().power, Some(34));
+    let redeal = redeal.round.unwrap();
+    assert_eq!(redeal.power, Some(34));
+    let v6_effect = &redeal.fight_step[0].act_effect[0];
+    assert_eq!(
+        v6_effect.effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Redealcard as i32)
+    );
+    assert_eq!(v6_effect.config_effect, Some(60012));
+    assert_eq!(v6_effect.team_type, Some(0));
+    assert!(v6_effect.card_info_list.is_empty());
     assert_eq!(runtime.card_hand()[0].skill_id, Some(201));
     assert_eq!(
         runtime.take_redeal_card_push().unwrap().card_group,
         runtime.card_hand()
     );
+
+    runtime.fight.version = Some(7);
+    let redeal = runtime
+        .use_cloth_skill(UseClothSkillRequest {
+            skill_id: Some(30010202),
+            from_id: Some(0),
+            to_id: Some(0),
+            r#type: Some(ClothSkillType::ClothSkill as i32),
+        })
+        .unwrap()
+        .round
+        .unwrap();
+    assert_eq!(redeal.power, Some(9));
+    assert_eq!(redeal.fight_step.len(), 2);
+    assert_eq!(
+        redeal.fight_step[0].act_effect[0].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Afterredealcard as i32)
+    );
+    assert_eq!(redeal.fight_step[0].act_effect[0].team_type, Some(1));
+    assert!(
+        redeal.fight_step[0].act_effect[0]
+            .card_info_list
+            .iter()
+            .map(|card| (card.uid, card.skill_id, card.temp_card.unwrap_or_default()))
+            .eq(runtime.card_hand().iter().map(|card| (
+                card.uid,
+                card.skill_id,
+                card.temp_card.unwrap_or_default()
+            )))
+    );
+    assert_eq!(
+        redeal.fight_step[1].act_effect[0].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Cardspush as i32)
+    );
+    assert_eq!(redeal.fight_step[1].act_effect[0].effect_num, Some(0));
+    assert_eq!(redeal.fight_step[1].act_effect[0].effect_num1, Some(0));
+    assert_eq!(redeal.fight_step[1].act_effect[0].team_type, Some(0));
+    assert!(
+        redeal.fight_step[1].act_effect[0]
+            .card_info_list
+            .iter()
+            .map(|card| (card.uid, card.skill_id, card.temp_card.unwrap_or_default()))
+            .eq(runtime.card_hand().iter().map(|card| (
+                card.uid,
+                card.skill_id,
+                card.temp_card.unwrap_or_default()
+            )))
+    );
+    assert!(runtime.take_redeal_card_push().is_none());
 }
 
 #[test]

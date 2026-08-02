@@ -563,9 +563,7 @@ impl CardManager {
     }
 
     pub(crate) fn redealable_cards(&self) -> impl Iterator<Item = &CardInfo> {
-        self.hand()
-            .iter()
-            .filter(|card| !card.temp_card.unwrap_or_default() && card.uid.unwrap_or_default() != 0)
+        self.hand().iter().filter(|card| is_redealable(card))
     }
 
     pub(crate) fn redealable_count(&self) -> usize {
@@ -607,10 +605,11 @@ impl CardManager {
 
     fn redeal_keep_ranks(&mut self, replacements: Vec<CardInfo>) {
         let mut replacements = replacements.into_iter();
-        for card in
-            self.deck.hand_mut().iter_mut().filter(|card| {
-                !card.temp_card.unwrap_or_default() && card.uid.unwrap_or_default() != 0
-            })
+        for card in self
+            .deck
+            .hand_mut()
+            .iter_mut()
+            .filter(|card| is_redealable(card))
         {
             let Some(mut replacement) = replacements.next() else {
                 break;
@@ -890,6 +889,14 @@ impl CardManager {
             .push(played.skill_id);
         Some(played)
     }
+}
+
+fn is_redealable(card: &CardInfo) -> bool {
+    !card.temp_card.unwrap_or_default()
+        && card.uid.unwrap_or_default() != 0
+        && !card
+            .skill_id
+            .is_some_and(crate::engine::skill::effect::catalog::configured_is_big_skill)
 }
 
 #[cfg(test)]

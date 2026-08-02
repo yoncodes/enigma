@@ -1,6 +1,6 @@
 use sonettobuf::{ActEffect, CardInfo, effect_type_enum::EffectType};
 
-use crate::engine::manager::card::CardChange;
+use crate::engine::{fight::versions::RedealWireLayout, manager::card::CardChange};
 
 pub struct CardPacket;
 
@@ -146,11 +146,45 @@ impl CardPacket {
         }
     }
 
-    pub fn redeal_keep_ranks() -> ActEffect {
+    pub(crate) fn redeal_keep_ranks(
+        cards: Vec<CardInfo>,
+        config_effect: i32,
+        layout: RedealWireLayout,
+    ) -> ActEffect {
+        match layout {
+            RedealWireLayout::Version6 => ActEffect {
+                target_id: Some(0),
+                effect_type: Some(EffectType::Redealcard as i32),
+                config_effect: Some(config_effect),
+                team_type: Some(0),
+                ..Default::default()
+            },
+            RedealWireLayout::Version7 => ActEffect {
+                target_id: Some(0),
+                effect_type: Some(EffectType::Afterredealcard as i32),
+                effect_num: Some(0),
+                config_effect: Some(0),
+                buff_act_id: Some(0),
+                reserve_id: Some(0),
+                card_info_list: wire_cards(cards),
+                team_type: Some(1),
+                effect_num1: Some(0),
+                ..Default::default()
+            },
+        }
+    }
+
+    pub(crate) fn redeal_hand_sync(cards: Vec<CardInfo>) -> ActEffect {
         ActEffect {
             target_id: Some(0),
-            effect_type: Some(EffectType::Redealcard as i32),
-            team_type: Some(1),
+            effect_type: Some(EffectType::Cardspush as i32),
+            effect_num: Some(0),
+            config_effect: Some(0),
+            buff_act_id: Some(0),
+            reserve_id: Some(0),
+            card_info_list: wire_cards(cards),
+            team_type: Some(0),
+            effect_num1: Some(0),
             ..Default::default()
         }
     }

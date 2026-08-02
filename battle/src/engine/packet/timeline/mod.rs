@@ -1,7 +1,7 @@
 use sonettobuf::{ActEffect, FightStep, MagicCircleInfo};
 
 use crate::engine::{
-    fight::versions::HurtInfoWireLayout,
+    fight::versions::{HurtInfoWireLayout, RedealWireLayout},
     manager::{
         card::{CARD_PLAY_ORIGIN, CardChangeKind},
         eureka::EurekaChanges,
@@ -41,10 +41,13 @@ pub fn project_for_version(
 ) -> Result<Vec<FightStep>, ProjectionError> {
     let hurt_info_layout = crate::engine::fight::versions::hurt_info_wire_layout(fight_version)
         .ok_or(ProjectionError::FightVersion(fight_version))?;
+    let redeal_layout = crate::engine::fight::versions::redeal_wire_layout(fight_version)
+        .ok_or(ProjectionError::FightVersion(fight_version))?;
     project_frames(
         frames,
         crate::engine::fight::versions::writes_reduce_hp(fight_version),
         hurt_info_layout,
+        redeal_layout,
     )
 }
 
@@ -53,17 +56,23 @@ fn project_with_reduce_hp(
     frames: &[SemanticFrame],
     writes_reduce_hp: bool,
 ) -> Result<Vec<FightStep>, ProjectionError> {
-    project_frames(frames, writes_reduce_hp, HurtInfoWireLayout::Version6)
+    project_frames(
+        frames,
+        writes_reduce_hp,
+        HurtInfoWireLayout::Version6,
+        RedealWireLayout::Version6,
+    )
 }
 
 fn project_frames(
     frames: &[SemanticFrame],
     writes_reduce_hp: bool,
     hurt_info_layout: HurtInfoWireLayout,
+    redeal_layout: RedealWireLayout,
 ) -> Result<Vec<FightStep>, ProjectionError> {
     let frames = frames
         .iter()
-        .map(|frame| project_frame(frame, writes_reduce_hp, hurt_info_layout))
+        .map(|frame| project_frame(frame, writes_reduce_hp, hurt_info_layout, redeal_layout))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(frames.into_iter().flatten().collect())
 }
@@ -72,8 +81,14 @@ fn project_frame(
     frame: &SemanticFrame,
     writes_reduce_hp: bool,
     hurt_info_layout: HurtInfoWireLayout,
+    redeal_layout: RedealWireLayout,
 ) -> Result<Option<FightStep>, ProjectionError> {
-    let effects = project_frame_items(&frame.items, writes_reduce_hp, hurt_info_layout)?;
+    let effects = project_frame_items(
+        &frame.items,
+        writes_reduce_hp,
+        hurt_info_layout,
+        redeal_layout,
+    )?;
     if effects.is_empty() {
         return Ok(None);
     }
@@ -144,6 +159,7 @@ fn project_frame_items(
     items: &[FrameItem],
     writes_reduce_hp: bool,
     hurt_info_layout: HurtInfoWireLayout,
+    redeal_layout: RedealWireLayout,
 ) -> Result<Vec<ActEffect>, ProjectionError> {
     let mut effects = Vec::new();
     for item in items {
@@ -152,11 +168,15 @@ fn project_frame_items(
                 change.as_ref(),
                 writes_reduce_hp,
                 hurt_info_layout,
+                redeal_layout,
             )?),
-            FrameItem::Child(frame) => {
-                effects.extend(project_child(frame, writes_reduce_hp, hurt_info_layout)?)
-            }
-            FrameItem::Cue(cue) => effects.extend(project_cue(cue)),
+            FrameItem::Child(frame) => effects.extend(project_child(
+                frame,
+                writes_reduce_hp,
+                hurt_info_layout,
+                redeal_layout,
+            )?),
+            FrameItem::Cue(cue) => effects.extend(project_cue(cue, redeal_layout)),
         }
     }
     Ok(effects)
@@ -166,9 +186,10 @@ fn project_child(
     frame: &SemanticFrame,
     writes_reduce_hp: bool,
     hurt_info_layout: HurtInfoWireLayout,
+    redeal_layout: RedealWireLayout,
 ) -> Result<Option<ActEffect>, ProjectionError> {
     Ok(
-        project_frame(frame, writes_reduce_hp, hurt_info_layout)?
+        project_frame(frame, writes_reduce_hp, hurt_info_layout, redeal_layout)?
             .map(EffectPacket::from_fight_step),
     )
 }
@@ -189,13 +210,19 @@ fn project_change_with_reduce_hp(
     change: &BattleChange,
     writes_reduce_hp: bool,
 ) -> Result<Vec<ActEffect>, ProjectionError> {
-    project_change(change, writes_reduce_hp, HurtInfoWireLayout::Version6)
+    project_change(
+        change,
+        writes_reduce_hp,
+        HurtInfoWireLayout::Version6,
+        RedealWireLayout::Version6,
+    )
 }
 
 fn project_change(
     change: &BattleChange,
     writes_reduce_hp: bool,
     hurt_info_layout: HurtInfoWireLayout,
+    redeal_layout: RedealWireLayout,
 ) -> Result<Vec<ActEffect>, ProjectionError> {
     Ok(match change {
         BattleChange::SkillLifecycle(
@@ -785,7 +812,14 @@ fn project_change(
             .map(CardPacket::universal_card)
             .collect(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::RedealtKeepRanks => {
-            vec![CardPacket::redeal_keep_ranks()]
+            vec![CardPacket::redeal_keep_ranks(
+                changes.after.clone(),
+                changes
+                    .origin
+                    .map(|origin| origin.key.opcode)
+                    .unwrap_or_default(),
+                redeal_layout,
+            )]
         }
         BattleChange::Card(changes)
             if matches!(
@@ -1029,7 +1063,7 @@ fn magic_circle_snapshot(
     )
 }
 
-fn project_cue(cue: &RoundCue) -> Vec<ActEffect> {
+fn project_cue(cue: &RoundCue, redeal_layout: RedealWireLayout) -> Vec<ActEffect> {
     match cue {
         RoundCue::EnterFightDeal => vec![CardPacket::enter_fight_deal()],
         RoundCue::ClearUniversalCard => vec![EffectPacket::clear_universal_card()],
@@ -1059,6 +1093,10 @@ fn project_cue(cue: &RoundCue) -> Vec<ActEffect> {
             reason.config_effect(),
         )],
         RoundCue::CardsCompose { .. } => vec![CardPacket::cards_compose(Vec::new())],
+        RoundCue::RedealHandSync { cards } => match redeal_layout {
+            RedealWireLayout::Version6 => Vec::new(),
+            RedealWireLayout::Version7 => vec![CardPacket::redeal_hand_sync(cards.clone())],
+        },
         RoundCue::SmallRoundEnd { team_type } => {
             vec![EffectPacket::small_round_end(*team_type)]
         }
