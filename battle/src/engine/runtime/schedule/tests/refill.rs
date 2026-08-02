@@ -384,6 +384,90 @@ fn round_refill_uses_one_normal_slot_for_a_unique_ultimate() {
 }
 
 #[test]
+fn round_start_refill_adds_a_newly_ready_ultimate_to_a_full_hand() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(1000),
+                current_hp: Some(100),
+                ex_point: Some(4),
+                ex_skill: Some(900),
+                skill_group1: vec![100],
+                passive_skill: vec![40],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.card = crate::engine::manager::card::CardManager::new(vec![CardInfo {
+        uid: Some(10),
+        skill_id: Some(100),
+        ..Default::default()
+    }]);
+    let mut catalog = SkillEffectCatalog::default();
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = vec![ParsedCondition {
+        opcode: 103,
+        type_name: "None".to_owned(),
+        kind: ParsedConditionKind::None(NoneMode::RoundStart),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 40,
+        slots: vec![slot],
+    });
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_card_draws(vec![CardInfo {
+        uid: Some(10),
+        skill_id: Some(100),
+        ..Default::default()
+    }]);
+
+    let (_, next_round, _, _) = run_round_start_after_ai_split(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        &[],
+        1,
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(10), 5);
+    assert!(determinism.has_queued_card_draw());
+    let cards = next_round
+        .frames
+        .iter()
+        .flat_map(|frame| &frame.items)
+        .find_map(|item| match item {
+            FrameItem::Cue(RoundCue::NextRoundCards { cards, .. }) => Some(cards),
+            FrameItem::Change(_) | FrameItem::Child(_) | FrameItem::Cue(_) => None,
+        })
+        .expect("round start emits the next hand");
+    assert_eq!(
+        cards
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>(),
+        vec![100, 900]
+    );
+}
+
+#[test]
 fn configured_ultimate_alias_does_not_consume_the_incantation_deck() {
     init_config();
     let fight = Fight {

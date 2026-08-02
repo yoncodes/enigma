@@ -167,7 +167,11 @@ fn run_card_refill(
                     < hand_size
             }
         };
-        if !needs_normal_card && ready_special.is_empty() && opening_draws.len() == 0 {
+        if !needs_normal_card
+            && ready_normal.is_empty()
+            && ready_special.is_empty()
+            && opening_draws.len() == 0
+        {
             break;
         }
         let ready_ultimates = pool
@@ -203,6 +207,8 @@ fn run_card_refill(
         }
         let (card, configured_opening) = if let Some(card) = opening_draws.next() {
             (Some(card), true)
+        } else if !needs_normal_card {
+            (ready_ultimates.first().cloned(), false)
         } else if determinism.has_queued_card_draw() {
             (determinism.draw_cards(&candidates, 1).pop(), false)
         } else {
