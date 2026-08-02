@@ -19,6 +19,18 @@ mod tests {
 
     #[test]
     fn emitter_career_comes_from_its_own_opcode_876_feature() {
+        assert_eq!(
+            super::super::registry::destination(876, "EmitterCareerChange", &[2]),
+            Some(super::super::registry::BuffActDestination::StateConsumer)
+        );
+        assert_eq!(
+            super::super::registry::destination(876, "EmitterCareerChange", &[]),
+            None
+        );
+        assert_eq!(
+            super::super::registry::destination(876, "EmitterCareerChange", &[2, 3]),
+            None
+        );
         let feature = ActiveBuffFeature {
             owner_uid: crate::engine::manager::emitter::UID,
             source_uid: 1,

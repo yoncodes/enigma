@@ -127,6 +127,7 @@ pub struct BuffDispel {
     pub origin: CommandOrigin,
     pub target_uid: i64,
     pub statuses: Vec<super::BuffStatus>,
+    pub excluded_ids_or_types: Vec<i32>,
     pub count: i32,
 }
 

@@ -144,6 +144,15 @@ fn fight_catalog_follows_buff_act_linked_skill_aliases() {
 }
 
 #[test]
+fn fight_catalog_follows_shield_counter_skill() {
+    init_config();
+
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [30940181]);
+
+    assert!(catalog.get(30940171).is_some());
+}
+
+#[test]
 fn scoped_catalog_follows_configured_reinforced_skill_effects() {
     init_config();
 

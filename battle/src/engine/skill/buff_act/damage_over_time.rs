@@ -196,6 +196,9 @@ fn damage_rule_op_with_duration(
     formula.is_crit = is_crit;
     let trace = calculate_with_trace(formula);
     amount = trace.amount;
+    if matches!(kind, DamageOverTimeKind::Burn) {
+        amount = super::burn_real_hurt_fix::adjusted_amount(managers, subscriber.owner_uid, amount);
+    }
     if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Damage) {
         eprintln!(
             "genesis buff_act={} buff={} buff_uid={} source={source_uid} target={} trace={trace:?}",

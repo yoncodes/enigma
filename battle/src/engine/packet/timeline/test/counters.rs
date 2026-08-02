@@ -31,3 +31,30 @@ fn team_injury_change_projects_each_committed_counter_value() {
         vec![Some(3), Some(4)]
     );
 }
+
+#[test]
+fn zero_cost_conduit_activation_has_no_cost_projection() {
+    for change in [
+        crate::engine::manager::conduit::ConduitChange::SkillBegan {
+            source_uid: 10,
+            team: 1,
+            skill_id: 31490151,
+            power_id: 999,
+            activation_cost: 0,
+            spent: 0,
+        },
+        crate::engine::manager::conduit::ConduitChange::SkillCostCommitted {
+            source_uid: 10,
+            team: 1,
+            skill_id: 31490151,
+            activation_cost: 0,
+            consumed_this_round: 0,
+        },
+    ] {
+        assert!(
+            project_change_for_test(&BattleChange::Conduit(change))
+                .unwrap()
+                .is_empty()
+        );
+    }
+}

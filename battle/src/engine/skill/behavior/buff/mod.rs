@@ -33,6 +33,10 @@ mod copy;
 mod dispel;
 mod distribute;
 mod grant;
+
+pub(super) fn supports_random_pool(behavior: &ParsedBehavior) -> bool {
+    grant::supports_random_pool(behavior)
+}
 mod layer;
 mod poison;
 mod replace;
@@ -41,9 +45,13 @@ pub(super) use super::{command_origin, registry};
 use application::*;
 use copy::copy_status_ops;
 pub(super) use copy::supports_status_copy;
-use dispel::{damage_window_remove_ops, dispel_commands, sort_buff_by_hp_ops, spread_buff_ops};
+use dispel::{
+    damage_window_remove_ops, dispel_commands, excluded_dispel_command, sort_buff_by_hp_ops,
+    spread_buff_ops,
+};
 pub(super) use dispel::{
-    supports_dispel, supports_disperse_force, supports_exact_buff_dispel, supports_status_dispel,
+    supports_dispel, supports_disperse_force, supports_exact_buff_dispel, supports_excluded_dispel,
+    supports_status_dispel,
 };
 use distribute::*;
 pub use grant::random_buff_pool;
@@ -52,7 +60,45 @@ use layer::*;
 use poison::*;
 use replace::*;
 
+pub(super) fn supports_consume_power_add_buff(behavior: &ParsedBehavior) -> bool {
+    let exact_shape =
+        behavior.raw_args.is_empty() && behavior.args.len() == 2 || behavior.raw_args.len() == 2;
+    exact_shape
+        && behavior.arg(0).is_some_and(|cost| cost > 0)
+        && behavior
+            .arg_list(1)
+            .is_some_and(|buffs| buffs.iter().all(|buff_id| *buff_id > 0))
+}
+
+pub(super) fn supports_consume_power_add_multi_buff(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [cost, required_allies, required_buff, base_layer, bonus_layer, base_buff, bonus_buff]
+            if *cost > 0
+                && *required_allies > 0
+                && *required_buff > 0
+                && *base_layer > 0
+                && *bonus_layer > 0
+                && *base_buff > 0
+                && *bonus_buff > 0
+    )
+}
+
 pub(super) struct Handler;
+
+pub(super) fn supports_layer_range(behavior: &ParsedBehavior) -> bool {
+    let (Some(source_buff_id), Some(buff_ids), Some(thresholds)) =
+        (behavior.arg(0), behavior.arg_list(1), behavior.arg_list(2))
+    else {
+        return false;
+    };
+
+    source_buff_id > 0
+        && buff_ids.iter().all(|id| *id > 0)
+        && thresholds.len() == buff_ids.len() + 1
+        && thresholds.iter().all(|value| *value > 0)
+        && thresholds.windows(2).all(|pair| pair[0] < pair[1])
+}
 
 pub(super) fn supports_distribute(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [source, output] if *source > 0 && *output > 0)
@@ -75,6 +121,8 @@ impl BehaviorHandler for Handler {
             BehaviorKind::AddBuffByHeroId => hero_grant_command(&context, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::DisperseForce2 => damage_window_remove_ops(context.target_uid, behavior),
+            BehaviorKind::DisperseExclude => excluded_dispel_command(context.target_uid, behavior)
+                .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::Disperse1
             | BehaviorKind::Disperse2
             | BehaviorKind::Purify1
@@ -95,6 +143,10 @@ impl BehaviorHandler for Handler {
             BehaviorKind::AddBuffBasedOnEnemyBurnUseCount => {
                 add_buff_from_enemy_burn_ops(&context, behavior)
             }
+            BehaviorKind::AddBuffBySkillBuffAdditions => {
+                add_buff_from_skill_additions_ops(&context, behavior)
+            }
+            BehaviorKind::AddBuffByBuffLayer => add_buff_by_layer_ops(&mut context, behavior),
             BehaviorKind::BuffSpread => spread_buff_ops(&context, behavior),
             BehaviorKind::BuffSortByHp => sort_buff_by_hp_ops(&context, behavior),
             BehaviorKind::AddBuffByBuffLayerRange => {
@@ -189,6 +241,11 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
             .chain(behavior.arg(1))
             .collect(),
         BehaviorKind::AddBuffBasedOnEnemyBurnUseCount => behavior.arg(0).into_iter().collect(),
+        BehaviorKind::AddBuffBySkillBuffAdditions => behavior.arg(0).into_iter().collect(),
+        BehaviorKind::AddBuffByBuffLayer => [0, 1]
+            .into_iter()
+            .filter_map(|index| behavior.arg(index))
+            .collect(),
         BehaviorKind::AddBuffByBuffLayerRange => behavior
             .arg(0)
             .into_iter()
@@ -213,6 +270,31 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         buffs,
         models: Vec::new(),
     }
+}
+
+fn add_buff_from_skill_additions_ops(
+    context: &BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    let buff_id = behavior.arg(0)?;
+    let count = match context.event? {
+        crate::engine::event::payload::BattleEvent::SkillAction(action) => action
+            .buff_additions
+            .iter()
+            .find_map(|(added_id, amount)| (*added_id == buff_id).then_some(*amount))
+            .unwrap_or_default(),
+        _ => 0,
+    };
+    if count <= 0 {
+        return Some(Vec::new());
+    }
+    grant_command(
+        context.source_uid,
+        context.target_uid,
+        count as u32,
+        behavior,
+    )
+    .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
 }
 
 fn pool_buff_ids(raw: &str) -> Vec<i32> {

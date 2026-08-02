@@ -1,6 +1,55 @@
 use super::*;
 
 #[test]
+fn burn_layer_limit_uses_only_the_target_owners_modifier() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    team_type: Some(1),
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(30940162),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    team_type: Some(1),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+    let hp = HpManager::default();
+
+    manager.add_replacing_excluded(&hp, 10, 10, 4150001, 100);
+    manager.add_replacing_excluded(&hp, 10, 11, 4150001, 100);
+    manager.add_replacing_excluded(&hp, 10, -1, 4150001, 100);
+
+    assert_eq!(manager.buff_id_amount(10, 4150001), 45);
+    assert_eq!(manager.buff_id_amount(11, 4150001), 30);
+    assert_eq!(manager.buff_id_amount(-1, 4150001), 30);
+    assert_eq!(manager.grant_overflow(10, 10, 4150001, 1), 1);
+    assert_eq!(manager.grant_overflow(10, -1, 4150001, 1), 1);
+}
+
+#[test]
 fn capped_stack_does_not_create_a_loose_copy() {
     init_config();
     let fight = Fight {

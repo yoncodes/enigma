@@ -1,10 +1,22 @@
 use crate::engine::{
     manager::{
-        buff::BuffCommand, card::CardCommand, conduit::ConduitCommand, emitter::EmitterCommand,
-        entity::EntityCommand, entity::EntitySkillCommand, eureka::EurekaCommand,
-        ex_point::ExPointCommand, field::FieldCommand, gauge::GaugeCommand, hp::HpCommand,
-        injury::InjuryCommand, revive::ReviveCommand, shield::ShieldCommand, summon::SummonCommand,
-        toughness::ToughnessRecover, upgrade::UpgradeCommand,
+        buff::BuffCommand,
+        card::CardCommand,
+        conduit::ConduitCommand,
+        emitter::EmitterCommand,
+        entity::EntityCommand,
+        entity::EntitySkillCommand,
+        eureka::EurekaCommand,
+        ex_point::ExPointCommand,
+        field::FieldCommand,
+        gauge::GaugeCommand,
+        hp::HpCommand,
+        injury::InjuryCommand,
+        revive::ReviveCommand,
+        shield::ShieldCommand,
+        summon::SummonCommand,
+        toughness::{ToughnessRecord, ToughnessRecover},
+        upgrade::UpgradeCommand,
     },
     mechanic::{
         buff_precast::BuffPrecastCommand, field_transfer::FieldTransferCommand,
@@ -27,12 +39,14 @@ pub struct ThresholdSkillCommand {
     pub invocation: SkillInvocation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectMarker {
     pub target_uid: i64,
     pub effect_type: i32,
     pub effect_num: i32,
     pub config_effect: i32,
+    pub reserve_id: Option<i64>,
+    pub reserve_str: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,6 +78,7 @@ pub enum BattleCommand {
     Summon(SummonCommand),
     Upgrade(UpgradeCommand),
     ToughnessRecover(ToughnessRecover),
+    ToughnessRecord(ToughnessRecord),
     ThresholdSkill(ThresholdSkillCommand),
     BloodtitheSpend(crate::engine::mechanic::bloodtithe::spend::SpendCommand),
 }
@@ -90,6 +105,8 @@ pub enum RuleOp {
         effect_type: i32,
         effect_num: i32,
         config_effect: i32,
+        reserve_id: Option<i64>,
+        reserve_str: Option<String>,
     },
     SceneChange {
         scene_id: i32,

@@ -170,7 +170,7 @@ fn dispatch_subscribers(
             if subscriber.key.event == EventKind::SkillCast {
                 subscriber.owner_uid == action.source_uid
             } else {
-                pool.source_is_attacker(subscriber.owner_uid) == attacker
+                skill_subscriber_observes_completed_action(pool, subscriber, action)
             }
         });
         let team = if attacker { 1 } else { 2 };
@@ -243,6 +243,10 @@ fn skill_subscriber_observes_action(
             pool.source_is_attacker(subscriber.owner_uid)
                 == pool.source_is_attacker(action.source_uid)
         }
+        crate::engine::skill::condition::registry::SkillActionObserver::OpposingTeam => {
+            pool.source_is_attacker(subscriber.owner_uid)
+                != pool.source_is_attacker(action.source_uid)
+        }
         crate::engine::skill::condition::registry::SkillActionObserver::AllyOfAttackedTarget => {
             action.is_attack
                 && action.attacked_target_uids.iter().any(|target_uid| {
@@ -252,6 +256,25 @@ fn skill_subscriber_observes_action(
                             == pool.source_is_attacker(subscriber.owner_uid)
                 })
         }
+    }
+}
+
+fn skill_subscriber_observes_completed_action(
+    pool: &TargetPool,
+    subscriber: &SkillSubscriber,
+    action: &crate::engine::skill::action::ActionEvent,
+) -> bool {
+    let same_team =
+        pool.source_is_attacker(subscriber.owner_uid) == pool.source_is_attacker(action.source_uid);
+    match crate::engine::skill::condition::registry::find_key(
+        subscriber.key.definition.opcode,
+        subscriber.key.definition.type_name,
+    )
+    .map(|definition| definition.skill_action_observer)
+    .unwrap_or_default()
+    {
+        crate::engine::skill::condition::registry::SkillActionObserver::OpposingTeam => !same_team,
+        _ => same_team,
     }
 }
 
@@ -414,6 +437,65 @@ mod tests {
     };
 
     #[test]
+    fn completed_action_routes_same_and_opposing_team_thresholds_separately() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    passive_skill: vec![30660191],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        managers.eureka.add_max(10, 1, 5);
+        managers.eureka.set(10, 1, 5);
+        let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+        let dispatch_action = |source_uid| {
+            dispatch_event(
+                &pool,
+                &managers,
+                &catalog,
+                &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
+                &BattleEvent::AllyAction(crate::engine::skill::action::ActionEvent {
+                    source_uid,
+                    ..Default::default()
+                }),
+            )
+            .unwrap()
+        };
+
+        let allied = dispatch_action(10);
+        assert!(matches!(
+            allied.skills.as_slice(),
+            [(subscriber, _)]
+                if subscriber.key.definition
+                    == DefinitionKey::new(180212999, "PowerCompare")
+        ));
+
+        let opposing = dispatch_action(-1);
+        assert!(matches!(
+            opposing.skills.as_slice(),
+            [(subscriber, _)]
+                if subscriber.key.definition
+                    == DefinitionKey::new(180213999, "PowerCompare")
+        ));
+    }
+
+    #[test]
     fn derived_skill_cast_does_not_require_a_skill_action_phase() {
         crate::test_support::init_config();
         let fight = Fight {
@@ -463,6 +545,7 @@ mod tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         });
 
         let dispatched = dispatch_event(
@@ -533,6 +616,7 @@ mod tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         };
 
         assert!(skill_subscriber_observes_action(
@@ -613,6 +697,7 @@ mod tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         };
 
         assert!(skill_subscriber_observes_action(
@@ -680,6 +765,7 @@ mod tests {
             teammate_injury_count_not_reset: 1,
             team_injury_count_round: 1,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         });
 
         let dispatched = dispatch_event(
@@ -967,6 +1053,7 @@ mod tests {
             target_uid: -1,
             skill_id: 100,
             amount: 50,
+            shield_absorbed: 0,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
             assassinate: false,
         });

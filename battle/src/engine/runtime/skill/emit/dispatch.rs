@@ -119,7 +119,10 @@ pub(in crate::engine::runtime) fn emit_ops(
         execution.context.recorded_skill_id = recorded.skill_id;
         execution.context.recorded_skill_source_uid = recorded.source_uid;
     }
-    execution.context.logic_target = catalog.logic_target(effect_skill_id);
+    execution.context.logic_target = match invocation.target {
+        SkillTarget::LogicRule(code) => code,
+        _ => catalog.logic_target(effect_skill_id),
+    };
     execution.context.damage_target_count_kind =
         crate::engine::skill::target::request::damage_target_count_kind(
             execution.context.logic_target,
@@ -185,7 +188,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         && execution.configured_targets.is_none()
     {
         let request = TargetRequest {
-            code: catalog.logic_target(effect_skill_id),
+            code: execution.context.logic_target,
             raw: Vec::new(),
         };
         let routes_configured_damage = effect

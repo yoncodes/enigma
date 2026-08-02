@@ -23,6 +23,7 @@ impl BehaviorHandler for Handler {
                 ToughnessRecover {
                     origin,
                     target_uid: context.target_uid,
+                    config_effect: behavior.config_effect,
                 },
             ))]
         })

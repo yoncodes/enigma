@@ -57,6 +57,8 @@ impl BehaviorHandler for Handler {
                     effect_type: sonettobuf::effect_type_enum::EffectType::Twinsupcount as i32,
                     effect_num: consumed,
                     config_effect: behavior.spec.key.opcode,
+                    reserve_id: None,
+                    reserve_str: None,
                 },
             ]);
         }
@@ -161,6 +163,19 @@ impl BehaviorHandler for Handler {
                     0,
                     behavior.spec.key.opcode,
                     rate.saturating_mul(enemy_count),
+                    true,
+                ));
+            }
+            return Some(Vec::new());
+        }
+        if behavior.spec.kind == BehaviorKind::SkillRateUp2 {
+            let target_uid = context.target.runtime_target_uid;
+            let delta = status_skill_rate(&context.managers.buff, target_uid, behavior);
+            if context.active_skill_id != 0 && target_uid != 0 && delta != 0 {
+                context.modifiers.rates.push(SkillRateModifier::fixed(
+                    target_uid,
+                    behavior.spec.key.opcode,
+                    delta,
                     true,
                 ));
             }
@@ -297,6 +312,8 @@ fn conduit_power_up_ops(
             effect_type: sonettobuf::effect_type_enum::EffectType::Twinspowerupcount as i32,
             effect_num: spent,
             config_effect: behavior.spec.key.opcode,
+            reserve_id: None,
+            reserve_str: None,
         },
     ])
 }

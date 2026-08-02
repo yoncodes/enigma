@@ -1,5 +1,6 @@
 pub mod action_point;
 pub mod additional_damage;
+pub mod attr_fix_by_burn_layer;
 pub mod attr_fix_by_lost_hp;
 pub mod buff;
 pub mod card;
@@ -122,7 +123,7 @@ mod op_tests {
         let mut determinism = RoundDeterminism::default();
         let mut modifiers = SkillModifiers::default();
         let mut target = TargetContext::default();
-        let behavior = ParsedBehavior::new(60189, "AddEnergyToCard", vec![1, 2, 3]);
+        let behavior = ParsedBehavior::new(60189, "AddEnergyToCard", vec![1, -1, 3]);
 
         assert!(matches!(
             rule_ops(
@@ -143,7 +144,7 @@ mod op_tests {
             ),
             Some(ops) if matches!(ops.as_slice(), [RuleOp::Command(BattleCommand::Card(
                 CardCommand::ChangeBasicEnergy(CardEnergyChange {
-                    delta: 2,
+                    delta: -1,
                     count: 3,
                     ..
                 })

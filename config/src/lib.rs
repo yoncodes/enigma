@@ -10,7 +10,6 @@ pub(crate) fn load_rows<T: serde::de::DeserializeOwned>(path: &str) -> anyhow::R
 // Handwritten semantic queries belong here, not in generated table files or callers.
 mod activity_query;
 mod battle_pass;
-mod battle_query;
 mod dungeon;
 mod equipment;
 mod hero;
@@ -20,6 +19,7 @@ mod room;
 mod scene;
 mod summon_query;
 mod task;
+mod toughness;
 mod tower;
 
 pub mod configs {

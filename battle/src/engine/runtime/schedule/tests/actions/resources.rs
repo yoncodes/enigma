@@ -154,6 +154,11 @@ fn ultimate_spend_is_recorded_inside_its_skill_frame() {
                 current_hp: Some(100),
                 ex_point: Some(5),
                 ex_skill: Some(999),
+                buffs: vec![BuffInfo {
+                    uid: Some(1),
+                    buff_id: Some(5081),
+                    ..Default::default()
+                }],
                 ..Default::default()
             }],
             ..Default::default()

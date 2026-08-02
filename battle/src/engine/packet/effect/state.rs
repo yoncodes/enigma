@@ -256,7 +256,7 @@ impl EffectPacket {
             target_id: Some(change.target_uid),
             effect_type: Some(EffectType::Toughnessrecover as i32),
             effect_num: Some(0),
-            config_effect: Some(0),
+            config_effect: Some(change.config_effect),
             buff_act_id: Some(0),
             reserve_id: Some(0),
             reserve_str: Some(format!("{},{}", change.point, change.value)),

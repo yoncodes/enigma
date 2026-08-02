@@ -192,6 +192,7 @@ fn toughness_recovery_uses_the_captured_point_and_segment_payload() {
             target_uid: -1,
             point: 3,
             value: 60_900,
+            config_effect: 60_287,
             team_type: 2,
         });
 
@@ -201,12 +202,13 @@ fn toughness_recovery_uses_the_captured_point_and_segment_payload() {
         Some(EffectType::Toughnessrecover as i32)
     );
     assert_eq!(effect.reserve_str.as_deref(), Some("3,60900"));
+    assert_eq!(effect.config_effect, Some(60_287));
     assert_eq!(effect.team_type, Some(2));
 }
 
 #[test]
 fn fully_absorbed_buff_damage_keeps_its_exact_buff_act_opcode() {
-    let effect = EffectPacket::fully_absorbed_damage_with_hurt_info_layout(
+    let effect = EffectPacket::fully_absorbed_damage_with_toughness_layout(
         20,
         DamageRecord {
             amount: 400,
@@ -227,6 +229,7 @@ fn fully_absorbed_buff_damage_keeps_its_exact_buff_act_opcode() {
                 display_amount: Some(400),
             },
         },
+        None,
         HurtInfoWireLayout::Version6,
     );
 

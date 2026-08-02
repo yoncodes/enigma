@@ -198,7 +198,7 @@ fn retrieve_all(
         .map(|feature| (feature.owner_uid, feature.amount))
         .collect::<Vec<_>>();
     deployed.sort_unstable_by_key(|(target_uid, _)| *target_uid);
-    if source_uid == 0 || deployed.is_empty() {
+    if source_uid == 0 {
         return Err(ShellError::MissingDeployedShell);
     }
 
@@ -436,6 +436,43 @@ mod tests {
         assert_eq!(changes.events[0].amount, 2);
         assert_eq!(changes.events[1].target_uid, -1);
         assert_eq!(changes.events[1].amount, 3);
+    }
+
+    #[test]
+    fn retrieve_all_without_deployed_shells_is_a_no_op() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(52),
+                        buff_id: Some(31090111),
+                        layer: Some(8),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+
+        let changes = execute(
+            &mut managers,
+            ShellCommand::RetrieveAll {
+                origin: ORIGIN,
+                source_uid: 10,
+                stock_buff_id: 31090111,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(managers.buff.buff_id_amount(10, 31090111), 8);
+        assert!(changes.buffs.is_empty());
+        assert!(changes.events.is_empty());
     }
 
     #[test]

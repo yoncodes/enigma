@@ -9,11 +9,34 @@ fn registry_requires_exact_id_and_type() {
         BuffActKind::CardLimitAdd
     );
     assert!(find(1075, "CardNotCalSize").is_none());
+    let leech_reduction = find(716, "InjuryAbsorb").unwrap();
+    assert_eq!(leech_reduction.kind, BuffActKind::InjuryAbsorb);
+    assert_eq!(
+        destination(716, "InjuryAbsorb", &[300]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(716, "InjuryAbsorb", &[1001]));
+    assert_eq!(
+        leech_reduction
+            .wire
+            .unwrap()
+            .markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::Injuryabsorb as i32]
+    );
     assert_eq!(
         find(1137, "EntityExSkillNotCalSize").unwrap().kind,
         BuffActKind::EntityExSkillNotCalSize
     );
+    assert_eq!(
+        destination(1137, "EntityExSkillNotCalSize", &[]),
+        Some(BuffActDestination::StateConsumer)
+    );
     assert!(find(1137, "CardNotCalSize").is_none());
+    assert_eq!(
+        destination(951, "CardNotCalSize", &[1]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert_eq!(destination(951, "CardNotCalSize", &[]), None);
     assert_eq!(
         find(1028, "RealDamageKill").unwrap().kind,
         BuffActKind::RealDamageKill
@@ -238,6 +261,80 @@ fn damage_cap_is_an_exact_static_consumer_with_its_captured_marker() {
 }
 
 #[test]
+fn hp_loss_floor_is_an_exact_static_consumer() {
+    let definition = find(1008, "BanLostLife").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::BanLostLife);
+    assert!(definition.state.consumer);
+    assert!(has_destination(1008, "BanLostLife", &[150]));
+    assert!(!has_destination(1008, "BanLostLife", &[]));
+    assert!(!has_destination(1008, "BanLostLife", &[160]));
+    assert!(!has_destination(1008, "BanLostLife", &[500]));
+    assert!(find(1008, "DamageNotMoreThan").is_none());
+}
+
+#[test]
+fn missing_hp_healing_is_an_exact_static_consumer() {
+    let definition = find(1011, "CureUpByLostHp").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::CureUpByLostHp);
+    assert!(definition.state.consumer);
+    assert!(has_destination(1011, "CureUpByLostHp", &[200, 75, 8, 100]));
+    assert!(!has_destination(1011, "CureUpByLostHp", &[100, 50, 8, 100]));
+    assert!(!has_destination(1011, "CureUpByLostHp", &[]));
+    assert!(find(1011, "BanLostLife").is_none());
+}
+
+#[test]
+fn sentinel_sub_buff_chain_uses_exact_state_consumers() {
+    assert!(has_destination(
+        932,
+        "FixAttrBySubBuffLayer",
+        &[31260151, 201, 300, 0]
+    ));
+    assert!(has_destination(933, "SubBuff", &[31260201]));
+    assert!(has_destination(865, "AddPassiveSkills", &[31260181]));
+
+    assert!(!has_destination(
+        932,
+        "FixAttrBySubBuffLayer",
+        &[31260151, 201, 300]
+    ));
+    assert!(!has_destination(933, "SubBuff", &[-1]));
+    assert!(!has_destination(865, "AddPassiveSkills", &[0]));
+    assert!(find(932, "FixTempAttrByBuffLayer").is_none());
+    assert!(find(933, "AddPassiveSkills").is_none());
+    assert!(find(865, "SubBuff").is_none());
+}
+
+#[test]
+fn burn_damage_fix_is_an_exact_static_consumer_with_its_add_marker() {
+    let definition = find(793, "BurnRealHurtFix").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::BurnRealHurtFix);
+    assert!(definition.state.consumer);
+    assert!(has_destination(793, "BurnRealHurtFix", &[500, 150]));
+    assert!(has_destination(793, "BurnRealHurtFix", &[-1000, 0]));
+    assert!(!has_destination(793, "BurnRealHurtFix", &[-1001, 0]));
+    assert!(!has_destination(793, "BurnRealHurtFix", &[1001, 0]));
+    assert!(!has_destination(793, "BurnRealHurtFix", &[500, 1001]));
+
+    let wire = super::super::wire::find(793, "BurnRealHurtFix").unwrap();
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::Realhurtfixwithlimit as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+}
+
+#[test]
 fn passive_state_consumers_reject_unsupported_argument_shapes() {
     for (id, kind, valid, invalid) in [
         (794, "ModifyMaxBurnLayers", vec![20], vec![]),
@@ -376,4 +473,84 @@ fn dot_uses_its_exact_after_hit_route_and_known_argument_shapes() {
     assert!(has_destination(203, "Dot", &[1, 100, 150]));
     assert!(has_destination(203, "Dot", &[1, 101, 200]));
     assert!(!has_destination(203, "Dot", &[0, 101, 200]));
+}
+
+#[test]
+fn holder_scaled_dot_keeps_its_exact_round_end_route() {
+    assert_eq!(runtime_event(202, "Dot", 302), Some(EventKind::RoundEnd));
+    assert!(has_destination(202, "Dot", &[1, 100, 30]));
+    assert!(find(202, "Dot").is_some());
+    assert!(find(202, "DotNoLimit").is_none());
+}
+
+#[test]
+fn moxie_loss_keeps_its_exact_round_end_route() {
+    assert_eq!(
+        runtime_event(605, "ExPointDel", 302),
+        Some(EventKind::RoundEnd)
+    );
+    assert!(has_destination(605, "ExPointDel", &[1]));
+    assert!(!has_destination(605, "ExPointDel", &[0]));
+}
+
+#[test]
+fn targeted_support_dispel_keeps_its_exact_skill_cast_route() {
+    assert_eq!(
+        runtime_event(804, "DisperseByTag", 208),
+        Some(EventKind::SkillCast)
+    );
+    assert_eq!(
+        runtime_actor_scope(804, "DisperseByTag"),
+        RuntimeActorScope::Team
+    );
+    assert!(has_destination(804, "DisperseByTag", &[1, 4, 5, 6, 9]));
+    assert!(!has_destination(804, "DisperseByTag", &[0, 4, 5, 6, 9]));
+}
+
+#[test]
+fn layer_gated_passive_keeps_its_exact_static_route() {
+    let definition = find(805, "AddPassiveSkillByLayer").unwrap();
+    assert!(definition.state.consumer);
+    assert!(has_destination(
+        805,
+        "AddPassiveSkillByLayer",
+        &[10, 12110011]
+    ));
+    assert!(!has_destination(
+        805,
+        "AddPassiveSkillByLayer",
+        &[0, 12110011]
+    ));
+}
+
+#[test]
+fn moxie_reduction_immunity_keeps_its_exact_static_identity() {
+    let definition = find(509, "ImmunityExpointChange").unwrap();
+    assert_eq!(definition.kind, BuffActKind::MoxieReductionImmunity);
+    assert!(definition.state.consumer);
+    assert!(has_destination(509, "ImmunityExpointChange", &[]));
+    assert!(find(509, "ExPointCantAdd").is_none());
+}
+
+#[test]
+fn incapacitating_control_buffs_keep_distinct_exact_routes() {
+    let dizzy = find(401, "Dizzy").unwrap();
+    assert_eq!(dizzy.kind, BuffActKind::Dizzy);
+    assert!(dizzy.state.consumer);
+    assert!(has_destination(401, "Dizzy", &[]));
+
+    let petrified = find(402, "Petrified").unwrap();
+    assert_eq!(petrified.kind, BuffActKind::Petrified);
+    assert!(petrified.state.consumer);
+    assert_eq!(
+        runtime_event(402, "Petrified", 0),
+        Some(EventKind::TargetAttacked)
+    );
+    assert!(has_destination(402, "Petrified", &[]));
+    assert!(
+        !super::super::wire::find(402, "Petrified")
+            .unwrap()
+            .has_output()
+    );
+    assert!(find(402, "Dizzy").is_none());
 }

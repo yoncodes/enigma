@@ -204,6 +204,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "battle",
+ "battle_preview",
  "config",
  "protocol",
  "serde_json",

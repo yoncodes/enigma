@@ -37,6 +37,7 @@ fn nautika_uses_rank_replaced_faith_cap() {
                 effect_type: 0,
             }),
             true,
+            true,
         )
         .unwrap();
     manager.sync_entity(&mut fight.attacker.as_mut().unwrap().entitys[0]);
@@ -78,6 +79,7 @@ fn synchronization_definition_is_owned_by_the_resource_manager() {
                 definition,
             }),
             true,
+            true,
         )
         .unwrap();
 
@@ -95,6 +97,7 @@ fn synchronization_definition_is_owned_by_the_resource_manager() {
                     action_target_uid: -1,
                     damage,
                 }),
+                true,
                 true,
             )
             .unwrap();

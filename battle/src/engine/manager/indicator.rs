@@ -37,6 +37,8 @@ impl IndicatorManager {
             effect_type: sonettobuf::effect_type_enum::EffectType::Indicatorchange as i32,
             effect_num: amount,
             config_effect: IndicatorOperation::Add as i32,
+            reserve_id: None,
+            reserve_str: None,
         })
     }
 

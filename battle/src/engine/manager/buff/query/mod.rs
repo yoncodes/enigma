@@ -412,6 +412,26 @@ impl BuffManager {
             .unwrap_or_default()
     }
 
+    pub fn grant_overflow(
+        &self,
+        source_uid: i64,
+        target_uid: i64,
+        buff_id: i32,
+        amount: i32,
+    ) -> i32 {
+        let Some(definition) = BuffDefinition::get(buff_id) else {
+            return 0;
+        };
+        let limit =
+            self.grant_stack_limit(BuffRoute::new(source_uid, target_uid, buff_id), &definition);
+        if limit <= 0 {
+            return 0;
+        }
+        self.buff_id_amount(target_uid, buff_id)
+            .saturating_add(amount.max(0))
+            .saturating_sub(limit)
+    }
+
     pub fn buff_type_amount(&self, uid: i64, type_id: i32) -> i32 {
         self.buffs
             .iter()
@@ -462,6 +482,23 @@ impl BuffManager {
                     })
             })
             .count() as i32
+    }
+
+    pub fn team_buff_status_type_count(&self, uids: &[i64], status_ids: &[i32]) -> i32 {
+        let mut type_ids = Vec::new();
+        for active in self.buffs.iter().filter(|active| {
+            uids.contains(&active.owner_uid)
+                && active.definition.as_ref().is_some_and(|definition| {
+                    status_ids
+                        .iter()
+                        .any(|status_id| definition.matches_type_category(*status_id))
+                })
+        }) {
+            if !type_ids.contains(&active.type_id) {
+                type_ids.push(active.type_id);
+            }
+        }
+        type_ids.len() as i32
     }
 
     pub fn buff_type_layer(&self, uid: i64, type_id: i32) -> i32 {
@@ -700,10 +737,11 @@ impl BuffManager {
             .filter(|active| active.owner_uid == uid)
             .flat_map(|active| {
                 let owner_uid = passive_skill_owner(active);
+                let amount = count_or_layer(&active.buff);
                 active
                     .definition
                     .as_ref()
-                    .map(|definition| passive_skill_links(owner_uid, definition.features()))
+                    .map(|definition| passive_skill_links(owner_uid, definition.features(), amount))
                     .unwrap_or_default()
             })
             .collect()

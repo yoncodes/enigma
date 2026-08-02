@@ -270,6 +270,7 @@ mod tests {
             target_uid: -1,
             skill_id: 1,
             amount: 1,
+            shield_absorbed: 0,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
             assassinate: false,
         });
@@ -346,6 +347,7 @@ mod tests {
             teammate_injury_count_not_reset: 0,
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         });
 
         let ops = rule_ops(&subscriber, &event, &SkillEffectCatalog::default(), &pool).unwrap();

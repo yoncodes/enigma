@@ -60,6 +60,7 @@ pub fn execute(
                     origin: command.origin,
                     target_uid: command.target_uid,
                     statuses: command.dispel_statuses,
+                    excluded_ids_or_types: Vec::new(),
                     count: 0,
                 }))
                 .map_err(ReviveError::Buff)?,

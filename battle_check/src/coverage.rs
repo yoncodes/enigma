@@ -26,6 +26,17 @@ struct Witness {
     name: String,
 }
 
+struct HeroReadiness {
+    id: i32,
+    name: String,
+    ready: bool,
+    skills: usize,
+    buffs: usize,
+    errors: usize,
+    warnings: usize,
+    gaps: usize,
+}
+
 impl Witness {
     fn label(&self) -> String {
         let kind = match self.kind {
@@ -46,7 +57,9 @@ pub(crate) fn print_coverage_plan(
     let mut gap_paths = BTreeMap::<CapabilityKey, BTreeSet<String>>::new();
     let mut witnesses = BTreeMap::<CapabilityKey, BTreeSet<Witness>>::new();
     let mut uses = BTreeMap::<Witness, BTreeSet<CapabilityKey>>::new();
+    let mut hero_readiness = Vec::new();
     let options = Options::default();
+    let wire_evidence = crate::wire_evidence::Evidence::collect(db);
 
     if domain_filter == Some("buff-include") {
         for buff in db.skill_buff.iter() {
@@ -70,11 +83,7 @@ pub(crate) fn print_coverage_plan(
         }
     }
 
-    for hero in db
-        .character
-        .iter()
-        .filter(|hero| hero.hero_type == 1 && hero.is_online == "1")
-    {
+    for hero in db.character.iter().filter(|hero| hero.is_online == "1") {
         let witness = Witness {
             kind: WitnessKind::Hero,
             id: hero.id,
@@ -84,11 +93,21 @@ pub(crate) fn print_coverage_plan(
         };
         let mut skills = VecDeque::new();
         let mut report = Report {
-            quiet: true,
+            wire_evidence: wire_evidence.clone(),
             ..Default::default()
         };
         collect_hero_roots(&options, hero.id, db, &mut skills, &mut report)?;
         scan_closure(db, catalog, &mut skills, &mut VecDeque::new(), &mut report);
+        hero_readiness.push(HeroReadiness {
+            id: hero.id,
+            name: witness.name.clone(),
+            ready: report.is_ready(),
+            skills: report.checked_skills.len(),
+            buffs: report.checked_buffs.len(),
+            errors: report.errors.len(),
+            warnings: report.warnings.len(),
+            gaps: report.gaps.len(),
+        });
         index_report(
             witness,
             report,
@@ -203,6 +222,28 @@ pub(crate) fn print_coverage_plan(
                 .join(",")
         },
     );
+    let shown_heroes = hero_readiness
+        .iter()
+        .filter(|hero| focus_heroes.is_empty() || focus_heroes.contains(&hero.id))
+        .collect::<Vec<_>>();
+    println!(
+        "HERO READINESS ready={} incomplete={}",
+        shown_heroes.iter().filter(|hero| hero.ready).count(),
+        shown_heroes.iter().filter(|hero| !hero.ready).count(),
+    );
+    for hero in shown_heroes {
+        println!(
+            "  hero {} ({}) status={} skills={} buffs={} errors={} warnings={} gaps={}",
+            hero.id,
+            hero.name,
+            if hero.ready { "READY" } else { "INCOMPLETE" },
+            hero.skills,
+            hero.buffs,
+            hero.errors,
+            hero.warnings,
+            hero.gaps,
+        );
+    }
     for (key, reasons) in &gaps {
         println!(
             "GAP {} {} {} reason={}",
