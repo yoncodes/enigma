@@ -355,7 +355,7 @@ async fn rank_and_insight_skin_commit_together() {
 }
 
 #[tokio::test]
-async fn skin_can_be_owned_before_its_hero_but_not_equipped() {
+async fn non_default_skin_requires_ownership_but_default_skin_does_not() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
     let game_data = config::configs::get();
@@ -372,13 +372,22 @@ async fn skin_can_be_owned_before_its_hero_but_not_equipped() {
         .unwrap();
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     database::run_migrations(&pool).await.unwrap();
-    sqlx::query(
-        "INSERT INTO users (id, username, created_at, updated_at)
-         VALUES (20, 'skin-before-hero', 0, 0)",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    for (id, name) in [(20_i64, "skin-before-hero"), (21, "unowned-skin")] {
+        sqlx::query("INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, 0, 0)")
+            .bind(id)
+            .bind(name)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let unowned = UserHeroModel::new(21, pool.clone());
+    unowned.create_hero(skin.character_id).await.unwrap();
+    assert!(
+        HeroManager::new(21)
+            .use_skin(&pool, skin.character_id, skin.id)
+            .await
+            .is_err()
+    );
 
     let heroes = UserHeroModel::new(20, pool.clone());
     let applied = crate::reward::RewardManager::new(20)
@@ -413,6 +422,19 @@ async fn skin_can_be_owned_before_its_hero_but_not_equipped() {
     assert_eq!(
         heroes.get(skin.character_id).await.unwrap().record.skin,
         skin.id
+    );
+    let default_skin = game_data
+        .default_character_skin(skin.character_id)
+        .unwrap()
+        .id;
+    assert!(!heroes.has_skin(default_skin).await.unwrap());
+    HeroManager::new(20)
+        .use_skin(&pool, skin.character_id, default_skin)
+        .await
+        .unwrap();
+    assert_eq!(
+        heroes.get(skin.character_id).await.unwrap().record.skin,
+        default_skin
     );
 }
 
@@ -455,6 +477,7 @@ async fn profile_rejects_foreign_skins_and_equipment() {
     }
     let heroes = UserHeroModel::new(18, pool.clone());
     heroes.create_hero(3003).await.unwrap();
+    assert!(heroes.unlock_skin(foreign_skin.id).await.unwrap());
 
     let manager = HeroManager::new(18);
     assert!(

@@ -1493,26 +1493,31 @@ impl HeroModel<HeroData> for UserHeroModel {
     }
 
     async fn skin(&self, hero_id: i32, skin_id: i32) -> Result<bool> {
-        if config::configs::get()
+        let tables = config::configs::get();
+        if tables
             .skin
             .get(skin_id)
             .is_none_or(|skin| skin.character_id != hero_id)
         {
             return Ok(false);
         }
+        let is_default = tables
+            .default_character_skin(hero_id)
+            .is_some_and(|skin| skin.id == skin_id);
 
         let result = sqlx::query(
             "UPDATE heroes SET skin = ?
              WHERE hero_id = ? AND user_id = ?
-               AND EXISTS(
+               AND (? OR EXISTS(
                    SELECT 1 FROM hero_all_skins
                    WHERE hero_all_skins.user_id = heroes.user_id
                      AND hero_all_skins.skin_id = ?
-               )",
+               ))",
         )
         .bind(skin_id)
         .bind(hero_id)
         .bind(self.user_id)
+        .bind(is_default)
         .bind(skin_id)
         .execute(&self.pool)
         .await?;
