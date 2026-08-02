@@ -105,6 +105,7 @@ fn version_seven_embeds_shield_absorption_in_hurt_info() {
         })),
         true,
         HurtInfoWireLayout::Version7,
+        RedealWireLayout::Version7,
     )
     .unwrap();
 
@@ -178,6 +179,7 @@ fn version_seven_embeds_team_shared_shield_consumption_in_hurt_info() {
         })),
         true,
         HurtInfoWireLayout::Version7,
+        RedealWireLayout::Version7,
     )
     .unwrap();
 
@@ -253,12 +255,14 @@ fn reduce_hp_wire_value_is_gated_by_fight_protocol_version() {
         &change,
         crate::engine::fight::versions::writes_reduce_hp(6),
         crate::engine::fight::versions::hurt_info_wire_layout(6).unwrap(),
+        crate::engine::fight::versions::redeal_wire_layout(6).unwrap(),
     )
     .unwrap();
     let v7 = project_change(
         &change,
         crate::engine::fight::versions::writes_reduce_hp(7),
         crate::engine::fight::versions::hurt_info_wire_layout(7).unwrap(),
+        crate::engine::fight::versions::redeal_wire_layout(7).unwrap(),
     )
     .unwrap();
     assert_eq!(v6[0].hurt_info.as_ref().unwrap().absorb_hurt_param, None);

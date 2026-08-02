@@ -463,7 +463,8 @@ fn invalidated_play_discards_normal_cards_and_restores_ultimates() {
 }
 
 #[test]
-fn cloth_cards_add_universal_and_redeal_without_touching_precast_cards() {
+fn cloth_cards_add_universal_and_redeal_without_touching_special_cards() {
+    crate::test_support::init_config();
     let mut manager = CardManager::new(vec![
         CardInfo {
             uid: Some(10),
@@ -472,9 +473,14 @@ fn cloth_cards_add_universal_and_redeal_without_touching_precast_cards() {
             ..Default::default()
         },
         CardInfo {
-            uid: Some(10),
-            skill_id: Some(999),
+            uid: Some(0),
+            skill_id: Some(118353040),
             temp_card: Some(true),
+            ..Default::default()
+        },
+        CardInfo {
+            uid: Some(10),
+            skill_id: Some(308801322),
             ..Default::default()
         },
     ]);
@@ -502,8 +508,9 @@ fn cloth_cards_add_universal_and_redeal_without_touching_precast_cards() {
         .unwrap();
     assert_eq!(redealt.kind, CardChangeKind::RedealtKeepRanks);
     assert_eq!(redealt.after[0].skill_id, Some(201));
-    assert_eq!(redealt.after[1].skill_id, Some(999));
-    assert_eq!(redealt.after[2].skill_id, Some(30_000_001));
+    assert_eq!(redealt.after[1].skill_id, Some(118353040));
+    assert_eq!(redealt.after[2].skill_id, Some(308801322));
+    assert_eq!(redealt.after[3].skill_id, Some(30_000_001));
 }
 
 #[test]

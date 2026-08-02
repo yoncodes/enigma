@@ -11,8 +11,9 @@ use crate::engine::{
         determinism::RoundDeterminism,
         executor::{RuleExecutionError, RuleOutcome, execute_rule_op},
         record::{
-            FrameOwner, FramePath, FrameTrigger, SemanticFrame, SetupSide, active_skill_scope_path,
-            event_scope_path, owner_at_path, push_change, push_child, push_root, set_skill_target,
+            FrameOwner, FramePath, FrameTrigger, RoundCue, SemanticFrame, SetupSide,
+            active_skill_scope_path, event_scope_path, owner_at_path, push_change, push_child,
+            push_cue, push_root, set_skill_target,
         },
         skill::{self, SkillExecution, SkillOpError, SkillOpTrigger},
     },
@@ -959,9 +960,21 @@ fn drain_queue_with_deferred(
                 // Once pre-publication work is complete, record the authoritative
                 // outcome and any buff fanout beneath their semantic owners.
                 let pending_deaths = outcome.take_deaths();
+                let redeal_hand = match &outcome {
+                    RuleOutcome::Card(changes)
+                        if changes.kind
+                            == crate::engine::manager::card::CardChangeKind::RedealtKeepRanks =>
+                    {
+                        Some(changes.after.clone())
+                    }
+                    _ => None,
+                };
                 let changes = outcome.changes();
                 for change in changes {
                     push_change(&mut result.frames, &frame_path, change);
+                }
+                if let Some(cards) = redeal_hand {
+                    push_cue(&mut result.frames, RoundCue::RedealHandSync { cards });
                 }
                 for (owner, change) in outcome.owned_changes() {
                     push_change(
