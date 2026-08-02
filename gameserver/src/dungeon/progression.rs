@@ -81,10 +81,11 @@ pub fn battle_star(runtime: &battle::engine::runtime::BattleRuntime, battle_id: 
     let Some(battle) = configs::get().battle.get(battle_id) else {
         return 1;
     };
+    let base_star = successful_battle_base_star(&battle.advanced_condition);
     let dead = runtime.dead_attacker_count() as i32;
     let round = runtime.current_round();
 
-    1 + battle
+    let advanced_star = battle
         .advanced_condition
         .split('|')
         .filter_map(|id| id.parse::<i32>().ok())
@@ -107,5 +108,10 @@ pub fn battle_star(runtime: &battle::engine::runtime::BattleRuntime, battle_id: 
                 }
             }
         })
-        .count() as i32
+        .count() as i32;
+    base_star + advanced_star
+}
+
+fn successful_battle_base_star(advanced_condition: &str) -> i32 {
+    1 + i32::from(advanced_condition.is_empty())
 }
