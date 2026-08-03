@@ -168,6 +168,90 @@ fn round_refill_commits_draw_compose_moxie_and_deck_count_in_order() {
 }
 
 #[test]
+fn round_refill_recycles_an_exhausted_draw_pile_and_finishes_the_hand() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(1000),
+                current_hp: Some(100),
+                ex_point: Some(5),
+                ex_skill: Some(900),
+                skill_group1: vec![100],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let card = |skill_id| CardInfo {
+        uid: Some(10),
+        skill_id: Some(skill_id),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let precast = crate::engine::manager::card::precast_card(10, 800);
+    let normal = card(100);
+    let device = card(31490201);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![precast],
+            draw_pile: vec![normal.clone(), device.clone()],
+            deck_num: 1,
+        }))
+        .unwrap();
+    let ultimate = card(900);
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_card_draws(vec![normal, device, ultimate, card(100)]);
+
+    let result = run_round_refill(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut determinism,
+        TargetContext::default(),
+        4,
+        1,
+    )
+    .unwrap();
+
+    assert_eq!(managers.card.normal_hand_len(), 4);
+    assert_eq!(managers.card.hand().len(), 5);
+    assert_eq!(managers.card.deck_num(), 0);
+    assert_eq!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .filter(|card| card.temp_card.unwrap_or_default())
+            .count(),
+        1
+    );
+    assert_eq!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .filter(|card| card.skill_id == Some(900))
+            .count(),
+        1
+    );
+    let deck = sonettobuf::effect_type_enum::EffectType::Carddecknum as i32;
+    assert_eq!(
+        crate::engine::packet::timeline::project(&result.frames)
+            .unwrap()
+            .iter()
+            .flat_map(|step| &step.act_effect)
+            .filter(|effect| effect.effect_type == Some(deck))
+            .filter_map(|effect| effect.effect_num)
+            .collect::<Vec<_>>(),
+        vec![1, 0]
+    );
+}
+
+#[test]
 fn round_refill_does_not_grant_composition_moxie_to_a_special_resource() {
     init_config();
     let fight = Fight {

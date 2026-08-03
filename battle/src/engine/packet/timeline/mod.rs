@@ -859,6 +859,13 @@ fn project_change(
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Drawn => {
             vec![CardPacket::cards_push(changes.after.clone(), 1)]
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::OpeningDrawn => Vec::new(),
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::DrawPileRecycled => changes
+            .operation
+            .clone()
+            .map(CardPacket::from_change)
+            .into_iter()
+            .collect(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::CrystalAdded => changes
             .added
             .clone()
