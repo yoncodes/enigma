@@ -11,6 +11,7 @@ pub struct CardDeck {
     hand_ids: Vec<CardInstanceId>,
     next_hand_id: u64,
     draw_pile: Vec<CardInfo>,
+    discard_pile: Vec<CardInfo>,
     generated: Vec<CardInfo>,
 }
 
@@ -30,6 +31,7 @@ impl CardDeck {
             hand_ids: Vec::new(),
             next_hand_id: 1,
             draw_pile: Vec::new(),
+            discard_pile: Vec::new(),
             generated: Vec::new(),
         };
         for card in hand {
@@ -44,6 +46,7 @@ impl CardDeck {
             hand_ids: Vec::new(),
             next_hand_id: 1,
             draw_pile,
+            discard_pile: Vec::new(),
             generated: Vec::new(),
         };
         for card in hand {
@@ -73,15 +76,45 @@ impl CardDeck {
     }
 
     pub fn consume_draw_card(&mut self, card: &CardInfo) -> bool {
-        let Some(index) = self.draw_pile.iter().position(|candidate| {
-            candidate.uid == card.uid
-                && candidate.skill_id == card.skill_id
-                && candidate.temp_card == card.temp_card
-        }) else {
+        let Some(index) = self
+            .draw_pile
+            .iter()
+            .position(|candidate| same_card(candidate, card))
+        else {
             return false;
         };
-        self.draw_pile.remove(index);
+        self.discard_pile.push(self.draw_pile.remove(index));
         true
+    }
+
+    pub(super) fn deal_from_draw_pile(&mut self, cards: &[CardInfo]) -> bool {
+        let mut remaining = self.draw_pile.clone();
+        for card in cards {
+            let Some(index) = remaining
+                .iter()
+                .position(|candidate| same_card(candidate, card))
+            else {
+                return false;
+            };
+            remaining.remove(index);
+        }
+        for card in cards {
+            self.consume_draw_card(card);
+            self.push_hand(card.clone());
+        }
+        true
+    }
+
+    pub(super) fn recycle_draw_pile(&mut self) -> bool {
+        if !self.can_recycle_draw_pile() {
+            return false;
+        }
+        std::mem::swap(&mut self.draw_pile, &mut self.discard_pile);
+        true
+    }
+
+    pub(super) fn can_recycle_draw_pile(&self) -> bool {
+        self.draw_pile.is_empty() && !self.discard_pile.is_empty()
     }
 
     pub fn move_card(&mut self, from_index: usize, to_index: usize) -> bool {
@@ -108,6 +141,7 @@ impl CardDeck {
             .hand
             .iter_mut()
             .chain(&mut self.draw_pile)
+            .chain(&mut self.discard_pile)
             .chain(&mut self.generated)
             .filter(|card| card.uid == Some(owner_uid))
         {
@@ -133,6 +167,7 @@ impl CardDeck {
     pub fn draw(&mut self, count: usize) -> Vec<CardInfo> {
         let take = count.min(self.draw_pile.len());
         let drawn: Vec<_> = self.draw_pile.drain(..take).collect();
+        self.discard_pile.extend(drawn.iter().cloned());
         for card in drawn.iter().cloned() {
             self.push_hand(card);
         }
@@ -360,6 +395,10 @@ fn composable_next(
         return None;
     }
     rank_up.get(&(owner_uid, skill_id)).copied()
+}
+
+fn same_card(left: &CardInfo, right: &CardInfo) -> bool {
+    left.uid == right.uid && left.skill_id == right.skill_id && left.temp_card == right.temp_card
 }
 
 fn is_universal(skill_id: i32) -> bool {

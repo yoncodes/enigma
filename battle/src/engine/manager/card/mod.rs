@@ -19,10 +19,11 @@ pub use command::{
     CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
     CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardDraw, CardEnchantHand,
     CardEnergyAllocation, CardEnergyChange, CardHandLimitChange, CardInvalidatePlayed,
-    CardMarkTemporary, CardOwnerRemoval, CardPlay, CardQueueUse, CardRankChange, CardRankFailure,
-    CardRankResult, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue,
-    CardRemoveAiOwner, CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetup,
-    CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard,
+    CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPlay, CardQueueUse, CardRankChange,
+    CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne,
+    CardRefreshAiQueue, CardRemoveAiOwner, CardReplaceOwnerSkills, CardSetAiQueue,
+    CardSetTeamCards, CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange,
+    QueuedCardRankUp, QueuedUseCard,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;
@@ -45,6 +46,7 @@ pub struct CardManager {
     deck: CardDeck,
     team_cards: Vec<CardInfo>,
     deck_num: i32,
+    deck_capacity: i32,
     ai_queue: Vec<CardInfo>,
     cleaned_ai_owners: HashSet<i64>,
     played: Vec<PlayedCard>,
@@ -77,6 +79,7 @@ impl CardManager {
             deck: CardDeck::new(hand),
             team_cards: Vec::new(),
             deck_num: 0,
+            deck_capacity: 0,
             ai_queue: Vec::new(),
             cleaned_ai_owners: HashSet::new(),
             played: Vec::new(),
@@ -96,6 +99,7 @@ impl CardManager {
             deck: CardDeck::with_draw_pile(hand, draw_pile),
             team_cards: Vec::new(),
             deck_num: 0,
+            deck_capacity: 0,
             ai_queue: Vec::new(),
             cleaned_ai_owners: HashSet::new(),
             played: Vec::new(),
@@ -232,6 +236,7 @@ impl CardManager {
         self.deck = CardDeck::with_draw_pile(hand, draw_pile);
         self.team_cards.clear();
         self.deck_num = deck_num;
+        self.deck_capacity = deck_num;
         self.played.clear();
         self.refilled.clear();
         self.queued_use_cards.clear();
@@ -307,6 +312,17 @@ impl CardManager {
 
     pub fn set_deck_num(&mut self, deck_num: i32) {
         self.deck_num = deck_num;
+    }
+
+    pub(crate) fn recycle_draw_pile(&mut self) -> Option<i32> {
+        self.deck.recycle_draw_pile().then(|| {
+            self.deck_num = self.deck_capacity;
+            self.deck_num
+        })
+    }
+
+    pub(crate) fn can_recycle_draw_pile(&self) -> bool {
+        self.deck.can_recycle_draw_pile()
     }
 
     pub fn into_hand(self) -> Vec<CardInfo> {
@@ -630,6 +646,18 @@ impl CardManager {
 
     pub(crate) fn consume_draw_card(&mut self, card: &CardInfo) -> bool {
         self.deck.consume_draw_card(card)
+    }
+
+    pub(crate) fn deal_opening_cards(&mut self, cards: &[CardInfo], deck_cost: i32) -> bool {
+        if deck_cost < 0
+            || deck_cost as usize > cards.len()
+            || self.deck_num < deck_cost
+            || !self.deck.deal_from_draw_pile(cards)
+        {
+            return false;
+        }
+        self.deck_num -= deck_cost;
+        true
     }
 
     pub fn move_card(&mut self, from_index: usize, to_index: usize) -> bool {
