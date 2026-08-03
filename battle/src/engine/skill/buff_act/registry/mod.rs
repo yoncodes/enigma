@@ -163,10 +163,12 @@ pub enum BuffActKind {
     HeatScaleBurnAddFix,
     HeatScaleDecrCounter,
     HeatScaleTag,
+    HaloBase,
     HeatScaleUseSkill,
     Injury,
     InjuryBank,
     InjuryLogback,
+    Immunity,
     ImmunityTimes,
     InjuryAbsorb,
     AttrFixFromInjuryBank,
@@ -219,6 +221,7 @@ pub enum BuffActKind {
     TargetingTag,
     TeammateInjuryCount,
     ToughnessOverflowRecord,
+    ToughnessRecover,
     TransferEnergyBuff,
     UseSkillTeamAddEmitterEnergy,
     UseSkillAttrFix,
@@ -558,8 +561,9 @@ buff_act_definitions! {
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(100, "Attr"), &[EffectType::Attr as i32]).with_max_hp(2, 0));
     (853, "AttrByLostHp") => AttrByLostHp, effect_time_subscription: false,
-        supports: |args| matches!(args, [step, attrs @ .., max_steps]
-            if *step > 0 && !attrs.is_empty() && *max_steps > 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(853, "AttrByLostHp"), &[EffectType::Attr as i32]));
+        supports: super::attr_by_lost_hp::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(853, "AttrByLostHp"), &[EffectType::Attr as i32]));
+    (1056, "AttrByLostHp") => AttrByLostHp, effect_time_subscription: false,
+        supports: super::attr_by_lost_hp::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1056, "AttrByLostHp"), &[EffectType::Attr as i32]));
     (201, "Cure") => Cure,
         runtime: |context| super::cure::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |args| super::cure::supports(BuffActKind::Cure, args), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(201, "Cure"), &[EffectType::Cure as i32]));
@@ -776,6 +780,7 @@ buff_act_definitions! {
                 == Some(crate::engine::entity::attr::AttrId::Hp)
                 && *cap > 0 && *skill > 0 && *threshold > 0 && *heal > 0 && *store > 0), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(770, "InjuryBank"), &[EffectType::Storageinjury as i32]));
     (771, "MasterHalo") => MasterHalo, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(771, "MasterHalo"), &[EffectType::Masterhalo as i32]));
+    (704, "HaloBase") => HaloBase, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(704, "HaloBase"), &[EffectType::Halobase as i32]).with_unchanged_refresh());
     (772, "SlaveHalo") => SlaveHalo, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(772, "SlaveHalo"), &[EffectType::Slavehalo as i32]));
     (781, "MockTaunt") => MockTaunt, effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(781, "MockTaunt"), &[EffectType::Mocktaunt as i32]));
     (790, "ModifyAttrByBuffLayer") => ModifyAttrByBuffLayer, effect_time_subscription: false,
@@ -1122,6 +1127,10 @@ buff_act_definitions! {
         state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1053, "AttrByHeatScale"), &[EffectType::None as i32]));
     (1062, "HeatScaleDecrCounter") => HeatScaleDecrCounter, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1062, "HeatScaleDecrCounter"), &[EffectType::None as i32]));
+    (502, "Immunity") => Immunity,
+        effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(502, "Immunity"), &[]));
     (1069, "ImmunityTimes") => ImmunityTimes,
         effect_time_subscription: false,
         supports: |args| matches!(args, [status] if *status > 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1069, "ImmunityTimes"), &[EffectType::None as i32]));
@@ -1139,6 +1148,10 @@ buff_act_definitions! {
         setup: [RoundStart(2)],
         setup_handler: |context| super::team_immunity_times::setup_rule_ops(context.managers, &context.subscriber.feature, context.subscriber.stage),
         supports: super::team_immunity_times::supports, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1126, "TeamImmunityTimes"), &[EffectType::None as i32]).with_initial_state(super::wire::InitialStateRule::SecondArgument));
+    (1102, "ToughnessRecover") => ToughnessRecover,
+        runtime: |context| super::toughness::recover_rule_ops(context.subscriber),
+        supports: |args| matches!(args, [config_effect] if *config_effect >= 0),
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1102, "ToughnessRecover"), &[EffectType::Toughnessrecover as i32]));
     (1127, "TeamExElectricTransConsumeValueAttr") => TeamExElectricTransConsumeValueAttr,
         effect_time_subscription: false, stat_read: OnGrant,
         supports: super::electric_transform::supports_team_attribute, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1127, "TeamExElectricTransConsumeValueAttr"), &[]).with_initial_state(super::wire::InitialStateRule::GrantValue));

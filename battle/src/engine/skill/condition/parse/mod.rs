@@ -49,6 +49,15 @@ pub enum ParsedConditionKind {
         compare: ConditionCompare,
         threshold: i32,
     },
+    BuffIdThreshold {
+        buff_ids: Vec<i32>,
+        threshold: i32,
+    },
+    TeamBuffPresence {
+        team: i32,
+        present: bool,
+        buff_id: i32,
+    },
     BuffTypeCount {
         type_ids: Vec<i32>,
         compare: ConditionCompare,
@@ -114,6 +123,7 @@ pub enum ParsedConditionKind {
     CurrentCardEnchant {
         enchant_id: i32,
     },
+    HandSkillPresence(Vec<i32>),
     ExPoint {
         compare: ConditionCompare,
         threshold: i32,
@@ -140,6 +150,11 @@ pub enum ParsedConditionKind {
         compare_code: i32,
         power_id: i32,
         threshold: i32,
+    },
+    PowerRatio {
+        power_id: i32,
+        compare_code: i32,
+        threshold_permille: i32,
     },
     PowerIncrChange {
         power_id: i32,
@@ -239,6 +254,7 @@ pub enum ParsedConditionKind {
     AttackCrit,
     BeforeCrit,
     GuardBroken,
+    EntityBroken,
     HurtRestrained,
     HurtNotRestrained,
     EntityCount {

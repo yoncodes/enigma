@@ -2,6 +2,7 @@ use sonettobuf::effect_type_enum::EffectType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HaloKind {
+    Base,
     Master,
     Slave,
     LayerMaster,
@@ -42,6 +43,15 @@ pub fn carriers(buff_id: i32) -> Vec<HaloCarrier> {
             };
             let linked_buff_id = parts.next()?.parse().ok().filter(|id| *id > 0);
             match definition.kind {
+                crate::engine::skill::buff_act::registry::BuffActKind::HaloBase => {
+                    Some(HaloCarrier {
+                        kind: HaloKind::Base,
+                        scope,
+                        opcode,
+                        type_name: definition.key.type_name,
+                        linked_buff_id,
+                    })
+                }
                 crate::engine::skill::buff_act::registry::BuffActKind::MasterHalo => {
                     Some(HaloCarrier {
                         kind: HaloKind::Master,
@@ -118,4 +128,26 @@ fn feature_tokens(buff_id: i32) -> impl Iterator<Item = String> {
         .map(str::to_owned)
         .collect::<Vec<_>>()
         .into_iter()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn halo_base_uses_allied_team_scope_and_its_own_wire_marker() {
+        crate::test_support::init_config();
+
+        assert_eq!(
+            carriers(109320111),
+            vec![HaloCarrier {
+                kind: HaloKind::Base,
+                scope: HaloScope::AlliedTeam,
+                opcode: 704,
+                type_name: "HaloBase",
+                linked_buff_id: None,
+            }]
+        );
+        assert!(fanout_markers(109320111).is_empty());
+    }
 }

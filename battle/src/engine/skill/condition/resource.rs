@@ -103,6 +103,15 @@ pub fn power_compare(_: i32, _: &str, args: &[String]) -> Option<ParsedCondition
     })
 }
 
+pub fn power_ratio(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [power_id, compare_code, threshold_permille] = parse_fixed(args)?;
+    Some(ParsedConditionKind::PowerRatio {
+        power_id,
+        compare_code,
+        threshold_permille,
+    })
+}
+
 pub fn power_increase(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [power_id, compare_code, threshold] = parse_fixed(args)?;
     Some(ParsedConditionKind::PowerIncrChange {

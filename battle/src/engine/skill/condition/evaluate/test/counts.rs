@@ -493,6 +493,48 @@ fn per_buff_id_count_repeats_once_per_matching_layer() {
 }
 
 #[test]
+fn per_buff_id_counts_a_matching_non_first_id() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    for _ in 0..2 {
+        managers.buff.add(&managers.hp, 10, 10, 31260151, 1);
+    }
+    let condition = ParsedCondition {
+        opcode: 59203,
+        type_name: "PerBuffId".into(),
+        kind: ParsedConditionKind::BuffIdCount {
+            buff_ids: vec![109320110, 31260151],
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 1,
+        },
+        raw_args: vec!["109320110".into(), "31260151".into()],
+    };
+
+    assert_eq!(
+        conditions_fire_count(
+            &[condition],
+            10,
+            &[10],
+            Some(&managers),
+            &TargetPool::from_fight(&fight),
+            TargetContext::default(),
+        ),
+        2
+    );
+}
+
+#[test]
 fn team_status_type_count_repeats_per_distinct_buff_type() {
     init_config();
     let fight = Fight {

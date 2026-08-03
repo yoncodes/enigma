@@ -836,6 +836,24 @@ impl BuffManager {
                     )
                 })
                 .unwrap_or_default(),
+            _ if action == GrantAction::RefreshExisting => self
+                .buffs
+                .iter()
+                .find(|active| {
+                    active.owner_uid == route.target_uid
+                        && active.buff.buff_id == Some(route.buff_id)
+                })
+                .and_then(|active| {
+                    Some(self.fanout_refresh_specs(
+                        hp,
+                        route.target_uid,
+                        route.buff_id,
+                        active.buff.uid?,
+                        active.buff.layer.unwrap_or(stack_layer),
+                        active.buff.duration.unwrap_or(policy.lifetime.duration),
+                    ))
+                })
+                .unwrap_or_default(),
             _ => Vec::new(),
         };
         let reserve_after_add = repeated_stack

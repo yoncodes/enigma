@@ -72,6 +72,10 @@ pub(crate) fn state_snapshot_wire(
         .unwrap_or_default()
 }
 
+pub(crate) fn refreshes_unchanged(buff_id: i32) -> bool {
+    BuffDefinition::get(buff_id).is_some_and(|definition| definition.refreshes_unchanged())
+}
+
 #[derive(Debug, Clone)]
 /// Owns active buff instances, storage policy, private act state, and buff UID allocation.
 /// Callers submit `BuffCommand`s rather than choosing stacking, exclusion, or UID policy.

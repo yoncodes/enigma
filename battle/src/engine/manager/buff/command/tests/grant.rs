@@ -593,6 +593,57 @@ fn status_immunity_rejects_the_grant_and_consumes_its_charge() {
 }
 
 #[test]
+fn static_control_immunity_rejects_without_consuming_the_carrier() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(5140006),
+                    uid: Some(20),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    let changes = manager
+        .execute(
+            &HpManager::default(),
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: -2,
+                target_uid: -1,
+                buff_id: 4010,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+
+    assert_eq!(
+        changes
+            .change
+            .rejected
+            .as_ref()
+            .map(|result| result.blocker_buff_id),
+        Some(5140006)
+    );
+    assert!(changes.change.removed.is_empty());
+    assert!(manager.has_buff_id(-1, 5140006));
+    assert!(!manager.has_buff_id(-1, 4010));
+}
+
+#[test]
 fn team_status_immunity_consumes_the_shared_carrier_budget() {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();

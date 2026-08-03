@@ -1,5 +1,7 @@
 use super::*;
-use crate::engine::skill::condition::{buff::BuffConditionMode, none::NoneMode};
+use crate::engine::skill::condition::{
+    ConditionCompare, buff::BuffConditionMode, none::NoneMode, parse::BuffAddedScope,
+};
 
 #[test]
 fn generic_round_end_keys_keep_their_exact_timing() {
@@ -1793,6 +1795,211 @@ fn hp_less_round_start_keys_keep_their_distinct_lanes() {
         Some(ConditionRole::Setup {
             stage: SetupStage::RoundStartLate,
             priority: 0,
+        })
+    );
+}
+
+#[test]
+fn per_buff_id_skill_condition_keeps_exact_identity_and_stack_semantics() {
+    assert_eq!(
+        parse(
+            59203,
+            "PerBuffId",
+            &["109320110".into(), "109320111".into()],
+        ),
+        Some(ParsedConditionKind::BuffIdCount {
+            buff_ids: vec![109320110, 109320111],
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 1,
+        })
+    );
+    assert_eq!(
+        find_key(59203, "PerBuffId").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert!(find_key(59203, "PerBuffIdCount").is_none());
+
+    assert_eq!(
+        find_key(59302, "PerBuffId").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        })
+    );
+    assert!(find_key(59302, "PerBuffIdCount").is_none());
+}
+
+#[test]
+fn small_round_end_buff_and_status_gates_keep_separate_exact_keys() {
+    assert_eq!(
+        parse(19301, "HasBuffId", &["118353052".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Present,
+            buff_ids: vec![118353052],
+        })
+    );
+    assert_eq!(
+        parse(56301, "NoBuff", &["4".into()]),
+        Some(ParsedConditionKind::BuffStatusCount {
+            status_ids: vec![4],
+            compare: ConditionCompare::Equal,
+            threshold: 0,
+        })
+    );
+    for (opcode, type_name) in [(19301, "HasBuffId"), (56301, "NoBuff")] {
+        assert_eq!(
+            find_key(opcode, type_name).map(|definition| definition.role),
+            Some(ConditionRole::Trigger {
+                event: EventKind::SmallRoundEnd,
+                phase: None,
+            })
+        );
+    }
+}
+
+#[test]
+fn accumulated_owner_buff_count_keeps_owner_scope_and_exact_key() {
+    assert_eq!(
+        parse(
+            581,
+            "AccAddBuffCountByBuffId",
+            &["118353092".into(), "40".into()],
+        ),
+        Some(ParsedConditionKind::AccBuffAddedCount {
+            buff_ids: vec![118353092],
+            threshold: 40,
+            scope: BuffAddedScope::Owner,
+        })
+    );
+    let definition = find_key(581, "AccAddBuffCountByBuffId").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(
+        definition.dependencies,
+        &[EventKind::BuffAdded, EventKind::BuffChanged]
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+}
+
+#[test]
+fn final_settlement_buff_threshold_is_boolean_and_exact() {
+    assert_eq!(
+        parse(
+            581307,
+            "AccAddBuffCountByBuffId",
+            &["118353082".into(), "5".into()],
+        ),
+        Some(ParsedConditionKind::BuffIdThreshold {
+            buff_ids: vec![118353082],
+            threshold: 5,
+        })
+    );
+    assert_eq!(
+        find_key(581307, "AccAddBuffCountByBuffId").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::RoundEndFinalSettlement,
+            phase: None,
+        })
+    );
+}
+
+#[test]
+fn power_ratio_keeps_resource_comparison_order_and_small_round_timing() {
+    assert_eq!(
+        parse(
+            749301,
+            "PowerRatio",
+            &["9".into(), "1".into(), "1000".into()],
+        ),
+        Some(ParsedConditionKind::PowerRatio {
+            power_id: 9,
+            compare_code: 1,
+            threshold_permille: 1000,
+        })
+    );
+    assert_eq!(
+        find_key(749301, "PowerRatio").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SmallRoundEnd,
+            phase: None,
+        })
+    );
+}
+
+#[test]
+fn entity_settlement_interval_keeps_period_then_start_order() {
+    for (period, start) in [(2, 1), (2, 2)] {
+        assert_eq!(
+            parse(
+                45303,
+                "HeroRoundInterval",
+                &[period.to_string(), start.to_string()],
+            ),
+            Some(ParsedConditionKind::RoundInterval {
+                start_round: start,
+                period,
+            })
+        );
+    }
+    let definition = find_key(45303, "HeroRoundInterval").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEndEntitySettlement,
+            phase: None,
+        }
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+}
+
+#[test]
+fn negated_round_start_broken_check_uses_toughness_state() {
+    assert_eq!(
+        parse(783101, "IsBroken", &[]),
+        Some(ParsedConditionKind::EntityBroken)
+    );
+    assert_eq!(
+        find_key(783101, "IsBroken").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 101,
+        })
+    );
+}
+
+#[test]
+fn player_buff_gate_keeps_team_presence_and_exact_buff_identity() {
+    assert_eq!(
+        parse(
+            750101,
+            "PlayerHasBuff",
+            &["2".into(), "0".into(), "109320002".into()],
+        ),
+        Some(ParsedConditionKind::TeamBuffPresence {
+            team: 2,
+            present: false,
+            buff_id: 109320002,
+        })
+    );
+    assert_eq!(
+        find_key(750101, "PlayerHasBuff").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 101,
+        })
+    );
+}
+
+#[test]
+fn hand_skill_presence_keeps_exact_card_identity_and_round_timing() {
+    assert_eq!(
+        parse(710301, "PerHandCardHasSkillId", &["118353040".into()],),
+        Some(ParsedConditionKind::HandSkillPresence(vec![118353040]))
+    );
+    assert_eq!(
+        find_key(710301, "PerHandCardHasSkillId").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SmallRoundEnd,
+            phase: None,
         })
     );
 }
