@@ -166,6 +166,13 @@ pub struct CardRefillOne {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CardSetUltimateAvailability {
+    pub origin: CommandOrigin,
+    pub card: CardInfo,
+    pub available: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct CardRefreshAiQueue {
     pub origin: CommandOrigin,
     pub cards: Vec<CardInfo>,
@@ -336,6 +343,7 @@ pub enum CardCommand {
         team_type: i32,
     },
     RefillOne(CardRefillOne),
+    SetUltimateAvailability(CardSetUltimateAvailability),
     RefreshAiQueue(CardRefreshAiQueue),
     SetAiQueue(CardSetAiQueue),
     SetTeamCards(CardSetTeamCards),
@@ -409,6 +417,7 @@ pub enum CardChangeKind {
     OpeningDrawn,
     DrawPileRecycled,
     Refilled,
+    UltimateAvailabilityChanged,
     AiQueueRefreshed,
     AiQueueSet,
     TeamCardsSet,
@@ -910,6 +919,22 @@ pub(super) fn execute(
                 None,
                 vec![refill.card],
                 owners,
+            )
+        }
+        CardCommand::SetUltimateAvailability(set) => {
+            if set.card.uid.unwrap_or_default() == 0
+                || set.card.skill_id.unwrap_or_default() <= 0
+                || !manager.set_ultimate_availability(set.card.clone(), set.available)
+            {
+                return Err(CardCommandError::InvalidCommand);
+            }
+            (
+                Some(set.origin),
+                CardChangeKind::UltimateAvailabilityChanged,
+                set.available.then_some(set.card),
+                None,
+                Vec::new(),
+                Vec::new(),
             )
         }
         CardCommand::RefreshAiQueue(refresh) => {
