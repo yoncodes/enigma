@@ -332,7 +332,6 @@ pub async fn on_start_dungeon(
             player_id,
             settlement.cost.item_ids,
             settlement.cost.currency_ids,
-            settlement.cost.material_changes,
         )
         .await?;
         ctx.player_mut()?.battle.clear_pending_record();
@@ -362,14 +361,7 @@ pub async fn on_start_dungeon(
         .await?;
     ctx.player_mut()?.battle.start_active(active);
 
-    push::send_cost_pushes(
-        ctx,
-        player_id,
-        cost.item_ids,
-        cost.currency_ids,
-        cost.material_changes,
-    )
-    .await?;
+    push::send_cost_pushes(ctx, player_id, cost.item_ids, cost.currency_ids).await?;
     send_active_battle_start(ctx, req.up_tag).await
 }
 
@@ -812,12 +804,5 @@ async fn send_refund(
     player_id: i64,
     settlement: dungeon::RefundSettlement,
 ) -> Result<(), AppError> {
-    push::send_applied_reward_pushes(
-        ctx,
-        player_id,
-        settlement.rewards,
-        settlement.material_changes,
-        None,
-    )
-    .await
+    push::send_applied_reward_pushes(ctx, player_id, settlement.rewards, Vec::new(), None).await
 }

@@ -151,11 +151,25 @@ pub struct CardDraw {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CardOpeningDraw {
+    pub origin: CommandOrigin,
+    pub cards: Vec<CardInfo>,
+    pub deck_cost: i32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct CardRefillOne {
     pub origin: CommandOrigin,
     pub card: CardInfo,
     pub consume_draw_pile: bool,
     pub consume_deck: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CardSetUltimateAvailability {
+    pub origin: CommandOrigin,
+    pub card: CardInfo,
+    pub available: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -323,7 +337,13 @@ pub enum CardCommand {
     },
     Play(CardPlay),
     Draw(CardDraw),
+    DealOpening(CardOpeningDraw),
+    RecycleDrawPile {
+        origin: CommandOrigin,
+        team_type: i32,
+    },
     RefillOne(CardRefillOne),
+    SetUltimateAvailability(CardSetUltimateAvailability),
     RefreshAiQueue(CardRefreshAiQueue),
     SetAiQueue(CardSetAiQueue),
     SetTeamCards(CardSetTeamCards),
@@ -394,7 +414,10 @@ pub enum CardChangeKind {
     TemporaryExpired,
     Played,
     Drawn,
+    OpeningDrawn,
+    DrawPileRecycled,
     Refilled,
+    UltimateAvailabilityChanged,
     AiQueueRefreshed,
     AiQueueSet,
     TeamCardsSet,
@@ -843,6 +866,39 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
+        CardCommand::DealOpening(draw) => {
+            if draw.cards.is_empty() || !manager.deal_opening_cards(&draw.cards, draw.deck_cost) {
+                return Err(CardCommandError::InvalidCommand);
+            }
+            (
+                Some(draw.origin),
+                CardChangeKind::OpeningDrawn,
+                None,
+                None,
+                draw.cards,
+                Vec::new(),
+            )
+        }
+        CardCommand::RecycleDrawPile { origin, team_type } => {
+            if team_type == 0 {
+                return Err(CardCommandError::InvalidCommand);
+            }
+            let deck_num = manager
+                .recycle_draw_pile()
+                .ok_or(CardCommandError::InvalidCommand)?;
+            operation = Some(CardChange::DeckCount {
+                deck_num,
+                team_type,
+            });
+            (
+                Some(origin),
+                CardChangeKind::DrawPileRecycled,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
         CardCommand::RefillOne(refill) => {
             if refill.card.skill_id.unwrap_or_default() <= 0 {
                 return Err(CardCommandError::InvalidCommand);
@@ -863,6 +919,22 @@ pub(super) fn execute(
                 None,
                 vec![refill.card],
                 owners,
+            )
+        }
+        CardCommand::SetUltimateAvailability(set) => {
+            if set.card.uid.unwrap_or_default() == 0
+                || set.card.skill_id.unwrap_or_default() <= 0
+                || !manager.set_ultimate_availability(set.card.clone(), set.available)
+            {
+                return Err(CardCommandError::InvalidCommand);
+            }
+            (
+                Some(set.origin),
+                CardChangeKind::UltimateAvailabilityChanged,
+                set.available.then_some(set.card),
+                None,
+                Vec::new(),
+                Vec::new(),
             )
         }
         CardCommand::RefreshAiQueue(refresh) => {

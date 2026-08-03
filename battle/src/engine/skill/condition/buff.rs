@@ -11,6 +11,8 @@ pub enum BuffConditionMode {
     Present,
     PresentAndConsume,
     Absent,
+    ExactPresent,
+    ExactAbsent,
 }
 
 pub fn added_count_repeats(
@@ -211,6 +213,10 @@ pub fn master_halo(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditi
 
 pub fn buff_present(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     buff_presence(raw_args, BuffConditionMode::Present)
+}
+
+pub fn exact_buff_present(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    buff_presence(raw_args, BuffConditionMode::ExactPresent)
 }
 
 pub fn buff_present_and_consume(

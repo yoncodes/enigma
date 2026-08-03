@@ -10,6 +10,16 @@ pub struct FieldThresholdModifier {
     pub destination_level: i32,
 }
 
+pub fn supports(args: &[i32]) -> bool {
+    matches!(
+        args,
+        [replaced_level, additional_progress, destination_level]
+            if *replaced_level > 0
+                && *additional_progress != 0
+                && *destination_level > *replaced_level
+    )
+}
+
 pub fn modifier(feature: &ActiveBuffFeature) -> Option<FieldThresholdModifier> {
     if !feature.owner_alive || !is_kind(feature, BuffActKind::FixElectricUpgrade) {
         return None;

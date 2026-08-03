@@ -378,6 +378,7 @@ condition_definitions! {
     [19105] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::AfterRoundStart, 0, &[]));
     [19021, 19201] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [19204] "HasBuffId" => buff::buff_present, incoming_attack_modifier(filters_behavior_targets(predicate(&[EventKind::BuffChanged])));
+    [19205] "HasBuffId" => buff::exact_buff_present, filters_behavior_targets(predicate(&[]));
     [19203] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate)));
     [192032] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [19208] "HasBuffId" => buff::buff_present_and_consume, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
@@ -587,6 +588,7 @@ condition_definitions! {
     [53201] "HurtNumType" => parse::damage_target_count_kind, predicate(&[]);
     [53210] "HurtNumType" => parse::damage_target_count_kind, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [20202] "HurtReal" => parse::reality_damage, incoming_attack_modifier(predicate(&[]));
+    [20204] "HurtReal" => parse::reality_damage, incoming_attack_modifier(predicate(&[]));
     [20209] "HurtReal" => parse::reality_damage, predicate(&[EventKind::TargetAttacked]);
     [21204] "HurtMagic" => parse::mental_damage, incoming_attack_modifier(predicate(&[]));
     [21209] "HurtMagic" => parse::mental_damage, predicate(&[EventKind::TargetAttacked]);
@@ -605,6 +607,7 @@ condition_definitions! {
     [2301] "LifeMore" => parse::hp_more, event_trigger(EventKind::SmallRoundEnd, None);
     [2304] "LifeMore" => parse::hp_more, predicate(&[EventKind::HpLost]);
     [744203] "PerHp" => hp::per_hp, predicate(&[EventKind::HpLost]);
+    [12203] "LostLifePer" => hp::per_lost_hp, predicate(&[EventKind::HpLost]);
     [30208] "AttackCrit" => parse::attack_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [30402] "AttackCrit" => parse::attack_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [30210] "AttackCrit" => parse::attack_crit, predicate(&[]);

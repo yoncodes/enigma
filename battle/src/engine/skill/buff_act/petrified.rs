@@ -81,6 +81,7 @@ mod tests {
             shield_absorbed: 0,
             damage_from: HurtDamageFromType::Skill,
             assassinate: false,
+            ignore_riposte: false,
         })
     }
 

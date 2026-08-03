@@ -62,7 +62,7 @@ pub(super) fn shield_grant_ops(
                     buff_id,
                     amount_attr: attr,
                     amount_rate: rate,
-                    bonus: None,
+                    multiplier_bonus: None,
                     max_attr: attr,
                     max_rate: rate,
                     scope: crate::engine::manager::shield::ShieldScope::Entity,

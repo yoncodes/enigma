@@ -1,17 +1,38 @@
 use super::*;
 
 #[test]
-fn fixed_damage_emits_an_exact_hp_loss_command() {
-    let managers = BattleManagers::default();
-    let pool = TargetPool::default();
+fn configured_attribute_damage_uses_the_targets_max_hp_as_genesis_damage() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(42, 1, 1, 1_000, 100)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                current_hp: Some(2_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(2_000),
+                    ..Default::default()
+                }),
+                ..entity(-1, 2, 1, 100, 100)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
     let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     let mut target = TargetContext {
         active_skill_id: 100,
         ..Default::default()
     };
-    let behavior =
-        ParsedBehavior::from_spec(BehaviorSpec::new(10006, "Damage"), vec![15], Vec::new());
+    let behavior = ParsedBehavior::from_spec(
+        BehaviorSpec::new(10006, "Damage"),
+        vec![1, AttrId::Hp.id(), 100],
+        Vec::new(),
+    );
 
     assert!(matches!(
         crate::engine::skill::behavior::rule_ops(
@@ -32,15 +53,16 @@ fn fixed_damage_emits_an_exact_hp_loss_command() {
         ),
         Some(ops) if matches!(
             ops.as_slice(),
-            [RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(HpLoss {
+            [RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(HpDamage {
                 source_uid: 42,
                 target_uid: -1,
-                amount: 15,
-                hurt: Some(HurtInfoData {
+                amount: 200,
+                effect_kind: DamageEffectKind::Genesis,
+                hurt: HurtInfoData {
                     skill_id: 100,
                     damage_from: HurtDamageFromType::SkillEffect,
                     ..
-                }),
+                },
                 ..
             })))]
         )
@@ -107,6 +129,7 @@ fn butterfly_damage_uses_allied_round_skill_damage_and_capped_lingering_glow() {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: source_uid,
                 is_crit: false,

@@ -19,10 +19,11 @@ pub use command::{
     CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
     CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardDraw, CardEnchantHand,
     CardEnergyAllocation, CardEnergyChange, CardHandLimitChange, CardInvalidatePlayed,
-    CardMarkTemporary, CardOwnerRemoval, CardPlay, CardQueueUse, CardRankChange, CardRankFailure,
-    CardRankResult, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue,
-    CardRemoveAiOwner, CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetup,
-    CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard,
+    CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPlay, CardQueueUse, CardRankChange,
+    CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne,
+    CardRefreshAiQueue, CardRemoveAiOwner, CardReplaceOwnerSkills, CardSetAiQueue,
+    CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUseUniversal, HandCardRankUp,
+    QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;
@@ -45,6 +46,7 @@ pub struct CardManager {
     deck: CardDeck,
     team_cards: Vec<CardInfo>,
     deck_num: i32,
+    deck_capacity: i32,
     ai_queue: Vec<CardInfo>,
     cleaned_ai_owners: HashSet<i64>,
     played: Vec<PlayedCard>,
@@ -77,6 +79,7 @@ impl CardManager {
             deck: CardDeck::new(hand),
             team_cards: Vec::new(),
             deck_num: 0,
+            deck_capacity: 0,
             ai_queue: Vec::new(),
             cleaned_ai_owners: HashSet::new(),
             played: Vec::new(),
@@ -96,6 +99,7 @@ impl CardManager {
             deck: CardDeck::with_draw_pile(hand, draw_pile),
             team_cards: Vec::new(),
             deck_num: 0,
+            deck_capacity: 0,
             ai_queue: Vec::new(),
             cleaned_ai_owners: HashSet::new(),
             played: Vec::new(),
@@ -232,6 +236,7 @@ impl CardManager {
         self.deck = CardDeck::with_draw_pile(hand, draw_pile);
         self.team_cards.clear();
         self.deck_num = deck_num;
+        self.deck_capacity = deck_num;
         self.played.clear();
         self.refilled.clear();
         self.queued_use_cards.clear();
@@ -307,6 +312,17 @@ impl CardManager {
 
     pub fn set_deck_num(&mut self, deck_num: i32) {
         self.deck_num = deck_num;
+    }
+
+    pub(crate) fn recycle_draw_pile(&mut self) -> Option<i32> {
+        self.deck.recycle_draw_pile().then(|| {
+            self.deck_num = self.deck_capacity;
+            self.deck_num
+        })
+    }
+
+    pub(crate) fn can_recycle_draw_pile(&self) -> bool {
+        self.deck.can_recycle_draw_pile()
     }
 
     pub fn into_hand(self) -> Vec<CardInfo> {
@@ -563,9 +579,7 @@ impl CardManager {
     }
 
     pub(crate) fn redealable_cards(&self) -> impl Iterator<Item = &CardInfo> {
-        self.hand()
-            .iter()
-            .filter(|card| !card.temp_card.unwrap_or_default() && card.uid.unwrap_or_default() != 0)
+        self.hand().iter().filter(|card| is_redealable(card))
     }
 
     pub(crate) fn redealable_count(&self) -> usize {
@@ -607,10 +621,11 @@ impl CardManager {
 
     fn redeal_keep_ranks(&mut self, replacements: Vec<CardInfo>) {
         let mut replacements = replacements.into_iter();
-        for card in
-            self.deck.hand_mut().iter_mut().filter(|card| {
-                !card.temp_card.unwrap_or_default() && card.uid.unwrap_or_default() != 0
-            })
+        for card in self
+            .deck
+            .hand_mut()
+            .iter_mut()
+            .filter(|card| is_redealable(card))
         {
             let Some(mut replacement) = replacements.next() else {
                 break;
@@ -631,6 +646,18 @@ impl CardManager {
 
     pub(crate) fn consume_draw_card(&mut self, card: &CardInfo) -> bool {
         self.deck.consume_draw_card(card)
+    }
+
+    pub(crate) fn deal_opening_cards(&mut self, cards: &[CardInfo], deck_cost: i32) -> bool {
+        if deck_cost < 0
+            || deck_cost as usize > cards.len()
+            || self.deck_num < deck_cost
+            || !self.deck.deal_from_draw_pile(cards)
+        {
+            return false;
+        }
+        self.deck_num -= deck_cost;
+        true
     }
 
     pub fn move_card(&mut self, from_index: usize, to_index: usize) -> bool {
@@ -750,6 +777,33 @@ impl CardManager {
 
     pub fn add_to_hand_for(&mut self, _target_uid: i64, card: CardInfo) -> CardInfo {
         self.deck.add_to_hand(card)
+    }
+
+    pub(super) fn set_ultimate_availability(&mut self, card: CardInfo, available: bool) -> bool {
+        let present = self.deck.hand().iter().any(|current| {
+            current.uid == card.uid
+                && current.skill_id == card.skill_id
+                && current.temp_card == card.temp_card
+        });
+        if present == available {
+            return false;
+        }
+        if available {
+            self.deck.add_to_hand(card.clone());
+            self.record_refill(card);
+            return true;
+        }
+        if self.deck.take_matching(&card).is_none() {
+            return false;
+        }
+        if let Some(index) = self.refilled.iter().rposition(|refilled| {
+            refilled.uid == card.uid
+                && refilled.skill_id == card.skill_id
+                && refilled.temp_card == card.temp_card
+        }) {
+            self.refilled.remove(index);
+        }
+        true
     }
 
     pub fn add_temp_card(&mut self, skill_id: i32) -> CardInfo {
@@ -890,6 +944,14 @@ impl CardManager {
             .push(played.skill_id);
         Some(played)
     }
+}
+
+fn is_redealable(card: &CardInfo) -> bool {
+    !card.temp_card.unwrap_or_default()
+        && card.uid.unwrap_or_default() != 0
+        && !card
+            .skill_id
+            .is_some_and(crate::engine::skill::effect::catalog::configured_is_big_skill)
 }
 
 #[cfg(test)]

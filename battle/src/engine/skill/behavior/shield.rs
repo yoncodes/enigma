@@ -88,7 +88,7 @@ fn emit_ops(
     behavior: &ParsedBehavior,
     carrier_uid: ShieldCarrierUid,
 ) -> Option<Vec<RuleOp>> {
-    let (buff_id, amount_attr, rate, max_attr, max_rate, bonus) = formula(behavior)?;
+    let (buff_id, amount_attr, rate, max_attr, max_rate, multiplier_bonus) = formula(behavior)?;
     Some(vec![RuleOp::Command(BattleCommand::Shield(
         ShieldCommand {
             origin: super::command_origin(behavior)?,
@@ -97,7 +97,7 @@ fn emit_ops(
             buff_id,
             amount_attr,
             amount_rate: rate,
-            bonus,
+            multiplier_bonus,
             max_attr,
             max_rate,
             scope: match behavior.spec.kind {
@@ -211,7 +211,7 @@ mod tests {
 
         assert!(
             matches!(ops.as_slice(), [RuleOp::Command(BattleCommand::Shield(command))]
-            if command.bonus == Some((AttrId::CriticalRate, 900)))
+            if command.multiplier_bonus == Some((AttrId::CriticalRate, 900)))
         );
     }
 

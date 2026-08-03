@@ -12,6 +12,22 @@ pub fn per_hp(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     })
 }
 
+pub fn per_lost_hp(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::PerLostHp {
+        interval_permille: first_i32(args)?.max(1),
+    })
+}
+
+pub fn lost_hp_interval_count(uid: i64, interval_permille: i32, managers: &BattleManagers) -> i32 {
+    let max = managers.hp.max(uid);
+    if max <= 0 || interval_permille <= 0 {
+        return 0;
+    }
+    let missing_permille =
+        ((max - managers.hp.current(uid)).max(0) as i64 * 1000 / max as i64) as i32;
+    missing_permille / interval_permille
+}
+
 pub fn team_lost_hp(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [team_type, interval_permille, max_count] = parse_fixed(args)?;
     Some(ParsedConditionKind::TeamLostHpPercent {
@@ -61,6 +77,16 @@ mod tests {
             per_hp(744203, "PerHp", &["200".into()]),
             Some(ParsedConditionKind::PerHp {
                 interval_permille: 200,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_exact_per_lost_hp_condition() {
+        assert_eq!(
+            per_lost_hp(12203, "LostLifePer", &["100".into()]),
+            Some(ParsedConditionKind::PerLostHp {
+                interval_permille: 100,
             })
         );
     }

@@ -632,34 +632,9 @@ pub fn run_start(
                     false
                 }
             });
-            if free_deal_count < hand_size {
-                setup
-                    .hand
-                    .extend(determinism.draw_cards(&setup.draw_pile, hand_size - free_deal_count));
-            }
             let initial_deck_num = setup.deck_num;
-            let supplemental = setup
-                .hand
-                .iter()
-                .filter(|card| card_mechanic.counts_toward_hand_limit(card, managers, pool))
-                .skip(free_deal_count)
-                .cloned()
-                .collect::<Vec<_>>();
-            let mut consumed = 0_i32;
-            for card in supplemental {
-                let Some(index) = setup.draw_pile.iter().position(|candidate| {
-                    candidate.uid == card.uid
-                        && candidate.skill_id == card.skill_id
-                        && candidate.temp_card == card.temp_card
-                }) else {
-                    continue;
-                };
-                setup.draw_pile.remove(index);
-                if !card_mechanic.is_device_card(&card) {
-                    consumed = consumed.saturating_add(1);
-                }
-            }
-            setup.deck_num = setup.deck_num.saturating_sub(consumed);
+            let supplemental =
+                determinism.draw_cards(&setup.draw_pile, hand_size.saturating_sub(free_deal_count));
             append(
                 &mut result,
                 drain::run(
@@ -673,6 +648,34 @@ pub fn run_start(
                     )))],
                 )?,
             );
+            if !supplemental.is_empty() {
+                let deck_cost = supplemental
+                    .iter()
+                    .filter(|card| !card_mechanic.is_device_card(card))
+                    .count() as i32;
+                append(
+                    &mut result,
+                    drain::run(
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        [RuleOp::Command(BattleCommand::Card(
+                            CardCommand::DealOpening(
+                                crate::engine::manager::card::CardOpeningDraw {
+                                    origin: CommandOrigin {
+                                        domain: RuleDomain::Lifecycle,
+                                        key: DefinitionKey::new(0, "OpeningDraw"),
+                                    },
+                                    cards: supplemental,
+                                    deck_cost,
+                                },
+                            ),
+                        ))],
+                    )?,
+                );
+            }
             dealt_cards = Some(managers.card.hand().to_vec());
             push_cue(&mut result.frames, RoundCue::EnterFightDeal);
             opening_deck_counts = Some((initial_deck_num, managers.card.deck_num()));

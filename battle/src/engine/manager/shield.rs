@@ -31,7 +31,7 @@ pub struct ShieldCommand {
     pub buff_id: i32,
     pub amount_attr: crate::engine::entity::attr::AttrId,
     pub amount_rate: i32,
-    pub bonus: Option<(crate::engine::entity::attr::AttrId, i32)>,
+    pub multiplier_bonus: Option<(crate::engine::entity::attr::AttrId, i32)>,
     pub max_attr: crate::engine::entity::attr::AttrId,
     pub max_rate: i32,
     pub scope: ShieldScope,
@@ -91,16 +91,11 @@ fn plan(
     let carrier_uid = managers
         .buff
         .buff_family_carrier_uid(command.target_uid, command.buff_id);
-    let amount = managers
-        .origin_attribute(command.source_uid, command.amount_attr)
-        .saturating_mul(command.amount_rate)
-        / 1000
-        + command.bonus.map_or(0, |(attr, rate)| {
-            managers
-                .origin_attribute(command.source_uid, attr)
-                .saturating_mul(rate)
-                / 1000
-        });
+    let basis = managers.origin_attribute(command.source_uid, command.amount_attr);
+    let multiplier_bonus = command
+        .multiplier_bonus
+        .map(|(attr, rate)| (managers.origin_attribute(command.source_uid, attr), rate));
+    let amount = shield_amount(basis, command.amount_rate, multiplier_bonus);
     let max = managers
         .origin_attribute(command.source_uid, command.max_attr)
         .saturating_mul(command.max_rate)
@@ -198,6 +193,15 @@ fn plan(
             })
         }
     }
+}
+
+fn shield_amount(basis: i32, rate: i32, multiplier_bonus: Option<(i32, i32)>) -> i32 {
+    let rate = i128::from(rate) * 1_000
+        + multiplier_bonus.map_or(0, |(multiplier, bonus_rate)| {
+            i128::from(multiplier) * i128::from(bonus_rate)
+        });
+    let amount = i128::from(basis) * rate / 1_000_000;
+    amount.clamp(i128::from(i32::MIN), i128::from(i32::MAX)) as i32
 }
 
 fn plan_carrier(
@@ -307,12 +311,63 @@ mod tests {
             buff_id: 31170002,
             amount_attr: crate::engine::entity::attr::AttrId::Attack,
             amount_rate: 1_500,
-            bonus: Some((crate::engine::entity::attr::AttrId::CriticalRate, 900)),
+            multiplier_bonus: Some((crate::engine::entity::attr::AttrId::CriticalRate, 900)),
             max_attr: crate::engine::entity::attr::AttrId::Attack,
             max_rate: 6_500,
             scope: ShieldScope::Entity,
             carrier_uid: ShieldCarrierUid::Definition,
         }
+    }
+
+    #[test]
+    fn shield_terms_are_rounded_after_they_are_combined() {
+        assert_eq!(shield_amount(1_657, 1_500, Some((323, 400))), 2_699);
+        assert_eq!(shield_amount(1_657, 2_250, Some((323, 600))), 4_049);
+        assert_eq!(shield_amount(1_737, 1_500, Some((443, 400))), 2_913);
+    }
+
+    #[test]
+    fn origin_attribute_includes_snapshotted_stateful_buff_values() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(1),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![sonettobuf::BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(31340007),
+                        from_uid: Some(1),
+                        act_info: vec![sonettobuf::BuffActInfo {
+                            act_id: Some(1053),
+                            param: vec![18],
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+        managers.attribute.override_ex(
+            1,
+            &HeroExAttribute {
+                cri: Some(100),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            managers.origin_attribute(1, crate::engine::entity::attr::AttrId::CriticalRate),
+            118
+        );
     }
 
     #[test]
@@ -402,7 +457,7 @@ mod tests {
                 buff_id: 4_700_101,
                 amount_attr: crate::engine::entity::attr::AttrId::Hp,
                 amount_rate: 600,
-                bonus: None,
+                multiplier_bonus: None,
                 max_attr: crate::engine::entity::attr::AttrId::Hp,
                 max_rate: 600,
                 scope: ShieldScope::Entity,
@@ -460,7 +515,7 @@ mod tests {
         let mut stronger = command();
         stronger.buff_id = 31170009;
         stronger.amount_rate = 2_700;
-        stronger.bonus = None;
+        stronger.multiplier_bonus = None;
         let second = execute(&mut managers, stronger).unwrap();
 
         assert!(second.buff.is_none());
@@ -513,7 +568,7 @@ mod tests {
         shield.amount_rate = 300;
         shield.max_attr = crate::engine::entity::attr::AttrId::Hp;
         shield.max_rate = 300;
-        shield.bonus = None;
+        shield.multiplier_bonus = None;
 
         let changes = execute(&mut managers, shield).unwrap();
 
@@ -608,7 +663,7 @@ mod tests {
             buff_id: 31430144,
             amount_attr: crate::engine::entity::attr::AttrId::Attack,
             amount_rate: 2_800,
-            bonus: None,
+            multiplier_bonus: None,
             max_attr: crate::engine::entity::attr::AttrId::Attack,
             max_rate: 12_500,
             scope: ShieldScope::TeamShared,
@@ -714,7 +769,7 @@ mod tests {
             buff_id: 31430121,
             amount_attr: crate::engine::entity::attr::AttrId::Attack,
             amount_rate: 2_800,
-            bonus: None,
+            multiplier_bonus: None,
             max_attr: crate::engine::entity::attr::AttrId::Attack,
             max_rate: 12_500,
             scope: ShieldScope::TeamShared,

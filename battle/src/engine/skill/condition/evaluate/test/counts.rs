@@ -163,6 +163,53 @@ fn per_kill_count_repeats_once_for_each_kill() {
 }
 
 #[test]
+fn team_entity_exit_matches_a_dead_enemy_relative_to_the_source() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(0),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let matches = |source_uid| {
+        conditions_match(
+            &[ParsedCondition {
+                opcode: 613403,
+                type_name: "PerTeamEntityExitCount".into(),
+                kind: ParsedConditionKind::TeamEntityExited { max_count: 2 },
+                raw_args: vec!["2".into(), "2".into()],
+            }],
+            source_uid,
+            &[-1],
+            Some(&managers),
+            &pool,
+            TargetContext {
+                runtime_target_uid: -1,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(10));
+    assert!(!matches(-1));
+}
+
+#[test]
 fn per_hp_repeats_for_each_complete_target_hp_interval() {
     init_config();
     let fight = Fight {
@@ -206,6 +253,62 @@ fn per_hp_repeats_for_each_complete_target_hp_interval() {
     assert_eq!(fires(&managers), 4);
     managers.hp.lose(-1, 799, -1);
     assert_eq!(fires(&managers), 1);
+}
+
+#[test]
+fn lost_life_per_repeats_for_each_complete_missing_hp_interval() {
+    init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(750),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    current_hp: Some(1_000),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let condition = ParsedCondition {
+        opcode: 12203,
+        type_name: "LostLifePer".into(),
+        kind: ParsedConditionKind::PerLostHp {
+            interval_permille: 100,
+        },
+        raw_args: vec!["100".into()],
+    };
+
+    assert_eq!(
+        conditions_fire_count(
+            std::slice::from_ref(&condition),
+            10,
+            &[-1, -2],
+            Some(&managers),
+            &pool,
+            TargetContext {
+                hit_target_uid: -1,
+                ..Default::default()
+            },
+        ),
+        2
+    );
 }
 
 #[test]

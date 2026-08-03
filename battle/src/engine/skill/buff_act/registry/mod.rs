@@ -121,6 +121,8 @@ pub enum BuffActKind {
     Dot,
     DotNoLimit,
     DodgeDamageType,
+    IgnoreDodgeSpecSkill,
+    IgnoreRebound,
     DodgeSpecSkill,
     DuduBoneContinueChannel,
     DyingHealDisperse1,
@@ -162,6 +164,7 @@ pub enum BuffActKind {
     HeatScaleDecrCounter,
     HeatScaleTag,
     HeatScaleUseSkill,
+    Injury,
     InjuryBank,
     InjuryLogback,
     ImmunityTimes,
@@ -636,6 +639,8 @@ buff_act_definitions! {
     (520, "RealHarmFix") => RealHarmFix, effect_time_subscription: false,
         supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(520, "RealHarmFix"), &[EffectType::Realharmfix as i32]));
     (522, "RealHarmSkillEffectFix") => RealHarmSkillEffectFix, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(522, "RealHarmSkillEffectFix"), &[EffectType::Realharmskilleffectfix as i32]));
+    (601, "Injury") => Injury, effect_time_subscription: false,
+        supports: |args| matches!(args, [value] if *value != 0), state_consumer: true;
     (703, "ExPointMaxAdd") => ExPointMaxAdd,
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         frame: CausingFrame,
@@ -742,7 +747,15 @@ buff_act_definitions! {
         event: EventKind::HpLost, publication: BeforePublish,
         scoped_runtime: |context| super::control_team_injury_count_round::scoped_rule_ops(context.managers, context.pool, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(760, "ControlTeamInjuryCountRound"), &[EffectType::Recordteaminjurycount as i32]));
-    (764, "CareerRestraint") => CareerRestraint;
+    (761, "IgnoreDodgeSpecSkill") => IgnoreDodgeSpecSkill, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(761, "IgnoreDodgeSpecSkill"), &[EffectType::Ignoredodgespecskill as i32]));
+    (763, "IgnoreRebound") => IgnoreRebound, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(763, "IgnoreRebound"), &[EffectType::Ignorerebound as i32]));
+    (764, "CareerRestraint") => CareerRestraint, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(764, "CareerRestraint"), &[EffectType::Careerrestraint as i32]));
     (765, "CareerRatioFix") => CareerRatioFix, effect_time_subscription: false,
         supports: super::career_ratio_fix::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(765, "CareerRatioFix"), &[EffectType::None as i32]));
     (766, "AddToBuffEntity2") => AddToBuffEntity2,
@@ -1030,7 +1043,10 @@ buff_act_definitions! {
     (1028, "RealDamageKill") => RealDamageKill, event: super::real_damage_kill::EVENT,
         runtime: |context| super::real_damage_kill::rule_ops(context.managers, context.pool, context.subscriber),
         supports: super::real_damage_kill::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1028, "RealDamageKill"), &[]).with_initial_state(super::wire::InitialStateRule::CurrentHpPermille));
-    (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1029, "AddAttrByOtherBuffLayer"), &[EffectType::Attr as i32]));
+    (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,
+        effect_time_subscription: false,
+        supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1029, "AddAttrByOtherBuffLayer"), &[EffectType::Attr as i32]));
     (945, "CritRateAlter2") => CritRateAlter2,
         runtime: |context| super::crit_rate_alter2::supports(&context.subscriber.args).then(Vec::new),
         supports: super::crit_rate_alter2::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(945, "CritRateAlter2"), &[EffectType::None as i32]));
@@ -1048,7 +1064,10 @@ buff_act_definitions! {
         supports: |args| matches!(args, [skill_id, ..] if *skill_id > 0);
     (1004, "AddAttrBySpecialCount") => AddAttrBySpecialCount;
     (1031, "ConsumeBuffAddBuffContinueChannel") => ConsumeBuffAddBuffContinueChannel;
-    (1032, "FixElectricUpgrade") => FixElectricUpgrade, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1032, "FixElectricUpgrade"), &[EffectType::None as i32]));
+    (1032, "FixElectricUpgrade") => FixElectricUpgrade,
+        effect_time_subscription: false,
+        supports: super::fix_electric_upgrade::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1032, "FixElectricUpgrade"), &[EffectType::None as i32]));
     (1033, "TransferEnergyBuff") => TransferEnergyBuff,
         effect_time_subscription: false, events: [EventKind::ExPointOverflow],
         scoped_runtime: |context| super::transfer_energy_buff::rule_ops(context.managers, context.pool, context.subscriber, context.event?),
@@ -1059,7 +1078,10 @@ buff_act_definitions! {
         effect_time_subscription: false, events: [EventKind::AllyAction],
         runtime: |context| super::big_skill_no_use_action_point::rule_ops(context.managers, context.catalog, context.subscriber, context.event?),
         supports: super::big_skill_no_use_action_point::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(946, "BigSkillNoUseActPoint"), &[EffectType::None as i32]));
-    (1036, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1036, "AddAttrByOtherBuffLayer"), &[EffectType::None as i32, EffectType::Attr as i32]));
+    (1036, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,
+        effect_time_subscription: false,
+        supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1036, "AddAttrByOtherBuffLayer"), &[EffectType::None as i32, EffectType::Attr as i32]));
     (1041, "RaspberryBigSkill") => RaspberryBigSkill,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1041, "RaspberryBigSkill"), &[EffectType::None as i32]));
     (1042, "Raspberry") => Raspberry, events: [EventKind::BuffRemoved],

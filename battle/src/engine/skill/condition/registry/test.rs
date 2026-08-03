@@ -114,6 +114,35 @@ fn static_buff_id_conditions_keep_their_exact_dependencies() {
 }
 
 #[test]
+fn riposte_buff_gate_is_an_exact_predicate() {
+    let definition = find_key(19205, "HasBuffId").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert_eq!(
+        parse(19205, "HasBuffId", &["5022".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::ExactPresent,
+            buff_ids: vec![5022],
+        })
+    );
+}
+
+#[test]
+fn missing_hp_multiplier_is_an_exact_predicate() {
+    let definition = find_key(12203, "LostLifePer").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::HpLost]);
+    assert_eq!(
+        parse(12203, "LostLifePer", &["100".into()]),
+        Some(ParsedConditionKind::PerLostHp {
+            interval_permille: 100,
+        })
+    );
+}
+
+#[test]
 fn before_ap_resolution_keeps_its_exact_event_and_queue_preparation_roles() {
     let definition = find_key(107, "None").unwrap();
 
@@ -942,6 +971,16 @@ fn hurt_kind_opcodes_keep_exact_attacker_type_predicates() {
     );
     assert_eq!(
         find_key(20202, "HurtReal").and_then(|definition| definition.attack_modifier_side),
+        Some(AttackModifierSide::IncomingTarget)
+    );
+    assert_eq!(
+        parse(20204, "HurtReal", &[]),
+        Some(ParsedConditionKind::AttackerDamageType(
+            crate::engine::skill::target::EntityDamageType::Reality,
+        ))
+    );
+    assert_eq!(
+        find_key(20204, "HurtReal").and_then(|definition| definition.attack_modifier_side),
         Some(AttackModifierSide::IncomingTarget)
     );
     assert_eq!(

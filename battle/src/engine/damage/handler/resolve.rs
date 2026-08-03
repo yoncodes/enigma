@@ -85,6 +85,7 @@ pub fn resolve_attack_command(
             DamageEffectKind::Normal
         },
         assassinate: plan.assassinate,
+        ignore_riposte: false,
         hurt: resolved.hurt,
     }))
 }
@@ -102,6 +103,7 @@ pub fn resolve_avoided_attack_command(
         config_effect: -1,
         effect_kind: DamageEffectKind::Avoided,
         assassinate: false,
+        ignore_riposte: false,
         hurt: HurtInfoData {
             from_uid: source_uid,
             is_crit: false,
@@ -161,6 +163,7 @@ pub fn resolve_configured_replacement_damage_command(
             DamageEffectKind::Normal
         },
         assassinate: false,
+        ignore_riposte: false,
         hurt: HurtInfoData {
             from_uid: request.source_uid,
             is_crit: request.is_crit,
@@ -288,6 +291,7 @@ pub fn resolve_additional_damage_command(
             DamageEffectKind::Normal
         },
         assassinate,
+        ignore_riposte: false,
         hurt: resolved.hurt,
     }))
 }

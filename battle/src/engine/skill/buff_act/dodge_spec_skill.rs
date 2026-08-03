@@ -50,6 +50,12 @@ pub fn avoidance(
         .min_by_key(|feature| (feature.buff_uid, feature.buff_id))
 }
 
+pub fn ignored(managers: &BattleManagers, source_uid: i64) -> bool {
+    managers
+        .buff
+        .has_buff_act_kind(source_uid, BuffActKind::IgnoreDodgeSpecSkill)
+}
+
 pub fn marker_effect_type(feature: &ActiveBuffFeature) -> Option<i32> {
     super::wire::find(feature.act_id()?, &feature.act_type)?
         .markers(super::wire::WirePhase::Add)
@@ -195,6 +201,32 @@ mod tests {
         assert!(avoidance(&managers, -2, 3, EntityDamageType::Reality).is_none());
         assert!(avoidance(&managers, -3, 1, EntityDamageType::Mental).is_some());
         assert!(avoidance(&managers, -4, 3, EntityDamageType::Reality).is_some());
+    }
+
+    #[test]
+    fn ignore_dodge_is_owned_by_the_attacker_buff() {
+        crate::test_support::init_config();
+        let managers = BattleManagers::seeded(&Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(1_000),
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(30860141),
+                        from_uid: Some(10),
+                        count: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        assert!(ignored(&managers, 10));
+        assert!(!ignored(&managers, 11));
     }
 
     #[test]

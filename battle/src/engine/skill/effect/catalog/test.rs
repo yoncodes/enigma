@@ -88,6 +88,24 @@ fn dynamic_current_battle_roots_compile_enigmas_field_condition() {
 }
 
 #[test]
+fn exact_enemy_damage_routes_compile_without_runtime_gaps() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [260341, 750331], [5112]);
+
+    for skill_id in [260341, 750331] {
+        let effect = catalog.get(skill_id).unwrap();
+        assert!(catalog.issues(skill_id).is_empty());
+        assert!(effect.slots.iter().all(|slot| slot.compiled_route.is_ok()));
+        assert!(
+            effect
+                .slots
+                .iter()
+                .all(|slot| crate::engine::skill::behavior::has_destination(&slot.behavior))
+        );
+    }
+}
+
+#[test]
 fn entering_entities_extend_the_scoped_catalog_from_their_own_roots() {
     init_config();
     let mut catalog = SkillEffectCatalog::default();
@@ -160,6 +178,7 @@ fn scoped_catalog_follows_configured_reinforced_skill_effects() {
 
     assert_eq!(catalog.reinforced_skill(30860143), Some(30861143));
     assert!(catalog.get(30861143).is_some());
+    assert!(catalog.issues(30861143).is_empty());
 }
 
 #[test]
@@ -396,6 +415,21 @@ fn from_game_db_keeps_slot_round_limits() {
         ),
         1
     );
+}
+
+#[test]
+fn team_entity_exit_conditions_supply_their_round_limit() {
+    init_config();
+
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let base = catalog.get(30865171).unwrap();
+    let upgraded = catalog.get(30865175).unwrap();
+    let euphoria = catalog.get(30865186).unwrap();
+
+    assert_eq!(base.slots[4].round_limit, 99);
+    assert_eq!(base.slots[5].round_limit, 2);
+    assert_eq!(upgraded.slots[5].round_limit, 4);
+    assert_eq!(euphoria.slots[5].round_limit, 4);
 }
 
 #[test]

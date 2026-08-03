@@ -15,6 +15,7 @@ fn fully_absorbed_damage_projects_shield_then_zero_damage() {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: 1,
                 is_crit: false,
@@ -71,6 +72,7 @@ fn version_seven_embeds_shield_absorption_in_hurt_info() {
                 config_effect: -1,
                 effect_kind: DamageEffectKind::Normal,
                 assassinate: false,
+                ignore_riposte: false,
                 hurt: HurtInfoData {
                     from_uid: 1,
                     is_crit: false,
@@ -103,6 +105,7 @@ fn version_seven_embeds_shield_absorption_in_hurt_info() {
         })),
         true,
         HurtInfoWireLayout::Version7,
+        RedealWireLayout::Version7,
     )
     .unwrap();
 
@@ -139,6 +142,7 @@ fn version_seven_embeds_team_shared_shield_consumption_in_hurt_info() {
                 config_effect: -1,
                 effect_kind: DamageEffectKind::Normal,
                 assassinate: false,
+                ignore_riposte: false,
                 hurt: HurtInfoData {
                     from_uid: 1,
                     is_crit: false,
@@ -175,6 +179,7 @@ fn version_seven_embeds_team_shared_shield_consumption_in_hurt_info() {
         })),
         true,
         HurtInfoWireLayout::Version7,
+        RedealWireLayout::Version7,
     )
     .unwrap();
 
@@ -250,12 +255,14 @@ fn reduce_hp_wire_value_is_gated_by_fight_protocol_version() {
         &change,
         crate::engine::fight::versions::writes_reduce_hp(6),
         crate::engine::fight::versions::hurt_info_wire_layout(6).unwrap(),
+        crate::engine::fight::versions::redeal_wire_layout(6).unwrap(),
     )
     .unwrap();
     let v7 = project_change(
         &change,
         crate::engine::fight::versions::writes_reduce_hp(7),
         crate::engine::fight::versions::hurt_info_wire_layout(7).unwrap(),
+        crate::engine::fight::versions::redeal_wire_layout(7).unwrap(),
     )
     .unwrap();
     assert_eq!(v6[0].hurt_info.as_ref().unwrap().absorb_hurt_param, None);
@@ -314,7 +321,7 @@ fn shield_transaction_projects_grant_then_only_the_stacked_value() {
         buff_id: 31170002,
         amount_attr: crate::engine::entity::attr::AttrId::Attack,
         amount_rate: 1_500,
-        bonus: None,
+        multiplier_bonus: None,
         max_attr: crate::engine::entity::attr::AttrId::Attack,
         max_rate: 6_500,
         scope: crate::engine::manager::shield::ShieldScope::Entity,
@@ -380,7 +387,7 @@ fn team_shared_shield_projects_buff_state_then_stack_updates() {
         buff_id: 31430144,
         amount_attr: crate::engine::entity::attr::AttrId::Attack,
         amount_rate: 2_800,
-        bonus: None,
+        multiplier_bonus: None,
         max_attr: crate::engine::entity::attr::AttrId::Attack,
         max_rate: 12_500,
         scope: crate::engine::manager::shield::ShieldScope::TeamShared,
@@ -476,6 +483,7 @@ fn depleted_team_shared_shield_projects_its_committed_removal() {
                 config_effect: -1,
                 effect_kind: DamageEffectKind::Normal,
                 assassinate: false,
+                ignore_riposte: false,
                 hurt: HurtInfoData {
                     from_uid: -1,
                     is_crit: false,

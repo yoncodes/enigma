@@ -1,5 +1,5 @@
 use sonettobuf::{
-    BuffActInfo, BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute, PowerInfo,
+    BuffActInfo, BuffInfo, CardInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute, PowerInfo,
 };
 
 use crate::engine::{
@@ -155,6 +155,90 @@ fn hero_upgrade_applies_configured_buffs_as_one_child_uid_sequence() {
 }
 
 #[test]
+fn successive_hero_upgrades_replace_the_skill_group_used_for_card_composition() {
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                attr: Some(HeroAttribute {
+                    hp: Some(100),
+                    ..Default::default()
+                }),
+                skill_group1: vec![100, 101, 102],
+                skill_group2: vec![110, 111, 112],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(60037, "NotifyUpgradeHero"),
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.card = super::card::CardManager::new(vec![
+        CardInfo {
+            uid: Some(10),
+            skill_id: Some(100),
+            ..Default::default()
+        },
+        CardInfo {
+            uid: Some(10),
+            skill_id: Some(100),
+            ..Default::default()
+        },
+    ]);
+    managers.card.seed(&fight);
+    let mut fight = fight;
+    managers
+        .apply_upgrade_identity(
+            10,
+            origin,
+            &super::upgrade::UpgradeSelection {
+                upgrade_id: 1,
+                option_id: 2,
+                add_buff_ids: Vec::new(),
+                del_buff_ids: Vec::new(),
+                replace_skill_group1: vec![200, 201, 202],
+                replace_skill_group2: Vec::new(),
+                replace_big_skill: 0,
+                replace_passive_skills: Vec::new(),
+                add_passive_skill_ids: Vec::new(),
+            },
+        )
+        .unwrap();
+    managers
+        .apply_upgrade_identity(
+            10,
+            origin,
+            &super::upgrade::UpgradeSelection {
+                upgrade_id: 3,
+                option_id: 4,
+                add_buff_ids: Vec::new(),
+                del_buff_ids: Vec::new(),
+                replace_skill_group1: vec![300, 301, 302],
+                replace_skill_group2: Vec::new(),
+                replace_big_skill: 0,
+                replace_passive_skills: Vec::new(),
+                add_passive_skill_ids: Vec::new(),
+            },
+        )
+        .unwrap();
+    managers.sync_entities(&mut fight);
+    let composed = managers
+        .execute_card(super::card::CardCommand::ComposeAdjacent { origin })
+        .unwrap();
+
+    let entity = fight.attacker.as_ref().unwrap().entitys.first().unwrap();
+    assert_eq!(entity.skill_group1, vec![300, 301, 302]);
+    assert_eq!(composed.after.len(), 1);
+    assert_eq!(composed.after[0].skill_id, Some(301));
+}
+
+#[test]
 fn damage_batch_consumes_team_shared_shield_at_the_configured_target_count_rate() {
     crate::test_support::init_config();
     let ally = |uid, buffs| FightEntityInfo {
@@ -219,6 +303,7 @@ fn damage_batch_consumes_team_shared_shield_at_the_configured_target_count_rate(
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: -1,
                 is_crit: false,
@@ -326,6 +411,7 @@ fn damage_cap_applies_to_every_damage_instance_above_the_configured_limit() {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: -1,
                 is_crit: false,
@@ -436,6 +522,7 @@ fn depleted_team_shared_shield_removes_its_exact_carrier_before_reseed() {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: -1,
                 is_crit: false,
@@ -975,6 +1062,7 @@ fn skill_damage_reduces_guard_at_the_active_action_rate() {
             config_effect: -1,
             effect_kind: DamageEffectKind::Normal,
             assassinate: false,
+            ignore_riposte: false,
             hurt: HurtInfoData {
                 from_uid: 10,
                 is_crit: false,

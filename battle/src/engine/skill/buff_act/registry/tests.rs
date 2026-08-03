@@ -335,6 +335,45 @@ fn burn_damage_fix_is_an_exact_static_consumer_with_its_add_marker() {
 }
 
 #[test]
+fn lucy_static_combat_rules_keep_distinct_add_markers() {
+    for (act_id, act_type, kind, effect_type) in [
+        (
+            761,
+            "IgnoreDodgeSpecSkill",
+            BuffActKind::IgnoreDodgeSpecSkill,
+            sonettobuf::effect_type_enum::EffectType::Ignoredodgespecskill,
+        ),
+        (
+            763,
+            "IgnoreRebound",
+            BuffActKind::IgnoreRebound,
+            sonettobuf::effect_type_enum::EffectType::Ignorerebound,
+        ),
+        (
+            764,
+            "CareerRestraint",
+            BuffActKind::CareerRestraint,
+            sonettobuf::effect_type_enum::EffectType::Careerrestraint,
+        ),
+    ] {
+        let definition = find(act_id, act_type).unwrap();
+        assert_eq!(definition.kind, kind);
+        assert_eq!(
+            destination(act_id, act_type, &[]),
+            Some(BuffActDestination::StateConsumer)
+        );
+        assert!(!has_destination(act_id, act_type, &[1]));
+        assert_eq!(
+            definition
+                .wire
+                .unwrap()
+                .markers(super::super::wire::WirePhase::Add),
+            &[effect_type as i32]
+        );
+    }
+}
+
+#[test]
 fn passive_state_consumers_reject_unsupported_argument_shapes() {
     for (id, kind, valid, invalid) in [
         (794, "ModifyMaxBurnLayers", vec![20], vec![]),
@@ -358,6 +397,77 @@ fn passive_state_consumers_reject_unsupported_argument_shapes() {
         assert!(has_destination(id, kind, &valid), "{id} {kind}");
         assert!(!has_destination(id, kind, &invalid), "{id} {kind}");
     }
+}
+
+#[test]
+fn layered_attribute_bonus_is_an_exact_static_consumer() {
+    let args = [201, 300, 31280114, 75, 4, 206, 0];
+    let definition = find(1029, "AddAttrByOtherBuffLayer").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::AddAttrByOtherBuffLayer);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        definition.destination(),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(1029, "AddAttrByOtherBuffLayer", &args));
+    assert!(!has_destination(
+        1029,
+        "AddAttrByOtherBuffLayer",
+        &args[..6]
+    ));
+    assert!(find(1036, "AddAttrByOtherBuffLayer").is_some());
+}
+
+#[test]
+fn layered_attribute_penalty_is_an_exact_static_consumer() {
+    let args = [204, -200, 31280114, -75, 4, 206, -400];
+    let definition = find(1036, "AddAttrByOtherBuffLayer").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::AddAttrByOtherBuffLayer);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        definition.destination(),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(1036, "AddAttrByOtherBuffLayer", &args));
+    assert!(!has_destination(
+        1036,
+        "AddAttrByOtherBuffLayer",
+        &args[..6]
+    ));
+    assert!(find(1029, "AddAttrByOtherBuffLayer").is_some());
+}
+
+#[test]
+fn field_upgrade_modifier_is_an_exact_static_consumer() {
+    let definition = find(1032, "FixElectricUpgrade").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::FixElectricUpgrade);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        definition.destination(),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(1032, "FixElectricUpgrade", &[2, 40, 3]));
+    assert!(!has_destination(1032, "FixElectricUpgrade", &[2, 40, 2]));
+    assert!(find(1032, "AddAttrByOtherBuffLayer").is_none());
+}
+
+#[test]
+fn healing_taken_modifier_is_an_exact_static_consumer() {
+    let definition = find(601, "Injury").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::Injury);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        definition.destination(),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(601, "Injury", &[500]));
+    assert!(has_destination(601, "Injury", &[-250]));
+    assert!(!has_destination(601, "Injury", &[0]));
+    assert!(find(601, "InjuryAbsorb").is_none());
 }
 
 #[test]

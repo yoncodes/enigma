@@ -290,6 +290,12 @@ impl EffectPacket {
         effect
     }
 
+    pub fn magic_circle_upgrade(change: &MagicCircleApplyResult) -> ActEffect {
+        let mut effect = Self::magic_circle_add(change);
+        effect.effect_type = Some(EffectType::Magiccircleupgrade as i32);
+        effect
+    }
+
     pub fn marker(target_uid: i64, effect_type: i32) -> ActEffect {
         ActEffect {
             target_id: Some(target_uid),

@@ -30,6 +30,12 @@ pub(crate) enum RoundStartSetupLayout {
     Version7,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RedealWireLayout {
+    Version6,
+    Version7,
+}
+
 pub(crate) const fn hurt_info_wire_layout(version: i32) -> Option<HurtInfoWireLayout> {
     match version {
         6 => Some(HurtInfoWireLayout::Version6),
@@ -46,11 +52,19 @@ pub(crate) const fn round_start_setup_layout(version: i32) -> Option<RoundStartS
     }
 }
 
+pub(crate) const fn redeal_wire_layout(version: i32) -> Option<RedealWireLayout> {
+    match version {
+        6 => Some(RedealWireLayout::Version6),
+        7 => Some(RedealWireLayout::Version7),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        HurtInfoWireLayout, RoundStartSetupLayout, hurt_info_wire_layout, round_start_setup_layout,
-        writes_change_round_number, writes_reduce_hp,
+        HurtInfoWireLayout, RedealWireLayout, RoundStartSetupLayout, hurt_info_wire_layout,
+        redeal_wire_layout, round_start_setup_layout, writes_change_round_number, writes_reduce_hp,
     };
 
     #[test]
@@ -79,5 +93,12 @@ mod tests {
             Some(RoundStartSetupLayout::Version7)
         );
         assert_eq!(round_start_setup_layout(8), None);
+    }
+
+    #[test]
+    fn redeal_wire_layout_is_selected_by_fight_version() {
+        assert_eq!(redeal_wire_layout(6), Some(RedealWireLayout::Version6));
+        assert_eq!(redeal_wire_layout(7), Some(RedealWireLayout::Version7));
+        assert_eq!(redeal_wire_layout(8), None);
     }
 }

@@ -167,7 +167,11 @@ fn run_card_refill(
                     < hand_size
             }
         };
-        if !needs_normal_card && ready_special.is_empty() && opening_draws.len() == 0 {
+        if !needs_normal_card
+            && ready_normal.is_empty()
+            && ready_special.is_empty()
+            && opening_draws.len() == 0
+        {
             break;
         }
         let ready_ultimates = pool
@@ -181,6 +185,21 @@ fn run_card_refill(
                     .cloned()
             })
             .collect::<Vec<_>>();
+        if needs_normal_card && ready_ultimates.is_empty() && managers.card.can_recycle_draw_pile()
+        {
+            let recycled = drain::run(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                [RuleOp::Command(BattleCommand::Card(
+                    CardCommand::RecycleDrawPile { origin, team_type },
+                ))],
+            )?;
+            append_round_phase(&mut result, recycled);
+            continue;
+        }
         let mut candidates = managers
             .card
             .draw_pile()
@@ -203,6 +222,8 @@ fn run_card_refill(
         }
         let (card, configured_opening) = if let Some(card) = opening_draws.next() {
             (Some(card), true)
+        } else if !needs_normal_card {
+            (ready_ultimates.first().cloned(), false)
         } else if determinism.has_queued_card_draw() {
             (determinism.draw_cards(&candidates, 1).pop(), false)
         } else {
@@ -243,8 +264,8 @@ fn run_card_refill(
                 CardCommand::RefillOne(CardRefillOne {
                     origin,
                     card,
-                    consume_draw_pile: stage != RefillStage::Opening && !is_ultimate,
-                    consume_deck: stage != RefillStage::Opening
+                    consume_draw_pile: !configured_opening && !is_ultimate,
+                    consume_deck: !configured_opening
                         && !is_ultimate
                         && !is_device
                         && managers.card.refill_consumes_deck(),

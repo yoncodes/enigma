@@ -4,8 +4,10 @@ impl HeroManager {
     pub async fn upgrade_materials(
         self,
         db: &SqlitePool,
+        hero_id: i32,
         target_level: i32,
         target_talent: i32,
+        destiny_target: Option<DestinyMaterialTarget>,
     ) -> Result<reward::RewardSet, AppError> {
         let tables = config::configs::get();
         if !(1..=tables.max_character_level()).contains(&target_level)
@@ -13,82 +15,122 @@ impl HeroManager {
         {
             return Err(AppError::InvalidRequest);
         }
-        let heroes = UserHeroModel::new(self.player_id, db.clone())
-            .get_all_heroes()
-            .await?;
+        let hero = UserHeroModel::new(self.player_id, db.clone())
+            .get_hero(hero_id)
+            .await
+            .map_err(|_| AppError::InvalidRequest)?;
+        if target_level < hero.record.level || target_talent < hero.record.talent {
+            return Err(AppError::InvalidRequest);
+        }
         let mut items = BTreeMap::<u32, i32>::new();
         let mut currencies = BTreeMap::<i32, i32>::new();
 
-        for hero in heroes {
-            let hero_id = hero.record.hero_id;
-            let rare = tables
-                .character
-                .get(hero_id)
-                .map(|row| row.rare)
-                .ok_or_else(|| {
-                    AppError::Custom(format!("hero {hero_id} has no character config"))
-                })?;
-            let max_level = tables
-                .character_rank
-                .iter()
-                .filter(|row| row.hero_id == hero_id)
-                .filter_map(|row| tables.character_rank_level_limit(hero_id, row.rank))
-                .max()
-                .ok_or_else(|| {
-                    AppError::Custom(format!("hero {hero_id} has no character_rank config"))
-                })?;
-            let target_level = target_level.min(max_level);
-            let mut level = hero.record.level;
+        let rare = tables
+            .character
+            .get(hero_id)
+            .map(|row| row.rare)
+            .ok_or_else(|| AppError::Custom(format!("hero {hero_id} has no character config")))?;
+        let max_level = tables
+            .character_rank
+            .iter()
+            .filter(|row| row.hero_id == hero_id)
+            .filter_map(|row| tables.character_rank_level_limit(hero_id, row.rank))
+            .max()
+            .ok_or_else(|| {
+                AppError::Custom(format!("hero {hero_id} has no character_rank config"))
+            })?;
+        let max_talent = tables
+            .character_talent
+            .iter()
+            .filter(|row| row.hero_id == hero_id)
+            .map(|row| row.talent_id)
+            .max()
+            .ok_or_else(|| {
+                AppError::Custom(format!("hero {hero_id} has no character_talent config"))
+            })?;
+        if target_level > max_level || target_talent > max_talent {
+            return Err(AppError::InvalidRequest);
+        }
+        let mut level = hero.record.level;
 
-            for rank in hero.record.rank.. {
-                if level >= target_level {
-                    break;
-                }
-                let level_limit = tables
-                    .character_rank_level_limit(hero_id, rank)
+        for rank in hero.record.rank.. {
+            if level >= target_level {
+                break;
+            }
+            let level_limit = tables
+                .character_rank_level_limit(hero_id, rank)
+                .ok_or_else(|| {
+                    AppError::Custom(format!("hero {hero_id} rank {rank} has no level limit"))
+                })?;
+            for next_level in level + 1..=target_level.min(level_limit) {
+                let row = tables
+                    .character_level_cost(rare, next_level)
                     .ok_or_else(|| {
-                        AppError::Custom(format!("hero {hero_id} rank {rank} has no level limit"))
+                        AppError::Custom(format!(
+                            "rarity {rare} level {next_level} has no character cost"
+                        ))
                     })?;
-                for next_level in level + 1..=target_level.min(level_limit) {
-                    let row = tables
-                        .character_level_cost(rare, next_level)
-                        .ok_or_else(|| {
-                            AppError::Custom(format!(
-                                "rarity {rare} level {next_level} has no character cost"
-                            ))
-                        })?;
-                    add_material_costs(reward::parse(&row.cosume), &mut items, &mut currencies);
-                }
-                level = target_level.min(level_limit);
-                if level >= target_level {
-                    break;
-                }
-
-                let next_rank = tables.character_rank(hero_id, rank + 1).ok_or_else(|| {
-                    AppError::Custom(format!("hero {hero_id} has no rank {} config", rank + 1))
-                })?;
-                add_material_costs(
-                    reward::parse(&next_rank.consume),
-                    &mut items,
-                    &mut currencies,
-                );
-                level = level_limit.saturating_add(1);
+                add_material_costs(reward::parse(&row.cosume), &mut items, &mut currencies);
+            }
+            level = target_level.min(level_limit);
+            if level >= target_level {
+                break;
             }
 
-            let max_talent = tables
-                .character_talent
+            let next_rank = tables.character_rank(hero_id, rank + 1).ok_or_else(|| {
+                AppError::Custom(format!("hero {hero_id} has no rank {} config", rank + 1))
+            })?;
+            add_material_costs(
+                reward::parse(&next_rank.consume),
+                &mut items,
+                &mut currencies,
+            );
+            level = level_limit.saturating_add(1);
+        }
+
+        for talent in hero.record.talent + 1..=target_talent {
+            let row = tables.character_talent(hero_id, talent).ok_or_else(|| {
+                AppError::Custom(format!("hero {hero_id} has no talent {talent} config"))
+            })?;
+            add_material_costs(reward::parse(&row.consume), &mut items, &mut currencies);
+        }
+        if let Some(destiny) = destiny_target {
+            if !super::destiny::destiny_available(hero_id, hero.record.rank, hero.record.level)
+                || !super::destiny::destiny_stones(hero_id).contains(&destiny.stone_id)
+            {
+                return Err(AppError::InvalidRequest);
+            }
+            let destiny_config = tables
+                .character_destiny(hero_id)
+                .ok_or(AppError::InvalidRequest)?;
+            let max_rank = tables
+                .character_destiny_slots
                 .iter()
-                .filter(|row| row.hero_id == hero_id)
-                .map(|row| row.talent_id)
+                .filter(|slot| slot.slots_id == destiny_config.slots_id)
+                .map(|slot| slot.stage)
                 .max()
-                .ok_or_else(|| {
-                    AppError::Custom(format!("hero {hero_id} has no character_talent config"))
-                })?;
-            for talent in hero.record.talent + 1..=target_talent.min(max_talent) {
-                let row = tables.character_talent(hero_id, talent).ok_or_else(|| {
-                    AppError::Custom(format!("hero {hero_id} has no talent {talent} config"))
-                })?;
-                add_material_costs(reward::parse(&row.consume), &mut items, &mut currencies);
+                .ok_or(AppError::InvalidRequest)?;
+            if !(hero.record.destiny_rank.max(1)..=max_rank).contains(&destiny.rank) {
+                return Err(AppError::InvalidRequest);
+            }
+            for slot in tables
+                .character_destiny_slots
+                .iter()
+                .filter(|slot| slot.slots_id == destiny_config.slots_id)
+                .filter(|slot| slot.stage <= destiny.rank)
+                .filter(|slot| {
+                    slot.stage > hero.record.destiny_rank
+                        || (slot.stage == hero.record.destiny_rank
+                            && slot.node > hero.record.destiny_level)
+                })
+            {
+                add_material_costs(reward::parse(&slot.consume), &mut items, &mut currencies);
+            }
+            if !hero.destiny_stone_unlocks.contains(&destiny.stone_id) {
+                let cost = tables
+                    .character_destiny_stone_cost(destiny.stone_id)
+                    .ok_or(AppError::InvalidRequest)?;
+                add_material_costs(reward::parse(&cost.consume), &mut items, &mut currencies);
             }
         }
 

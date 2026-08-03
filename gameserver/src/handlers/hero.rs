@@ -294,14 +294,7 @@ pub async fn on_destiny_rank_up(
     let hero_id = msg.hero_id.ok_or(AppError::InvalidRequest)?;
     let (reply, hero_info, consumed) = heroes.destiny_rank_up(ctx.state.db, hero_id).await?;
 
-    push::send_cost_pushes(
-        ctx,
-        player_id,
-        consumed.item_ids,
-        consumed.currency_ids,
-        consumed.material_changes,
-    )
-    .await?;
+    push::send_cost_pushes(ctx, player_id, consumed.item_ids, consumed.currency_ids).await?;
     push::send_hero_updates(ctx, player_id, vec![hero_info]).await?;
     ctx.send_reply(CmdId::DestinyRankUpCmd, reply, 0, req.up_tag)
         .await
@@ -321,14 +314,7 @@ pub async fn on_destiny_level_up(
         .destiny_level_up(ctx.state.db, hero_id, level)
         .await?;
 
-    push::send_cost_pushes(
-        ctx,
-        player_id,
-        consumed.item_ids,
-        consumed.currency_ids,
-        consumed.material_changes,
-    )
-    .await?;
+    push::send_cost_pushes(ctx, player_id, consumed.item_ids, consumed.currency_ids).await?;
     push::send_hero_updates(ctx, player_id, vec![hero_info]).await?;
     ctx.send_reply(CmdId::DestinyLevelUpCmd, reply, 0, req.up_tag)
         .await
@@ -348,14 +334,7 @@ pub async fn on_destiny_stone_unlock(
         .destiny_stone_unlock(ctx.state.db, hero_id, stone_id)
         .await?;
 
-    push::send_cost_pushes(
-        ctx,
-        player_id,
-        consumed.item_ids,
-        consumed.currency_ids,
-        consumed.material_changes,
-    )
-    .await?;
+    push::send_cost_pushes(ctx, player_id, consumed.item_ids, consumed.currency_ids).await?;
     push::send_hero_updates(ctx, player_id, vec![hero_info]).await?;
     ctx.send_reply(CmdId::DestinyStoneUnlockCmd, reply, 0, req.up_tag)
         .await
@@ -373,14 +352,7 @@ pub async fn on_hero_level_up(
     let new_level = msg.expect_level.ok_or(AppError::InvalidRequest)?;
     let (reply, hero_info, consumed) = heroes.level_up(ctx.state.db, hero_id, new_level).await?;
 
-    push::send_cost_pushes(
-        ctx,
-        player_id,
-        consumed.item_ids,
-        consumed.currency_ids,
-        consumed.material_changes,
-    )
-    .await?;
+    push::send_cost_pushes(ctx, player_id, consumed.item_ids, consumed.currency_ids).await?;
     push::send_hero_updates(ctx, player_id, vec![hero_info]).await?;
     task_events::notify(
         ctx,
@@ -406,14 +378,7 @@ pub async fn on_hero_rank_up(
     let hero_id = msg.hero_id.ok_or(AppError::InvalidRequest)?;
     let (reply, hero_info, consumed) = heroes.rank_up(ctx.state.db, hero_id).await?;
 
-    push::send_cost_pushes(
-        ctx,
-        player_id,
-        consumed.item_ids,
-        consumed.currency_ids,
-        consumed.material_changes,
-    )
-    .await?;
+    push::send_cost_pushes(ctx, player_id, consumed.item_ids, consumed.currency_ids).await?;
     push::send_hero_updates(ctx, player_id, vec![hero_info]).await?;
     ctx.send_reply(CmdId::HeroRankUpCmd, reply, 0, req.up_tag)
         .await

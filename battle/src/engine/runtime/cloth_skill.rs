@@ -95,6 +95,7 @@ impl BattleRuntime {
                 .ok()?;
                 self.round_state.power -= cost;
                 *self.cloth_skill_uses.entry(skill_id).or_default() += 1;
+                self.objectives.record_tuning_use();
                 if let Some(attacker) = self.fight.attacker.as_mut() {
                     attacker.power = Some(self.round_state.power);
                     if let Some(skill) = attacker
@@ -106,7 +107,7 @@ impl BattleRuntime {
                         skill.cd = Some(cooldown);
                     }
                 }
-                self.pending_redeal = result.outcomes.iter().find_map(|outcome| {
+                let redeal = result.outcomes.iter().find_map(|outcome| {
                     let executor::RuleOutcome::Card(changes) = outcome else {
                         return None;
                     };
@@ -116,6 +117,11 @@ impl BattleRuntime {
                             deal_card_group: Vec::new(),
                         })
                 });
+                self.pending_redeal =
+                    match crate::engine::fight::versions::redeal_wire_layout(fight_version)? {
+                        crate::engine::fight::versions::RedealWireLayout::Version6 => redeal,
+                        crate::engine::fight::versions::RedealWireLayout::Version7 => None,
+                    };
                 project_result(result, fight_version)
                     .inspect_err(|error| tracing::warn!(%error, "cloth skill projection failed"))
                     .ok()?

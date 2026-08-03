@@ -148,6 +148,16 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Option<SkillEffectSlo
     }
 
     let conditions = parse_conditions(db, condition);
+    let round_limit = crate::engine::skill::condition::lifecycle::team_entity_exit_limit(
+        &conditions,
+    )
+    .map_or(round_limit, |condition_limit| {
+        if round_limit > 0 {
+            round_limit.min(condition_limit)
+        } else {
+            condition_limit
+        }
+    });
     let compiled_route = crate::engine::skill::rule::route::ConditionRoute::compile_for_behavior(
         &conditions,
         &behavior.spec,

@@ -431,14 +431,16 @@ pub(super) fn damage_ops(
     let mut crit_count = 0;
     let inherent_assassinate = execution.context.active_skill_assassinate;
     for (index, target_uid) in targets.into_iter().enumerate() {
-        if let Some(feature) = crate::engine::skill::buff_act::dodge_spec_skill::avoidance(
-            managers,
-            target_uid,
-            pool.skill_slot(source_uid, skill_id),
-            pool.entity(source_uid)
-                .map(|entity| entity.damage_type)
-                .unwrap_or_default(),
-        ) {
+        if !crate::engine::skill::buff_act::dodge_spec_skill::ignored(managers, source_uid)
+            && let Some(feature) = crate::engine::skill::buff_act::dodge_spec_skill::avoidance(
+                managers,
+                target_uid,
+                pool.skill_slot(source_uid, skill_id),
+                pool.entity(source_uid)
+                    .map(|entity| entity.damage_type)
+                    .unwrap_or_default(),
+            )
+        {
             avoided.push(feature);
             if main_target == Some(target_uid) {
                 damage_commands.push(damage::resolve_avoided_attack_command(
@@ -602,7 +604,7 @@ pub(super) fn damage_ops(
                 )
             });
         let main_target = main_target == Some(target_uid);
-        if let Some(command) = damage::resolve_attack_command(
+        if let Some(mut command) = damage::resolve_attack_command(
             &AttackPlan {
                 source_uid,
                 target_uid,
@@ -636,6 +638,9 @@ pub(super) fn damage_ops(
                 key: DefinitionKey::new(skill_id, "SkillDamage"),
             },
         ) {
+            if let HpCommand::Damage(damage) = &mut command {
+                damage.ignore_riposte = target_modifiers.ignore_riposte;
+            }
             crit_count += i32::from(is_crit);
             damage_commands.extend(crate::engine::skill::buff_act::absorb_hurt::route(
                 managers, pool, command,
@@ -663,7 +668,7 @@ pub(super) fn damage_ops(
                 )
                 })
                 .collect::<Vec<_>>();
-            if let Some(command) = damage::resolve_additional_damage_command(
+            if let Some(mut command) = damage::resolve_additional_damage_command(
                 damage::DamageRequest {
                     source_uid: additional.credited_source_uid,
                     target_uid,
@@ -699,6 +704,9 @@ pub(super) fn damage_ops(
                 assassination.triggered_by_target,
                 *origin,
             ) {
+                if let HpCommand::Damage(damage) = &mut command {
+                    damage.ignore_riposte = target_modifiers.ignore_riposte;
+                }
                 additional_damage_commands.push((
                     target_uid,
                     crate::engine::skill::buff_act::absorb_hurt::route(managers, pool, command),

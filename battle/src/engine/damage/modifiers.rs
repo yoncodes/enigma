@@ -45,34 +45,7 @@ pub fn persistent_attribute_delta(
     uid: i64,
     attr_id: AttrId,
 ) -> i32 {
-    let active_features = buffs.active_features(hp);
-    buffs.attribute_delta(uid, attr_id)
-        + active_features
-            .iter()
-            .filter(|feature| {
-                feature.owner_uid == uid
-                    && buff_act::is_kind(feature, BuffActKind::AddAttrByOtherBuffLayer)
-            })
-            .map(|feature| {
-                buff_act::add_attr_by_other_buff_layer::attribute_delta(feature, attr_id, buffs)
-            })
-            .sum::<i32>()
-        + active_features
-            .iter()
-            .filter(|feature| {
-                feature.owner_uid == uid
-                    && buff_act::is_kind(feature, BuffActKind::FixAttrBySubBuffLayer)
-            })
-            .map(|feature| {
-                buff_act::fix_attr_by_sub_buff_layer::attribute_delta(feature, attr_id, buffs)
-            })
-            .sum::<i32>()
-        + active_features
-            .iter()
-            .filter(|feature| feature.owner_uid == uid)
-            .map(|feature| buff_act::dynamic_attribute_delta(feature, attr_id, buffs, hp, true))
-            .sum::<i32>()
-        + buff_act::raspberry::attribute_delta(buffs, uid, attr_id)
+    crate::engine::manager::persistent_attribute_delta(buffs, hp, uid, attr_id)
 }
 
 pub fn genesis_multiplier(managers: &BattleManagers, source_uid: i64, target_uid: i64) -> i32 {

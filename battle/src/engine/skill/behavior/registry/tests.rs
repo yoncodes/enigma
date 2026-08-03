@@ -47,6 +47,25 @@ fn resource_spend_buff_grant_keeps_its_exact_behavior_key() {
 }
 
 #[test]
+fn ignore_beat_back_is_an_exact_argumentless_modifier() {
+    let definition = find_key(60054, "IgnoreBeatBack").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::IgnoreBeatBack);
+    assert!(supports(&ParsedBehavior::new(
+        60054,
+        "IgnoreBeatBack",
+        Vec::new()
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60054,
+        "IgnoreBeatBack",
+        vec![1]
+    )));
+    assert!(find_key(60054, "IgnoreRebound").is_none());
+}
+
+#[test]
 fn implemented_skill_casts_own_destinations_but_unimplemented_siblings_do_not() {
     for (opcode, type_name) in [
         (50008, "DirectUseSkill"),
@@ -90,6 +109,31 @@ fn destination_readiness_belongs_to_the_exact_registry_row() {
     ] {
         assert!(find_key(opcode, type_name).unwrap().destination);
     }
+}
+
+#[test]
+fn attribute_damage_is_an_exact_targeted_genesis_route() {
+    let definition = find_key(10006, "Damage").unwrap();
+    let supported = ParsedBehavior::from_spec(
+        BehaviorSpec::new(10006, "Damage"),
+        vec![1, crate::engine::entity::attr::AttrId::Hp.id(), 100],
+        Vec::new(),
+    );
+
+    assert!(definition.destination);
+    assert!(definition.supports.unwrap()(&supported));
+    for args in [
+        vec![0, crate::engine::entity::attr::AttrId::Hp.id(), 100],
+        vec![1, crate::engine::entity::attr::AttrId::Attack.id(), 100],
+        vec![1, crate::engine::entity::attr::AttrId::Hp.id(), 200],
+    ] {
+        assert!(!definition.supports.unwrap()(&ParsedBehavior::from_spec(
+            BehaviorSpec::new(10006, "Damage"),
+            args,
+            Vec::new(),
+        )));
+    }
+    assert!(find_key(10006, "Damage2").is_none());
 }
 
 #[test]

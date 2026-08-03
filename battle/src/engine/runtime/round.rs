@@ -129,13 +129,16 @@ impl BattleRuntime {
             catalog,
             &mut self.determinism,
             context,
-            commands,
+            commands.iter().cloned(),
             1,
             crate::engine::manager::emitter::UID,
         )
         .map_err(|error| format!("{error:?}"))?;
+        let ended_by_player = battle_ended(&self.fight, &pool, &self.managers);
+        self.objectives
+            .record_player_round(&commands, catalog, &player, ended_by_player);
         apply_cloth_power(&self.fight, &self.managers, &mut self.round_state, &player);
-        let conduit = if battle_ended(&self.fight, &pool, &self.managers) {
+        let conduit = if ended_by_player {
             Default::default()
         } else {
             schedule::run_conduit_phase(
@@ -162,6 +165,7 @@ impl BattleRuntime {
         } else {
             self.managers.promote_reserves(&mut self.fight)
         };
+        self.objectives.record_promotions(&promotions);
         if !promotions.is_empty() {
             self.managers.sync_roster(&self.fight);
             pool = crate::engine::skill::target::TargetPool::from_fight(&self.fight);
