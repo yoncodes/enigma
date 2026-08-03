@@ -1,5 +1,6 @@
 use sonettobuf::{
-    BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute, HeroExAttribute, PowerInfo,
+    BuffInfo, CardInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute, HeroExAttribute,
+    PowerInfo,
 };
 
 use super::*;
@@ -7,8 +8,9 @@ use crate::engine::{
     entity::attr::AttrId,
     manager::{
         buff::{BuffCommand, BuffGrant, BuffGrantRelation, CommandOrigin, RelatedBuffGrant},
-        card::{CardChangeKind, CardCommand},
+        card::{CardChangeKind, CardCommand, CardReplaceOwnerSkills, CardSetup},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
+        ex_point::{ExPointChange, ExPointCommand},
     },
     mechanic::shell::ShellCommand,
     runtime::change::BattleChange,

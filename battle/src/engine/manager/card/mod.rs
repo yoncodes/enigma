@@ -22,8 +22,8 @@ pub use command::{
     CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPlay, CardQueueUse, CardRankChange,
     CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne,
     CardRefreshAiQueue, CardRemoveAiOwner, CardReplaceOwnerSkills, CardSetAiQueue,
-    CardSetTeamCards, CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange,
-    QueuedCardRankUp, QueuedUseCard,
+    CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUseUniversal, HandCardRankUp,
+    QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;
@@ -777,6 +777,33 @@ impl CardManager {
 
     pub fn add_to_hand_for(&mut self, _target_uid: i64, card: CardInfo) -> CardInfo {
         self.deck.add_to_hand(card)
+    }
+
+    pub(super) fn set_ultimate_availability(&mut self, card: CardInfo, available: bool) -> bool {
+        let present = self.deck.hand().iter().any(|current| {
+            current.uid == card.uid
+                && current.skill_id == card.skill_id
+                && current.temp_card == card.temp_card
+        });
+        if present == available {
+            return false;
+        }
+        if available {
+            self.deck.add_to_hand(card.clone());
+            self.record_refill(card);
+            return true;
+        }
+        if self.deck.take_matching(&card).is_none() {
+            return false;
+        }
+        if let Some(index) = self.refilled.iter().rposition(|refilled| {
+            refilled.uid == card.uid
+                && refilled.skill_id == card.skill_id
+                && refilled.temp_card == card.temp_card
+        }) {
+            self.refilled.remove(index);
+        }
+        true
     }
 
     pub fn add_temp_card(&mut self, skill_id: i32) -> CardInfo {

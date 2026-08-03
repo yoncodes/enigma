@@ -879,6 +879,11 @@ fn project_change(
             .into_iter()
             .collect(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Refilled => Vec::new(),
+        BattleChange::Card(changes)
+            if changes.kind == CardChangeKind::UltimateAvailabilityChanged =>
+        {
+            Vec::new()
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::PlayedInvalidated => changes
             .operation
             .clone()

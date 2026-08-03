@@ -1,4 +1,66 @@
 use super::*;
+use crate::engine::{
+    manager::card::{CardCommand, CardSetUltimateAvailability},
+    skill::rule::{CommandOrigin, DefinitionKey, RuleDomain, output::BattleCommand},
+};
+
+const ULTIMATE_AVAILABILITY_ORIGIN: CommandOrigin = CommandOrigin {
+    domain: RuleDomain::Lifecycle,
+    key: DefinitionKey::new(0, "UltimateAvailability"),
+};
+
+fn queued_ultimate_availability_sync(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    event: &BattleEvent,
+    reuse_path: &[usize],
+) -> Option<QueuedOp> {
+    let BattleEvent::ExPointChanged(change) = event else {
+        return None;
+    };
+    let entity = pool
+        .attacker_main
+        .iter()
+        .find(|entity| entity.uid == change.target_uid)?;
+    let mechanic = crate::engine::mechanic::card::CardMechanic;
+    if managers.hp.current(entity.uid) <= 0
+        || mechanic.ultimate_ignores_limit(managers, entity.uid, entity.ex_skill)
+    {
+        return None;
+    }
+    let current = managers
+        .card
+        .hand()
+        .iter()
+        .find(|card| mechanic.is_ultimate(card, entity))
+        .cloned();
+    let (card, available) = if mechanic.can_add_normal_ultimate(managers, entity) {
+        (
+            crate::engine::manager::card::pool::card_for_target(entity, entity.ex_skill)?,
+            true,
+        )
+    } else if !mechanic.ultimate_ready(managers, entity) {
+        (current?, false)
+    } else {
+        return None;
+    };
+    Some(QueuedOp {
+        op: RuleOp::Command(BattleCommand::Card(CardCommand::SetUltimateAvailability(
+            CardSetUltimateAvailability {
+                origin: ULTIMATE_AVAILABILITY_ORIGIN,
+                card,
+                available,
+            },
+        ))),
+        trigger: SkillOpTrigger::Event(event.clone()),
+        skill_execution: None,
+        frame_path: Some(reuse_path.to_vec()),
+        parent_path: None,
+        frame_group: None,
+        independent_parent_group: None,
+        frame_owner: Some(FrameOwner::EventRule),
+    })
+}
 
 fn queued_buff_act_feature_op(
     feature: crate::engine::manager::buff::ActiveBuffFeature,
@@ -59,6 +121,16 @@ pub(super) fn dispatch_event_batch(
     let mut fired_once_per_target = std::collections::HashSet::new();
     let mut reactions = ReactionBatch::default();
     for event in events {
+        if after_publish
+            && owner_uids.is_none_or(|owners| {
+                event
+                    .target_uid()
+                    .is_none_or(|target_uid| owners.contains(&target_uid))
+            })
+            && let Some(sync) = queued_ultimate_availability_sync(pool, managers, event, reuse_path)
+        {
+            reactions.after_publish.push(sync);
+        }
         if after_publish && !queued_attack_consumption && matches!(event, BattleEvent::Hit(_)) {
             for source_uid in attack_sources
                 .iter()
