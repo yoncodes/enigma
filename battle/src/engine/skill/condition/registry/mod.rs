@@ -335,6 +335,7 @@ condition_definitions! {
     [45102] "HeroRoundInterval" => lifecycle::round_interval, setup_route(SetupStage::RoundTransitionStart, 0, &[]);
     [45104] "HeroRoundInterval" => lifecycle::period_then_start, setup_route(SetupStage::RoundTransitionStart, 1, &[]);
     [45106] "HeroRoundInterval" => lifecycle::period_then_start, setup_route(SetupStage::CardSetup, 0, &[]);
+    [45303] "HeroRoundInterval" => lifecycle::period_then_start, reaction_targets_owner(event_trigger(EventKind::RoundEndEntitySettlement, None));
     [10411] "None" => none::round_start, setup_route(SetupStage::RoundStart, 3, &[]);
     [105] "None" => none::after_round_start, setup_route(SetupStage::AfterRoundStart, 0, &[]);
     [106] "None" => none::card_setup, setup_route(SetupStage::CardSetup, 0, &[]);
@@ -347,6 +348,7 @@ condition_definitions! {
     [210] "None" => none::skill_action_after_hit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [202, 204, 206, 207, 2011, 2082, 900, 901, 903, 905, 908, 910, 930, 1041] "None" => none::skill_action, event_trigger(EventKind::SkillAction, None);
     [2092] "None" => trigger::parse_guard_broken, reaction_targets_owner(event_trigger(EventKind::ToughnessBroken, None));
+    [783101] "IsBroken" => trigger::parse_entity_broken, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [1061] "None" => none::action_queue_committed, event_trigger(EventKind::ActionQueueCommitted, None);
     [2081] "None" => none::skill_cast, uses_active_skill_targets(event_trigger(EventKind::SkillCast, None));
     [209, 211] "None" => none::attacked, event_trigger(EventKind::BeAttacked, None);
@@ -387,6 +389,9 @@ condition_definitions! {
     [19103] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::BuffGate, 0, &[]));
     [19212] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [19302] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEnd, None));
+    [19301] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
+    [56301] "NoBuff" => buff::first_status_absent, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
+    [750101] "PlayerHasBuff" => buff::team_buff_presence, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [514100] "SelfTeamHasBuffTypeLayerLessThan" => buff::team_buff_type_layer_at_most, setup_route(SetupStage::RoundStartCondition, 100, &[EventKind::BuffChanged]);
     [57208] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [57204] "NoBuffId" => buff::buff_absent, incoming_attack_modifier(filters_behavior_targets(predicate(&[EventKind::BuffChanged])));
@@ -424,6 +429,8 @@ condition_definitions! {
     [51104] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_in_side_frame(setup_route(SetupStage::RoundStart, 4, &[EventKind::BuffChanged]));
     [51106] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::CardSetup, 0, &[EventKind::BuffChanged]);
     [61203] "PerBuffIdCount" => buff::per_buff_id_count, uses_active_skill_targets(predicate(&[EventKind::BuffChanged]));
+    [59203] "PerBuffId" => buff::per_buff_id, predicate(&[EventKind::BuffChanged]);
+    [59302] "PerBuffId" => buff::per_buff_id, event_trigger(EventKind::RoundEnd, None);
     [61208] "PerBuffIdCount" => buff::per_buff_id_count, uses_active_skill_targets(matching_buff_act_owns_behavior(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage))));
     [61210] "PerBuffIdCount" => buff::per_buff_id_count, uses_active_skill_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit)));
     [518203] "PerHasBuffTypeLayer" => buff::per_type_layer, predicate(&[EventKind::BuffChanged]);
@@ -448,6 +455,8 @@ condition_definitions! {
     [618012] "TeammateAliveOrDyingNumNoSp" => entity_count::teammates_without_special, predicate(&[EventKind::EntityDied]);
     [616012] "TeammateAliveNumNoSp" => entity_count::teammates_without_special, predicate(&[EventKind::EntityDied]);
     [583004] "AccTeamAddBuffCountByBuffId" => buff::team_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
+    [581] "AccAddBuffCountByBuffId" => buff::owner_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
+    [581307] "AccAddBuffCountByBuffId" => buff::buff_id_at_least, event_trigger(EventKind::RoundEndFinalSettlement, None);
     [579018] "ExPointIncrChange" => resource::self_ex_point_increase, reaction_targets_owner(before_publish(event_trigger(EventKind::ExPointChanged, None)));
     [579023] "ExPointIncrChange" => resource::other_ally_ex_point_increase, reaction_targets_owner(before_publish(event_trigger(EventKind::ExPointChanged, None)));
     [40] "LostExPoint" => resource::ex_point_lost, event_trigger(EventKind::ExPointChanged, None);
@@ -460,6 +469,8 @@ condition_definitions! {
     [726103] "BloodPoolValue" => resource::blood_pool_value, event_trigger(EventKind::RoundEnd, None);
     [726210] "BloodPoolValue" => resource::blood_pool_value, predicate(&[]);
     [589] "PowerIncrChange" => resource::power_increase, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
+    [749301] "PowerRatio" => resource::power_ratio, event_trigger(EventKind::SmallRoundEnd, None);
+    [710301] "PerHandCardHasSkillId" => card::hand_skill_presence, event_trigger(EventKind::SmallRoundEnd, None);
     [571017] "LostPower" => resource::lost_power, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
     [788210] "PerDeviceCurrCost" => resource::per_conduit_current_cost, in_causing_frame(reaction_targets_owner(event_trigger(EventKind::ConduitActivated, None)));
     [787103] "DeviceExPoint" => conduit::ex_point, setup_route(SetupStage::RoundStart, 1, &[]);

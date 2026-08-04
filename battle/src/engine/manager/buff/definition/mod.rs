@@ -276,8 +276,11 @@ impl BuffDefinition {
             .collect()
     }
 
-    pub(super) fn fanout_wire_markers(&self) -> Vec<i32> {
-        use crate::engine::skill::buff_act::{registry::BuffActKind, wire::WirePhase};
+    pub(super) fn fanout_wire_markers(
+        &self,
+        phase: crate::engine::skill::buff_act::wire::WirePhase,
+    ) -> Vec<i32> {
+        use crate::engine::skill::buff_act::registry::BuffActKind;
 
         self.features
             .iter()
@@ -285,7 +288,8 @@ impl BuffDefinition {
                 !matches!(
                     feature.kind,
                     Some(
-                        BuffActKind::MasterHalo
+                        BuffActKind::HaloBase
+                            | BuffActKind::MasterHalo
                             | BuffActKind::LayerMasterHalo
                             | BuffActKind::SlaveHalo
                     )
@@ -295,9 +299,16 @@ impl BuffDefinition {
                 feature
                     .wire
                     .into_iter()
-                    .flat_map(|definition| definition.markers(WirePhase::Add).iter().copied())
+                    .flat_map(|definition| definition.markers(phase).iter().copied())
             })
             .collect()
+    }
+
+    pub(super) fn refreshes_unchanged(&self) -> bool {
+        self.features
+            .iter()
+            .filter_map(|feature| feature.wire)
+            .any(|wire| wire.refreshes_unchanged)
     }
 
     pub(super) fn pre_add_wire_effects(&self, target_uid: i64) -> Vec<super::BuffWireEffectResult> {
@@ -684,7 +695,8 @@ impl BuffDefinition {
                     matches!(
                         feature.kind,
                         Some(
-                            crate::engine::skill::buff_act::registry::BuffActKind::MasterHalo
+                            crate::engine::skill::buff_act::registry::BuffActKind::HaloBase
+                                | crate::engine::skill::buff_act::registry::BuffActKind::MasterHalo
                                 | crate::engine::skill::buff_act::registry::BuffActKind::LayerMasterHalo
                         )
                     )

@@ -196,6 +196,12 @@ impl BuffManager {
             && policy.on_duplicate != DuplicateGrant::AddSeparateCopy
             && definition.keeps_permanent_instance()
         {
+            if definition.features().iter().any(|feature| {
+                feature.kind
+                    == Some(crate::engine::skill::buff_act::registry::BuffActKind::HaloBase)
+            }) {
+                return GrantAction::RefreshExisting;
+            }
             return GrantAction::KeepExisting;
         }
         if has_matching && policy.on_duplicate == DuplicateGrant::ReplaceExisting {
@@ -355,7 +361,7 @@ impl BuffManager {
         let mut specs = Vec::new();
         for carrier in halo::carriers(carrier_buff_id)
             .into_iter()
-            .filter(|carrier| carrier.kind == HaloKind::LayerMaster)
+            .filter(|carrier| matches!(carrier.kind, HaloKind::Base | HaloKind::LayerMaster))
         {
             let fanout_buff_id = carrier.linked_buff_id.unwrap_or(carrier_buff_id);
             let Some(definition) = BuffDefinition::get(fanout_buff_id) else {

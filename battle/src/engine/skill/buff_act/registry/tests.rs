@@ -643,6 +643,18 @@ fn moxie_reduction_immunity_keeps_its_exact_static_identity() {
 }
 
 #[test]
+fn absolute_missing_hp_attributes_keep_their_exact_static_routes() {
+    assert_eq!(
+        destination(853, "AttrByLostHp", &[10_000_000, 215, 100, 1, 1, 0]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert_eq!(
+        destination(1056, "AttrByLostHp", &[10_000_000, 216, 150, 1, 1, 1]),
+        Some(BuffActDestination::StateConsumer)
+    );
+}
+
+#[test]
 fn incapacitating_control_buffs_keep_distinct_exact_routes() {
     let dizzy = find(401, "Dizzy").unwrap();
     assert_eq!(dizzy.kind, BuffActKind::Dizzy);

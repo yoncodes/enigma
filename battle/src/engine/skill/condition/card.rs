@@ -1,9 +1,15 @@
-use super::ParsedConditionKind;
+use super::{ParsedConditionKind, parse::parse_i32_args};
 
 pub fn current_enchant(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::CurrentCardEnchant {
         enchant_id: args.first()?.parse().ok()?,
     })
+}
+
+pub fn hand_skill_presence(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::HandSkillPresence(parse_i32_args(
+        args,
+    )?))
 }
 
 #[cfg(test)]

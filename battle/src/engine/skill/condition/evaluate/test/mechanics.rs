@@ -32,6 +32,42 @@ fn blood_pool_max_uses_runtime_state() {
 }
 
 #[test]
+fn broken_condition_reads_committed_toughness_state() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                toughness_value: Some(1),
+                toughness_point: Some(1),
+                is_broken: Some(false),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let condition = exact_condition(783101, "IsBroken", &[]);
+    let matches = |managers: &BattleManagers| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[10],
+            Some(managers),
+            &pool,
+            TargetContext::default(),
+        )
+    };
+
+    assert!(!matches(&managers));
+    assert!(managers.toughness.reduce(10, 1, true).is_some());
+    assert!(matches(&managers));
+}
+
+#[test]
 fn blood_pool_value_selects_the_configured_shared_gauge() {
     init_config();
     let condition = |config_effect| ParsedCondition {

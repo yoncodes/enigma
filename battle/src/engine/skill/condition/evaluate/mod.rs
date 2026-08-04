@@ -466,6 +466,31 @@ fn condition_kind_matches(
                 .sum();
             compare_value(amount, *compare, *threshold)
         }
+        ParsedConditionKind::BuffIdThreshold {
+            buff_ids,
+            threshold,
+        } => managers.is_some_and(|managers| {
+            condition_targets
+                .iter()
+                .map(|uid| {
+                    buff_ids
+                        .iter()
+                        .map(|buff_id| managers.buff.buff_id_or_type_amount(*uid, *buff_id))
+                        .sum::<i32>()
+                })
+                .sum::<i32>()
+                >= *threshold
+        }),
+        ParsedConditionKind::TeamBuffPresence {
+            team,
+            present,
+            buff_id,
+        } => managers.is_some_and(|managers| {
+            pool.team_uids(*team)
+                .iter()
+                .any(|uid| managers.buff.has_active_buff_id_or_type(*uid, *buff_id))
+                == *present
+        }),
         ParsedConditionKind::BuffTypeCount {
             type_ids,
             compare,
@@ -624,6 +649,12 @@ fn condition_kind_matches(
             (*min..=*max).contains(&value)
         }
         ParsedConditionKind::CurrentCardEnchant { .. } => false,
+        ParsedConditionKind::HandSkillPresence(skill_ids) => managers.is_some_and(|managers| {
+            managers.card.hand().iter().any(|card| {
+                card.skill_id
+                    .is_some_and(|skill_id| skill_ids.contains(&skill_id))
+            })
+        }),
         ParsedConditionKind::ExPoint { compare, threshold } => {
             let Some(managers) = managers else {
                 return false;
@@ -676,6 +707,19 @@ fn condition_kind_matches(
                 *threshold,
             )
         }
+        ParsedConditionKind::PowerRatio {
+            power_id,
+            compare_code,
+            threshold_permille,
+        } => managers.is_some_and(|managers| {
+            let power = managers.eureka.get(source_uid, *power_id);
+            power.max > 0
+                && compare_resource(
+                    ((power.current as i64 * 1000) / power.max as i64) as i32,
+                    *compare_code,
+                    *threshold_permille,
+                )
+        }),
         ParsedConditionKind::ConduitExPoint {
             compare_code,
             threshold,
@@ -902,6 +946,11 @@ fn condition_kind_matches(
             context.toughness_broken_uid != 0
                 && condition_targets.contains(&context.toughness_broken_uid)
         }
+        ParsedConditionKind::EntityBroken => managers.is_some_and(|managers| {
+            condition_targets
+                .iter()
+                .any(|uid| managers.toughness.is_broken(*uid))
+        }),
         ParsedConditionKind::HurtRestrained | ParsedConditionKind::HurtNotRestrained => {
             let Some(attacker) = pool.entity(context.hit_source_uid) else {
                 return false;

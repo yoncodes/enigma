@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn hand_skill_presence_reads_the_committed_spelldock() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let condition = exact_condition(710301, "PerHandCardHasSkillId", &["118353040"]);
+    let matches = |managers: &BattleManagers| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[10],
+            Some(managers),
+            &pool,
+            TargetContext::default(),
+        )
+    };
+
+    assert!(!matches(&managers));
+    managers.card.add_to_hand(sonettobuf::CardInfo {
+        uid: Some(10),
+        skill_id: Some(118353040),
+        ..Default::default()
+    });
+    assert!(matches(&managers));
+}
+
+#[test]
 fn owner_incantation_rank_rejects_an_ally_action() {
     init_config();
     let condition = ParsedCondition {
