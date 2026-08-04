@@ -64,6 +64,9 @@ pub fn run_conduit_phase(
 ) -> Result<DrainResult, DrainError> {
     let mut result = DrainResult::default();
     for operation in operations {
+        if crate::engine::round::outcome::battle_ended(fight, pool, managers) {
+            break;
+        }
         let (Some(source_uid), Some(group)) = (operation.uid, operation.index) else {
             continue;
         };
@@ -77,57 +80,62 @@ pub fn run_conduit_phase(
             std::iter::empty(),
         );
         let mut ran = false;
-        for (position, skill) in skills.into_iter().enumerate() {
-            let cost_modifier = crate::engine::skill::buff_act::device_cost_reduce::modifier(
-                managers,
-                source_uid,
-                skill.skill_id,
-            );
-            let cost_reduction = cost_modifier
-                .as_ref()
-                .map(|(reduction, _)| *reduction)
-                .unwrap_or_default();
-            if !managers
-                .conduit
-                .can_begin_skill(source_uid, skill.skill_id, cost_reduction)
-            {
-                continue;
-            }
-            let invocation: crate::engine::skill::action::SkillInvocation =
-                crate::engine::skill::action::SkillRequest {
-                    source_uid,
-                    skill_id: skill.skill_id,
-                }
-                .into();
-            let current_pool = pool.runtime_view(managers);
-            if drain::attack_has_no_target(
-                &invocation,
-                catalog,
-                &current_pool,
-                managers,
-                determinism,
-                context,
-            ) {
-                continue;
-            }
-            append(
-                &mut result,
-                drain::run_conduit_action(
+        'skills: for (position, skill) in skills.into_iter().enumerate() {
+            loop {
+                let cost_modifier = crate::engine::skill::buff_act::device_cost_reduce::modifier(
                     managers,
-                    pool,
+                    source_uid,
+                    skill.skill_id,
+                );
+                let cost_reduction = cost_modifier
+                    .as_ref()
+                    .map(|(reduction, _)| *reduction)
+                    .unwrap_or_default();
+                if !managers
+                    .conduit
+                    .can_begin_skill(source_uid, skill.skill_id, cost_reduction)
+                {
+                    break;
+                }
+                let invocation: crate::engine::skill::action::SkillInvocation =
+                    crate::engine::skill::action::SkillRequest {
+                        source_uid,
+                        skill_id: skill.skill_id,
+                    }
+                    .into();
+                let current_pool = pool.runtime_view(managers);
+                if drain::attack_has_no_target(
+                    &invocation,
                     catalog,
+                    &current_pool,
+                    managers,
                     determinism,
                     context,
-                    source_uid,
-                    group,
-                    position as i32 + 1,
-                    skill.skill_id,
-                    cost_modifier,
-                )?,
-            );
-            ran = true;
-            if crate::engine::round::outcome::battle_ended(fight, pool, managers) {
-                break;
+                ) {
+                    break;
+                }
+                append(
+                    &mut result,
+                    drain::run_conduit_action(
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        source_uid,
+                        group,
+                        position as i32 + 1,
+                        skill.skill_id,
+                        cost_modifier,
+                    )?,
+                );
+                ran = true;
+                if crate::engine::round::outcome::battle_ended(fight, pool, managers) {
+                    break 'skills;
+                }
+                if skill.cost_value <= 0 {
+                    break;
+                }
             }
         }
         if ran {
