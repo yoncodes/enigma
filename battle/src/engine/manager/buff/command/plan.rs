@@ -643,27 +643,40 @@ impl BuffManager {
                 action
             }
         };
-        let capacity_eviction_uids = if matches!(action, GrantAction::Add)
-            && let Some(capacity) = policy.shared_group_capacity
-        {
-            let mut uids = self
-                .buffs
-                .iter()
-                .filter(|active| active.owner_uid == route.target_uid)
-                .filter(|active| {
-                    active.definition.as_ref().is_some_and(|resident| {
-                        resident
-                            .shared_group_capacity()
-                            .is_some_and(|(group_id, _)| group_id == capacity.group_id)
-                    })
-                })
-                .filter_map(|active| active.buff.uid)
-                .collect::<Vec<_>>();
+        let capacity_eviction_uids = if matches!(action, GrantAction::Add) {
+            let (limit, mut uids) = if let Some(capacity) = policy.shared_group_capacity {
+                (
+                    capacity.max_instances,
+                    self.buffs
+                        .iter()
+                        .filter(|active| active.owner_uid == route.target_uid)
+                        .filter(|active| {
+                            active.definition.as_ref().is_some_and(|resident| {
+                                resident
+                                    .shared_group_capacity()
+                                    .is_some_and(|(group_id, _)| group_id == capacity.group_id)
+                            })
+                        })
+                        .filter_map(|active| active.buff.uid)
+                        .collect::<Vec<_>>(),
+                )
+            } else if let Some(capacity) = policy.same_type_capacity {
+                (
+                    capacity,
+                    self.buffs
+                        .iter()
+                        .filter(|active| {
+                            active.owner_uid == route.target_uid
+                                && active.type_id == policy.effective_type_id
+                        })
+                        .filter_map(|active| active.buff.uid)
+                        .collect::<Vec<_>>(),
+                )
+            } else {
+                (0, Vec::new())
+            };
             uids.sort_unstable();
-            let remove_count = uids
-                .len()
-                .saturating_add(1)
-                .saturating_sub(capacity.max_instances as usize);
+            let remove_count = uids.len().saturating_add(1).saturating_sub(limit as usize);
             uids.into_iter().take(remove_count).collect()
         } else {
             Vec::new()
