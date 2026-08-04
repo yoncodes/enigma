@@ -114,6 +114,15 @@ pub fn run_conduit_phase(
                 ) {
                     break;
                 }
+                let frame_target_uid = (catalog.logic_target(skill.skill_id)
+                    == crate::engine::skill::target::request::SOURCE_TARGET_CODE)
+                    .then(|| {
+                        current_pool
+                            .main_allies(source_uid)
+                            .first()
+                            .map(|entity| entity.uid)
+                    })
+                    .flatten();
                 append(
                     &mut result,
                     drain::run_conduit_action(
@@ -126,6 +135,7 @@ pub fn run_conduit_phase(
                         group,
                         position as i32 + 1,
                         skill.skill_id,
+                        frame_target_uid,
                         cost_modifier,
                     )?,
                 );
