@@ -714,14 +714,16 @@ fn runtime_marker_op(
         registry::RuntimeMarkerTarget::Source => source_uid,
         registry::RuntimeMarkerTarget::EventSource => event_source_uid(event?)?,
     };
-    let effect_type = wire::find(definition.key.opcode, definition.key.type_name)
-        .and_then(|wire| {
-            wire.markers(wire::WirePhase::Static)
-                .first()
-                .or_else(|| wire.markers(wire::WirePhase::Add).first())
-        })
-        .copied()
-        .unwrap_or(sonettobuf::effect_type_enum::EffectType::None as i32);
+    let effect_type = marker.effect_type.unwrap_or_else(|| {
+        wire::find(definition.key.opcode, definition.key.type_name)
+            .and_then(|wire| {
+                wire.markers(wire::WirePhase::Static)
+                    .first()
+                    .or_else(|| wire.markers(wire::WirePhase::Add).first())
+            })
+            .copied()
+            .unwrap_or(sonettobuf::effect_type_enum::EffectType::None as i32)
+    });
     Some(RuleOp::BuffFeatureMarker {
         target_uid,
         effect_type,

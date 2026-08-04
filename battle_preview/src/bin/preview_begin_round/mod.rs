@@ -6,9 +6,9 @@ use std::{
 
 use battle::engine::{runtime::BattleRuntime, skill::effect::catalog};
 use battle_preview::{
-    begin_round_inputs, canonical_comparison, expand_compressed_fight_steps, first_diff_path,
-    normalize_live_json, preview_attributes, preview_output_text,
-    render_json_with_capture_conventions, tower_plan_id,
+    begin_round_inputs, canonical_comparison, captured_opening_determinism,
+    expand_compressed_fight_steps, first_diff_path, normalize_live_json, preview_attributes,
+    preview_output_text, render_json_with_capture_conventions, tower_plan_id,
 };
 use sonettobuf::{BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep};
 
@@ -122,15 +122,24 @@ fn replay_to_round(path: &Path) -> anyhow::Result<FightRound> {
         )
     })?;
     let fight: Fight = serde_json::from_value(fight)?;
+    let captured_start_round: FightRound = serde_json::from_value(
+        value
+            .get("round")
+            .cloned()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "capture has no round"))?,
+    )?;
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, path)?;
     let tower_rule_skills = tower_plan_id(path)
         .map(|plan_id| {
             battle::tower::system_plan_rule_skills(config::configs::get(), &fight, plan_id)
         })
         .unwrap_or_default();
+    let opening_determinism = captured_opening_determinism(&fight, &captured_start_round);
     let mut runtime = BattleRuntime::new_with_attributes(fight, ex_attributes, sp_attributes);
     runtime.extend_battle_rule_skills(tower_rule_skills);
-    let mut round_reply = runtime.start_round().map_err(io::Error::other)?;
+    let mut round_reply = runtime
+        .start_round_with_determinism(opening_determinism)
+        .map_err(io::Error::other)?;
     replay_cloth_input(path, 0, &mut runtime)?;
     if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage)
         && let Some(captured) = value.get("round").cloned()
@@ -165,6 +174,13 @@ fn replay_to_round(path: &Path) -> anyhow::Result<FightRound> {
 
 fn seed_captured_randomness(runtime: &mut BattleRuntime, round: &FightRound) {
     runtime.seed_card_draws(round.team_a_cards2.clone());
+    runtime.seed_crystal_cards(
+        round
+            .before_cards1
+            .iter()
+            .filter(|card| card.temp_card.unwrap_or_default())
+            .cloned(),
+    );
     if runtime.fight_version() == 7 {
         runtime.seed_next_ai_cards(round.ai_use_cards.clone());
     }
