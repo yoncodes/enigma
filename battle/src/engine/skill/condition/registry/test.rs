@@ -1926,6 +1926,24 @@ fn small_round_end_buff_and_status_gates_keep_separate_exact_keys() {
 }
 
 #[test]
+fn round_end_buff_id_gate_keeps_its_exact_key() {
+    assert_eq!(
+        parse(19304, "HasBuffId", &["11410032".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Present,
+            buff_ids: vec![11410032],
+        })
+    );
+    assert_eq!(
+        find_key(19304, "HasBuffId").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        })
+    );
+}
+
+#[test]
 fn accumulated_owner_buff_count_keeps_owner_scope_and_exact_key() {
     assert_eq!(
         parse(

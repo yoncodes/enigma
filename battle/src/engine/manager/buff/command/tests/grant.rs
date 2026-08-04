@@ -1,6 +1,55 @@
 use super::*;
 
 #[test]
+fn configured_round_bonus_extends_matching_buff_at_grant_time() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(72006),
+                    uid: Some(1),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    let added = manager
+        .execute(
+            &hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 30630112,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap()
+        .change
+        .added
+        .unwrap();
+
+    assert_eq!(added.buff.duration, Some(3));
+}
+
+#[test]
 fn stateful_grant_markers_use_the_committed_buff_params() {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();

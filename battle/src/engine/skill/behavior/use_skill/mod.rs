@@ -58,6 +58,14 @@ pub(super) fn supports_direct_skill_card(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [skill_id, 0] if *skill_id > 0)
 }
 
+pub(super) fn supports_group_and_star_skill(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [group, star, ..] if match group {
+        1 | 2 => (1..=3).contains(star),
+        3 => matches!(star, 0 | 1 | 4),
+        _ => false,
+    })
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         match behavior.spec.kind {
@@ -601,10 +609,11 @@ fn skill_from_group_and_star(
     group: i32,
     star: i32,
 ) -> Option<i32> {
-    let hero_id = pool.entity(source_uid)?.model_id;
+    let source = pool.entity(source_uid)?;
     let skills = match group {
-        1 => Skill::get_skill_groups_with_destiny(hero_id, 0, None).0,
-        2 => Skill::get_skill_groups_with_destiny(hero_id, 0, None).1,
+        1 => Skill::get_skill_groups_with_destiny(source.model_id, 0, None).0,
+        2 => Skill::get_skill_groups_with_destiny(source.model_id, 0, None).1,
+        3 => return (source.ex_skill > 0).then_some(source.ex_skill),
         _ => return None,
     };
     skills.get(star.saturating_sub(1) as usize).copied()

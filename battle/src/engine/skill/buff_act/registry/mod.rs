@@ -87,6 +87,7 @@ pub enum BuffActKind {
     BuffAddAct,
     BuffAddActLimit,
     BuffReplace,
+    BuffRoundAdd,
     BloodPoolCountAddExPoint,
     BloodPoolTag,
     BloodValueUseSkill,
@@ -658,6 +659,9 @@ buff_act_definitions! {
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(607, "ExPointCardMove"), &[EffectType::Expointcardmove as i32]));
     (603, "ExPointCantAdd") => ExPointCantAdd,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(603, "ExPointCantAdd"), &[EffectType::Expointcantadd as i32]));
+    (604, "BuffRoundAdd") => BuffRoundAdd, effect_time_subscription: false,
+        supports: super::buff_round_add::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(604, "BuffRoundAdd"), &[]));
     (605, "ExPointDel") => ExPointDel,
         runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
         supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(605, "ExPointDel"), &[]));

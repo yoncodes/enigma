@@ -505,8 +505,12 @@ impl BuffManager {
         {
             return Err(BuffCommandError::InvalidGrant);
         }
-        let definition = BuffDefinition::get(request.buff_id)
+        let mut definition = BuffDefinition::get(request.buff_id)
             .ok_or(BuffCommandError::MissingDefinition(request.buff_id))?;
+        definition.duration = crate::engine::skill::buff_act::buff_round_add::extend_duration(
+            definition.duration,
+            self.grant_duration_delta(hp, request.target_uid, definition.status),
+        );
         let occurrences = i32::try_from(request.occurrences)
             .map_err(|_| BuffCommandError::UnsupportedOccurrences(request.occurrences))?;
         let args = match request.input {
@@ -561,8 +565,9 @@ impl BuffManager {
             }
         };
         let route = BuffRoute::new(request.source_uid, request.target_uid, request.buff_id);
-        let policy = BuffPolicy::try_for_buff_id(request.buff_id)
+        let mut policy = BuffPolicy::try_for_buff_id(request.buff_id)
             .map_err(BuffCommandError::InvalidPolicy)?;
+        policy.lifetime.duration = definition.duration;
         let unconditional = matches!(
             request.input,
             GrantInput::IndependentInstance { .. }
