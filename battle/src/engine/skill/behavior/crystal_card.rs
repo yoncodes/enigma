@@ -51,7 +51,7 @@ impl BehaviorHandler for Handler {
             .iter()
             .filter_map(|group| group.get(crystal).copied())
             .collect();
-        let card = captured.unwrap_or_else(|| generated_card(context.source_uid, skill_id));
+        let card = generated_card(context.source_uid, skill_id);
         let origin = super::command_origin(behavior)?;
         Some(vec![
             RuleOp::Command(BattleCommand::Buff(BuffCommand::ReserveChildUids(
@@ -162,7 +162,10 @@ mod tests {
         let pool = TargetPool::default();
         let mut determinism = RoundDeterminism::default();
         determinism.enqueue_crystal_cards([CardInfo {
+            uid: Some(999),
             skill_id: Some(102),
+            temp_card: Some(false),
+            card_type: Some(123),
             ..Default::default()
         }]);
         let mut modifiers = SkillModifiers::default();
@@ -212,6 +215,11 @@ mod tests {
             &ops[1],
             RuleOp::Command(BattleCommand::Card(CardCommand::AddCrystal(add)))
                 if add.rank_group == vec![101, 102, 103]
+                    && add.card.uid == Some(10)
+                    && add.card.skill_id == Some(102)
+                    && add.card.temp_card == Some(true)
+                    && add.card.card_type
+                        == Some(sonettobuf::card_info::CardType::Skill3 as i32)
         ));
     }
 }

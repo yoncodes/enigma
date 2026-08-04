@@ -3,7 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use sonettobuf::StartDungeonRequest;
+use battle::engine::runtime::determinism::RoundDeterminism;
+use sonettobuf::{Fight, FightRound, StartDungeonRequest};
 
 mod attributes;
 mod compression;
@@ -12,6 +13,59 @@ mod normalize;
 pub use attributes::preview_attributes;
 pub use compression::expand_compressed_fight_steps;
 pub use normalize::normalize_live_json;
+
+/// Replays the captured opening RNG decisions through the engine's validated
+/// card candidates instead of treating the captured hand as authoritative state.
+pub fn captured_opening_determinism(fight: &Fight, round: &FightRound) -> RoundDeterminism {
+    let mut determinism =
+        RoundDeterminism::with_seed(fight.battle_id.unwrap_or_default().max(0) as u64);
+    let draws = round
+        .team_a_cards1
+        .iter()
+        .filter(|card| !card.temp_card.unwrap_or_default())
+        .cloned()
+        .collect::<Vec<_>>();
+    let hand_size = battle::engine::manager::card::hand_size(fight);
+    let player_candidates = battle::engine::manager::card::pool::player_candidate_pool(fight);
+    let enemies = battle::engine::manager::card::pool::active_enemy_entities(fight);
+    let enemy_count = enemies.len();
+    let ai_candidates = enemies
+        .into_iter()
+        .flat_map(|entity| {
+            entity
+                .skill_group1
+                .iter()
+                .chain(&entity.skill_group2)
+                .copied()
+                .chain(entity.ex_skill)
+                .filter_map(|skill_id| {
+                    battle::engine::manager::card::pool::card_for(entity, Some(skill_id))
+                })
+        })
+        .collect::<Vec<_>>();
+    let valid_identity = |captured: &sonettobuf::CardInfo, candidates: &[sonettobuf::CardInfo]| {
+        candidates.iter().any(|candidate| {
+            captured.uid == candidate.uid && captured.skill_id == candidate.skill_id
+        })
+    };
+    if draws.len() >= hand_size
+        && round.ai_use_cards.len() == enemy_count
+        && draws
+            .iter()
+            .all(|card| valid_identity(card, &player_candidates))
+        && round
+            .ai_use_cards
+            .iter()
+            .all(|card| valid_identity(card, &ai_candidates))
+    {
+        determinism.enqueue_start_decks(
+            round.ai_use_cards.clone(),
+            draws.iter().take(hand_size).cloned().collect(),
+        );
+        determinism.enqueue_card_draws(draws);
+    }
+    determinism
+}
 
 #[cfg(all(test, feature = "private-fixtures"))]
 pub(crate) fn init_test_config() {
@@ -342,6 +396,125 @@ fn prune_empty_json(value: &mut serde_json::Value) -> bool {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use sonettobuf::{CardInfo, Fight, FightEntityInfo, FightRound, FightTeam};
+
+    fn card(uid: i64, skill_id: i32, temp_card: bool) -> CardInfo {
+        CardInfo {
+            uid: Some(uid),
+            skill_id: Some(skill_id),
+            temp_card: Some(temp_card),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn captured_opening_rng_keeps_raw_draw_order_and_excludes_temporary_cards() {
+        let fight = Fight {
+            battle_id: Some(77),
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    skill_group1: vec![101, 102],
+                    skill_group2: vec![103, 104],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    skill_group1: vec![201],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let normal = vec![
+            card(10, 101, false),
+            card(10, 103, false),
+            card(10, 103, false),
+            card(10, 101, false),
+        ];
+        let ai = vec![card(-1, 201, false)];
+        let mut determinism = super::captured_opening_determinism(
+            &fight,
+            &FightRound {
+                team_a_cards1: vec![
+                    normal[0].clone(),
+                    normal[1].clone(),
+                    card(10, 999, true),
+                    normal[2].clone(),
+                    normal[3].clone(),
+                ],
+                ai_use_cards: ai.clone(),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            determinism.take_start_decks(),
+            Some((ai, normal[..3].to_vec()))
+        );
+        assert_eq!(determinism.draw_cards(&normal, normal.len()), normal);
+    }
+
+    #[test]
+    fn captured_opening_rng_rejects_an_invalid_seed_as_a_whole() {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    skill_group1: vec![101],
+                    skill_group2: vec![102],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    skill_group1: vec![201],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut determinism = super::captured_opening_determinism(
+            &fight,
+            &FightRound {
+                team_a_cards1: vec![
+                    card(10, 101, false),
+                    card(10, 999, false),
+                    card(10, 102, false),
+                ],
+                ai_use_cards: vec![card(-1, 201, false)],
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(determinism.take_start_decks(), None);
+
+        let mut determinism = super::captured_opening_determinism(
+            &fight,
+            &FightRound {
+                team_a_cards1: vec![
+                    card(10, 101, false),
+                    card(10, 102, false),
+                    card(10, 101, false),
+                ],
+                ai_use_cards: Vec::new(),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(determinism.take_start_decks(), None);
+    }
 
     #[test]
     fn resolves_the_value_reported_by_a_diff_path() {
