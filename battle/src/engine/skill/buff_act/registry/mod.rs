@@ -201,6 +201,7 @@ pub enum BuffActKind {
     RealHurtFix,
     RealDamageKill,
     Rebound,
+    ReboundBasedOnDamage,
     Revive,
     Shield,
     ShieldByBuffLayer,
@@ -681,6 +682,12 @@ buff_act_definitions! {
     (721, "DotNoLimit") => DotNoLimit, runtime_marker: BeforeChanges(Owner),
         scoped_runtime: |context| super::dot_no_limit::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(721, "DotNoLimit"), &[EffectType::Dot as i32]));
+    (743, "ReboundBasedOnDamage") => ReboundBasedOnDamage, source: Owner,
+        multiplicity: OncePerActionTarget,
+        runtime_marker: BeforeChanges(EventSource),
+        runtime: |context| super::rebound::damage_based_rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::rebound::supports_damage_based,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(743, "ReboundBasedOnDamage"), &[EffectType::Rebound as i32]));
     (795, "None") => TargetingTag,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(795, "None"), &[EffectType::None as i32]));
     (725, "AddToTarget") => AddToTarget,

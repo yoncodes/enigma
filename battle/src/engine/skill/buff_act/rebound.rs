@@ -20,6 +20,10 @@ pub fn supports(args: &[i32]) -> bool {
         if *permille > 0 && AttrId::from_raw(*raw_attr).is_some())
 }
 
+pub fn supports_damage_based(args: &[i32]) -> bool {
+    matches!(args, [permille, 0, 0] if *permille > 0)
+}
+
 pub fn rule_ops(
     managers: &BattleManagers,
     subscriber: &BuffActSubscriber,
@@ -49,12 +53,52 @@ pub fn rule_ops(
     if amount <= 0 {
         return Some(Vec::new());
     }
+    reflection_ops(subscriber, hit.source_uid, amount, DepletedBuff::Keep)
+}
+
+pub fn damage_based_rule_ops(
+    managers: &BattleManagers,
+    subscriber: &BuffActSubscriber,
+    event: &BattleEvent,
+) -> Option<Vec<RuleOp>> {
+    let BattleEvent::Hit(hit) = event else {
+        return None;
+    };
+    let [permille, 0, 0] = subscriber.args.as_slice() else {
+        return None;
+    };
+    if !supports_damage_based(&subscriber.args)
+        || hit.amount <= 0
+        || hit.target_uid != subscriber.owner_uid
+        || hit.source_uid == 0
+        || managers
+            .buff
+            .has_buff_act_kind(hit.source_uid, super::registry::BuffActKind::IgnoreRebound)
+        || !subscriber.owner_alive
+    {
+        return Some(Vec::new());
+    }
+    let amount = calculate(DamageFormulaInput::genesis(
+        hit.amount,
+        *permille,
+        modifiers::genesis_multiplier(managers, subscriber.owner_uid, hit.source_uid),
+    ))
+    .max(1);
+    reflection_ops(subscriber, hit.source_uid, amount, DepletedBuff::Remove)
+}
+
+fn reflection_ops(
+    subscriber: &BuffActSubscriber,
+    target_uid: i64,
+    amount: i32,
+    depleted: DepletedBuff,
+) -> Option<Vec<RuleOp>> {
     let origin = super::command_origin(subscriber)?;
     let mut ops = vec![RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
         HpLoss {
             origin,
             source_uid: subscriber.owner_uid,
-            target_uid: hit.source_uid,
+            target_uid,
             amount,
             config_effect: 0,
             hurt: Some(HurtInfoData {
@@ -76,14 +120,19 @@ pub fn rule_ops(
         .and_then(|db| db.skill_buff.get(subscriber.buff_id))
         .is_some_and(|buff| buff.effect_count > 0)
     {
+        let consume = BuffConsume {
+            origin,
+            target_uid: subscriber.owner_uid,
+            selector: BuffSelector::Uid(subscriber.buff_uid),
+            amount: 1,
+            depleted,
+        };
         ops.push(RuleOp::Command(BattleCommand::Buff(
-            BuffCommand::ConsumeEffectCount(BuffConsume {
-                origin,
-                target_uid: subscriber.owner_uid,
-                selector: BuffSelector::Uid(subscriber.buff_uid),
-                amount: 1,
-                depleted: DepletedBuff::Keep,
-            }),
+            if matches!(depleted, DepletedBuff::Remove) {
+                BuffCommand::ConsumeCount(consume)
+            } else {
+                BuffCommand::ConsumeEffectCount(consume)
+            },
         )));
     }
     Some(ops)
@@ -177,7 +226,11 @@ mod tests {
                     ..
                 }))),
                 RuleOp::Command(BattleCommand::Buff(BuffCommand::ConsumeEffectCount(
-                    BuffConsume { amount: 1, .. }
+                    BuffConsume {
+                        amount: 1,
+                        depleted: DepletedBuff::Keep,
+                        ..
+                    }
                 )))
             ]
         ));
@@ -253,5 +306,105 @@ mod tests {
         });
 
         assert!(rule_ops(&managers, &subscriber, &event).unwrap().is_empty());
+    }
+
+    #[test]
+    fn damage_based_rebound_uses_damage_taken_and_consumes_trigger_count() {
+        crate::test_support::init_config();
+        let managers = BattleManagers::seeded(&Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(2_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(2_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(2_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(2_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        let subscriber = BuffActSubscriber {
+            owner_uid: -1,
+            source_uid: -1,
+            buff_uid: 1_069,
+            buff_id: 117200101,
+            team_type: 2,
+            owner_alive: true,
+            amount: 1,
+            key: crate::engine::event::subscription::SubscriptionKey::new(
+                crate::engine::event::kind::EventKind::BeAttacked,
+                DefinitionKey::new(743, "ReboundBasedOnDamage"),
+            ),
+            act_type: "ReboundBasedOnDamage".to_owned(),
+            effect_time: 209,
+            effect_condition: 0,
+            args: vec![300, 0, 0],
+            raw: "743#300#0,0".to_owned(),
+        };
+        let hit = |amount| {
+            BattleEvent::Hit(HitEvent {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "Damage"),
+                },
+                source_uid: 10,
+                target_uid: -1,
+                skill_id: 1,
+                amount,
+                shield_absorbed: 0,
+                damage_from: HurtDamageFromType::Skill,
+                assassinate: false,
+                ignore_riposte: false,
+            })
+        };
+
+        let reflected = damage_based_rule_ops(&managers, &subscriber, &hit(1_000)).unwrap();
+        assert!(matches!(
+            reflected.as_slice(),
+            [
+                RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(HpLoss {
+                    target_uid: 10,
+                    amount: 300,
+                    hurt: Some(HurtInfoData {
+                        buff_act_id: 743,
+                        buff_uid: 1_069,
+                        hurt_effect_type,
+                        ..
+                    }),
+                    ..
+                }))),
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::ConsumeCount(
+                    BuffConsume {
+                        amount: 1,
+                        depleted: DepletedBuff::Remove,
+                        ..
+                    }
+                )))
+            ] if *hurt_effect_type == EffectType::Origindamage as i32
+        ));
+        assert!(matches!(
+            damage_based_rule_ops(&managers, &subscriber, &hit(1))
+                .unwrap()
+                .first(),
+            Some(RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
+                HpLoss { amount: 1, .. }
+            ))))
+        ));
+        assert!(!supports_damage_based(&[300, AttrId::Hp.id(), 2_000]));
     }
 }
