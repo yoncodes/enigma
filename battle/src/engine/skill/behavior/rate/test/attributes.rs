@@ -53,6 +53,13 @@ fn outgoing_restraint_modifier_only_applies_to_the_weaker_afflatus() {
                     current_hp: Some(100),
                     ..Default::default()
                 },
+                FightEntityInfo {
+                    uid: Some(-3),
+                    career: Some(1),
+                    weak_careers: vec![1],
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }),
@@ -84,6 +91,7 @@ fn outgoing_restraint_modifier_only_applies_to_the_weaker_afflatus() {
 
     assert_eq!(collect(-1), vec![(AttrId::Penetration, 300)]);
     assert!(collect(-2).is_empty());
+    assert_eq!(collect(-3), vec![(AttrId::Penetration, 300)]);
     assert!(
         incoming_target_attack_modifiers(
             10,
