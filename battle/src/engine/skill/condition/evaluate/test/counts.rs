@@ -706,6 +706,44 @@ fn round_power_conditions_preserve_consumed_and_overflow_counts() {
 }
 
 #[test]
+fn power_ratio_reads_current_and_max_resource_values() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                power_infos: vec![PowerInfo {
+                    power_id: Some(9),
+                    num: Some(10),
+                    max: Some(10),
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let condition = exact_condition(749301, "PowerRatio", &["9", "1", "1000"]);
+    let matches = |managers: &BattleManagers| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[10],
+            Some(managers),
+            &pool,
+            TargetContext::default(),
+        )
+    };
+
+    assert!(matches(&managers));
+    managers.eureka.add(10, 10, 9, -1, 0);
+    assert!(!matches(&managers));
+}
+
+#[test]
 fn poison_group_presence_is_evaluated_per_target() {
     init_config();
     let fight = Fight {
