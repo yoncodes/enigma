@@ -563,11 +563,8 @@ impl BuffDefinition {
             .iter()
             .filter_map(|(include_type, value)| {
                 match *include_type {
-                    1 | 2 | 3 | 4 | 10 | 11 | 12 | 14 | 15 | 16 | 17 => false,
+                    1 | 2 | 3 | 4 | 6 | 10 | 11 | 12 | 14 | 15 | 16 | 17 => false,
                     kind if kind == BuffIncludeType::PermanentMechanicCarrier.id() => false,
-                    kind if kind == BuffIncludeType::SharedTypeFamily.id() => {
-                        self.status != BuffStatus::Shield
-                    }
                     kind if kind == BuffIncludeType::ReapplyReserve.id() => *value != 0,
                     kind if kind == BuffIncludeType::GroupCapacity.id() => {
                         self.shared_group_capacity().is_none()

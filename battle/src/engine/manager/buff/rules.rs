@@ -3,7 +3,7 @@ use std::{
     sync::OnceLock,
 };
 
-use super::{BuffAddArgs, BuffDefinition, BuffRoute};
+use super::{BuffAddArgs, BuffDefinition, BuffRoute, BuffStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuffStorage {
@@ -17,6 +17,7 @@ pub enum BuffStorage {
 pub enum ExistingBuffMatch {
     SameId,
     SameIdAndDuration,
+    SharedTypeFamily,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,7 +132,9 @@ impl BuffPolicy {
     }
 
     pub(super) fn from_definition(definition: &BuffDefinition) -> Self {
-        let separate_copies = definition.reapplies_as_new();
+        let shared_type_replacement =
+            definition.uses_shared_type_family() && definition.status != BuffStatus::Shield;
+        let separate_copies = !shared_type_replacement && definition.reapplies_as_new();
         let storage = if definition.uses_stack_layer() {
             BuffStorage::Layered
         } else if definition.uses_typed_count() {
@@ -141,7 +144,9 @@ impl BuffPolicy {
         } else {
             BuffStorage::Single
         };
-        let match_existing = if storage == BuffStorage::SeparateCopies
+        let match_existing = if shared_type_replacement {
+            ExistingBuffMatch::SharedTypeFamily
+        } else if storage == BuffStorage::SeparateCopies
             || (storage == BuffStorage::Layered && definition.duration > 0)
         {
             ExistingBuffMatch::SameIdAndDuration
@@ -203,6 +208,13 @@ impl BuffPolicy {
                 ExistingBuffMatch::SameIdAndDuration => {
                     active.buff.buff_id == Some(route.buff_id)
                         && active.buff.duration == Some(self.lifetime.duration)
+                }
+                ExistingBuffMatch::SharedTypeFamily => {
+                    active.type_id == self.effective_type_id
+                        && active
+                            .definition
+                            .as_ref()
+                            .is_some_and(BuffDefinition::uses_shared_type_family)
                 }
             }
     }
@@ -275,7 +287,11 @@ mod tests {
             ExistingBuffMatch::SameIdAndDuration
         );
         let shared_type = BuffPolicy::try_for_buff_id(400301).unwrap();
-        assert_eq!(shared_type.unresolved_include_entries.as_ref(), &[(6, 0)]);
+        assert!(shared_type.unresolved_include_entries.is_empty());
+        assert_eq!(
+            shared_type.match_existing,
+            ExistingBuffMatch::SharedTypeFamily
+        );
         let exclusive_state = BuffPolicy::try_for_buff_id(500101).unwrap();
         assert_eq!(
             exclusive_state.unresolved_include_entries.as_ref(),
