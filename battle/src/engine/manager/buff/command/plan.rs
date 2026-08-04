@@ -352,6 +352,35 @@ impl BuffManager {
                     .collect();
                 (update.origin, BuffPlanAction::ChangeDuration(plans))
             }
+            BuffCommand::RefreshDuration(update) => {
+                if update.target_uid == 0
+                    || update.buff_uid == 0
+                    || update.minimum_duration <= 0
+                {
+                    return Err(BuffCommandError::InvalidDurationChange);
+                }
+                let active = self
+                    .buffs
+                    .iter()
+                    .find(|active| {
+                        active.owner_uid == update.target_uid
+                            && active.buff.uid == Some(update.buff_uid)
+                    })
+                    .ok_or(BuffCommandError::InvalidDurationChange)?;
+                let duration = active
+                    .buff
+                    .duration
+                    .unwrap_or_default()
+                    .max(update.minimum_duration);
+                (
+                    update.origin,
+                    BuffPlanAction::ChangeDuration(vec![DurationChangePlan {
+                        target_uid: update.target_uid,
+                        buff_uid: update.buff_uid,
+                        duration,
+                    }]),
+                )
+            }
             BuffCommand::AddSpecialCount(update) => {
                 if update.target_uid == 0
                     || update.count <= 0

@@ -190,6 +190,14 @@ pub struct BuffChangeDuration {
     pub delta: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuffRefreshDuration {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub buff_uid: i64,
+    pub minimum_duration: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuffSpecialCount {
     pub origin: CommandOrigin,
@@ -320,6 +328,7 @@ pub enum BuffCommand {
     SetStateSnapshot(BuffSetState),
     AccumulateActValue(BuffAccumulateActValue),
     ChangeDuration(BuffChangeDuration),
+    RefreshDuration(BuffRefreshDuration),
     AddSpecialCount(BuffSpecialCount),
     ReserveChildUids(BuffChildUidReservation),
     ReserveGrantUid(BuffGrantUidReservation),
