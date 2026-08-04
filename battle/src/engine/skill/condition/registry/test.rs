@@ -132,6 +132,22 @@ fn regeneration_period_presence_gate_filters_the_source() {
 }
 
 #[test]
+fn regeneration_period_absence_gate_filters_the_source() {
+    let definition = find_key(57012, "NoBuffId").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(
+        parse(57012, "NoBuffId", &["11410091".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Absent,
+            buff_ids: vec![11410091],
+        })
+    );
+}
+
+#[test]
 fn riposte_buff_gate_is_an_exact_predicate() {
     let definition = find_key(19205, "HasBuffId").unwrap();
 
