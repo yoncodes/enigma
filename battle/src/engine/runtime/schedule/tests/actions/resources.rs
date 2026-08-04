@@ -566,6 +566,70 @@ fn conduit_attack_does_not_begin_without_a_living_enemy() {
 }
 
 #[test]
+fn conduit_source_target_uses_the_first_living_main_ally_as_its_frame_anchor() {
+    init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(20, 3134), entity(10, 3149)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 1001)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    let result = run_conduit_phase(
+        &fight,
+        &mut managers,
+        &pool,
+        &mut catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[sonettobuf::FightDeviceOper {
+            uid: Some(10),
+            index: Some(1),
+        }],
+    )
+    .unwrap();
+
+    assert!(matches!(
+        result.frames.first().map(|frame| &frame.owner),
+        Some(crate::engine::runtime::record::FrameOwner::ConduitAction {
+            target_uid: Some(20),
+            ..
+        })
+    ));
+    assert!(result.frames[0].items.iter().any(|item| matches!(
+        item,
+        crate::engine::runtime::record::FrameItem::Child(frame)
+            if matches!(
+                frame.owner,
+                crate::engine::runtime::record::FrameOwner::Skill {
+                    source_uid: 10,
+                    target_uid: Some(20),
+                    ..
+                }
+            )
+    )));
+    assert_eq!(managers.conduit.power(1, 1), 1);
+}
+
+#[test]
 fn conduit_repeats_a_paid_skill_until_its_energy_is_spent() {
     init_config();
     let entity = |uid, model_id| FightEntityInfo {
