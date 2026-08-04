@@ -1766,6 +1766,54 @@ fn round_start_buff_gates_keep_their_exact_registered_keys() {
 }
 
 #[test]
+fn mirror_rule_buff_gates_keep_their_exact_phases() {
+    assert_eq!(
+        parse(57100, "NoBuffId", &["11790011".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Absent,
+            buff_ids: vec![11790011],
+        })
+    );
+    assert_eq!(
+        find_key(57100, "NoBuffId").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert_eq!(
+        find_key(57100, "NoBuffId").map(|definition| definition.dependencies),
+        Some(&[EventKind::RoundStart][..])
+    );
+
+    assert_eq!(
+        find_key(19209, "HasBuffId").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert_eq!(
+        find_key(19209, "HasBuffId").map(|definition| definition.dependencies),
+        Some(&[EventKind::TargetAttacked][..])
+    );
+
+    for (opcode, type_name, mode) in [
+        (19213, "HasBuffId", BuffConditionMode::Present),
+        (57213, "NoBuffId", BuffConditionMode::Absent),
+    ] {
+        assert_eq!(
+            parse(opcode, type_name, &["11790012".into()]),
+            Some(ParsedConditionKind::BuffId {
+                mode,
+                buff_ids: vec![11790012],
+            })
+        );
+        assert_eq!(
+            find_key(opcode, type_name).map(|definition| definition.role),
+            Some(ConditionRole::Trigger {
+                event: EventKind::SkillAction,
+                phase: Some(SkillPhase::HitPassives),
+            })
+        );
+    }
+}
+
+#[test]
 fn nested_no_action_teammate_death_keeps_its_exact_event_key() {
     assert_eq!(
         parse(17012, "TeammateDead", &[]),
