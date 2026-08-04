@@ -336,6 +336,48 @@ fn include_type_seventeen_stores_capped_separate_counter_instances() {
 }
 
 #[test]
+fn value_bearing_type_seven_evicts_the_oldest_same_type_instance() {
+    init_config();
+    let policy = BuffPolicy::for_buff_id(6200501).expect("Incantation Might definition");
+
+    assert_eq!(policy.storage, BuffStorage::SeparateCopies);
+    assert_eq!(policy.on_duplicate, DuplicateGrant::AddSeparateCopy);
+    assert_eq!(policy.same_type_capacity, Some(10));
+    assert!(policy.unresolved_include_entries.is_empty());
+
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    let definition = BuffDefinition::get(6200501).expect("shared type definition");
+    manager.buffs.push(ActiveBuff {
+        owner_uid: 10,
+        team_type: 1,
+        type_id: definition.effective_type_id(),
+        definition: Some(definition),
+        buff: BuffInfo {
+            buff_id: Some(6200599),
+            uid: Some(1),
+            ..Default::default()
+        },
+    });
+    for _ in 0..9 {
+        let change = manager.add_replacing_excluded(&hp, 10, 10, 6200501, 0);
+        change.added.expect("same-type instance");
+    }
+
+    let overflow = manager.add_replacing_excluded(&hp, 10, 10, 6200501, 0);
+
+    assert_eq!(manager.buff_type_amount(10, 6200501), 10);
+    assert_eq!(overflow.removed.len(), 1);
+    assert_eq!(overflow.removed[0].buff.buff_id, Some(6200599));
+    assert_eq!(overflow.removed[0].buff.uid, Some(1));
+    assert_eq!(
+        overflow.removed[0].delete_reason,
+        Some(BuffDeleteReason::Overflow)
+    );
+    assert!(overflow.added.is_some());
+}
+
+#[test]
 fn timed_layer_grants_only_merge_with_an_instance_at_the_fresh_duration() {
     init_config();
     let hp = HpManager::default();

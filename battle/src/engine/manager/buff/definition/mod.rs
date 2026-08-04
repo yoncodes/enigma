@@ -117,7 +117,7 @@ pub(super) struct BuffDefinition {
 impl BuffDefinition {
     pub(super) fn include_entry_name(include_type: i32, value: i32) -> String {
         let name = if include_type == BuffIncludeType::ReapplyReserve.id() && value > 0 {
-            "ValueBearingType7"
+            "SameTypeCapacity"
         } else {
             BuffIncludeType::from_id(include_type)
                 .map(BuffIncludeType::name)
@@ -568,7 +568,7 @@ impl BuffDefinition {
                     kind if kind == BuffIncludeType::SharedTypeFamily.id() => {
                         self.status != BuffStatus::Shield
                     }
-                    kind if kind == BuffIncludeType::ReapplyReserve.id() => *value != 0,
+                    kind if kind == BuffIncludeType::ReapplyReserve.id() => false,
                     kind if kind == BuffIncludeType::GroupCapacity.id() => {
                         self.shared_group_capacity().is_none()
                     }
@@ -651,6 +651,7 @@ impl BuffDefinition {
     pub(super) fn reapplies_as_new(&self) -> bool {
         let timed_copy = self.has_include_type(BuffIncludeType::SeparateTimedCopies);
         self.shared_group_capacity().is_some()
+            || self.same_type_capacity().is_some()
             || self.capped_separate_copy_limit().is_some()
             || self.reapplies_consumable_charge()
             || (!self.uses_stack_layer()
@@ -673,6 +674,15 @@ impl BuffDefinition {
             .iter()
             .find_map(|(include_type, value)| {
                 (*include_type == BuffIncludeType::CappedSeparateCopies.id() && *value > 0)
+                    .then_some(*value)
+            })
+    }
+
+    pub(super) fn same_type_capacity(&self) -> Option<i32> {
+        self.include_entries
+            .iter()
+            .find_map(|(include_type, value)| {
+                (*include_type == BuffIncludeType::ReapplyReserve.id() && *value > 0)
                     .then_some(*value)
             })
     }

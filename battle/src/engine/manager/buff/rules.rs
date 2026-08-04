@@ -56,6 +56,7 @@ pub struct BuffPolicy {
     pub effective_type_id: i32,
     pub storage: BuffStorage,
     pub instance_limit: Option<i32>,
+    pub same_type_capacity: Option<i32>,
     pub shared_group_capacity: Option<SharedGroupCapacity>,
     pub unresolved_include_entries: Box<[(i32, i32)]>,
     pub match_existing: ExistingBuffMatch,
@@ -161,6 +162,7 @@ impl BuffPolicy {
             effective_type_id: definition.effective_type_id(),
             storage,
             instance_limit: definition.capped_separate_copy_limit(),
+            same_type_capacity: definition.same_type_capacity(),
             shared_group_capacity: definition.shared_group_capacity().map(
                 |(group_id, max_instances)| SharedGroupCapacity {
                     group_id,
@@ -287,13 +289,9 @@ mod tests {
                 .unresolved_include_entries
                 .is_empty()
         );
-        assert_eq!(
-            BuffPolicy::try_for_buff_id(6200501)
-                .unwrap()
-                .unresolved_include_entries
-                .as_ref(),
-            &[(7, 10)]
-        );
+        let same_type_capacity = BuffPolicy::try_for_buff_id(6200501).unwrap();
+        assert!(same_type_capacity.unresolved_include_entries.is_empty());
+        assert_eq!(same_type_capacity.same_type_capacity, Some(10));
         let beryl_count = BuffPolicy::try_for_buff_id(31130123).unwrap();
         assert!(beryl_count.unresolved_include_entries.is_empty());
         assert_eq!(beryl_count.storage, BuffStorage::Counted);
