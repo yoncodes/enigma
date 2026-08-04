@@ -1081,6 +1081,10 @@ fn incoming_attack_modifier_conditions_keep_their_exact_side() {
         );
     }
     assert_eq!(
+        find_key(33201, "HurtRestraint").and_then(|definition| definition.attack_modifier_side),
+        None
+    );
+    assert_eq!(
         find_key(18203, "HasBuff").and_then(|definition| definition.attack_modifier_side),
         None
     );
