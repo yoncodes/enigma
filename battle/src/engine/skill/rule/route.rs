@@ -555,6 +555,53 @@ mod tests {
     }
 
     #[test]
+    fn mirror_rule_compounds_keep_one_exact_driver() {
+        init_config();
+
+        let cases = [
+            (
+                "45100#2#1&57100#11790011",
+                ConditionDriver::Setup(ConditionSetup {
+                    key: crate::engine::skill::rule::DefinitionKey::new(45100, "HeroRoundInterval"),
+                    stage: SetupStage::RoundStart,
+                    priority: -1,
+                }),
+            ),
+            (
+                "22209&19209#11790012",
+                ConditionDriver::Trigger(ConditionTrigger {
+                    key: crate::engine::skill::rule::DefinitionKey::new(22209, "BeAttacked"),
+                    event: EventKind::TargetAttacked,
+                    phase: None,
+                }),
+            ),
+            (
+                "51213#11790022#5&19213#11790012",
+                ConditionDriver::Trigger(ConditionTrigger {
+                    key: crate::engine::skill::rule::DefinitionKey::new(19213, "HasBuffId"),
+                    event: EventKind::SkillAction,
+                    phase: Some(SkillPhase::HitPassives),
+                }),
+            ),
+            (
+                "51213#11790022#5&57213#11790012",
+                ConditionDriver::Trigger(ConditionTrigger {
+                    key: crate::engine::skill::rule::DefinitionKey::new(57213, "NoBuffId"),
+                    event: EventKind::SkillAction,
+                    phase: Some(SkillPhase::HitPassives),
+                }),
+            ),
+        ];
+
+        for (raw, expected) in cases {
+            let route =
+                ConditionRoute::compile(&parse_conditions(config::configs::get(), raw)).unwrap();
+            assert_eq!(route.branches[0].driver, Some(expected));
+            assert_eq!(route.branches[0].conditions.len(), 2);
+        }
+    }
+
+    #[test]
     fn captured_conditions_keep_their_exact_drivers() {
         init_config();
 
