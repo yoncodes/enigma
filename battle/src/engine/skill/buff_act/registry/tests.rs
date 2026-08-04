@@ -498,14 +498,20 @@ fn reflect_frames_are_owned_by_holder_and_mark_attacker() {
         find(743, "ReboundBasedOnDamage").unwrap(),
     ] {
         assert_eq!(definition.runtime.frame_source, RuntimeFrameSource::Owner);
-        assert_eq!(
-            definition.runtime.marker,
-            Some(RuntimeMarker {
-                position: RuntimeMarkerPosition::BeforeChanges,
-                target: RuntimeMarkerTarget::EventSource,
-            })
-        );
+        let marker = definition.runtime.marker.unwrap();
+        assert_eq!(marker.position, RuntimeMarkerPosition::BeforeChanges);
+        assert_eq!(marker.target, RuntimeMarkerTarget::EventSource);
     }
+
+    assert_eq!(
+        find(303, "Rebound")
+            .unwrap()
+            .runtime
+            .marker
+            .unwrap()
+            .effect_type,
+        None
+    );
 
     let damage_based = find(743, "ReboundBasedOnDamage").unwrap();
     assert_eq!(damage_based.kind, BuffActKind::ReboundBasedOnDamage);
@@ -513,9 +519,10 @@ fn reflect_frames_are_owned_by_holder_and_mark_attacker() {
     assert!(!damage_based.supports.unwrap()(&[300, 101, 2_000]));
     assert!(!damage_based.supports.unwrap()(&[150, 102, 1_000]));
     let wire = damage_based.wire.unwrap();
+    assert!(!wire.has_output());
     assert_eq!(
-        wire.markers(super::super::wire::WirePhase::Add),
-        &[sonettobuf::effect_type_enum::EffectType::Rebound as i32]
+        damage_based.runtime.marker.unwrap().effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Rebound as i32)
     );
     assert!(
         wire.markers(super::super::wire::WirePhase::Static)

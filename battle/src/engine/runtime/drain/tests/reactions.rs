@@ -576,6 +576,18 @@ fn damage_based_rebound_routes_once_and_removes_the_counter() {
         BattleEvent::BuffRemoved(change)
             if change.target_uid == -1 && change.buff_uid == 1_069
     )));
+    fn contains_rebound_marker(step: &sonettobuf::FightStep) -> bool {
+        step.act_effect.iter().any(|effect| {
+            (effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Rebound as i32)
+                && effect.buff_act_id == Some(743))
+                || effect
+                    .fight_step
+                    .as_ref()
+                    .is_some_and(contains_rebound_marker)
+        })
+    }
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert!(steps.iter().any(contains_rebound_marker));
 }
 
 #[test]
