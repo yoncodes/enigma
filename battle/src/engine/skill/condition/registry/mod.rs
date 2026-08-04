@@ -366,6 +366,7 @@ condition_definitions! {
     [620402] "CurrSkillLevel" => active_skill::rank, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [931] "None" => none::impromptu_resolved, event_trigger(EventKind::ImpromptuResolved, None);
     [19002] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
+    [19012] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
     [19003] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [19004] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [19100] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 100, &[]));
@@ -398,6 +399,7 @@ condition_definitions! {
     [57210] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[EventKind::SkillAction]));
     [572081] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[]));
     [57002] "NoBuffId" => buff::buff_absent, filters_behavior_targets(setup_route(SetupStage::EnterFight, 0, &[]));
+    [57012] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[]));
     [57104] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[EventKind::RoundStart]));
     [57301] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
     [57304] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::RoundEndAfterSettlement, None));

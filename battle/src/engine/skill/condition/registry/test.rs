@@ -116,6 +116,33 @@ fn static_buff_id_conditions_keep_their_exact_dependencies() {
 }
 
 #[test]
+fn regeneration_period_buff_gates_leave_death_timing_to_the_compound_condition() {
+    for (opcode, type_name, mode) in [
+        (19012, "HasBuffId", BuffConditionMode::Present),
+        (57012, "NoBuffId", BuffConditionMode::Absent),
+    ] {
+        assert_eq!(
+            parse(opcode, type_name, &["11410091".into()]),
+            Some(ParsedConditionKind::BuffId {
+                mode,
+                buff_ids: vec![11410091],
+            })
+        );
+        let definition = find_key(opcode, type_name).unwrap();
+        assert_eq!(definition.role, ConditionRole::Predicate);
+        assert!(definition.dependencies.is_empty());
+    }
+
+    assert_eq!(
+        find_key(812, "Dead").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::EntityDied,
+            phase: None,
+        })
+    );
+}
+
+#[test]
 fn riposte_buff_gate_is_an_exact_predicate() {
     let definition = find_key(19205, "HasBuffId").unwrap();
 
