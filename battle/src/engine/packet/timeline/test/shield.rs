@@ -292,7 +292,7 @@ fn reduce_hp_wire_value_is_gated_by_fight_protocol_version() {
 }
 
 #[test]
-fn shield_transaction_projects_grant_then_only_the_stacked_value() {
+fn shield_transaction_projects_carrier_refresh_and_stacked_value() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -348,12 +348,13 @@ fn shield_transaction_projects_grant_then_only_the_stacked_value() {
 
     let changes = crate::engine::manager::shield::execute(&mut managers, command).unwrap();
     let effects = project_change_for_test(&BattleChange::Shield(Box::new(changes))).unwrap();
-    assert_eq!(effects.len(), 1);
+    assert_eq!(effects.len(), 2);
     assert_eq!(
         effects[0].effect_type,
         Some(EffectType::Changeshield as i32)
     );
     assert_eq!(effects[0].effect_num, Some(1_500));
+    assert_eq!(effects[1].effect_type, Some(EffectType::Buffupdate as i32));
 }
 
 #[test]
