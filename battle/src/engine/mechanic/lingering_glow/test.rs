@@ -188,7 +188,7 @@ fn direct_lingering_glow_gain_uses_the_active_team_modifier() {
 }
 
 #[test]
-fn activation_change_and_crystals_keep_separate_owners() {
+fn activation_counter_floors_raw_progress_and_crystals_keep_separate_owners() {
     let mut catalog = SkillEffectCatalog::default();
     catalog.insert(ParsedSkillEffect {
         skill_id: 31340163,
@@ -257,7 +257,7 @@ fn activation_change_and_crystals_keep_separate_owners() {
         visible_counter_info(&managers.gauge, &features, 1)
             .unwrap()
             .current,
-        2
+        1
     );
     assert_eq!(
         runtime.decrement_counter_info(&features, 1).unwrap().value,
