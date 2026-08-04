@@ -310,7 +310,7 @@ pub fn visible_counter_info(
 ) -> Option<HeatScaleUseSkillInfo> {
     let listener = heat_scale::use_skill_info(0, features, team)?;
     let raw = gauges.accumulated_raw_value(key(team), listener.buff_uid, listener.act_id)?;
-    let current = raw.saturating_add(500) / 1000;
+    let current = raw / 1000;
     heat_scale::use_skill_info(current, features, team)
 }
 
