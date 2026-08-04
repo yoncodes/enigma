@@ -139,6 +139,30 @@ impl BuffManager {
             .sum()
     }
 
+    pub(crate) fn grant_duration_delta(
+        &self,
+        hp: &HpManager,
+        owner_uid: i64,
+        status: BuffStatus,
+    ) -> i32 {
+        if hp.current(owner_uid) <= 0 {
+            return 0;
+        }
+        self.buffs
+            .iter()
+            .filter(|active| active.owner_uid == owner_uid)
+            .filter_map(|active| active.definition.as_ref())
+            .flat_map(BuffDefinition::features)
+            .map(|feature| {
+                crate::engine::skill::buff_act::buff_round_add::duration_delta(
+                    feature.kind,
+                    &feature.values,
+                    status,
+                )
+            })
+            .sum()
+    }
+
     pub fn buff_act_amount(&self, owner_uid: i64, kind: BuffActKind) -> i32 {
         self.buffs
             .iter()

@@ -24,8 +24,8 @@ mod loss;
 mod origin;
 mod resolve;
 
+pub(crate) use affinity::restrains_target;
 use affinity::{critical_technique_bonus, regular_multiplier, strongest_career_multiplier};
-pub(crate) use affinity::{restrains, restrains_target};
 pub(crate) use critical::{
     chance as crit_chance, damage_multiplier as crit_damage_multiplier,
     excess_rate as excess_crit_rate,

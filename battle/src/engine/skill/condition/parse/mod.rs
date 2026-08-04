@@ -490,8 +490,10 @@ pub(super) fn before_crit(_: i32, _: &str, raw_args: &[String]) -> Option<Parsed
         .then_some(ParsedConditionKind::BeforeCrit)
 }
 
-pub(super) fn hurt_restrained(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind> {
-    Some(ParsedConditionKind::HurtRestrained)
+pub(super) fn hurt_restrained(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    raw_args
+        .is_empty()
+        .then_some(ParsedConditionKind::HurtRestrained)
 }
 
 pub(super) fn hurt_not_restrained(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind> {

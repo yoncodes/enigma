@@ -1,5 +1,9 @@
 use crate::{GameDB, equip_break_cost::EquipBreakCost, equip_strengthen_cost::EquipStrengthenCost};
 
+enum EquipmentConstant {
+    TwinsPsychubeIds = 38503,
+}
+
 impl GameDB {
     pub fn equip_break_cost(&self, rare: i32, break_level: i32) -> Option<&EquipBreakCost> {
         self.equip_break_cost
@@ -38,5 +42,28 @@ impl GameDB {
             && self
                 .equip_universal_refine_id()
                 .is_some_and(|universal_id| equip.id != universal_id)
+    }
+
+    pub fn linked_psychube_id(&self, hero_id: i32, equip_id: i32) -> Option<i32> {
+        let ids = self
+            .r#const
+            .get(EquipmentConstant::TwinsPsychubeIds as i32)?
+            .value
+            .split('#')
+            .filter_map(|value| value.parse::<i32>().ok())
+            .collect::<Vec<_>>();
+        let hero_equips = self
+            .character
+            .get(hero_id)?
+            .equip_rec
+            .split('#')
+            .filter_map(|value| value.parse::<i32>().ok())
+            .collect::<Vec<_>>();
+        if !ids.iter().all(|id| hero_equips.contains(id)) {
+            return None;
+        }
+        ids.contains(&equip_id)
+            .then(|| ids.into_iter().find(|id| *id != equip_id))
+            .flatten()
     }
 }

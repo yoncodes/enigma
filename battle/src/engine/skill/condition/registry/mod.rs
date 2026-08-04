@@ -366,9 +366,9 @@ condition_definitions! {
     [620402] "CurrSkillLevel" => active_skill::rank, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [931] "None" => none::impromptu_resolved, event_trigger(EventKind::ImpromptuResolved, None);
     [19002] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
-    [19012] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
     [19003] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [19004] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
+    [19012] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
     [19100] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 100, &[]));
     [19101] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 101, &[]));
     [18201] "HasBuff" => buff::any_status_present, predicate(&[EventKind::BuffChanged]);
@@ -385,11 +385,14 @@ condition_definitions! {
     [19203] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate)));
     [192032] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [19208] "HasBuffId" => buff::buff_present_and_consume, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
+    [19209] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::TargetAttacked]));
     [19210] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::SkillAction]));
+    [19213] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)));
     [192081] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
     [19103] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::BuffGate, 0, &[]));
     [19212] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [19302] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEnd, None));
+    [19304] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEnd, None));
     [19301] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
     [56301] "NoBuff" => buff::first_status_absent, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
     [750101] "PlayerHasBuff" => buff::team_buff_presence, setup_route(SetupStage::RoundStartCondition, 101, &[]);
@@ -400,7 +403,9 @@ condition_definitions! {
     [572081] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[]));
     [57002] "NoBuffId" => buff::buff_absent, filters_behavior_targets(setup_route(SetupStage::EnterFight, 0, &[]));
     [57012] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[]));
+    [57100] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[EventKind::RoundStart]));
     [57104] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[EventKind::RoundStart]));
+    [57213] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)));
     [57301] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
     [57304] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::RoundEndAfterSettlement, None));
     [539301] "PerSelfTeamTypeType2BuffTypeIdNum" => buff::per_team_status_type_count, event_trigger(EventKind::SmallRoundEnd, None);
@@ -596,6 +601,7 @@ condition_definitions! {
     [500210] "SkillType" => active_skill::skill_type, predicate(&[EventKind::SkillAction]);
     [34203] "UseSkillEffectTag" => active_skill::effect_tag, event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate));
     [34212] "UseSkillEffectTag" => active_skill::effect_tag, predicate(&[]);
+    [33201] "HurtRestraint" => parse::hurt_restrained, predicate(&[]);
     [33204] "HurtRestraint" => parse::hurt_restrained, incoming_attack_modifier(predicate(&[]));
     [47204] "HurtNotRestraint" => parse::hurt_not_restrained, incoming_attack_modifier(predicate(&[]));
     [53201] "HurtNumType" => parse::damage_target_count_kind, predicate(&[]);

@@ -1,6 +1,62 @@
 use super::*;
 
 #[test]
+fn conduit_inherits_the_rounds_selected_enemy() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-3),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let commands = vec![
+        crate::engine::round::command::RoundCommand::PlayCard {
+            card_index: 0,
+            target_uid: Some(-3),
+            chosen_skill_id: None,
+            recorded_skill: None,
+        },
+        crate::engine::round::command::RoundCommand::PlayCard {
+            card_index: 1,
+            target_uid: Some(10),
+            chosen_skill_id: None,
+            recorded_skill: None,
+        },
+        crate::engine::round::command::RoundCommand::UseAssistBoss {
+            skill_id: 1,
+            target_uid: Some(-1),
+        },
+    ];
+
+    assert_eq!(
+        crate::engine::runtime::round::selected_enemy_target(
+            &commands,
+            &crate::engine::skill::target::TargetPool::from_fight(&fight),
+        ),
+        Some(-1)
+    );
+}
+
+#[test]
 fn destination_begin_round_owns_the_round_transition_and_reply_buckets() {
     crate::test_support::init_config();
     let fight = Fight {

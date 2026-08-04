@@ -116,28 +116,33 @@ fn static_buff_id_conditions_keep_their_exact_dependencies() {
 }
 
 #[test]
-fn regeneration_period_buff_gates_leave_death_timing_to_the_compound_condition() {
-    for (opcode, type_name, mode) in [
-        (19012, "HasBuffId", BuffConditionMode::Present),
-        (57012, "NoBuffId", BuffConditionMode::Absent),
-    ] {
-        assert_eq!(
-            parse(opcode, type_name, &["11410091".into()]),
-            Some(ParsedConditionKind::BuffId {
-                mode,
-                buff_ids: vec![11410091],
-            })
-        );
-        let definition = find_key(opcode, type_name).unwrap();
-        assert_eq!(definition.role, ConditionRole::Predicate);
-        assert!(definition.dependencies.is_empty());
-    }
+fn regeneration_period_presence_gate_filters_the_source() {
+    let definition = find_key(19012, "HasBuffId").unwrap();
 
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert!(definition.filters_behavior_targets);
     assert_eq!(
-        find_key(812, "Dead").map(|definition| definition.role),
-        Some(ConditionRole::Trigger {
-            event: EventKind::EntityDied,
-            phase: None,
+        parse(19012, "HasBuffId", &["11410091".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Present,
+            buff_ids: vec![11410091],
+        })
+    );
+}
+
+#[test]
+fn regeneration_period_absence_gate_filters_the_source() {
+    let definition = find_key(57012, "NoBuffId").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(
+        parse(57012, "NoBuffId", &["11410091".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Absent,
+            buff_ids: vec![11410091],
         })
     );
 }
@@ -1108,6 +1113,10 @@ fn incoming_attack_modifier_conditions_keep_their_exact_side() {
         );
     }
     assert_eq!(
+        find_key(33201, "HurtRestraint").and_then(|definition| definition.attack_modifier_side),
+        None
+    );
+    assert_eq!(
         find_key(18203, "HasBuff").and_then(|definition| definition.attack_modifier_side),
         None
     );
@@ -1793,6 +1802,54 @@ fn round_start_buff_gates_keep_their_exact_registered_keys() {
 }
 
 #[test]
+fn mirror_rule_buff_gates_keep_their_exact_phases() {
+    assert_eq!(
+        parse(57100, "NoBuffId", &["11790011".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Absent,
+            buff_ids: vec![11790011],
+        })
+    );
+    assert_eq!(
+        find_key(57100, "NoBuffId").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert_eq!(
+        find_key(57100, "NoBuffId").map(|definition| definition.dependencies),
+        Some(&[EventKind::RoundStart][..])
+    );
+
+    assert_eq!(
+        find_key(19209, "HasBuffId").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert_eq!(
+        find_key(19209, "HasBuffId").map(|definition| definition.dependencies),
+        Some(&[EventKind::TargetAttacked][..])
+    );
+
+    for (opcode, type_name, mode) in [
+        (19213, "HasBuffId", BuffConditionMode::Present),
+        (57213, "NoBuffId", BuffConditionMode::Absent),
+    ] {
+        assert_eq!(
+            parse(opcode, type_name, &["11790012".into()]),
+            Some(ParsedConditionKind::BuffId {
+                mode,
+                buff_ids: vec![11790012],
+            })
+        );
+        assert_eq!(
+            find_key(opcode, type_name).map(|definition| definition.role),
+            Some(ConditionRole::Trigger {
+                event: EventKind::SkillAction,
+                phase: Some(SkillPhase::HitPassives),
+            })
+        );
+    }
+}
+
+#[test]
 fn nested_no_action_teammate_death_keeps_its_exact_event_key() {
     assert_eq!(
         parse(17012, "TeammateDead", &[]),
@@ -1882,6 +1939,24 @@ fn small_round_end_buff_and_status_gates_keep_separate_exact_keys() {
             })
         );
     }
+}
+
+#[test]
+fn round_end_buff_id_gate_keeps_its_exact_key() {
+    assert_eq!(
+        parse(19304, "HasBuffId", &["11410032".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Present,
+            buff_ids: vec![11410032],
+        })
+    );
+    assert_eq!(
+        find_key(19304, "HasBuffId").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        })
+    );
 }
 
 #[test]

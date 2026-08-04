@@ -28,6 +28,7 @@ pub mod attr_only_cal_damage_replace_attr_ad_creator;
 pub mod be_attack_by_emitter_damage;
 pub mod big_skill_no_use_action_point;
 pub mod blood_pool;
+pub mod buff_round_add;
 pub mod bullet;
 pub mod burn_real_hurt_fix;
 pub mod butterfly_record_skill;
@@ -714,14 +715,16 @@ fn runtime_marker_op(
         registry::RuntimeMarkerTarget::Source => source_uid,
         registry::RuntimeMarkerTarget::EventSource => event_source_uid(event?)?,
     };
-    let effect_type = wire::find(definition.key.opcode, definition.key.type_name)
-        .and_then(|wire| {
-            wire.markers(wire::WirePhase::Static)
-                .first()
-                .or_else(|| wire.markers(wire::WirePhase::Add).first())
-        })
-        .copied()
-        .unwrap_or(sonettobuf::effect_type_enum::EffectType::None as i32);
+    let effect_type = marker.effect_type.unwrap_or_else(|| {
+        wire::find(definition.key.opcode, definition.key.type_name)
+            .and_then(|wire| {
+                wire.markers(wire::WirePhase::Static)
+                    .first()
+                    .or_else(|| wire.markers(wire::WirePhase::Add).first())
+            })
+            .copied()
+            .unwrap_or(sonettobuf::effect_type_enum::EffectType::None as i32)
+    });
     Some(RuleOp::BuffFeatureMarker {
         target_uid,
         effect_type,

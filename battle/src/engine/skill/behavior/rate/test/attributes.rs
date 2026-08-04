@@ -24,6 +24,93 @@ fn attr_fix_emits_a_typed_attack_attribute() {
 }
 
 #[test]
+fn outgoing_restraint_modifier_only_applies_to_the_weaker_afflatus() {
+    crate::test_support::init_config();
+    let effects = SkillEffectCatalog::from_game_db(config::configs::get());
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                career: Some(1),
+                current_hp: Some(100),
+                passive_skill: vec![72008],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    career: Some(4),
+                    current_hp: Some(100),
+                    passive_skill: vec![72008],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    career: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-3),
+                    career: Some(1),
+                    weak_careers: vec![1],
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let collect = |target_uid| {
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        emit_passive_attack_attributes(
+            &mut modifiers,
+            10,
+            30630121,
+            &[72008],
+            RateRuntime {
+                effects: &effects,
+                managers: &managers,
+                pool: &pool,
+                context: TargetContext {
+                    hit_source_uid: 10,
+                    hit_target_uid: target_uid,
+                    ..Default::default()
+                },
+            },
+            &mut RoundDeterminism::default(),
+        );
+        modifiers.attack_attributes
+    };
+
+    assert_eq!(collect(-1), vec![(AttrId::Penetration, 300)]);
+    assert!(collect(-2).is_empty());
+    assert_eq!(collect(-3), vec![(AttrId::Penetration, 300)]);
+    assert!(
+        incoming_target_attack_modifiers(
+            10,
+            -1,
+            30630121,
+            RateRuntime {
+                effects: &effects,
+                managers: &managers,
+                pool: &pool,
+                context: TargetContext::default(),
+            },
+            &mut RoundDeterminism::default(),
+        )
+        .attack_attributes
+        .is_empty()
+    );
+}
+
+#[test]
 fn passive_attr_fix_uses_held_moxie_for_the_current_attack() {
     let mut effects = SkillEffectCatalog::default();
     let mut slot = SkillEffectSlot::new(

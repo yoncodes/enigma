@@ -142,6 +142,10 @@ pub(super) fn replace_buff_ops(
     if *threshold <= 0
         || *source_buff_id <= 0
         || *replacement_buff_id <= 0
+        || !context
+            .managers
+            .buff
+            .has_buff_id_or_type(context.target_uid, *source_buff_id)
         || context
             .managers
             .buff

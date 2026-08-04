@@ -146,12 +146,12 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(managers.conduit.power(1, 2), 1);
+        assert_eq!(managers.conduit.power(1, 2), 0);
         assert_eq!(
             managers
                 .buff
                 .buff_act_amount(10, BuffActKind::DeviceCostReduce),
-            1
+            0
         );
     }
 }

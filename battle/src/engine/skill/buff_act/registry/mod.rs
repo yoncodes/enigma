@@ -87,6 +87,7 @@ pub enum BuffActKind {
     BuffAddAct,
     BuffAddActLimit,
     BuffReplace,
+    BuffRoundAdd,
     BloodPoolCountAddExPoint,
     BloodPoolTag,
     BloodValueUseSkill,
@@ -201,6 +202,7 @@ pub enum BuffActKind {
     RealHurtFix,
     RealDamageKill,
     Rebound,
+    ReboundBasedOnDamage,
     Revive,
     Shield,
     ShieldByBuffLayer,
@@ -319,6 +321,7 @@ pub enum RuntimeEventMultiplicity {
 pub struct RuntimeMarker {
     pub position: RuntimeMarkerPosition,
     pub target: RuntimeMarkerTarget,
+    pub effect_type: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -445,7 +448,7 @@ macro_rules! buff_act_definitions {
             $(, multiplicity: $multiplicity:ident)?
             $(, trigger_child_uid: $trigger_child_uid:expr)?
             $(, stat_read: $stat_read:ident)?
-            $(, runtime_marker: $marker_position:ident($marker_target:ident))?
+            $(, runtime_marker: $marker_position:ident($marker_target:ident $(, $marker_effect_type:expr)?))?
             $(, runtime: $runtime:expr)?
             $(, scoped_runtime: $scoped_runtime:expr)?
             $(, transaction: $transaction:expr)?
@@ -476,7 +479,7 @@ macro_rules! buff_act_definitions {
                     execution_timing: buff_act_definitions!(@timing $($timing)?),
                     event_multiplicity: buff_act_definitions!(@multiplicity $($multiplicity)?),
                     reserves_trigger_child_uid: buff_act_definitions!(@trigger_child_uid $($trigger_child_uid)?),
-                    marker: buff_act_definitions!(@runtime_marker $($marker_position($marker_target))?),
+                    marker: buff_act_definitions!(@runtime_marker $($marker_position($marker_target $(, $marker_effect_type)?))?),
                     handler: buff_act_definitions!(@runtime $($runtime)?),
                     scoped_handler: buff_act_definitions!(@scoped_runtime $($scoped_runtime)?),
                 },
@@ -530,13 +533,16 @@ macro_rules! buff_act_definitions {
     (@trigger_child_uid) => { false };
     (@stat_read $value:ident) => { StatReadTiming::$value };
     (@stat_read) => { StatReadTiming::None };
-    (@runtime_marker $position:ident($target:ident)) => {
+    (@runtime_marker $position:ident($target:ident $(, $effect_type:expr)?)) => {
         Some(RuntimeMarker {
             position: RuntimeMarkerPosition::$position,
             target: RuntimeMarkerTarget::$target,
+            effect_type: buff_act_definitions!(@marker_effect_type $($effect_type)?),
         })
     };
     (@runtime_marker) => { None };
+    (@marker_effect_type $effect_type:expr) => { Some($effect_type) };
+    (@marker_effect_type) => { None };
     (@runtime $handler:expr) => { Some($handler) };
     (@runtime) => { None };
     (@scoped_runtime $handler:expr) => { Some($handler) };
@@ -653,6 +659,9 @@ buff_act_definitions! {
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(607, "ExPointCardMove"), &[EffectType::Expointcardmove as i32]));
     (603, "ExPointCantAdd") => ExPointCantAdd,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(603, "ExPointCantAdd"), &[EffectType::Expointcantadd as i32]));
+    (604, "BuffRoundAdd") => BuffRoundAdd, effect_time_subscription: false,
+        supports: super::buff_round_add::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(604, "BuffRoundAdd"), &[]));
     (605, "ExPointDel") => ExPointDel,
         runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
         supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(605, "ExPointDel"), &[]));
@@ -681,6 +690,12 @@ buff_act_definitions! {
     (721, "DotNoLimit") => DotNoLimit, runtime_marker: BeforeChanges(Owner),
         scoped_runtime: |context| super::dot_no_limit::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(721, "DotNoLimit"), &[EffectType::Dot as i32]));
+    (743, "ReboundBasedOnDamage") => ReboundBasedOnDamage, source: Owner,
+        multiplicity: OncePerActionTarget,
+        runtime_marker: BeforeChanges(EventSource, EffectType::Rebound as i32),
+        runtime: |context| super::rebound::damage_based_rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::rebound::supports_damage_based,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(743, "ReboundBasedOnDamage"), &[]));
     (795, "None") => TargetingTag,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(795, "None"), &[EffectType::None as i32]));
     (725, "AddToTarget") => AddToTarget,

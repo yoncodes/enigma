@@ -134,7 +134,61 @@ fn round_start_bonus_snapshots_remaining_pool_then_depletes_half() {
 }
 
 #[test]
-fn activation_change_and_crystals_keep_separate_owners() {
+fn direct_lingering_glow_gain_uses_the_active_team_modifier() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31270410),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = crate::engine::skill::rule::CommandOrigin {
+        domain: crate::engine::skill::rule::RuleDomain::Behavior,
+        key: crate::engine::skill::rule::DefinitionKey::new(60191, "BloodPoolValueChange"),
+    };
+    managers
+        .execute_gauge(GaugeCommand::new(
+            origin,
+            key(1),
+            GaugeOperation::Enable { max: Some(750) },
+        ))
+        .unwrap();
+
+    let ops = value_change_rule_ops(
+        &managers,
+        GaugeCommand::new(origin, key(1), GaugeOperation::ChangeValue { delta: 20 })
+            .with_raw_delta(20_000)
+            .with_progress_raw_delta(20_000),
+    );
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
+            operation: GaugeOperation::AccumulateRawValue {
+                amount: 21_600,
+                stream: 60191,
+            },
+            raw_delta: Some(21_600),
+            progress_raw_delta: Some(21_600),
+            ..
+        }))]
+    ));
+}
+
+#[test]
+fn activation_counter_floors_raw_progress_and_crystals_keep_separate_owners() {
     let mut catalog = SkillEffectCatalog::default();
     catalog.insert(ParsedSkillEffect {
         skill_id: 31340163,
@@ -203,7 +257,7 @@ fn activation_change_and_crystals_keep_separate_owners() {
         visible_counter_info(&managers.gauge, &features, 1)
             .unwrap()
             .current,
-        2
+        1
     );
     assert_eq!(
         runtime.decrement_counter_info(&features, 1).unwrap().value,

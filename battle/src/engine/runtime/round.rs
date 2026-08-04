@@ -3,7 +3,7 @@ use sonettobuf::{BeginRoundRequest, Fight, FightRound, FightStep};
 use crate::engine::{
     manager::card::CardCommand,
     round::{
-        command::commands_from_opers,
+        command::{RoundCommand, commands_from_opers},
         outcome::{battle_ended, finish_if_battle_ended},
         power::ClothPower,
         state::{RoundState, next_action_points, next_round_shell, round_field_cards},
@@ -138,6 +138,14 @@ impl BattleRuntime {
         self.objectives
             .record_player_round(&commands, catalog, &player, ended_by_player);
         apply_cloth_power(&self.fight, &self.managers, &mut self.round_state, &player);
+        let conduit_context = selected_enemy_target(&commands, &pool)
+            .map(
+                |runtime_target_uid| crate::engine::skill::target::TargetContext {
+                    runtime_target_uid,
+                    ..context
+                },
+            )
+            .unwrap_or(context);
         let conduit = if ended_by_player {
             Default::default()
         } else {
@@ -147,7 +155,7 @@ impl BattleRuntime {
                 &pool,
                 catalog,
                 &mut self.determinism,
-                context,
+                conduit_context,
                 &request.devices_opers,
             )
             .map_err(|error| format!("{error:?}"))?
@@ -501,6 +509,23 @@ impl BattleRuntime {
         self.round = Some(round.clone());
         Ok(round)
     }
+}
+
+pub(super) fn selected_enemy_target(
+    commands: &[RoundCommand],
+    pool: &crate::engine::skill::target::TargetPool,
+) -> Option<i64> {
+    commands.iter().rev().find_map(|command| match command {
+        RoundCommand::PlayCard {
+            target_uid: Some(target_uid),
+            ..
+        }
+        | RoundCommand::UseAssistBoss {
+            target_uid: Some(target_uid),
+            ..
+        } if pool.team_type(*target_uid) == Some(2) => Some(*target_uid),
+        _ => None,
+    })
 }
 
 fn apply_cloth_power(

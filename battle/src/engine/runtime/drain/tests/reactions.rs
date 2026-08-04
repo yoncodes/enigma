@@ -483,6 +483,114 @@ fn attack_consumption_keeps_first_hit_entity_order() {
 }
 
 #[test]
+fn damage_based_rebound_routes_once_and_removes_the_counter() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                buffs: vec![BuffInfo {
+                    uid: Some(1_069),
+                    buff_id: Some(117200101),
+                    from_uid: Some(-1),
+                    count: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let hit = BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+        origin: CommandOrigin {
+            domain: RuleDomain::Skill,
+            key: DefinitionKey::new(1, "Damage"),
+        },
+        source_uid: 10,
+        target_uid: -1,
+        skill_id: 1,
+        amount: 1_000,
+        shield_absorbed: 0,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+        assassinate: false,
+        ignore_riposte: false,
+    });
+    let events = [hit.clone(), hit];
+    let mut frames = Vec::new();
+    let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
+    let dispatched = dispatch_event_batch(
+        &pool.runtime_view(&managers),
+        &managers,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        &events,
+        &root,
+        &root,
+        Some(&root),
+        Some((10, 1, Some(-1))),
+        false,
+        true,
+        crate::engine::event::subscription::PublicationPhase::AfterPublish,
+        None,
+    )
+    .unwrap();
+    let mut queue = std::collections::VecDeque::from(dispatched.into_ordered());
+
+    assert_eq!(queue.len(), 3);
+    let result = drain_queue_with_frames(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &mut queue,
+        frames,
+    )
+    .unwrap();
+
+    assert_eq!(managers.hp.current(10), 700);
+    assert!(managers.buff.snapshot(-1, 1_069).is_none());
+    assert!(result.events.iter().any(|event| matches!(
+        event,
+        BattleEvent::BuffRemoved(change)
+            if change.target_uid == -1 && change.buff_uid == 1_069
+    )));
+    fn contains_rebound_marker(step: &sonettobuf::FightStep) -> bool {
+        step.act_effect.iter().any(|effect| {
+            (effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Rebound as i32)
+                && effect.buff_act_id == Some(743))
+                || effect
+                    .fight_step
+                    .as_ref()
+                    .is_some_and(contains_rebound_marker)
+        })
+    }
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert!(steps.iter().any(contains_rebound_marker));
+}
+
+#[test]
 fn allied_action_observer_keeps_the_triggering_action_target() {
     let event = BattleEvent::AllyAction(ActionEvent {
         source_uid: 10,

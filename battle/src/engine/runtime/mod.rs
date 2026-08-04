@@ -117,6 +117,10 @@ impl BattleRuntime {
         self.determinism.enqueue_next_ai_card_snapshot(cards);
     }
 
+    pub fn seed_crystal_cards(&mut self, cards: impl IntoIterator<Item = CardInfo>) {
+        self.determinism.enqueue_crystal_cards(cards);
+    }
+
     pub fn seed_hidden_crits(
         &mut self,
         skill_id: i32,
