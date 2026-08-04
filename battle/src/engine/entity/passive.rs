@@ -1,4 +1,5 @@
 use config::configs;
+use database::db::game::equipment::Equipment;
 use database::models::game::heros::HeroData;
 use std::collections::HashMap;
 
@@ -45,7 +46,7 @@ pub struct Passive;
 impl Passive {
     pub fn get(
         hero_data: &HeroData,
-        equip_id: Option<i32>,
+        equips: &[Equipment],
         destiny: Option<&HashMap<i32, i32>>,
     ) -> Vec<PassiveSkill> {
         let r = &hero_data.record;
@@ -58,8 +59,8 @@ impl Passive {
             r.destiny_rank,
             r.destiny_stone,
         );
-        if let Some(equip_id) = equip_id {
-            passives.extend(Self::psychube(equip_id, None));
+        for equip in equips {
+            passives.extend(Self::psychube(equip.equip_id, Some(equip.refine_lv)));
         }
         passives
     }

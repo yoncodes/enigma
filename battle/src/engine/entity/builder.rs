@@ -12,7 +12,7 @@ use super::{
 
 pub struct EntityBuilder {
     hero_data: HeroData,
-    equip: Option<Equipment>,
+    equips: Vec<Equipment>,
     position: i32,
     team_type: i32,
     is_sub: bool,
@@ -22,42 +22,42 @@ impl EntityBuilder {
     pub fn new(hero_data: HeroData, position: i32, team_type: i32, is_sub: bool) -> Self {
         Self {
             hero_data,
-            equip: None,
+            equips: Vec::new(),
             position,
             team_type,
             is_sub,
         }
     }
 
-    pub fn with_equip(mut self, equip: Equipment) -> Self {
-        self.equip = Some(equip);
+    pub fn with_equips(mut self, equips: Vec<Equipment>) -> Self {
+        self.equips = equips;
         self
     }
 
     pub fn build(self) -> FightEntityInfo {
         let r = &self.hero_data.record;
         let destiny = Destiny::get(r.destiny_stone, r.destiny_rank);
-        let attr = Attr::get(&self.hero_data, self.equip.as_ref());
+        let attr = Attr::get(&self.hero_data, &self.equips);
         let (sg1, sg2) = Skill::get(&self.hero_data, self.is_sub, destiny.as_ref());
-        let passives = Passive::get(
-            &self.hero_data,
-            self.equip.as_ref().map(|e| e.equip_id),
-            destiny.as_ref(),
-        );
+        let passives = Passive::get(&self.hero_data, &self.equips, destiny.as_ref());
         // Source attribution (Insight/Rank/Destiny/Psychube/Extra) is tracked
         // in `PassiveSkill` for downstream consumers; the wire format only
         // carries raw skill ids.
         let passive_skill_ids = passives.iter().map(|p| p.skill_id).collect();
+        let primary_equip_uid = self
+            .equips
+            .first()
+            .map(|equip| equip.uid)
+            .unwrap_or_default();
         let equips = self
-            .equip
-            .as_ref()
+            .equips
+            .iter()
             .map(|equip| EquipRecord {
                 equip_uid: Some(equip.uid),
                 equip_id: Some(equip.equip_id),
                 equip_lv: Some(equip.level),
                 refine_lv: Some(equip.refine_lv),
             })
-            .into_iter()
             .collect();
 
         FightEntityInfo {
@@ -79,7 +79,7 @@ impl EntityBuilder {
             shield_value: Some(0),
             expoint_max_add: Some(0),
             buff_harm_statistic: Some(0),
-            equip_uid: Some(r.default_equip_uid),
+            equip_uid: Some(primary_equip_uid),
             trial_equip: Some(EquipRecord::default()),
             ex_skill_level: Some(r.ex_skill_level),
             power_infos: Self::hero_power_infos(r.hero_id),
