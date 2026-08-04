@@ -109,6 +109,15 @@ impl std::ops::Add for Stats {
 }
 
 impl Stats {
+    pub fn build_for_hero(hero: &HeroData, equips: &[Equipment]) -> Self {
+        let base = StatInputs::from_hero_data(hero, None);
+        let core_base = level_base(base.hero_id, base.level) + rank_bonus(base.hero_id, base.rank);
+        equips.iter().fold(Self::build(&base), |stats, equip| {
+            let input = StatInputs::from_hero_data(hero, Some(equip));
+            stats + equip_bonus(&input) + equip_break_bonus(&input, core_base)
+        })
+    }
+
     pub fn build(input: &StatInputs) -> Self {
         let level = level_base(input.hero_id, input.level);
         let rank = rank_bonus(input.hero_id, input.rank);
