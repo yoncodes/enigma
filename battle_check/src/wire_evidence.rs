@@ -36,30 +36,46 @@ pub(crate) struct Evidence {
 }
 
 impl Evidence {
-    pub(crate) fn collect(db: &GameDB) -> Self {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../battle_preview/fixtures/battles");
+    pub(crate) fn collect(db: &GameDB, capture_roots: &[PathBuf]) -> Self {
+        let default_root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../battle_preview/fixtures/battles");
+        let roots = if capture_roots.is_empty() {
+            std::slice::from_ref(&default_root)
+        } else {
+            capture_roots
+        };
         let mut evidence = Self::default();
-        for path in response_files(&root) {
-            if path.parent().and_then(fight_version) != Some(7) {
-                continue;
+        for root in roots {
+            for path in response_files(root) {
+                let Some(battle_dir) = path.parent() else {
+                    continue;
+                };
+                let (episode_id, battle_id) = match fight_identity(battle_dir) {
+                    Ok(Some((7, episode_id, battle_id))) => (episode_id, battle_id),
+                    Ok(_) => continue,
+                    Err(()) => {
+                        eprintln!(
+                            "WARN skipping capture directory with multiple fight identities: {}",
+                            battle_dir.display()
+                        );
+                        continue;
+                    }
+                };
+                let Ok(contents) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                let Ok(mut value) = serde_json::from_str(&contents) else {
+                    continue;
+                };
+                if battle_preview::expand_compressed_fight_steps(&mut value).is_err() {
+                    continue;
+                }
+                evidence.inspect(
+                    &value,
+                    db,
+                    &format!("episode {episode_id} / battle {battle_id}"),
+                );
             }
-            let Some(source) = path
-                .parent()
-                .and_then(Path::file_name)
-                .and_then(|name| name.to_str())
-            else {
-                continue;
-            };
-            let Ok(contents) = fs::read_to_string(&path) else {
-                continue;
-            };
-            let Ok(mut value) = serde_json::from_str(&contents) else {
-                continue;
-            };
-            if battle_preview::expand_compressed_fight_steps(&mut value).is_err() {
-                continue;
-            }
-            evidence.inspect(&value, db, source);
         }
         evidence
     }
@@ -193,19 +209,42 @@ impl Evidence {
     }
 }
 
-fn fight_version(battle_dir: &Path) -> Option<i32> {
-    let path = ["StartDungeonReply.json", "StartTowerBattleReply.json"]
-        .into_iter()
-        .map(|name| battle_dir.join(name))
-        .find(|path| path.exists())?;
-    let value: Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
-    value
-        .get("startDungeonReply")
-        .unwrap_or(&value)
-        .get("fight")?
-        .get("version")?
-        .as_i64()
-        .and_then(|version| i32::try_from(version).ok())
+fn fight_identity(battle_dir: &Path) -> Result<Option<(i32, i64, i64)>, ()> {
+    let identities = fs::read_dir(battle_dir)
+        .map_err(|_| ())?
+        .flatten()
+        .filter(|entry| {
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            name.contains("start") && name.contains("reply") && name.ends_with(".json")
+        })
+        .filter_map(|entry| {
+            let value: Value =
+                serde_json::from_str(&fs::read_to_string(entry.path()).ok()?).ok()?;
+            let fight = find_fight(&value)?;
+            Some((
+                i32::try_from(fight.get("version")?.as_i64()?).ok()?,
+                fight.get("episodeId")?.as_i64()?,
+                fight.get("battleId")?.as_i64()?,
+            ))
+        })
+        .collect::<BTreeSet<_>>();
+    match identities.len() {
+        0 => Ok(None),
+        1 => Ok(identities.into_iter().next()),
+        _ => Err(()),
+    }
+}
+
+fn find_fight(value: &Value) -> Option<&serde_json::Map<String, Value>> {
+    match value {
+        Value::Object(object) => object
+            .get("fight")
+            .and_then(Value::as_object)
+            .filter(|fight| fight.contains_key("version"))
+            .or_else(|| object.values().find_map(find_fight)),
+        Value::Array(values) => values.iter().find_map(find_fight),
+        _ => None,
+    }
 }
 
 fn effect_phase(effect: &Value) -> Option<WirePhase> {
@@ -226,26 +265,32 @@ fn phase_id(phase: WirePhase) -> u8 {
 
 fn response_files(root: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    let Ok(battles) = fs::read_dir(root) else {
-        return files;
-    };
-    for battle in battles.flatten() {
-        let Ok(entries) = fs::read_dir(battle.path()) else {
+    let mut directories = vec![root.to_owned()];
+    while let Some(directory) = directories.pop() {
+        let Ok(entries) = fs::read_dir(directory) else {
             continue;
         };
-        files.extend(entries.flatten().filter_map(|entry| {
+        for entry in entries.flatten() {
             let path = entry.path();
-            let name = path.file_name()?.to_str()?.to_ascii_lowercase();
-            (path
+            if path.is_dir() {
+                directories.push(path);
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let name = name.to_ascii_lowercase();
+            if path
                 .extension()
                 .is_some_and(|extension| extension == "json")
                 && !name.contains("request")
-                && (name.contains("startdungeonreply")
-                    || name.contains("starttowerbattlereply")
+                && ((name.contains("start") && name.contains("reply"))
                     || name.contains("beginroundreply")
-                    || name.starts_with("begin_round_")))
-            .then_some(path)
-        }));
+                    || name.starts_with("begin_round_"))
+            {
+                files.push(path);
+            }
+        }
     }
     files
 }
@@ -255,21 +300,84 @@ mod format_tests {
     use super::*;
 
     #[test]
-    fn tower_wrapper_supplies_the_embedded_fight_version() {
+    fn nested_wrapper_supplies_the_embedded_fight_identity() {
         let root =
             std::env::temp_dir().join(format!("enigma-wire-evidence-{}", std::process::id()));
         let path = root.join("tower");
         fs::create_dir_all(&path).unwrap();
         fs::write(
             path.join("StartTowerBattleReply.json"),
-            r#"{"startDungeonReply":{"fight":{"version":7}}}"#,
+            r#"{"startDungeonReply":{"fight":{"version":7,"episodeId":10,"battleId":20}}}"#,
         )
         .unwrap();
 
-        assert_eq!(fight_version(&path), Some(7));
+        assert_eq!(fight_identity(&path), Ok(Some((7, 10, 20))));
         assert_eq!(
             response_files(&root),
             vec![path.join("StartTowerBattleReply.json")]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_ambiguous_capture_directories() {
+        let root = std::env::temp_dir().join(format!(
+            "enigma-wire-evidence-ambiguous-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        for (name, episode_id) in [
+            ("StartDungeonReply.json", 10),
+            ("StartDungeonReply_2.json", 11),
+        ] {
+            fs::write(
+                root.join(name),
+                format!(r#"{{"fight":{{"version":7,"episodeId":{episode_id},"battleId":20}}}}"#),
+            )
+            .unwrap();
+        }
+
+        assert_eq!(fight_identity(&root), Err(()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn only_version_seven_contributes_wire_evidence() {
+        crate::init_config().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "enigma-wire-evidence-version-{}",
+            std::process::id()
+        ));
+        let battle = root.join("battle");
+        fs::create_dir_all(&battle).unwrap();
+        let start = battle.join("StartDungeonReply.json");
+        fs::write(
+            battle.join("BeginRoundReply.json"),
+            r#"{"fightStep":[{"actEffect":[{"effectType":5,"buff":{"buffId":31340003}},{"effectType":0}]}]}"#,
+        )
+        .unwrap();
+        let write_start = |version| {
+            fs::write(
+                &start,
+                format!(r#"{{"fight":{{"version":{version},"episodeId":10,"battleId":20}}}}"#),
+            )
+            .unwrap();
+        };
+
+        write_start(6);
+        let evidence = Evidence::collect(config::configs::get(), std::slice::from_ref(&root));
+        assert!(
+            evidence
+                .source(1052, "HeatScaleTag", WirePhase::Add, 0)
+                .is_none()
+        );
+
+        write_start(7);
+        let evidence = Evidence::collect(config::configs::get(), std::slice::from_ref(&root));
+        assert!(
+            evidence
+                .source(1052, "HeatScaleTag", WirePhase::Add, 0)
+                .is_some()
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -283,21 +391,17 @@ mod tests {
     #[test]
     fn derives_marker_evidence_from_captures() {
         crate::init_config().unwrap();
-        let evidence = Evidence::collect(config::configs::get());
+        let evidence = Evidence::collect(config::configs::get(), &[]);
 
-        assert!(
-            evidence
-                .source(
-                    1048,
-                    "Radiance",
-                    WirePhase::Add,
-                    EffectType::Radiance as i32,
-                )
-                .is_none_or(|sources| !sources.split(',').any(|source| source == "battle6"))
-        );
         let fixtures =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../battle_preview/fixtures/battles");
-        assert_eq!(fight_version(&fixtures.join("battle75")), Some(7));
+        assert_eq!(
+            fight_identity(&fixtures.join("battle75"))
+                .ok()
+                .flatten()
+                .map(|identity| identity.0),
+            Some(7)
+        );
         assert!(
             evidence
                 .source(
@@ -312,9 +416,10 @@ mod tests {
             (WirePhase::Add, EffectType::Redorbluecount as i32),
             (WirePhase::Refresh, EffectType::Redorbluecountchange as i32),
         ] {
-            assert_eq!(
-                evidence.source(897, "RedOrBlueCount", phase, effect_type),
-                Some("battle75".to_owned())
+            assert!(
+                evidence
+                    .source(897, "RedOrBlueCount", phase, effect_type)
+                    .is_some()
             );
         }
     }

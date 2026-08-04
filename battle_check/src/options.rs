@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::{Context, Result, bail};
 
 #[derive(Debug, Default)]
@@ -12,6 +14,7 @@ pub(crate) struct Options {
     pub(crate) include_plan: bool,
     pub(crate) simulate_opening: bool,
     pub(crate) explain: bool,
+    pub(crate) capture_roots: Vec<PathBuf>,
 }
 
 pub(crate) fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Options> {
@@ -25,6 +28,7 @@ pub(crate) fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Optio
                      battle_check --episode ID --simulate-opening\n\
                      battle_check --coverage-plan [--hero ID]...\n\
                      battle_check --include-plan [--hero ID]...\n\
+                     [--capture-root PATH]...\n\
                      [--psychube ID --psychube-level LEVEL]\n\
                      [--destiny-stone ID --destiny-rank RANK]\n\
                      Hero upgrades are checked at maximum rank; selected equipment uses the requested level."
@@ -45,6 +49,20 @@ pub(crate) fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Optio
             }
             "--simulate-opening" => {
                 options.simulate_opening = true;
+                continue;
+            }
+            "--capture-root" => {
+                let path = PathBuf::from(
+                    args.next()
+                        .with_context(|| format!("missing value for {arg}"))?,
+                );
+                if !path.is_dir() {
+                    bail!(
+                        "capture root is not a readable directory: {}",
+                        path.display()
+                    );
+                }
+                options.capture_roots.push(path);
                 continue;
             }
             "--hero" | "--episode" | "--psychube" | "--psychube-level" | "--destiny-stone"
@@ -138,6 +156,36 @@ mod tests {
         assert_eq!(options.destiny_stone, Some(308601));
         assert_eq!(options.destiny_rank, Some(3));
         assert!(options.explain);
+    }
+
+    #[test]
+    fn parses_capture_roots_without_treating_them_as_numeric_values() {
+        let root = std::env::temp_dir().join(format!(
+            "enigma-battle-check-options-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let options = parse_args(
+            ["--hero", "3127", "--capture-root", root.to_str().unwrap()]
+                .into_iter()
+                .map(str::to_owned),
+        )
+        .unwrap();
+
+        assert_eq!(options.capture_roots, vec![root.clone()]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_missing_capture_root() {
+        let error = parse_args(
+            ["--hero", "3127", "--capture-root", "missing-capture-root"]
+                .into_iter()
+                .map(str::to_owned),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("not a readable directory"));
     }
 
     #[test]

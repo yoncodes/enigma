@@ -52,6 +52,7 @@ pub(crate) fn print_coverage_plan(
     catalog: &mut SkillEffectCatalog,
     focus_heroes: &[i32],
     domain_filter: Option<&str>,
+    capture_roots: &[std::path::PathBuf],
 ) -> Result<()> {
     let mut gaps = BTreeMap::<CapabilityKey, BTreeSet<&'static str>>::new();
     let mut gap_paths = BTreeMap::<CapabilityKey, BTreeSet<String>>::new();
@@ -59,7 +60,7 @@ pub(crate) fn print_coverage_plan(
     let mut uses = BTreeMap::<Witness, BTreeSet<CapabilityKey>>::new();
     let mut hero_readiness = Vec::new();
     let options = Options::default();
-    let wire_evidence = crate::wire_evidence::Evidence::collect(db);
+    let wire_evidence = crate::wire_evidence::Evidence::collect(db, capture_roots);
 
     if domain_filter == Some("buff-include") {
         for buff in db.skill_buff.iter() {
