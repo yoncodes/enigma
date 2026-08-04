@@ -558,25 +558,38 @@ pub fn burn_or_halo_gain(
     })
 }
 
+pub fn lingering_glow_gain_modifier(features: &[ActiveBuffFeature], team: i32) -> i32 {
+    features
+        .iter()
+        .filter(|feature| feature.team_type == team && feature.owner_alive)
+        .filter_map(|feature| {
+            is_kind(feature, BuffActKind::HeatScaleAddFix)
+                .then(|| feature.values.get(1).copied())
+                .flatten()
+        })
+        .fold(0, i32::saturating_add)
+}
+
 fn heat_scale_gain_modifier(
     features: &[ActiveBuffFeature],
     source_team: i32,
     trigger: &ActiveBuffFeature,
 ) -> i32 {
     let trigger_is_burn = is_kind(trigger, BuffActKind::Burn);
-    features
-        .iter()
-        .filter(|feature| feature.team_type == source_team && feature.owner_alive)
-        .filter_map(
-            |feature| match crate::engine::skill::buff_act::feature_kind(feature) {
-                Some(BuffActKind::HeatScaleAddFix) => feature.values.get(1).copied(),
-                Some(BuffActKind::HeatScaleBurnAddFix) if trigger_is_burn => {
-                    feature.values.get(1).copied()
-                }
-                _ => None,
-            },
-        )
-        .fold(0, i32::saturating_add)
+    lingering_glow_gain_modifier(features, source_team).saturating_add(
+        features
+            .iter()
+            .filter(|feature| feature.team_type == source_team && feature.owner_alive)
+            .filter_map(
+                |feature| match crate::engine::skill::buff_act::feature_kind(feature) {
+                    Some(BuffActKind::HeatScaleBurnAddFix) if trigger_is_burn => {
+                        feature.values.get(1).copied()
+                    }
+                    _ => None,
+                },
+            )
+            .fold(0, i32::saturating_add),
+    )
 }
 
 fn linked_heat_scale_amount(

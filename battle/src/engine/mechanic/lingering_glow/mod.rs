@@ -244,8 +244,6 @@ pub fn burn_or_halo_rule_op(
         source_team,
         target_uid,
         buff_uid,
-        alive_enemy_index,
-        alive_enemy_count,
         ..
     } = added;
     let key = key(source_team);
@@ -254,19 +252,15 @@ pub fn burn_or_halo_rule_op(
         .iter()
         .find(|feature| feature.owner_uid == target_uid && feature.buff_uid == buff_uid)?;
     let gain = heat_scale::burn_or_halo_gain(features, added)?;
-    let value_delta = gauges
-        .plan_raw_contributions(key, &vec![gain.raw_amount; alive_enemy_count])?
-        .get(alive_enemy_index)
-        .copied()?;
     Some(LingeringGlowInput {
         raw_delta: gain.raw_amount,
         output: RuleOp::Command(BattleCommand::Gauge(
             GaugeCommand::new(
                 buff_act::feature_command_origin(trigger)?,
                 key,
-                GaugeOperation::ApplyRawContribution {
-                    raw_amount: gain.raw_amount,
-                    value_delta,
+                GaugeOperation::AccumulateRawValue {
+                    amount: gain.raw_amount,
+                    stream: trigger.act_id()?,
                 },
             )
             .attributed_to(
@@ -279,9 +273,33 @@ pub fn burn_or_halo_rule_op(
 }
 
 pub fn value_change_rule_ops(
-    _managers: &crate::engine::manager::BattleManagers,
-    command: GaugeCommand,
+    managers: &crate::engine::manager::BattleManagers,
+    mut command: GaugeCommand,
 ) -> Vec<RuleOp> {
+    if let GaugeOperation::ChangeValue { delta } = command.operation
+        && delta > 0
+        && let Some(raw_delta) = command.raw_delta
+    {
+        let GaugeOwner::Team(team) = command.key.owner else {
+            return Vec::new();
+        };
+        let modifier = heat_scale::lingering_glow_gain_modifier(
+            &managers.buff.active_features(&managers.hp),
+            team,
+        );
+        let adjusted_raw = (i64::from(raw_delta)
+            * i64::from(1_000_i32.saturating_add(modifier.max(-1_000)))
+            / 1_000)
+            .clamp(0, i64::from(i32::MAX)) as i32;
+        command.operation = GaugeOperation::AccumulateRawValue {
+            amount: adjusted_raw,
+            stream: command.origin.key.opcode.max(1),
+        };
+        command.raw_delta = Some(adjusted_raw);
+        if command.progress_raw_delta.is_some() {
+            command.progress_raw_delta = Some(adjusted_raw);
+        }
+    }
     vec![RuleOp::Command(BattleCommand::Gauge(command))]
 }
 
