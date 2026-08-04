@@ -116,6 +116,22 @@ fn static_buff_id_conditions_keep_their_exact_dependencies() {
 }
 
 #[test]
+fn regeneration_period_presence_gate_filters_the_source() {
+    let definition = find_key(19012, "HasBuffId").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(
+        parse(19012, "HasBuffId", &["11410091".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Present,
+            buff_ids: vec![11410091],
+        })
+    );
+}
+
+#[test]
 fn riposte_buff_gate_is_an_exact_predicate() {
     let definition = find_key(19205, "HasBuffId").unwrap();
 

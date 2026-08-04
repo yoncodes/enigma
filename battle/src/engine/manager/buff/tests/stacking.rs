@@ -284,29 +284,36 @@ fn include_type_five_uses_one_permanent_mechanic_carrier() {
 }
 
 #[test]
-fn unresolved_shared_type_family_does_not_infer_cross_id_replacement() {
+fn shared_type_family_replaces_the_resident_variant() {
     init_config();
     let hp = HpManager::default();
     let mut manager = BuffManager::default();
 
-    let first = manager.add_replacing_excluded(&hp, 10, 10, 30880145, 0);
-    first.added.expect("first family member");
-    let second = manager.add_replacing_excluded(&hp, 10, 10, 30880141, 0);
+    let first = manager.add_replacing_excluded(&hp, 10, 10, 400401, 0);
+    let first_uid = first.added.expect("rank-one family member").buff.uid;
+    let second = manager.add_replacing_excluded(&hp, 10, 10, 400403, 0);
+    let second_uid = second
+        .added
+        .as_ref()
+        .expect("rank-two family member")
+        .buff
+        .uid;
 
-    assert_eq!(
-        BuffPolicy::for_buff_id(30880141)
-            .unwrap()
-            .unresolved_include_entries
-            .as_ref(),
-        &[(6, 0)]
-    );
-    assert!(second.removed.is_empty());
+    let policy = BuffPolicy::for_buff_id(400403).unwrap();
+    assert!(policy.unresolved_include_entries.is_empty());
+    assert_eq!(policy.storage, BuffStorage::Single);
+    assert_eq!(policy.match_existing, ExistingBuffMatch::SharedTypeFamily);
+    assert_eq!(policy.on_duplicate, DuplicateGrant::ReplaceExisting);
+    assert_eq!(second.removed.len(), 1);
+    assert_eq!(second.removed[0].buff.buff_id, Some(400401));
+    assert_eq!(second.removed[0].buff.uid, first_uid);
+    assert_ne!(second_uid, first_uid);
     assert_eq!(
         manager
             .active_for(10)
             .filter_map(|buff| buff.buff_id)
             .collect::<Vec<_>>(),
-        vec![30880145, 30880141]
+        vec![400403]
     );
 }
 
