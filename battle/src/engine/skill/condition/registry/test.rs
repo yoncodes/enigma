@@ -2213,6 +2213,21 @@ fn player_buff_gate_keeps_team_presence_and_exact_buff_identity() {
 }
 
 #[test]
+fn hopscotch_kill_count_uses_the_captured_after_hit_route() {
+    assert_eq!(
+        parse(992101, "PerKillNum", &["1".into()]),
+        Some(ParsedConditionKind::PerKillCount { divisor: 1 })
+    );
+    assert_eq!(
+        find_key(992101, "PerKillNum").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterHit),
+        })
+    );
+}
+
+#[test]
 fn hand_skill_presence_keeps_exact_card_identity_and_round_timing() {
     assert_eq!(
         parse(710301, "PerHandCardHasSkillId", &["118353040".into()],),

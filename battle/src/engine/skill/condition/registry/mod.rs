@@ -538,6 +538,7 @@ condition_definitions! {
     [86] "EnemyDead" => entity_count::enemy_dead, event_trigger(EventKind::EntityDied, None);
     [11210] "SingleKillNum" => entity_count::single_kill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [99210] "PerKillNum" => entity_count::per_kill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
+    [992101] "PerKillNum" => entity_count::per_kill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [8] "Dead" => lifecycle::entity_dead, event_trigger(EventKind::EntityDied, None);
     [812] "Dead" => lifecycle::entity_dead, reaction_targets_owner(event_trigger(EventKind::EntityDied, None));
     [24102] "TeammateAlive" => entity_count::teammate_alive, event_trigger(EventKind::RoundStart, None);
