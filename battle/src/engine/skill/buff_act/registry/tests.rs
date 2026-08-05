@@ -685,6 +685,12 @@ fn absolute_missing_hp_attributes_keep_their_exact_static_routes() {
 }
 
 #[test]
+fn advanced_cure_owns_its_exact_hit_duration_advance() {
+    assert!(owns_duration(849, "AdvancedCure"));
+    assert!(!owns_duration(201, "Cure"));
+}
+
+#[test]
 fn incapacitating_control_buffs_keep_distinct_exact_routes() {
     let dizzy = find(401, "Dizzy").unwrap();
     assert_eq!(dizzy.kind, BuffActKind::Dizzy);

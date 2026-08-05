@@ -621,6 +621,71 @@ fn configured_special_temp_card_runs_during_the_opening_round_start_card_event()
 }
 
 #[test]
+fn opening_keeps_new_one_round_buffs_until_their_configured_duration_stage() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                passive_skill: vec![109360023],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    run_start(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        0,
+    )
+    .unwrap();
+
+    let buff = managers
+        .buff
+        .active_for(-1)
+        .find(|buff| buff.buff_id == Some(109320106))
+        .cloned()
+        .expect("configured one-round buff remains after opening");
+    assert_eq!(buff.duration, Some(1));
+
+    let expired = managers.buff.advance_durations_for_snapshot(
+        crate::engine::skill::buff_act::effect_time::ROUND_START_DURATION,
+        &[-1],
+        &[buff.uid.unwrap()],
+    );
+    assert_eq!(expired.len(), 1);
+    assert!(!managers.buff.has_buff_id(-1, 109320106));
+}
+
+#[test]
 fn configured_conduit_is_initialized_before_battle_start_rules() {
     init_config();
     let fight = Fight {

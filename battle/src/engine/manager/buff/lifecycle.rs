@@ -376,24 +376,6 @@ impl BuffManager {
         }
     }
 
-    pub(crate) fn plan_round_start_cleanup(&self) -> Vec<BuffLifecyclePlan> {
-        self.buffs
-            .iter()
-            .filter_map(|active| {
-                let should_remove = active.definition.as_ref().is_some_and(|definition| {
-                    definition.cleans_up_at_round_start()
-                        && active.buff.count.unwrap_or_default() == 0
-                        && active.buff.layer.unwrap_or_default() <= 1
-                });
-                let buff_uid = active.buff.uid?;
-                should_remove.then_some(BuffLifecyclePlan {
-                    target_uid: active.owner_uid,
-                    buff_uid,
-                })
-            })
-            .collect()
-    }
-
     fn seed_team(&mut self, team: &FightTeam, fallback_team_type: i32) {
         for entity in &team.entitys {
             self.seed_entity(entity, fallback_team_type, true);

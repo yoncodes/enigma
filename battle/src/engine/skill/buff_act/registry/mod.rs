@@ -340,6 +340,7 @@ pub struct BuffActRuntimeDefinition {
     pub execution_timing: RuntimeExecutionTiming,
     pub event_multiplicity: RuntimeEventMultiplicity,
     pub reserves_trigger_child_uid: bool,
+    pub owns_duration: bool,
     pub marker: Option<RuntimeMarker>,
     pub handler: Option<RuntimeHandler>,
     pub scoped_handler: Option<ScopedRuntimeHandler>,
@@ -447,6 +448,7 @@ macro_rules! buff_act_definitions {
             $(, timing: $timing:ident)?
             $(, multiplicity: $multiplicity:ident)?
             $(, trigger_child_uid: $trigger_child_uid:expr)?
+            $(, owns_duration: $owns_duration:expr)?
             $(, stat_read: $stat_read:ident)?
             $(, runtime_marker: $marker_position:ident($marker_target:ident $(, $marker_effect_type:expr)?))?
             $(, runtime: $runtime:expr)?
@@ -479,6 +481,7 @@ macro_rules! buff_act_definitions {
                     execution_timing: buff_act_definitions!(@timing $($timing)?),
                     event_multiplicity: buff_act_definitions!(@multiplicity $($multiplicity)?),
                     reserves_trigger_child_uid: buff_act_definitions!(@trigger_child_uid $($trigger_child_uid)?),
+                    owns_duration: buff_act_definitions!(@owns_duration $($owns_duration)?),
                     marker: buff_act_definitions!(@runtime_marker $($marker_position($marker_target $(, $marker_effect_type)?))?),
                     handler: buff_act_definitions!(@runtime $($runtime)?),
                     scoped_handler: buff_act_definitions!(@scoped_runtime $($scoped_runtime)?),
@@ -531,6 +534,8 @@ macro_rules! buff_act_definitions {
     (@multiplicity) => { RuntimeEventMultiplicity::EveryEvent };
     (@trigger_child_uid $value:expr) => { $value };
     (@trigger_child_uid) => { false };
+    (@owns_duration $value:expr) => { $value };
+    (@owns_duration) => { false };
     (@stat_read $value:ident) => { StatReadTiming::$value };
     (@stat_read) => { StatReadTiming::None };
     (@runtime_marker $position:ident($target:ident $(, $effect_type:expr)?)) => {
@@ -583,6 +588,7 @@ buff_act_definitions! {
         runtime: |context| super::revive::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::revive::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(512, "Cure"), &[EffectType::Cure as i32]));
     (849, "AdvancedCure") => AdvancedCure, events: [EventKind::BeAttacked],
+        owns_duration: true,
         runtime_marker: BeforeChanges(Owner),
         runtime: |context| super::cure::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |args| super::cure::supports(BuffActKind::AdvancedCure, args), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(849, "AdvancedCure"), &[EffectType::None as i32]));
@@ -1204,6 +1210,10 @@ pub fn kind(opcode: i32, type_name: &str) -> Option<BuffActKind> {
 pub fn reserves_trigger_child_uid(key: DefinitionKey) -> bool {
     find(key.opcode, key.type_name)
         .is_some_and(|definition| definition.runtime.reserves_trigger_child_uid)
+}
+
+pub fn owns_duration(opcode: i32, type_name: &str) -> bool {
+    find(opcode, type_name).is_some_and(|definition| definition.runtime.owns_duration)
 }
 
 pub fn runtime_marker(key: DefinitionKey) -> Option<RuntimeMarker> {
