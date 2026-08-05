@@ -547,6 +547,7 @@ behavior_definitions! {
     [60117] "SelfRandomCopyBuffs" => super::buff::Handler, SelfRandomCopyBuffs, Immediate, destination, super::buff::supports_status_copy;
     [60241] "BuffSortByHp" => super::buff::Handler, BuffSortByHp, Immediate, destination, arguments::at_least_one;
     [60248] "BuffSpread" => super::buff::Handler, BuffSpread, AfterDamage, destination, arguments::exactly_two;
+    [60022] "BuffCountMulti" => super::buff::Handler, BuffCountMulti, AfterDamage, destination, super::buff::supports_count_multiplier;
     [50032] "ReplaceBuff" => super::buff::Handler, ReplaceBuff, Immediate, destination, arguments::exactly_four;
     [60176] "ReplaceBuff2" => super::buff::Handler, ReplaceBuff2, Immediate, destination;
     [50035] "AddBuffBasedOnEnemyBurnUseCount" => super::buff::Handler, AddBuffBasedOnEnemyBurnUseCount, Immediate, destination, arguments::exactly_two;
