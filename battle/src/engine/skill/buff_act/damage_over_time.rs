@@ -101,6 +101,19 @@ pub fn damage_rule_ops(
     ops
 }
 
+pub fn layered_damage_rule_ops(
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    determinism: &mut RoundDeterminism,
+    subscriber: &BuffActSubscriber,
+) -> Vec<RuleOp> {
+    let mut layer = subscriber.clone();
+    layer.amount = 1;
+    (0..subscriber.amount.max(1))
+        .flat_map(|_| damage_rule_ops(managers, pool, determinism, &layer))
+        .collect()
+}
+
 pub(crate) fn detonation_rule_op(
     managers: &BattleManagers,
     pool: &TargetPool,
@@ -448,6 +461,70 @@ mod tests {
                 RuleOp::Command(BattleCommand::Hp(_))
             ] if *effect_type == EffectType::Dot as i32
         ));
+    }
+
+    #[test]
+    fn layered_dot_emits_one_current_hp_settlement_per_stack() {
+        let fight = Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(8_833),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(8_833),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let subscriber = BuffActSubscriber {
+            owner_uid: -1,
+            source_uid: -1,
+            buff_uid: 1_049,
+            buff_id: 6_280_511,
+            team_type: 2,
+            owner_alive: true,
+            amount: 3,
+            key: SubscriptionKey::new(
+                EventKind::RoundStart,
+                crate::engine::skill::rule::DefinitionKey::new(213, "Dot"),
+            ),
+            act_type: "Dot".to_owned(),
+            effect_time: 101,
+            effect_condition: 0,
+            args: vec![1, AttrId::CurrentHp.id(), 30],
+            raw: "213#1#100#30".to_owned(),
+        };
+
+        let ops = layered_damage_rule_ops(
+            &managers,
+            &pool,
+            &mut RoundDeterminism::default(),
+            &subscriber,
+        );
+
+        assert_eq!(ops.len(), 6);
+        for pair in ops.chunks_exact(2) {
+            assert!(matches!(
+                pair,
+                [
+                    RuleOp::BuffFeatureMarker {
+                        effect_type,
+                        buff_act_id: 213,
+                        ..
+                    },
+                    RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(HpLoss {
+                        amount: 264,
+                        ..
+                    })))
+                ] if *effect_type == EffectType::Dot as i32
+            ));
+        }
     }
 
     #[test]
