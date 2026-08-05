@@ -674,7 +674,18 @@ pub fn run_start(
             push_cue(&mut result.frames, RoundCue::EnterFightDeal);
             opening_deck_counts = Some((initial_deck_num, managers.card.deck_num()));
         }
-        let stage_result = if stage == SetupStage::RoundStart && priority == 2 {
+        let stage_result = if stage == SetupStage::RoundStartCondition {
+            drain::run_setup_stage_for_owners(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                stage,
+                priority,
+                &owner_uids,
+            )?
+        } else if stage == SetupStage::RoundStart && priority == 2 {
             drain::run_buff_act_setup_stage_for_owners(
                 managers,
                 pool,
