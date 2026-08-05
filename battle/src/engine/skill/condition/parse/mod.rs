@@ -514,8 +514,14 @@ pub(super) fn hurt_restrained(_: i32, _: &str, raw_args: &[String]) -> Option<Pa
         .then_some(ParsedConditionKind::HurtRestrained)
 }
 
-pub(super) fn hurt_not_restrained(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind> {
-    Some(ParsedConditionKind::HurtNotRestrained)
+pub(super) fn hurt_not_restrained(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    raw_args
+        .is_empty()
+        .then_some(ParsedConditionKind::HurtNotRestrained)
 }
 
 fn negate_kind(kind: ParsedConditionKind) -> ParsedConditionKind {

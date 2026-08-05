@@ -1170,6 +1170,19 @@ fn incoming_attack_modifier_conditions_keep_their_exact_side() {
 }
 
 #[test]
+fn attacked_afflatus_conditions_keep_their_exact_event_route() {
+    for (opcode, type_name) in [(33209, "HurtRestraint"), (47209, "HurtNotRestraint")] {
+        let definition = find_key(opcode, type_name).unwrap();
+        assert_eq!(definition.role, ConditionRole::Predicate);
+        assert_eq!(definition.dependencies, &[EventKind::TargetAttacked]);
+        assert_eq!(definition.attack_modifier_side, None);
+    }
+
+    assert!(find_key(33209, "HurtNotRestraint").is_none());
+    assert!(find_key(47209, "HurtRestraint").is_none());
+}
+
+#[test]
 fn restrained_ultimate_conditions_keep_their_exact_action_roles() {
     let ultimate = find_key(25204, "UseExSkill").unwrap();
     assert_eq!(
