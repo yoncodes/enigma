@@ -250,6 +250,7 @@ pub enum ParsedConditionKind {
     ActiveSkillType(i32),
     ActiveSkillEffectTag(Vec<i32>),
     DamageTargetCountKind(i32),
+    SourceDamageType(crate::engine::skill::target::EntityDamageType),
     AttackerDamageType(crate::engine::skill::target::EntityDamageType),
     AttackCrit,
     BeforeCrit,
@@ -460,6 +461,22 @@ pub(super) fn damage_target_count_kind(
     Some(ParsedConditionKind::DamageTargetCountKind(first_i32(
         raw_args,
     )?))
+}
+
+pub(super) fn hero_reality(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    raw_args
+        .is_empty()
+        .then_some(ParsedConditionKind::SourceDamageType(
+            crate::engine::skill::target::EntityDamageType::Reality,
+        ))
+}
+
+pub(super) fn hero_mental(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    raw_args
+        .is_empty()
+        .then_some(ParsedConditionKind::SourceDamageType(
+            crate::engine::skill::target::EntityDamageType::Mental,
+        ))
 }
 
 pub(super) fn reality_damage(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {

@@ -1059,6 +1059,34 @@ fn hurt_kind_opcodes_keep_exact_attacker_type_predicates() {
 }
 
 #[test]
+fn hero_damage_type_opcodes_keep_exact_battle_start_source_predicates() {
+    assert_eq!(
+        parse(36021, "HeroReal", &[]),
+        Some(ParsedConditionKind::SourceDamageType(
+            crate::engine::skill::target::EntityDamageType::Reality,
+        ))
+    );
+    assert_eq!(
+        parse(37021, "HeroMagic", &[]),
+        Some(ParsedConditionKind::SourceDamageType(
+            crate::engine::skill::target::EntityDamageType::Mental,
+        ))
+    );
+    for key in [
+        DefinitionKey::new(36021, "HeroReal"),
+        DefinitionKey::new(37021, "HeroMagic"),
+    ] {
+        assert!(matches!(
+            find_key(key.opcode, key.type_name).map(|definition| definition.role),
+            Some(ConditionRole::Setup {
+                stage: SetupStage::BattleStart,
+                priority: 0,
+            })
+        ));
+    }
+}
+
+#[test]
 fn other_ally_damage_type_condition_keeps_its_configured_cap() {
     assert_eq!(
         parse(
