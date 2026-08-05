@@ -217,7 +217,13 @@ fn buff_count_multiplier_runs_after_damage_for_every_action_target() {
     const ECHOES_OF_BYGONE_DAYS: i32 = 116_385_672;
     const SKILL_ID: i32 = 116_385_665;
 
-    let targets = [(10, 4, 1090), (11, 4, 1091), (12, 3, 1092), (13, 2, 1093)];
+    let targets = [
+        (10, 4, 1090),
+        (11, 4, 1091),
+        (12, 3, 1092),
+        (13, 2, 1093),
+        (14, 8, 1094),
+    ];
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: targets
@@ -317,21 +323,40 @@ fn buff_count_multiplier_runs_after_damage_for_every_action_target() {
         .collect::<Vec<_>>();
     assert_eq!(
         command_targets,
-        vec![10, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 13, 13]
+        vec![
+            10, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 13, 13, 14, 14, 14, 14, 14, 14, 14, 14,
+        ]
     );
 
+    let mut capped_refreshes = Vec::new();
+    let mut capped_noops = 0;
     for command in commands {
         let target_uid = match &command {
             BuffCommand::Accumulate(grant) => grant.target_uid,
             _ => unreachable!(),
         };
         let uid = managers.buff.buff_id_uid(target_uid, CHIRP_SIGNAL);
-        managers.execute_buff(command).unwrap();
+        let changes = managers.execute_buff(command).unwrap();
+        if target_uid == 14 {
+            if let Some(refresh) = changes.change.refreshed.first() {
+                capped_refreshes.push((
+                    refresh.before.layer.unwrap_or_default(),
+                    refresh.after.layer.unwrap_or_default(),
+                ));
+            } else {
+                capped_noops += 1;
+            }
+        }
         assert_eq!(managers.buff.buff_id_uid(target_uid, CHIRP_SIGNAL), uid);
     }
     for &(uid, layer, _) in &targets {
-        assert_eq!(managers.buff.buff_id_amount(uid, CHIRP_SIGNAL), layer * 2);
+        assert_eq!(
+            managers.buff.buff_id_amount(uid, CHIRP_SIGNAL),
+            (layer * 2).min(10)
+        );
     }
+    assert_eq!(capped_refreshes, vec![(8, 9), (9, 10)]);
+    assert_eq!(capped_noops, 6);
 }
 
 #[test]
