@@ -22,8 +22,7 @@ fn grant_plan(plan: &BuffPlan) -> &GrantPlan {
         | BuffPlanAction::ReserveChildUids(_)
         | BuffPlanAction::ReserveGrantUid(_)
         | BuffPlanAction::AdvanceDuration(_)
-        | BuffPlanAction::SyncRoundStartDuration(_)
-        | BuffPlanAction::CleanupRoundStart(_) => {
+        | BuffPlanAction::SyncRoundStartDuration(_) => {
             panic!("expected grant plan")
         }
     }

@@ -743,10 +743,6 @@ impl BuffDefinition {
         !self.uses_stack_layer() && !self.uses_typed_count()
     }
 
-    pub(super) fn cleans_up_at_round_start(&self) -> bool {
-        self.duration == 1 && !self.has_features && self.count == 0 && self.replaces_existing_copy()
-    }
-
     fn has_attr_feature(&self, attr_id: AttrId) -> bool {
         self.features.iter().any(|feature| {
             feature.kind == Some(BuffActKind::Attr)

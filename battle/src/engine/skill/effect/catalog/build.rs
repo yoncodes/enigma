@@ -438,6 +438,31 @@ impl SkillEffectCatalog {
             let Some(buff) = db.skill_buff.get(buff_id) else {
                 continue;
             };
+            let handler_owns_duration = buff.features.split('|').any(|raw| {
+                let Some(act_id) = crate::engine::entity::skill::split_ids(raw)
+                    .first()
+                    .copied()
+                else {
+                    return false;
+                };
+                db.buff_act.get(act_id).is_some_and(|act| {
+                    crate::engine::skill::buff_act::registry::owns_duration(act.id, &act.r#type)
+                })
+            });
+            if let Ok(policy) = crate::engine::manager::buff::BuffPolicy::try_for_buff_id(buff_id)
+                && policy.lifetime.duration > 0
+                && !handler_owns_duration
+                && !crate::engine::skill::buff_act::effect_time::has_duration_advance_route(
+                    policy.lifetime.take_stage,
+                )
+            {
+                tracing::warn!(
+                    buff_id,
+                    duration = policy.lifetime.duration,
+                    take_stage = policy.lifetime.take_stage,
+                    "unsupported buff duration stage in current battle"
+                );
+            }
             for raw in buff
                 .features
                 .split('|')

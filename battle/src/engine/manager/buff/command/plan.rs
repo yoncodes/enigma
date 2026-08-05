@@ -459,17 +459,6 @@ impl BuffManager {
                     ),
                 )
             }
-            BuffCommand::CleanupRoundStart(cleanup) => {
-                if cleanup.origin.domain != RuleDomain::Lifecycle
-                    || cleanup.origin.key != ROUND_START_CLEANUP_KEY
-                {
-                    return Err(BuffCommandError::InvalidLifecycle);
-                }
-                (
-                    cleanup.origin,
-                    BuffPlanAction::CleanupRoundStart(self.plan_round_start_cleanup()),
-                )
-            }
         };
         Ok(BuffPlan { origin, action })
     }

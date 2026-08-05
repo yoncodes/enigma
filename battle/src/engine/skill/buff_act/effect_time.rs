@@ -112,6 +112,17 @@ pub fn duration_stages_for_event(event: EventKind) -> impl Iterator<Item = i32> 
     })
 }
 
+pub fn has_duration_advance_route(take_stage: i32) -> bool {
+    let Some(definition) = find(take_stage) else {
+        return false;
+    };
+    take_stage == ROUND_START_DURATION
+        || take_stage == ROUND_END_ENTITY_SETTLEMENT
+        || ROUND_START_CARD_STAGES.contains(&take_stage)
+        || definition.duration_phase.is_some()
+        || definition.event == BuffActEvent::Runtime(EventKind::SmallRoundEnd)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -163,5 +174,15 @@ mod tests {
             duration_stages_for_event(EventKind::SmallRoundEnd).collect::<Vec<_>>(),
             vec![211, 301]
         );
+    }
+
+    #[test]
+    fn duration_support_requires_a_scheduled_advance_route() {
+        assert!(has_duration_advance_route(ROUND_START_DURATION));
+        assert!(has_duration_advance_route(210));
+        assert!(has_duration_advance_route(301));
+        assert!(has_duration_advance_route(ROUND_END_ENTITY_SETTLEMENT));
+        assert!(!has_duration_advance_route(209));
+        assert!(!has_duration_advance_route(205));
     }
 }

@@ -269,16 +269,6 @@ impl BuffManager {
                     ..Default::default()
                 },
             ),
-            BuffPlanAction::CleanupRoundStart(plans) => BuffChanges::new(
-                origin,
-                BuffReplaceResult {
-                    removed: plans
-                        .into_iter()
-                        .flat_map(|plan| self.delete(plan.target_uid, plan.buff_uid))
-                        .collect(),
-                    ..Default::default()
-                },
-            ),
         }
     }
 

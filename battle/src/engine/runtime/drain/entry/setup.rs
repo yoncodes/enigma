@@ -79,33 +79,6 @@ pub fn run_setup_stage_for_owners(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn run_setup_stage_with_prelude(
-    managers: &mut BattleManagers,
-
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    stage: SetupStage,
-    priority: i32,
-    prelude: impl IntoIterator<Item = (SetupSide, RuleOp)>,
-) -> Result<DrainResult, DrainError> {
-    run_setup_stage_filtered(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        stage,
-        priority,
-        prelude,
-        |_| Vec::new(),
-        None,
-        SetupFrameContainer::Standalone,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
 pub(super) fn run_setup_stage_filtered(
     managers: &mut BattleManagers,
     pool: &TargetPool,
