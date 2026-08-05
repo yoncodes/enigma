@@ -963,6 +963,20 @@ fn condition_kind_matches(
         ParsedConditionKind::HurtRestrained | ParsedConditionKind::HurtNotRestrained => {
             let (attacker_uid, defender_uid) =
                 if context.hit_source_uid != 0 && context.hit_target_uid != 0 {
+                    let observes_target_attacked = super::registry::find_key(
+                        condition.opcode,
+                        &condition.type_name,
+                    )
+                    .is_some_and(|definition| {
+                        definition
+                            .dependencies
+                            .contains(&crate::engine::event::kind::EventKind::TargetAttacked)
+                    });
+                    if observes_target_attacked
+                        && !condition_targets.contains(&context.hit_target_uid)
+                    {
+                        return false;
+                    }
                     (context.hit_source_uid, context.hit_target_uid)
                 } else if context.active_skill_is_attack && context.active_skill_source_uid != 0 {
                     (context.active_skill_source_uid, source_uid)
