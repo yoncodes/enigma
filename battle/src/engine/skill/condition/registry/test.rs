@@ -2097,6 +2097,25 @@ fn negated_round_start_broken_check_uses_toughness_state() {
 }
 
 #[test]
+fn active_skill_buff_count_keeps_its_exact_modifier_route() {
+    assert_eq!(
+        parse(61201, "PerBuffIdCount", &["109360002".into()]),
+        Some(ParsedConditionKind::BuffIdCount {
+            buff_ids: vec![109360002],
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 1,
+        })
+    );
+    let definition = find_key(61201, "PerBuffIdCount").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::BuffChanged]);
+    assert_eq!(
+        definition.behavior_target_source,
+        BehaviorTargetSource::ActiveSkillTargets
+    );
+}
+
+#[test]
 fn player_buff_gate_keeps_team_presence_and_exact_buff_identity() {
     assert_eq!(
         parse(
