@@ -298,7 +298,7 @@ pub fn run_round_start_after_ai_split(
     );
     append(
         &mut next_round_begin_steps,
-        drain::run_setup_stage_with_prelude(
+        drain::run_setup_stage(
             managers,
             pool,
             catalog,
@@ -306,12 +306,6 @@ pub fn run_round_start_after_ai_split(
             context,
             SetupStage::AfterRoundStart,
             0,
-            [(
-                SetupSide::Attacker,
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::CleanupRoundStart(
-                    BuffRoundStartCleanup::new(),
-                ))),
-            )],
         )?,
     );
     append(
@@ -680,7 +674,18 @@ pub fn run_start(
             push_cue(&mut result.frames, RoundCue::EnterFightDeal);
             opening_deck_counts = Some((initial_deck_num, managers.card.deck_num()));
         }
-        let stage_result = if stage == SetupStage::RoundStart && priority == 2 {
+        let stage_result = if stage == SetupStage::RoundStartCondition {
+            drain::run_setup_stage_for_owners(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                stage,
+                priority,
+                &owner_uids,
+            )?
+        } else if stage == SetupStage::RoundStart && priority == 2 {
             drain::run_buff_act_setup_stage_for_owners(
                 managers,
                 pool,
@@ -699,22 +704,6 @@ pub fn run_start(
                 determinism,
                 context,
                 &[(stage, priority)],
-            )?
-        } else if stage == SetupStage::AfterRoundStart {
-            drain::run_setup_stage_with_prelude(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
-                stage,
-                priority,
-                [(
-                    SetupSide::Attacker,
-                    RuleOp::Command(BattleCommand::Buff(BuffCommand::CleanupRoundStart(
-                        BuffRoundStartCleanup::new(),
-                    ))),
-                )],
             )?
         } else {
             drain::run_setup_stage(

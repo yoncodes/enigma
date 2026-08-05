@@ -145,6 +145,7 @@ pub fn run_conduit_action(
     group: i32,
     skill_position: i32,
     skill_id: i32,
+    frame_target_uid: Option<i64>,
     cost_modifier: Option<(i32, RuleOp)>,
 ) -> Result<DrainResult, DrainError> {
     let mut frames = Vec::new();
@@ -154,7 +155,7 @@ pub fn run_conduit_action(
             source_uid,
             group,
             skill_position,
-            target_uid: None,
+            target_uid: frame_target_uid,
         },
         FrameTrigger::Active,
     );
@@ -249,7 +250,7 @@ pub fn run_conduit_action(
                 source_uid,
                 skill_id,
                 card_index: group,
-                target_uid: None,
+                target_uid: frame_target_uid,
             }),
         },
         QueuedOp {

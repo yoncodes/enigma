@@ -68,7 +68,11 @@ impl BuffChanges {
                     && emits_existing_layer_on_refresh(refresh.after.buff_id.unwrap_or_default())
                     && refresh.before.uid == refresh.after.uid
                     && refresh.before.layer.unwrap_or_default() > 0,
-                markers: if !has_add && refresh_increases_effect_value(refresh) {
+                markers: if !has_add
+                    && (refresh_increases_effect_value(refresh)
+                        || super::super::refreshes_unchanged(
+                            refresh.after.buff_id.unwrap_or_default(),
+                        )) {
                     crate::engine::buff::marker::refresh_markers(
                         refresh.after.buff_id.unwrap_or_default(),
                     )

@@ -3,7 +3,7 @@ use std::{
     sync::OnceLock,
 };
 
-use super::{BuffAddArgs, BuffDefinition, BuffRoute};
+use super::{BuffAddArgs, BuffDefinition, BuffRoute, BuffStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuffStorage {
@@ -17,6 +17,7 @@ pub enum BuffStorage {
 pub enum ExistingBuffMatch {
     SameId,
     SameIdAndDuration,
+    SharedTypeFamily,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +48,7 @@ impl UidAllocationPolicy {
 pub enum DuplicateGrant {
     MergeExisting,
     ReplaceExisting,
+    KeepExisting,
     AddSeparateCopy,
 }
 
@@ -56,6 +58,7 @@ pub struct BuffPolicy {
     pub effective_type_id: i32,
     pub storage: BuffStorage,
     pub instance_limit: Option<i32>,
+    pub same_type_capacity: Option<i32>,
     pub shared_group_capacity: Option<SharedGroupCapacity>,
     pub unresolved_include_entries: Box<[(i32, i32)]>,
     pub match_existing: ExistingBuffMatch,
@@ -131,7 +134,11 @@ impl BuffPolicy {
     }
 
     pub(super) fn from_definition(definition: &BuffDefinition) -> Self {
-        let separate_copies = definition.reapplies_as_new();
+        let shared_type_replacement =
+            definition.uses_shared_type_family() && definition.status != BuffStatus::Shield;
+        let keep_existing_type_family = definition.keeps_existing_type_family();
+        let type_family_match = shared_type_replacement || keep_existing_type_family;
+        let separate_copies = !type_family_match && definition.reapplies_as_new();
         let storage = if definition.uses_stack_layer() {
             BuffStorage::Layered
         } else if definition.uses_typed_count() {
@@ -141,14 +148,18 @@ impl BuffPolicy {
         } else {
             BuffStorage::Single
         };
-        let match_existing = if storage == BuffStorage::SeparateCopies
+        let match_existing = if type_family_match {
+            ExistingBuffMatch::SharedTypeFamily
+        } else if storage == BuffStorage::SeparateCopies
             || (storage == BuffStorage::Layered && definition.duration > 0)
         {
             ExistingBuffMatch::SameIdAndDuration
         } else {
             ExistingBuffMatch::SameId
         };
-        let on_duplicate = if separate_copies {
+        let on_duplicate = if keep_existing_type_family {
+            DuplicateGrant::KeepExisting
+        } else if separate_copies {
             DuplicateGrant::AddSeparateCopy
         } else if storage == BuffStorage::Single {
             DuplicateGrant::ReplaceExisting
@@ -161,6 +172,7 @@ impl BuffPolicy {
             effective_type_id: definition.effective_type_id(),
             storage,
             instance_limit: definition.capped_separate_copy_limit(),
+            same_type_capacity: definition.same_type_capacity(),
             shared_group_capacity: definition.shared_group_capacity().map(
                 |(group_id, max_instances)| SharedGroupCapacity {
                     group_id,
@@ -203,6 +215,13 @@ impl BuffPolicy {
                 ExistingBuffMatch::SameIdAndDuration => {
                     active.buff.buff_id == Some(route.buff_id)
                         && active.buff.duration == Some(self.lifetime.duration)
+                }
+                ExistingBuffMatch::SharedTypeFamily => {
+                    active.type_id == self.effective_type_id
+                        && active
+                            .definition
+                            .as_ref()
+                            .is_some_and(BuffDefinition::matches_type_family)
                 }
             }
     }
@@ -275,25 +294,27 @@ mod tests {
             ExistingBuffMatch::SameIdAndDuration
         );
         let shared_type = BuffPolicy::try_for_buff_id(400301).unwrap();
-        assert_eq!(shared_type.unresolved_include_entries.as_ref(), &[(6, 0)]);
-        let exclusive_state = BuffPolicy::try_for_buff_id(500101).unwrap();
+        assert!(shared_type.unresolved_include_entries.is_empty());
         assert_eq!(
-            exclusive_state.unresolved_include_entries.as_ref(),
-            &[(8, 0)]
+            shared_type.match_existing,
+            ExistingBuffMatch::SharedTypeFamily
         );
+        let exclusive_state = BuffPolicy::try_for_buff_id(500101).unwrap();
+        assert!(exclusive_state.unresolved_include_entries.is_empty());
+        assert_eq!(
+            exclusive_state.match_existing,
+            ExistingBuffMatch::SharedTypeFamily
+        );
+        assert_eq!(exclusive_state.on_duplicate, DuplicateGrant::KeepExisting);
         assert!(
             BuffPolicy::try_for_buff_id(31050145)
                 .unwrap()
                 .unresolved_include_entries
                 .is_empty()
         );
-        assert_eq!(
-            BuffPolicy::try_for_buff_id(6200501)
-                .unwrap()
-                .unresolved_include_entries
-                .as_ref(),
-            &[(7, 10)]
-        );
+        let same_type_capacity = BuffPolicy::try_for_buff_id(6200501).unwrap();
+        assert!(same_type_capacity.unresolved_include_entries.is_empty());
+        assert_eq!(same_type_capacity.same_type_capacity, Some(10));
         let beryl_count = BuffPolicy::try_for_buff_id(31130123).unwrap();
         assert!(beryl_count.unresolved_include_entries.is_empty());
         assert_eq!(beryl_count.storage, BuffStorage::Counted);

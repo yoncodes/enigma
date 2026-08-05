@@ -170,6 +170,94 @@ fn halo_fanout_targets_and_child_uids_are_planned() {
 }
 
 #[test]
+fn base_halo_regrant_refreshes_the_same_team_instances() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: [-1, -2, -3]
+                .into_iter()
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(2),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    let mut hp = HpManager::default();
+    manager.seed(&fight);
+    hp.seed(&fight);
+    let grant = || {
+        BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: -1,
+            target_uid: -1,
+            buff_id: 109320111,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })
+    };
+
+    let initial = manager.execute(&hp, grant()).unwrap();
+    let root = initial.change.added.as_ref().unwrap();
+    let mut instances = vec![(root.target_uid, root.buff.uid.unwrap())];
+    instances.extend(initial.fanout[0].added.iter().map(|added| {
+        assert!(added.markers.iter().all(|marker| marker.effect_type
+            != sonettobuf::effect_type_enum::EffectType::Halobase as i32));
+        (added.target_uid, added.buff.uid.unwrap())
+    }));
+    assert_eq!(
+        instances.iter().map(|(uid, _)| *uid).collect::<Vec<_>>(),
+        vec![-1, -2, -3]
+    );
+    assert_eq!(
+        root.markers
+            .iter()
+            .filter(|marker| {
+                marker.effect_type == sonettobuf::effect_type_enum::EffectType::Halobase as i32
+            })
+            .count(),
+        1
+    );
+
+    let refreshed = manager.execute(&hp, grant()).unwrap();
+    let mut refreshed_instances = refreshed
+        .change
+        .refreshed
+        .iter()
+        .map(|update| (update.target_uid, update.after.uid.unwrap()))
+        .collect::<Vec<_>>();
+    refreshed_instances.extend(refreshed.fanout[0].refreshed.iter().map(|refresh| {
+        assert!(refresh.markers.iter().all(|marker| marker.effect_type
+            != sonettobuf::effect_type_enum::EffectType::Halobase as i32));
+        (refresh.update.target_uid, refresh.update.after.uid.unwrap())
+    }));
+    assert_eq!(refreshed_instances, instances);
+    assert_eq!(
+        refreshed.refresh_wire[0]
+            .markers
+            .iter()
+            .filter(|marker| {
+                marker.effect_type == sonettobuf::effect_type_enum::EffectType::Halobase as i32
+            })
+            .map(|marker| (marker.target_uid, marker.effect_type))
+            .collect::<Vec<_>>(),
+        vec![(
+            -1,
+            sonettobuf::effect_type_enum::EffectType::Halobase as i32,
+        )]
+    );
+}
+
+#[test]
 fn opposing_team_halo_fanout_uses_the_configured_scope() {
     crate::test_support::init_config();
     let entities = |team_type, uids: &[i64]| FightTeam {

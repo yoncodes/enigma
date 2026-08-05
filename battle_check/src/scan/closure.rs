@@ -276,6 +276,14 @@ fn scan_buff(
         "Buff id={} type={} path={}",
         pending.id, buff.type_id, pending.path
     ));
+    let handler_owns_duration = buff.features.split('|').any(|raw| {
+        let Some(act_id) = split_ids(raw).first().copied() else {
+            return false;
+        };
+        db.buff_act
+            .get(act_id)
+            .is_some_and(|act| buff_act_registry::owns_duration(act.id, &act.r#type))
+    });
     match BuffPolicy::try_for_buff_id(pending.id) {
         Ok(policy) => {
             report.explain(format!(
@@ -321,6 +329,22 @@ fn scan_buff(
                         ))
                         .collect::<Vec<_>>()
                         .join(", ")
+                ));
+            }
+            if policy.lifetime.duration > 0
+                && !handler_owns_duration
+                && !battle::engine::skill::buff_act::effect_time::supports_duration_policy(
+                    policy.lifetime.take_stage,
+                )
+            {
+                report.gap_at(
+                    CapabilityKey::new("effect-time", policy.lifetime.take_stage, "BuffDuration"),
+                    "MissingBuffDurationRoute",
+                    format!("{} > buff {}", pending.path, pending.id),
+                );
+                report.error(format!(
+                    "MissingBuffDurationRoute path={} buff={} duration={} takeStage={}",
+                    pending.path, pending.id, policy.lifetime.duration, policy.lifetime.take_stage,
                 ));
             }
         }

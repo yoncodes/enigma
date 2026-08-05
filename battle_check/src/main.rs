@@ -10,8 +10,8 @@ mod scan;
 mod wire_evidence;
 
 fn main() -> Result<()> {
-    init_config()?;
     let options = options::parse_args(env::args().skip(1))?;
+    init_config()?;
     let db = config::configs::get();
     if options.coverage_plan || options.include_plan {
         let mut catalog = SkillEffectCatalog::from_game_db(db);
@@ -20,11 +20,12 @@ fn main() -> Result<()> {
             &mut catalog,
             &options.hero_ids,
             options.include_plan.then_some("buff-include"),
+            &options.capture_roots,
         );
     }
     let mut report = scan::Report {
         explain: options.explain,
-        wire_evidence: wire_evidence::Evidence::collect(db),
+        wire_evidence: wire_evidence::Evidence::collect(db, &options.capture_roots),
         ..Default::default()
     };
     let mut skills = VecDeque::new();

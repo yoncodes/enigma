@@ -284,29 +284,36 @@ fn include_type_five_uses_one_permanent_mechanic_carrier() {
 }
 
 #[test]
-fn unresolved_shared_type_family_does_not_infer_cross_id_replacement() {
+fn shared_type_family_replaces_the_resident_variant() {
     init_config();
     let hp = HpManager::default();
     let mut manager = BuffManager::default();
 
-    let first = manager.add_replacing_excluded(&hp, 10, 10, 30880145, 0);
-    first.added.expect("first family member");
-    let second = manager.add_replacing_excluded(&hp, 10, 10, 30880141, 0);
+    let first = manager.add_replacing_excluded(&hp, 10, 10, 400401, 0);
+    let first_uid = first.added.expect("rank-one family member").buff.uid;
+    let second = manager.add_replacing_excluded(&hp, 10, 10, 400403, 0);
+    let second_uid = second
+        .added
+        .as_ref()
+        .expect("rank-two family member")
+        .buff
+        .uid;
 
-    assert_eq!(
-        BuffPolicy::for_buff_id(30880141)
-            .unwrap()
-            .unresolved_include_entries
-            .as_ref(),
-        &[(6, 0)]
-    );
-    assert!(second.removed.is_empty());
+    let policy = BuffPolicy::for_buff_id(400403).unwrap();
+    assert!(policy.unresolved_include_entries.is_empty());
+    assert_eq!(policy.storage, BuffStorage::Single);
+    assert_eq!(policy.match_existing, ExistingBuffMatch::SharedTypeFamily);
+    assert_eq!(policy.on_duplicate, DuplicateGrant::ReplaceExisting);
+    assert_eq!(second.removed.len(), 1);
+    assert_eq!(second.removed[0].buff.buff_id, Some(400401));
+    assert_eq!(second.removed[0].buff.uid, first_uid);
+    assert_ne!(second_uid, first_uid);
     assert_eq!(
         manager
             .active_for(10)
             .filter_map(|buff| buff.buff_id)
             .collect::<Vec<_>>(),
-        vec![30880145, 30880141]
+        vec![400403]
     );
 }
 
@@ -333,6 +340,68 @@ fn include_type_seventeen_stores_capped_separate_counter_instances() {
     assert!(capped.refreshed.is_empty());
     assert!(capped.removed.is_empty());
     assert!(capped.rejected.is_none());
+}
+
+#[test]
+fn value_bearing_type_seven_evicts_the_oldest_same_type_instance() {
+    init_config();
+    let policy = BuffPolicy::for_buff_id(6200501).expect("Incantation Might definition");
+
+    assert_eq!(policy.storage, BuffStorage::SeparateCopies);
+    assert_eq!(policy.on_duplicate, DuplicateGrant::AddSeparateCopy);
+    assert_eq!(policy.same_type_capacity, Some(10));
+    assert!(policy.unresolved_include_entries.is_empty());
+
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    let definition = BuffDefinition::get(6200501).expect("shared type definition");
+    manager.buffs.push(ActiveBuff {
+        owner_uid: 10,
+        team_type: 1,
+        type_id: definition.effective_type_id(),
+        definition: Some(definition),
+        buff: BuffInfo {
+            buff_id: Some(6200599),
+            uid: Some(1),
+            ..Default::default()
+        },
+    });
+    for _ in 0..9 {
+        let change = manager.add_replacing_excluded(&hp, 10, 10, 6200501, 0);
+        change.added.expect("same-type instance");
+    }
+
+    let overflow = manager.add_replacing_excluded(&hp, 10, 10, 6200501, 0);
+
+    assert_eq!(manager.buff_type_amount(10, 6200501), 10);
+    assert_eq!(overflow.removed.len(), 1);
+    assert_eq!(overflow.removed[0].buff.buff_id, Some(6200599));
+    assert_eq!(overflow.removed[0].buff.uid, Some(1));
+    assert_eq!(
+        overflow.removed[0].delete_reason,
+        Some(BuffDeleteReason::Overflow)
+    );
+    assert!(overflow.added.is_some());
+}
+
+#[test]
+fn include_type_eight_keeps_the_first_same_type_variant() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+
+    let first = manager.add_replacing_excluded(&hp, 10, 10, 500101, 0);
+    let first_uid = first.added.expect("rank-one variant").buff.uid;
+    let second = manager.add_replacing_excluded(&hp, 10, 10, 500102, 0);
+
+    assert!(second.added.is_none());
+    assert!(second.refreshed.is_empty());
+    assert!(second.removed.is_empty());
+    assert!(second.rejected.is_none());
+    let active = manager.active_for(10).collect::<Vec<_>>();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].buff_id, Some(500101));
+    assert_eq!(active[0].uid, first_uid);
 }
 
 #[test]

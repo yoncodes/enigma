@@ -425,6 +425,11 @@ fn project_change(
                     })
                 {
                     marker.effect_num = Some(shield.after);
+                } else if let Some(shield) = shield {
+                    effects.insert(
+                        0,
+                        EffectPacket::shield_value_change(shield.target_uid, shield.added),
+                    );
                 }
                 effects
             } else if let Some(shield) = changes.team_shared {

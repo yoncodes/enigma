@@ -466,6 +466,31 @@ fn condition_kind_matches(
                 .sum();
             compare_value(amount, *compare, *threshold)
         }
+        ParsedConditionKind::BuffIdThreshold {
+            buff_ids,
+            threshold,
+        } => managers.is_some_and(|managers| {
+            condition_targets
+                .iter()
+                .map(|uid| {
+                    buff_ids
+                        .iter()
+                        .map(|buff_id| managers.buff.buff_id_or_type_amount(*uid, *buff_id))
+                        .sum::<i32>()
+                })
+                .sum::<i32>()
+                >= *threshold
+        }),
+        ParsedConditionKind::TeamBuffPresence {
+            team,
+            present,
+            buff_id,
+        } => managers.is_some_and(|managers| {
+            pool.team_uids(*team)
+                .iter()
+                .any(|uid| managers.buff.has_active_buff_id_or_type(*uid, *buff_id))
+                == *present
+        }),
         ParsedConditionKind::BuffTypeCount {
             type_ids,
             compare,
@@ -624,6 +649,12 @@ fn condition_kind_matches(
             (*min..=*max).contains(&value)
         }
         ParsedConditionKind::CurrentCardEnchant { .. } => false,
+        ParsedConditionKind::HandSkillPresence(skill_ids) => managers.is_some_and(|managers| {
+            managers.card.hand().iter().any(|card| {
+                card.skill_id
+                    .is_some_and(|skill_id| skill_ids.contains(&skill_id))
+            })
+        }),
         ParsedConditionKind::ExPoint { compare, threshold } => {
             let Some(managers) = managers else {
                 return false;
@@ -676,6 +707,19 @@ fn condition_kind_matches(
                 *threshold,
             )
         }
+        ParsedConditionKind::PowerRatio {
+            power_id,
+            compare_code,
+            threshold_permille,
+        } => managers.is_some_and(|managers| {
+            let power = managers.eureka.get(source_uid, *power_id);
+            power.max > 0
+                && compare_resource(
+                    ((power.current as i64 * 1000) / power.max as i64) as i32,
+                    *compare_code,
+                    *threshold_permille,
+                )
+        }),
         ParsedConditionKind::ConduitExPoint {
             compare_code,
             threshold,
@@ -854,11 +898,17 @@ fn condition_kind_matches(
                 matches_group && (*rank <= 0 || context.active_skill_rank == *rank)
             })
         }
-        ParsedConditionKind::UseExSkill => pool.entity(source_uid).is_some_and(|source| {
-            source.ex_skill != 0
-                && crate::engine::mechanic::card::CardMechanic
-                    .is_ultimate_skill(context.active_skill_id, source)
-        }),
+        ParsedConditionKind::UseExSkill => pool
+            .entity(if context.active_skill_source_uid != 0 {
+                context.active_skill_source_uid
+            } else {
+                source_uid
+            })
+            .is_some_and(|source| {
+                source.ex_skill != 0
+                    && crate::engine::mechanic::card::CardMechanic
+                        .is_ultimate_skill(context.active_skill_id, source)
+            }),
         ParsedConditionKind::TargetUseExSkill => {
             context.active_skill_source_uid != 0
                 && condition_targets.contains(&context.active_skill_source_uid)
@@ -892,6 +942,9 @@ fn condition_kind_matches(
         ParsedConditionKind::DamageTargetCountKind(kind) => {
             context.damage_target_count_kind == *kind
         }
+        ParsedConditionKind::SourceDamageType(damage_type) => pool
+            .entity(source_uid)
+            .is_some_and(|source| source.damage_type == *damage_type),
         ParsedConditionKind::AttackerDamageType(damage_type) => pool
             .entity(context.hit_source_uid)
             .is_some_and(|attacker| attacker.damage_type == *damage_type),
@@ -902,11 +955,24 @@ fn condition_kind_matches(
             context.toughness_broken_uid != 0
                 && condition_targets.contains(&context.toughness_broken_uid)
         }
+        ParsedConditionKind::EntityBroken => managers.is_some_and(|managers| {
+            condition_targets
+                .iter()
+                .any(|uid| managers.toughness.is_broken(*uid))
+        }),
         ParsedConditionKind::HurtRestrained | ParsedConditionKind::HurtNotRestrained => {
-            let Some(attacker) = pool.entity(context.hit_source_uid) else {
+            let (attacker_uid, defender_uid) =
+                if context.hit_source_uid != 0 && context.hit_target_uid != 0 {
+                    (context.hit_source_uid, context.hit_target_uid)
+                } else if context.active_skill_is_attack && context.active_skill_source_uid != 0 {
+                    (context.active_skill_source_uid, source_uid)
+                } else {
+                    return false;
+                };
+            let Some(attacker) = pool.entity(attacker_uid) else {
                 return false;
             };
-            let Some(defender) = pool.entity(context.hit_target_uid) else {
+            let Some(defender) = pool.entity(defender_uid) else {
                 return false;
             };
             let forces_restraint = managers.is_some_and(|managers| {
@@ -918,7 +984,7 @@ fn condition_kind_matches(
                     .any(crate::engine::skill::buff_act::forces_career_restraint)
             });
             let restrained = forces_restraint
-                || crate::engine::damage::handler::restrains(attacker.career, defender.career);
+                || crate::engine::damage::handler::restrains_target(attacker.career, defender);
             restrained == matches!(condition.kind, ParsedConditionKind::HurtRestrained)
         }
         ParsedConditionKind::EntityCount {
@@ -1120,6 +1186,14 @@ fn entity_count_matches(
         | EntityCountScope::AliveEnemies
         | EntityCountScope::AliveEnemiesIncludeSp => alive_count(pool.enemies(source_uid, false)),
         EntityCountScope::AliveTeammates => alive_count(pool.allies(source_uid)),
+        EntityCountScope::AliveOtherTeammates => pool
+            .allies(source_uid)
+            .iter()
+            .filter(|entity| {
+                entity.uid != source_uid
+                    && managers.is_none_or(|managers| managers.hp.current(entity.uid) > 0)
+            })
+            .count(),
         EntityCountScope::AliveTeammatesNoSp => {
             if source_is_attacker {
                 alive_count(&pool.attacker_main)

@@ -367,13 +367,17 @@ impl BuffManager {
         self.buffs.iter().find_map(|active| {
             let definition = active.definition.as_ref()?;
             definition.features().iter().find_map(|feature| {
-                let feature_status = feature.values.get(1).copied().map(BuffStatus::from_id)?;
-                if feature_status != incoming_status {
-                    return None;
-                }
                 let action = match feature.kind {
+                    Some(BuffActKind::Immunity)
+                        if active.owner_uid == target_uid
+                            && incoming_status == BuffStatus::Control =>
+                    {
+                        command::ConsumeAction::Noop
+                    }
                     Some(BuffActKind::ImmunityTimes)
                         if active.owner_uid == target_uid
+                            && feature.values.get(1).copied().map(BuffStatus::from_id)
+                                == Some(incoming_status)
                             && active.buff.count.unwrap_or_default() > 0 =>
                     {
                         Self::resolve_active_consume_action(
@@ -384,7 +388,9 @@ impl BuffManager {
                         )
                     }
                     Some(BuffActKind::TeamImmunityTimes)
-                        if Some(active.team_type) == target_team =>
+                        if Some(active.team_type) == target_team
+                            && feature.values.get(1).copied().map(BuffStatus::from_id)
+                                == Some(incoming_status) =>
                     {
                         let act_id = *feature.values.first()?;
                         let mut act_info = active.buff.act_info.clone();
@@ -580,23 +586,21 @@ impl BuffManager {
                 buff_act_id: 0,
             })
             .collect();
-        child
-            .markers
-            .extend(
-                spec.definition
-                    .fanout_wire_markers()
-                    .into_iter()
-                    .map(|effect_type| BuffMarkerResult {
-                        target_uid: spec.route.target_uid,
+        child.markers.extend(
+            spec.definition
+                .fanout_wire_markers(crate::engine::skill::buff_act::wire::WirePhase::Add)
+                .into_iter()
+                .map(|effect_type| BuffMarkerResult {
+                    target_uid: spec.route.target_uid,
+                    effect_type,
+                    effect_num: marker::effect_num(
                         effect_type,
-                        effect_num: marker::effect_num(
-                            effect_type,
-                            child.buff.buff_id.unwrap_or_default(),
-                            child.buff.act_common_params.as_deref(),
-                        ),
-                        buff_act_id: 0,
-                    }),
-            );
+                        child.buff.buff_id.unwrap_or_default(),
+                        child.buff.act_common_params.as_deref(),
+                    ),
+                    buff_act_id: 0,
+                }),
+        );
         child.derived_by = Some(spec.rule);
         Some(child)
     }
@@ -630,13 +634,15 @@ impl BuffManager {
                 })
                 .collect::<Vec<_>>();
             markers.extend(
-                marker::refresh_markers(update.after.buff_id.unwrap_or_default())
+                plan.spec
+                    .definition
+                    .fanout_wire_markers(crate::engine::skill::buff_act::wire::WirePhase::Refresh)
                     .into_iter()
-                    .map(|marker| BuffMarkerResult {
+                    .map(|effect_type| BuffMarkerResult {
                         target_uid: plan.spec.route.target_uid,
-                        effect_type: marker.effect_type,
+                        effect_type,
                         effect_num: marker::effect_num(
-                            marker.effect_type,
+                            effect_type,
                             update.after.buff_id.unwrap_or_default(),
                             update.after.act_common_params.as_deref(),
                         ),

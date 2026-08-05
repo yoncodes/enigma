@@ -84,7 +84,7 @@ pub enum RouteError {
 
 impl ConditionRoute {
     pub fn compile(conditions: &[ParsedCondition]) -> Result<Self, RouteError> {
-        Self::compile_with_driver(conditions, None)
+        Self::compile_with_driver(conditions, None, false)
     }
 
     pub fn compile_for_behavior(
@@ -93,31 +93,36 @@ impl ConditionRoute {
     ) -> Result<Self, RouteError> {
         use crate::engine::skill::behavior::registry::ConditionRouteOverride;
 
-        let driver = crate::engine::skill::behavior::registry::find_key(
+        let definition = crate::engine::skill::behavior::registry::find_key(
             behavior.key.opcode,
             &behavior.key.type_name,
-        )
-        .and_then(|definition| definition.condition_route_override)
-        .map(|route| match route {
-            ConditionRouteOverride::Trigger { key, event, phase } => {
-                ConditionDriver::Trigger(ConditionTrigger { key, event, phase })
-            }
-            ConditionRouteOverride::Setup {
-                key,
-                stage,
-                priority,
-            } => ConditionDriver::Setup(ConditionSetup {
-                key,
-                stage,
-                priority,
-            }),
-        });
-        Self::compile_with_driver(conditions, driver)
+        );
+        let driver = definition
+            .and_then(|definition| definition.condition_route_override)
+            .map(|route| match route {
+                ConditionRouteOverride::Trigger { key, event, phase } => {
+                    ConditionDriver::Trigger(ConditionTrigger { key, event, phase })
+                }
+                ConditionRouteOverride::Setup {
+                    key,
+                    stage,
+                    priority,
+                } => ConditionDriver::Setup(ConditionSetup {
+                    key,
+                    stage,
+                    priority,
+                }),
+            });
+        let predicate_only = driver.is_none()
+            && definition.is_some_and(|definition| definition.collect_attack_modifier.is_some())
+            && registry::attack_modifier_side(conditions).is_some();
+        Self::compile_with_driver(conditions, driver, predicate_only)
     }
 
     fn compile_with_driver(
         conditions: &[ParsedCondition],
         driver: Option<ConditionDriver>,
+        predicate_only: bool,
     ) -> Result<Self, RouteError> {
         let branches = if let [
             ParsedCondition {
@@ -128,10 +133,10 @@ impl ConditionRoute {
         {
             groups
                 .iter()
-                .map(|group| compile_branch(group, driver))
+                .map(|group| compile_branch(group, driver, predicate_only))
                 .collect::<Result<Vec<_>, _>>()?
         } else {
-            vec![compile_branch(conditions, driver)?]
+            vec![compile_branch(conditions, driver, predicate_only)?]
         };
 
         Ok(Self { branches })
@@ -141,6 +146,7 @@ impl ConditionRoute {
 fn compile_branch(
     conditions: &[ParsedCondition],
     contextual_driver: Option<ConditionDriver>,
+    predicate_only: bool,
 ) -> Result<ConditionBranchRoute, RouteError> {
     let mut driver = None;
     let mut descriptors = Vec::with_capacity(conditions.len());
@@ -154,6 +160,10 @@ fn compile_branch(
                 }
             })?;
         descriptors.push(RuleDescriptor::new(RuleDomain::Condition, definition.key));
+
+        if predicate_only {
+            continue;
+        }
 
         let contextual = contextual_driver.is_some_and(|driver| match driver {
             ConditionDriver::Trigger(trigger) => trigger.key == definition.key,
@@ -339,6 +349,37 @@ mod tests {
                 phase: Some(SkillPhase::AfterHit),
             }))
         );
+    }
+
+    #[test]
+    fn incoming_attack_conditions_only_subscribe_transactional_behaviors() {
+        init_config();
+        let conditions = parse_conditions(config::configs::get(), "33204&25204");
+
+        let transaction = ConditionRoute::compile_for_behavior(
+            &conditions,
+            &crate::engine::skill::behavior::classify::BehaviorSpec::new(
+                50014,
+                "ConsumeBuffByTypeId",
+            ),
+        )
+        .unwrap();
+        let modifier = ConditionRoute::compile_for_behavior(
+            &conditions,
+            &crate::engine::skill::behavior::classify::BehaviorSpec::new(10004, "AttrFix"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            transaction.branches[0].driver,
+            Some(ConditionDriver::Trigger(ConditionTrigger {
+                key: crate::engine::skill::rule::DefinitionKey::new(33204, "HurtRestraint"),
+                event: EventKind::SkillAction,
+                phase: Some(SkillPhase::Immediate),
+            }))
+        );
+        assert_eq!(modifier.branches[0].driver, None);
+        assert!(modifier.branches[0].subscriptions().is_empty());
     }
 
     #[test]
@@ -552,6 +593,53 @@ mod tests {
             }))
         );
         assert_eq!(route.branches[0].conditions.len(), 2);
+    }
+
+    #[test]
+    fn mirror_rule_compounds_keep_one_exact_driver() {
+        init_config();
+
+        let cases = [
+            (
+                "45100#2#1&57100#11790011",
+                ConditionDriver::Setup(ConditionSetup {
+                    key: crate::engine::skill::rule::DefinitionKey::new(45100, "HeroRoundInterval"),
+                    stage: SetupStage::RoundStart,
+                    priority: -1,
+                }),
+            ),
+            (
+                "22209&19209#11790012",
+                ConditionDriver::Trigger(ConditionTrigger {
+                    key: crate::engine::skill::rule::DefinitionKey::new(22209, "BeAttacked"),
+                    event: EventKind::TargetAttacked,
+                    phase: None,
+                }),
+            ),
+            (
+                "51213#11790022#5&19213#11790012",
+                ConditionDriver::Trigger(ConditionTrigger {
+                    key: crate::engine::skill::rule::DefinitionKey::new(19213, "HasBuffId"),
+                    event: EventKind::SkillAction,
+                    phase: Some(SkillPhase::HitPassives),
+                }),
+            ),
+            (
+                "51213#11790022#5&57213#11790012",
+                ConditionDriver::Trigger(ConditionTrigger {
+                    key: crate::engine::skill::rule::DefinitionKey::new(57213, "NoBuffId"),
+                    event: EventKind::SkillAction,
+                    phase: Some(SkillPhase::HitPassives),
+                }),
+            ),
+        ];
+
+        for (raw, expected) in cases {
+            let route =
+                ConditionRoute::compile(&parse_conditions(config::configs::get(), raw)).unwrap();
+            assert_eq!(route.branches[0].driver, Some(expected));
+            assert_eq!(route.branches[0].conditions.len(), 2);
+        }
     }
 
     #[test]

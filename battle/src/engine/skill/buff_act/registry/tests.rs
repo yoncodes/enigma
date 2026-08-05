@@ -335,6 +335,44 @@ fn burn_damage_fix_is_an_exact_static_consumer_with_its_add_marker() {
 }
 
 #[test]
+fn real_hurt_fix_uses_only_its_captured_add_and_refresh_markers() {
+    let wire = super::super::wire::find(519, "RealHurtFix").unwrap();
+    let marker = sonettobuf::effect_type_enum::EffectType::Realhurtfix as i32;
+
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[marker]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Refresh),
+        &[marker]
+    );
+}
+
+#[test]
+fn dot_uses_only_its_captured_add_and_refresh_markers() {
+    let wire = super::super::wire::find(202, "Dot").unwrap();
+    let marker = sonettobuf::effect_type_enum::EffectType::Dot as i32;
+
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[marker]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Refresh),
+        &[marker]
+    );
+}
+
+#[test]
 fn lucy_static_combat_rules_keep_distinct_add_markers() {
     for (act_id, act_type, kind, effect_type) in [
         (
@@ -492,17 +530,47 @@ fn runtime_capability_lives_on_the_exact_registry_entry() {
 }
 
 #[test]
-fn reflect_frame_is_owned_by_holder_and_marks_attacker() {
-    let definition = find(303, "Rebound").unwrap();
+fn reflect_frames_are_owned_by_holder_and_mark_attacker() {
+    for definition in [
+        find(303, "Rebound").unwrap(),
+        find(743, "ReboundBasedOnDamage").unwrap(),
+    ] {
+        assert_eq!(definition.runtime.frame_source, RuntimeFrameSource::Owner);
+        let marker = definition.runtime.marker.unwrap();
+        assert_eq!(marker.position, RuntimeMarkerPosition::BeforeChanges);
+        assert_eq!(marker.target, RuntimeMarkerTarget::EventSource);
+    }
 
-    assert_eq!(definition.runtime.frame_source, RuntimeFrameSource::Owner);
     assert_eq!(
-        definition.runtime.marker,
-        Some(RuntimeMarker {
-            position: RuntimeMarkerPosition::BeforeChanges,
-            target: RuntimeMarkerTarget::EventSource,
-        })
+        find(303, "Rebound")
+            .unwrap()
+            .runtime
+            .marker
+            .unwrap()
+            .effect_type,
+        None
     );
+
+    let damage_based = find(743, "ReboundBasedOnDamage").unwrap();
+    assert_eq!(damage_based.kind, BuffActKind::ReboundBasedOnDamage);
+    assert!(damage_based.supports.unwrap()(&[300, 0, 0]));
+    assert!(!damage_based.supports.unwrap()(&[300, 101, 2_000]));
+    assert!(!damage_based.supports.unwrap()(&[150, 102, 1_000]));
+    let wire = damage_based.wire.unwrap();
+    assert!(!wire.has_output());
+    assert_eq!(
+        damage_based.runtime.marker.unwrap().effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Rebound as i32)
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+    assert!(find(743, "Rebound").is_none());
 }
 
 #[test]
@@ -640,6 +708,39 @@ fn moxie_reduction_immunity_keeps_its_exact_static_identity() {
     assert!(definition.state.consumer);
     assert!(has_destination(509, "ImmunityExpointChange", &[]));
     assert!(find(509, "ExPointCantAdd").is_none());
+}
+
+#[test]
+fn absolute_missing_hp_attributes_keep_their_exact_static_routes() {
+    assert_eq!(
+        destination(853, "AttrByLostHp", &[10_000_000, 215, 100, 1, 1, 0]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert_eq!(
+        destination(1056, "AttrByLostHp", &[10_000_000, 216, 150, 1, 1, 1]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    for act_id in [853, 1056] {
+        let wire = super::super::wire::find(act_id, "AttrByLostHp").unwrap();
+        assert_eq!(
+            wire.markers(super::super::wire::WirePhase::Add),
+            &[sonettobuf::effect_type_enum::EffectType::None as i32]
+        );
+        assert!(
+            wire.markers(super::super::wire::WirePhase::Static)
+                .is_empty()
+        );
+        assert!(
+            wire.markers(super::super::wire::WirePhase::Refresh)
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn advanced_cure_owns_its_exact_hit_duration_advance() {
+    assert!(owns_duration(849, "AdvancedCure"));
+    assert!(!owns_duration(201, "Cure"));
 }
 
 #[test]

@@ -17,6 +17,7 @@ pub struct BuffActWireDefinition {
     pub max_hp: Option<MaxHpWireRule>,
     pub pre_add: Option<WireEffect>,
     pub snapshot_reserve: Option<SnapshotReserveRule>,
+    pub refreshes_unchanged: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +70,7 @@ impl BuffActWireDefinition {
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
+            refreshes_unchanged: false,
         }
     }
 
@@ -82,6 +84,7 @@ impl BuffActWireDefinition {
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
+            refreshes_unchanged: false,
         }
     }
 
@@ -95,6 +98,7 @@ impl BuffActWireDefinition {
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
+            refreshes_unchanged: false,
         }
     }
 
@@ -118,6 +122,11 @@ impl BuffActWireDefinition {
 
     pub const fn with_snapshot_reserve(mut self, rule: SnapshotReserveRule) -> Self {
         self.snapshot_reserve = Some(rule);
+        self
+    }
+
+    pub const fn with_unchanged_refresh(mut self) -> Self {
+        self.refreshes_unchanged = true;
         self
     }
 

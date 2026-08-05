@@ -27,7 +27,7 @@ pub use command::{
     BuffAccumulateActValue, BuffAmount, BuffChangeDuration, BuffChanges, BuffChildUidReservation,
     BuffCommand, BuffCommandError, BuffConsume, BuffConvert, BuffDispel, BuffDurationAdvance,
     BuffGrant, BuffGrantChild, BuffGrantRelation, BuffGrantUidReservation, BuffLifecycleTransition,
-    BuffRefreshWire, BuffRemove, BuffRemoveSelector, BuffReplace, BuffRoundStartCleanup,
+    BuffRefreshDuration, BuffRefreshWire, BuffRemove, BuffRemoveSelector, BuffReplace,
     BuffRoundStartDurationSync, BuffSelector, BuffSetAmount, BuffSetState, BuffSpecialCount,
     BuffStateSnapshotWire, DepletedBuff, RelatedBuffGrant,
 };
@@ -70,6 +70,10 @@ pub(crate) fn state_snapshot_wire(
     BuffDefinition::get(buff_id)
         .map(|definition| definition.state_snapshot_wire(params))
         .unwrap_or_default()
+}
+
+pub(crate) fn refreshes_unchanged(buff_id: i32) -> bool {
+    BuffDefinition::get(buff_id).is_some_and(|definition| definition.refreshes_unchanged())
 }
 
 #[derive(Debug, Clone)]

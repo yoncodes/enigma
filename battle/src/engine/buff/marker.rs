@@ -190,6 +190,22 @@ mod tests {
     }
 
     #[test]
+    fn toughness_state_buffs_mark_only_their_initial_add() {
+        crate::test_support::init_config();
+
+        for buff_id in [116362200, 118350001] {
+            assert_eq!(
+                add_markers(buff_id),
+                vec![BuffMarker {
+                    effect_type: EffectType::None as i32,
+                }]
+            );
+            assert!(static_markers(buff_id).is_empty());
+            assert!(refresh_markers(buff_id).is_empty());
+        }
+    }
+
+    #[test]
     fn dream_visit_uses_its_configured_dizzy_marker() {
         crate::test_support::init_config();
 

@@ -327,12 +327,20 @@ fn parses_hurt_restraint_conditions_by_type() {
     init_config();
 
     assert_eq!(
+        parse_conditions(config::configs::get(), "33201")[0].kind,
+        ParsedConditionKind::HurtRestrained
+    );
+    assert_eq!(
         parse_conditions(config::configs::get(), "33204")[0].kind,
         ParsedConditionKind::HurtRestrained
     );
     assert_eq!(
         parse_conditions(config::configs::get(), "47204")[0].kind,
         ParsedConditionKind::HurtNotRestrained
+    );
+    assert_eq!(
+        parse_conditions(config::configs::get(), "33201#1")[0].kind,
+        ParsedConditionKind::Unsupported("HurtRestraint".into())
     );
 }
 

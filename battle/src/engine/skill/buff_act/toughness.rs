@@ -3,7 +3,7 @@ use crate::engine::{
     manager::{
         BattleManagers,
         buff::ActiveBuffFeature,
-        toughness::{STANDARD_DAMAGE_RATE_PERMILLE, ToughnessRecord},
+        toughness::{STANDARD_DAMAGE_RATE_PERMILLE, ToughnessRecord, ToughnessRecover},
     },
     skill::{
         behavior::{classify::BehaviorKind, registry as behavior_registry},
@@ -14,6 +14,21 @@ use crate::engine::{
         },
     },
 };
+
+pub fn recover_rule_ops(
+    subscriber: &crate::engine::skill::subscriber::BuffActSubscriber,
+) -> Option<Vec<RuleOp>> {
+    let [config_effect] = subscriber.args.as_slice() else {
+        return None;
+    };
+    Some(vec![RuleOp::Command(BattleCommand::ToughnessRecover(
+        ToughnessRecover {
+            origin: super::command_origin(subscriber)?,
+            target_uid: subscriber.owner_uid,
+            config_effect: *config_effect,
+        },
+    ))])
+}
 
 pub fn transaction_rule_ops(
     managers: &BattleManagers,
@@ -137,5 +152,38 @@ mod tests {
             )
             .is_empty()
         );
+    }
+
+    #[test]
+    fn recovery_buff_act_emits_the_existing_toughness_command() {
+        let subscriber = crate::engine::skill::subscriber::BuffActSubscriber {
+            owner_uid: -1,
+            source_uid: -1,
+            buff_uid: 10,
+            buff_id: 118350001,
+            team_type: 2,
+            owner_alive: true,
+            amount: 1,
+            key: crate::engine::event::subscription::SubscriptionKey::new(
+                crate::engine::event::kind::EventKind::RoundStart,
+                DefinitionKey::new(1102, "ToughnessRecover"),
+            ),
+            act_type: "ToughnessRecover".into(),
+            effect_time: 101,
+            effect_condition: 0,
+            args: vec![0],
+            raw: "1102#0".into(),
+        };
+
+        assert!(matches!(
+            recover_rule_ops(&subscriber).as_deref(),
+            Some([RuleOp::Command(BattleCommand::ToughnessRecover(
+                ToughnessRecover {
+                    target_uid: -1,
+                    config_effect: 0,
+                    ..
+                }
+            ))])
+        ));
     }
 }

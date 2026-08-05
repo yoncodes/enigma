@@ -154,21 +154,16 @@ impl Attacker {
             }
 
             let hero_data = hero.get_uid(*hero_uid).await?;
-            let equip = Self::fetch_equip(pool, &hero_data, fight_group).await;
-            let stats = crate::engine::entity::stats::Stats::build(
-                &crate::engine::entity::stats::StatInputs::from_hero_data(
-                    &hero_data,
-                    equip.as_ref(),
-                ),
-            );
+            let equips = Self::fetch_equips(pool, &hero_data, fight_group).await?;
+            let stats = crate::engine::entity::stats::Stats::build_for_hero(&hero_data, &equips);
             ex_attributes.push((hero_data.record.uid, stats.ex()));
             sp_attributes.push((hero_data.record.uid, stats.sp()));
 
-            let mut builder = EntityBuilder::new(hero_data, position, 1, false);
-            if let Some(equip) = equip {
-                builder = builder.with_equip(equip);
-            }
-            entitys.push(builder.build());
+            entitys.push(
+                EntityBuilder::new(hero_data, position, 1, false)
+                    .with_equips(equips)
+                    .build(),
+            );
         }
 
         for hero_uid in fight_group.sub_hero_list.iter() {
@@ -181,21 +176,16 @@ impl Attacker {
             }
 
             let hero_data = hero.get_uid(*hero_uid).await?;
-            let equip = Self::fetch_equip(pool, &hero_data, fight_group).await;
-            let stats = crate::engine::entity::stats::Stats::build(
-                &crate::engine::entity::stats::StatInputs::from_hero_data(
-                    &hero_data,
-                    equip.as_ref(),
-                ),
-            );
+            let equips = Self::fetch_equips(pool, &hero_data, fight_group).await?;
+            let stats = crate::engine::entity::stats::Stats::build_for_hero(&hero_data, &equips);
             ex_attributes.push((hero_data.record.uid, stats.ex()));
             sp_attributes.push((hero_data.record.uid, stats.sp()));
 
-            let mut builder = EntityBuilder::new(hero_data, -1, 1, true);
-            if let Some(equip) = equip {
-                builder = builder.with_equip(equip);
-            }
-            sub_entitys.push(builder.build());
+            sub_entitys.push(
+                EntityBuilder::new(hero_data, -1, 1, true)
+                    .with_equips(equips)
+                    .build(),
+            );
         }
 
         let player_entity = EntityBuilder::player(user_id, 1);
@@ -235,23 +225,49 @@ impl Attacker {
         })
     }
 
-    async fn fetch_equip(
+    async fn fetch_equips(
         pool: &SqlitePool,
         hero_data: &HeroData,
         fight_group: &sonettobuf::FightGroup,
-    ) -> Option<Equipment> {
-        let equip_uid = fight_group
+    ) -> Result<Vec<Equipment>> {
+        let requested = fight_group
             .equips
             .iter()
             .find(|equip| equip.hero_uid == Some(hero_data.record.uid))
-            .and_then(|equip| equip.equip_uid.first().copied())
-            .filter(|uid| *uid != 0)
+            .map(|equip| equip.equip_uid.as_slice())
+            .unwrap_or_default();
+        let mut requested = requested.iter().copied().filter(|uid| *uid != 0);
+        let selected_uid = requested
+            .next()
             .unwrap_or(hero_data.record.default_equip_uid);
-
-        UserEquipmentModel::new(hero_data.record.user_id, pool.clone())
-            .get_equip(equip_uid)
-            .await
-            .ok()
+        ensure!(
+            requested.all(|uid| uid == selected_uid),
+            "multiple primary psychubes selected for hero {}",
+            hero_data.record.uid
+        );
+        let model = UserEquipmentModel::new(hero_data.record.user_id, pool.clone());
+        let mut equips = Vec::new();
+        if selected_uid != 0 {
+            equips.push(model.get_equip(selected_uid).await?);
+        }
+        let companions = equips
+            .iter()
+            .filter_map(|equip| {
+                config::configs::get().linked_psychube_id(hero_data.record.hero_id, equip.equip_id)
+            })
+            .collect::<Vec<_>>();
+        if !companions.is_empty() {
+            let owned = database::models::game::equipment::EquipmentModel::get_all(&model).await?;
+            for equip_id in companions {
+                if equips.iter().any(|equip| equip.equip_id == equip_id) {
+                    continue;
+                }
+                if let Some(equip) = owned.iter().find(|equip| equip.equip_id == equip_id) {
+                    equips.push(equip.clone());
+                }
+            }
+        }
+        Ok(equips)
     }
 
     async fn compose_support(
@@ -842,6 +858,81 @@ mod tests {
 
         assert_eq!(entity.equip_uid, Some(0));
         assert!(entity.equips.is_empty());
+    }
+
+    #[tokio::test]
+    async fn linked_psychube_is_loaded_with_its_refined_passive() {
+        crate::test_support::init_config();
+        assert_eq!(
+            config::configs::get().linked_psychube_id(3149, 1571),
+            Some(1572)
+        );
+        assert_eq!(config::configs::get().linked_psychube_id(3028, 1571), None);
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (1, 'linked-psychube', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let heroes = UserHeroModel::new(1, pool.clone());
+        let hero_uid = heroes.create_hero(3149).await.unwrap();
+        let primary_uid = database::db::game::equipment::add_equipment(&pool, 1, 1571, 1)
+            .await
+            .unwrap()[0];
+        let linked_uid = database::db::game::equipment::add_equipment(&pool, 1, 1572, 1)
+            .await
+            .unwrap()[0];
+        sqlx::query("UPDATE equipment SET refine_lv = 5 WHERE uid = ?")
+            .bind(linked_uid)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let stacked = sonettobuf::FightGroup {
+            hero_list: vec![hero_uid],
+            equips: vec![sonettobuf::FightEquip {
+                hero_uid: Some(hero_uid),
+                equip_uid: vec![primary_uid, linked_uid],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(
+            super::super::build_fight(&pool, 1, 10101, 10101, false, &stacked, None)
+                .await
+                .is_err()
+        );
+        let group = sonettobuf::FightGroup {
+            hero_list: vec![hero_uid],
+            equips: vec![sonettobuf::FightEquip {
+                hero_uid: Some(hero_uid),
+                equip_uid: vec![primary_uid],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let built = super::super::build_fight(&pool, 1, 10101, 10101, false, &group, None)
+            .await
+            .unwrap();
+        let entity = &built.fight.attacker.unwrap().entitys[0];
+
+        assert_eq!(entity.equip_uid, Some(primary_uid));
+        assert_eq!(
+            entity
+                .equips
+                .iter()
+                .map(|equip| (equip.equip_uid, equip.equip_id, equip.refine_lv))
+                .collect::<Vec<_>>(),
+            vec![
+                (Some(primary_uid), Some(1571), Some(1)),
+                (Some(linked_uid), Some(1572), Some(5)),
+            ]
+        );
+        assert!(entity.passive_skill.contains(&437111));
+        assert!(entity.passive_skill.contains(&437215));
     }
 
     #[tokio::test]

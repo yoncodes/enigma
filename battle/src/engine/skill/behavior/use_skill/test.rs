@@ -203,6 +203,36 @@ fn group_skill_keeps_explicit_follow_up_subtype() {
 }
 
 #[test]
+fn group_three_resolves_the_configured_ultimate() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(251002),
+                ex_skill: Some(114100531),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+
+    assert_eq!(skill_from_group_and_star(&pool, 10, 3, 1), Some(114100531));
+    assert!(supports_group_and_star_skill(&ParsedBehavior::new(
+        50010,
+        "DirectUseGroupAndStarSkill",
+        vec![3, 1],
+    )));
+    assert!(!supports_group_and_star_skill(&ParsedBehavior::new(
+        50010,
+        "DirectUseGroupAndStarSkill",
+        vec![3],
+    )));
+}
+
+#[test]
 fn parses_weighted_random_skills() {
     assert_eq!(
         weighted_skills("530000751:100&530000752:25"),

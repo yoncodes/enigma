@@ -352,6 +352,35 @@ impl BuffManager {
                     .collect();
                 (update.origin, BuffPlanAction::ChangeDuration(plans))
             }
+            BuffCommand::RefreshDuration(update) => {
+                if update.target_uid == 0
+                    || update.buff_uid == 0
+                    || update.minimum_duration <= 0
+                {
+                    return Err(BuffCommandError::InvalidDurationChange);
+                }
+                let active = self
+                    .buffs
+                    .iter()
+                    .find(|active| {
+                        active.owner_uid == update.target_uid
+                            && active.buff.uid == Some(update.buff_uid)
+                    })
+                    .ok_or(BuffCommandError::InvalidDurationChange)?;
+                let duration = active
+                    .buff
+                    .duration
+                    .unwrap_or_default()
+                    .max(update.minimum_duration);
+                (
+                    update.origin,
+                    BuffPlanAction::ChangeDuration(vec![DurationChangePlan {
+                        target_uid: update.target_uid,
+                        buff_uid: update.buff_uid,
+                        duration,
+                    }]),
+                )
+            }
             BuffCommand::AddSpecialCount(update) => {
                 if update.target_uid == 0
                     || update.count <= 0
@@ -430,17 +459,6 @@ impl BuffManager {
                     ),
                 )
             }
-            BuffCommand::CleanupRoundStart(cleanup) => {
-                if cleanup.origin.domain != RuleDomain::Lifecycle
-                    || cleanup.origin.key != ROUND_START_CLEANUP_KEY
-                {
-                    return Err(BuffCommandError::InvalidLifecycle);
-                }
-                (
-                    cleanup.origin,
-                    BuffPlanAction::CleanupRoundStart(self.plan_round_start_cleanup()),
-                )
-            }
         };
         Ok(BuffPlan { origin, action })
     }
@@ -476,8 +494,12 @@ impl BuffManager {
         {
             return Err(BuffCommandError::InvalidGrant);
         }
-        let definition = BuffDefinition::get(request.buff_id)
+        let mut definition = BuffDefinition::get(request.buff_id)
             .ok_or(BuffCommandError::MissingDefinition(request.buff_id))?;
+        definition.duration = crate::engine::skill::buff_act::buff_round_add::extend_duration(
+            definition.duration,
+            self.grant_duration_delta(hp, request.target_uid, definition.status),
+        );
         let occurrences = i32::try_from(request.occurrences)
             .map_err(|_| BuffCommandError::UnsupportedOccurrences(request.occurrences))?;
         let args = match request.input {
@@ -532,8 +554,9 @@ impl BuffManager {
             }
         };
         let route = BuffRoute::new(request.source_uid, request.target_uid, request.buff_id);
-        let policy = BuffPolicy::try_for_buff_id(request.buff_id)
+        let mut policy = BuffPolicy::try_for_buff_id(request.buff_id)
             .map_err(BuffCommandError::InvalidPolicy)?;
+        policy.lifetime.duration = definition.duration;
         let unconditional = matches!(
             request.input,
             GrantInput::IndependentInstance { .. }
@@ -643,27 +666,40 @@ impl BuffManager {
                 action
             }
         };
-        let capacity_eviction_uids = if matches!(action, GrantAction::Add)
-            && let Some(capacity) = policy.shared_group_capacity
-        {
-            let mut uids = self
-                .buffs
-                .iter()
-                .filter(|active| active.owner_uid == route.target_uid)
-                .filter(|active| {
-                    active.definition.as_ref().is_some_and(|resident| {
-                        resident
-                            .shared_group_capacity()
-                            .is_some_and(|(group_id, _)| group_id == capacity.group_id)
-                    })
-                })
-                .filter_map(|active| active.buff.uid)
-                .collect::<Vec<_>>();
+        let capacity_eviction_uids = if matches!(action, GrantAction::Add) {
+            let (limit, mut uids) = if let Some(capacity) = policy.shared_group_capacity {
+                (
+                    capacity.max_instances,
+                    self.buffs
+                        .iter()
+                        .filter(|active| active.owner_uid == route.target_uid)
+                        .filter(|active| {
+                            active.definition.as_ref().is_some_and(|resident| {
+                                resident
+                                    .shared_group_capacity()
+                                    .is_some_and(|(group_id, _)| group_id == capacity.group_id)
+                            })
+                        })
+                        .filter_map(|active| active.buff.uid)
+                        .collect::<Vec<_>>(),
+                )
+            } else if let Some(capacity) = policy.same_type_capacity {
+                (
+                    capacity,
+                    self.buffs
+                        .iter()
+                        .filter(|active| {
+                            active.owner_uid == route.target_uid
+                                && active.type_id == policy.effective_type_id
+                        })
+                        .filter_map(|active| active.buff.uid)
+                        .collect::<Vec<_>>(),
+                )
+            } else {
+                (0, Vec::new())
+            };
             uids.sort_unstable();
-            let remove_count = uids
-                .len()
-                .saturating_add(1)
-                .saturating_sub(capacity.max_instances as usize);
+            let remove_count = uids.len().saturating_add(1).saturating_sub(limit as usize);
             uids.into_iter().take(remove_count).collect()
         } else {
             Vec::new()
@@ -834,6 +870,24 @@ impl BuffManager {
                         next_layer,
                         next_duration,
                     )
+                })
+                .unwrap_or_default(),
+            _ if action == GrantAction::RefreshExisting => self
+                .buffs
+                .iter()
+                .find(|active| {
+                    active.owner_uid == route.target_uid
+                        && active.buff.buff_id == Some(route.buff_id)
+                })
+                .and_then(|active| {
+                    Some(self.fanout_refresh_specs(
+                        hp,
+                        route.target_uid,
+                        route.buff_id,
+                        active.buff.uid?,
+                        active.buff.layer.unwrap_or(stack_layer),
+                        active.buff.duration.unwrap_or(policy.lifetime.duration),
+                    ))
                 })
                 .unwrap_or_default(),
             _ => Vec::new(),

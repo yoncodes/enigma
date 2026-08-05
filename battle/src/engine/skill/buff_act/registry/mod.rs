@@ -87,6 +87,7 @@ pub enum BuffActKind {
     BuffAddAct,
     BuffAddActLimit,
     BuffReplace,
+    BuffRoundAdd,
     BloodPoolCountAddExPoint,
     BloodPoolTag,
     BloodValueUseSkill,
@@ -163,10 +164,12 @@ pub enum BuffActKind {
     HeatScaleBurnAddFix,
     HeatScaleDecrCounter,
     HeatScaleTag,
+    HaloBase,
     HeatScaleUseSkill,
     Injury,
     InjuryBank,
     InjuryLogback,
+    Immunity,
     ImmunityTimes,
     InjuryAbsorb,
     AttrFixFromInjuryBank,
@@ -199,6 +202,7 @@ pub enum BuffActKind {
     RealHurtFix,
     RealDamageKill,
     Rebound,
+    ReboundBasedOnDamage,
     Revive,
     Shield,
     ShieldByBuffLayer,
@@ -219,6 +223,7 @@ pub enum BuffActKind {
     TargetingTag,
     TeammateInjuryCount,
     ToughnessOverflowRecord,
+    ToughnessRecover,
     TransferEnergyBuff,
     UseSkillTeamAddEmitterEnergy,
     UseSkillAttrFix,
@@ -316,6 +321,7 @@ pub enum RuntimeEventMultiplicity {
 pub struct RuntimeMarker {
     pub position: RuntimeMarkerPosition,
     pub target: RuntimeMarkerTarget,
+    pub effect_type: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -334,6 +340,7 @@ pub struct BuffActRuntimeDefinition {
     pub execution_timing: RuntimeExecutionTiming,
     pub event_multiplicity: RuntimeEventMultiplicity,
     pub reserves_trigger_child_uid: bool,
+    pub owns_duration: bool,
     pub marker: Option<RuntimeMarker>,
     pub handler: Option<RuntimeHandler>,
     pub scoped_handler: Option<ScopedRuntimeHandler>,
@@ -441,8 +448,9 @@ macro_rules! buff_act_definitions {
             $(, timing: $timing:ident)?
             $(, multiplicity: $multiplicity:ident)?
             $(, trigger_child_uid: $trigger_child_uid:expr)?
+            $(, owns_duration: $owns_duration:expr)?
             $(, stat_read: $stat_read:ident)?
-            $(, runtime_marker: $marker_position:ident($marker_target:ident))?
+            $(, runtime_marker: $marker_position:ident($marker_target:ident $(, $marker_effect_type:expr)?))?
             $(, runtime: $runtime:expr)?
             $(, scoped_runtime: $scoped_runtime:expr)?
             $(, transaction: $transaction:expr)?
@@ -473,7 +481,8 @@ macro_rules! buff_act_definitions {
                     execution_timing: buff_act_definitions!(@timing $($timing)?),
                     event_multiplicity: buff_act_definitions!(@multiplicity $($multiplicity)?),
                     reserves_trigger_child_uid: buff_act_definitions!(@trigger_child_uid $($trigger_child_uid)?),
-                    marker: buff_act_definitions!(@runtime_marker $($marker_position($marker_target))?),
+                    owns_duration: buff_act_definitions!(@owns_duration $($owns_duration)?),
+                    marker: buff_act_definitions!(@runtime_marker $($marker_position($marker_target $(, $marker_effect_type)?))?),
                     handler: buff_act_definitions!(@runtime $($runtime)?),
                     scoped_handler: buff_act_definitions!(@scoped_runtime $($scoped_runtime)?),
                 },
@@ -525,15 +534,20 @@ macro_rules! buff_act_definitions {
     (@multiplicity) => { RuntimeEventMultiplicity::EveryEvent };
     (@trigger_child_uid $value:expr) => { $value };
     (@trigger_child_uid) => { false };
+    (@owns_duration $value:expr) => { $value };
+    (@owns_duration) => { false };
     (@stat_read $value:ident) => { StatReadTiming::$value };
     (@stat_read) => { StatReadTiming::None };
-    (@runtime_marker $position:ident($target:ident)) => {
+    (@runtime_marker $position:ident($target:ident $(, $effect_type:expr)?)) => {
         Some(RuntimeMarker {
             position: RuntimeMarkerPosition::$position,
             target: RuntimeMarkerTarget::$target,
+            effect_type: buff_act_definitions!(@marker_effect_type $($effect_type)?),
         })
     };
     (@runtime_marker) => { None };
+    (@marker_effect_type $effect_type:expr) => { Some($effect_type) };
+    (@marker_effect_type) => { None };
     (@runtime $handler:expr) => { Some($handler) };
     (@runtime) => { None };
     (@scoped_runtime $handler:expr) => { Some($handler) };
@@ -558,14 +572,15 @@ buff_act_definitions! {
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(100, "Attr"), &[EffectType::Attr as i32]).with_max_hp(2, 0));
     (853, "AttrByLostHp") => AttrByLostHp, effect_time_subscription: false,
-        supports: |args| matches!(args, [step, attrs @ .., max_steps]
-            if *step > 0 && !attrs.is_empty() && *max_steps > 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(853, "AttrByLostHp"), &[EffectType::Attr as i32]));
+        supports: super::attr_by_lost_hp::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(853, "AttrByLostHp"), &[EffectType::None as i32]));
+    (1056, "AttrByLostHp") => AttrByLostHp, effect_time_subscription: false,
+        supports: super::attr_by_lost_hp::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1056, "AttrByLostHp"), &[EffectType::None as i32]));
     (201, "Cure") => Cure,
         runtime: |context| super::cure::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |args| super::cure::supports(BuffActKind::Cure, args), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(201, "Cure"), &[EffectType::Cure as i32]));
     (202, "Dot") => Dot, stat_read: ByArguments,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
-        supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(202, "Dot"), &[EffectType::Dot as i32]));
+        supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(202, "Dot"), &[EffectType::Dot as i32]));
     (203, "Dot") => Dot, stat_read: ByArguments,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
         supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(203, "Dot"), &[EffectType::Dot as i32]));
@@ -573,6 +588,7 @@ buff_act_definitions! {
         runtime: |context| super::revive::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::revive::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(512, "Cure"), &[EffectType::Cure as i32]));
     (849, "AdvancedCure") => AdvancedCure, events: [EventKind::BeAttacked],
+        owns_duration: true,
         runtime_marker: BeforeChanges(Owner),
         runtime: |context| super::cure::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |args| super::cure::supports(BuffActKind::AdvancedCure, args), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(849, "AdvancedCure"), &[EffectType::None as i32]));
@@ -635,7 +651,7 @@ buff_act_definitions! {
         scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
         supports: |_| true;
     (519, "RealHurtFix") => RealHurtFix, effect_time_subscription: false,
-        supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(519, "RealHurtFix"), &[EffectType::Realhurtfix as i32]));
+        supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(519, "RealHurtFix"), &[EffectType::Realhurtfix as i32]));
     (520, "RealHarmFix") => RealHarmFix, effect_time_subscription: false,
         supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(520, "RealHarmFix"), &[EffectType::Realharmfix as i32]));
     (522, "RealHarmSkillEffectFix") => RealHarmSkillEffectFix, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(522, "RealHarmSkillEffectFix"), &[EffectType::Realharmskilleffectfix as i32]));
@@ -649,6 +665,9 @@ buff_act_definitions! {
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(607, "ExPointCardMove"), &[EffectType::Expointcardmove as i32]));
     (603, "ExPointCantAdd") => ExPointCantAdd,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(603, "ExPointCantAdd"), &[EffectType::Expointcantadd as i32]));
+    (604, "BuffRoundAdd") => BuffRoundAdd, effect_time_subscription: false,
+        supports: super::buff_round_add::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(604, "BuffRoundAdd"), &[]));
     (605, "ExPointDel") => ExPointDel,
         runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
         supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(605, "ExPointDel"), &[]));
@@ -677,6 +696,12 @@ buff_act_definitions! {
     (721, "DotNoLimit") => DotNoLimit, runtime_marker: BeforeChanges(Owner),
         scoped_runtime: |context| super::dot_no_limit::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(721, "DotNoLimit"), &[EffectType::Dot as i32]));
+    (743, "ReboundBasedOnDamage") => ReboundBasedOnDamage, source: Owner,
+        multiplicity: OncePerActionTarget,
+        runtime_marker: BeforeChanges(EventSource, EffectType::Rebound as i32),
+        runtime: |context| super::rebound::damage_based_rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::rebound::supports_damage_based,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(743, "ReboundBasedOnDamage"), &[]));
     (795, "None") => TargetingTag,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(795, "None"), &[EffectType::None as i32]));
     (725, "AddToTarget") => AddToTarget,
@@ -776,6 +801,7 @@ buff_act_definitions! {
                 == Some(crate::engine::entity::attr::AttrId::Hp)
                 && *cap > 0 && *skill > 0 && *threshold > 0 && *heal > 0 && *store > 0), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(770, "InjuryBank"), &[EffectType::Storageinjury as i32]));
     (771, "MasterHalo") => MasterHalo, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(771, "MasterHalo"), &[EffectType::Masterhalo as i32]));
+    (704, "HaloBase") => HaloBase, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(704, "HaloBase"), &[EffectType::Halobase as i32]).with_unchanged_refresh());
     (772, "SlaveHalo") => SlaveHalo, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(772, "SlaveHalo"), &[EffectType::Slavehalo as i32]));
     (781, "MockTaunt") => MockTaunt, effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(781, "MockTaunt"), &[EffectType::Mocktaunt as i32]));
     (790, "ModifyAttrByBuffLayer") => ModifyAttrByBuffLayer, effect_time_subscription: false,
@@ -802,7 +828,7 @@ buff_act_definitions! {
         effect_time_subscription: false, transactions: [EventKind::HpLost],
         transaction: super::toughness::transaction_rule_ops,
         supports: |args| args.is_empty(),
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1111, "ToughnessOverflowRecord"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1111, "ToughnessOverflowRecord"), &[EffectType::None as i32]));
     (806, "ExPointOverflowBank") => ExPointOverflowBank,
         scoped_runtime: |context| super::ex_point_overflow_bank::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(806, "ExPointOverflowBank"), &[EffectType::Expointoverflowbank as i32]));
@@ -1122,6 +1148,10 @@ buff_act_definitions! {
         state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1053, "AttrByHeatScale"), &[EffectType::None as i32]));
     (1062, "HeatScaleDecrCounter") => HeatScaleDecrCounter, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1062, "HeatScaleDecrCounter"), &[EffectType::None as i32]));
+    (502, "Immunity") => Immunity,
+        effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(502, "Immunity"), &[]));
     (1069, "ImmunityTimes") => ImmunityTimes,
         effect_time_subscription: false,
         supports: |args| matches!(args, [status] if *status > 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1069, "ImmunityTimes"), &[EffectType::None as i32]));
@@ -1139,6 +1169,10 @@ buff_act_definitions! {
         setup: [RoundStart(2)],
         setup_handler: |context| super::team_immunity_times::setup_rule_ops(context.managers, &context.subscriber.feature, context.subscriber.stage),
         supports: super::team_immunity_times::supports, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1126, "TeamImmunityTimes"), &[EffectType::None as i32]).with_initial_state(super::wire::InitialStateRule::SecondArgument));
+    (1102, "ToughnessRecover") => ToughnessRecover,
+        runtime: |context| super::toughness::recover_rule_ops(context.subscriber),
+        supports: |args| matches!(args, [config_effect] if *config_effect >= 0),
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1102, "ToughnessRecover"), &[EffectType::None as i32]));
     (1127, "TeamExElectricTransConsumeValueAttr") => TeamExElectricTransConsumeValueAttr,
         effect_time_subscription: false, stat_read: OnGrant,
         supports: super::electric_transform::supports_team_attribute, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1127, "TeamExElectricTransConsumeValueAttr"), &[]).with_initial_state(super::wire::InitialStateRule::GrantValue));
@@ -1176,6 +1210,10 @@ pub fn kind(opcode: i32, type_name: &str) -> Option<BuffActKind> {
 pub fn reserves_trigger_child_uid(key: DefinitionKey) -> bool {
     find(key.opcode, key.type_name)
         .is_some_and(|definition| definition.runtime.reserves_trigger_child_uid)
+}
+
+pub fn owns_duration(opcode: i32, type_name: &str) -> bool {
+    find(opcode, type_name).is_some_and(|definition| definition.runtime.owns_duration)
 }
 
 pub fn runtime_marker(key: DefinitionKey) -> Option<RuntimeMarker> {

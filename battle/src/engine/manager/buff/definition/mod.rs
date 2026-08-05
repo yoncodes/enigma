@@ -15,7 +15,7 @@ enum BuffIncludeType {
     PermanentMechanicCarrier = 5,
     SharedTypeFamily = 6,
     ReapplyReserve = 7,
-    StateCarrier = 8,
+    KeepExistingTypeFamily = 8,
     Count = 9,
     Stacked = 10,
     Layer = 11,
@@ -55,7 +55,7 @@ impl BuffIncludeType {
             5 => Self::PermanentMechanicCarrier,
             6 => Self::SharedTypeFamily,
             7 => Self::ReapplyReserve,
-            8 => Self::StateCarrier,
+            8 => Self::KeepExistingTypeFamily,
             9 => Self::Count,
             10 => Self::Stacked,
             11 => Self::Layer,
@@ -78,7 +78,7 @@ impl BuffIncludeType {
             Self::PermanentMechanicCarrier => "PermanentMechanicCarrier",
             Self::SharedTypeFamily => "SharedTypeFamily",
             Self::ReapplyReserve => "ReapplyReserve",
-            Self::StateCarrier => "ExclusiveTypeState",
+            Self::KeepExistingTypeFamily => "KeepExistingTypeFamily",
             Self::Count => "Count",
             Self::Stacked => "Stacked",
             Self::Layer => "Layer",
@@ -117,7 +117,7 @@ pub(super) struct BuffDefinition {
 impl BuffDefinition {
     pub(super) fn include_entry_name(include_type: i32, value: i32) -> String {
         let name = if include_type == BuffIncludeType::ReapplyReserve.id() && value > 0 {
-            "ValueBearingType7"
+            "SameTypeCapacity"
         } else {
             BuffIncludeType::from_id(include_type)
                 .map(BuffIncludeType::name)
@@ -276,8 +276,11 @@ impl BuffDefinition {
             .collect()
     }
 
-    pub(super) fn fanout_wire_markers(&self) -> Vec<i32> {
-        use crate::engine::skill::buff_act::{registry::BuffActKind, wire::WirePhase};
+    pub(super) fn fanout_wire_markers(
+        &self,
+        phase: crate::engine::skill::buff_act::wire::WirePhase,
+    ) -> Vec<i32> {
+        use crate::engine::skill::buff_act::registry::BuffActKind;
 
         self.features
             .iter()
@@ -285,7 +288,8 @@ impl BuffDefinition {
                 !matches!(
                     feature.kind,
                     Some(
-                        BuffActKind::MasterHalo
+                        BuffActKind::HaloBase
+                            | BuffActKind::MasterHalo
                             | BuffActKind::LayerMasterHalo
                             | BuffActKind::SlaveHalo
                     )
@@ -295,9 +299,16 @@ impl BuffDefinition {
                 feature
                     .wire
                     .into_iter()
-                    .flat_map(|definition| definition.markers(WirePhase::Add).iter().copied())
+                    .flat_map(|definition| definition.markers(phase).iter().copied())
             })
             .collect()
+    }
+
+    pub(super) fn refreshes_unchanged(&self) -> bool {
+        self.features
+            .iter()
+            .filter_map(|feature| feature.wire)
+            .any(|wire| wire.refreshes_unchanged)
     }
 
     pub(super) fn pre_add_wire_effects(&self, target_uid: i64) -> Vec<super::BuffWireEffectResult> {
@@ -547,21 +558,26 @@ impl BuffDefinition {
         self.has_include_type(BuffIncludeType::SharedTypeFamily)
     }
 
+    pub(super) fn keeps_existing_type_family(&self) -> bool {
+        self.has_include_type(BuffIncludeType::KeepExistingTypeFamily)
+    }
+
+    pub(super) fn matches_type_family(&self) -> bool {
+        self.uses_shared_type_family() || self.keeps_existing_type_family()
+    }
+
     pub(super) fn unresolved_include_entries(&self) -> Vec<(i32, i32)> {
         self.include_entries
             .iter()
             .filter_map(|(include_type, value)| {
                 match *include_type {
-                    1 | 2 | 3 | 4 | 10 | 11 | 12 | 14 | 15 | 16 | 17 => false,
+                    1 | 2 | 3 | 4 | 6 | 10 | 11 | 12 | 14 | 15 | 16 | 17 => false,
                     kind if kind == BuffIncludeType::PermanentMechanicCarrier.id() => false,
-                    kind if kind == BuffIncludeType::SharedTypeFamily.id() => {
-                        self.status != BuffStatus::Shield
-                    }
-                    kind if kind == BuffIncludeType::ReapplyReserve.id() => *value != 0,
+                    kind if kind == BuffIncludeType::ReapplyReserve.id() => false,
                     kind if kind == BuffIncludeType::GroupCapacity.id() => {
                         self.shared_group_capacity().is_none()
                     }
-                    kind if kind == BuffIncludeType::StateCarrier.id() => true,
+                    kind if kind == BuffIncludeType::KeepExistingTypeFamily.id() => false,
                     kind if kind == BuffIncludeType::Count.id() => true,
                     _ => true,
                 }
@@ -640,6 +656,7 @@ impl BuffDefinition {
     pub(super) fn reapplies_as_new(&self) -> bool {
         let timed_copy = self.has_include_type(BuffIncludeType::SeparateTimedCopies);
         self.shared_group_capacity().is_some()
+            || self.same_type_capacity().is_some()
             || self.capped_separate_copy_limit().is_some()
             || self.reapplies_consumable_charge()
             || (!self.uses_stack_layer()
@@ -666,6 +683,15 @@ impl BuffDefinition {
             })
     }
 
+    pub(super) fn same_type_capacity(&self) -> Option<i32> {
+        self.include_entries
+            .iter()
+            .find_map(|(include_type, value)| {
+                (*include_type == BuffIncludeType::ReapplyReserve.id() && *value > 0)
+                    .then_some(*value)
+            })
+    }
+
     pub(super) fn shared_group_capacity(&self) -> Option<(i32, i32)> {
         self.include_entries
             .iter()
@@ -684,7 +710,8 @@ impl BuffDefinition {
                     matches!(
                         feature.kind,
                         Some(
-                            crate::engine::skill::buff_act::registry::BuffActKind::MasterHalo
+                            crate::engine::skill::buff_act::registry::BuffActKind::HaloBase
+                                | crate::engine::skill::buff_act::registry::BuffActKind::MasterHalo
                                 | crate::engine::skill::buff_act::registry::BuffActKind::LayerMasterHalo
                         )
                     )
@@ -714,10 +741,6 @@ impl BuffDefinition {
 
     pub(super) fn replaces_existing_copy(&self) -> bool {
         !self.uses_stack_layer() && !self.uses_typed_count()
-    }
-
-    pub(super) fn cleans_up_at_round_start(&self) -> bool {
-        self.duration == 1 && !self.has_features && self.count == 0 && self.replaces_existing_copy()
     }
 
     fn has_attr_feature(&self, attr_id: AttrId) -> bool {

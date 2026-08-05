@@ -190,6 +190,14 @@ pub struct BuffChangeDuration {
     pub delta: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuffRefreshDuration {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub buff_uid: i64,
+    pub minimum_duration: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuffSpecialCount {
     pub origin: CommandOrigin,
@@ -222,8 +230,6 @@ pub struct BuffDurationAdvance {
 
 const ROUND_START_DURATION_SYNC_KEY: crate::engine::skill::rule::DefinitionKey =
     crate::engine::skill::rule::DefinitionKey::new(0, "RoundStartDurationSync");
-const ROUND_START_CLEANUP_KEY: crate::engine::skill::rule::DefinitionKey =
-    crate::engine::skill::rule::DefinitionKey::new(0, "RoundStartCleanup");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuffRoundStartDurationSync {
@@ -240,28 +246,6 @@ impl BuffRoundStartDurationSync {
             },
             owner_uids,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BuffRoundStartCleanup {
-    pub origin: CommandOrigin,
-}
-
-impl BuffRoundStartCleanup {
-    pub fn new() -> Self {
-        Self {
-            origin: CommandOrigin {
-                domain: RuleDomain::Lifecycle,
-                key: ROUND_START_CLEANUP_KEY,
-            },
-        }
-    }
-}
-
-impl Default for BuffRoundStartCleanup {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -320,12 +304,12 @@ pub enum BuffCommand {
     SetStateSnapshot(BuffSetState),
     AccumulateActValue(BuffAccumulateActValue),
     ChangeDuration(BuffChangeDuration),
+    RefreshDuration(BuffRefreshDuration),
     AddSpecialCount(BuffSpecialCount),
     ReserveChildUids(BuffChildUidReservation),
     ReserveGrantUid(BuffGrantUidReservation),
     AdvanceDuration(BuffDurationAdvance),
     SyncRoundStartDuration(BuffRoundStartDurationSync),
-    CleanupRoundStart(BuffRoundStartCleanup),
 }
 
 #[derive(Debug, Clone)]
@@ -416,7 +400,6 @@ enum BuffPlanAction {
     ReserveGrantUid(GrantUidReservationPlan),
     AdvanceDuration(Vec<super::lifecycle::BuffDurationPlan>),
     SyncRoundStartDuration(Vec<super::lifecycle::BuffLifecyclePlan>),
-    CleanupRoundStart(Vec<super::lifecycle::BuffLifecyclePlan>),
 }
 
 #[derive(Debug, Clone)]

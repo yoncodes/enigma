@@ -12,6 +12,30 @@ fn capability_gaps_are_not_ready() {
 }
 
 #[test]
+fn reachable_timed_buff_reports_a_missing_duration_route() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut catalog = SkillEffectCatalog::default();
+    let mut skills = VecDeque::new();
+    let mut buffs = VecDeque::from([Pending {
+        id: 630_091,
+        path: "test root".to_owned(),
+    }]);
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    scan_closure(db, &mut catalog, &mut skills, &mut buffs, &mut report);
+
+    assert!(
+        report
+            .gaps
+            .contains_key(&CapabilityKey::new("effect-time", 209, "BuffDuration",))
+    );
+}
+
+#[test]
 fn gap_paths_preserve_exact_buff_provenance() {
     let mut report = Report::default();
     let key = CapabilityKey::new("buff-include", 7, "ValueBearingType7(7#10)");

@@ -6,6 +6,8 @@ use crate::engine::{
     },
 };
 
+use super::parse::parse_fixed;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuffConditionMode {
     Present,
@@ -103,6 +105,14 @@ pub fn first_status_present(_: i32, _: &str, raw_args: &[String]) -> Option<Pars
     status_count(parse_buff_ids(raw_args.get(..1)?)?, 1)
 }
 
+pub fn first_status_absent(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::BuffStatusCount {
+        status_ids: parse_buff_ids(raw_args.get(..1)?)?,
+        compare: ConditionCompare::Equal,
+        threshold: 0,
+    })
+}
+
 fn status_count(status_ids: Vec<i32>, threshold: i32) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::BuffStatusCount {
         status_ids,
@@ -130,6 +140,38 @@ pub fn team_added_count(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCo
             .and_then(|arg| arg.parse().ok())
             .unwrap_or(1),
         scope: BuffAddedScope::Team,
+    })
+}
+
+pub fn per_buff_id(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::BuffIdCount {
+        buff_ids: parse_buff_ids(raw_args)?,
+        compare: ConditionCompare::GreaterThanOrEqual,
+        threshold: 1,
+    })
+}
+
+pub fn buff_id_at_least(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::BuffIdThreshold {
+        buff_ids: parse_buff_ids(raw_args.get(..1)?)?,
+        threshold: raw_args.get(1)?.parse().ok()?,
+    })
+}
+
+pub fn team_buff_presence(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let [team, present, buff_id] = parse_fixed(raw_args)?;
+    Some(ParsedConditionKind::TeamBuffPresence {
+        team,
+        present: present != 0,
+        buff_id,
+    })
+}
+
+pub fn owner_added_count(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::AccBuffAddedCount {
+        buff_ids: parse_buff_ids(raw_args.get(..1)?)?,
+        threshold: raw_args.get(1)?.parse().ok()?,
+        scope: BuffAddedScope::Owner,
     })
 }
 

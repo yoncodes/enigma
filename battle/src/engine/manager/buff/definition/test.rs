@@ -28,7 +28,9 @@ fn halo_fanout_keeps_add_markers_from_non_halo_features() {
 
     for buff_id in [312401461, 312441464, 312441465] {
         assert_eq!(
-            BuffDefinition::get(buff_id).unwrap().fanout_wire_markers(),
+            BuffDefinition::get(buff_id)
+                .unwrap()
+                .fanout_wire_markers(crate::engine::skill::buff_act::wire::WirePhase::Add,),
             vec![sonettobuf::effect_type_enum::EffectType::Attr as i32]
         );
     }

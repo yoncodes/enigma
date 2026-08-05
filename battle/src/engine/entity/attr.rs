@@ -129,8 +129,8 @@ impl AttrId {
 pub struct Attr;
 
 impl Attr {
-    pub fn get(hero: &HeroData, equip: Option<&Equipment>) -> HeroAttribute {
-        super::stats::Stats::build(&super::stats::StatInputs::from_hero_data(hero, equip)).base()
+    pub fn get(hero: &HeroData, equips: &[Equipment]) -> HeroAttribute {
+        super::stats::Stats::build_for_hero(hero, equips).base()
     }
 }
 
