@@ -180,6 +180,9 @@ impl BuffManager {
         }) {
             return GrantAction::KeepExisting;
         }
+        if has_matching && policy.on_duplicate == DuplicateGrant::KeepExisting {
+            return GrantAction::KeepExisting;
+        }
         if policy.storage == BuffStorage::Counted && repeat > 0 && has_matching {
             return GrantAction::RefreshCount;
         }

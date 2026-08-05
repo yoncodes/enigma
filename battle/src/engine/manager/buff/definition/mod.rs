@@ -15,7 +15,7 @@ enum BuffIncludeType {
     PermanentMechanicCarrier = 5,
     SharedTypeFamily = 6,
     ReapplyReserve = 7,
-    StateCarrier = 8,
+    KeepExistingTypeFamily = 8,
     Count = 9,
     Stacked = 10,
     Layer = 11,
@@ -55,7 +55,7 @@ impl BuffIncludeType {
             5 => Self::PermanentMechanicCarrier,
             6 => Self::SharedTypeFamily,
             7 => Self::ReapplyReserve,
-            8 => Self::StateCarrier,
+            8 => Self::KeepExistingTypeFamily,
             9 => Self::Count,
             10 => Self::Stacked,
             11 => Self::Layer,
@@ -78,7 +78,7 @@ impl BuffIncludeType {
             Self::PermanentMechanicCarrier => "PermanentMechanicCarrier",
             Self::SharedTypeFamily => "SharedTypeFamily",
             Self::ReapplyReserve => "ReapplyReserve",
-            Self::StateCarrier => "ExclusiveTypeState",
+            Self::KeepExistingTypeFamily => "KeepExistingTypeFamily",
             Self::Count => "Count",
             Self::Stacked => "Stacked",
             Self::Layer => "Layer",
@@ -558,6 +558,14 @@ impl BuffDefinition {
         self.has_include_type(BuffIncludeType::SharedTypeFamily)
     }
 
+    pub(super) fn keeps_existing_type_family(&self) -> bool {
+        self.has_include_type(BuffIncludeType::KeepExistingTypeFamily)
+    }
+
+    pub(super) fn matches_type_family(&self) -> bool {
+        self.uses_shared_type_family() || self.keeps_existing_type_family()
+    }
+
     pub(super) fn unresolved_include_entries(&self) -> Vec<(i32, i32)> {
         self.include_entries
             .iter()
@@ -569,7 +577,7 @@ impl BuffDefinition {
                     kind if kind == BuffIncludeType::GroupCapacity.id() => {
                         self.shared_group_capacity().is_none()
                     }
-                    kind if kind == BuffIncludeType::StateCarrier.id() => true,
+                    kind if kind == BuffIncludeType::KeepExistingTypeFamily.id() => false,
                     kind if kind == BuffIncludeType::Count.id() => true,
                     _ => true,
                 }

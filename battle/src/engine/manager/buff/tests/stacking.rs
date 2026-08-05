@@ -385,6 +385,26 @@ fn value_bearing_type_seven_evicts_the_oldest_same_type_instance() {
 }
 
 #[test]
+fn include_type_eight_keeps_the_first_same_type_variant() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+
+    let first = manager.add_replacing_excluded(&hp, 10, 10, 500101, 0);
+    let first_uid = first.added.expect("rank-one variant").buff.uid;
+    let second = manager.add_replacing_excluded(&hp, 10, 10, 500102, 0);
+
+    assert!(second.added.is_none());
+    assert!(second.refreshed.is_empty());
+    assert!(second.removed.is_empty());
+    assert!(second.rejected.is_none());
+    let active = manager.active_for(10).collect::<Vec<_>>();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].buff_id, Some(500101));
+    assert_eq!(active[0].uid, first_uid);
+}
+
+#[test]
 fn timed_layer_grants_only_merge_with_an_instance_at_the_fresh_duration() {
     init_config();
     let hp = HpManager::default();

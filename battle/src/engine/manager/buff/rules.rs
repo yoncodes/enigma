@@ -48,6 +48,7 @@ impl UidAllocationPolicy {
 pub enum DuplicateGrant {
     MergeExisting,
     ReplaceExisting,
+    KeepExisting,
     AddSeparateCopy,
 }
 
@@ -135,7 +136,9 @@ impl BuffPolicy {
     pub(super) fn from_definition(definition: &BuffDefinition) -> Self {
         let shared_type_replacement =
             definition.uses_shared_type_family() && definition.status != BuffStatus::Shield;
-        let separate_copies = !shared_type_replacement && definition.reapplies_as_new();
+        let keep_existing_type_family = definition.keeps_existing_type_family();
+        let type_family_match = shared_type_replacement || keep_existing_type_family;
+        let separate_copies = !type_family_match && definition.reapplies_as_new();
         let storage = if definition.uses_stack_layer() {
             BuffStorage::Layered
         } else if definition.uses_typed_count() {
@@ -145,7 +148,7 @@ impl BuffPolicy {
         } else {
             BuffStorage::Single
         };
-        let match_existing = if shared_type_replacement {
+        let match_existing = if type_family_match {
             ExistingBuffMatch::SharedTypeFamily
         } else if storage == BuffStorage::SeparateCopies
             || (storage == BuffStorage::Layered && definition.duration > 0)
@@ -154,7 +157,9 @@ impl BuffPolicy {
         } else {
             ExistingBuffMatch::SameId
         };
-        let on_duplicate = if separate_copies {
+        let on_duplicate = if keep_existing_type_family {
+            DuplicateGrant::KeepExisting
+        } else if separate_copies {
             DuplicateGrant::AddSeparateCopy
         } else if storage == BuffStorage::Single {
             DuplicateGrant::ReplaceExisting
@@ -216,7 +221,7 @@ impl BuffPolicy {
                         && active
                             .definition
                             .as_ref()
-                            .is_some_and(BuffDefinition::uses_shared_type_family)
+                            .is_some_and(BuffDefinition::matches_type_family)
                 }
             }
     }
@@ -295,10 +300,12 @@ mod tests {
             ExistingBuffMatch::SharedTypeFamily
         );
         let exclusive_state = BuffPolicy::try_for_buff_id(500101).unwrap();
+        assert!(exclusive_state.unresolved_include_entries.is_empty());
         assert_eq!(
-            exclusive_state.unresolved_include_entries.as_ref(),
-            &[(8, 0)]
+            exclusive_state.match_existing,
+            ExistingBuffMatch::SharedTypeFamily
         );
+        assert_eq!(exclusive_state.on_duplicate, DuplicateGrant::KeepExisting);
         assert!(
             BuffPolicy::try_for_buff_id(31050145)
                 .unwrap()
