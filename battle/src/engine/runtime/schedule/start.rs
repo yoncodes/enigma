@@ -40,8 +40,15 @@ pub fn run_round_start_split(
     context: TargetContext,
     team_type: i32,
 ) -> Result<(DrainResult, DrainResult), DrainError> {
-    let mut before =
-        run_before_ai_round_start(managers, pool, catalog, determinism, context, team_type)?;
+    let mut before = run_before_ai_round_start(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        team_type,
+        &[],
+    )?;
     let base_hand_size = crate::engine::manager::card::start::hand_size_from_count(
         pool.attacker_main
             .iter()
@@ -73,6 +80,7 @@ pub fn run_before_ai_round_start(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     _team_type: i32,
+    wave_entry_condition_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     let mut owner_uids = pool
         .defender_main
@@ -90,6 +98,7 @@ pub fn run_before_ai_round_start(
         2,
         &owner_uids,
         false,
+        wave_entry_condition_uids,
     )?;
     debug_assert!(pending_settlement.capacity_groups.is_empty());
     Ok(result)
@@ -148,6 +157,7 @@ pub fn run_round_start_after_ai_split(
         1,
         &owner_uids,
         true,
+        &[],
     )?;
     append(&mut fight_steps, before_duration);
     append(
@@ -894,6 +904,7 @@ fn run_round_start_before_duration(
     team: i32,
     owner_uids: &[i64],
     split_settlement: bool,
+    wave_entry_condition_uids: &[i64],
 ) -> Result<(DrainResult, RoundStartSettlementPlan), DrainError> {
     let duration_snapshot = duration_snapshot(managers, owner_uids);
     let field_ops = managers
@@ -919,6 +930,15 @@ fn run_round_start_before_duration(
         .collect::<Vec<_>>();
     let mut result = drain::run(managers, pool, catalog, determinism, context, field_ops)?;
     for &(stage, priority) in ROUND_START_BEFORE_DURATION_SETUP {
+        let pending_owner_uids = if stage == SetupStage::RoundStartCondition && priority == 100 {
+            owner_uids
+                .iter()
+                .copied()
+                .filter(|uid| !wave_entry_condition_uids.contains(uid))
+                .collect::<Vec<_>>()
+        } else {
+            owner_uids.to_vec()
+        };
         append(
             &mut result,
             drain::run_setup_stage_for_owners(
@@ -929,7 +949,7 @@ fn run_round_start_before_duration(
                 context,
                 stage,
                 priority,
-                owner_uids,
+                &pending_owner_uids,
             )?,
         );
     }

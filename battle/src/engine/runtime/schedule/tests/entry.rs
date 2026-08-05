@@ -124,14 +124,22 @@ fn promoted_defender_joins_the_normal_round_start_once() {
         promotions,
     )
     .unwrap();
-    run_before_ai_round_start(&mut managers, &pool, &catalog, &mut determinism, context, 2)
-        .unwrap();
+    run_before_ai_round_start(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        context,
+        2,
+        &[],
+    )
+    .unwrap();
 
     assert_eq!(managers.ex_point.get(-3), 1);
 }
 
 #[test]
-fn wave_entry_setup_runs_only_enter_fight() {
+fn wave_entry_setup_runs_enter_fight_and_early_round_start() {
     init_config();
     let fight = Fight {
         defender: Some(FightTeam {
@@ -183,10 +191,175 @@ fn wave_entry_setup_runs_only_enter_fight() {
     assert_eq!(steps.len(), 1);
     assert!(act_ids.contains(&2531));
     assert!(act_ids.contains(&2370));
-    assert!(!act_ids.contains(&2524));
+    assert_eq!(act_ids, vec![2531, 2370]);
     assert!(!act_ids.contains(&2533));
     assert!(matches!(
         result.frames[0].owner,
         FrameOwner::RoundPhase(RoundPhase::EntityEntrySetup)
     ));
+}
+
+#[test]
+fn wave_entry_round_start_condition_runs_once_before_the_first_ai_turn() {
+    init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-3),
+                current_hp: Some(100),
+                ex_point: Some(0),
+                passive_skill: vec![40, 50, 60],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    for (skill_id, opcode, amount, kind) in [
+        (
+            40,
+            727100,
+            1,
+            ParsedConditionKind::RoundInterval {
+                start_round: 0,
+                period: 1,
+            },
+        ),
+        (50, 101, 1, ParsedConditionKind::None(NoneMode::RoundStart)),
+        (60, 102, 1, ParsedConditionKind::None(NoneMode::RoundStart)),
+    ] {
+        let mut slot = SkillEffectSlot::new(
+            ParsedBehavior::from_spec(
+                BehaviorSpec::new(20002, "AddExPoint"),
+                vec![amount],
+                Vec::new(),
+            ),
+            TargetRequest::self_only(),
+        );
+        slot.conditions = vec![ParsedCondition {
+            opcode,
+            type_name: if opcode == 727100 {
+                "RoundAfter".to_owned()
+            } else {
+                "None".to_owned()
+            },
+            kind,
+            raw_args: Vec::new(),
+        }];
+        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+        catalog.insert(ParsedSkillEffect {
+            skill_id,
+            slots: vec![slot],
+        });
+    }
+    let mut determinism = RoundDeterminism::default();
+    let context = TargetContext {
+        current_round: 2,
+        ..Default::default()
+    };
+
+    let entry = run_wave_entry_setup(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        context,
+        &[-3],
+    )
+    .unwrap();
+    managers.begin_round();
+    let before_ai = run_before_ai_round_start(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        context,
+        2,
+        &[-3],
+    )
+    .unwrap();
+
+    fn act_ids(result: &DrainResult) -> Vec<i32> {
+        fn collect(step: &sonettobuf::FightStep, result: &mut Vec<i32>) {
+            if let Some(skill_id) = step.act_id.filter(|skill_id| *skill_id > 0) {
+                result.push(skill_id);
+            }
+            for child in step
+                .act_effect
+                .iter()
+                .filter_map(|effect| effect.fight_step.as_ref())
+            {
+                collect(child, result);
+            }
+        }
+        let mut result_ids = Vec::new();
+        for step in crate::engine::packet::timeline::project(&result.frames).unwrap() {
+            collect(&step, &mut result_ids);
+        }
+        result_ids
+    }
+    assert_eq!(act_ids(&entry), vec![40]);
+    assert_eq!(act_ids(&before_ai), vec![50, 60]);
+    assert_eq!(managers.ex_point.get(-3), 3);
+}
+
+#[test]
+fn wave_entry_resolves_configured_identity_before_the_next_action() {
+    init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-7),
+                    model_id: Some(151417),
+                    team_type: Some(2),
+                    current_hp: Some(100),
+                    attr: Some(HeroAttribute {
+                        hp: Some(100),
+                        ..Default::default()
+                    }),
+                    passive_skill: vec![1144003, 1144004],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-6),
+                    model_id: Some(151415),
+                    team_type: Some(2),
+                    current_hp: Some(1),
+                    buffs: [11430011, 11430031, 11430051]
+                        .into_iter()
+                        .map(|buff_id| BuffInfo {
+                            buff_id: Some(buff_id),
+                            duration: Some(1),
+                            ..Default::default()
+                        })
+                        .collect(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    run_wave_entry_setup(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 4,
+            ..Default::default()
+        },
+        &[-7],
+    )
+    .unwrap();
+
+    assert_eq!(managers.entity_snapshot(-7).unwrap().model_id, Some(151407));
 }
