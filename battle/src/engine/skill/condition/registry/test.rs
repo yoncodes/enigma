@@ -1111,17 +1111,30 @@ fn force_field_condition_keeps_its_exact_psychube_route() {
 }
 
 #[test]
-fn loop_chain_thresholds_keep_their_three_exact_events() {
+fn buff_type_thresholds_keep_their_exact_events() {
     for (opcode, event) in [
         (535214, EventKind::TargetAttacked),
         (535215, EventKind::AllyAction),
         (535303, EventKind::RoundEndEntitySettlement),
+        (535304, EventKind::RoundEndAfterSettlement),
     ] {
         assert_eq!(
             find_key(opcode, "TypeIdBuffCountMoreThan").map(|definition| definition.role),
             Some(ConditionRole::Trigger { event, phase: None })
         );
     }
+    assert_eq!(
+        parse(
+            535304,
+            "TypeIdBuffCountMoreThan",
+            &["116385672".into(), "5".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![116385672],
+            compare: super::super::parse::ConditionCompare::GreaterThanOrEqual,
+            threshold: 5,
+        })
+    );
     assert!(find_key(535216, "TypeIdBuffCountMoreThan").is_none());
 }
 
