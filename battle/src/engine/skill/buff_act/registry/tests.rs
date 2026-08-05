@@ -662,6 +662,23 @@ fn holder_scaled_dot_keeps_its_exact_round_end_route() {
 }
 
 #[test]
+fn layered_holder_dot_keeps_its_exact_round_start_route() {
+    assert_eq!(runtime_event(213, "Dot", 101), Some(EventKind::RoundStart));
+    assert!(has_destination(213, "Dot", &[1, 100, 30]));
+
+    let wire = super::super::wire::find(213, "Dot").unwrap();
+    assert!(wire.markers(super::super::wire::WirePhase::Add).is_empty());
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Static),
+        &[sonettobuf::effect_type_enum::EffectType::Dot as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+}
+
+#[test]
 fn moxie_loss_keeps_its_exact_round_end_route() {
     assert_eq!(
         runtime_event(605, "ExPointDel", 302),
