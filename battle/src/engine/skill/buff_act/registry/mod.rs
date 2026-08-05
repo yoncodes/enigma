@@ -572,9 +572,9 @@ buff_act_definitions! {
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(100, "Attr"), &[EffectType::Attr as i32]).with_max_hp(2, 0));
     (853, "AttrByLostHp") => AttrByLostHp, effect_time_subscription: false,
-        supports: super::attr_by_lost_hp::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(853, "AttrByLostHp"), &[EffectType::Attr as i32]));
+        supports: super::attr_by_lost_hp::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(853, "AttrByLostHp"), &[EffectType::None as i32]));
     (1056, "AttrByLostHp") => AttrByLostHp, effect_time_subscription: false,
-        supports: super::attr_by_lost_hp::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1056, "AttrByLostHp"), &[EffectType::Attr as i32]));
+        supports: super::attr_by_lost_hp::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1056, "AttrByLostHp"), &[EffectType::None as i32]));
     (201, "Cure") => Cure,
         runtime: |context| super::cure::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |args| super::cure::supports(BuffActKind::Cure, args), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(201, "Cure"), &[EffectType::Cure as i32]));
