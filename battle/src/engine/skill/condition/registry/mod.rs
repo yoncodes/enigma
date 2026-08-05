@@ -435,6 +435,7 @@ condition_definitions! {
     [51213999] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]);
     [51104] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_in_side_frame(setup_route(SetupStage::RoundStart, 4, &[EventKind::BuffChanged]));
     [51106] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::CardSetup, 0, &[EventKind::BuffChanged]);
+    [61201] "PerBuffIdCount" => buff::per_buff_id_count, uses_active_skill_targets(predicate(&[EventKind::BuffChanged]));
     [61203] "PerBuffIdCount" => buff::per_buff_id_count, uses_active_skill_targets(predicate(&[EventKind::BuffChanged]));
     [59203] "PerBuffId" => buff::per_buff_id, predicate(&[EventKind::BuffChanged]);
     [59302] "PerBuffId" => buff::per_buff_id, event_trigger(EventKind::RoundEnd, None);
