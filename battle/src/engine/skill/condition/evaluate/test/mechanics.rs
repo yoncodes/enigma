@@ -330,6 +330,42 @@ fn hurt_kind_reads_the_attacker_damage_type() {
 }
 
 #[test]
+fn hero_damage_type_reads_the_setup_skill_source() {
+    init_config();
+    let reality = exact_condition(36021, "HeroReal", &[]);
+    let mental = exact_condition(37021, "HeroMagic", &[]);
+    for (damage_type, is_reality) in [
+        (
+            crate::engine::skill::target::EntityDamageType::Reality,
+            true,
+        ),
+        (
+            crate::engine::skill::target::EntityDamageType::Mental,
+            false,
+        ),
+    ] {
+        let mut source = TargetEntity::default();
+        source.uid = 10;
+        source.damage_type = damage_type;
+        let mut pool = TargetPool::default();
+        pool.attacker_main.push(source.clone());
+        pool.attacker_all.push(source);
+        let matches = |condition| {
+            conditions_match(
+                std::slice::from_ref(condition),
+                10,
+                &[10],
+                None,
+                &pool,
+                TargetContext::default(),
+            )
+        };
+        assert_eq!(matches(&reality), is_reality);
+        assert_eq!(matches(&mental), !is_reality);
+    }
+}
+
+#[test]
 fn alive_team_count_reads_manager_hp_not_the_fight_snapshot() {
     init_config();
     let fight = Fight {
