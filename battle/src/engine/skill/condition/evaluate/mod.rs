@@ -898,11 +898,17 @@ fn condition_kind_matches(
                 matches_group && (*rank <= 0 || context.active_skill_rank == *rank)
             })
         }
-        ParsedConditionKind::UseExSkill => pool.entity(source_uid).is_some_and(|source| {
-            source.ex_skill != 0
-                && crate::engine::mechanic::card::CardMechanic
-                    .is_ultimate_skill(context.active_skill_id, source)
-        }),
+        ParsedConditionKind::UseExSkill => pool
+            .entity(if context.active_skill_source_uid != 0 {
+                context.active_skill_source_uid
+            } else {
+                source_uid
+            })
+            .is_some_and(|source| {
+                source.ex_skill != 0
+                    && crate::engine::mechanic::card::CardMechanic
+                        .is_ultimate_skill(context.active_skill_id, source)
+            }),
         ParsedConditionKind::TargetUseExSkill => {
             context.active_skill_source_uid != 0
                 && condition_targets.contains(&context.active_skill_source_uid)
@@ -955,10 +961,18 @@ fn condition_kind_matches(
                 .any(|uid| managers.toughness.is_broken(*uid))
         }),
         ParsedConditionKind::HurtRestrained | ParsedConditionKind::HurtNotRestrained => {
-            let Some(attacker) = pool.entity(context.hit_source_uid) else {
+            let (attacker_uid, defender_uid) =
+                if context.hit_source_uid != 0 && context.hit_target_uid != 0 {
+                    (context.hit_source_uid, context.hit_target_uid)
+                } else if context.active_skill_is_attack && context.active_skill_source_uid != 0 {
+                    (context.active_skill_source_uid, source_uid)
+                } else {
+                    return false;
+                };
+            let Some(attacker) = pool.entity(attacker_uid) else {
                 return false;
             };
-            let Some(defender) = pool.entity(context.hit_target_uid) else {
+            let Some(defender) = pool.entity(defender_uid) else {
                 return false;
             };
             let forces_restraint = managers.is_some_and(|managers| {

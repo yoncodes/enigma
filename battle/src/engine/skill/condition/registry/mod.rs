@@ -78,6 +78,7 @@ pub enum ReactionFrameScope {
 pub enum SkillActionObserver {
     #[default]
     Actor,
+    AttackTarget,
     Team,
     OpposingTeam,
     AllyOfAttackedTarget,
@@ -272,6 +273,11 @@ pub const fn ally_of_attacked_target_observes(
     mut metadata: ConditionMetadata,
 ) -> ConditionMetadata {
     metadata.skill_action_observer = SkillActionObserver::AllyOfAttackedTarget;
+    metadata
+}
+
+pub const fn attack_target_observes(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.skill_action_observer = SkillActionObserver::AttackTarget;
     metadata
 }
 
@@ -555,6 +561,7 @@ condition_definitions! {
     [1001212] "Assassinate" => trigger::parse_assassinate, team_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit)));
     [791210] "ToBrokenEnemy" => trigger::parse_target_guard_broken, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [25203] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [25204] "UseExSkill" => trigger::parse_use_ex_skill, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate))));
     [25208] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [25210] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [564210] "BurnOverflow" => buff::burn_overflow, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
@@ -607,7 +614,7 @@ condition_definitions! {
     [34203] "UseSkillEffectTag" => active_skill::effect_tag, event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate));
     [34212] "UseSkillEffectTag" => active_skill::effect_tag, predicate(&[]);
     [33201] "HurtRestraint" => parse::hurt_restrained, predicate(&[]);
-    [33204] "HurtRestraint" => parse::hurt_restrained, incoming_attack_modifier(predicate(&[]));
+    [33204] "HurtRestraint" => parse::hurt_restrained, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate))));
     [47204] "HurtNotRestraint" => parse::hurt_not_restrained, incoming_attack_modifier(predicate(&[]));
     [53201] "HurtNumType" => parse::damage_target_count_kind, predicate(&[]);
     [53210] "HurtNumType" => parse::damage_target_count_kind, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));

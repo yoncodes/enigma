@@ -1176,6 +1176,184 @@ fn lucy_entity_defeat_follow_up_respects_its_configured_round_limit() {
 }
 
 #[test]
+fn restrained_ultimate_consumes_bedrock_before_damage_once_per_round() {
+    crate::test_support::init_config();
+    let fight = || Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                career: Some(3),
+                current_hp: Some(10_000),
+                ex_point: Some(5),
+                ex_skill: Some(30060133),
+                skill_group1: vec![30060111],
+                attr: Some(HeroAttribute {
+                    attack: Some(1),
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                career: Some(8),
+                weak_careers: vec![3],
+                current_hp: Some(1_000_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000_000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![109360013],
+                buffs: vec![BuffInfo {
+                    uid: Some(100),
+                    buff_id: Some(109360005),
+                    from_uid: Some(-1),
+                    layer: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let action = |skill_id| {
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(-1);
+        invocation.mode = SkillExecutionMode::Active;
+        invocation
+    };
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let context = TargetContext {
+        current_round: 1,
+        ..Default::default()
+    };
+
+    let normal_fight = fight();
+    let normal_pool = TargetPool::from_fight(&normal_fight);
+    let mut normal_managers = BattleManagers::seeded(&normal_fight);
+    run_action(
+        &mut normal_managers,
+        &normal_pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        context,
+        [],
+        action(30060111),
+    )
+    .unwrap();
+    assert_eq!(normal_managers.buff.buff_id_amount(-1, 109360005), 7);
+
+    let ultimate_fight = fight();
+    let ultimate_pool = TargetPool::from_fight(&ultimate_fight);
+    let mut ultimate_managers = BattleManagers::seeded(&ultimate_fight);
+    let ultimate_result = run_action_with_cost(
+        &mut ultimate_managers,
+        &ultimate_pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        context,
+        [],
+        Some(ExPointCommand::Spend(ExPointChange {
+            origin: CARD_PLAY_ORIGIN,
+            source_uid: 10,
+            target_uid: 10,
+            delta: -5,
+            config_effect: 0,
+            effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+        })),
+        action(30060133),
+    )
+    .unwrap();
+    assert_eq!(ultimate_managers.buff.buff_id_amount(-1, 109360005), 0);
+
+    fn ordered_changes<'a>(
+        frame: &'a crate::engine::runtime::record::SemanticFrame,
+        changes: &mut Vec<&'a BattleChange>,
+    ) {
+        for item in &frame.items {
+            match item {
+                crate::engine::runtime::record::FrameItem::Change(change) => changes.push(change),
+                crate::engine::runtime::record::FrameItem::Child(child) => {
+                    ordered_changes(child, changes)
+                }
+                crate::engine::runtime::record::FrameItem::Cue(_) => {}
+            }
+        }
+    }
+    let mut changes = Vec::new();
+    for frame in &ultimate_result.frames {
+        ordered_changes(frame, &mut changes);
+    }
+    let bedrock_removal = changes
+        .iter()
+        .position(|change| {
+            matches!(
+                change,
+                BattleChange::Buff(change)
+                    if change.change.removed.iter().any(|removed| {
+                        removed.buff.buff_id == Some(109360005)
+                    })
+            )
+        })
+        .unwrap();
+    let incoming_damage = changes
+        .iter()
+        .position(|change| {
+            matches!(
+                change,
+                BattleChange::Hp(change)
+                    if change.target_uid == -1 && change.damage.is_some()
+            )
+        })
+        .unwrap();
+    assert!(bedrock_removal < incoming_damage);
+
+    run(
+        &mut ultimate_managers,
+        &ultimate_pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        context,
+        [RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
+            BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: -1,
+                target_uid: -1,
+                buff_id: 109360005,
+                amount: Some(10),
+                occurrences: 1,
+                child_uid_reservations: 0,
+            },
+        )))],
+    )
+    .unwrap();
+    run_action(
+        &mut ultimate_managers,
+        &ultimate_pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        context,
+        [],
+        action(30060133),
+    )
+    .unwrap();
+    assert_eq!(ultimate_managers.buff.buff_id_amount(-1, 109360005), 10);
+}
+
+#[test]
 fn gorgon_death_kills_tentacles_and_exposes_the_core() {
     crate::test_support::init_config();
     let entity = |uid, model_id, position, hp, passive_skill| FightEntityInfo {

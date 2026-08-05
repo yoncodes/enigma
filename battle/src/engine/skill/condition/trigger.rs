@@ -38,8 +38,8 @@ pub fn parse_entity_broken(_: i32, _: &str, args: &[String]) -> Option<ParsedCon
     args.is_empty().then_some(ParsedConditionKind::EntityBroken)
 }
 
-pub fn parse_use_ex_skill(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind> {
-    Some(ParsedConditionKind::UseExSkill)
+pub fn parse_use_ex_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty().then_some(ParsedConditionKind::UseExSkill)
 }
 
 pub fn parse_target_use_ex_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
@@ -69,6 +69,10 @@ mod tests {
         assert_eq!(
             parse_use_ex_skill(25210, "UseExSkill", &[]),
             Some(ParsedConditionKind::UseExSkill)
+        );
+        assert_eq!(
+            parse_use_ex_skill(25210, "UseExSkill", &["1".to_owned()]),
+            None
         );
         assert_eq!(
             parse_target_use_ex_skill(25212, "UseExSkill", &[]),
