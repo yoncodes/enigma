@@ -969,6 +969,16 @@ fn condition_kind_matches(
                 } else {
                     return false;
                 };
+            if super::registry::find_key(condition.opcode, &condition.type_name).is_some_and(
+                |definition| {
+                    definition
+                        .dependencies
+                        .contains(&crate::engine::event::kind::EventKind::TargetAttacked)
+                },
+            ) && !condition_targets.contains(&defender_uid)
+            {
+                return false;
+            }
             let Some(attacker) = pool.entity(attacker_uid) else {
                 return false;
             };

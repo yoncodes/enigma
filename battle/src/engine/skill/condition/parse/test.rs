@@ -335,7 +335,15 @@ fn parses_hurt_restraint_conditions_by_type() {
         ParsedConditionKind::HurtRestrained
     );
     assert_eq!(
+        parse_conditions(config::configs::get(), "33209")[0].kind,
+        ParsedConditionKind::HurtRestrained
+    );
+    assert_eq!(
         parse_conditions(config::configs::get(), "47204")[0].kind,
+        ParsedConditionKind::HurtNotRestrained
+    );
+    assert_eq!(
+        parse_conditions(config::configs::get(), "47209")[0].kind,
         ParsedConditionKind::HurtNotRestrained
     );
     assert_eq!(
