@@ -589,6 +589,7 @@ behavior_definitions! {
     [60058] "CareerRatioFix" => super::career::Handler, CareerRatioFix, Immediate, modifier;
     [100036] "SkillChangeAttackCareer" => super::career::Handler, ChangeAttackCareer, Immediate, modifier;
     [40003] "AddAct" => super::action_point::Handler, AddAct, Immediate, round_modifier_only;
+    [50006] "AddActHero" => super::action_point::Handler, AddActHero, Immediate, round_modifier_only;
     [40007] "AddActAndCardLimit" => super::card_limit::Handler, AddActAndCardLimit, AfterDamage, round_modifier_with_output;
     [60221] "IgnoreSkillConfigDamageRate" => super::general::DamageRateMarkerHandler, IgnoreSkillConfigDamageRate, Immediate, destination, arguments::none;
     [100017] "IgnoreSkillConfigDamageRate" => super::general::DamageRateMarkerHandler, IgnoreSkillConfigDamageRate, Immediate, destination, arguments::none;

@@ -354,6 +354,13 @@ impl BattleRuntime {
                 &self.fight,
                 &self.managers.ex_point,
                 &self.managers.eureka,
+                crate::engine::round::modifier::ai_action_bonus(
+                    &pool,
+                    &self.managers,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                ),
                 self.fight.battle_id.unwrap_or_default(),
                 None,
             );
@@ -434,6 +441,13 @@ impl BattleRuntime {
                 &self.fight,
                 &self.managers.ex_point,
                 &self.managers.eureka,
+                crate::engine::round::modifier::ai_action_bonus(
+                    &pool,
+                    &self.managers,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                ),
                 self.round_state.cur_round,
                 self.determinism
                     .take_next_ai_card_snapshot()

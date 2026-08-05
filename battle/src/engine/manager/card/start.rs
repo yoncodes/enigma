@@ -2,7 +2,7 @@ use rand::{SeedableRng, rngs::StdRng};
 use sonettobuf::{CardInfo, Fight};
 
 use crate::engine::manager::card::{
-    ai::generate_ai_deck,
+    ai::generate_ai_deck_with_extra_actions,
     draw::draw_guaranteed_by_uid,
     pool::{active_enemy_entities, active_player_uids, card_for, player_candidate_pool},
 };
@@ -129,6 +129,7 @@ pub fn start_decks_from_fight(
     fight: &Fight,
     ex_point: &crate::engine::manager::ex_point::ExPointManager,
     eureka: &crate::engine::manager::eureka::EurekaManager,
+    extra_ai_actions: i32,
     seed_value: i32,
     captured: Option<(Vec<CardInfo>, Vec<CardInfo>)>,
 ) -> (Vec<CardInfo>, Vec<CardInfo>) {
@@ -188,7 +189,8 @@ pub fn start_decks_from_fight(
     }
 
     let player = draw_guaranteed_by_uid(&candidates, &required_uids, hand_size, &mut rng);
-    let ai = generate_ai_deck(fight, ex_point, eureka, &mut rng);
+    let ai =
+        generate_ai_deck_with_extra_actions(fight, ex_point, eureka, extra_ai_actions, &mut rng);
     (ai, player)
 }
 
@@ -239,7 +241,7 @@ mod tests {
         ex_point.seed(&fight);
         let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
         eureka.seed(&fight);
-        let (ai, player) = start_decks_from_fight(&fight, &ex_point, &eureka, 7, None);
+        let (ai, player) = start_decks_from_fight(&fight, &ex_point, &eureka, 0, 7, None);
 
         assert_eq!(player.len(), 5);
         assert!(player.iter().any(|card| card.uid == Some(10)));
@@ -323,7 +325,7 @@ mod tests {
         ex_point.seed(&fight);
         let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
         eureka.seed(&fight);
-        let (ai, player) = start_decks_from_fight(&fight, &ex_point, &eureka, 0, Some(captured));
+        let (ai, player) = start_decks_from_fight(&fight, &ex_point, &eureka, 0, 0, Some(captured));
 
         assert_eq!(ai[0].skill_id, Some(302));
         assert_eq!(ai[0].card_effect, None);

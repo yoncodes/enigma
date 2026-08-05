@@ -36,6 +36,16 @@ fn lookup_requires_the_exact_opcode_type_pair() {
 }
 
 #[test]
+fn hero_action_point_bonus_keeps_its_exact_registry_key() {
+    let definition = find_key(50006, "AddActHero").unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::AddActHero);
+    assert!(definition.round_modifier_only);
+    assert!(find_key(50006, "AddAct").is_none());
+    assert!(find_key(40003, "AddActHero").is_none());
+}
+
+#[test]
 fn resource_spend_buff_grant_keeps_its_exact_behavior_key() {
     let definition = find_key(2, "AddBuffPowerUse").unwrap();
 

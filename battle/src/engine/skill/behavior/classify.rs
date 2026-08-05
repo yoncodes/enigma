@@ -145,6 +145,7 @@ pub enum BehaviorKind {
     CareerRatioFix,
     ChangeAttackCareer,
     AddAct,
+    AddActHero,
     AddActAndCardLimit,
     Damage,
     Damage2,

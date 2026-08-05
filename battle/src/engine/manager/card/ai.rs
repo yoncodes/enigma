@@ -14,6 +14,16 @@ pub fn generate_ai_deck<R: Rng + ?Sized>(
     eureka: &EurekaManager,
     rng: &mut R,
 ) -> Vec<CardInfo> {
+    generate_ai_deck_with_extra_actions(fight, ex_point, eureka, 0, rng)
+}
+
+pub fn generate_ai_deck_with_extra_actions<R: Rng + ?Sized>(
+    fight: &Fight,
+    ex_point: &ExPointManager,
+    eureka: &EurekaManager,
+    extra_actions: i32,
+    rng: &mut R,
+) -> Vec<CardInfo> {
     let enemies = active_enemy_entities(fight);
     if enemies.is_empty() {
         return Vec::new();
@@ -23,8 +33,8 @@ pub fn generate_ai_deck<R: Rng + ?Sized>(
     if target_uids.is_empty() {
         return Vec::new();
     }
-    enemies
-        .into_iter()
+    let mut cards = enemies
+        .iter()
         .filter_map(|entity| {
             let mut card = card_for(entity, select_skill(entity, ex_point, eureka))?;
             card.target_uid = target_uids
@@ -32,7 +42,24 @@ pub fn generate_ai_deck<R: Rng + ?Sized>(
                 .copied();
             Some(card)
         })
-        .collect()
+        .collect::<Vec<_>>();
+    let candidates = cards.clone();
+    let action_count = i32::try_from(cards.len())
+        .unwrap_or(i32::MAX)
+        .saturating_add(extra_actions)
+        .max(0) as usize;
+    cards.truncate(action_count);
+    if candidates.is_empty() {
+        return cards;
+    }
+    while cards.len() < action_count {
+        let mut card = candidates[rng.random_range(0..candidates.len())].clone();
+        card.target_uid = target_uids
+            .get(rng.random_range(0..target_uids.len()))
+            .copied();
+        cards.push(card);
+    }
+    cards
 }
 
 fn select_skill(

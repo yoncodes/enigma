@@ -44,6 +44,46 @@ fn enemy_ai_selects_ultimates_from_current_resource_state() {
         ai::generate_ai_deck(&ready, &ready_ex_point, &ready_eureka, &mut ready_rng,)[0].skill_id,
         Some(900)
     );
+    let mut extra_action_rng = StdRng::seed_from_u64(1);
+    assert_eq!(
+        ai::generate_ai_deck_with_extra_actions(
+            &ready,
+            &ready_ex_point,
+            &ready_eureka,
+            1,
+            &mut extra_action_rng,
+        )
+        .len(),
+        2
+    );
+    let mut reduced_action_rng = StdRng::seed_from_u64(1);
+    assert!(
+        ai::generate_ai_deck_with_extra_actions(
+            &ready,
+            &ready_ex_point,
+            &ready_eureka,
+            -1,
+            &mut reduced_action_rng,
+        )
+        .is_empty()
+    );
+    let mut no_skill = ready.clone();
+    let enemy = &mut no_skill.defender.as_mut().unwrap().entitys[0];
+    enemy.skill_group1.clear();
+    enemy.skill_group2.clear();
+    enemy.ex_skill = None;
+    let (no_skill_ex_point, no_skill_eureka) = resources(&no_skill);
+    let mut no_skill_rng = StdRng::seed_from_u64(1);
+    assert!(
+        ai::generate_ai_deck_with_extra_actions(
+            &no_skill,
+            &no_skill_ex_point,
+            &no_skill_eureka,
+            1,
+            &mut no_skill_rng,
+        )
+        .is_empty()
+    );
 
     let fallback = fight(5, None);
     let (fallback_ex_point, fallback_eureka) = resources(&fallback);
