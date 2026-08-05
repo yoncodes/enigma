@@ -438,6 +438,24 @@ fn passive_state_consumers_reject_unsupported_argument_shapes() {
 }
 
 #[test]
+fn buff_type_duration_extension_is_an_exact_state_consumer() {
+    let definition = find(608, "BuffRoundAddByBuffTypeId").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::BuffRoundAddByBuffTypeId);
+    assert_eq!(
+        destination(608, "BuffRoundAddByBuffTypeId", &[6003, 1]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(608, "BuffRoundAddByBuffTypeId", &[]));
+    assert!(!has_destination(
+        608,
+        "BuffRoundAddByBuffTypeId",
+        &[6003, 0]
+    ));
+    assert!(find(608, "BuffRoundAdd").is_none());
+}
+
+#[test]
 fn layered_attribute_bonus_is_an_exact_static_consumer() {
     let args = [201, 300, 31280114, 75, 4, 206, 0];
     let definition = find(1029, "AddAttrByOtherBuffLayer").unwrap();
