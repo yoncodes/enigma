@@ -179,6 +179,17 @@ pub fn buff_type_at_least(_: i32, _: &str, raw_args: &[String]) -> Option<Parsed
     buff_type_count(raw_args, ConditionCompare::GreaterThanOrEqual)
 }
 
+pub fn buff_type_pair_at_least(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    if raw_args.len() != 2 {
+        return None;
+    }
+    buff_type_count(raw_args, ConditionCompare::GreaterThanOrEqual)
+}
+
 pub fn buff_type_at_most(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     buff_type_count(raw_args, ConditionCompare::LessThanOrEqual)
 }

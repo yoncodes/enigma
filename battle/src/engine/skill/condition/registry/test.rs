@@ -1299,6 +1299,35 @@ fn active_skill_buff_threshold_is_inclusive() {
 }
 
 #[test]
+fn child_skill_buff_threshold_stays_a_predicate() {
+    assert_eq!(
+        parse(
+            535304,
+            "TypeIdBuffCountMoreThan",
+            &["116385672".into(), "5".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![116385672],
+            compare: super::super::parse::ConditionCompare::GreaterThanOrEqual,
+            threshold: 5,
+        })
+    );
+
+    let definition = find_key(535304, "TypeIdBuffCountMoreThan").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert!(find_key(535304, "TypeIdBuffCountLessThan").is_none());
+    assert_eq!(
+        parse(
+            535304,
+            "TypeIdBuffCountMoreThan",
+            &["116385672".into(), "5".into(), "999".into()]
+        ),
+        None
+    );
+}
+
+#[test]
 fn active_skill_buff_ceiling_is_inclusive() {
     assert_eq!(
         parse(
