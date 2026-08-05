@@ -373,6 +373,28 @@ fn dot_uses_only_its_captured_add_and_refresh_markers() {
 }
 
 #[test]
+fn add_to_attacker_marks_only_the_runtime_trigger() {
+    let definition = find(305, "AddToAttacker").unwrap();
+    let wire = super::super::wire::find(305, "AddToAttacker").unwrap();
+    let marker = sonettobuf::effect_type_enum::EffectType::Addtoattacker as i32;
+
+    assert_eq!(definition.kind, BuffActKind::AddToAttacker);
+    assert_eq!(
+        runtime_event(305, "AddToAttacker", 2091),
+        Some(EventKind::BeAttacked)
+    );
+    assert!(wire.markers(super::super::wire::WirePhase::Add).is_empty());
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Static),
+        &[marker]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+}
+
+#[test]
 fn lucy_static_combat_rules_keep_distinct_add_markers() {
     for (act_id, act_type, kind, effect_type) in [
         (
