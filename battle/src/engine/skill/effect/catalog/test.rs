@@ -496,6 +496,23 @@ fn psychube_buff_category_gate_keeps_threshold_then_status_order() {
 }
 
 #[test]
+fn lab_tech_power_gate_compiles_from_its_configured_round_start_condition() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let effect = catalog.get(116_385_627).unwrap();
+
+    assert_eq!(
+        effect.slots[1].conditions[0].kind,
+        ParsedConditionKind::PowerCompare {
+            compare_code: 1,
+            power_id: 11,
+            threshold: 5,
+        }
+    );
+    assert!(catalog.issues(116_385_627).is_empty());
+}
+
+#[test]
 fn master_halo_immediate_gate_uses_the_skill_extra_type_driver() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
