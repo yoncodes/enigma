@@ -461,6 +461,7 @@ condition_definitions! {
     [630212] "TeammateInjuryCountNotReset" => injury::persistent_teammate_count, event_trigger(EventKind::AllyAction, None);
     [618012] "TeammateAliveOrDyingNumNoSp" => entity_count::teammates_without_special, predicate(&[EventKind::EntityDied]);
     [616012] "TeammateAliveNumNoSp" => entity_count::teammates_without_special, predicate(&[EventKind::EntityDied]);
+    [73301] "TeammateAliveNum" => entity_count::teammates_equal, event_trigger(EventKind::RoundEnd, None);
     [583004] "AccTeamAddBuffCountByBuffId" => buff::team_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [581] "AccAddBuffCountByBuffId" => buff::owner_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [581307] "AccAddBuffCountByBuffId" => buff::buff_id_at_least, event_trigger(EventKind::RoundEndFinalSettlement, None);

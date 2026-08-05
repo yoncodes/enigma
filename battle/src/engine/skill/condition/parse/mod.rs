@@ -335,6 +335,7 @@ pub enum EntityCountScope {
     AliveEnemies,
     AliveEnemiesIncludeSp,
     AliveTeammates,
+    AliveOtherTeammates,
     AliveTeammatesNoSp,
     TeamSize,
     HeroCount,

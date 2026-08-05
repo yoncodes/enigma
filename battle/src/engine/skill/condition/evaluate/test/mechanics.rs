@@ -407,6 +407,37 @@ fn alive_team_count_reads_manager_hp_not_the_fight_snapshot() {
 }
 
 #[test]
+fn other_teammate_count_excludes_the_alive_source() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![10, 11]
+                .into_iter()
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.hp.lose(11, 100, -1);
+
+    assert!(conditions_match(
+        &[exact_condition(73301, "TeammateAliveNum", &["0"])],
+        10,
+        &[10],
+        Some(&managers),
+        &pool,
+        TargetContext::default(),
+    ));
+}
+
+#[test]
 fn battle_tag_count_uses_alive_members_of_the_casters_team() {
     init_config();
     let entity = |uid, model_id| FightEntityInfo {

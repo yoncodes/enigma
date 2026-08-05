@@ -1172,6 +1172,14 @@ fn entity_count_matches(
         | EntityCountScope::AliveEnemies
         | EntityCountScope::AliveEnemiesIncludeSp => alive_count(pool.enemies(source_uid, false)),
         EntityCountScope::AliveTeammates => alive_count(pool.allies(source_uid)),
+        EntityCountScope::AliveOtherTeammates => pool
+            .allies(source_uid)
+            .iter()
+            .filter(|entity| {
+                entity.uid != source_uid
+                    && managers.is_none_or(|managers| managers.hp.current(entity.uid) > 0)
+            })
+            .count(),
         EntityCountScope::AliveTeammatesNoSp => {
             if source_is_attacker {
                 alive_count(&pool.attacker_main)
