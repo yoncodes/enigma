@@ -496,6 +496,33 @@ fn psychube_buff_category_gate_keeps_threshold_then_status_order() {
 }
 
 #[test]
+fn echoes_threshold_slots_keep_their_non_overlapping_ranges() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let effect = catalog.get(116_385_682).unwrap();
+
+    for (index, slot) in effect.slots.iter().enumerate() {
+        let threshold = index as i32 + 1;
+        assert_eq!(
+            slot.conditions.first().map(|condition| &condition.kind),
+            Some(&ParsedConditionKind::BuffTypeCount {
+                type_ids: vec![116_385_672],
+                compare: crate::engine::skill::condition::ConditionCompare::GreaterThanOrEqual,
+                threshold,
+            })
+        );
+        assert_eq!(
+            slot.conditions.get(1).map(|condition| &condition.kind),
+            (threshold < 5).then_some(&ParsedConditionKind::BuffTypeCount {
+                type_ids: vec![116_385_672],
+                compare: crate::engine::skill::condition::ConditionCompare::LessThan,
+                threshold: threshold + 1,
+            })
+        );
+    }
+}
+
+#[test]
 fn master_halo_immediate_gate_uses_the_skill_extra_type_driver() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
