@@ -365,7 +365,7 @@ condition_definitions! {
     [552402] "Random" => parse::random, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [620402] "CurrSkillLevel" => active_skill::rank, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [931] "None" => none::impromptu_resolved, event_trigger(EventKind::ImpromptuResolved, None);
-    [19002] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
+    [19002] "HasBuffId" => buff::buff_present, companion_setup(filters_behavior_targets(predicate(&[])), &[(SetupStage::EnterFight, 0)]);
     [19003] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [19004] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [19012] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
