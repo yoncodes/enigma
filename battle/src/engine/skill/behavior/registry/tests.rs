@@ -74,6 +74,7 @@ fn implemented_skill_casts_own_destinations_but_unimplemented_siblings_do_not() 
         (50010, "DirectUseGroupAndStarSkill"),
         (60188, "ConsumePowerUseSkill"),
         (60225, "RandomUseSkill"),
+        (60172, "Drive"),
     ] {
         assert!(find_key(opcode, type_name).unwrap().destination);
     }
