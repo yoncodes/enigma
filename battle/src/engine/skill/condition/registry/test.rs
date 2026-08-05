@@ -1647,6 +1647,25 @@ fn round_start_team_buff_type_gate_keeps_its_exact_payload_order() {
 fn round_start_power_gate_keeps_its_exact_phase_and_payload_order() {
     assert_eq!(
         parse(
+            180100,
+            "PowerCompare",
+            &["1".into(), "11".into(), "5".into()]
+        ),
+        Some(ParsedConditionKind::PowerCompare {
+            compare_code: 1,
+            power_id: 11,
+            threshold: 5,
+        })
+    );
+    assert_eq!(
+        find_key(180100, "PowerCompare").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 100,
+        })
+    );
+    assert_eq!(
+        parse(
             180102,
             "PowerCompare",
             &["1".into(), "11".into(), "2".into()]
