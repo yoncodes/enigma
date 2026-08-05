@@ -682,6 +682,21 @@ fn absolute_missing_hp_attributes_keep_their_exact_static_routes() {
         destination(1056, "AttrByLostHp", &[10_000_000, 216, 150, 1, 1, 1]),
         Some(BuffActDestination::StateConsumer)
     );
+    for act_id in [853, 1056] {
+        let wire = super::super::wire::find(act_id, "AttrByLostHp").unwrap();
+        assert_eq!(
+            wire.markers(super::super::wire::WirePhase::Add),
+            &[sonettobuf::effect_type_enum::EffectType::None as i32]
+        );
+        assert!(
+            wire.markers(super::super::wire::WirePhase::Static)
+                .is_empty()
+        );
+        assert!(
+            wire.markers(super::super::wire::WirePhase::Refresh)
+                .is_empty()
+        );
+    }
 }
 
 #[test]
