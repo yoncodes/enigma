@@ -335,6 +335,25 @@ fn burn_damage_fix_is_an_exact_static_consumer_with_its_add_marker() {
 }
 
 #[test]
+fn real_hurt_fix_uses_only_its_captured_add_and_refresh_markers() {
+    let wire = super::super::wire::find(519, "RealHurtFix").unwrap();
+    let marker = sonettobuf::effect_type_enum::EffectType::Realhurtfix as i32;
+
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[marker]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Refresh),
+        &[marker]
+    );
+}
+
+#[test]
 fn lucy_static_combat_rules_keep_distinct_add_markers() {
     for (act_id, act_type, kind, effect_type) in [
         (

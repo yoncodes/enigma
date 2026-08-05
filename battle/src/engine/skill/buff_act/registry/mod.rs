@@ -651,7 +651,7 @@ buff_act_definitions! {
         scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
         supports: |_| true;
     (519, "RealHurtFix") => RealHurtFix, effect_time_subscription: false,
-        supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(519, "RealHurtFix"), &[EffectType::Realhurtfix as i32]));
+        supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(519, "RealHurtFix"), &[EffectType::Realhurtfix as i32]));
     (520, "RealHarmFix") => RealHarmFix, effect_time_subscription: false,
         supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(520, "RealHarmFix"), &[EffectType::Realharmfix as i32]));
     (522, "RealHarmSkillEffectFix") => RealHarmSkillEffectFix, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(522, "RealHarmSkillEffectFix"), &[EffectType::Realharmskilleffectfix as i32]));
