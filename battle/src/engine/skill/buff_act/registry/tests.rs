@@ -354,6 +354,25 @@ fn real_hurt_fix_uses_only_its_captured_add_and_refresh_markers() {
 }
 
 #[test]
+fn dot_uses_only_its_captured_add_and_refresh_markers() {
+    let wire = super::super::wire::find(202, "Dot").unwrap();
+    let marker = sonettobuf::effect_type_enum::EffectType::Dot as i32;
+
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[marker]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Refresh),
+        &[marker]
+    );
+}
+
+#[test]
 fn lucy_static_combat_rules_keep_distinct_add_markers() {
     for (act_id, act_type, kind, effect_type) in [
         (
