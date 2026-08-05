@@ -1199,6 +1199,16 @@ fn restrained_ultimate_conditions_keep_their_exact_action_roles() {
 }
 
 #[test]
+fn received_hit_afflatus_conditions_keep_their_exact_event_lane() {
+    for (opcode, type_name) in [(33209, "HurtRestraint"), (47209, "HurtNotRestraint")] {
+        let definition = find_key(opcode, type_name).unwrap();
+        assert_eq!(definition.role, ConditionRole::Predicate);
+        assert_eq!(definition.dependencies, &[EventKind::TargetAttacked]);
+        assert_eq!(definition.attack_modifier_side, None);
+    }
+}
+
+#[test]
 fn static_status_predicate_keeps_its_exact_source_side_route() {
     let definition = find_key(18201, "HasBuff").unwrap();
     assert_eq!(definition.role, ConditionRole::Predicate);
