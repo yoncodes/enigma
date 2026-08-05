@@ -333,7 +333,7 @@ fn scan_buff(
             }
             if policy.lifetime.duration > 0
                 && !handler_owns_duration
-                && !battle::engine::skill::buff_act::effect_time::has_duration_advance_route(
+                && !battle::engine::skill::buff_act::effect_time::supports_duration_policy(
                     policy.lifetime.take_stage,
                 )
             {

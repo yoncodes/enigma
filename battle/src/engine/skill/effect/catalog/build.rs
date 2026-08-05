@@ -452,7 +452,7 @@ impl SkillEffectCatalog {
             if let Ok(policy) = crate::engine::manager::buff::BuffPolicy::try_for_buff_id(buff_id)
                 && policy.lifetime.duration > 0
                 && !handler_owns_duration
-                && !crate::engine::skill::buff_act::effect_time::has_duration_advance_route(
+                && !crate::engine::skill::buff_act::effect_time::supports_duration_policy(
                     policy.lifetime.take_stage,
                 )
             {

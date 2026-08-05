@@ -112,7 +112,10 @@ pub fn duration_stages_for_event(event: EventKind) -> impl Iterator<Item = i32> 
     })
 }
 
-pub fn has_duration_advance_route(take_stage: i32) -> bool {
+pub fn supports_duration_policy(take_stage: i32) -> bool {
+    if take_stage == -1 {
+        return true;
+    }
     let Some(definition) = find(take_stage) else {
         return false;
     };
@@ -177,12 +180,13 @@ mod tests {
     }
 
     #[test]
-    fn duration_support_requires_a_scheduled_advance_route() {
-        assert!(has_duration_advance_route(ROUND_START_DURATION));
-        assert!(has_duration_advance_route(210));
-        assert!(has_duration_advance_route(301));
-        assert!(has_duration_advance_route(ROUND_END_ENTITY_SETTLEMENT));
-        assert!(!has_duration_advance_route(209));
-        assert!(!has_duration_advance_route(205));
+    fn duration_support_accepts_non_advancing_and_scheduled_policies() {
+        assert!(supports_duration_policy(-1));
+        assert!(supports_duration_policy(ROUND_START_DURATION));
+        assert!(supports_duration_policy(210));
+        assert!(supports_duration_policy(301));
+        assert!(supports_duration_policy(ROUND_END_ENTITY_SETTLEMENT));
+        assert!(!supports_duration_policy(209));
+        assert!(!supports_duration_policy(205));
     }
 }
