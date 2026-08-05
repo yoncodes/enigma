@@ -80,6 +80,14 @@ pub fn teammate_alive(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKi
     })
 }
 
+pub fn teammates_equal(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    entity_count(
+        EntityCountScope::AliveOtherTeammates,
+        ConditionCompare::Equal,
+        args,
+    )
+}
+
 pub fn other_ally_damage_type(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [raw_damage_type, raw_max_count] = args else {
         return None;

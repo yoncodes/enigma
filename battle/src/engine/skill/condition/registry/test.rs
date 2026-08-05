@@ -2097,6 +2097,26 @@ fn negated_round_start_broken_check_uses_toughness_state() {
 }
 
 #[test]
+fn round_end_teammate_count_keeps_its_exact_scope_and_route() {
+    assert_eq!(
+        parse(73301, "TeammateAliveNum", &["0".into()]),
+        Some(ParsedConditionKind::EntityCount {
+            scope: super::super::parse::EntityCountScope::AliveOtherTeammates,
+            compare: ConditionCompare::Equal,
+            count: 0,
+        })
+    );
+    let definition = find_key(73301, "TeammateAliveNum").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        }
+    );
+}
+
+#[test]
 fn active_skill_buff_count_keeps_its_exact_modifier_route() {
     assert_eq!(
         parse(61201, "PerBuffIdCount", &["109360002".into()]),
