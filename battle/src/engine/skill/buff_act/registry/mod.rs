@@ -822,7 +822,7 @@ buff_act_definitions! {
         effect_time_subscription: false, transactions: [EventKind::HpLost],
         transaction: super::toughness::transaction_rule_ops,
         supports: |args| args.is_empty(),
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1111, "ToughnessOverflowRecord"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1111, "ToughnessOverflowRecord"), &[EffectType::None as i32]));
     (806, "ExPointOverflowBank") => ExPointOverflowBank,
         scoped_runtime: |context| super::ex_point_overflow_bank::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(806, "ExPointOverflowBank"), &[EffectType::Expointoverflowbank as i32]));
@@ -1166,7 +1166,7 @@ buff_act_definitions! {
     (1102, "ToughnessRecover") => ToughnessRecover,
         runtime: |context| super::toughness::recover_rule_ops(context.subscriber),
         supports: |args| matches!(args, [config_effect] if *config_effect >= 0),
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1102, "ToughnessRecover"), &[EffectType::Toughnessrecover as i32]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1102, "ToughnessRecover"), &[EffectType::None as i32]));
     (1127, "TeamExElectricTransConsumeValueAttr") => TeamExElectricTransConsumeValueAttr,
         effect_time_subscription: false, stat_read: OnGrant,
         supports: super::electric_transform::supports_team_attribute, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1127, "TeamExElectricTransConsumeValueAttr"), &[]).with_initial_state(super::wire::InitialStateRule::GrantValue));
