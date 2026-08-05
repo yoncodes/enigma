@@ -148,11 +148,11 @@ impl SkillEffectSlot {
                 _ => None,
             })
             .collect::<Vec<_>>();
+        let needs_companion_setup = route.branches.iter().any(|branch| branch.driver.is_none());
         keys.extend(self.conditions.iter().filter_map(|condition| {
             let definition = registry::find_key(condition.opcode, &condition.type_name)?;
-            definition
-                .companion_setup
-                .contains(&(stage, priority))
+            ((definition.role != registry::ConditionRole::Predicate || needs_companion_setup)
+                && definition.companion_setup.contains(&(stage, priority)))
                 .then_some(definition.key)
         }));
         keys.dedup();
@@ -365,6 +365,46 @@ mod tests {
             slot.compiled_setup_keys(SetupStage::EnterBattleStatic, 0)
                 .unwrap(),
             vec![crate::engine::skill::rule::DefinitionKey::new(55, "None")]
+        );
+    }
+
+    #[test]
+    fn predicate_companion_setup_only_drives_slots_without_an_explicit_driver() {
+        crate::test_support::init_config();
+        let mut predicate_only = SkillEffectSlot::new(
+            ParsedBehavior::new(1, "AddBuff", Vec::new()),
+            TargetRequest::self_only(),
+        );
+        predicate_only.conditions = crate::engine::skill::condition::parse_conditions(
+            config::configs::get(),
+            "19002#437211",
+        );
+        predicate_only.compiled_route = ConditionRoute::compile(&predicate_only.conditions);
+
+        let mut driven = SkillEffectSlot::new(
+            ParsedBehavior::new(1, "AddBuff", Vec::new()),
+            TargetRequest::self_only(),
+        );
+        driven.conditions = crate::engine::skill::condition::parse_conditions(
+            config::configs::get(),
+            "5&19002#437211",
+        );
+        driven.compiled_route = ConditionRoute::compile(&driven.conditions);
+
+        assert_eq!(
+            predicate_only
+                .compiled_setup_keys(SetupStage::EnterFight, 0)
+                .unwrap(),
+            vec![crate::engine::skill::rule::DefinitionKey::new(
+                19002,
+                "HasBuffId"
+            )]
+        );
+        assert_eq!(
+            driven
+                .compiled_setup_keys(SetupStage::EnterFight, 0)
+                .unwrap(),
+            vec![crate::engine::skill::rule::DefinitionKey::new(5, "EnterFight")]
         );
     }
 
