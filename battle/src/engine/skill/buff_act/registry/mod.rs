@@ -580,7 +580,7 @@ buff_act_definitions! {
         supports: |args| super::cure::supports(BuffActKind::Cure, args), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(201, "Cure"), &[EffectType::Cure as i32]));
     (202, "Dot") => Dot, stat_read: ByArguments,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
-        supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(202, "Dot"), &[EffectType::Dot as i32]));
+        supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(202, "Dot"), &[EffectType::Dot as i32]));
     (203, "Dot") => Dot, stat_read: ByArguments,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
         supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(203, "Dot"), &[EffectType::Dot as i32]));
