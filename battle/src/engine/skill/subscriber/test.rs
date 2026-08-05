@@ -101,9 +101,9 @@ fn setup_discovery_keeps_configured_owners_for_exact_condition_resolution() {
         subscribers
             .iter()
             .filter(|subscriber| subscriber.skill_id == 811453)
-            .map(|subscriber| subscriber.owner_uid)
+            .map(|subscriber| (subscriber.owner_uid, subscriber.slot_index))
             .collect::<Vec<_>>(),
-        vec![-2, -3]
+        vec![(-2, 0), (-2, 1), (-3, 0), (-3, 1)]
     );
 }
 
@@ -362,7 +362,7 @@ fn discovers_configured_late_round_start_passive() {
         vec![SkillSubscriber {
             owner_uid: 10,
             skill_id: 31340141,
-            slot_index: None,
+            slot_index: Some(1),
             key: SubscriptionKey::new(EventKind::RoundStart, DefinitionKey::new(103, "None"),),
         }]
     );

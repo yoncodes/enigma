@@ -1862,7 +1862,11 @@ fn round_start_buff_gates_keep_their_exact_registered_keys() {
                 buff_ids: vec![109360006],
             })
         );
-        assert!(find_key(opcode, "HasBuffId").unwrap().filters_behavior_targets);
+        assert!(
+            find_key(opcode, "HasBuffId")
+                .unwrap()
+                .filters_behavior_targets
+        );
     }
 }
 
