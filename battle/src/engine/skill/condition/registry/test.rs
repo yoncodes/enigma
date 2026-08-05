@@ -1131,6 +1131,7 @@ fn incoming_attack_modifier_conditions_keep_their_exact_side() {
         (18202, "HasBuff"),
         (19204, "HasBuffId"),
         (57204, "NoBuffId"),
+        (25204, "UseExSkill"),
         (33204, "HurtRestraint"),
         (47204, "HurtNotRestraint"),
         (1204, "LifeLess"),
@@ -1165,6 +1166,35 @@ fn incoming_attack_modifier_conditions_keep_their_exact_side() {
     assert_eq!(
         attack_modifier_side(&[nested]),
         Some(AttackModifierSide::IncomingTarget)
+    );
+}
+
+#[test]
+fn restrained_ultimate_conditions_keep_their_exact_action_roles() {
+    let ultimate = find_key(25204, "UseExSkill").unwrap();
+    assert_eq!(
+        ultimate.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        }
+    );
+    assert_eq!(
+        ultimate.skill_action_observer,
+        SkillActionObserver::AttackTarget
+    );
+
+    let restrained = find_key(33204, "HurtRestraint").unwrap();
+    assert_eq!(
+        restrained.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        }
+    );
+    assert_eq!(
+        restrained.skill_action_observer,
+        SkillActionObserver::AttackTarget
     );
 }
 

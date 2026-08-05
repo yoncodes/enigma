@@ -239,6 +239,9 @@ fn skill_subscriber_observes_action(
         crate::engine::skill::condition::registry::SkillActionObserver::Actor => {
             subscriber.owner_uid == action.source_uid
         }
+        crate::engine::skill::condition::registry::SkillActionObserver::AttackTarget => {
+            action.is_attack && action.target_uids.contains(&subscriber.owner_uid)
+        }
         crate::engine::skill::condition::registry::SkillActionObserver::Team => {
             pool.source_is_attacker(subscriber.owner_uid)
                 == pool.source_is_attacker(action.source_uid)
