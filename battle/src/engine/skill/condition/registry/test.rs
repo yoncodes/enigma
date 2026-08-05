@@ -2082,6 +2082,30 @@ fn entity_settlement_interval_keeps_period_then_start_order() {
 }
 
 #[test]
+fn round_end_interval_keeps_period_then_start_order() {
+    for (period, start) in [(2, 1), (2, 2)] {
+        assert_eq!(
+            parse(
+                45302,
+                "HeroRoundInterval",
+                &[period.to_string(), start.to_string()],
+            ),
+            Some(ParsedConditionKind::RoundInterval {
+                start_round: start,
+                period,
+            })
+        );
+    }
+    assert_eq!(
+        find_key(45302, "HeroRoundInterval").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        })
+    );
+}
+
+#[test]
 fn negated_round_start_broken_check_uses_toughness_state() {
     assert_eq!(
         parse(783101, "IsBroken", &[]),

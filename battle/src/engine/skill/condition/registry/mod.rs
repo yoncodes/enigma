@@ -335,6 +335,7 @@ condition_definitions! {
     [45102] "HeroRoundInterval" => lifecycle::round_interval, setup_route(SetupStage::RoundTransitionStart, 0, &[]);
     [45104] "HeroRoundInterval" => lifecycle::period_then_start, setup_route(SetupStage::RoundTransitionStart, 1, &[]);
     [45106] "HeroRoundInterval" => lifecycle::period_then_start, setup_route(SetupStage::CardSetup, 0, &[]);
+    [45302] "HeroRoundInterval" => lifecycle::period_then_start, event_trigger(EventKind::RoundEnd, None);
     [45303] "HeroRoundInterval" => lifecycle::period_then_start, reaction_targets_owner(event_trigger(EventKind::RoundEndEntitySettlement, None));
     [10411] "None" => none::round_start, setup_route(SetupStage::RoundStart, 3, &[]);
     [105] "None" => none::after_round_start, setup_route(SetupStage::AfterRoundStart, 0, &[]);
