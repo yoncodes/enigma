@@ -141,10 +141,10 @@ pub fn start_decks_from_fight(
         .filter(|entity| entity.current_hp.unwrap_or(1) > 0)
         .filter_map(|entity| entity.uid)
         .collect::<std::collections::HashSet<_>>();
-    let candidates = player_candidate_pool(fight);
     let hand_size = hand_size(fight);
     let mut rng = StdRng::seed_from_u64(seed(fight, seed_value));
     if let Some((captured_ai, captured_player)) = captured {
+        let captured_candidates = player_candidate_pool(fight);
         let ai_candidates = active_enemy_entities(fight)
             .into_iter()
             .flat_map(|entity| {
@@ -176,7 +176,7 @@ pub fn start_decks_from_fight(
         let player = captured_player
             .iter()
             .filter_map(|captured| {
-                candidates
+                captured_candidates
                     .iter()
                     .find(|candidate| {
                         captured.uid == candidate.uid && captured.skill_id == candidate.skill_id
@@ -187,6 +187,8 @@ pub fn start_decks_from_fight(
         return (ai, player);
     }
 
+    let candidates =
+        crate::engine::manager::card::pool::player_candidate_pool_with(fight, |_| false);
     let player = draw_guaranteed_by_uid(&candidates, &required_uids, hand_size, &mut rng);
     let ai = generate_ai_deck(fight, ex_point, eureka, &mut rng);
     (ai, player)
