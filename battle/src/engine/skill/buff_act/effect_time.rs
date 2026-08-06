@@ -3,6 +3,7 @@ use crate::engine::skill::action::SkillPhase;
 use crate::engine::skill::rule::DefinitionKey;
 
 pub const ROUND_END_ENTITY_SETTLEMENT: i32 = 303;
+pub const ROUND_END_AFTER_SETTLEMENT: i32 = 304;
 pub const ROUND_START_DURATION: i32 = 103;
 pub const ROUND_START_CARD_STAGES: [i32; 2] = [105, 106];
 
@@ -68,7 +69,7 @@ effect_time_definitions! {
     305 => BuffActEvent::Runtime(EventKind::ExPointOverflow),
     ROUND_END_ENTITY_SETTLEMENT => BuffActEvent::Runtime(EventKind::RoundEndEntitySettlement),
     307 => BuffActEvent::Runtime(EventKind::RoundEndFinalSettlement),
-    304 => BuffActEvent::Runtime(EventKind::RoundEndAfterSettlement),
+    ROUND_END_AFTER_SETTLEMENT => BuffActEvent::Runtime(EventKind::RoundEndAfterSettlement),
     401 => BuffActEvent::Runtime(EventKind::Riposte),
     202 => BuffActEvent::DamageCalculation,
     203 => BuffActEvent::DamageCalculation,
@@ -121,6 +122,7 @@ pub fn supports_duration_policy(take_stage: i32) -> bool {
     };
     take_stage == ROUND_START_DURATION
         || take_stage == ROUND_END_ENTITY_SETTLEMENT
+        || take_stage == ROUND_END_AFTER_SETTLEMENT
         || ROUND_START_CARD_STAGES.contains(&take_stage)
         || definition.duration_phase.is_some()
         || definition.event == BuffActEvent::Runtime(EventKind::SmallRoundEnd)
@@ -186,6 +188,7 @@ mod tests {
         assert!(supports_duration_policy(210));
         assert!(supports_duration_policy(301));
         assert!(supports_duration_policy(ROUND_END_ENTITY_SETTLEMENT));
+        assert!(supports_duration_policy(ROUND_END_AFTER_SETTLEMENT));
         assert!(!supports_duration_policy(209));
         assert!(!supports_duration_policy(205));
     }

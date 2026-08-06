@@ -968,6 +968,41 @@ fn post_hit_specific_skill_is_a_filter_with_an_event_dependency() {
 }
 
 #[test]
+fn received_hit_skill_rank_is_an_exact_target_attacked_filter() {
+    let definition = find_key(66209, "UseSpecificSkill").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::TargetAttacked]);
+    assert_eq!(
+        parse(66209, "UseSpecificSkill", &["5".into(), "3".into()]),
+        Some(ParsedConditionKind::ReceivedSpecificSkill { group: 5, rank: 3 })
+    );
+}
+
+#[test]
+fn round_start_buff_type_threshold_keeps_its_exact_late_lane() {
+    assert_eq!(
+        parse(
+            535104,
+            "TypeIdBuffCountMoreThan",
+            &["4150001".into(), "30".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![4_150_001],
+            compare: crate::engine::skill::condition::parse::ConditionCompare::GreaterThanOrEqual,
+            threshold: 30,
+        })
+    );
+    assert_eq!(
+        find_key(535104, "TypeIdBuffCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartLate,
+            priority: 0,
+        })
+    );
+}
+
+#[test]
 fn skill_target_count_is_a_filter_with_an_event_dependency() {
     let definition = find_key(500210, "SkillType").unwrap();
 

@@ -561,6 +561,7 @@ behavior_definitions! {
     [60210] "ConsumeBloodAddBuff" => super::gauge::Handler, ConsumeBloodAddBuff, Immediate, destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(57104, "NoBuffId"), stage: SetupStage::RoundStart, priority: 3 }), super::gauge::supports_consume_blood_add_buff;
     [60211] "ConsumeBloodAddBuff2" => super::gauge::Handler, ConsumeBloodAddBuff2, Immediate, destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(57104, "NoBuffId"), stage: SetupStage::RoundStart, priority: 3 }), super::gauge::supports_consume_blood_add_buff;
     [50019] "AddMagicCircle" => super::magic_circle::Handler, AddMagicCircle, Immediate, destination;
+    [50021] "RemoveMagicCircleById" => super::magic_circle::Handler, RemoveMagicCircleById, Immediate, destination;
     [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, plain;
     [60195] "ElectricTransform" => super::electric::Handler, ElectricTransform, Immediate, destination, super::electric::supports;
     [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, destination;
@@ -589,6 +590,7 @@ behavior_definitions! {
     [60058] "CareerRatioFix" => super::career::Handler, CareerRatioFix, Immediate, modifier;
     [100036] "SkillChangeAttackCareer" => super::career::Handler, ChangeAttackCareer, Immediate, modifier;
     [40003] "AddAct" => super::action_point::Handler, AddAct, Immediate, round_modifier_only;
+    [50006] "AddActHero" => super::action_point::Handler, AddActHero, Immediate, round_modifier_only;
     [40007] "AddActAndCardLimit" => super::card_limit::Handler, AddActAndCardLimit, AfterDamage, round_modifier_with_output;
     [60221] "IgnoreSkillConfigDamageRate" => super::general::DamageRateMarkerHandler, IgnoreSkillConfigDamageRate, Immediate, destination, arguments::none;
     [100017] "IgnoreSkillConfigDamageRate" => super::general::DamageRateMarkerHandler, IgnoreSkillConfigDamageRate, Immediate, destination, arguments::none;

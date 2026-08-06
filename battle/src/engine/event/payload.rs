@@ -224,6 +224,41 @@ pub enum BattleEvent {
 }
 
 impl BattleEvent {
+    pub fn source_uid(&self) -> Option<i64> {
+        match self {
+            Self::ActionQueueCommitted { emitter_uid, .. }
+            | Self::PlayerActionsResolved { emitter_uid, .. }
+            | Self::ImpromptuResolved { emitter_uid, .. } => Some(*emitter_uid),
+            Self::SkillEffectStarted(action) | Self::SkillAction(action) => Some(action.source_uid),
+            Self::AllyAction(action) => Some(action.source_uid),
+            Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
+                Some(change.source_uid)
+            }
+            Self::BuffFeatureTriggered(trigger) => Some(trigger.source_uid),
+            Self::HpLost { source_uid, .. }
+            | Self::HpHealed { source_uid, .. }
+            | Self::ToughnessBroken { source_uid, .. } => Some(*source_uid),
+            Self::Hit(hit) => Some(hit.source_uid),
+            Self::EntityDied(death) => Some(death.source_uid),
+            Self::ExPointChanged(change) | Self::ExPointOverflow(change) => Some(change.source_uid),
+            Self::EurekaChanged(change) => Some(change.source_uid),
+            Self::ConduitActivated(change) => Some(change.source_uid),
+            Self::GaugeChanged(change) => Some(change.source_uid),
+            Self::SummonChanged(change) => Some(change.owner_uid),
+            Self::ShellChanged(change) => Some(change.source_uid),
+            Self::EnterFight
+            | Self::EntityEntered { .. }
+            | Self::EntityTransformed { .. }
+            | Self::RoundStart
+            | Self::BattleTerminalCommitted { .. }
+            | Self::CardChanged(_)
+            | Self::FieldChanged(_)
+            | Self::BuffsSettled(_)
+            | Self::BloodtitheChanged { .. }
+            | Self::Kind(_) => None,
+        }
+    }
+
     pub fn target_uid(&self) -> Option<i64> {
         match self {
             Self::EntityEntered { target_uid }

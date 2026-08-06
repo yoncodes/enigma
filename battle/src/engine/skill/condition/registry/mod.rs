@@ -426,6 +426,7 @@ condition_definitions! {
     [535201] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [535210] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [535203] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, predicate(&[]);
+    [535104] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [535214] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::TargetAttacked, None);
     [535215] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::AllyAction, None);
     [535303] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::RoundEndEntitySettlement, None);
@@ -576,6 +577,7 @@ condition_definitions! {
     [659212] "UseSkill" => active_skill::use_skill, event_trigger(EventKind::AllyAction, None);
     [66203] "UseSpecificSkill" => active_skill::specific_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [66208] "UseSpecificSkill" => active_skill::specific_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
+    [66209] "UseSpecificSkill" => active_skill::received_specific_skill, predicate(&[EventKind::TargetAttacked]);
     [66210] "UseSpecificSkill" => active_skill::specific_skill, predicate(&[EventKind::SkillAction]);
     [662201] "ActiveUseSkillId" => active_skill::skill_id, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [662203] "ActiveUseSkillId" => active_skill::skill_id, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));

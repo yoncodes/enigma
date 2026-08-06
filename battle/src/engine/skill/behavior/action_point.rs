@@ -14,7 +14,7 @@ impl BehaviorHandler for Handler {
     fn supports(behavior: &ParsedBehavior) -> bool {
         matches!(
             (behavior.spec.kind, behavior.args.as_slice()),
-            (BehaviorKind::AddAct, [amount]) if *amount != 0
+            (BehaviorKind::AddAct | BehaviorKind::AddActHero, [amount]) if *amount != 0
         )
     }
 
@@ -41,6 +41,16 @@ mod tests {
         assert_eq!(
             Handler::collect_round_modifier(&remove),
             Some(RoundModifiers { action_points: -1 })
+        );
+    }
+
+    #[test]
+    fn hero_action_point_modifier_uses_its_exact_definition() {
+        let behavior = ParsedBehavior::new(50006, "AddActHero", vec![1]);
+
+        assert_eq!(
+            Handler::collect_round_modifier(&behavior),
+            Some(RoundModifiers { action_points: 1 })
         );
     }
 }
