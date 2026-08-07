@@ -211,6 +211,155 @@ fn behavior_target_from_logic_target_keeps_the_runtime_target() {
 }
 
 #[test]
+fn buff_count_multiplier_runs_after_damage_for_every_action_target() {
+    crate::test_support::init_config();
+    const CHIRP_SIGNAL: i32 = 116_385_671;
+    const ECHOES_OF_BYGONE_DAYS: i32 = 116_385_672;
+    const SKILL_ID: i32 = 116_385_665;
+
+    let targets = [
+        (10, 4, 1090),
+        (11, 4, 1091),
+        (12, 3, 1092),
+        (13, 2, 1093),
+        (14, 8, 1094),
+    ];
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: targets
+                .iter()
+                .map(|&(uid, layer, buff_uid)| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    current_hp: Some(100_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(100_000),
+                        defense: Some(1_000),
+                        mdefense: Some(1_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![BuffInfo {
+                        uid: Some(buff_uid),
+                        buff_id: Some(CHIRP_SIGNAL),
+                        from_uid: Some(-1),
+                        layer: Some(layer),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                buffs: vec![BuffInfo {
+                    uid: Some(2090),
+                    buff_id: Some(ECHOES_OF_BYGONE_DAYS),
+                    from_uid: Some(-1),
+                    layer: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: -1,
+        skill_id: SKILL_ID,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    let mut execution = SkillExecution::new(TargetContext::default());
+    let commands = loop {
+        let phase = invocation.phase.unwrap_or(SkillPhase::Immediate);
+        let emission = emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            &mut execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap();
+        let phase_commands = emission
+            .ops
+            .into_iter()
+            .filter_map(|emission| match emission.op {
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Accumulate(grant)))
+                    if grant.origin.key.matches(60022, "BuffCountMulti") =>
+                {
+                    Some(BuffCommand::Accumulate(grant))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if phase == SkillPhase::AfterDamage {
+            break phase_commands;
+        }
+        assert!(phase_commands.is_empty());
+        invocation = emission.continuation.expect("skill reached AfterDamage");
+    };
+
+    let command_targets = commands
+        .iter()
+        .map(|command| match command {
+            BuffCommand::Accumulate(grant) => grant.target_uid,
+            _ => unreachable!(),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        command_targets,
+        vec![
+            10, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 13, 13, 14, 14, 14, 14, 14, 14, 14, 14,
+        ]
+    );
+
+    let mut capped_refreshes = Vec::new();
+    let mut capped_noops = 0;
+    for command in commands {
+        let target_uid = match &command {
+            BuffCommand::Accumulate(grant) => grant.target_uid,
+            _ => unreachable!(),
+        };
+        let uid = managers.buff.buff_id_uid(target_uid, CHIRP_SIGNAL);
+        let changes = managers.execute_buff(command).unwrap();
+        if target_uid == 14 {
+            if let Some(refresh) = changes.change.refreshed.first() {
+                capped_refreshes.push((
+                    refresh.before.layer.unwrap_or_default(),
+                    refresh.after.layer.unwrap_or_default(),
+                ));
+            } else {
+                capped_noops += 1;
+            }
+        }
+        assert_eq!(managers.buff.buff_id_uid(target_uid, CHIRP_SIGNAL), uid);
+    }
+    for &(uid, layer, _) in &targets {
+        assert_eq!(
+            managers.buff.buff_id_amount(uid, CHIRP_SIGNAL),
+            (layer * 2).min(10)
+        );
+    }
+    assert_eq!(capped_refreshes, vec![(8, 9), (9, 10)]);
+    assert_eq!(capped_noops, 6);
+}
+
+#[test]
 fn mass_status_dispel_routes_to_every_enemy_and_commits_through_the_buff_manager() {
     crate::test_support::init_config();
     let target = |uid| FightEntityInfo {

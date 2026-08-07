@@ -1,5 +1,35 @@
 use super::*;
 
+pub(super) fn multiply_buff_count_ops(
+    context: &BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    let [buff_id, multiplier] = behavior.args.as_slice() else {
+        return None;
+    };
+    let additions = context
+        .managers
+        .buff
+        .buff_id_amount(context.target_uid, *buff_id)
+        .saturating_mul(multiplier.saturating_sub(1));
+    let origin = super::command_origin(behavior)?;
+    Some(
+        (0..additions)
+            .map(|_| {
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Accumulate(BuffGrant {
+                    origin,
+                    source_uid: context.source_uid,
+                    target_uid: context.target_uid,
+                    buff_id: *buff_id,
+                    amount: None,
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                })))
+            })
+            .collect(),
+    )
+}
+
 pub(super) fn add_buff_by_layer_ops(
     context: &mut BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,

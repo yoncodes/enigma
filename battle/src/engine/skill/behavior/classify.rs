@@ -108,6 +108,7 @@ pub enum BehaviorKind {
     SelfRandomCopyBuffs,
     BuffSortByHp,
     BuffSpread,
+    BuffCountMulti,
     ReplaceBuff,
     ReplaceBuff2,
     AddBuffBasedOnEnemyBurnUseCount,
