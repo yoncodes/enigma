@@ -155,6 +155,31 @@ fn destination_readiness_belongs_to_the_exact_registry_row() {
 }
 
 #[test]
+fn crystal_skill_rate_validates_its_halo_payload() {
+    let definition = find_key(60243, "CrystalAddSkillRate").unwrap();
+    let valid = ParsedBehavior::new(
+        60243,
+        "CrystalAddSkillRate",
+        vec![4, 1_000_000, 4, 31_340_001, 2],
+    );
+
+    assert!(definition.supports.is_some_and(|supports| supports(&valid)));
+    assert!(find_key(60243, "CrystalAddCardRank").is_none());
+    for args in [
+        vec![4, 1_000_000, 4, 31_340_001],
+        vec![4, 1_000_000, 4, 31_340_001, 0],
+        vec![4, 1_000_000, 4, 31_340_001, 2, 1],
+    ] {
+        let unsupported = ParsedBehavior::new(60243, "CrystalAddSkillRate", args);
+        assert!(
+            !definition
+                .supports
+                .is_some_and(|supports| supports(&unsupported))
+        );
+    }
+}
+
+#[test]
 fn planet_removal_keeps_its_exact_behavior_identity() {
     let definition = find_key(60252, "DisperseForce3").unwrap();
     let valid = ParsedBehavior::from_spec(

@@ -316,6 +316,13 @@ pub struct AdditionalDamageModifier {
     pub buff_id: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AfterDamageBuffModifier {
+    pub origin: CommandOrigin,
+    pub buff_id: i32,
+    pub amount: i32,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SkillModifiers {
     pub rates: Vec<SkillRateModifier>,
@@ -327,6 +334,7 @@ pub struct SkillModifiers {
     pub career_ratio_bonus: i32,
     pub attack_career: Option<i32>,
     pub additional_damage: Vec<AdditionalDamageModifier>,
+    pub after_damage_buffs: Vec<AfterDamageBuffModifier>,
     pub consume_team_injury_count_round: Option<DefinitionKey>,
 }
 
@@ -345,6 +353,8 @@ impl SkillModifiers {
         self.career_ratio_bonus += other.career_ratio_bonus;
         self.attack_career = self.attack_career.or(other.attack_career);
         self.additional_damage.append(&mut other.additional_damage);
+        self.after_damage_buffs
+            .append(&mut other.after_damage_buffs);
         self.consume_team_injury_count_round = self
             .consume_team_injury_count_round
             .or(other.consume_team_injury_count_round);

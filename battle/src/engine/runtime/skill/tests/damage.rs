@@ -115,6 +115,89 @@ fn configured_damage_target_overrides_an_unmapped_logic_target() {
 }
 
 #[test]
+fn purple_emanation_applies_configured_halo_after_destined_doom_damage() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: [-1, -2]
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })
+                .to_vec(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    assert!(managers.emanation.select(10, 110));
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31340151], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31340151,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-1);
+
+    let ops = emit_all_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+    let damage_end = ops
+        .iter()
+        .rposition(|op| {
+            matches!(
+                op,
+                RuleOp::Command(BattleCommand::Hp(_) | BattleCommand::HpBatch(_))
+            )
+        })
+        .unwrap();
+    let halo = ops
+        .iter()
+        .enumerate()
+        .filter_map(|(index, op)| match op {
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))
+                if grant.buff_id == 31340001 =>
+            {
+                Some((index, grant.target_uid, grant.amount))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        halo,
+        vec![(damage_end + 1, -1, Some(2)), (damage_end + 2, -2, Some(2))]
+    );
+}
+
+#[test]
 fn action_target_damage_routing_keeps_configured_mass_targets() {
     let ops = configured_damage_ops(202, 0, &[-1, -2], None);
 
