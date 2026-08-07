@@ -1683,6 +1683,31 @@ fn active_team_status_type_count_keeps_its_exact_predicate_route() {
 }
 
 #[test]
+fn active_buff_group_count_keeps_its_exact_predicate_route() {
+    let definition = find_key(669203, "PerBuffGroupCount").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::BuffChanged]);
+    assert_eq!(
+        definition.behavior_target_source,
+        BehaviorTargetSource::ActiveSkillTargets
+    );
+    assert_eq!(
+        parse(669203, "PerBuffGroupCount", &["7".into()]),
+        Some(ParsedConditionKind::PerBuffGroupCount { group_id: 7 })
+    );
+    for arguments in [
+        vec![],
+        vec!["0".into()],
+        vec!["-7".into()],
+        vec!["7".into(), "5".into()],
+    ] {
+        assert_eq!(parse(669203, "PerBuffGroupCount", &arguments), None);
+    }
+    assert!(find_key(669203, "HasBuffGroup").is_none());
+}
+
+#[test]
 fn firebud_rank_gate_uses_the_exact_after_damage_lane() {
     for (opcode, type_name) in [(66208, "UseSpecificSkill"), (501208, "UseHurtSkill")] {
         assert_eq!(

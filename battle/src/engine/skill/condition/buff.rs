@@ -69,6 +69,14 @@ pub fn buff_group(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditio
     Some(ParsedConditionKind::BuffGroup(parse_buff_ids(raw_args)?))
 }
 
+pub fn per_buff_group_count(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let [group_id] = raw_args else {
+        return None;
+    };
+    let group_id = group_id.parse().ok()?;
+    (group_id > 0).then_some(ParsedConditionKind::PerBuffGroupCount { group_id })
+}
+
 pub fn no_buff_group(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::NoBuffGroup(parse_buff_ids(raw_args)?))
 }

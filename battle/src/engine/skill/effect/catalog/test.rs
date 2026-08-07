@@ -599,6 +599,23 @@ fn ritual_dance_threshold_compiles_the_captured_immediate_route() {
 }
 
 #[test]
+fn liang_yue_poison_scaling_compiles_as_an_active_modifier() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+
+    assert_eq!(
+        catalog.condition_kind(
+            31100563,
+            crate::engine::skill::rule::DefinitionKey::new(669203, "PerBuffGroupCount"),
+        ),
+        Some(&ParsedConditionKind::PerBuffGroupCount { group_id: 7 })
+    );
+    assert!(catalog.issues(31100563).iter().all(|issue| {
+        issue.opcode != Some(669203) || issue.type_name.as_deref() != Some("PerBuffGroupCount")
+    }));
+}
+
+#[test]
 fn from_the_depths_keeps_its_once_per_battle_limit() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());

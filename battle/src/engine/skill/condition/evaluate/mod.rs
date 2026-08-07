@@ -218,6 +218,12 @@ fn condition_repeat_count(
                 / (*divisor).max(1))
             .clamp(0, *max_count)
         }),
+        ParsedConditionKind::PerBuffGroupCount { group_id } => managers.map(|managers| {
+            condition_targets
+                .iter()
+                .map(|uid| managers.buff.buff_group_amount(*uid, *group_id))
+                .sum()
+        }),
         ParsedConditionKind::PerHp { interval_permille } => managers.map(|managers| {
             condition_targets
                 .iter()
@@ -526,6 +532,11 @@ fn condition_kind_matches(
             condition_targets
                 .iter()
                 .any(|uid| managers.buff.buff_group_type_count(*uid, group_ids) > 0)
+        }),
+        ParsedConditionKind::PerBuffGroupCount { group_id } => managers.is_some_and(|managers| {
+            condition_targets
+                .iter()
+                .any(|uid| managers.buff.buff_group_amount(*uid, *group_id) > 0)
         }),
         ParsedConditionKind::NoBuffGroup(group_ids) => managers.is_some_and(|managers| {
             condition_targets
