@@ -892,6 +892,7 @@ fn event_target(event: &BattleEvent) -> Option<i64> {
         BattleEvent::BuffAdded(change)
         | BattleEvent::BuffChanged(change)
         | BattleEvent::BuffRemoved(change) => Some(change.target_uid),
+        BattleEvent::BuffStateChanged(change) => Some(change.target_uid),
         BattleEvent::ExPointChanged(change) | BattleEvent::ExPointOverflow(change) => {
             Some(change.target_uid)
         }
@@ -918,6 +919,7 @@ pub(super) fn reaction_counterparty(
             | BattleEvent::AllyAction(_)
             | BattleEvent::BuffAdded(_)
             | BattleEvent::BuffChanged(_)
+            | BattleEvent::BuffStateChanged(_)
             | BattleEvent::BuffRemoved(_)
     );
     let (source_uid, target_uid) = match event {
@@ -929,6 +931,7 @@ pub(super) fn reaction_counterparty(
         BattleEvent::BuffAdded(change)
         | BattleEvent::BuffChanged(change)
         | BattleEvent::BuffRemoved(change) => (change.source_uid, change.target_uid),
+        BattleEvent::BuffStateChanged(change) => (change.source_uid, change.target_uid),
         BattleEvent::HpLost {
             source_uid,
             target_uid,

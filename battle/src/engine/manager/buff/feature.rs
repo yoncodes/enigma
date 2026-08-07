@@ -11,6 +11,7 @@ pub(super) struct ResolvedBuffFeature {
     pub effect_time: i32,
     pub effect_condition: i32,
     pub kind: Option<crate::engine::skill::buff_act::registry::BuffActKind>,
+    pub arguments_supported: bool,
     pub stat_read_timing: crate::engine::skill::buff_act::registry::StatReadTiming,
     pub wire: Option<&'static crate::engine::skill::buff_act::wire::BuffActWireDefinition>,
 }
@@ -255,6 +256,11 @@ pub(super) fn resolve_features(raw_features: &str) -> Vec<ResolvedBuffFeature> {
             let registered = act.and_then(|act| {
                 crate::engine::skill::buff_act::registry::find(act.id, &act.r#type)
             });
+            let arguments_supported = registered.is_some_and(|definition| {
+                definition
+                    .supports
+                    .is_none_or(|supports| supports(values.get(1..).unwrap_or_default()))
+            });
             ResolvedBuffFeature {
                 raw: raw.to_owned(),
                 values,
@@ -262,6 +268,7 @@ pub(super) fn resolve_features(raw_features: &str) -> Vec<ResolvedBuffFeature> {
                 effect_time: act.map(|act| act.effect_time).unwrap_or_default(),
                 effect_condition: act.map(|act| act.effect_condition).unwrap_or_default(),
                 kind: registered.map(|definition| definition.kind),
+                arguments_supported,
                 stat_read_timing: registered
                     .map(|definition| definition.state.read_timing)
                     .unwrap_or(crate::engine::skill::buff_act::registry::StatReadTiming::None),

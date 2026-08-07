@@ -40,6 +40,7 @@ pub mod cast_channel;
 pub mod change_remove_buff_use_skill_param;
 pub mod conduit_select;
 pub mod control_team_injury_count_round;
+pub mod count_continue_channel;
 pub mod create_additional_damage;
 pub mod create_max_hp_additional_damage_and_remove;
 pub mod crit_rate_alter2;
@@ -781,6 +782,7 @@ fn event_source_uid(event: &BattleEvent) -> Option<i64> {
         BattleEvent::BuffAdded(change)
         | BattleEvent::BuffChanged(change)
         | BattleEvent::BuffRemoved(change) => Some(change.source_uid),
+        BattleEvent::BuffStateChanged(change) => Some(change.source_uid),
         BattleEvent::HpLost { source_uid, .. } | BattleEvent::HpHealed { source_uid, .. } => {
             Some(*source_uid)
         }

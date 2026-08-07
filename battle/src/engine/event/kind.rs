@@ -10,6 +10,7 @@ pub enum EventKind {
     AfterRoundStart,
     BuffAdded,
     BuffChanged,
+    BuffStateChanged,
     BuffRemoved,
     BuffFeatureTriggered,
     HpLost,

@@ -110,6 +110,7 @@ pub enum BuffActKind {
     ConsumeBuffAddBuffContinueChannel,
     ConsumeBuffContinueChannel,
     ControlTeamInjuryCountRound,
+    CountContinueChannel,
     ConduitCardSelection,
     CreateAdditionalDamage,
     CreateMaxHpAdditionalDamageAndRemove,
@@ -921,6 +922,12 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::each_change_attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(834, "EachChangeAttr"), &[EffectType::None as i32]));
+    (838, "CountContinueChannel") => CountContinueChannel,
+        event: EventKind::BuffStateChanged,
+        runtime: |context| super::count_continue_channel::rule_ops(context.subscriber, context.event?),
+        supports: super::count_continue_channel::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(838, "CountContinueChannel"), &[])
+            .with_initial_private_state(super::wire::InitialPrivateStateRule::FourthArgument));
     (861, "FixTempAttrByBuffLayer") => FixTempAttrByBuffLayer, stat_read: OnTrigger,
         supports: super::fix_temp_attr_by_buff_layer::supports, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(861, "FixTempAttrByBuffLayer"), &[EffectType::None as i32]));

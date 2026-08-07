@@ -814,6 +814,34 @@ fn special_moxie_cap_keeps_its_exact_transaction_identity() {
 }
 
 #[test]
+fn counted_channel_keeps_its_exact_state_event_route() {
+    let definition = find(838, "CountContinueChannel").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::CountContinueChannel);
+    assert_eq!(
+        runtime_event(838, "CountContinueChannel", 1041),
+        Some(EventKind::BuffStateChanged)
+    );
+    assert!(has_destination(
+        838,
+        "CountContinueChannel",
+        &[31000505, 1, 210, 7]
+    ));
+    assert!(!has_destination(
+        838,
+        "CountContinueChannel",
+        &[31000505, 0, 210, 7]
+    ));
+    let wire = super::super::wire::find(838, "CountContinueChannel").unwrap();
+    assert_eq!(
+        wire.initial_private_state(&[838, 31000505, 1, 210, 7]),
+        Some(7)
+    );
+    assert_eq!(wire.initial_private_state(&[838, 31000505, 1, 210]), None);
+    assert!(find(838, "CastChannel").is_none());
+}
+
+#[test]
 fn absolute_missing_hp_attributes_keep_their_exact_static_routes() {
     assert_eq!(
         destination(853, "AttrByLostHp", &[10_000_000, 215, 100, 1, 1, 0]),
