@@ -141,6 +141,16 @@ pub struct ExPointMaxChange {
     pub origin: CommandOrigin,
     pub target_uid: i64,
     pub delta: i32,
+    pub wire: ExPointMaxWire,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExPointMaxWire {
+    Delta,
+    Special {
+        max_add: i32,
+        ultimate_cost_offset: i32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,6 +175,7 @@ pub struct ExPointMaxApplyResult {
     pub requested_delta: i32,
     pub applied_delta: i32,
     pub after: i32,
+    pub wire: ExPointMaxWire,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -308,6 +319,7 @@ impl ExPointManager {
                     requested_delta: change.delta,
                     applied_delta: after - before,
                     after,
+                    wire: change.wire,
                 },
             });
         }

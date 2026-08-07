@@ -121,6 +121,15 @@ impl BuffManager {
     }
 
     pub fn buff_act_scalar(&self, owner_uid: i64, kind: BuffActKind) -> i32 {
+        self.buff_act_argument_scalar(owner_uid, kind, 0)
+    }
+
+    pub fn buff_act_argument_scalar(
+        &self,
+        owner_uid: i64,
+        kind: BuffActKind,
+        argument: usize,
+    ) -> i32 {
         self.buffs
             .iter()
             .filter(|active| active.owner_uid == owner_uid)
@@ -131,7 +140,7 @@ impl BuffManager {
                         .features()
                         .iter()
                         .filter(|feature| feature.kind == Some(kind))
-                        .filter_map(|feature| feature.values.get(1))
+                        .filter_map(|feature| feature.values.get(argument.saturating_add(1)))
                         .map(|value| value.saturating_mul(amount))
                         .sum::<i32>()
                 })

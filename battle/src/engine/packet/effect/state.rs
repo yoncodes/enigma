@@ -224,14 +224,30 @@ impl EffectPacket {
         }
     }
 
-    pub fn ex_point_max_add(target_uid: i64, delta: i32) -> ActEffect {
-        ActEffect {
-            target_id: Some(target_uid),
-            effect_type: Some(EffectType::Expointmaxadd as i32),
-            effect_num: Some(delta),
-            config_effect: Some(0),
-            effect_num1: Some(0),
-            ..Default::default()
+    pub fn ex_point_max(
+        change: crate::engine::manager::ex_point::ExPointMaxApplyResult,
+    ) -> ActEffect {
+        match change.wire {
+            crate::engine::manager::ex_point::ExPointMaxWire::Delta => ActEffect {
+                target_id: Some(change.target_uid),
+                effect_type: Some(EffectType::Expointmaxadd as i32),
+                effect_num: Some(change.applied_delta),
+                config_effect: Some(0),
+                effect_num1: Some(0),
+                ..Default::default()
+            },
+            crate::engine::manager::ex_point::ExPointMaxWire::Special {
+                max_add,
+                ultimate_cost_offset,
+            } => ActEffect {
+                target_id: Some(change.target_uid),
+                effect_type: Some(EffectType::Spexpointmaxadd as i32),
+                effect_num: Some(0),
+                config_effect: Some(0),
+                reserve_str: Some(format!("{max_add}#{ultimate_cost_offset}")),
+                effect_num1: Some(0),
+                ..Default::default()
+            },
         }
     }
 

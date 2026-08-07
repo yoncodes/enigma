@@ -793,6 +793,27 @@ fn moxie_reduction_immunity_keeps_its_exact_static_identity() {
 }
 
 #[test]
+fn special_moxie_cap_keeps_its_exact_transaction_identity() {
+    let definition = find(832, "SpExPointMaxAdd").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::SpExPointMaxAdd);
+    assert_eq!(
+        definition.transaction.events,
+        &[
+            EventKind::BuffAdded,
+            EventKind::BuffChanged,
+            EventKind::BuffRemoved,
+        ]
+    );
+    assert!(has_destination(832, "SpExPointMaxAdd", &[7]));
+    assert!(has_destination(832, "SpExPointMaxAdd", &[7, 3]));
+    assert!(!has_destination(832, "SpExPointMaxAdd", &[0, 3]));
+    assert!(!has_destination(832, "SpExPointMaxAdd", &[-7]));
+    assert!(!has_destination(832, "SpExPointMaxAdd", &[7, -3]));
+    assert!(find(832, "ExPointMaxAdd").is_none());
+}
+
+#[test]
 fn absolute_missing_hp_attributes_keep_their_exact_static_routes() {
     assert_eq!(
         destination(853, "AttrByLostHp", &[10_000_000, 215, 100, 1, 1, 0]),

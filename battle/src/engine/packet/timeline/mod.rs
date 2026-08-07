@@ -454,10 +454,7 @@ fn project_change(
             vec![EffectPacket::ex_point(*change)]
         }
         BattleChange::ExPoint(ExPointChanges::Max { change, .. }) if change.applied_delta != 0 => {
-            vec![EffectPacket::ex_point_max_add(
-                change.target_uid,
-                change.applied_delta,
-            )]
+            vec![EffectPacket::ex_point_max(*change)]
         }
         BattleChange::ExPoint(_) => Vec::new(),
         BattleChange::Eureka(EurekaChanges::Changed { change, .. })

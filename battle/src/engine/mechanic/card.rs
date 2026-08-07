@@ -55,10 +55,17 @@ impl CardMechanic {
         if ExPointKind::from_wire(managers.ex_point.kind(owner_uid)) != ExPointKind::Common {
             return 0;
         }
-        managers.buff.buff_act_scalar(
-            owner_uid,
-            crate::engine::skill::buff_act::registry::BuffActKind::ExSkillPointChange,
-        )
+        managers
+            .buff
+            .buff_act_scalar(
+                owner_uid,
+                crate::engine::skill::buff_act::registry::BuffActKind::ExSkillPointChange,
+            )
+            .saturating_add(managers.buff.buff_act_argument_scalar(
+                owner_uid,
+                crate::engine::skill::buff_act::registry::BuffActKind::SpExPointMaxAdd,
+                1,
+            ))
     }
 
     pub fn required_ultimate_cost(&self, managers: &BattleManagers, entity: &TargetEntity) -> i32 {

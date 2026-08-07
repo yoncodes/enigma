@@ -329,13 +329,49 @@ fn ex_point_max_transaction_rule_ops(
     _managers: &BattleManagers,
     event: &BattleEvent,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
-    changed_features(event, registry::BuffActKind::ExPointMaxAdd)
+    ex_point_max_rule_ops(event, registry::BuffActKind::ExPointMaxAdd, |_| {
+        Some(crate::engine::manager::ex_point::ExPointMaxWire::Delta)
+    })
+}
+
+fn sp_ex_point_max_transaction_rule_ops(
+    managers: &BattleManagers,
+    event: &BattleEvent,
+) -> Vec<(ActiveBuffFeature, RuleOp)> {
+    ex_point_max_rule_ops(event, registry::BuffActKind::SpExPointMaxAdd, |feature| {
+        (crate::engine::manager::ex_point::ExPointKind::from_wire(
+            managers.ex_point.kind(feature.owner_uid),
+        ) == crate::engine::manager::ex_point::ExPointKind::Common)
+            .then(
+                || crate::engine::manager::ex_point::ExPointMaxWire::Special {
+                    max_add: managers.buff.buff_act_argument_scalar(
+                        feature.owner_uid,
+                        registry::BuffActKind::SpExPointMaxAdd,
+                        0,
+                    ),
+                    ultimate_cost_offset: managers.buff.buff_act_argument_scalar(
+                        feature.owner_uid,
+                        registry::BuffActKind::SpExPointMaxAdd,
+                        1,
+                    ),
+                },
+            )
+    })
+}
+
+fn ex_point_max_rule_ops(
+    event: &BattleEvent,
+    kind: registry::BuffActKind,
+    wire: impl Fn(&ActiveBuffFeature) -> Option<crate::engine::manager::ex_point::ExPointMaxWire>,
+) -> Vec<(ActiveBuffFeature, RuleOp)> {
+    changed_features(event, kind)
         .into_iter()
         .filter_map(|(feature, amount_delta)| {
             let [_, delta, ..] = feature.values.as_slice() else {
                 return None;
             };
             let delta = delta.saturating_mul(amount_delta);
+            let wire = wire(&feature)?;
             (delta != 0).then(|| {
                 (
                     feature.clone(),
@@ -346,6 +382,7 @@ fn ex_point_max_transaction_rule_ops(
                                     .expect("a registered feature has an origin"),
                                 target_uid: feature.owner_uid,
                                 delta,
+                                wire,
                             },
                         ),
                     )),

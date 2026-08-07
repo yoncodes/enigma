@@ -11,6 +11,7 @@ use crate::engine::{
         BattleManagers,
         buff::BuffManager,
         eureka::EurekaCommand,
+        ex_point::{ExPointCommand, ExPointMaxWire},
         hp::{HpCommand, HpManager},
     },
     skill::{
@@ -171,6 +172,35 @@ fn power_max_transactions_use_the_buff_amount_delta() {
     assert_eq!(power_max_delta(transaction_event(31_050_147, 0, 1)), 2);
     assert_eq!(power_max_delta(transaction_event(31_050_147, 1, 3)), 4);
     assert_eq!(power_max_delta(transaction_event(31_050_147, 3, 0)), -6);
+}
+
+#[test]
+fn special_moxie_cap_uses_the_configured_cap_and_ultimate_cost() {
+    crate::test_support::init_config();
+
+    let managers = managers_with_buff(31_000_161, 1);
+    let command = transaction_rule_ops(&managers, &transaction_event(31_000_161, 0, 1))
+        .into_iter()
+        .find_map(|(_, op)| match op {
+            RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::ChangeMax(change))) => {
+                Some(change)
+            }
+            _ => None,
+        })
+        .expect("the special max-moxie feature should emit a manager command");
+
+    assert_eq!(command.delta, 7);
+    assert_eq!(
+        command.wire,
+        ExPointMaxWire::Special {
+            max_add: 7,
+            ultimate_cost_offset: 3,
+        }
+    );
+    assert_eq!(
+        crate::engine::mechanic::card::CardMechanic.ultimate_cost_offset(&managers, 10),
+        3
+    );
 }
 
 #[test]

@@ -151,6 +151,7 @@ pub enum BuffActKind {
     ExPointCantAdd,
     ExSkillPointChange,
     ExPointMaxAdd,
+    SpExPointMaxAdd,
     ExPointOverflowBank,
     FixAttrBySubBuffLayer,
     FixAttrByTeammateInjuryCountNotReset,
@@ -673,6 +674,16 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         frame: CausingFrame,
         transaction: super::ex_point_max_transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(703, "ExPointMaxAdd"), &[]));
+    (832, "SpExPointMaxAdd") => SpExPointMaxAdd,
+        transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
+        frame: CausingFrame,
+        transaction: super::sp_ex_point_max_transaction_rule_ops,
+        supports: |args| match args {
+            [max_add] => *max_add > 0,
+            [max_add, ultimate_cost_offset] => *max_add > 0 && *ultimate_cost_offset >= 0,
+            _ => false,
+        },
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(832, "SpExPointMaxAdd"), &[]));
     (607, "ExPointCardMove") => ExPointCardMove,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(607, "ExPointCardMove"), &[EffectType::Expointcardmove as i32]));
     (603, "ExPointCantAdd") => ExPointCantAdd,
