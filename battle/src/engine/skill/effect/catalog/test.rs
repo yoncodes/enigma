@@ -106,6 +106,20 @@ fn exact_enemy_damage_routes_compile_without_runtime_gaps() {
 }
 
 #[test]
+fn joe_missing_hp_rate_condition_compiles_as_an_active_modifier() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [30940171], []);
+    let effect = catalog.get(30940171).unwrap();
+
+    assert!(catalog.issues(30940171).is_empty());
+    assert!(effect.slots.iter().all(|slot| slot.compiled_route.is_ok()));
+    assert_eq!(effect.slots[0].conditions[0].opcode, 623203);
+    assert!(crate::engine::skill::behavior::has_destination(
+        &effect.slots[0].behavior
+    ));
+}
+
+#[test]
 fn entering_entities_extend_the_scoped_catalog_from_their_own_roots() {
     init_config();
     let mut catalog = SkillEffectCatalog::default();
