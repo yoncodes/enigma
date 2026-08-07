@@ -21,6 +21,7 @@ pub struct SkillSubscriber {
 pub struct SetupSubscriber {
     pub owner_uid: i64,
     pub skill_id: i32,
+    pub slot_index: usize,
     pub stage: SetupStage,
     pub priority: i32,
     pub key: DefinitionKey,
@@ -403,7 +404,7 @@ pub fn for_round_start_priority(
         .map(|subscriber| SkillSubscriber {
             owner_uid: subscriber.owner_uid,
             skill_id: subscriber.skill_id,
-            slot_index: None,
+            slot_index: Some(subscriber.slot_index),
             key: SubscriptionKey::new(EventKind::RoundStart, subscriber.key),
         })
         .collect()
@@ -455,13 +456,14 @@ fn collect_setup_stage(
             owner_uid,
             skill_id,
         })?;
-        for slot in &effect.slots {
+        for (slot_index, slot) in effect.slots.iter().enumerate() {
             for key in
                 keys(slot).map_err(|route| SubscriberError::UncompiledRoute { skill_id, route })?
             {
                 let subscriber = SetupSubscriber {
                     owner_uid,
                     skill_id,
+                    slot_index,
                     stage,
                     priority,
                     key,

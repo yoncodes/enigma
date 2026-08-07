@@ -273,6 +273,7 @@ impl BattleRuntime {
                     fight_version,
                 )?);
             }
+            let wave_entry_condition_uids = std::mem::take(&mut self.wave_entry_condition_uids);
             fight_steps.extend(project_result(
                 schedule::run_before_ai_round_start(
                     &mut self.managers,
@@ -281,6 +282,7 @@ impl BattleRuntime {
                     &mut self.determinism,
                     context,
                     1,
+                    &wave_entry_condition_uids,
                 )
                 .map_err(|error| format!("{error:?}"))?,
                 fight_version,
@@ -354,6 +356,13 @@ impl BattleRuntime {
                 &self.fight,
                 &self.managers.ex_point,
                 &self.managers.eureka,
+                crate::engine::round::modifier::ai_action_bonus(
+                    &pool,
+                    &self.managers,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                ),
                 self.fight.battle_id.unwrap_or_default(),
                 None,
             );
@@ -425,6 +434,9 @@ impl BattleRuntime {
                     hand_size,
                 )
                 .map_err(|error| format!("{error:?}"))?;
+            if !wave_entering_uids.is_empty() {
+                self.wave_entry_condition_uids = wave_entering_uids;
+            }
             (round_start, next_round, hand_snapshot, dealt_cards, true)
         };
         finish_if_battle_ended(&mut self.round_state, &self.fight, &pool, &self.managers);
@@ -434,6 +446,13 @@ impl BattleRuntime {
                 &self.fight,
                 &self.managers.ex_point,
                 &self.managers.eureka,
+                crate::engine::round::modifier::ai_action_bonus(
+                    &pool,
+                    &self.managers,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                ),
                 self.round_state.cur_round,
                 self.determinism
                     .take_next_ai_card_snapshot()

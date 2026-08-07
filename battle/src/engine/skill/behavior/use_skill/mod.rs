@@ -35,6 +35,10 @@ pub(super) fn supports_random_skill(behavior: &ParsedBehavior) -> bool {
     )
 }
 
+pub(super) fn supports_drive(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [1, 1, 0])
+}
+
 pub(super) fn supports_consume_buff_use_skill(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [buff_id, amount, skill_id, _]
         if *buff_id > 0 && *amount > 0 && *skill_id > 0)
@@ -306,6 +310,21 @@ impl BehaviorHandler for Handler {
                     .into();
                 invocation.target =
                     crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
+                invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+                Some(vec![RuleOp::Skill(invocation)])
+            }
+            BehaviorKind::Drive => {
+                let Some(skill_id) =
+                    choose_drive_skill(context.pool, context.target_uid, context.determinism)
+                else {
+                    return Some(Vec::new());
+                };
+                let mut invocation: crate::engine::skill::action::SkillInvocation =
+                    crate::engine::skill::action::SkillRequest {
+                        source_uid: context.target_uid,
+                        skill_id,
+                    }
+                    .into();
                 invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
                 Some(vec![RuleOp::Skill(invocation)])
             }
@@ -595,6 +614,31 @@ fn choose_weighted_skill(
         roll -= weight;
     }
     None
+}
+
+fn choose_drive_skill(
+    pool: &TargetPool,
+    source_uid: i64,
+    determinism: &mut RoundDeterminism,
+) -> Option<i32> {
+    let source = pool.entity(source_uid)?;
+    let candidates = source
+        .skill_group1
+        .first()
+        .into_iter()
+        .chain(source.skill_group2.first())
+        .copied()
+        .filter(|skill_id| crate::engine::skill::effect::catalog::configured_is_attack(*skill_id))
+        .collect::<Vec<_>>();
+    if let Some(skill_id) = determinism.take_random_skill(&candidates) {
+        return Some(skill_id);
+    }
+    if determinism.has_scripted_random_skill(&candidates) {
+        return None;
+    }
+    determinism
+        .lua_random_index(candidates.len())
+        .map(|index| candidates[index])
 }
 
 fn nested_skill_kind(args: &[i32]) -> i32 {

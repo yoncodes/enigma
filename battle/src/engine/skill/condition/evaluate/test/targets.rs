@@ -1,6 +1,82 @@
 use super::*;
 
 #[test]
+fn received_hit_afflatus_conditions_only_match_the_hit_owner() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    career: Some(1),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    career: Some(3),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    career: Some(8),
+                    weak_careers: vec![1],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    career: Some(8),
+                    weak_careers: vec![1],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let matches = |condition: ParsedCondition, hit_source_uid, hit_target_uid| {
+        conditions_match(
+            &[condition],
+            -1,
+            &[-1],
+            None,
+            &pool,
+            TargetContext {
+                hit_source_uid,
+                hit_target_uid,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(
+        exact_condition(33209, "HurtRestraint", &[]),
+        10,
+        -1
+    ));
+    assert!(!matches(
+        exact_condition(33209, "HurtRestraint", &[]),
+        10,
+        -2
+    ));
+    assert!(matches(
+        exact_condition(47209, "HurtNotRestraint", &[]),
+        11,
+        -1
+    ));
+    assert!(!matches(
+        exact_condition(47209, "HurtNotRestraint", &[]),
+        11,
+        -2
+    ));
+}
+
+#[test]
 fn target_identity_reads_the_selected_skill_target() {
     init_config();
     let fight = Fight {

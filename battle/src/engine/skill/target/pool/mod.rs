@@ -75,6 +75,7 @@ pub struct TargetContext {
     pub battle_id: i32,
     pub current_round: i32,
     pub runtime_target_uid: i64,
+    pub event_source_uid: i64,
     pub logic_target: i32,
     pub active_skill_id: i32,
     pub active_skill_source_uid: i64,

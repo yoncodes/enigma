@@ -904,18 +904,31 @@ fn project_change(
                     | FieldChangeKind::Progress
                     | FieldChangeKind::Duration
                     | FieldChangeKind::Level
+                    | FieldChangeKind::Removed
             ) =>
         {
-            let Some(applied) = magic_circle_snapshot(change) else {
-                return Err(ProjectionError::Field(change.kind));
-            };
             let mut effect = match change.kind {
-                FieldChangeKind::Deployed => EffectPacket::magic_circle_add(&applied),
-                FieldChangeKind::Level => EffectPacket::magic_circle_upgrade(&applied),
-                FieldChangeKind::Progress | FieldChangeKind::Duration => {
-                    EffectPacket::magic_circle_update(&applied)
+                FieldChangeKind::Removed => change
+                    .before
+                    .map(|state| {
+                        EffectPacket::magic_circle_delete(
+                            state.create_uid,
+                            state.definition.field_id,
+                        )
+                    })
+                    .ok_or(ProjectionError::Field(change.kind))?,
+                kind => {
+                    let applied =
+                        magic_circle_snapshot(change).ok_or(ProjectionError::Field(change.kind))?;
+                    match kind {
+                        FieldChangeKind::Deployed => EffectPacket::magic_circle_add(&applied),
+                        FieldChangeKind::Level => EffectPacket::magic_circle_upgrade(&applied),
+                        FieldChangeKind::Progress | FieldChangeKind::Duration => {
+                            EffectPacket::magic_circle_update(&applied)
+                        }
+                        FieldChangeKind::Removed => unreachable!(),
+                    }
                 }
-                FieldChangeKind::Removed => unreachable!(),
             };
             if change.kind == FieldChangeKind::Duration {
                 effect.reserve_str = Some(change.applied_delta.to_string());

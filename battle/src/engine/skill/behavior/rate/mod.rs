@@ -626,6 +626,7 @@ pub(crate) fn incoming_target_attack_modifiers(
     }
     context.hit_source_uid = source_uid;
     context.hit_target_uid = target_uid;
+    context.event_source_uid = source_uid;
     context.runtime_target_uid = source_uid;
     let mut passive_skills = managers
         .entity

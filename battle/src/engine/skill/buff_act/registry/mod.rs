@@ -59,8 +59,10 @@ pub enum BuffActKind {
     AddPassiveSkillByLayer,
     AddSplitEmitterNum,
     AddSpTempCard,
+    AddToBuffEntity,
     AddToBuffEntity2,
     AddBuffAfterAttack,
+    AddToAttacker,
     AddToAttackTargets,
     AddToTarget,
     AttackNumSplitEmitterNum,
@@ -88,6 +90,7 @@ pub enum BuffActKind {
     BuffAddActLimit,
     BuffReplace,
     BuffRoundAdd,
+    BuffRoundAddByBuffTypeId,
     BloodPoolCountAddExPoint,
     BloodPoolTag,
     BloodValueUseSkill,
@@ -584,6 +587,9 @@ buff_act_definitions! {
     (203, "Dot") => Dot, stat_read: ByArguments,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
         supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(203, "Dot"), &[EffectType::Dot as i32]));
+    (213, "Dot") => Dot, stat_read: ByArguments,
+        runtime: |context| Some(super::damage_over_time::layered_damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
+        supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(213, "Dot"), &[], &[EffectType::Dot as i32], &[]));
     (512, "Cure") => Cure,
         runtime: |context| super::revive::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::revive::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(512, "Cure"), &[EffectType::Cure as i32]));
@@ -613,6 +619,11 @@ buff_act_definitions! {
         runtime_marker: BeforeChanges(EventSource),
         runtime: |context| super::rebound::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::rebound::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(303, "Rebound"), &[EffectType::Rebound as i32]));
+    (305, "AddToAttacker") => AddToAttacker,
+        runtime_marker: BeforeChanges(EventSource),
+        scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
+        supports: |args| matches!(args, [buff_id] if *buff_id > 0),
+        wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(305, "AddToAttacker"), &[], &[EffectType::Addtoattacker as i32], &[]));
     (401, "Dizzy") => Dizzy, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(401, "Dizzy"), &[EffectType::Dizzy as i32]));
     (402, "Petrified") => Petrified, event: EventKind::TargetAttacked, frame: CausingFrame,
@@ -668,6 +679,9 @@ buff_act_definitions! {
     (604, "BuffRoundAdd") => BuffRoundAdd, effect_time_subscription: false,
         supports: super::buff_round_add::supports, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(604, "BuffRoundAdd"), &[]));
+    (608, "BuffRoundAddByBuffTypeId") => BuffRoundAddByBuffTypeId, effect_time_subscription: false,
+        supports: super::buff_round_add::supports_type_id, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(608, "BuffRoundAddByBuffTypeId"), &[]));
     (605, "ExPointDel") => ExPointDel,
         runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
         supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(605, "ExPointDel"), &[]));
@@ -783,6 +797,10 @@ buff_act_definitions! {
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(764, "CareerRestraint"), &[EffectType::Careerrestraint as i32]));
     (765, "CareerRatioFix") => CareerRatioFix, effect_time_subscription: false,
         supports: super::career_ratio_fix::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(765, "CareerRatioFix"), &[EffectType::None as i32]));
+    (745, "AddToBuffEntity") => AddToBuffEntity,
+        runtime: |context| super::add_to_buff_entity::rule_ops(context.subscriber, context.event?),
+        supports: super::add_to_buff_entity::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(745, "AddToBuffEntity"), &[]));
     (766, "AddToBuffEntity2") => AddToBuffEntity2,
         runtime: |context| super::add_to_buff_entity_2::rule_ops(context.subscriber, context.event?),
         supports: super::add_to_buff_entity_2::supports;

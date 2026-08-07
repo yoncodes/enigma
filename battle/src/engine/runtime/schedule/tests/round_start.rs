@@ -2,6 +2,61 @@ use super::*;
 use crate::engine::runtime::record::SetupSide;
 
 #[test]
+fn voiceless_switches_afflatus_weakness_after_recovery() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+
+    for starts_weak in [false, true] {
+        let mut buffs = vec![BuffInfo {
+            uid: Some(1),
+            buff_id: Some(109360006),
+            from_uid: Some(-1),
+            ..Default::default()
+        }];
+        if starts_weak {
+            buffs.push(BuffInfo {
+                uid: Some(2),
+                buff_id: Some(109360007),
+                from_uid: Some(-1),
+                ..Default::default()
+            });
+        }
+        let fight = Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    passive_skill: vec![109360006],
+                    buffs,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+
+        run_round_start_split(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 2,
+                ..Default::default()
+            },
+            2,
+        )
+        .unwrap();
+
+        assert_eq!(managers.buff.has_buff_id(-1, 109360007), !starts_weak);
+        assert!(!managers.buff.has_buff_id(-1, 109360006));
+        assert!(!managers.buff.has_buff_id(-1, 109360008));
+    }
+}
+
+#[test]
 fn round_start_settles_unlisted_capacity_owner_before_its_after_settlement_act() {
     init_config();
     let fight = Fight {
@@ -198,6 +253,7 @@ fn defender_round_start_expires_the_previous_status_before_alternating_setup() {
             ..Default::default()
         },
         2,
+        &[],
     )
     .unwrap();
 
@@ -568,6 +624,7 @@ fn round_start_executes_each_team_at_its_own_turn_boundary() {
         &mut determinism,
         TargetContext::default(),
         1,
+        &[],
     )
     .unwrap();
     assert_eq!(managers.ex_point.get(10), 0);
@@ -758,6 +815,7 @@ fn defender_round_start_groups_event_subscribers_with_round_start_setup() {
             ..Default::default()
         },
         1,
+        &[],
     )
     .unwrap();
 

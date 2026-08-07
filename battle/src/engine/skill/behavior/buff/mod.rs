@@ -108,6 +108,10 @@ pub(super) fn supports_duration_change(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [buff_id_or_type, delta] if *buff_id_or_type > 0 && *delta != 0)
 }
 
+pub(super) fn supports_count_multiplier(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [buff_id, multiplier] if *buff_id > 0 && *multiplier == 2)
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(
         mut context: BehaviorOpContext<'_>,
@@ -148,6 +152,7 @@ impl BehaviorHandler for Handler {
             }
             BehaviorKind::AddBuffByBuffLayer => add_buff_by_layer_ops(&mut context, behavior),
             BehaviorKind::BuffSpread => spread_buff_ops(&context, behavior),
+            BehaviorKind::BuffCountMulti => multiply_buff_count_ops(&context, behavior),
             BehaviorKind::BuffSortByHp => sort_buff_by_hp_ops(&context, behavior),
             BehaviorKind::AddBuffByBuffLayerRange => {
                 add_buff_by_layer_range_ops(&context, behavior)
@@ -230,6 +235,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         BehaviorKind::BuffSortByHp | BehaviorKind::BuffSpread => {
             behavior.arg(0).into_iter().collect()
         }
+        BehaviorKind::BuffCountMulti => behavior.arg(0).into_iter().collect(),
         BehaviorKind::ReplaceBuff => [0, 2, 3]
             .into_iter()
             .filter_map(|index| behavior.arg(index))

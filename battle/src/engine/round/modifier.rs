@@ -1,5 +1,4 @@
 use crate::engine::{
-    fight::rules::ATTACKER_SIDE_UID,
     manager::BattleManagers,
     runtime::determinism::RoundDeterminism,
     skill::{
@@ -21,6 +20,27 @@ pub fn action_point_bonus(
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
+) -> i32 {
+    action_bonus_for_team(pool, managers, catalog, determinism, context, 1)
+}
+
+pub fn ai_action_bonus(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+) -> i32 {
+    action_bonus_for_team(pool, managers, catalog, determinism, context, 2)
+}
+
+fn action_bonus_for_team(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    team_type: i32,
 ) -> i32 {
     subscriber::active_skills(pool, managers)
         .into_iter()
@@ -53,7 +73,8 @@ pub fn action_point_bonus(
                     Some(crate::engine::skill::rule::route::ConditionDriver::Setup(setup))
                         if matches!(
                             setup.stage,
-                            crate::engine::skill::rule::SetupStage::RoundStart
+                            crate::engine::skill::rule::SetupStage::EnterFight
+                                | crate::engine::skill::rule::SetupStage::RoundStart
                                 | crate::engine::skill::rule::SetupStage::RoundStartCondition
                         ) =>
                     {
@@ -87,7 +108,7 @@ pub fn action_point_bonus(
             );
             targets
                 .iter()
-                .any(|uid| *uid == ATTACKER_SIDE_UID || pool.team_type(*uid) == Some(1))
+                .any(|uid| pool.team_type(*uid) == Some(team_type))
                 .then(|| collect(&slot.behavior))
                 .flatten()
                 .map(|modifier| modifier.action_points.saturating_mul(repeats))
@@ -195,6 +216,37 @@ mod tests {
         assert_eq!(
             action_point_bonus(&pool, &managers, &catalog, &mut determinism, context),
             -1
+        );
+    }
+
+    #[test]
+    fn enter_fight_action_modifier_applies_to_its_own_team() {
+        init_config();
+        let mut fight = battle_nine_fight();
+        fight.defender.as_mut().unwrap().entitys[0].passive_skill = vec![2301];
+        let pool = TargetPool::from_fight(&fight);
+        let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+        assert!(
+            catalog.get(2301).unwrap().slots[0]
+                .compiled_setup_keys(crate::engine::skill::rule::SetupStage::EnterFight, 0)
+                .unwrap()
+                .is_empty()
+        );
+        let managers = BattleManagers::seeded(&fight);
+        let mut determinism = RoundDeterminism::default();
+        let context = TargetContext {
+            battle_id: fight.battle_id.unwrap(),
+            current_round: fight.cur_round.unwrap(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            action_point_bonus(&pool, &managers, &catalog, &mut determinism, context),
+            0
+        );
+        assert_eq!(
+            ai_action_bonus(&pool, &managers, &catalog, &mut determinism, context),
+            1
         );
     }
 }

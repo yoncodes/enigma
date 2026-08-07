@@ -876,28 +876,15 @@ fn condition_kind_matches(
             context.active_skill_is_attack && active_skill_has_real_source(pool, context)
         }
         ParsedConditionKind::SpecificSkill { group, rank } => {
-            pool.entity(source_uid).is_some_and(|source| {
-                let matches_group = match group {
-                    0 => {
-                        source.skill_group1.contains(&context.active_skill_id)
-                            || source.skill_group2.contains(&context.active_skill_id)
-                    }
-                    1 => source.skill_group1.contains(&context.active_skill_id),
-                    2 => source.skill_group2.contains(&context.active_skill_id),
-                    3 => source.ex_skill == context.active_skill_id,
-                    4 => {
-                        source.skill_group1.contains(&context.active_skill_id)
-                            || source.skill_group2.contains(&context.active_skill_id)
-                    }
-                    5 => {
-                        source.skill_group1.contains(&context.active_skill_id)
-                            || source.skill_group2.contains(&context.active_skill_id)
-                    }
-                    _ => false,
-                };
-                matches_group && (*rank <= 0 || context.active_skill_rank == *rank)
-            })
+            specific_skill_matches(source_uid, *group, *rank, pool, context)
         }
+        ParsedConditionKind::ReceivedSpecificSkill { group, rank } => specific_skill_matches(
+            context.active_skill_source_uid,
+            *group,
+            *rank,
+            pool,
+            context,
+        ),
         ParsedConditionKind::UseExSkill => pool
             .entity(if context.active_skill_source_uid != 0 {
                 context.active_skill_source_uid
@@ -963,26 +950,22 @@ fn condition_kind_matches(
         ParsedConditionKind::HurtRestrained | ParsedConditionKind::HurtNotRestrained => {
             let (attacker_uid, defender_uid) =
                 if context.hit_source_uid != 0 && context.hit_target_uid != 0 {
-                    let observes_target_attacked = super::registry::find_key(
-                        condition.opcode,
-                        &condition.type_name,
-                    )
-                    .is_some_and(|definition| {
-                        definition
-                            .dependencies
-                            .contains(&crate::engine::event::kind::EventKind::TargetAttacked)
-                    });
-                    if observes_target_attacked
-                        && !condition_targets.contains(&context.hit_target_uid)
-                    {
-                        return false;
-                    }
                     (context.hit_source_uid, context.hit_target_uid)
                 } else if context.active_skill_is_attack && context.active_skill_source_uid != 0 {
                     (context.active_skill_source_uid, source_uid)
                 } else {
                     return false;
                 };
+            if super::registry::find_key(condition.opcode, &condition.type_name).is_some_and(
+                |definition| {
+                    definition
+                        .dependencies
+                        .contains(&crate::engine::event::kind::EventKind::TargetAttacked)
+                },
+            ) && !condition_targets.contains(&defender_uid)
+            {
+                return false;
+            }
             let Some(attacker) = pool.entity(attacker_uid) else {
                 return false;
             };
@@ -1121,6 +1104,28 @@ fn active_skill_has_real_source(pool: &TargetPool, context: TargetContext) -> bo
         || pool
             .entities()
             .any(|entity| entity.uid == context.active_skill_source_uid)
+}
+
+fn specific_skill_matches(
+    source_uid: i64,
+    group: i32,
+    rank: i32,
+    pool: &TargetPool,
+    context: TargetContext,
+) -> bool {
+    pool.entity(source_uid).is_some_and(|source| {
+        let matches_group = match group {
+            0 | 4 | 5 => {
+                source.skill_group1.contains(&context.active_skill_id)
+                    || source.skill_group2.contains(&context.active_skill_id)
+            }
+            1 => source.skill_group1.contains(&context.active_skill_id),
+            2 => source.skill_group2.contains(&context.active_skill_id),
+            3 => source.ex_skill == context.active_skill_id,
+            _ => false,
+        };
+        matches_group && (rank <= 0 || context.active_skill_rank == rank)
+    })
 }
 
 fn has_master_halo(uid: i64, managers: Option<&BattleManagers>) -> bool {

@@ -11,6 +11,7 @@ enum TargetRule {
     Logic,
     Fixed(i64),
     EventSubject,
+    EventSource,
     Source,
     Allies,
     AssistBoss,
@@ -179,6 +180,7 @@ impl TargetResolver {
             }
             TargetRule::Fixed(uid) => vec![uid],
             TargetRule::EventSubject => runtime_target(context),
+            TargetRule::EventSource => event_source(context),
             TargetRule::Source => vec![source_uid],
             TargetRule::Allies => {
                 if crate::engine::fight::rules::is_side_uid(source_uid) {
@@ -529,6 +531,7 @@ pub fn targets_enemy(code: i32) -> Option<bool> {
         TargetRule::Logic
         | TargetRule::Fixed(_)
         | TargetRule::EventSubject
+        | TargetRule::EventSource
         | TargetRule::Runtime
         | TargetRule::SelectedTarget
         | TargetRule::SynchronizationTarget => None,
@@ -581,7 +584,8 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         1009 => TargetRule::AlliesWithMonsterLabel(9),
         1010 => TargetRule::AlliesWithMonsterLabel(10),
         1 => TargetRule::SelectedTarget,
-        203 | 204 | 205 | 233 | 303 | 1001 | 1002 => TargetRule::Runtime,
+        203 => TargetRule::EventSource,
+        204 | 205 | 233 | 303 | 1001 | 1002 => TargetRule::Runtime,
         7 => TargetRule::SynchronizationTarget,
         201 => TargetRule::SingleOrRandomEnemy,
         206 => TargetRule::RandomEnemyByRng,
@@ -668,6 +672,13 @@ fn runtime_target(context: TargetContext) -> Vec<i64> {
     } else {
         vec![context.runtime_target_uid]
     }
+}
+
+fn event_source(context: TargetContext) -> Vec<i64> {
+    (context.event_source_uid != 0)
+        .then_some(context.event_source_uid)
+        .into_iter()
+        .collect()
 }
 
 fn selected_target(pool: &TargetPool, source_uid: i64, context: TargetContext) -> Vec<i64> {

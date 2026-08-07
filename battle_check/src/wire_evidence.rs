@@ -172,26 +172,52 @@ impl Evidence {
     }
 
     fn inspect_direct_marker(&mut self, effect: &Value, db: &GameDB, source: &str) {
-        let Some((buff, effect_type)) = effect
+        let Some(effect_type) = effect
+            .get("effectType")
+            .and_then(Value::as_i64)
+            .and_then(|id| i32::try_from(id).ok())
+        else {
+            return;
+        };
+        let definitions = if let Some(buff) = effect
             .get("buff")
             .and_then(|buff| buff.get("buffId"))
             .and_then(Value::as_i64)
             .and_then(|id| i32::try_from(id).ok())
             .and_then(|id| db.skill_buff.get(id))
-            .zip(
-                effect
-                    .get("effectType")
-                    .and_then(Value::as_i64)
-                    .and_then(|id| i32::try_from(id).ok()),
-            )
-        else {
-            return;
+        {
+            buff.features
+                .split('|')
+                .filter_map(|feature| split_ids(feature).first().copied())
+                .filter_map(|id| db.buff_act.get(id))
+                .collect::<Vec<_>>()
+        } else {
+            let Some((act, carrier)) = effect
+                .get("buffActId")
+                .and_then(Value::as_i64)
+                .and_then(|id| i32::try_from(id).ok())
+                .and_then(|id| db.buff_act.get(id))
+                .zip(
+                    effect
+                        .get("effectNum")
+                        .and_then(Value::as_i64)
+                        .and_then(|id| i32::try_from(id).ok())
+                        .and_then(|id| db.skill_buff.get(id)),
+                )
+            else {
+                return;
+            };
+            if !carrier
+                .features
+                .split('|')
+                .any(|feature| split_ids(feature).first() == Some(&act.id))
+            {
+                return;
+            }
+            vec![act]
         };
-        let candidates = buff
-            .features
-            .split('|')
-            .filter_map(|feature| split_ids(feature).first().copied())
-            .filter_map(|id| db.buff_act.get(id))
+        let candidates = definitions
+            .into_iter()
             .filter_map(|act| wire::find(act.id, &act.r#type).map(|definition| (act, definition)))
             .flat_map(|(act, definition)| {
                 [WirePhase::Add, WirePhase::Static, WirePhase::Refresh]
@@ -377,6 +403,33 @@ mod format_tests {
         assert!(
             evidence
                 .source(1052, "HeatScaleTag", WirePhase::Add, 0)
+                .is_some()
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn runtime_buff_act_marker_uses_its_carrier_as_evidence() {
+        crate::init_config().unwrap();
+        let root = std::env::temp_dir().join(format!("enigma-runtime-wire-{}", std::process::id()));
+        let battle = root.join("battle");
+        fs::create_dir_all(&battle).unwrap();
+        fs::write(
+            battle.join("StartDungeonReply.json"),
+            r#"{"fight":{"version":7,"episodeId":38540113,"battleId":116385406}}"#,
+        )
+        .unwrap();
+        fs::write(
+            battle.join("BeginRoundReply_1.json"),
+            r#"{"fightStep":[{"actEffect":[{"buff":null,"buffActId":305,"effectNum":500110,"effectType":42}]}]}"#,
+        )
+        .unwrap();
+
+        let evidence = Evidence::collect(config::configs::get(), std::slice::from_ref(&root));
+
+        assert!(
+            evidence
+                .source(305, "AddToAttacker", WirePhase::Static, 42)
                 .is_some()
         );
         fs::remove_dir_all(root).unwrap();

@@ -1,6 +1,135 @@
 use super::*;
 
 #[test]
+fn received_skill_rank_applies_only_its_configured_extra_burn() {
+    crate::test_support::init_config();
+    let burn_layers = |skill_id| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3002),
+                    team_type: Some(1),
+                    current_hp: Some(10_000),
+                    skill_group1: vec![30020111, 30020112, 30020113],
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    model_id: Some(161301),
+                    team_type: Some(2),
+                    current_hp: Some(10_000),
+                    passive_skill: vec![1173002],
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+        run_event(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(10005, "Damage"),
+                },
+                source_uid: 10,
+                target_uid: -1,
+                skill_id,
+                amount: 100,
+                shield_absorbed: 0,
+                damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+                assassinate: false,
+                ignore_riposte: false,
+            }),
+        )
+        .unwrap();
+        (
+            managers.buff.buff_id_amount(-1, 4150001),
+            managers.buff.buff_id_amount(10, 4150001),
+        )
+    };
+
+    assert_eq!(burn_layers(30020111), (3, 3));
+    assert_eq!(burn_layers(30020112), (8, 3));
+    assert_eq!(burn_layers(30020113), (8, 3));
+}
+
+#[test]
+fn death_reaction_targets_the_killer() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3002),
+                team_type: Some(1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(100101),
+                team_type: Some(2),
+                current_hp: Some(1),
+                passive_skill: vec![2345],
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
+            source_uid: 10,
+            target_uid: -1,
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(managers.buff.buff_id_amount(10, 5072), 1);
+    assert_eq!(managers.buff.buff_id_amount(-1, 5072), 0);
+}
+
+#[test]
 fn moxie_readiness_survives_another_owners_skill_rewrite() {
     crate::test_support::init_config();
     let fight = Fight {

@@ -396,6 +396,7 @@ fn compiled_setup_outputs(subscribers: Vec<SetupSubscriber>) -> Vec<(SetupSubscr
                 RuleOp::Skill(SkillInvocation {
                     plan,
                     condition_key: Some(subscriber.key),
+                    condition_slot: Some(subscriber.slot_index),
                     ..plan.into()
                 }),
             )
@@ -415,6 +416,7 @@ fn setup_outputs(subscribers: Vec<SetupSubscriber>) -> Vec<(SetupSubscriber, Rul
             let output = RuleOp::Skill(SkillInvocation {
                 plan,
                 condition_key: Some(subscriber.key),
+                condition_slot: Some(subscriber.slot_index),
                 ..plan.into()
             });
             (subscriber, output)
@@ -954,6 +956,7 @@ mod tests {
                 SetupSubscriber {
                     owner_uid: 10,
                     skill_id: 31340141,
+                    slot_index: 1,
                     stage: SetupStage::RoundStart,
                     priority: 1,
                     key: setup_key,
@@ -973,6 +976,7 @@ mod tests {
             SetupSubscriber {
                 owner_uid: 10,
                 skill_id: 100,
+                slot_index: 0,
                 stage: SetupStage::EnterFight,
                 priority: 0,
                 key: DefinitionKey::new(5, "EnterFight"),
@@ -980,6 +984,7 @@ mod tests {
             SetupSubscriber {
                 owner_uid: 10,
                 skill_id: 100,
+                slot_index: 1,
                 stage: SetupStage::EnterFight,
                 priority: 0,
                 key: DefinitionKey::new(573002, "PerTeamOtherEntityDmgType"),

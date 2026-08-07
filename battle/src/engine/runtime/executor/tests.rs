@@ -309,18 +309,31 @@ fn fixed_hurt_resolves_damage_before_hp_commit_but_not_hp_loss() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-3),
-                current_hp: Some(100),
-                buffs: vec![sonettobuf::BuffInfo {
-                    uid: Some(1),
-                    buff_id: Some(2_112_021),
-                    from_uid: Some(-2),
-                    duration: Some(1),
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-3),
+                    current_hp: Some(100),
+                    buffs: vec![sonettobuf::BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(2_112_021),
+                        from_uid: Some(-2),
+                        duration: Some(1),
+                        ..Default::default()
+                    }],
                     ..Default::default()
-                }],
-                ..Default::default()
-            }],
+                },
+                FightEntityInfo {
+                    uid: Some(-4),
+                    current_hp: Some(100),
+                    buffs: vec![sonettobuf::BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(11_440_011),
+                        from_uid: Some(-4),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -379,6 +392,45 @@ fn fixed_hurt_resolves_damage_before_hp_commit_but_not_hp_loss() {
     )
     .unwrap();
     assert_eq!(managers.hp.current(-3), 89);
+
+    let zero_damage = RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(HpDamage {
+        origin,
+        source_uid: 10,
+        target_uid: -4,
+        amount: 500,
+        config_effect: 0,
+        effect_kind: DamageEffectKind::Normal,
+        assassinate: false,
+        ignore_riposte: false,
+        hurt: HurtInfoData {
+            from_uid: 10,
+            is_crit: false,
+            career_restraint: false,
+            reduce_hp: 0,
+            effect_id: 1,
+            skill_id: 1,
+            damage_from: HurtDamageFromType::Skill,
+            buff_act_id: 0,
+            buff_uid: 0,
+            hurt_effect_type: 0,
+            display_amount: None,
+        },
+    })));
+    let mut zero_events = EventBus::default();
+    let RuleOutcome::Hp(execution) =
+        execute_rule_op(&mut managers, &mut zero_events, zero_damage).unwrap()
+    else {
+        panic!("expected HP outcome");
+    };
+    assert_eq!(execution.changes.damage.as_ref().unwrap().amount, 0);
+    assert!(execution.changes.hp.is_none());
+    assert_eq!(managers.hp.current(-4), 100);
+    assert!(matches!(
+        zero_events.pop(),
+        Some(crate::engine::event::payload::BattleEvent::Hit(hit))
+            if hit.target_uid == -4 && hit.amount == 0
+    ));
+    assert!(zero_events.is_empty());
 }
 
 #[test]

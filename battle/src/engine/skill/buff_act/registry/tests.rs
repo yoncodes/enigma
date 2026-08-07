@@ -261,6 +261,18 @@ fn damage_cap_is_an_exact_static_consumer_with_its_captured_marker() {
 }
 
 #[test]
+fn fixed_damage_accepts_zero_without_collapsing_identity() {
+    let definition = find(511, "FixedHurt").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::FixedHurt);
+    assert!(definition.state.consumer);
+    assert!(has_destination(511, "FixedHurt", &[0]));
+    assert!(has_destination(511, "FixedHurt", &[1]));
+    assert!(!has_destination(511, "FixedHurt", &[-1]));
+    assert!(find(511, "DamageNotMoreThan").is_none());
+}
+
+#[test]
 fn hp_loss_floor_is_an_exact_static_consumer() {
     let definition = find(1008, "BanLostLife").unwrap();
 
@@ -373,6 +385,28 @@ fn dot_uses_only_its_captured_add_and_refresh_markers() {
 }
 
 #[test]
+fn add_to_attacker_marks_only_the_runtime_trigger() {
+    let definition = find(305, "AddToAttacker").unwrap();
+    let wire = super::super::wire::find(305, "AddToAttacker").unwrap();
+    let marker = sonettobuf::effect_type_enum::EffectType::Addtoattacker as i32;
+
+    assert_eq!(definition.kind, BuffActKind::AddToAttacker);
+    assert_eq!(
+        runtime_event(305, "AddToAttacker", 2091),
+        Some(EventKind::BeAttacked)
+    );
+    assert!(wire.markers(super::super::wire::WirePhase::Add).is_empty());
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Static),
+        &[marker]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+}
+
+#[test]
 fn lucy_static_combat_rules_keep_distinct_add_markers() {
     for (act_id, act_type, kind, effect_type) in [
         (
@@ -435,6 +469,24 @@ fn passive_state_consumers_reject_unsupported_argument_shapes() {
         assert!(has_destination(id, kind, &valid), "{id} {kind}");
         assert!(!has_destination(id, kind, &invalid), "{id} {kind}");
     }
+}
+
+#[test]
+fn buff_type_duration_extension_is_an_exact_state_consumer() {
+    let definition = find(608, "BuffRoundAddByBuffTypeId").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::BuffRoundAddByBuffTypeId);
+    assert_eq!(
+        destination(608, "BuffRoundAddByBuffTypeId", &[6003, 1]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(608, "BuffRoundAddByBuffTypeId", &[]));
+    assert!(!has_destination(
+        608,
+        "BuffRoundAddByBuffTypeId",
+        &[6003, 0]
+    ));
+    assert!(find(608, "BuffRoundAdd").is_none());
 }
 
 #[test]
@@ -659,6 +711,23 @@ fn holder_scaled_dot_keeps_its_exact_round_end_route() {
     assert!(has_destination(202, "Dot", &[1, 100, 30]));
     assert!(find(202, "Dot").is_some());
     assert!(find(202, "DotNoLimit").is_none());
+}
+
+#[test]
+fn layered_holder_dot_keeps_its_exact_round_start_route() {
+    assert_eq!(runtime_event(213, "Dot", 101), Some(EventKind::RoundStart));
+    assert!(has_destination(213, "Dot", &[1, 100, 30]));
+
+    let wire = super::super::wire::find(213, "Dot").unwrap();
+    assert!(wire.markers(super::super::wire::WirePhase::Add).is_empty());
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Static),
+        &[sonettobuf::effect_type_enum::EffectType::Dot as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
 }
 
 #[test]
