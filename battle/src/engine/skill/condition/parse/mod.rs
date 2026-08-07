@@ -69,6 +69,10 @@ pub enum ParsedConditionKind {
         from_buff_id: i32,
         to_buff_id: i32,
     },
+    SelfBuffTypeTargetBuffTypes {
+        self_type_id: i32,
+        target_type_ids: Vec<i32>,
+    },
     EnemyHighestBuffTypeCount {
         type_id: i32,
         threshold: i32,

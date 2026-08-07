@@ -80,6 +80,17 @@ pub fn from_and_to_buff(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCo
     })
 }
 
+pub fn self_buff_type_target_buff_types(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::SelfBuffTypeTargetBuffTypes {
+        self_type_id: raw_args.first()?.parse().ok()?,
+        target_type_ids: parse_buff_ids(raw_args.get(1..2)?)?,
+    })
+}
+
 pub fn per_type_layer(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::PerBuffTypeLayer {
         min: raw_args.first()?.parse().ok()?,

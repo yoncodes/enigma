@@ -1863,6 +1863,29 @@ fn other_ally_action_kind_keeps_its_exact_route() {
 }
 
 #[test]
+fn bound_ally_buff_types_keep_their_exact_route() {
+    assert_eq!(
+        parse(
+            656212,
+            "SelfBuffTypeTargetBuffTypes",
+            &["31000201".into(), "31000171,31000181".into()],
+        ),
+        Some(ParsedConditionKind::SelfBuffTypeTargetBuffTypes {
+            self_type_id: 31000201,
+            target_type_ids: vec![31000171, 31000181],
+        })
+    );
+    assert_eq!(
+        find_key(656212, "SelfBuffTypeTargetBuffTypes").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        })
+    );
+    assert!(find_key(656212, "FromBuffAndToBuff").is_none());
+}
+
+#[test]
 fn owner_incantation_rank_keeps_its_exact_route() {
     assert_eq!(
         parse(659212, "UseSkill", &["1".into()]),
