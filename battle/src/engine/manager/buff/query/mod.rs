@@ -115,9 +115,21 @@ impl BuffManager {
                     definition
                         .features()
                         .iter()
-                        .any(|feature| feature.kind == Some(kind))
+                        .any(|feature| feature.kind == Some(kind) && feature.arguments_supported)
                 })
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn replace_buff_features_for_test(&mut self, owner_uid: i64, raw: &str) {
+        if let Some(definition) = self
+            .buffs
+            .iter_mut()
+            .find(|active| active.owner_uid == owner_uid)
+            .and_then(|active| active.definition.as_mut())
+        {
+            definition.replace_features_for_test(super::feature::resolve_features(raw));
+        }
     }
 
     pub fn buff_act_source_uid(&self, owner_uid: i64, kind: BuffActKind) -> Option<i64> {
@@ -127,9 +139,7 @@ impl BuffManager {
                     definition
                         .features()
                         .iter()
-                        .any(|feature| {
-                            feature.kind == Some(kind) && feature.arguments_supported
-                        })
+                        .any(|feature| feature.kind == Some(kind) && feature.arguments_supported)
                 }))
             .then(|| active.buff.from_uid)
             .flatten()
@@ -156,7 +166,7 @@ impl BuffManager {
                     definition
                         .features()
                         .iter()
-                        .filter(|feature| feature.kind == Some(kind))
+                        .filter(|feature| feature.kind == Some(kind) && feature.arguments_supported)
                         .filter_map(|feature| feature.values.get(argument.saturating_add(1)))
                         .map(|value| value.saturating_mul(amount))
                         .sum::<i32>()

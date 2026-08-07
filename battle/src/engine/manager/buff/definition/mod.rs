@@ -231,6 +231,11 @@ impl BuffDefinition {
         &self.features
     }
 
+    #[cfg(test)]
+    pub(super) fn replace_features_for_test(&mut self, features: Vec<ResolvedBuffFeature>) {
+        self.features = features;
+    }
+
     pub(super) fn take_action(&self) -> Option<super::BuffTakeAction> {
         super::BuffTakeAction::parse(&self.take_act)
     }

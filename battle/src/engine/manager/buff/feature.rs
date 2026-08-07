@@ -97,6 +97,9 @@ fn active_features_for_definition(
     }
     let mut output = Vec::new();
     for feature in definition.features() {
+        if !feature.arguments_supported {
+            continue;
+        }
         output.push(ActiveBuffFeature {
             owner_uid,
             source_uid: buff.from_uid.unwrap_or_default(),
@@ -306,6 +309,21 @@ mod tests {
         let feature = resolve_features("879#1#300#1,2").remove(0);
 
         assert_eq!(feature.values, vec![879, 1, 300, 1, 2]);
+    }
+
+    #[test]
+    fn unsupported_feature_arguments_do_not_become_active() {
+        crate::test_support::init_config();
+        let mut definition = BuffDefinition::get(31_000_161).unwrap();
+        definition.replace_features_for_test(resolve_features("832#-7"));
+        let buff = BuffInfo {
+            buff_id: Some(31_000_161),
+            count: Some(1),
+            layer: Some(1),
+            ..Default::default()
+        };
+
+        assert!(active_feature(1, 1, true, &buff, Some(&definition)).is_empty());
     }
 
     #[test]
