@@ -142,11 +142,8 @@ fn run_card_refill(
     );
     append_round_phase(&mut result, composition);
     loop {
-        let ready_normal = if stage != RefillStage::Opening {
-            crate::engine::mechanic::card::CardMechanic.normal_ultimate_cards(pool, managers)
-        } else {
-            Vec::new()
-        };
+        let ready_normal =
+            crate::engine::mechanic::card::CardMechanic.normal_ultimate_cards(pool, managers);
         let ready_special = if stage == RefillStage::AfterActions {
             crate::engine::mechanic::card::CardMechanic
                 .special_team_cards(pool, managers, managers.card.hand())

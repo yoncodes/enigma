@@ -134,10 +134,9 @@ impl BattleRuntime {
         {
             (configured, true)
         } else {
-            let drawn = self.determinism.draw_cards(
-                &available_player_cards(&self.fight, &self.managers),
-                opening_hand_size,
-            );
+            let drawn = self
+                .determinism
+                .draw_cards(&available_player_cards(&self.fight), opening_hand_size);
             if drawn.len() == opening_hand_size {
                 (drawn, false)
             } else {
@@ -255,13 +254,6 @@ impl BattleRuntime {
     }
 }
 
-pub(super) fn available_player_cards(fight: &Fight, managers: &BattleManagers) -> Vec<CardInfo> {
-    crate::engine::manager::card::pool::player_candidate_pool_with(fight, |entity| {
-        let owner_uid = entity.uid.unwrap_or_default();
-        managers.ex_point.is_full(owner_uid)
-            && !managers.buff.has_buff_act_kind(
-                owner_uid,
-                crate::engine::skill::buff_act::registry::BuffActKind::CantGetExskill,
-            )
-    })
+pub(super) fn available_player_cards(fight: &Fight) -> Vec<CardInfo> {
+    crate::engine::manager::card::pool::player_candidate_pool_with(fight, |_| false)
 }
