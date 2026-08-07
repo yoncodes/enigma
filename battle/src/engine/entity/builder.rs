@@ -131,7 +131,7 @@ impl EntityBuilder {
             .map(|row| row.talent_id)
             .max()
             .unwrap_or(1);
-        let stats = Stats::build(&StatInputs {
+        let inputs = StatInputs {
             hero_id: trial.hero_id,
             level: trial.level,
             rank,
@@ -140,20 +140,33 @@ impl EntityBuilder {
             equip_level: trial.equip_lv,
             talent,
             ..Default::default()
-        });
+        };
+        let linked_psychube = tables.linked_psychube_id(trial.hero_id, trial.equip_id);
+        let mut stats = Stats::build(&inputs);
+        if let Some(equip_id) = linked_psychube {
+            stats = stats
+                + Stats::equipment_bonus(&StatInputs {
+                    equip_id,
+                    ..inputs.clone()
+                });
+        }
         let attr = stats.base();
         let (skill_group1, skill_group2, ex_skill) =
             Skill::for_loadout(trial.hero_id, trial.ex_skill_lv);
-        let passive_skill = Passive::for_ranked_loadout(
+        let mut passive_skill = Passive::for_ranked_loadout(
             trial.hero_id,
             rank,
             trial.ex_skill_lv,
-            (trial.equip_id != 0).then_some((trial.equip_id, trial.equip_refine + 1)),
+            (trial.equip_id != 0).then_some((trial.equip_id, trial.equip_refine.max(1))),
             (trial.facets_id != 0).then_some((trial.facets_id, trial.facetslevel)),
-        )
-        .into_iter()
-        .map(|passive| passive.skill_id)
-        .collect();
+        );
+        if let Some(equip_id) = linked_psychube {
+            passive_skill.extend(Passive::psychube(equip_id, Some(trial.equip_refine.max(1))));
+        }
+        let passive_skill = passive_skill
+            .into_iter()
+            .map(|passive| passive.skill_id)
+            .collect();
 
         Ok((
             FightEntityInfo {
