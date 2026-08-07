@@ -11,17 +11,31 @@ pub struct BuiltFight {
     pub battle_rule_skills: Vec<crate::engine::fight::rules::OwnedBattleSkill>,
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct FightOptions {
+    pub is_balance: bool,
+    pub use_record: bool,
+}
+
 pub async fn build_fight(
     pool: &SqlitePool,
     player_id: i64,
     episode_id: i32,
     battle_id: i32,
-    use_record: bool,
     fight_group: &FightGroup,
+    options: FightOptions,
     params: Option<&str>,
 ) -> Result<BuiltFight> {
-    let mut attacker =
-        Attacker::get(pool, player_id, episode_id, battle_id, fight_group, params).await?;
+    let mut attacker = Attacker::get(
+        pool,
+        player_id,
+        episode_id,
+        battle_id,
+        options.is_balance,
+        fight_group,
+        params,
+    )
+    .await?;
     let defender_uid_offset = attacker.reserved_uid_offset;
     let mut defender = Defender::get(battle_id, defender_uid_offset).await?;
     attacker.team.sp_entitys = defender.attacker_sp_entitys;
@@ -43,7 +57,7 @@ pub async fn build_fight(
             cur_wave: Some(1),
             battle_id: Some(battle_id),
             version: Some(versions::current()?),
-            is_record: Some(use_record),
+            is_record: Some(options.use_record),
             episode_id: Some(episode_id),
             fight_act_type: Some(FightActType::Normal.into()),
             last_change_hero_uid: Some(0),

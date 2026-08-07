@@ -31,8 +31,8 @@ async fn run(episode_id: i32) -> Result<()> {
         0,
         episode_id,
         episode.battle_id,
-        false,
         &FightGroup::default(),
+        battle::dungeon::FightOptions::default(),
         None,
     )
     .await?;

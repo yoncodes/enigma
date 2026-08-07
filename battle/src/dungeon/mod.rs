@@ -5,7 +5,7 @@ use crate::engine::runtime::BattleRuntime;
 mod attacker;
 mod start;
 
-pub use start::{BuiltFight, build_fight};
+pub use start::{BuiltFight, FightOptions, build_fight};
 
 pub fn start_reply(runtime: &BattleRuntime) -> StartDungeonReply {
     let (fight, round) = runtime.start_state();

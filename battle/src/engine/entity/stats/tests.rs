@@ -66,3 +66,41 @@ fn destiny_poison_rate_uses_unlocked_config_slots() {
 
     assert_eq!(destiny_poison_add_rate(3009, 4), 100);
 }
+
+#[test]
+fn battle_balance_applies_configured_stat_floors() {
+    crate::test_support::init_config();
+
+    let inputs = BattleBalance::parse("140#12#60")
+        .unwrap()
+        .apply(StatInputs {
+            hero_id: 3127,
+            level: 121,
+            rank: 4,
+            equip_id: 1502,
+            equip_level: 50,
+            talent: 10,
+            talent_placements: vec![1, 2, 3],
+            ..Default::default()
+        });
+    let stats = Stats::build(&inputs);
+
+    assert_eq!(
+        (inputs.level, inputs.rank, inputs.talent, inputs.equip_level),
+        (140, 4, 12, 60)
+    );
+    assert!(inputs.talent_placements.is_empty());
+    assert_eq!(
+        (stats.hp, stats.atk, stats.def, stats.mdef, stats.technic),
+        (9628, 1737, 820, 858, 504)
+    );
+    assert_eq!(stats.cri, 325);
+}
+
+#[test]
+fn battle_balance_rejects_unconfigured_shapes() {
+    assert_eq!(BattleBalance::parse(""), None);
+    assert_eq!(BattleBalance::parse("140#12"), None);
+    assert_eq!(BattleBalance::parse("140#12#60#1"), None);
+    assert_eq!(BattleBalance::parse("140#0#60"), None);
+}

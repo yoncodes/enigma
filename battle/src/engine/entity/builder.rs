@@ -7,12 +7,13 @@ use super::{
     destiny::Destiny,
     passive::Passive,
     skill::Skill,
-    stats::{StatInputs, Stats, rank_from_level},
+    stats::{BattleBalance, StatInputs, Stats, rank_from_level},
 };
 
 pub struct EntityBuilder {
     hero_data: HeroData,
     equips: Vec<Equipment>,
+    stats: Option<Stats>,
     position: i32,
     team_type: i32,
     is_sub: bool,
@@ -23,6 +24,7 @@ impl EntityBuilder {
         Self {
             hero_data,
             equips: Vec::new(),
+            stats: None,
             position,
             team_type,
             is_sub,
@@ -34,10 +36,25 @@ impl EntityBuilder {
         self
     }
 
+    pub fn with_balance(mut self, balance: BattleBalance, stats: Stats) -> Self {
+        let inputs = balance.apply(StatInputs::from_hero_data(&self.hero_data, None));
+        self.hero_data.record.level = inputs.level;
+        self.hero_data.record.rank = inputs.rank;
+        self.hero_data.record.talent = inputs.talent;
+        for equip in &mut self.equips {
+            equip.level = equip.level.max(balance.equip_level);
+        }
+        self.stats = Some(stats);
+        self
+    }
+
     pub fn build(self) -> FightEntityInfo {
         let r = &self.hero_data.record;
         let destiny = Destiny::get(r.destiny_stone, r.destiny_rank);
-        let attr = Attr::get(&self.hero_data, &self.equips);
+        let attr = self
+            .stats
+            .map(Stats::base)
+            .unwrap_or_else(|| Attr::get(&self.hero_data, &self.equips));
         let (sg1, sg2) = Skill::get(&self.hero_data, self.is_sub, destiny.as_ref());
         let passives = Passive::get(&self.hero_data, &self.equips, destiny.as_ref());
         // Source attribution (Insight/Rank/Destiny/Psychube/Extra) is tracked
