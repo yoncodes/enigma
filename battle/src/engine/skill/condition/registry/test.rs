@@ -532,6 +532,27 @@ fn conduit_attack_count_threshold_runs_after_hit() {
 }
 
 #[test]
+fn maximum_buff_layer_gate_is_an_exact_inline_predicate() {
+    let definition = find_key(51212, "HasTypeIdBuffMoreThan").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert_eq!(
+        parse(
+            51212,
+            "HasTypeIdBuffMoreThan",
+            &["30830161".into(), "12".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![30830161],
+            compare: crate::engine::skill::condition::ConditionCompare::GreaterThanOrEqual,
+            threshold: 12,
+        })
+    );
+    assert!(find_key(51212, "TypeIdBuffCountMoreThan").is_none());
+}
+
+#[test]
 fn trigger_families_reject_unconfigured_ids_and_wrong_types() {
     assert_eq!(
         parse(741402, "TriggerTypeBullet", &[]),

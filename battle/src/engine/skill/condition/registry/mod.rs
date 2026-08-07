@@ -422,6 +422,7 @@ condition_definitions! {
     [51201] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [51203] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [51210] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
+    [51212] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, predicate(&[]);
     [51213] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, predicate(&[]);
     [51302] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::RoundEnd, None);
     [51303] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::RoundEndEntitySettlement, None);
