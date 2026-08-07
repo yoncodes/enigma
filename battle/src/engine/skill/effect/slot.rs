@@ -128,10 +128,7 @@ impl SkillEffectSlot {
         let Some(route) = self.usable_route()? else {
             return Ok(Vec::new());
         };
-        if matches!(
-            stage,
-            SetupStage::RoundStart | SetupStage::RoundStartCondition
-        ) && crate::engine::skill::behavior::registry::find(&self.behavior)
+        if crate::engine::skill::behavior::registry::find(&self.behavior)
             .is_some_and(|definition| definition.round_modifier_only)
         {
             return Ok(Vec::new());

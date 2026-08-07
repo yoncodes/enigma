@@ -54,6 +54,13 @@ pub fn supports_dot(args: &[i32]) -> bool {
                 AttrId::from_raw(*attr_id),
                 Some(AttrId::CurrentHp | AttrId::Hp)
             ) && *permille > 0
+    ) || matches!(
+        args,
+        [1, current_hp, rate, 0, max_hp, cap]
+            if AttrId::from_raw(*current_hp) == Some(AttrId::CurrentHp)
+                && AttrId::from_raw(*max_hp) == Some(AttrId::Hp)
+                && *rate > 0
+                && *cap > 0
     )
 }
 
@@ -101,6 +108,19 @@ pub fn damage_rule_ops(
     ops
 }
 
+pub fn layered_damage_rule_ops(
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    determinism: &mut RoundDeterminism,
+    subscriber: &BuffActSubscriber,
+) -> Vec<RuleOp> {
+    let mut layer = subscriber.clone();
+    layer.amount = 1;
+    (0..subscriber.amount.max(1))
+        .flat_map(|_| damage_rule_ops(managers, pool, determinism, &layer))
+        .collect()
+}
+
 pub(crate) fn detonation_rule_op(
     managers: &BattleManagers,
     pool: &TargetPool,
@@ -125,30 +145,44 @@ fn damage_rule_op_with_duration(
     } else {
         subscriber.owner_uid
     };
-    let mut amount = match kind {
-        DamageOverTimeKind::Poison if remaining_duration => {
+    let mut amount = match (kind, subscriber.args.as_slice()) {
+        (DamageOverTimeKind::Poison, _) if remaining_duration => {
             managers.buff.dot_remaining_damage_for_owner(
                 subscriber.owner_uid,
                 subscriber.key.definition.opcode,
                 subscriber.buff_uid,
             )?
         }
-        DamageOverTimeKind::Dot if subscriber.args.first() == Some(&0) => {
-            managers.buff.dot_damage_for_owner(
-                subscriber.owner_uid,
-                subscriber.key.definition.opcode,
-                subscriber.buff_uid,
-            )?
-        }
-        DamageOverTimeKind::Poison => managers.buff.dot_damage_for_owner(
+        (DamageOverTimeKind::Dot, [0, ..]) => managers.buff.dot_damage_for_owner(
             subscriber.owner_uid,
             subscriber.key.definition.opcode,
             subscriber.buff_uid,
         )?,
-        DamageOverTimeKind::Burn | DamageOverTimeKind::Dot | DamageOverTimeKind::Radiance => {
-            let [mode, attr_id, permille] = subscriber.args.as_slice() else {
-                return None;
-            };
+        (DamageOverTimeKind::Poison, _) => managers.buff.dot_damage_for_owner(
+            subscriber.owner_uid,
+            subscriber.key.definition.opcode,
+            subscriber.buff_uid,
+        )?,
+        (DamageOverTimeKind::Dot, [1, current_hp, rate, 0, max_hp, cap]) => {
+            attribute_scaled_damage(
+                effective_attribute(
+                    managers,
+                    subscriber.owner_uid,
+                    AttrId::from_raw(*current_hp)?,
+                ),
+                *rate,
+                subscriber.amount.max(1),
+            )
+            .min(attribute_scaled_damage(
+                effective_attribute(managers, source_uid, AttrId::from_raw(*max_hp)?),
+                *cap,
+                subscriber.amount.max(1),
+            ))
+        }
+        (
+            DamageOverTimeKind::Burn | DamageOverTimeKind::Dot | DamageOverTimeKind::Radiance,
+            [mode, attr_id, permille],
+        ) => {
             let attr_id = AttrId::from_raw(*attr_id)?;
             let attribute_uid = match kind {
                 DamageOverTimeKind::Burn => subscriber.owner_uid,
@@ -162,6 +196,7 @@ fn damage_rule_op_with_duration(
                 subscriber.amount.max(1),
             )
         }
+        _ => return None,
     };
     let is_crit = matches!(kind, DamageOverTimeKind::Poison)
         && poison_can_crit(managers, pool, source_uid)
@@ -447,6 +482,133 @@ mod tests {
                 },
                 RuleOp::Command(BattleCommand::Hp(_))
             ] if *effect_type == EffectType::Dot as i32
+        ));
+    }
+
+    #[test]
+    fn layered_dot_emits_one_current_hp_settlement_per_stack() {
+        let fight = Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(8_833),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(8_833),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let subscriber = BuffActSubscriber {
+            owner_uid: -1,
+            source_uid: -1,
+            buff_uid: 1_049,
+            buff_id: 6_280_511,
+            team_type: 2,
+            owner_alive: true,
+            amount: 3,
+            key: SubscriptionKey::new(
+                EventKind::RoundStart,
+                crate::engine::skill::rule::DefinitionKey::new(213, "Dot"),
+            ),
+            act_type: "Dot".to_owned(),
+            effect_time: 101,
+            effect_condition: 0,
+            args: vec![1, AttrId::CurrentHp.id(), 30],
+            raw: "213#1#100#30".to_owned(),
+        };
+
+        let ops = layered_damage_rule_ops(
+            &managers,
+            &pool,
+            &mut RoundDeterminism::default(),
+            &subscriber,
+        );
+
+        assert_eq!(ops.len(), 6);
+        for pair in ops.chunks_exact(2) {
+            assert!(matches!(
+                pair,
+                [
+                    RuleOp::BuffFeatureMarker {
+                        effect_type,
+                        buff_act_id: 213,
+                        ..
+                    },
+                    RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(HpLoss {
+                        amount: 264,
+                        ..
+                    })))
+                ] if *effect_type == EffectType::Dot as i32
+            ));
+        }
+    }
+
+    #[test]
+    fn corrode_uses_current_hp_damage_capped_by_the_casters_max_hp() {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(1),
+                    current_hp: Some(1_000),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(5_000),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(5_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let subscriber = BuffActSubscriber {
+            owner_uid: -1,
+            source_uid: 1,
+            buff_uid: 1,
+            buff_id: 301_801,
+            team_type: 2,
+            owner_alive: true,
+            amount: 1,
+            key: SubscriptionKey::new(
+                EventKind::RoundEnd,
+                crate::engine::skill::rule::DefinitionKey::new(202, "Dot"),
+            ),
+            act_type: "Dot".to_owned(),
+            effect_time: 302,
+            effect_condition: 0,
+            args: vec![1, AttrId::CurrentHp.id(), 150, 0, AttrId::Hp.id(), 150],
+            raw: "202#1#100#150#0#101#150".to_owned(),
+        };
+
+        assert!(matches!(
+            damage_rule_op(
+                &managers,
+                &pool,
+                &mut RoundDeterminism::default(),
+                &subscriber,
+            ),
+            Some(RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
+                HpLoss { amount: 150, .. }
+            ))))
         ));
     }
 

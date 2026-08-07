@@ -496,9 +496,15 @@ impl BuffManager {
         }
         let mut definition = BuffDefinition::get(request.buff_id)
             .ok_or(BuffCommandError::MissingDefinition(request.buff_id))?;
+        let duration_delta = self.grant_duration_delta(hp, request.target_uid, definition.status)
+            + self.grant_type_duration_delta(
+                hp,
+                request.source_uid,
+                definition.effective_type_id(),
+            );
         definition.duration = crate::engine::skill::buff_act::buff_round_add::extend_duration(
             definition.duration,
-            self.grant_duration_delta(hp, request.target_uid, definition.status),
+            duration_delta,
         );
         let occurrences = i32::try_from(request.occurrences)
             .map_err(|_| BuffCommandError::UnsupportedOccurrences(request.occurrences))?;

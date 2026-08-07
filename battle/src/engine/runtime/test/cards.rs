@@ -36,6 +36,51 @@ fn destination_start_schedule_builds_the_complete_round_wrapper() {
 }
 
 #[test]
+fn opening_adds_one_ready_ultimate_outside_the_normal_hand() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3028),
+                position: Some(1),
+                current_hp: Some(100),
+                ex_point: Some(5),
+                ex_skill: Some(30280131),
+                skill_group1: vec![30280111, 30280112, 30280113],
+                skill_group2: vec![30280121, 30280122, 30280123],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = BattleRuntime::new(fight);
+
+    let round = runtime.build_start_round_from_schedule().unwrap();
+
+    assert_eq!(
+        round
+            .team_a_cards1
+            .iter()
+            .filter(|card| card.skill_id == Some(30280131))
+            .count(),
+        1
+    );
+    assert_eq!(
+        runtime
+            .managers
+            .card
+            .hand()
+            .iter()
+            .filter(|card| card.skill_id == Some(30280131))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn opening_push_keeps_composed_cards_and_refills_the_vacated_slot() {
     crate::test_support::init_config();
     let fight = Fight {

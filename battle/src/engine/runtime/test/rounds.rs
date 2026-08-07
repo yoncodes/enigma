@@ -541,7 +541,8 @@ fn begin_round_projects_the_canonical_hand_after_the_deal_composes() {
 }
 
 #[test]
-fn refill_sees_moxie_gained_before_the_fight_snapshot_is_synchronized() {
+fn opening_random_pool_never_contains_an_ultimate() {
+    crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -561,11 +562,11 @@ fn refill_sees_moxie_gained_before_the_fight_snapshot_is_synchronized() {
     runtime.managers.ex_point.add(10, 10, 1, 0);
 
     assert_eq!(
-        super::start::available_player_cards(&runtime.fight, &runtime.managers)
+        super::start::available_player_cards(&runtime.fight)
             .into_iter()
             .filter_map(|card| card.skill_id)
             .collect::<Vec<_>>(),
-        vec![900, 200]
+        vec![100, 200]
     );
 }
 

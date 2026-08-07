@@ -13,7 +13,7 @@ pub fn amount(buffs: &BuffManager, hp: &HpManager, owner_uid: i64) -> Option<i32
 }
 
 pub fn supports(args: &[i32]) -> bool {
-    matches!(args, [amount] if *amount > 0)
+    matches!(args, [amount] if *amount >= 0)
 }
 
 pub fn resolve_command(buffs: &BuffManager, hp: &HpManager, mut command: HpCommand) -> HpCommand {
@@ -36,7 +36,7 @@ fn amount_from_feature(feature: &ActiveBuffFeature, owner_uid: i64) -> Option<i3
     (feature.owner_uid == owner_uid && is_kind(feature, BuffActKind::FixedHurt))
         .then_some(feature.values.as_slice())
         .and_then(|values| match values {
-            [_, amount] if *amount > 0 => Some(*amount),
+            [_, amount] if *amount >= 0 => Some(*amount),
             _ => None,
         })
 }

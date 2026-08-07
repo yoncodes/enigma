@@ -9,6 +9,7 @@ pub mod add_buff_by_other_ex_skill;
 pub mod add_buff_to_enter;
 pub mod add_card_cast_channel;
 pub mod add_sp_temp_card;
+pub mod add_to_buff_entity;
 pub mod add_to_buff_entity_2;
 pub mod add_to_target;
 pub mod additional_damage;
