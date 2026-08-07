@@ -99,10 +99,24 @@ impl BattleRuntime {
 
     pub(super) fn build_start_round_from_schedule(&mut self) -> Result<FightRound, String> {
         let battle_id = self.fight.battle_id.unwrap_or_default();
+        let pool = crate::engine::skill::target::TargetPool::from_fight(&self.fight);
+        let context = crate::engine::skill::target::TargetContext {
+            battle_id,
+            current_round: self.round_state.cur_round,
+            ..Default::default()
+        };
+        let extra_ai_actions = crate::engine::round::modifier::ai_action_bonus(
+            &pool,
+            &self.managers,
+            &self.catalog,
+            &mut self.determinism,
+            context,
+        );
         let (ai_deck, player_deck) = crate::engine::manager::card::start_decks_from_fight(
             &self.fight,
             &self.managers.ex_point,
             &self.managers.eureka,
+            extra_ai_actions,
             battle_id,
             self.determinism.take_start_decks(),
         );
@@ -173,18 +187,13 @@ impl BattleRuntime {
             }))
             .map_err(|error| format!("{error:?}"))?;
         visible_cards.extend(opening_team_cards);
-        let pool = crate::engine::skill::target::TargetPool::from_fight(&self.fight);
         self.round_state.act_point = crate::engine::round::state::next_action_points(
             &self.fight,
             &pool,
             &self.managers,
             &self.catalog,
             &mut self.determinism,
-            crate::engine::skill::target::TargetContext {
-                battle_id,
-                current_round: self.round_state.cur_round,
-                ..Default::default()
-            },
+            context,
         );
         self.round_state.hero_sp_attributes = self.managers.hero_sp_attributes(&self.fight);
         self.round_state.last_change_hero_uid = self.fight.last_change_hero_uid.or(Some(0));

@@ -14,7 +14,7 @@ impl BehaviorHandler for Handler {
     fn supports(behavior: &ParsedBehavior) -> bool {
         matches!(
             (behavior.spec.kind, behavior.args.as_slice()),
-            (BehaviorKind::AddAct, [amount]) if *amount != 0
+            (BehaviorKind::AddAct | BehaviorKind::AddActHero, [amount]) if *amount != 0
         )
     }
 
@@ -33,6 +33,7 @@ mod tests {
     fn add_act_keeps_the_signed_configured_delta() {
         let add = ParsedBehavior::new(40003, "AddAct", vec![1]);
         let remove = ParsedBehavior::new(40003, "AddAct", vec![-1]);
+        let hero_add = ParsedBehavior::new(50006, "AddActHero", vec![1]);
 
         assert_eq!(
             Handler::collect_round_modifier(&add),
@@ -41,6 +42,10 @@ mod tests {
         assert_eq!(
             Handler::collect_round_modifier(&remove),
             Some(RoundModifiers { action_points: -1 })
+        );
+        assert_eq!(
+            Handler::collect_round_modifier(&hero_add),
+            Some(RoundModifiers { action_points: 1 })
         );
     }
 }
