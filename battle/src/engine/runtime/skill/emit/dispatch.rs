@@ -954,10 +954,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                         skill_type: catalog.skill_type(effect_skill_id),
                         effect_tag: catalog.effect_tag(effect_skill_id),
                         additional_moxie: invocation.additional_moxie,
-                        extra_skill_kind: invocation
-                            .extra_skill_kind
-                            .map(|kind| kind.id())
-                            .unwrap_or_default(),
+                        extra_skill_kind: execution.context.extra_skill_kind,
                         mode: invocation.mode,
                         assassinate: execution.context.active_skill_assassinate,
                         damage_amount: execution.context.action_damage_amount,

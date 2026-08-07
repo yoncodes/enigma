@@ -562,6 +562,43 @@ fn master_halo_immediate_gate_uses_the_skill_extra_type_driver() {
 }
 
 #[test]
+fn ritual_dance_threshold_compiles_the_captured_immediate_route() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+
+    assert_eq!(
+        catalog.condition_kind(
+            31100531,
+            crate::engine::skill::rule::DefinitionKey::new(
+                537201,
+                "HasTypeIdBuffTotalCountMoreThan",
+            ),
+        ),
+        Some(&ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![31100201],
+            compare: crate::engine::skill::condition::ConditionCompare::GreaterThanOrEqual,
+            threshold: 4,
+        })
+    );
+    assert!(
+        catalog
+            .compiled_subscriptions(31100531)
+            .unwrap()
+            .iter()
+            .any(|subscription| {
+                subscription.definition
+                    == crate::engine::skill::rule::DefinitionKey::new(
+                        537201,
+                        "HasTypeIdBuffTotalCountMoreThan",
+                    )
+                    && subscription.event == crate::engine::event::kind::EventKind::SkillAction
+                    && subscription.phase
+                        == Some(crate::engine::skill::action::SkillPhase::Immediate)
+            })
+    );
+}
+
+#[test]
 fn from_the_depths_keeps_its_once_per_battle_limit() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
