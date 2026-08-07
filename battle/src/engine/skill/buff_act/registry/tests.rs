@@ -59,6 +59,19 @@ fn registry_requires_exact_id_and_type() {
     assert!(!has_destination(933, "SubBuff", &[0]));
     assert!(find(1028, "AddToTarget").is_none());
     assert!(find(999, "RealDamageKill").is_none());
+    assert_eq!(
+        find(728, "ChangeRemoveBuffUseSkillParam").unwrap().kind,
+        BuffActKind::ChangeRemoveBuffUseSkillParam
+    );
+    assert_eq!(
+        destination(728, "ChangeRemoveBuffUseSkillParam", &[1, 1]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert_eq!(
+        destination(728, "ChangeRemoveBuffUseSkillParam", &[1, 2]),
+        None
+    );
+    assert!(find(728, "RemoveBuffUseSkill").is_none());
     assert!(reserves_trigger_child_uid(DefinitionKey::new(
         1053,
         "AttrByHeatScale"

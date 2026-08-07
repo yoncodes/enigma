@@ -106,6 +106,7 @@ pub enum BuffActKind {
     CareerRatioFix,
     CareerRestraint,
     CastChannel,
+    ChangeRemoveBuffUseSkillParam,
     ConsumeBuffAddBuffContinueChannel,
     ConsumeBuffContinueChannel,
     ControlTeamInjuryCountRound,
@@ -728,6 +729,11 @@ buff_act_definitions! {
     (726, "Burn") => Burn, stat_read: OnTrigger,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(726, "Burn"), &[EffectType::Burn as i32]));
+    (728, "ChangeRemoveBuffUseSkillParam") => ChangeRemoveBuffUseSkillParam,
+        effect_time_subscription: false,
+        supports: super::change_remove_buff_use_skill_param::supports,
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(728, "ChangeRemoveBuffUseSkillParam"), &[]));
     (748, "UseDamageSkillAddToTarget") => UseDamageSkillAddToTarget,
         events: [EventKind::SkillCast],
         publications: [

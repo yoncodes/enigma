@@ -37,6 +37,7 @@ pub mod card_record;
 pub mod career_ratio_fix;
 pub mod career_restraint;
 pub mod cast_channel;
+pub mod change_remove_buff_use_skill_param;
 pub mod conduit_select;
 pub mod control_team_injury_count_round;
 pub mod create_additional_damage;
