@@ -489,6 +489,47 @@ fn add_buff_round_extends_existing_type_family_without_granting_a_new_buff() {
 }
 
 #[test]
+fn channel_count_reduction_updates_the_matching_buff_types_private_state() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1),
+                    buff_id: Some(31000441),
+                    duration: Some(0),
+                    ex_info: Some(7),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(
+            60094,
+            "ReduceCastChannelCount",
+        ),
+        vec![31000131, 2],
+        Vec::new(),
+    );
+
+    let command = reduce_channel_count_command(&managers, 10, &behavior).unwrap();
+    let changes = managers.execute_buff(command).unwrap();
+
+    assert!(changes.change.added.is_none());
+    assert_eq!(changes.change.refreshed.len(), 1);
+    assert_eq!(changes.change.refreshed[0].before.ex_info, Some(7));
+    assert_eq!(changes.change.refreshed[0].after.ex_info, Some(5));
+    assert_eq!(changes.change.refreshed[0].after.duration, Some(0));
+}
+
+#[test]
 fn add_buff_duration_updates_owned_instances_through_one_manager_command() {
     crate::test_support::init_config();
     let fight = Fight {

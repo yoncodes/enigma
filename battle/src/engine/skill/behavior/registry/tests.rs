@@ -141,6 +141,26 @@ fn remove_buff_use_skill_keeps_its_exact_identity_and_phase() {
 }
 
 #[test]
+fn channel_duration_reduction_keeps_its_exact_identity_and_phase() {
+    let definition = find_key(60094, "ReduceCastChannelCount").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::ReduceCastChannelCount);
+    assert_eq!(definition.phase, BehaviorPhase::AfterDamage);
+    assert!(supports(&ParsedBehavior::new(
+        60094,
+        "ReduceCastChannelCount",
+        vec![31000131, 1],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60094,
+        "ReduceCastChannelCount",
+        vec![31000131, -1],
+    )));
+    assert!(find_key(60094, "ReduceCastChannelCount2").is_none());
+}
+
+#[test]
 fn attribute_damage_is_an_exact_targeted_genesis_route() {
     let definition = find_key(10006, "Damage").unwrap();
     let supported = ParsedBehavior::from_spec(

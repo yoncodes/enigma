@@ -534,6 +534,7 @@ behavior_definitions! {
     [100006] "AddBuffByHeroId" => super::buff::Handler, AddBuffByHeroId, AfterDamage, destination;
     [60029] "RemoveBuffToAddBuff" => super::buff::Handler, RemoveBuffToAddBuff, AfterDamage, destination, arguments::exactly_two;
     [60145] "AddBuffDuration" => super::buff::Handler, AddBuffDuration, Immediate, destination, arguments::exactly_two;
+    [60094] "ReduceCastChannelCount" => super::buff::Handler, ReduceCastChannelCount, AfterDamage, destination, super::buff::supports_channel_count_reduction;
     [50014] "ConsumeBuffByTypeId" => super::buff::Handler, ConsumeBuffByTypeId, AfterDamage, destination, arguments::exactly_two;
     [50016] "ConsumeBuffByTypeId2" => super::buff::Handler, ConsumeBuffByTypeId2, AfterDamage, destination, arguments::exactly_two;
     [60260] "ConsumeBuffLayerAndOtherAddBuff" => super::buff::Handler, ConsumeBuffLayerAndOtherAddBuff, AfterDamage, destination, arguments::exactly_four;

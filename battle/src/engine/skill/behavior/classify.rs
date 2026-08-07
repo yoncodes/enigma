@@ -100,6 +100,7 @@ pub enum BehaviorKind {
     ElectricTransform,
     RemoveBuffToAddBuff,
     AddBuffDuration,
+    ReduceCastChannelCount,
     Disperse1,
     Disperse2,
     DisperseExclude,

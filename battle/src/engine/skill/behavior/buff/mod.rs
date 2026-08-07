@@ -1,9 +1,11 @@
 use crate::engine::{
     manager::{
+        BattleManagers,
         buff::{
             BuffAmount, BuffChangeDuration, BuffChildUidReservation, BuffCommand, BuffConsume,
             BuffConvert, BuffDispel, BuffGrant, BuffGrantChild, BuffRemove, BuffRemoveSelector,
-            BuffReplace, BuffSelector, BuffSetAmount, BuffStatus, CommandOrigin, DepletedBuff,
+            BuffReplace, BuffSelector, BuffSetAmount, BuffSetState, BuffStatus, CommandOrigin,
+            DepletedBuff,
         },
         card::{CardCommand, CardConsumeForEffect},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
@@ -26,7 +28,7 @@ use crate::engine::{
 };
 
 #[cfg(test)]
-use crate::engine::{manager::BattleManagers, skill::target::TargetPool};
+use crate::engine::skill::target::TargetPool;
 
 mod application;
 mod copy;
@@ -108,6 +110,10 @@ pub(super) fn supports_duration_change(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [buff_id_or_type, delta] if *buff_id_or_type > 0 && *delta != 0)
 }
 
+pub(super) fn supports_channel_count_reduction(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [buff_id_or_type, amount] if *buff_id_or_type > 0 && *amount > 0)
+}
+
 pub(super) fn supports_count_multiplier(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [buff_id, multiplier] if *buff_id > 0 && *multiplier == 2)
 }
@@ -179,6 +185,10 @@ impl BehaviorHandler for Handler {
                 change_duration_command(context.target_uid, behavior, BuffSelector::IdOrType)
                     .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
             }
+            BehaviorKind::ReduceCastChannelCount => {
+                reduce_channel_count_command(context.managers, context.target_uid, behavior)
+                    .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
+            }
             BehaviorKind::AddBuff | BehaviorKind::AddBuffPowerUse | BehaviorKind::AddBuffRound2 => {
                 shield_grant_ops(&context, behavior)
                     .or_else(|| heat_scale_snapshot_grant_ops(&context, behavior))
@@ -228,9 +238,9 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
             .into_iter()
             .filter_map(|index| behavior.arg(index))
             .collect(),
-        // AddBuffDuration selects an existing buff by id or type; it does not
-        // introduce a concrete buff dependency.
-        BehaviorKind::AddBuffDuration => Vec::new(),
+        // Both select existing buff state by id or type; neither introduces a
+        // concrete buff dependency.
+        BehaviorKind::AddBuffDuration | BehaviorKind::ReduceCastChannelCount => Vec::new(),
         // 60010 owns an id-or-type selector, so its operand is not necessarily
         // a concrete buff dependency (for example type 8112).
         BehaviorKind::DisperseForce2 => Vec::new(),
@@ -310,6 +320,32 @@ fn pool_buff_ids(raw: &str) -> Vec<i32> {
         .filter_map(|entry| entry.split(',').next()?.trim().parse().ok())
         .filter(|buff_id| *buff_id > 0)
         .collect()
+}
+
+fn reduce_channel_count_command(
+    managers: &BattleManagers,
+    target_uid: i64,
+    behavior: &ParsedBehavior,
+) -> Option<BuffCommand> {
+    let [buff_id_or_type, amount] = behavior.args.as_slice() else {
+        return None;
+    };
+    let buff_uid = managers
+        .buff
+        .buff_id_or_type_uid(target_uid, *buff_id_or_type)?;
+    let current = managers
+        .buff
+        .snapshot(target_uid, buff_uid)?
+        .ex_info
+        .unwrap_or_default();
+    Some(BuffCommand::SetState(BuffSetState {
+        origin: command_origin(behavior)?,
+        target_uid,
+        buff_uid,
+        ex_info: Some(current.saturating_sub(*amount).max(0)),
+        params: None,
+        act_info: None,
+    }))
 }
 
 #[cfg(test)]
