@@ -1844,6 +1844,25 @@ fn other_ally_extra_action_keeps_its_exact_route() {
 }
 
 #[test]
+fn other_ally_action_kind_keeps_its_exact_route() {
+    assert_eq!(
+        parse(626212, "ActionSkillExtraType", &["1,2,3".into()]),
+        Some(ParsedConditionKind::ExtraAction {
+            mode: super::super::extra::ExtraActionConditionMode::OtherAllyAction,
+            kinds: vec![1, 2, 3],
+        })
+    );
+    assert_eq!(
+        find_key(626212, "ActionSkillExtraType").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        })
+    );
+    assert!(find_key(626212, "SkillExtraType").is_none());
+}
+
+#[test]
 fn owner_incantation_rank_keeps_its_exact_route() {
     assert_eq!(
         parse(659212, "UseSkill", &["1".into()]),
