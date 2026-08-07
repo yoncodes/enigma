@@ -141,7 +141,7 @@ impl BuffManager {
                         .iter()
                         .any(|feature| feature.kind == Some(kind) && feature.arguments_supported)
                 }))
-            .then(|| active.buff.from_uid)
+            .then_some(active.buff.from_uid)
             .flatten()
             .filter(|source_uid| *source_uid != 0)
         })
