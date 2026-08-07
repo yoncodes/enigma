@@ -253,6 +253,7 @@ fn defender_round_start_expires_the_previous_status_before_alternating_setup() {
             ..Default::default()
         },
         2,
+        &[],
     )
     .unwrap();
 
@@ -623,6 +624,7 @@ fn round_start_executes_each_team_at_its_own_turn_boundary() {
         &mut determinism,
         TargetContext::default(),
         1,
+        &[],
     )
     .unwrap();
     assert_eq!(managers.ex_point.get(10), 0);
@@ -813,6 +815,7 @@ fn defender_round_start_groups_event_subscribers_with_round_start_setup() {
             ..Default::default()
         },
         1,
+        &[],
     )
     .unwrap();
 

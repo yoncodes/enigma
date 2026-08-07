@@ -543,27 +543,32 @@ pub fn run_wave_entry_setup(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     let mut result = begin_round_phase(RoundPhase::EntityEntrySetup);
-    let next = drain::run_setup_stage_for_owners(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        SetupStage::EnterFight,
-        0,
-        owner_uids,
-    )?;
-    result.outcomes.extend(next.outcomes);
-    result.events.extend(next.events);
-    let root = result
-        .frames
-        .first_mut()
-        .expect("entry-setup phase has a root");
-    for frame in next.frames {
-        if matches!(frame.owner, FrameOwner::SetupSide(_)) {
-            root.items.extend(frame.items);
-        } else {
-            root.items.push(FrameItem::Child(Box::new(frame)));
+    for (stage, priority) in [
+        (SetupStage::EnterFight, 0),
+        (SetupStage::RoundStartCondition, 100),
+    ] {
+        let next = drain::run_setup_stage_for_owners(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            stage,
+            priority,
+            owner_uids,
+        )?;
+        result.outcomes.extend(next.outcomes);
+        result.events.extend(next.events);
+        let root = result
+            .frames
+            .first_mut()
+            .expect("entry-setup phase has a root");
+        for frame in next.frames {
+            if matches!(frame.owner, FrameOwner::SetupSide(_)) {
+                root.items.extend(frame.items);
+            } else {
+                root.items.push(FrameItem::Child(Box::new(frame)));
+            }
         }
     }
     Ok(result)
