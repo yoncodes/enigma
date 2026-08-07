@@ -1049,6 +1049,19 @@ fn skill_target_count_is_a_filter_with_an_event_dependency() {
 }
 
 #[test]
+fn immediate_skill_type_gate_keeps_its_exact_identity() {
+    let definition = find_key(500203, "SkillType").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::SkillAction]);
+    assert_eq!(
+        parse(500203, "SkillType", &["1".into()]),
+        Some(ParsedConditionKind::ActiveSkillType(1))
+    );
+    assert!(find_key(500203, "UseSkillEffectTag").is_none());
+}
+
+#[test]
 fn child_buff_allocation_is_owned_by_the_exact_condition_route() {
     assert_eq!(
         find_key(662208, "ActiveUseSkillId").map(|definition| definition.consequence),
