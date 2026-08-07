@@ -570,6 +570,10 @@ impl ExPointManager {
 }
 
 fn configured_max(entity: &FightEntityInfo) -> Option<i32> {
+    if let Some(max) = entity.ex_point_max.filter(|max| *max > 0) {
+        return Some(max);
+    }
+
     let db = config::try_get()?;
     let hero_id = entity.model_id?;
     let rank = crate::engine::entity::stats::rank_from_level(hero_id, entity.level.unwrap_or(1));
