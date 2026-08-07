@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn crystal_link_uses_configured_layer_and_acting_source() {
         let (mut managers, feature, event) = fixture();
-        assert!(managers.emanation.select(10, 110));
+        assert!(managers.emanation.select(10, 101));
 
         assert!(matches!(
             rule_ops(&managers, &feature, &event).as_deref(),
@@ -251,7 +251,7 @@ mod tests {
     #[test]
     fn one_action_emits_ordered_per_target_buff_commands() {
         let (mut managers, feature, mut event) = fixture();
-        assert!(managers.emanation.select(10, 110));
+        assert!(managers.emanation.select(10, 101));
         let BattleEvent::SkillAction(action) = &mut event else {
             unreachable!()
         };
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn crystal_link_ignores_attacks_without_a_selected_matching_crystal() {
         let (mut managers, feature, mut event) = fixture();
-        assert!(managers.emanation.select(10, 110));
+        assert!(managers.emanation.select(10, 101));
         let BattleEvent::SkillAction(action) = &mut event else {
             unreachable!()
         };
@@ -288,7 +288,7 @@ mod tests {
     #[test]
     fn green_crystal_applies_to_an_allies_rank_two_attack() {
         let (mut managers, feature, mut event) = fixture();
-        assert!(managers.emanation.select(10, 110));
+        assert!(managers.emanation.select(10, 101));
         let BattleEvent::SkillAction(action) = &mut event else {
             unreachable!()
         };
@@ -310,7 +310,7 @@ mod tests {
     #[test]
     fn crystal_link_frames_are_owned_by_the_force_field_applier() {
         let (mut managers, feature, event) = fixture();
-        assert!(managers.emanation.select(10, 110));
+        assert!(managers.emanation.select(10, 101));
 
         assert!(matches!(
             scoped_rule_ops(&managers, &feature, &event).as_deref(),

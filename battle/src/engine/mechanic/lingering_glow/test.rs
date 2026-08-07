@@ -263,7 +263,7 @@ fn activation_counter_floors_raw_progress_and_crystals_keep_separate_owners() {
         runtime.decrement_counter_info(&features, 1).unwrap().value,
         3_332
     );
-    assert!(managers.emanation.select(10, 101));
+    assert!(managers.emanation.select(10, 110));
     assert_eq!(managers.emanation.counts(10), [1, 1, 0]);
     assert_eq!(managers.emanation.choose(10, 0), Some(0));
 }
@@ -314,7 +314,7 @@ fn ready_cast_is_derived_from_the_subscriber_and_current_state() {
             source_buff_id: 31340003,
         },
     ));
-    assert!(managers.emanation.select(10, 20));
+    assert!(managers.emanation.select(10, 2));
     let use_skill = crate::engine::skill::subscriber::BuffActSubscriber {
         owner_uid: 10,
         source_uid: 10,

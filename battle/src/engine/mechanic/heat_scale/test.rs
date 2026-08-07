@@ -258,7 +258,7 @@ fn vision_reduces_threshold_and_green_crystal_selects_doom_rank_variant() {
     }));
     heat_scale.apply_value(1, 153, 153_000);
     let mut emanation = crate::engine::manager::emanation::EmanationManager::default();
-    assert!(emanation.select(10, 110));
+    assert!(emanation.select(10, 101));
 
     let cast = heat_scale
         .take_ready_cast(
