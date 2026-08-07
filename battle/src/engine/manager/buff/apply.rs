@@ -127,7 +127,20 @@ impl BuffManager {
             buff_id: Some(buff_id),
             duration: Some(definition.duration),
             uid: Some(uid),
-            ex_info: Some(0),
+            ex_info: Some(
+                definition
+                    .features()
+                    .iter()
+                    .find_map(|feature| {
+                        feature.arguments_supported.then(|| {
+                            feature
+                                .wire?
+                                .initial_private_state(&feature.values)
+                                .filter(|value| *value > 0)
+                        })?
+                    })
+                    .unwrap_or_default(),
+            ),
             from_uid: Some(source_uid),
             count: Some(count),
             layer: Some(layer.max(0)),

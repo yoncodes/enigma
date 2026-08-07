@@ -1014,6 +1014,83 @@ fn ex_point_cant_add_blocks_gains_but_allows_spending() {
 }
 
 #[test]
+fn transfer_add_ex_point_redirects_only_gains_to_the_buff_source() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    ex_point: Some(0),
+                    current_hp: Some(100),
+                    attr: Some(HeroAttribute {
+                        hp: Some(100),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    ex_point: Some(1),
+                    current_hp: Some(100),
+                    attr: Some(HeroAttribute {
+                        hp: Some(100),
+                        ..Default::default()
+                    }),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(31_000_171),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::BuffAct,
+        key: DefinitionKey::new(833, "TransferAddExPoint"),
+    };
+
+    let gained = managers
+        .execute_ex_point(ExPointCommand::Change(ExPointChange {
+            origin,
+            source_uid: 20,
+            target_uid: 20,
+            delta: 2,
+            config_effect: 0,
+            effect_type: 0,
+        }))
+        .unwrap();
+    assert!(matches!(
+        gained,
+        ExPointChanges::Value { change, .. }
+            if change.source_uid == 20
+                && change.target_uid == 10
+                && change.applied_delta == 2
+    ));
+    assert_eq!(managers.ex_point.get(10), 2);
+    assert_eq!(managers.ex_point.get(20), 1);
+
+    managers
+        .execute_ex_point(ExPointCommand::Spend(ExPointChange {
+            origin,
+            source_uid: 20,
+            target_uid: 20,
+            delta: -1,
+            config_effect: 0,
+            effect_type: 0,
+        }))
+        .unwrap();
+    assert_eq!(managers.ex_point.get(10), 2);
+    assert_eq!(managers.ex_point.get(20), 0);
+}
+
+#[test]
 fn skill_damage_reduces_guard_at_the_active_action_rate() {
     crate::test_support::init_config();
     let fight = Fight {

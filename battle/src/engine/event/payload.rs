@@ -18,6 +18,16 @@ pub struct BuffChangeEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuffStateChangeEvent {
+    pub source_uid: i64,
+    pub target_uid: i64,
+    pub buff_uid: i64,
+    pub buff_id: i32,
+    pub before_ex_info: i32,
+    pub after_ex_info: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuffFeatureTriggeredEvent {
     pub owner_uid: i64,
     pub source_uid: i64,
@@ -177,6 +187,7 @@ pub enum BattleEvent {
     AllyAction(crate::engine::skill::action::ActionEvent),
     BuffAdded(BuffChangeEvent),
     BuffChanged(BuffChangeEvent),
+    BuffStateChanged(BuffStateChangeEvent),
     BuffRemoved(BuffChangeEvent),
     BuffsSettled(Vec<BuffChangeEvent>),
     BuffFeatureTriggered(BuffFeatureTriggeredEvent),
@@ -234,6 +245,7 @@ impl BattleEvent {
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
                 Some(change.source_uid)
             }
+            Self::BuffStateChanged(change) => Some(change.source_uid),
             Self::BuffFeatureTriggered(trigger) => Some(trigger.source_uid),
             Self::HpLost { source_uid, .. }
             | Self::HpHealed { source_uid, .. }
@@ -271,6 +283,7 @@ impl BattleEvent {
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
                 Some(change.target_uid)
             }
+            Self::BuffStateChanged(change) => Some(change.target_uid),
             Self::BuffFeatureTriggered(trigger) => Some(trigger.target_uid),
             Self::Hit(hit) => Some(hit.target_uid),
             Self::EntityDied(death) => Some(death.target_uid),
@@ -308,6 +321,7 @@ impl BattleEvent {
             Self::AllyAction(_) => EventKind::AllyAction,
             Self::BuffAdded(_) => EventKind::BuffAdded,
             Self::BuffChanged(_) => EventKind::BuffChanged,
+            Self::BuffStateChanged(_) => EventKind::BuffStateChanged,
             Self::BuffRemoved(_) => EventKind::BuffRemoved,
             Self::BuffsSettled(_) => EventKind::RoundEndFinalSettlement,
             Self::BuffFeatureTriggered(_) => EventKind::BuffFeatureTriggered,

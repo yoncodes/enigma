@@ -1,7 +1,7 @@
 use sonettobuf::BuffInfo;
 
 use crate::engine::{
-    event::payload::{BattleEvent, BuffChangeEvent},
+    event::payload::{BattleEvent, BuffChangeEvent, BuffStateChangeEvent},
     skill::rule::DefinitionKey,
 };
 
@@ -193,6 +193,20 @@ impl BuffReplaceResult {
                     .copied()
                     .unwrap_or_default(),
             }))
+        }));
+        events.extend(self.refreshed.iter().filter_map(|refresh| {
+            let before_ex_info = refresh.before.ex_info.unwrap_or_default();
+            let after_ex_info = refresh.after.ex_info.unwrap_or_default();
+            (before_ex_info != after_ex_info).then_some(BattleEvent::BuffStateChanged(
+                BuffStateChangeEvent {
+                    source_uid: refresh.after.from_uid.unwrap_or_default(),
+                    target_uid: refresh.target_uid,
+                    buff_uid: refresh.after.uid.unwrap_or_default(),
+                    buff_id: refresh.after.buff_id.unwrap_or_default(),
+                    before_ex_info,
+                    after_ex_info,
+                },
+            ))
         }));
         events
     }

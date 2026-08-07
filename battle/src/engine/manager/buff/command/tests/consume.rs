@@ -504,6 +504,28 @@ fn exact_uid_commands_do_not_collapse_duplicate_buff_ids() {
         .execute(
             &HpManager::default(),
             BuffCommand::SetState(BuffSetState {
+                ex_info: Some(3),
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60094, "ReduceCastChannelCount"),
+                },
+                target_uid: 10,
+                buff_uid: 2,
+                params: None,
+                act_info: None,
+            }),
+        )
+        .unwrap();
+    assert!(matches!(
+        changes.events().as_slice(),
+        [BattleEvent::BuffStateChanged(event)]
+            if event.before_ex_info == 0 && event.after_ex_info == 3
+    ));
+
+    let changes = manager
+        .execute(
+            &HpManager::default(),
+            BuffCommand::SetState(BuffSetState {
                 ex_info: None,
                 origin: CommandOrigin {
                     domain: RuleDomain::BuffAct,

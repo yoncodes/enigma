@@ -285,6 +285,24 @@ fn project_change(
         BattleChange::BuffFeatureMarker(marker) => vec![EffectPacket::buff_marker(marker)],
         BattleChange::EffectMarker(marker) => vec![EffectPacket::effect_marker(marker.clone())],
         BattleChange::SceneChange { scene_id } => EffectPacket::scene_change(*scene_id).to_vec(),
+        BattleChange::Contract(crate::engine::manager::contract::ContractChange::Offered {
+            origin,
+            owner_uid,
+            candidates,
+        }) => vec![EffectPacket::contract_offer(
+            *owner_uid,
+            origin.key.opcode,
+            candidates,
+        )],
+        BattleChange::Contract(
+            crate::engine::manager::contract::ContractChange::OwnerSelected { owner_uid, .. },
+        ) => vec![EffectPacket::contract_owner(*owner_uid)],
+        BattleChange::Contract(
+            crate::engine::manager::contract::ContractChange::BoundSelected { bound_uid, .. },
+        ) => vec![EffectPacket::contract_bound(*bound_uid)],
+        BattleChange::Contract(crate::engine::manager::contract::ContractChange::Cleared {
+            ..
+        }) => Vec::new(),
         BattleChange::BuffActTrigger(trigger) => {
             vec![EffectPacket::buff_act_trigger(*trigger)]
         }
@@ -454,10 +472,7 @@ fn project_change(
             vec![EffectPacket::ex_point(*change)]
         }
         BattleChange::ExPoint(ExPointChanges::Max { change, .. }) if change.applied_delta != 0 => {
-            vec![EffectPacket::ex_point_max_add(
-                change.target_uid,
-                change.applied_delta,
-            )]
+            vec![EffectPacket::ex_point_max(*change)]
         }
         BattleChange::ExPoint(_) => Vec::new(),
         BattleChange::Eureka(EurekaChanges::Changed { change, .. })

@@ -11,6 +11,7 @@ pub(super) struct ResolvedBuffFeature {
     pub effect_time: i32,
     pub effect_condition: i32,
     pub kind: Option<crate::engine::skill::buff_act::registry::BuffActKind>,
+    pub arguments_supported: bool,
     pub stat_read_timing: crate::engine::skill::buff_act::registry::StatReadTiming,
     pub wire: Option<&'static crate::engine::skill::buff_act::wire::BuffActWireDefinition>,
 }
@@ -96,6 +97,9 @@ fn active_features_for_definition(
     }
     let mut output = Vec::new();
     for feature in definition.features() {
+        if !feature.arguments_supported {
+            continue;
+        }
         output.push(ActiveBuffFeature {
             owner_uid,
             source_uid: buff.from_uid.unwrap_or_default(),
@@ -255,6 +259,11 @@ pub(super) fn resolve_features(raw_features: &str) -> Vec<ResolvedBuffFeature> {
             let registered = act.and_then(|act| {
                 crate::engine::skill::buff_act::registry::find(act.id, &act.r#type)
             });
+            let arguments_supported = registered.is_some_and(|definition| {
+                definition
+                    .supports
+                    .is_none_or(|supports| supports(values.get(1..).unwrap_or_default()))
+            });
             ResolvedBuffFeature {
                 raw: raw.to_owned(),
                 values,
@@ -262,6 +271,7 @@ pub(super) fn resolve_features(raw_features: &str) -> Vec<ResolvedBuffFeature> {
                 effect_time: act.map(|act| act.effect_time).unwrap_or_default(),
                 effect_condition: act.map(|act| act.effect_condition).unwrap_or_default(),
                 kind: registered.map(|definition| definition.kind),
+                arguments_supported,
                 stat_read_timing: registered
                     .map(|definition| definition.state.read_timing)
                     .unwrap_or(crate::engine::skill::buff_act::registry::StatReadTiming::None),
@@ -299,6 +309,21 @@ mod tests {
         let feature = resolve_features("879#1#300#1,2").remove(0);
 
         assert_eq!(feature.values, vec![879, 1, 300, 1, 2]);
+    }
+
+    #[test]
+    fn unsupported_feature_arguments_do_not_become_active() {
+        crate::test_support::init_config();
+        let mut definition = BuffDefinition::get(31_000_161).unwrap();
+        definition.replace_features_for_test(resolve_features("832#-7"));
+        let buff = BuffInfo {
+            buff_id: Some(31_000_161),
+            count: Some(1),
+            layer: Some(1),
+            ..Default::default()
+        };
+
+        assert!(active_feature(1, 1, true, &buff, Some(&definition)).is_empty());
     }
 
     #[test]

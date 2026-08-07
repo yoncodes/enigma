@@ -215,6 +215,18 @@ impl SkillEffectCatalog {
                                 &values[1..],
                             ),
                         ),
+                        Some(BuffActKind::ContractCastChannel) => {
+                            buffs.extend(
+                                crate::engine::skill::buff_act::contract_cast_channel::referenced_buff(
+                                    &values[1..],
+                                ),
+                            );
+                            skills.extend(
+                                crate::engine::skill::buff_act::contract_cast_channel::referenced_skill(
+                                    &values[1..],
+                                ),
+                            );
+                        }
                         Some(BuffActKind::BeatBack) => skills.extend(
                             crate::engine::skill::buff_act::riposte::holder_skill(&values[1..]),
                         ),

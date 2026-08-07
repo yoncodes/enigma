@@ -3,6 +3,43 @@ use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 use crate::engine::manager::BattleManagers;
 
 #[test]
+fn unsupported_special_moxie_arguments_do_not_change_ultimate_cost() {
+    crate::test_support::init_config();
+    let entity = FightEntityInfo {
+        uid: Some(10),
+        current_hp: Some(100),
+        team_type: Some(1),
+        buffs: vec![sonettobuf::BuffInfo {
+            uid: Some(1),
+            buff_id: Some(31_000_161),
+            from_uid: Some(10),
+            layer: Some(1),
+            count: Some(1),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let definition = managers.buff.buffs[0].definition.as_mut().unwrap();
+    definition.replace_features_for_test(super::super::feature::resolve_features("832#7#-3"));
+
+    assert_eq!(
+        managers.buff.buff_act_argument_scalar(
+            10,
+            crate::engine::skill::buff_act::registry::BuffActKind::SpExPointMaxAdd,
+            1,
+        ),
+        0
+    );
+}
+
+#[test]
 fn ulrich_channels_project_configured_enemy_and_ally_outputs() {
     crate::test_support::init_config();
     let entity = |uid, team_type| FightEntityInfo {

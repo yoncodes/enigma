@@ -1,6 +1,6 @@
 use crate::engine::fight::versions::HurtInfoWireLayout;
 use crate::engine::manager::{
-    ex_point::{ExPointApplyResult, ExPointKind},
+    ex_point::{ExPointApplyResult, ExPointKind, ExPointMaxApplyResult, ExPointMaxWire},
     hp::DamageEffectKind,
 };
 
@@ -9,6 +9,26 @@ use super::*;
 #[test]
 fn clear_universal_card_is_owned_by_the_player_team() {
     assert_eq!(EffectPacket::clear_universal_card().team_type, Some(1));
+}
+
+#[test]
+fn special_moxie_cap_projects_the_captured_snapshot() {
+    let effect = EffectPacket::ex_point_max(ExPointMaxApplyResult {
+        target_uid: -1,
+        before: 5,
+        requested_delta: 7,
+        applied_delta: 7,
+        after: 12,
+        wire: ExPointMaxWire::Special {
+            max_add: 7,
+            ultimate_cost_offset: 3,
+        },
+    });
+
+    assert_eq!(effect.target_id, Some(-1));
+    assert_eq!(effect.effect_type, Some(EffectType::Spexpointmaxadd as i32));
+    assert_eq!(effect.effect_num, Some(0));
+    assert_eq!(effect.reserve_str.as_deref(), Some("7#3"));
 }
 
 #[test]

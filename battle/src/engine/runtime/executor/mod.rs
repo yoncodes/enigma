@@ -5,6 +5,7 @@ use crate::engine::{
         buff::{BuffChanges, BuffCommandError},
         card::{CardChanges, CardCommandError},
         conduit::{ConduitChange, ConduitError},
+        contract::{ContractChange, ContractError},
         emitter::EmitterChange,
         entity::{EntityChanges, EntityCommandError},
         eureka::{EurekaChanges, EurekaCommandError},
@@ -62,6 +63,7 @@ pub(crate) enum RuleOutcome {
     Card(Box<CardChanges>),
     BuffPrecast(Box<BuffPrecastChanges>),
     Conduit(ConduitChange),
+    Contract(ContractChange),
     Field(FieldChange),
     FieldTransfer(Box<FieldTransferChanges>),
     Shell(Box<ShellChanges>),
@@ -218,6 +220,7 @@ impl RuleOutcome {
                 BattleChange::Card(Box::new(changes.card.clone())),
             ],
             Self::Conduit(change) => vec![BattleChange::Conduit(change.clone())],
+            Self::Contract(change) => vec![BattleChange::Contract(change.clone())],
             Self::Field(change) => vec![BattleChange::Field(*change)],
             Self::FieldTransfer(changes) => changes
                 .buffs
@@ -268,6 +271,7 @@ pub(crate) enum RuleExecutionError {
     Card(CardCommandError),
     BuffPrecast(BuffPrecastError),
     Conduit(ConduitError),
+    Contract(ContractError),
     Field(FieldCommandError),
     FieldTransfer(FieldTransferError),
     Shell(ShellError),
@@ -341,6 +345,12 @@ impl From<BuffPrecastError> for RuleExecutionError {
 impl From<ConduitError> for RuleExecutionError {
     fn from(value: ConduitError) -> Self {
         Self::Conduit(value)
+    }
+}
+
+impl From<ContractError> for RuleExecutionError {
+    fn from(value: ContractError) -> Self {
+        Self::Contract(value)
     }
 }
 
@@ -594,6 +604,9 @@ pub(crate) fn execute_rule_op(
                 events.push(event);
             }
             Ok(RuleOutcome::Conduit(change))
+        }
+        RuleOp::Command(BattleCommand::Contract(command)) => {
+            Ok(RuleOutcome::Contract(managers.contract.execute(command)?))
         }
         RuleOp::Command(BattleCommand::Field(command)) => {
             let change = managers.execute_field(command)?;

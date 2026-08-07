@@ -194,6 +194,219 @@ fn target_buff_follow_up_consumes_the_mark_before_invocation() {
 }
 
 #[test]
+fn remove_buff_use_skill_replays_captured_weighted_follow_up() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(30830111),
+                    layer: Some(3),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_random_skills([30830172]);
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::from_spec(
+        BehaviorSpec::new(50018, "RemoveBuffUseSkill"),
+        vec![30830111, 1, 3],
+        vec![
+            "30830111".to_owned(),
+            "1".to_owned(),
+            "3".to_owned(),
+            "30830171,30830172,30830173,30830174,30830175".to_owned(),
+            "20,40,40".to_owned(),
+        ],
+    );
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: -1,
+            active_skill_id: 308301412,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                target_uid: 10,
+                selector: BuffSelector::ExactId(30830111),
+                amount: 2,
+                ..
+            }))),
+            RuleOp::Skill(invocation),
+        ] if invocation.plan.skill_id == 30830172
+            && invocation.target
+                == crate::engine::skill::action::SkillTarget::Explicit(-1)
+            && invocation.extra_skill_kind == Some(ExtraSkillKind::FollowUp)
+            && invocation.mode
+                == crate::engine::skill::action::SkillExecutionMode::Active
+    ));
+}
+
+fn range_modifier_ops(
+    liquor_layer: i32,
+    cheers_count: i32,
+    scripted_skill: i32,
+) -> (Vec<RuleOp>, ParsedBehavior) {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(30830111),
+                        layer: Some(liquor_layer),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(21),
+                        buff_id: Some(30830121),
+                        count: Some(cheers_count),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_random_skills([scripted_skill]);
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::from_spec(
+        BehaviorSpec::new(50018, "RemoveBuffUseSkill"),
+        vec![30830111, 1, 3],
+        vec![
+            "30830111".to_owned(),
+            "1".to_owned(),
+            "3".to_owned(),
+            "30830171,30830172,30830173,30830174,30830175".to_owned(),
+            "20,40,40".to_owned(),
+        ],
+    );
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: -1,
+            active_skill_id: 308301412,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    (ops, behavior)
+}
+
+#[test]
+fn range_modifier_shifts_weighted_choice_then_consumes_one_stack() {
+    let (ops, behavior) = range_modifier_ops(5, 2, 30830174);
+
+    assert!(matches!(
+        ops.as_slice(),
+        [
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                target_uid: 10,
+                selector: BuffSelector::ExactId(30830111),
+                amount: 4,
+                ..
+            }))),
+            RuleOp::Skill(invocation),
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                target_uid: 10,
+                selector: BuffSelector::Uid(21),
+                amount: 1,
+                ..
+            }))),
+        ] if invocation.plan.skill_id == 30830174
+    ));
+    assert_eq!(
+        references(&behavior).skills,
+        vec![30830171, 30830172, 30830173, 30830174, 30830175]
+    );
+}
+
+#[test]
+fn range_modifier_consumes_all_liquor_when_below_its_shifted_minimum() {
+    let (ops, _) = range_modifier_ops(1, 1, 30830171);
+
+    assert!(matches!(
+        ops.as_slice(),
+        [
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                selector: BuffSelector::ExactId(30830111),
+                amount: 1,
+                ..
+            }))),
+            RuleOp::Skill(invocation),
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                selector: BuffSelector::Uid(21),
+                amount: 1,
+                ..
+            }))),
+        ] if invocation.plan.skill_id == 30830171
+    ));
+}
+
+#[test]
 fn group_skill_keeps_explicit_follow_up_subtype() {
     assert_eq!(
         nested_skill_kind(&[2, 2, 0, 2]),

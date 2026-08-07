@@ -613,3 +613,71 @@ fn from_and_to_buff_checks_source_and_resolved_target_separately() {
         TargetContext::default(),
     ));
 }
+
+#[test]
+fn bound_ally_buff_types_follow_the_other_ally_action_source() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(1),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(31000201),
+                        duration: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    current_hp: Some(1),
+                    buffs: vec![BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(31000171),
+                        duration: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(12),
+                    current_hp: Some(1),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let conditions = [
+        exact_condition(
+            656212,
+            "SelfBuffTypeTargetBuffTypes",
+            &["31000201", "31000171,31000181"],
+        ),
+        exact_condition(403212, "SkillExtraType", &["1"]),
+    ];
+    let pool = TargetPool::from_fight(&fight);
+    let matches = |active_skill_source_uid| {
+        conditions_match(
+            &conditions,
+            10,
+            &[10, 11, 12],
+            Some(&managers),
+            &pool,
+            TargetContext {
+                active_skill_source_uid,
+                extra_skill_kind: 1,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(11));
+    assert!(!matches(12));
+    assert!(!matches(10));
+}

@@ -510,6 +510,18 @@ fn condition_kind_matches(
                 .sum();
             compare_value(amount, *compare, *threshold)
         }
+        ParsedConditionKind::AnyTargetBuffTypeCount {
+            type_ids,
+            threshold,
+        } => managers.is_some_and(|managers| {
+            condition_targets.iter().any(|uid| {
+                type_ids
+                    .iter()
+                    .map(|type_id| managers.buff.buff_type_amount(*uid, *type_id))
+                    .sum::<i32>()
+                    >= *threshold
+            })
+        }),
         ParsedConditionKind::BuffGroup(group_ids) => managers.is_some_and(|managers| {
             condition_targets
                 .iter()
@@ -532,6 +544,18 @@ fn condition_kind_matches(
                         .buff
                         .has_active_buff_id_or_type(*target_uid, *to_buff_id)
                 })
+        }),
+        ParsedConditionKind::SelfBuffTypeTargetBuffTypes {
+            self_type_id,
+            target_type_ids,
+        } => managers.is_some_and(|managers| {
+            let target_uid = context.active_skill_source_uid;
+            managers.buff.buff_type_amount(source_uid, *self_type_id) > 0
+                && target_uid != 0
+                && condition_targets.contains(&target_uid)
+                && target_type_ids
+                    .iter()
+                    .any(|type_id| managers.buff.buff_type_amount(target_uid, *type_id) > 0)
         }),
         ParsedConditionKind::EnemyHighestBuffTypeCount { type_id, threshold } => managers
             .is_some_and(|managers| {
@@ -1048,6 +1072,7 @@ fn condition_kind_matches(
                 && match mode {
                     super::extra::ExtraActionConditionMode::OtherAllyAction => {
                         context.active_skill_source_uid != 0
+                            && context.active_skill_source_uid != source_uid
                             && condition_targets.contains(&context.active_skill_source_uid)
                     }
                     _ => true,

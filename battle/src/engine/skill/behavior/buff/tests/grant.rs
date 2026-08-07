@@ -257,6 +257,49 @@ fn random_pool_add_emits_distinct_configured_buff_commands() {
 }
 
 #[test]
+fn random_type_pool_replays_the_captured_configured_choice() {
+    crate::test_support::init_config();
+    let managers = BattleManagers::default();
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(20022, "AddBuffRanTypeId"),
+        vec![30830151, 1],
+        Vec::new(),
+    );
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_random_buffs([308301512]);
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+
+    let ops = super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 30830161,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &TargetPool::default(),
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
+            BuffGrant {
+                buff_id: 308301512,
+                ..
+            }
+        )))]
+    ));
+}
+
+#[test]
 fn random_pool_arguments_require_a_configured_distinct_draw() {
     crate::test_support::init_config();
     let behavior = |args| {
@@ -446,6 +489,47 @@ fn add_buff_round_extends_existing_type_family_without_granting_a_new_buff() {
 }
 
 #[test]
+fn channel_count_reduction_updates_the_matching_buff_types_private_state() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1),
+                    buff_id: Some(31000441),
+                    duration: Some(0),
+                    ex_info: Some(7),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(
+            60094,
+            "ReduceCastChannelCount",
+        ),
+        vec![31000131, 2],
+        Vec::new(),
+    );
+
+    let command = reduce_channel_count_command(&managers, 10, &behavior).unwrap();
+    let changes = managers.execute_buff(command).unwrap();
+
+    assert!(changes.change.added.is_none());
+    assert_eq!(changes.change.refreshed.len(), 1);
+    assert_eq!(changes.change.refreshed[0].before.ex_info, Some(7));
+    assert_eq!(changes.change.refreshed[0].after.ex_info, Some(5));
+    assert_eq!(changes.change.refreshed[0].after.duration, Some(0));
+}
+
+#[test]
 fn add_buff_duration_updates_owned_instances_through_one_manager_command() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -616,7 +700,7 @@ fn damage_window_removes_each_configured_buff_id_or_type() {
 }
 
 #[test]
-fn consume_card_add_buff_emits_card_consumption_before_the_grant() {
+fn consume_card_add_buff_emits_consumption_before_the_optional_grant() {
     let mut managers = BattleManagers::default();
     managers.card = crate::engine::manager::card::CardManager::new(vec![
         sonettobuf::CardInfo {
@@ -695,4 +779,41 @@ fn consume_card_add_buff_emits_card_consumption_before_the_grant() {
             })))
         ] if indices == &[0, 2]
     ));
+
+    let destroy_only = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(60222, "ConsumeCardAddBuff"),
+        vec![0],
+        vec!["0".into(), "0,0,0".into()],
+    );
+    let destroy_ops = super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 31370131,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &TargetPool::default(),
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &destroy_only,
+    )
+    .unwrap();
+    let [RuleOp::Command(BattleCommand::Card(command))] = destroy_ops.as_slice() else {
+        panic!("destroy-only behavior must emit only card consumption");
+    };
+
+    managers.execute_card(command.clone()).unwrap();
+    assert_eq!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>(),
+        vec![999]
+    );
 }

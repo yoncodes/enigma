@@ -7,6 +7,7 @@ pub mod card;
 pub mod card_limit;
 pub mod career;
 pub mod classify;
+pub mod contract;
 pub mod crystal_card;
 pub mod damage_target;
 pub mod detonate;

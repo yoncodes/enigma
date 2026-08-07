@@ -143,6 +143,83 @@ impl BattleRuntime {
                 .inspect_err(|error| tracing::warn!(%error, "hero upgrade projection failed"))
                 .ok()?
             }
+            ClothSkillType::Contract => {
+                if request.skill_id.unwrap_or_default() != 0 {
+                    return None;
+                }
+                let owner_uid = request.from_id?;
+                let bound_uid = request.to_id?;
+                let origin = self
+                    .managers
+                    .contract
+                    .selection_origin(owner_uid, bound_uid)?;
+                let owner = self.managers.entity_snapshot(owner_uid)?;
+                let bound = self.managers.entity_snapshot(bound_uid)?;
+                let (owner_buff_id, bound_buff_id) =
+                    crate::engine::manager::contract::binding_buffs(
+                        owner.ex_skill_level.unwrap_or_default(),
+                        bound.career?,
+                    )?;
+                let owner_buff = self
+                    .managers
+                    .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+                        crate::engine::manager::buff::BuffGrant {
+                            origin,
+                            source_uid: owner_uid,
+                            target_uid: owner_uid,
+                            buff_id: owner_buff_id,
+                            amount: None,
+                            occurrences: 1,
+                            child_uid_reservations: 0,
+                        },
+                    ))
+                    .ok()?;
+                let owner_selected = self
+                    .managers
+                    .contract
+                    .execute(
+                        crate::engine::manager::contract::ContractCommand::SelectOwner {
+                            owner_uid,
+                            bound_uid,
+                        },
+                    )
+                    .ok()?;
+                let bound_buff = self
+                    .managers
+                    .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+                        crate::engine::manager::buff::BuffGrant {
+                            origin,
+                            source_uid: owner_uid,
+                            target_uid: bound_uid,
+                            buff_id: bound_buff_id,
+                            amount: None,
+                            occurrences: 1,
+                            child_uid_reservations: 0,
+                        },
+                    ))
+                    .ok()?;
+                let bound_selected = self
+                    .managers
+                    .contract
+                    .execute(
+                        crate::engine::manager::contract::ContractCommand::SelectBound {
+                            owner_uid,
+                            bound_uid,
+                        },
+                    )
+                    .ok()?;
+                project_changes(
+                    [
+                        change::BattleChange::Buff(Box::new(owner_buff)),
+                        change::BattleChange::Contract(owner_selected),
+                        change::BattleChange::Buff(Box::new(bound_buff)),
+                        change::BattleChange::Contract(bound_selected),
+                    ],
+                    fight_version,
+                )
+                .inspect_err(|error| tracing::warn!(%error, "contract selection projection failed"))
+                .ok()?
+            }
             ClothSkillType::SelectCrystal => {
                 let owner_uid = request.from_id?;
                 let packed = i32::try_from(request.to_id?).ok()?;
