@@ -298,6 +298,113 @@ fn destination_random_skill_consumes_the_captured_choice() {
 }
 
 #[test]
+fn drive_uses_the_selected_ally_as_the_random_attack_caster() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-5),
+                current_hp: Some(100),
+                skill_group1: vec![530000111],
+                skill_group2: vec![530000121],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_random_skills([530000111]);
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::new(60172, "Drive", vec![1, 1, 0]);
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: -3,
+            source_team: 2,
+            target_uid: -5,
+            active_skill_id: 530000131,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Skill(invocation)]
+            if invocation.plan.source_uid == -5
+                && invocation.plan.skill_id == 530000111
+                && invocation.target == crate::engine::skill::action::SkillTarget::Configured
+                && invocation.mode
+                    == crate::engine::skill::action::SkillExecutionMode::Active
+    ));
+    assert!(supports_drive(&behavior));
+    assert!(!supports_drive(&ParsedBehavior::new(
+        60172,
+        "Drive",
+        vec![1, 1, 2],
+    )));
+}
+
+#[test]
+fn drive_without_an_attack_candidate_is_a_no_op() {
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-5),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = crate::engine::manager::BattleManagers::default();
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::new(60172, "Drive", vec![1, 1, 0]);
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: -3,
+            source_team: 2,
+            target_uid: -5,
+            active_skill_id: 530000131,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    );
+
+    assert_eq!(ops, Some(Vec::new()));
+}
+
+#[test]
 fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
     let managers = crate::engine::manager::BattleManagers::default();
     let pool = TargetPool::default();

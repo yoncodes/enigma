@@ -181,6 +181,7 @@ pub enum BehaviorKind {
     DirectUseSkillNoAct2,
     DirectUseSkillNotExtra,
     RandomUseSkill,
+    Drive,
     DirectUseBigSkill,
     DirectUseGroupAndStarSkill,
     UseExtraSkill,
