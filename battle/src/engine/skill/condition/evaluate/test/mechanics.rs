@@ -168,6 +168,64 @@ fn ally_attacked_is_distinct_from_carrier_attacked() {
 }
 
 #[test]
+fn afflatus_hit_conditions_match_only_the_attacked_target() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                career: Some(1),
+                current_hp: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    career: Some(1),
+                    current_hp: Some(1),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    career: Some(1),
+                    current_hp: Some(1),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let condition = ParsedCondition {
+        opcode: 47209,
+        type_name: "HurtNotRestraint".into(),
+        kind: ParsedConditionKind::HurtNotRestrained,
+        raw_args: Vec::new(),
+    };
+    let matches = |hit_target_uid| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            -1,
+            &[-1],
+            None,
+            &pool,
+            TargetContext {
+                hit_source_uid: 10,
+                hit_target_uid,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(-1));
+    assert!(!matches(-2));
+}
+
+#[test]
 fn no_action_round_checks_the_owner_card_state() {
     init_config();
     let condition = ParsedCondition {
