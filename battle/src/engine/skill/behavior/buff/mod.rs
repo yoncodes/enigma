@@ -48,12 +48,12 @@ use application::*;
 use copy::copy_status_ops;
 pub(super) use copy::supports_status_copy;
 use dispel::{
-    damage_window_remove_ops, dispel_commands, excluded_dispel_command, sort_buff_by_hp_ops,
-    spread_buff_ops,
+    damage_window_remove_ops, dispel_commands, excluded_dispel_command,
+    remove_each_buff_family_ops, sort_buff_by_hp_ops, spread_buff_ops,
 };
 pub(super) use dispel::{
-    supports_dispel, supports_disperse_force, supports_exact_buff_dispel, supports_excluded_dispel,
-    supports_status_dispel,
+    supports_dispel, supports_disperse_force, supports_disperse_force3, supports_exact_buff_dispel,
+    supports_excluded_dispel, supports_status_dispel,
 };
 use distribute::*;
 pub use grant::random_buff_pool;
@@ -150,6 +150,9 @@ impl BehaviorHandler for Handler {
             BehaviorKind::AddBuffByHeroId => hero_grant_command(&context, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::DisperseForce2 => damage_window_remove_ops(context.target_uid, behavior),
+            BehaviorKind::DisperseForce3 => {
+                remove_each_buff_family_ops(context.target_uid, behavior)
+            }
             BehaviorKind::DisperseExclude => excluded_dispel_command(context.target_uid, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::Disperse1
@@ -258,9 +261,9 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         // Both select existing buff state by id or type; neither introduces a
         // concrete buff dependency.
         BehaviorKind::AddBuffDuration | BehaviorKind::ReduceCastChannelCount => Vec::new(),
-        // 60010 owns an id-or-type selector, so its operand is not necessarily
-        // a concrete buff dependency (for example type 8112).
-        BehaviorKind::DisperseForce2 => Vec::new(),
+        // These own id-or-type selectors, so their operands are not necessarily
+        // concrete buff dependencies (for example type 8112).
+        BehaviorKind::DisperseForce2 | BehaviorKind::DisperseForce3 => Vec::new(),
         BehaviorKind::BuffSortByHp | BehaviorKind::BuffSpread => {
             behavior.arg(0).into_iter().collect()
         }

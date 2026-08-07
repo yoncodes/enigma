@@ -817,3 +817,47 @@ fn consume_card_add_buff_emits_consumption_before_the_optional_grant() {
         vec![999]
     );
 }
+
+#[test]
+fn planet_removal_uses_each_configured_buff_family() {
+    let managers = BattleManagers::default();
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(60252, "DisperseForce3"),
+        vec![307002112, 307002212, 307001312],
+        vec!["307002112".into(), "307002212".into(), "307001312".into()],
+    );
+
+    let ops = super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 307001333,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &TargetPool::default(),
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    let selectors = ops
+        .into_iter()
+        .map(|op| match op {
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                target_uid: 10,
+                selector: BuffRemoveSelector::IdOrType(buff_id),
+                ..
+            }))) => buff_id,
+            other => panic!("unexpected op: {other:?}"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(selectors, vec![307002112, 307002212, 307001312]);
+}

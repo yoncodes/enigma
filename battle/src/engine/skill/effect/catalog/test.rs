@@ -134,6 +134,24 @@ fn anjo_negative_status_rate_condition_compiles_as_an_active_modifier() {
 }
 
 #[test]
+fn kaalaa_baunaa_planet_removal_compiles_through_its_exact_behavior() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [307001333], []);
+    let effect = catalog.get(307001333).unwrap();
+
+    assert!(catalog.issues(307001333).is_empty());
+    assert!(effect.slots.iter().all(|slot| slot.compiled_route.is_ok()));
+    assert_eq!(effect.slots[1].behavior.spec.key.opcode, 60252);
+    assert_eq!(
+        effect.slots[1].behavior.spec.kind,
+        crate::engine::skill::behavior::classify::BehaviorKind::DisperseForce3
+    );
+    assert!(crate::engine::skill::behavior::has_destination(
+        &effect.slots[1].behavior
+    ));
+}
+
+#[test]
 fn entering_entities_extend_the_scoped_catalog_from_their_own_roots() {
     init_config();
     let mut catalog = SkillEffectCatalog::default();
