@@ -261,6 +261,32 @@ fn remove_buff_use_skill_keeps_its_exact_identity_and_phase() {
 }
 
 #[test]
+fn special_temporary_card_keeps_its_exact_identity_and_arguments() {
+    let definition = find_key(60300, "AddSpTempCard2").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::AddSpTempCard2);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert!(supports(&ParsedBehavior::new(
+        60300,
+        "AddSpTempCard2",
+        vec![31446013]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60300,
+        "AddSpTempCard2",
+        vec![0]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60300,
+        "AddSpTempCard2",
+        vec![31446013, 1],
+    )));
+    assert!(find_key(60300, "AddSpTempCard").is_none());
+}
+
+#[test]
 fn channel_duration_reduction_keeps_its_exact_identity_and_phase() {
     let definition = find_key(60094, "ReduceCastChannelCount").unwrap();
     let supports = definition.supports.unwrap();

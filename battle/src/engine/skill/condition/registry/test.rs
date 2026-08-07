@@ -1014,6 +1014,26 @@ fn conduit_cost_uses_its_exact_activation_subscription() {
 }
 
 #[test]
+fn use_device_skill_uses_its_exact_activation_subscription() {
+    assert_eq!(
+        parse(792208, "UseDeviceSkill", &[]),
+        Some(ParsedConditionKind::None(NoneMode::Unconditional))
+    );
+    assert_eq!(parse(792208, "UseDeviceSkill", &["1".into()]), None);
+    let definition = find_key(792208, "UseDeviceSkill").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::ConduitActivated,
+            phase: None,
+        }
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert_eq!(definition.reaction_frame_scope, ReactionFrameScope::Causing);
+    assert!(find_key(792208, "PerDeviceCurrCost").is_none());
+}
+
+#[test]
 fn conduit_meter_and_group_conditions_keep_their_setup_stages() {
     assert_eq!(
         parse(787105, "DeviceExPoint", &["1".into(), "100".into()]),
