@@ -621,6 +621,75 @@ fn configured_special_temp_card_runs_during_the_opening_round_start_card_event()
 }
 
 #[test]
+fn twins_round_start_passive_adds_the_captured_precast_card() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3149),
+                team_type: Some(1),
+                current_hp: Some(100),
+                passive_skill: vec![116385685],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [116385685], []);
+    assert!(catalog.get(116385685).is_some());
+    assert!(
+        !crate::engine::event::dispatcher::dispatch_compiled_setup(
+            &pool,
+            &managers,
+            &catalog,
+            SetupStage::RoundStartCondition,
+            101,
+        )
+        .unwrap()
+        .is_empty()
+    );
+    let start = crate::engine::runtime::drain::run_setup_stage(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        SetupStage::RoundStartCondition,
+        101,
+    )
+    .unwrap();
+
+    assert!(managers.card.hand().iter().any(|card| {
+        card.skill_id == Some(31446013) && card.uid == Some(10) && card.temp_card == Some(true)
+    }));
+    fn has_precast(effect: &sonettobuf::ActEffect) -> bool {
+        (effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Spcardadd as i32)
+            && effect.target_id == Some(10)
+            && effect.effect_num == Some(31446013)
+            && effect.reserve_id == Some(3149))
+            || effect
+                .fight_step
+                .as_ref()
+                .is_some_and(|step| step.act_effect.iter().any(has_precast))
+    }
+    let steps = crate::engine::packet::timeline::project(&start.frames).unwrap();
+    assert!(
+        steps
+            .iter()
+            .flat_map(|step| &step.act_effect)
+            .any(has_precast)
+    );
+}
+
+#[test]
 fn opening_round_start_conditions_only_run_for_the_player_side() {
     init_config();
     let entity = |uid, team_type| FightEntityInfo {

@@ -1,6 +1,72 @@
 use super::*;
 
 #[test]
+fn twins_conduit_activation_consumes_chirp_signal_through_the_captured_passive() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(if uid == 10 { 3149 } else { 3001 }),
+        team_type: Some(1),
+        current_hp: Some(100),
+        passive_skill: (uid == 10).then_some(116385685).into_iter().collect(),
+        buffs: vec![BuffInfo {
+            uid: Some(uid + 100),
+            buff_id: Some(116385671),
+            from_uid: Some(10),
+            layer: Some(3),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10), entity(11)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    let result = run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        BattleEvent::ConduitActivated(crate::engine::event::payload::ConduitActivatedEvent {
+            source_uid: 10,
+            team: 1,
+            skill_id: 31490011,
+            power_id: 1,
+            activation_cost: 10,
+            spent: 10,
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(
+        managers.buff.snapshot(10, 110).and_then(|buff| buff.layer),
+        Some(1)
+    );
+    assert_eq!(
+        managers.buff.snapshot(11, 111).and_then(|buff| buff.layer),
+        Some(1)
+    );
+    assert!(result.frames.iter().any(|frame| matches!(
+        frame.owner,
+        FrameOwner::Skill {
+            skill_id: 116385685,
+            ..
+        }
+    )));
+}
+
+#[test]
 fn received_skill_rank_applies_only_its_configured_extra_burn() {
     crate::test_support::init_config();
     let burn_layers = |skill_id| {
