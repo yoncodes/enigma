@@ -121,7 +121,9 @@ impl BehaviorHandler for Handler {
             BehaviorKind::AddTargetBuffByPoison => {
                 add_target_buff_by_poison_ops(&context, behavior)
             }
-            BehaviorKind::AddBuffRanId => random_pool_grant_commands(&mut context, behavior),
+            BehaviorKind::AddBuffRanId | BehaviorKind::AddBuffRanTypeId => {
+                random_pool_grant_commands(&mut context, behavior)
+            }
             BehaviorKind::AddBuffByHeroId => hero_grant_command(&context, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::DisperseForce2 => damage_window_remove_ops(context.target_uid, behavior),

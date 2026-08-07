@@ -257,6 +257,49 @@ fn random_pool_add_emits_distinct_configured_buff_commands() {
 }
 
 #[test]
+fn random_type_pool_replays_the_captured_configured_choice() {
+    crate::test_support::init_config();
+    let managers = BattleManagers::default();
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(20022, "AddBuffRanTypeId"),
+        vec![30830151, 1],
+        Vec::new(),
+    );
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_random_buffs([308301512]);
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+
+    let ops = super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 30830161,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &TargetPool::default(),
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
+            BuffGrant {
+                buff_id: 308301512,
+                ..
+            }
+        )))]
+    ));
+}
+
+#[test]
 fn random_pool_arguments_require_a_configured_distinct_draw() {
     crate::test_support::init_config();
     let behavior = |args| {

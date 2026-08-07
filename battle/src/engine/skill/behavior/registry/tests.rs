@@ -123,6 +123,15 @@ fn destination_readiness_belongs_to_the_exact_registry_row() {
 }
 
 #[test]
+fn random_buff_type_pool_keeps_its_exact_identity() {
+    let definition = find_key(20022, "AddBuffRanTypeId").unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::AddBuffRanTypeId);
+    assert!(definition.destination);
+    assert!(find_key(20022, "AddBuffRanId").is_none());
+}
+
+#[test]
 fn attribute_damage_is_an_exact_targeted_genesis_route() {
     let definition = find_key(10006, "Damage").unwrap();
     let supported = ParsedBehavior::from_spec(

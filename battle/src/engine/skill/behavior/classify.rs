@@ -18,6 +18,7 @@ pub enum BehaviorKind {
     AddBuff,
     AddBuffPowerUse,
     AddBuffRanId,
+    AddBuffRanTypeId,
     AddBuffByHeroId,
     AddTargetBuffByPoison,
     AddBuffRound,
