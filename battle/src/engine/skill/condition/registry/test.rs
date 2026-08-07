@@ -2232,6 +2232,25 @@ fn active_skill_buff_count_keeps_its_exact_modifier_route() {
 }
 
 #[test]
+fn round_start_buff_count_keeps_its_exact_setup_route() {
+    assert_eq!(
+        parse(61102, "PerBuffIdCount", &["109360002".into()]),
+        Some(ParsedConditionKind::BuffIdCount {
+            buff_ids: vec![109360002],
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 1,
+        })
+    );
+    assert_eq!(
+        find_key(61102, "PerBuffIdCount").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 102,
+        })
+    );
+}
+
+#[test]
 fn player_buff_gate_keeps_team_presence_and_exact_buff_identity() {
     assert_eq!(
         parse(
