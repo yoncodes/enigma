@@ -26,6 +26,7 @@ pub enum SkillExecutionMode {
     Nested,
     Active,
     DirectBig,
+    Device,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

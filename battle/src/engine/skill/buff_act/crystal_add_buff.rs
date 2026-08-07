@@ -6,7 +6,7 @@ use crate::engine::{
         emanation::EmanationKind,
     },
     skill::{
-        action::SkillPhase,
+        action::{SkillExecutionMode, SkillPhase},
         condition::extra::skill_kind_from_is_extra,
         rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
@@ -44,7 +44,15 @@ pub fn rule_ops(
     let is_extra_action = skill_kind_from_is_extra(action.extra_skill_kind)
         .is_some_and(|kind| kind.is_extra_action());
     let blue = if is_extra_action { *blue_layer } else { 0 };
-    let purple = if is_extra_action { 0 } else { *purple_layer };
+    let purple = if !is_extra_action
+        && matches!(
+            action.mode,
+            SkillExecutionMode::Active | SkillExecutionMode::DirectBig
+        ) {
+        *purple_layer
+    } else {
+        0
+    };
     let layer = managers
         .emanation
         .count(feature.source_uid, EmanationKind::Blue)
@@ -305,6 +313,30 @@ mod tests {
                 }
             )))])
         ));
+    }
+
+    #[test]
+    fn device_attacks_are_not_purple_active_incantations() {
+        let (mut managers, feature, mut event) = fixture();
+        assert!(managers.emanation.select(10, 10));
+        let BattleEvent::SkillAction(action) = &mut event else {
+            unreachable!()
+        };
+        action.mode = SkillExecutionMode::Device;
+
+        assert_eq!(rule_ops(&managers, &feature, &event), Some(Vec::new()));
+    }
+
+    #[test]
+    fn nested_non_extra_attacks_are_not_active_attacks() {
+        let (mut managers, feature, mut event) = fixture();
+        assert!(managers.emanation.select(10, 10));
+        let BattleEvent::SkillAction(action) = &mut event else {
+            unreachable!()
+        };
+        action.mode = SkillExecutionMode::Nested;
+
+        assert_eq!(rule_ops(&managers, &feature, &event), Some(Vec::new()));
     }
 
     #[test]
