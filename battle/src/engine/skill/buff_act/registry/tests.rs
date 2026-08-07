@@ -874,6 +874,19 @@ fn contract_channel_keeps_its_exact_grant_and_round_start_routes() {
 }
 
 #[test]
+fn bound_channel_lock_keeps_its_exact_state_route() {
+    let definition = find(837, "NoneCastChannel").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::NoneCastChannel);
+    assert_eq!(
+        destination(837, "NoneCastChannel", &[]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(837, "NoneCastChannel", &[1]));
+    assert!(find(837, "ContractCastChannel").is_none());
+}
+
+#[test]
 fn absolute_missing_hp_attributes_keep_their_exact_static_routes() {
     assert_eq!(
         destination(853, "AttrByLostHp", &[10_000_000, 215, 100, 1, 1, 0]),

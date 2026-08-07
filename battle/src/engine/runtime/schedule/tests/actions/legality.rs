@@ -257,6 +257,44 @@ fn channeling_blocks_active_card_actions() {
 }
 
 #[test]
+fn contract_channeling_blocks_binder_and_bound_card_actions() {
+    init_config();
+    for (buff_id, kind) in [
+        (
+            31_000_141,
+            buff_act::registry::BuffActKind::ContractCastChannel,
+        ),
+        (31_000_151, buff_act::registry::BuffActKind::NoneCastChannel),
+    ] {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(buff_id),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+
+        assert!(managers.buff.has_buff_act_kind(10, kind));
+        assert!(card_skill_is_blocked(
+            &managers,
+            &SkillEffectCatalog::default(),
+            10,
+            100,
+        ));
+    }
+}
+
+#[test]
 fn sleep_blocks_every_active_card_action() {
     init_config();
     let fight = Fight {
