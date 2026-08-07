@@ -263,6 +263,18 @@ pub fn per_team_status_type_count(
     })
 }
 
+pub fn per_distinct_status_type_count(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::PerTeamBuffStatusTypeCount {
+        status_ids: parse_buff_ids(raw_args)?,
+        divisor: 1,
+        max_count: i32::MAX,
+    })
+}
+
 pub fn enemy_highest_buff_type_at_least(
     _: i32,
     _: &str,

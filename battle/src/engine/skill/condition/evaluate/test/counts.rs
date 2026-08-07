@@ -603,6 +603,61 @@ fn team_status_type_count_repeats_per_distinct_buff_type() {
 }
 
 #[test]
+fn target_status_type_count_repeats_once_per_distinct_type() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                buffs: vec![
+                    BuffInfo {
+                        buff_id: Some(400901),
+                        uid: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(400902),
+                        uid: Some(2),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(712313),
+                        uid: Some(3),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let condition = ParsedCondition {
+        opcode: 85203,
+        type_name: "PerBuffTypeCountGroupByTypeId".into(),
+        kind: ParsedConditionKind::PerTeamBuffStatusTypeCount {
+            status_ids: vec![1, 3, 5, 14],
+            divisor: 1,
+            max_count: i32::MAX,
+        },
+        raw_args: vec!["1,3,5".into(), "14".into()],
+    };
+
+    assert_eq!(
+        conditions_fire_count(
+            &[condition],
+            10,
+            &[10],
+            Some(&managers),
+            &TargetPool::from_fight(&fight),
+            TargetContext::default(),
+        ),
+        2
+    );
+}
+
+#[test]
 fn accumulated_team_buff_count_preserves_all_crossed_thresholds() {
     init_config();
     let fight = Fight {

@@ -456,6 +456,7 @@ condition_definitions! {
     [59302] "PerBuffId" => buff::per_buff_id, event_trigger(EventKind::RoundEnd, None);
     [61208] "PerBuffIdCount" => buff::per_buff_id_count, uses_active_skill_targets(matching_buff_act_owns_behavior(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage))));
     [61210] "PerBuffIdCount" => buff::per_buff_id_count, uses_active_skill_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit)));
+    [85203] "PerBuffTypeCountGroupByTypeId" => buff::per_distinct_status_type_count, predicate(&[EventKind::BuffChanged]);
     [518203] "PerHasBuffTypeLayer" => buff::per_type_layer, predicate(&[EventKind::BuffChanged]);
     [518210] "PerHasBuffTypeLayer" => buff::per_type_layer, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [77203] "HasBuffGroup" => buff::buff_group, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));

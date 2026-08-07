@@ -1331,6 +1331,27 @@ fn bound_pair_threshold_keeps_its_per_entity_predicate() {
 }
 
 #[test]
+fn distinct_status_type_count_keeps_its_exact_predicate_route() {
+    let definition = find_key(85203, "PerBuffTypeCountGroupByTypeId").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::BuffChanged]);
+    assert_eq!(
+        (definition.parse)(
+            85203,
+            "PerBuffTypeCountGroupByTypeId",
+            &["1,3,5".into(), "14".into()],
+        ),
+        Some(ParsedConditionKind::PerTeamBuffStatusTypeCount {
+            status_ids: vec![1, 3, 5, 14],
+            divisor: 1,
+            max_count: i32::MAX,
+        })
+    );
+    assert!(find_key(85203, "PerBuffTypeCountGroupByTypeIdLimit").is_none());
+}
+
+#[test]
 fn static_status_predicate_keeps_its_exact_source_side_route() {
     let definition = find_key(18201, "HasBuff").unwrap();
     assert_eq!(definition.role, ConditionRole::Predicate);
