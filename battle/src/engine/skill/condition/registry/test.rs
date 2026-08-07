@@ -2609,3 +2609,56 @@ fn hand_skill_presence_keeps_exact_card_identity_and_round_timing() {
         })
     );
 }
+
+#[test]
+fn ritual_dance_totals_keep_their_exact_active_skill_routes() {
+    let expected = ParsedConditionKind::BuffTypeCount {
+        type_ids: vec![31100201],
+        compare: ConditionCompare::GreaterThanOrEqual,
+        threshold: 4,
+    };
+    assert_eq!(
+        parse(
+            537201,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["31100201".into(), "4".into()],
+        ),
+        Some(expected)
+    );
+    assert_eq!(
+        find_key(537201, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        })
+    );
+    assert_eq!(
+        find_key(537203, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert!(
+        parse(
+            537201,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["0".into(), "4".into()]
+        )
+        .is_none()
+    );
+    assert!(
+        parse(
+            537203,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["31100201".into(), "0".into()]
+        )
+        .is_none()
+    );
+    assert!(
+        parse(
+            537203,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["31100201".into(), "8".into(), "1".into()]
+        )
+        .is_none()
+    );
+    assert!(find_key(537201, "TypeIdBuffCountMoreThan").is_none());
+}

@@ -437,6 +437,8 @@ condition_definitions! {
     [535215] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::AllyAction, None);
     [535303] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::RoundEndEntitySettlement, None);
     [535304] "TypeIdBuffCountMoreThan" => buff::buff_type_pair_at_least, predicate(&[]);
+    [537201] "HasTypeIdBuffTotalCountMoreThan" => buff::positive_buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [537203] "HasTypeIdBuffTotalCountMoreThan" => buff::positive_buff_type_at_least, predicate(&[]);
     [536208] "TypeIdBuffCountLessThan" => buff::buff_type_at_most, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [536201] "TypeIdBuffCountLessThan" => buff::buff_type_at_most, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [536210] "TypeIdBuffCountLessThan" => buff::buff_type_at_most, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));

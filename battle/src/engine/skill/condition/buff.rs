@@ -212,6 +212,19 @@ pub fn buff_type_pair_at_least(
     buff_type_count(raw_args, ConditionCompare::GreaterThanOrEqual)
 }
 
+pub fn positive_buff_type_at_least(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [type_id, threshold] = parse_fixed(raw_args)?;
+    (type_id > 0 && threshold > 0).then_some(ParsedConditionKind::BuffTypeCount {
+        type_ids: vec![type_id],
+        compare: ConditionCompare::GreaterThanOrEqual,
+        threshold,
+    })
+}
+
 pub fn buff_type_at_most(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     buff_type_count(raw_args, ConditionCompare::LessThanOrEqual)
 }

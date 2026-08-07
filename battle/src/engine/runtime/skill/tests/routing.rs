@@ -211,6 +211,90 @@ fn behavior_target_from_logic_target_keeps_the_runtime_target() {
 }
 
 #[test]
+fn ritual_dance_threshold_updates_the_current_action_before_lifecycle_publication() {
+    crate::test_support::init_config();
+
+    let action_kind = |layer| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    team_type: Some(1),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1_001),
+                        buff_id: Some(31100201),
+                        from_uid: Some(10),
+                        layer: Some(layer),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    team_type: Some(2),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        defense: Some(100),
+                        mdefense: Some(100),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 31100531,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(-1);
+        let mut execution = SkillExecution::new(TargetContext::default());
+        let emission = emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            &mut execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap();
+        let lifecycle_kind = emission.ops.iter().find_map(|emission| match &emission.op {
+            RuleOp::SkillLifecycle(
+                crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action),
+            ) if action.phase == SkillPhase::Immediate => Some(action.extra_skill_kind),
+            _ => None,
+        });
+
+        (execution.context.extra_skill_kind, lifecycle_kind)
+    };
+
+    assert_eq!(action_kind(3), (0, Some(0)));
+    assert_eq!(
+        action_kind(4),
+        (
+            crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction.id(),
+            Some(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction.id()),
+        )
+    );
+}
+
+#[test]
 fn buff_count_multiplier_runs_after_damage_for_every_action_target() {
     crate::test_support::init_config();
     const CHIRP_SIGNAL: i32 = 116_385_671;

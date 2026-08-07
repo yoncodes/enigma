@@ -76,6 +76,38 @@ fn ignore_beat_back_is_an_exact_argumentless_modifier() {
 }
 
 #[test]
+fn set_extra_type_keeps_its_exact_current_action_destination() {
+    let definition = find_key(60271, "SetExtraType").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::SetExtraType);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert!(definition.collect_attack_modifier.is_none());
+    assert!(supports(&ParsedBehavior::new(
+        60271,
+        "SetExtraType",
+        vec![1]
+    )));
+    assert!(supports(&ParsedBehavior::new(
+        60271,
+        "SetExtraType",
+        vec![3]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60271,
+        "SetExtraType",
+        vec![2]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60271,
+        "SetExtraType",
+        vec![1, 3]
+    )));
+    assert!(find_key(60271, "SkillExtraType").is_none());
+}
+
+#[test]
 fn implemented_skill_casts_own_destinations_but_unimplemented_siblings_do_not() {
     for (opcode, type_name) in [
         (50008, "DirectUseSkill"),
