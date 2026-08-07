@@ -779,8 +779,7 @@ impl HpManager {
                 value.origin,
                 value.source_uid,
                 value.target_uid,
-                value.amount > 0
-                    || (value.amount == 0 && value.effect_kind == DamageEffectKind::Avoided),
+                value.amount >= 0,
             ),
             HpCommand::Lose(value) => (
                 value.origin,

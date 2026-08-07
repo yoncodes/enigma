@@ -261,6 +261,18 @@ fn damage_cap_is_an_exact_static_consumer_with_its_captured_marker() {
 }
 
 #[test]
+fn fixed_damage_accepts_zero_without_collapsing_identity() {
+    let definition = find(511, "FixedHurt").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::FixedHurt);
+    assert!(definition.state.consumer);
+    assert!(has_destination(511, "FixedHurt", &[0]));
+    assert!(has_destination(511, "FixedHurt", &[1]));
+    assert!(!has_destination(511, "FixedHurt", &[-1]));
+    assert!(find(511, "DamageNotMoreThan").is_none());
+}
+
+#[test]
 fn hp_loss_floor_is_an_exact_static_consumer() {
     let definition = find(1008, "BanLostLife").unwrap();
 
