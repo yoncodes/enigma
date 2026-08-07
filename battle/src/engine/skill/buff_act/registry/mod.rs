@@ -61,6 +61,7 @@ pub enum BuffActKind {
     AddSpTempCard,
     AddToBuffEntity2,
     AddBuffAfterAttack,
+    AddToAttacker,
     AddToAttackTargets,
     AddToTarget,
     AttackNumSplitEmitterNum,
@@ -617,6 +618,11 @@ buff_act_definitions! {
         runtime_marker: BeforeChanges(EventSource),
         runtime: |context| super::rebound::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::rebound::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(303, "Rebound"), &[EffectType::Rebound as i32]));
+    (305, "AddToAttacker") => AddToAttacker,
+        runtime_marker: BeforeChanges(EventSource),
+        scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
+        supports: |args| matches!(args, [buff_id] if *buff_id > 0),
+        wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(305, "AddToAttacker"), &[], &[EffectType::Addtoattacker as i32], &[]));
     (401, "Dizzy") => Dizzy, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(401, "Dizzy"), &[EffectType::Dizzy as i32]));
     (402, "Petrified") => Petrified, event: EventKind::TargetAttacked, frame: CausingFrame,
