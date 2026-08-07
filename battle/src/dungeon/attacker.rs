@@ -737,6 +737,20 @@ mod tests {
         assert!(!trial.passive_skill.is_empty());
     }
 
+    #[test]
+    fn linked_trial_psychube_contributes_stats_and_passives() {
+        crate::test_support::init_config();
+        let (trial, stats) =
+            crate::engine::entity::builder::EntityBuilder::trial(116385001, -1, 1, 1).unwrap();
+
+        assert_eq!(
+            (stats.hp, stats.atk, stats.def, stats.mdef),
+            (14610, 2469, 1005, 1005)
+        );
+        assert!(trial.passive_skill.contains(&437115));
+        assert!(trial.passive_skill.contains(&437215));
+    }
+
     #[tokio::test]
     async fn configured_aids_build_as_allied_monsters_and_reserve_their_uids() {
         crate::test_support::init_config();

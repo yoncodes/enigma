@@ -111,25 +111,29 @@ impl std::ops::Add for Stats {
 impl Stats {
     pub fn build_for_hero(hero: &HeroData, equips: &[Equipment]) -> Self {
         let base = StatInputs::from_hero_data(hero, None);
-        let core_base = level_base(base.hero_id, base.level) + rank_bonus(base.hero_id, base.rank);
         equips.iter().fold(Self::build(&base), |stats, equip| {
             let input = StatInputs::from_hero_data(hero, Some(equip));
-            stats + equip_bonus(&input) + equip_break_bonus(&input, core_base)
+            stats + Self::equipment_bonus(&input)
         })
     }
 
     pub fn build(input: &StatInputs) -> Self {
         let level = level_base(input.hero_id, input.level);
         let rank = rank_bonus(input.hero_id, input.rank);
-        let core_base = level + rank;
         let core = apply_destiny(
             level,
             rank,
             destiny_bonus(input.hero_id, input.destiny_rank),
         );
-        core + talent_bonus(input, level, rank)
-            + equip_bonus(input)
-            + equip_break_bonus(input, core_base)
+        core + talent_bonus(input, level, rank) + Self::equipment_bonus(input)
+    }
+
+    pub(super) fn equipment_bonus(input: &StatInputs) -> Self {
+        equip_bonus(input)
+            + equip_break_bonus(
+                input,
+                level_base(input.hero_id, input.level) + rank_bonus(input.hero_id, input.rank),
+            )
     }
 
     pub fn base(self) -> HeroAttribute {

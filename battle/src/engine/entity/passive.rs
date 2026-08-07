@@ -216,7 +216,7 @@ impl Passive {
         }
     }
 
-    fn psychube(equip_id: i32, skill_level: Option<i32>) -> Vec<PassiveSkill> {
+    pub(super) fn psychube(equip_id: i32, skill_level: Option<i32>) -> Vec<PassiveSkill> {
         let mut rows = configs::get()
             .equip_skill
             .iter()
