@@ -139,7 +139,7 @@ fn guard_broken_only_matches_the_entity_from_the_break_event() {
 fn per_kill_count_repeats_once_for_each_kill() {
     init_config();
     let condition = ParsedCondition {
-        opcode: 99210,
+        opcode: 992101,
         type_name: "PerKillNum".into(),
         kind: ParsedConditionKind::PerKillCount { divisor: 1 },
         raw_args: vec!["1".into()],
