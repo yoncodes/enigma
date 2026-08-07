@@ -123,6 +123,26 @@ fn destination_readiness_belongs_to_the_exact_registry_row() {
 }
 
 #[test]
+fn contract_offer_keeps_its_exact_argumentless_key() {
+    let definition = find_key(60092, "NotifyHeroContract").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::NotifyHeroContract);
+    assert!(definition.destination);
+    assert!(supports(&ParsedBehavior::new(
+        60092,
+        "NotifyHeroContract",
+        Vec::new()
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60092,
+        "NotifyHeroContract",
+        vec![1]
+    )));
+    assert!(find_key(60092, "ContractEndClearBuff").is_none());
+}
+
+#[test]
 fn random_buff_type_pool_keeps_its_exact_identity() {
     let definition = find_key(20022, "AddBuffRanTypeId").unwrap();
 

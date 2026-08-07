@@ -3,6 +3,7 @@ pub mod battle_rule;
 pub mod buff;
 pub mod card;
 pub mod conduit;
+pub mod contract;
 pub mod emanation;
 pub mod emitter;
 pub mod entity;
@@ -56,6 +57,7 @@ pub struct BattleManagers {
     pub(crate) buff: BuffManager,
     pub card: CardManager,
     pub conduit: ConduitManager,
+    pub contract: contract::ContractManager,
     pub emitter: EmitterManager,
     pub entity: entity::EntityManager,
     pub emanation: EmanationManager,

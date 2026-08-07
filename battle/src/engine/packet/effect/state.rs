@@ -1,6 +1,41 @@
 use super::*;
 
 impl EffectPacket {
+    pub fn contract_offer(owner_uid: i64, config_effect: i32, candidates: &[i64]) -> ActEffect {
+        ActEffect {
+            target_id: Some(owner_uid),
+            effect_type: Some(EffectType::Notifiyherocontract as i32),
+            effect_num: Some(0),
+            config_effect: Some(config_effect),
+            reserve_str: Some(
+                candidates
+                    .iter()
+                    .map(i64::to_string)
+                    .collect::<Vec<_>>()
+                    .join("#"),
+            ),
+            ..Default::default()
+        }
+    }
+
+    pub fn contract_owner(owner_uid: i64) -> ActEffect {
+        ActEffect {
+            target_id: Some(owner_uid),
+            effect_type: Some(EffectType::Contranct as i32),
+            effect_num: Some(0),
+            ..Default::default()
+        }
+    }
+
+    pub fn contract_bound(bound_uid: i64) -> ActEffect {
+        ActEffect {
+            target_id: Some(bound_uid),
+            effect_type: Some(EffectType::Becontrancted as i32),
+            effect_num: Some(0),
+            ..Default::default()
+        }
+    }
+
     pub fn ex_point(change: ExPointApplyResult) -> ActEffect {
         ActEffect {
             target_id: Some(change.target_uid),
