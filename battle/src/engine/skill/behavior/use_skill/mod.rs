@@ -204,9 +204,9 @@ impl BehaviorHandler for Handler {
                 {
                     return Some(Vec::new());
                 }
-                let scripted = context.determinism.has_scripted_random_skill(
-                    &behavior.arg_list(3)?.iter().copied().collect::<Vec<_>>(),
-                );
+                let scripted = context
+                    .determinism
+                    .has_scripted_random_skill(&behavior.arg_list(3)?);
                 let choices = if available < minimum {
                     let skill_id = *behavior
                         .arg_list(3)?
@@ -590,9 +590,9 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
     }
 }
 
-fn remove_buff_skill_choices(
-    behavior: &ParsedBehavior,
-) -> Option<(i32, i32, Vec<(i32, i32, usize)>)> {
+type RemoveBuffSkillChoices = (i32, i32, Vec<(i32, i32, usize)>);
+
+fn remove_buff_skill_choices(behavior: &ParsedBehavior) -> Option<RemoveBuffSkillChoices> {
     remove_buff_skill_choices_in_range(behavior, behavior.arg(1)?, behavior.arg(2)?)
 }
 
@@ -600,7 +600,7 @@ fn remove_buff_skill_choices_in_range(
     behavior: &ParsedBehavior,
     minimum: i32,
     maximum: i32,
-) -> Option<(i32, i32, Vec<(i32, i32, usize)>)> {
+) -> Option<RemoveBuffSkillChoices> {
     let buff_id = behavior.arg(0)?;
     let base_minimum = behavior.arg(1)?;
     let base_maximum = behavior.arg(2)?;

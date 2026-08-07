@@ -195,7 +195,7 @@ mod tests {
                     FightEntityInfo {
                         uid: Some(22),
                         team_type: Some(1),
-                        ex_skill: Some(30_700_1333),
+                        ex_skill: Some(307_001_333),
                         current_hp: Some(1_000),
                         attr: Some(HeroAttribute {
                             hp: Some(1_000),
@@ -355,7 +355,7 @@ mod tests {
                 RuleOp::Skill(SkillInvocation {
                     plan: SkillRequest {
                         source_uid: 22,
-                        skill_id: 30_700_1333,
+                        skill_id: 307_001_333,
                     },
                     mode: SkillExecutionMode::Active,
                     ..
