@@ -13,9 +13,8 @@ pub fn per_hp(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
 }
 
 pub fn per_lost_hp(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
-    Some(ParsedConditionKind::PerLostHp {
-        interval_permille: first_i32(args)?.max(1),
-    })
+    let [interval_permille] = parse_fixed(args)?;
+    (interval_permille > 0).then_some(ParsedConditionKind::PerLostHp { interval_permille })
 }
 
 pub fn lost_hp_interval_count(uid: i64, interval_permille: i32, managers: &BattleManagers) -> i32 {

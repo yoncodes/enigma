@@ -234,6 +234,27 @@ fn missing_hp_multiplier_is_an_exact_predicate() {
 }
 
 #[test]
+fn hp_lost_ratio_keeps_its_exact_identity() {
+    let definition = find_key(623203, "HpLostRatio").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::HpLost]);
+    assert_eq!(
+        parse(623203, "HpLostRatio", &["100".into()]),
+        Some(ParsedConditionKind::PerLostHp {
+            interval_permille: 100,
+        })
+    );
+    assert_eq!(parse(623203, "LostLifePer", &["100".into()]), None);
+    assert_eq!(parse(623203, "HpLostRatio", &["0".into()]), None);
+    assert_eq!(parse(623203, "HpLostRatio", &["-100".into()]), None);
+    assert_eq!(
+        parse(623203, "HpLostRatio", &["100".into(), "1".into()]),
+        None
+    );
+}
+
+#[test]
 fn before_ap_resolution_keeps_its_exact_event_and_queue_preparation_roles() {
     let definition = find_key(107, "None").unwrap();
 
