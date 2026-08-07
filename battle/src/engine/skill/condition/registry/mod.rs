@@ -418,6 +418,7 @@ condition_definitions! {
     [57213] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)));
     [57301] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
     [57304] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::RoundEndAfterSettlement, None));
+    [539203] "PerSelfTeamTypeType2BuffTypeIdNum" => buff::per_team_status_type_count, predicate(&[EventKind::BuffChanged]);
     [539301] "PerSelfTeamTypeType2BuffTypeIdNum" => buff::per_team_status_type_count, event_trigger(EventKind::SmallRoundEnd, None);
     [51201] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [51203] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));

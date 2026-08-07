@@ -256,10 +256,19 @@ pub fn per_team_status_type_count(
     _: &str,
     raw_args: &[String],
 ) -> Option<ParsedConditionKind> {
+    let [divisor, max_count, status_ids] = raw_args else {
+        return None;
+    };
+    let divisor = divisor.parse().ok()?;
+    let max_count = max_count.parse().ok()?;
+    let status_ids = parse_buff_ids(std::slice::from_ref(status_ids))?;
+    if divisor <= 0 || max_count <= 0 || status_ids.iter().any(|status| *status <= 0) {
+        return None;
+    }
     Some(ParsedConditionKind::PerTeamBuffStatusTypeCount {
-        divisor: raw_args.first()?.parse().ok()?,
-        max_count: raw_args.get(1)?.parse().ok()?,
-        status_ids: parse_buff_ids(raw_args.get(2..3)?)?,
+        divisor,
+        max_count,
+        status_ids,
     })
 }
 
