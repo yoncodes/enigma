@@ -39,6 +39,7 @@ pub mod career_restraint;
 pub mod cast_channel;
 pub mod change_remove_buff_use_skill_param;
 pub mod conduit_select;
+pub mod contract_cast_channel;
 pub mod control_team_injury_count_round;
 pub mod count_continue_channel;
 pub mod create_additional_damage;

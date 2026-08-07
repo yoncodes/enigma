@@ -842,6 +842,38 @@ fn counted_channel_keeps_its_exact_state_event_route() {
 }
 
 #[test]
+fn contract_channel_keeps_its_exact_grant_and_round_start_routes() {
+    let definition = find(836, "ContractCastChannel").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::ContractCastChannel);
+    assert_eq!(definition.transaction.events, &[EventKind::BuffAdded]);
+    assert_eq!(
+        runtime_publication(836, "ContractCastChannel", EventKind::BuffAdded),
+        PublicationPhase::BeforePublish
+    );
+    assert_eq!(
+        runtime_event(836, "ContractCastChannel", 104),
+        Some(EventKind::RoundStart)
+    );
+    assert!(has_destination(
+        836,
+        "ContractCastChannel",
+        &[1, 150, 31_000_151, 31_000_441]
+    ));
+    assert!(!has_destination(
+        836,
+        "ContractCastChannel",
+        &[0, 150, 31_000_151, 31_000_441]
+    ));
+    assert!(!has_destination(
+        836,
+        "ContractCastChannel",
+        &[1, -150, 31_000_151, 31_000_441]
+    ));
+    assert!(find(836, "CastChannel").is_none());
+}
+
+#[test]
 fn absolute_missing_hp_attributes_keep_their_exact_static_routes() {
     assert_eq!(
         destination(853, "AttrByLostHp", &[10_000_000, 215, 100, 1, 1, 0]),

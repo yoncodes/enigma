@@ -107,6 +107,7 @@ pub enum BuffActKind {
     CareerRestraint,
     CastChannel,
     ChangeRemoveBuffUseSkillParam,
+    ContractCastChannel,
     ConsumeBuffAddBuffContinueChannel,
     ConsumeBuffContinueChannel,
     ControlTeamInjuryCountRound,
@@ -922,6 +923,13 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::each_change_attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(834, "EachChangeAttr"), &[EffectType::None as i32]));
+    (836, "ContractCastChannel") => ContractCastChannel,
+        transactions: [EventKind::BuffAdded],
+        publication: BeforePublish, frame: CausingFrame,
+        runtime: |context| super::contract_cast_channel::rule_ops(context.managers, context.catalog, context.subscriber, context.event?),
+        transaction: super::contract_cast_channel::grant_transaction_rule_ops,
+        supports: super::contract_cast_channel::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(836, "ContractCastChannel"), &[]));
     (838, "CountContinueChannel") => CountContinueChannel,
         event: EventKind::BuffStateChanged,
         runtime: |context| super::count_continue_channel::rule_ops(context.subscriber, context.event?),
