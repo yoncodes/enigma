@@ -744,6 +744,50 @@ fn power_ratio_reads_current_and_max_resource_values() {
 }
 
 #[test]
+fn bound_pair_threshold_does_not_sum_layers_across_entities() {
+    init_config();
+    let matches = |layer| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: [10, 11]
+                    .into_iter()
+                    .map(|uid| FightEntityInfo {
+                        uid: Some(uid),
+                        current_hp: Some(1),
+                        buffs: vec![BuffInfo {
+                            buff_id: Some(31000303),
+                            uid: Some(uid),
+                            duration: Some(1),
+                            layer: Some(layer),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        conditions_match(
+            &[exact_condition(
+                535212,
+                "TypeIdBuffCountMoreThan",
+                &["31000303", "8"],
+            )],
+            10,
+            &[10, 11],
+            Some(&managers),
+            &TargetPool::from_fight(&fight),
+            TargetContext::default(),
+        )
+    };
+
+    assert!(!matches(4));
+    assert!(matches(8));
+}
+
+#[test]
 fn poison_group_presence_is_evaluated_per_target() {
     init_config();
     let fight = Fight {

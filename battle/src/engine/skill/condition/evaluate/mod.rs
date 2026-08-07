@@ -510,6 +510,18 @@ fn condition_kind_matches(
                 .sum();
             compare_value(amount, *compare, *threshold)
         }
+        ParsedConditionKind::AnyTargetBuffTypeCount {
+            type_ids,
+            threshold,
+        } => managers.is_some_and(|managers| {
+            condition_targets.iter().any(|uid| {
+                type_ids
+                    .iter()
+                    .map(|type_id| managers.buff.buff_type_amount(*uid, *type_id))
+                    .sum::<i32>()
+                    >= *threshold
+            })
+        }),
         ParsedConditionKind::BuffGroup(group_ids) => managers.is_some_and(|managers| {
             condition_targets
                 .iter()

@@ -322,6 +322,25 @@ mod tests {
     }
 
     #[test]
+    fn standalone_action_threshold_owns_the_ally_action_route() {
+        init_config();
+        let conditions = parse_conditions(config::configs::get(), "535212#31060004#3");
+        let route = ConditionRoute::compile(&conditions).unwrap();
+
+        assert_eq!(
+            route.branches[0].driver,
+            Some(ConditionDriver::Trigger(ConditionTrigger {
+                key: crate::engine::skill::rule::DefinitionKey::new(
+                    535212,
+                    "TypeIdBuffCountMoreThan",
+                ),
+                event: EventKind::AllyAction,
+                phase: None,
+            }))
+        );
+    }
+
+    #[test]
     fn incompatible_drivers_fail_instead_of_using_the_first_condition() {
         init_config();
         let conditions = parse_conditions(config::configs::get(), "208&210");

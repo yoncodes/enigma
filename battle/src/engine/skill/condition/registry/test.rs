@@ -1308,6 +1308,29 @@ fn received_hit_afflatus_conditions_keep_their_exact_event_lane() {
 }
 
 #[test]
+fn bound_pair_threshold_keeps_its_per_entity_predicate() {
+    assert_eq!(
+        parse(
+            535212,
+            "TypeIdBuffCountMoreThan",
+            &["31000303".into(), "8".into()],
+        ),
+        Some(ParsedConditionKind::AnyTargetBuffTypeCount {
+            type_ids: vec![31000303],
+            threshold: 8,
+        })
+    );
+    assert_eq!(
+        find_key(535212, "TypeIdBuffCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        })
+    );
+    assert!(find_key(535212, "HasTypeIdBuffMoreThan").is_none());
+}
+
+#[test]
 fn static_status_predicate_keeps_its_exact_source_side_route() {
     let definition = find_key(18201, "HasBuff").unwrap();
     assert_eq!(definition.role, ConditionRole::Predicate);

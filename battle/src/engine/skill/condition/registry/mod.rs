@@ -429,6 +429,7 @@ condition_definitions! {
     [535208] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [535201] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [535210] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
+    [535212] "TypeIdBuffCountMoreThan" => buff::any_target_buff_type_at_least, event_trigger(EventKind::AllyAction, None);
     [535203] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, predicate(&[]);
     [535104] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [535214] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::TargetAttacked, None);

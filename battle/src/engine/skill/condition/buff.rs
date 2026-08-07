@@ -190,6 +190,17 @@ pub fn buff_type_at_least(_: i32, _: &str, raw_args: &[String]) -> Option<Parsed
     buff_type_count(raw_args, ConditionCompare::GreaterThanOrEqual)
 }
 
+pub fn any_target_buff_type_at_least(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::AnyTargetBuffTypeCount {
+        type_ids: parse_buff_ids(raw_args.get(..1)?)?,
+        threshold: raw_args.get(1)?.parse().ok()?,
+    })
+}
+
 pub fn buff_type_pair_at_least(
     _: i32,
     _: &str,
