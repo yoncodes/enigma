@@ -658,6 +658,63 @@ fn target_status_type_count_repeats_once_per_distinct_type() {
 }
 
 #[test]
+fn buff_group_count_repeats_once_per_layer_across_targets() {
+    init_config();
+    let poison = |uid, amount| BuffInfo {
+        uid: Some(uid),
+        buff_id: Some(30560101),
+        from_uid: Some(10),
+        count: Some(amount),
+        layer: Some(amount),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    buffs: vec![poison(1, 2)],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    buffs: vec![poison(2, 1)],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let condition = ParsedCondition {
+        opcode: 669203,
+        type_name: "PerBuffGroupCount".into(),
+        kind: ParsedConditionKind::PerBuffGroupCount { group_id: 7 },
+        raw_args: vec!["7".into()],
+    };
+
+    assert_eq!(
+        conditions_fire_count(
+            &[condition],
+            10,
+            &[-1, -2],
+            Some(&managers),
+            &TargetPool::from_fight(&fight),
+            TargetContext::default(),
+        ),
+        3
+    );
+}
+
+#[test]
 fn accumulated_team_buff_count_preserves_all_crossed_thresholds() {
     init_config();
     let fight = Fight {

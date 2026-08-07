@@ -68,6 +68,9 @@ pub enum ParsedConditionKind {
         threshold: i32,
     },
     BuffGroup(Vec<i32>),
+    PerBuffGroupCount {
+        group_id: i32,
+    },
     NoBuffGroup(Vec<i32>),
     FromBuffAndToBuff {
         from_buff_id: i32,
