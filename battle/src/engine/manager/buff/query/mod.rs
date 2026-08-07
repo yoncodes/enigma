@@ -120,6 +120,23 @@ impl BuffManager {
         })
     }
 
+    pub fn buff_act_source_uid(&self, owner_uid: i64, kind: BuffActKind) -> Option<i64> {
+        self.buffs.iter().find_map(|active| {
+            (active.owner_uid == owner_uid
+                && active.definition.as_ref().is_some_and(|definition| {
+                    definition
+                        .features()
+                        .iter()
+                        .any(|feature| {
+                            feature.kind == Some(kind) && feature.arguments_supported
+                        })
+                }))
+            .then(|| active.buff.from_uid)
+            .flatten()
+            .filter(|source_uid| *source_uid != 0)
+        })
+    }
+
     pub fn buff_act_scalar(&self, owner_uid: i64, kind: BuffActKind) -> i32 {
         self.buff_act_argument_scalar(owner_uid, kind, 0)
     }

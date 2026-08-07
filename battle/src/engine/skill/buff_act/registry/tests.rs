@@ -814,6 +814,19 @@ fn special_moxie_cap_keeps_its_exact_transaction_identity() {
 }
 
 #[test]
+fn transferred_moxie_keeps_its_exact_state_route() {
+    let definition = find(833, "TransferAddExPoint").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::TransferAddExPoint);
+    assert_eq!(
+        destination(833, "TransferAddExPoint", &[]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(833, "TransferAddExPoint", &[1]));
+    assert!(find(833, "ExPointCantAdd").is_none());
+}
+
+#[test]
 fn counted_channel_keeps_its_exact_state_event_route() {
     let definition = find(838, "CountContinueChannel").unwrap();
 

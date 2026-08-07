@@ -543,6 +543,18 @@ impl BattleManagers {
         &mut self,
         command: ex_point::ExPointCommand,
     ) -> Result<ex_point::ExPointChanges, ex_point::ExPointCommandError> {
+        let command = match command {
+            ex_point::ExPointCommand::Change(mut change) if change.delta > 0 => {
+                if let Some(source_uid) = self.buff.buff_act_source_uid(
+                    change.target_uid,
+                    crate::engine::skill::buff_act::registry::BuffActKind::TransferAddExPoint,
+                ) {
+                    change.target_uid = source_uid;
+                }
+                ex_point::ExPointCommand::Change(change)
+            }
+            command => command,
+        };
         let target_uid = match command {
             ex_point::ExPointCommand::Change(change) => Some(change.target_uid),
             ex_point::ExPointCommand::Spend(change) => Some(change.target_uid),
