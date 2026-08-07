@@ -590,6 +590,7 @@ condition_definitions! {
     [180210] "PowerCompare" => resource::power_compare, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [180212999] "PowerCompare" => resource::power_compare, team_observes(event_trigger(EventKind::AllyAction, None));
     [180213999] "PowerCompare" => resource::power_compare, opposing_team_observes(event_trigger(EventKind::AllyAction, None));
+    [180100] "PowerCompare" => resource::power_compare, setup_route(SetupStage::RoundStartCondition, 100, &[]);
     [180102] "PowerCompare" => resource::power_compare, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [180104] "PowerCompare" => resource::power_compare, setup_route(SetupStage::RoundStart, 1, &[]);
     [180106] "PowerCompare" => resource::power_compare, setup_route(SetupStage::CardSetup, 0, &[]);
