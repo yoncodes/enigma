@@ -1651,6 +1651,38 @@ fn team_status_type_groups_keep_divisor_cap_and_categories() {
 }
 
 #[test]
+fn active_team_status_type_count_keeps_its_exact_predicate_route() {
+    let definition = find_key(539203, "PerSelfTeamTypeType2BuffTypeIdNum").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::BuffChanged]);
+    assert_eq!(
+        parse(
+            539203,
+            "PerSelfTeamTypeType2BuffTypeIdNum",
+            &["1".into(), "99".into(), "6".into()]
+        ),
+        Some(ParsedConditionKind::PerTeamBuffStatusTypeCount {
+            status_ids: vec![6],
+            divisor: 1,
+            max_count: 99,
+        })
+    );
+    for arguments in [
+        vec!["0".into(), "99".into(), "6".into()],
+        vec!["1".into(), "0".into(), "6".into()],
+        vec!["1".into(), "99".into(), "0".into()],
+        vec!["1".into(), "99".into(), "6".into(), "7".into()],
+    ] {
+        assert_eq!(
+            parse(539203, "PerSelfTeamTypeType2BuffTypeIdNum", &arguments),
+            None
+        );
+    }
+    assert!(find_key(539203, "PerBuffTypeCountGroupByTypeId").is_none());
+}
+
+#[test]
 fn firebud_rank_gate_uses_the_exact_after_damage_lane() {
     for (opcode, type_name) in [(66208, "UseSpecificSkill"), (501208, "UseHurtSkill")] {
         assert_eq!(

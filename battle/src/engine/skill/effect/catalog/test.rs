@@ -120,6 +120,20 @@ fn joe_missing_hp_rate_condition_compiles_as_an_active_modifier() {
 }
 
 #[test]
+fn anjo_negative_status_rate_condition_compiles_as_an_active_modifier() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31000441], []);
+    let effect = catalog.get(31000441).unwrap();
+
+    assert!(catalog.issues(31000441).is_empty());
+    assert!(effect.slots.iter().all(|slot| slot.compiled_route.is_ok()));
+    assert_eq!(effect.slots[1].conditions[0].opcode, 539203);
+    assert!(crate::engine::skill::behavior::has_destination(
+        &effect.slots[1].behavior
+    ));
+}
+
+#[test]
 fn entering_entities_extend_the_scoped_catalog_from_their_own_roots() {
     init_config();
     let mut catalog = SkillEffectCatalog::default();
