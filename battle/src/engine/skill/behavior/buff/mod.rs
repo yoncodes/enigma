@@ -72,6 +72,23 @@ pub(super) fn supports_consume_power_add_buff(behavior: &ParsedBehavior) -> bool
             .is_some_and(|buffs| buffs.iter().all(|buff_id| *buff_id > 0))
 }
 
+pub(super) fn supports_consume_card_add_buff(behavior: &ParsedBehavior) -> bool {
+    let rewards = if behavior.raw_args.is_empty() {
+        behavior.args.get(1..).map(<[i32]>::to_vec)
+    } else if behavior.raw_args.len() == 2 {
+        behavior.arg_list(1)
+    } else {
+        None
+    };
+    let (Some(buff_id), Some(rewards)) = (behavior.arg(0), rewards) else {
+        return false;
+    };
+
+    rewards.len() == 3
+        && (buff_id > 0 && rewards.iter().all(|reward| *reward > 0)
+            || buff_id == 0 && rewards.iter().all(|reward| *reward == 0))
+}
+
 pub(super) fn supports_consume_power_add_multi_buff(behavior: &ParsedBehavior) -> bool {
     matches!(
         behavior.args.as_slice(),

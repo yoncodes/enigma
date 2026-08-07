@@ -307,6 +307,28 @@ fn resource_driven_behaviors_validate_their_configured_operands() {
 }
 
 #[test]
+fn card_consumption_reward_requires_three_rank_values_or_the_destroy_only_shape() {
+    let supports = |raw_args: &[&str]| {
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60222, "ConsumeCardAddBuff"),
+            Vec::new(),
+            raw_args.iter().map(|value| (*value).to_owned()).collect(),
+        );
+        find(&behavior)
+            .and_then(|definition| definition.supports)
+            .is_some_and(|supports| supports(&behavior))
+    };
+
+    assert!(supports(&["31280113", "20,30,50"]));
+    assert!(supports(&["0", "0,0,0"]));
+    assert!(!supports(&["31280113", "20,30"]));
+    assert!(!supports(&["31280113", "20,0,50"]));
+    assert!(!supports(&["0", "20,30,50"]));
+    assert!(!supports(&["31280113", "20,30,50", "1"]));
+    assert!(find_key(60222, "ConsumeCardAddBuff2").is_none());
+}
+
+#[test]
 fn add_team_energy_is_parent_owned_only_during_setup() {
     let definition = find_key(60153, "AddTeamEnergy").unwrap();
 

@@ -700,7 +700,7 @@ fn damage_window_removes_each_configured_buff_id_or_type() {
 }
 
 #[test]
-fn consume_card_add_buff_emits_card_consumption_before_the_grant() {
+fn consume_card_add_buff_emits_consumption_before_the_optional_grant() {
     let mut managers = BattleManagers::default();
     managers.card = crate::engine::manager::card::CardManager::new(vec![
         sonettobuf::CardInfo {
@@ -779,4 +779,41 @@ fn consume_card_add_buff_emits_card_consumption_before_the_grant() {
             })))
         ] if indices == &[0, 2]
     ));
+
+    let destroy_only = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(60222, "ConsumeCardAddBuff"),
+        vec![0],
+        vec!["0".into(), "0,0,0".into()],
+    );
+    let destroy_ops = super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 31370131,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &TargetPool::default(),
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &destroy_only,
+    )
+    .unwrap();
+    let [RuleOp::Command(BattleCommand::Card(command))] = destroy_ops.as_slice() else {
+        panic!("destroy-only behavior must emit only card consumption");
+    };
+
+    managers.execute_card(command.clone()).unwrap();
+    assert_eq!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>(),
+        vec![999]
+    );
 }
