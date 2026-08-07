@@ -18,6 +18,10 @@ pub enum ContractCommand {
         owner_uid: i64,
         bound_uid: i64,
     },
+    Clear {
+        owner_uid: i64,
+        bound_uid: i64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +36,10 @@ pub enum ContractChange {
         owner_uid: i64,
     },
     BoundSelected {
+        owner_uid: i64,
+        bound_uid: i64,
+    },
+    Cleared {
         owner_uid: i64,
         bound_uid: i64,
     },
@@ -87,6 +95,20 @@ impl ContractManager {
                 self.bound_uid = Some(bound_uid);
                 self.pending = None;
                 Ok(ContractChange::BoundSelected {
+                    owner_uid,
+                    bound_uid,
+                })
+            }
+            ContractCommand::Clear {
+                owner_uid,
+                bound_uid,
+            } => {
+                if self.owner_uid != Some(owner_uid) || self.bound_uid != Some(bound_uid) {
+                    return Err(ContractError::InvalidSelection);
+                }
+                self.owner_uid = None;
+                self.bound_uid = None;
+                Ok(ContractChange::Cleared {
                     owner_uid,
                     bound_uid,
                 })
@@ -192,6 +214,51 @@ mod tests {
             })
             .unwrap();
         assert_eq!(manager.bound_uid(-1), Some(20));
+    }
+
+    #[test]
+    fn clear_requires_and_removes_the_selected_pair() {
+        let mut manager = ContractManager::default();
+        manager
+            .execute(ContractCommand::Offer {
+                origin: origin(),
+                owner_uid: -1,
+                candidates: vec![20],
+            })
+            .unwrap();
+        manager
+            .execute(ContractCommand::SelectOwner {
+                owner_uid: -1,
+                bound_uid: 20,
+            })
+            .unwrap();
+        manager
+            .execute(ContractCommand::SelectBound {
+                owner_uid: -1,
+                bound_uid: 20,
+            })
+            .unwrap();
+
+        assert_eq!(
+            manager.execute(ContractCommand::Clear {
+                owner_uid: -1,
+                bound_uid: 30,
+            }),
+            Err(ContractError::InvalidSelection)
+        );
+        assert_eq!(
+            manager
+                .execute(ContractCommand::Clear {
+                    owner_uid: -1,
+                    bound_uid: 20,
+                })
+                .unwrap(),
+            ContractChange::Cleared {
+                owner_uid: -1,
+                bound_uid: 20,
+            }
+        );
+        assert_eq!(manager.bound_uid(-1), None);
     }
 
     #[test]

@@ -300,6 +300,9 @@ fn project_change(
         BattleChange::Contract(
             crate::engine::manager::contract::ContractChange::BoundSelected { bound_uid, .. },
         ) => vec![EffectPacket::contract_bound(*bound_uid)],
+        BattleChange::Contract(crate::engine::manager::contract::ContractChange::Cleared {
+            ..
+        }) => Vec::new(),
         BattleChange::BuffActTrigger(trigger) => {
             vec![EffectPacket::buff_act_trigger(*trigger)]
         }

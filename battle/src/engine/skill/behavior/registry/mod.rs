@@ -591,6 +591,7 @@ behavior_definitions! {
     [100005] "Assassinate" => super::general::AssassinateHandler, Assassinate, Immediate, destination, arguments::none;
     [60037] "NotifyUpgradeHero" => super::general::Handler, NotifyUpgradeHero, Immediate, destination;
     [60092] "NotifyHeroContract" => super::contract::Handler, NotifyHeroContract, Immediate, destination;
+    [60093] "ContractEndClearBuff" => super::contract::EndHandler, ContractEndClearBuff, Immediate, destination;
     [60198] "ClientEffect" => super::general::Handler, ClientEffect, Immediate, destination, arguments::at_least_one;
     [60268] "ChangeScene" => super::scene::Handler, ChangeScene, Immediate, destination;
     [60058] "CareerRatioFix" => super::career::Handler, CareerRatioFix, Immediate, modifier;

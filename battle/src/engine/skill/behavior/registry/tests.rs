@@ -143,6 +143,32 @@ fn contract_offer_keeps_its_exact_argumentless_key() {
 }
 
 #[test]
+fn contract_cleanup_keeps_its_exact_paired_buff_lists() {
+    let definition = find_key(60093, "ContractEndClearBuff").unwrap();
+    let supports = definition.supports.unwrap();
+    let valid = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60093, "ContractEndClearBuff"),
+        Vec::new(),
+        vec!["11,12".into(), "21,22".into()],
+    );
+
+    assert_eq!(definition.kind, BehaviorKind::ContractEndClearBuff);
+    assert!(definition.destination);
+    assert!(supports(&valid));
+    assert!(!supports(&ParsedBehavior::from_spec(
+        BehaviorSpec::new(60093, "ContractEndClearBuff"),
+        Vec::new(),
+        vec!["11,12".into()],
+    )));
+    assert!(!supports(&ParsedBehavior::from_spec(
+        BehaviorSpec::new(60093, "ContractEndClearBuff"),
+        Vec::new(),
+        vec!["11,12".into(), "21,22".into(), "31".into()],
+    )));
+    assert!(find_key(60093, "NotifyHeroContract").is_none());
+}
+
+#[test]
 fn random_buff_type_pool_keeps_its_exact_identity() {
     let definition = find_key(20022, "AddBuffRanTypeId").unwrap();
 

@@ -65,6 +65,7 @@ pub enum BehaviorKind {
     AddConduitPower,
     AddConduitExPoint,
     NotifyHeroContract,
+    ContractEndClearBuff,
     SetConduitSkillGroup,
     StopConduitSkill,
     RaspberryAddCount,
