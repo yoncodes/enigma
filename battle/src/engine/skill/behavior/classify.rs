@@ -123,6 +123,7 @@ pub enum BehaviorKind {
     HeatScaleUseSkillAddCount,
     AddHeatScaleFromBuff,
     AddMagicCircle,
+    RemoveMagicCircleById,
     MagicCircleAttr,
     AddSummoned,
     ChangeSummonedLevel,

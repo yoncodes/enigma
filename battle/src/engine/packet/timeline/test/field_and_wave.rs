@@ -103,6 +103,22 @@ fn field_deploy_projects_the_complete_committed_snapshot() {
     assert_eq!(info.electric_level, Some(3));
     assert_eq!(info.electric_progress, Some(120));
     assert_eq!(info.max_electric_progress, Some(120));
+
+    let removed = fields
+        .execute_command(FieldCommand {
+            origin,
+            team: 1,
+            operation: FieldOperation::Remove,
+        })
+        .unwrap();
+    let effects = project_change_for_test(&BattleChange::Field(removed)).unwrap();
+    assert_eq!(
+        effects[0].effect_type,
+        Some(EffectType::Magiccircledelete as i32)
+    );
+    assert_eq!(effects[0].target_id, Some(10));
+    assert_eq!(effects[0].reserve_id, Some(30003));
+    assert!(effects[0].magic_circle.is_none());
 }
 
 #[test]

@@ -76,6 +76,28 @@ pub fn deploy_rule_ops(
     Some(ops)
 }
 
+fn remove_rule_ops(
+    behavior: &ParsedBehavior,
+    team: i32,
+    managers: &BattleManagers,
+) -> Option<Vec<RuleOp>> {
+    if behavior.spec.kind != BehaviorKind::RemoveMagicCircleById {
+        return None;
+    }
+    let circle_id = behavior.arg(0)?;
+    let Some(field) = managers.field.get(team) else {
+        return Some(Vec::new());
+    };
+    if field.definition.field_id != circle_id {
+        return Some(Vec::new());
+    }
+    Some(vec![RuleOp::Command(BattleCommand::Field(FieldCommand {
+        origin: super::command_origin(behavior)?,
+        team,
+        operation: FieldOperation::Remove,
+    }))])
+}
+
 pub(crate) fn field_thresholds(
     circle_id: i32,
     team: i32,
@@ -119,22 +141,33 @@ impl BehaviorHandler for Handler {
     const VALIDATES_ARGUMENTS: bool = true;
 
     fn supports(behavior: &ParsedBehavior) -> bool {
-        let [circle_id, rest @ ..] = behavior.args.as_slice() else {
-            return false;
-        };
-        rest.len() <= 1
-            && rest.first().is_none_or(|level| *level >= 0)
-            && config::try_get().is_some_and(|db| db.magic_circle.get(*circle_id).is_some())
+        match (behavior.spec.kind, behavior.args.as_slice()) {
+            (BehaviorKind::AddMagicCircle, [circle_id, rest @ ..]) => {
+                rest.len() <= 1
+                    && rest.first().is_none_or(|level| *level >= 0)
+                    && config::try_get().is_some_and(|db| db.magic_circle.get(*circle_id).is_some())
+            }
+            (BehaviorKind::RemoveMagicCircleById, [circle_id]) => {
+                config::try_get().is_some_and(|db| db.magic_circle.get(*circle_id).is_some())
+            }
+            _ => false,
+        }
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
-        deploy_rule_ops(
-            behavior,
-            context.source_uid,
-            context.source_team,
-            context.managers,
-            context.pool,
-        )
+        match behavior.spec.kind {
+            BehaviorKind::AddMagicCircle => deploy_rule_ops(
+                behavior,
+                context.source_uid,
+                context.source_team,
+                context.managers,
+                context.pool,
+            ),
+            BehaviorKind::RemoveMagicCircleById => {
+                remove_rule_ops(behavior, context.source_team, context.managers)
+            }
+            _ => None,
+        }
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
@@ -293,6 +326,56 @@ mod tests {
                 },
                 ..
             }))]) if thresholds.iter().any(|threshold| threshold.level == 2 && threshold.progress == 50)
+        ));
+    }
+
+    #[test]
+    fn remove_magic_circle_only_removes_the_matching_active_field() {
+        crate::test_support::init_config();
+        let origin = crate::engine::manager::buff::CommandOrigin {
+            domain: crate::engine::skill::rule::RuleDomain::Behavior,
+            key: crate::engine::skill::rule::DefinitionKey::new(50019, "AddMagicCircle"),
+        };
+        let mut managers = BattleManagers::default();
+        managers
+            .field
+            .execute_command(FieldCommand {
+                origin,
+                team: 2,
+                operation: FieldOperation::DeployIfAbsent {
+                    definition: FieldDefinition {
+                        field_id: 20009,
+                        duration: 4,
+                    },
+                    create_uid: -3,
+                    initial_level: 0,
+                    thresholds: Vec::new(),
+                },
+            })
+            .unwrap();
+
+        assert!(
+            remove_rule_ops(
+                &ParsedBehavior::new(50021, "RemoveMagicCircleById", vec![20008]),
+                2,
+                &managers,
+            )
+            .unwrap()
+            .is_empty()
+        );
+        assert!(matches!(
+            remove_rule_ops(
+                &ParsedBehavior::new(50021, "RemoveMagicCircleById", vec![20009]),
+                2,
+                &managers,
+            )
+            .unwrap()
+            .as_slice(),
+            [RuleOp::Command(BattleCommand::Field(FieldCommand {
+                team: 2,
+                operation: FieldOperation::Remove,
+                ..
+            }))]
         ));
     }
 

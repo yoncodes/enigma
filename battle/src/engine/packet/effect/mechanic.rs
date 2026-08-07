@@ -283,6 +283,16 @@ impl EffectPacket {
         }
     }
 
+    pub fn magic_circle_delete(target_uid: i64, circle_id: i32) -> ActEffect {
+        ActEffect {
+            target_id: Some(target_uid),
+            effect_type: Some(EffectType::Magiccircledelete as i32),
+            effect_num: Some(0),
+            reserve_id: Some(circle_id as i64),
+            ..Default::default()
+        }
+    }
+
     pub fn magic_circle_update(change: &MagicCircleApplyResult) -> ActEffect {
         let mut effect = Self::magic_circle_add(change);
         effect.effect_type = Some(EffectType::Magiccircleupdate as i32);

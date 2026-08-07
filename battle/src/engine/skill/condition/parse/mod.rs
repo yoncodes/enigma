@@ -240,6 +240,10 @@ pub enum ParsedConditionKind {
         group: i32,
         rank: i32,
     },
+    ReceivedSpecificSkill {
+        group: i32,
+        rank: i32,
+    },
     UseExSkill,
     TargetUseExSkill,
     TeammateUseExSkill,

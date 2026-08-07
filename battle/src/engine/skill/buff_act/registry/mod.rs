@@ -59,6 +59,7 @@ pub enum BuffActKind {
     AddPassiveSkillByLayer,
     AddSplitEmitterNum,
     AddSpTempCard,
+    AddToBuffEntity,
     AddToBuffEntity2,
     AddBuffAfterAttack,
     AddToAttacker,
@@ -796,6 +797,10 @@ buff_act_definitions! {
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(764, "CareerRestraint"), &[EffectType::Careerrestraint as i32]));
     (765, "CareerRatioFix") => CareerRatioFix, effect_time_subscription: false,
         supports: super::career_ratio_fix::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(765, "CareerRatioFix"), &[EffectType::None as i32]));
+    (745, "AddToBuffEntity") => AddToBuffEntity,
+        runtime: |context| super::add_to_buff_entity::rule_ops(context.subscriber, context.event?),
+        supports: super::add_to_buff_entity::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(745, "AddToBuffEntity"), &[]));
     (766, "AddToBuffEntity2") => AddToBuffEntity2,
         runtime: |context| super::add_to_buff_entity_2::rule_ops(context.subscriber, context.event?),
         supports: super::add_to_buff_entity_2::supports;
