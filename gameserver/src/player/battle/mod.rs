@@ -253,8 +253,11 @@ impl ActiveBattle {
             player_id,
             episode_id,
             battle_id,
-            use_record,
             fight_group,
+            ::battle::dungeon::FightOptions {
+                is_balance: request.is_balance.unwrap_or(false),
+                use_record,
+            },
             request.params.as_deref(),
         )
         .await?;
@@ -478,8 +481,11 @@ impl ActiveBattle {
                 player_id,
                 episode_id,
                 record.battle_id,
-                use_record,
                 fight_group,
+                ::battle::dungeon::FightOptions {
+                    is_balance: checkpoint.start_request.is_balance.unwrap_or(false),
+                    use_record,
+                },
                 context,
             )
             .await?
@@ -489,8 +495,11 @@ impl ActiveBattle {
                 player_id,
                 episode_id,
                 record.battle_id,
-                use_record,
                 fight_group,
+                ::battle::dungeon::FightOptions {
+                    is_balance: checkpoint.start_request.is_balance.unwrap_or(false),
+                    use_record,
+                },
                 checkpoint.start_request.params.as_deref(),
             )
             .await?

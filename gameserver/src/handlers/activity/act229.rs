@@ -65,8 +65,11 @@ pub async fn on_start_act229_battle(
         player_id,
         episode_id,
         episode.battle_id,
-        dungeon_request.use_record.unwrap_or(false),
         fight_group,
+        battle::dungeon::FightOptions {
+            is_balance: dungeon_request.is_balance.unwrap_or(false),
+            use_record: dungeon_request.use_record.unwrap_or(false),
+        },
         dungeon_request.params.as_deref(),
     )
     .await?;
