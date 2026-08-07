@@ -505,6 +505,7 @@ behavior_definitions! {
     [60121] "ConsumeBuffUseSkill" => super::use_skill::Handler, ConsumeBuffUseSkill, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill;
     [60311] "ConsumeBuffUseSkill3" => super::use_skill::Handler, ConsumeBuffUseSkill3, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill3;
     [100007] "EzioReuse" => super::use_skill::Handler, ConsumeTargetBuffUseSkill, Immediate, destination, super::use_skill::supports_consume_target_buff_use_skill;
+    [50018] "RemoveBuffUseSkill" => super::use_skill::Handler, RemoveBuffUseSkill, AfterDamage, destination, super::use_skill::supports_remove_buff_use_skill;
     [50008] "DirectUseSkill" => super::use_skill::Handler, DirectUseSkill, Immediate, unique_skill_destination, arguments::at_least_one;
     [60053] "DirectUseSkill2" => super::use_skill::Handler, DirectUseSkill2, Immediate, destination;
     [60014] "DirectUseSkillPrev" => super::use_skill::Handler, DirectUseSkillPrev, Immediate, destination, arguments::none;

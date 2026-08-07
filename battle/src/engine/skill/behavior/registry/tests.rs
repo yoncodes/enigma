@@ -132,6 +132,15 @@ fn random_buff_type_pool_keeps_its_exact_identity() {
 }
 
 #[test]
+fn remove_buff_use_skill_keeps_its_exact_identity_and_phase() {
+    let definition = find_key(50018, "RemoveBuffUseSkill").unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::RemoveBuffUseSkill);
+    assert_eq!(definition.phase, BehaviorPhase::AfterDamage);
+    assert!(find_key(50018, "ConsumeBuffUseSkill").is_none());
+}
+
+#[test]
 fn attribute_damage_is_an_exact_targeted_genesis_route() {
     let definition = find_key(10006, "Damage").unwrap();
     let supported = ParsedBehavior::from_spec(

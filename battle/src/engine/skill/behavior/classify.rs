@@ -83,6 +83,7 @@ pub enum BehaviorKind {
     ConsumeBuffUseSkill,
     ConsumeBuffUseSkill3,
     ConsumeTargetBuffUseSkill,
+    RemoveBuffUseSkill,
     ConsumePowerAddBuff,
     ConsumePowerAddMultiBuff1,
     ConsumeBuffByTypeId,
