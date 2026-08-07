@@ -38,6 +38,82 @@ fn hand_skill_presence_reads_the_committed_spelldock() {
 }
 
 #[test]
+fn round_incantation_rank_count_reads_only_allied_played_cards() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.card.reset(
+        vec![
+            sonettobuf::CardInfo {
+                uid: Some(10),
+                skill_id: Some(30950112),
+                ..Default::default()
+            },
+            sonettobuf::CardInfo {
+                uid: Some(11),
+                skill_id: Some(30950111),
+                ..Default::default()
+            },
+            sonettobuf::CardInfo {
+                uid: Some(-1),
+                skill_id: Some(30950113),
+                ..Default::default()
+            },
+        ],
+        3,
+    );
+    while !managers.card.hand().is_empty() {
+        managers.card.play_card(0, None, None, None).unwrap();
+    }
+    let condition = exact_condition(622304, "RoundUseSkillLevel", &["2", "2"]);
+    let matches = |managers: &BattleManagers| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[10],
+            Some(managers),
+            &pool,
+            TargetContext::default(),
+        )
+    };
+
+    assert!(!matches(&managers));
+    managers.card.add_to_hand(sonettobuf::CardInfo {
+        uid: Some(11),
+        skill_id: Some(30950122),
+        ..Default::default()
+    });
+    managers.card.play_card(0, None, None, None).unwrap();
+    assert!(matches(&managers));
+}
+
+#[test]
 fn owner_incantation_rank_rejects_an_ally_action() {
     init_config();
     let condition = ParsedCondition {

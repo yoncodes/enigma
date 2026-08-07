@@ -679,6 +679,22 @@ fn condition_kind_matches(
                     .is_some_and(|skill_id| skill_ids.contains(&skill_id))
             })
         }),
+        ParsedConditionKind::RoundUsedMinimumRank {
+            minimum_rank,
+            threshold,
+        } => managers.is_some_and(|managers| {
+            let allies = pool.allies(source_uid);
+            managers
+                .card
+                .played()
+                .iter()
+                .filter(|played| allies.iter().any(|ally| ally.uid == played.caster_uid))
+                .filter(|played| {
+                    crate::engine::entity::skill::card_skill_rank(&played.card) >= *minimum_rank
+                })
+                .count()
+                >= *threshold as usize
+        }),
         ParsedConditionKind::ExPoint { compare, threshold } => {
             let Some(managers) = managers else {
                 return false;

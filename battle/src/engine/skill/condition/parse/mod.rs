@@ -132,6 +132,10 @@ pub enum ParsedConditionKind {
         enchant_id: i32,
     },
     HandSkillPresence(Vec<i32>),
+    RoundUsedMinimumRank {
+        minimum_rank: i32,
+        threshold: i32,
+    },
     ExPoint {
         compare: ConditionCompare,
         threshold: i32,

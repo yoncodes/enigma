@@ -132,6 +132,27 @@ fn regeneration_period_presence_gate_filters_the_source() {
 }
 
 #[test]
+fn round_incantation_rank_count_keeps_its_exact_post_settlement_route() {
+    assert_eq!(
+        parse(622304, "RoundUseSkillLevel", &["2".into(), "2".into()],),
+        Some(ParsedConditionKind::RoundUsedMinimumRank {
+            minimum_rank: 2,
+            threshold: 2,
+        })
+    );
+    let definition = find_key(622304, "RoundUseSkillLevel").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEndAfterSettlement,
+            phase: None,
+        }
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert!(find_key(622304, "ExPointMax").is_none());
+}
+
+#[test]
 fn follow_up_buff_gate_is_an_exact_inline_predicate() {
     let definition = find_key(19402, "HasBuffId").unwrap();
 
