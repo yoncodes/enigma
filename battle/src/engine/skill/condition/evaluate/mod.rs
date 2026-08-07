@@ -703,6 +703,11 @@ fn condition_kind_matches(
                 .iter()
                 .any(|uid| compare_value(managers.ex_point.get(*uid), *compare, *threshold))
         }
+        ParsedConditionKind::ExPointFull => managers.is_some_and(|managers| {
+            condition_targets
+                .iter()
+                .any(|uid| managers.ex_point.is_full(*uid))
+        }),
         ParsedConditionKind::Synchronization { threshold } => {
             let Some(managers) = managers else {
                 return false;

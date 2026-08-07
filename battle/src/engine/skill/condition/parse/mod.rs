@@ -140,6 +140,7 @@ pub enum ParsedConditionKind {
         compare: ConditionCompare,
         threshold: i32,
     },
+    ExPointFull,
     Synchronization {
         threshold: i32,
     },

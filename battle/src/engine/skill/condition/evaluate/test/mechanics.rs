@@ -257,6 +257,51 @@ fn no_action_round_checks_the_owner_card_state() {
 }
 
 #[test]
+fn full_moxie_uses_each_targets_configured_maximum() {
+    init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    ex_point: Some(2),
+                    ex_point_max: Some(2),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    ex_point: Some(1),
+                    ex_point_max: Some(2),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let condition = exact_condition(745304, "ExPointMax", &[]);
+
+    assert!(conditions_match(
+        std::slice::from_ref(&condition),
+        -1,
+        &[-1],
+        Some(&managers),
+        &pool,
+        TargetContext::default(),
+    ));
+    assert!(!conditions_match(
+        &[condition],
+        -2,
+        &[-2],
+        Some(&managers),
+        &pool,
+        TargetContext::default(),
+    ));
+}
+
+#[test]
 fn random_condition_requires_and_compares_the_runtime_roll() {
     init_config();
     let condition = ParsedCondition {

@@ -153,6 +153,25 @@ fn round_incantation_rank_count_keeps_its_exact_post_settlement_route() {
 }
 
 #[test]
+fn full_moxie_keeps_its_exact_post_settlement_route() {
+    assert_eq!(
+        parse(745304, "ExPointMax", &[]),
+        Some(ParsedConditionKind::ExPointFull)
+    );
+    assert!(parse(745304, "ExPointMax", &["1".into()]).is_none());
+    let definition = find_key(745304, "ExPointMax").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEndAfterSettlement,
+            phase: None,
+        }
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert!(find_key(745304, "ExPointFull").is_none());
+}
+
+#[test]
 fn follow_up_buff_gate_is_an_exact_inline_predicate() {
     let definition = find_key(19402, "HasBuffId").unwrap();
 
