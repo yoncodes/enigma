@@ -123,6 +123,48 @@ fn destination_readiness_belongs_to_the_exact_registry_row() {
 }
 
 #[test]
+fn planet_removal_keeps_its_exact_behavior_identity() {
+    let definition = find_key(60252, "DisperseForce3").unwrap();
+    let valid = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60252, "DisperseForce3"),
+        vec![307002112, 307002212, 307001312],
+        vec!["307002112".into(), "307002212".into(), "307001312".into()],
+    );
+
+    assert_eq!(definition.kind, BehaviorKind::DisperseForce3);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert!(definition.supports.is_some_and(|supports| supports(&valid)));
+    for args in [
+        Vec::new(),
+        vec![307002112],
+        vec![307002112, 307002212],
+        vec![307002112, 307002212, 0],
+        vec![307002112, 307002212, -1],
+        vec![307002112, 307002212, 307001312, 307001412],
+    ] {
+        let unsupported = ParsedBehavior::new(60252, "DisperseForce3", args);
+        assert!(
+            !definition
+                .supports
+                .is_some_and(|supports| supports(&unsupported))
+        );
+    }
+    let grouped = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60252, "DisperseForce3"),
+        vec![307001312],
+        vec!["307002112,307002212".into(), "307001312".into()],
+    );
+    assert!(
+        !definition
+            .supports
+            .is_some_and(|supports| supports(&grouped))
+    );
+    assert!(find_key(60252, "DisperseForce2").is_none());
+    assert!(find_key(60010, "DisperseForce3").is_none());
+}
+
+#[test]
 fn contract_offer_keeps_its_exact_argumentless_key() {
     let definition = find_key(60092, "NotifyHeroContract").unwrap();
     let supports = definition.supports.unwrap();

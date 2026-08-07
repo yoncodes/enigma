@@ -107,6 +107,7 @@ pub enum BehaviorKind {
     Disperse2,
     DisperseExclude,
     DisperseForce2,
+    DisperseForce3,
     Purify1,
     PurifyX,
     DistributeBuff,
