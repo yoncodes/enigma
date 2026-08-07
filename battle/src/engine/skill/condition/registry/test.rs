@@ -1872,7 +1872,7 @@ fn target_career_selects_matching_behavior_targets() {
 
 #[test]
 fn round_start_buff_gates_keep_their_exact_registered_keys() {
-    for (opcode, priority) in [(19100, 100), (19101, 101)] {
+    for (opcode, priority) in [(19100, 100), (19101, 101), (19102, 102)] {
         assert_eq!(
             find_key(opcode, "HasBuffId").map(|definition| definition.role),
             Some(ConditionRole::Setup {
@@ -1884,8 +1884,19 @@ fn round_start_buff_gates_keep_their_exact_registered_keys() {
             find_key(opcode, "HasBuffId").map(|definition| definition.dependencies),
             Some(&[][..])
         );
+        assert_eq!(
+            parse(opcode, "HasBuffId", &["109360006".into()]),
+            Some(ParsedConditionKind::BuffId {
+                mode: BuffConditionMode::Present,
+                buff_ids: vec![109360006],
+            })
+        );
+        assert!(
+            find_key(opcode, "HasBuffId")
+                .unwrap()
+                .filters_behavior_targets
+        );
     }
-    assert!(find_key(19102, "HasBuffId").is_none());
 }
 
 #[test]
@@ -2165,18 +2176,20 @@ fn round_end_interval_keeps_period_then_start_order() {
 }
 
 #[test]
-fn negated_round_start_broken_check_uses_toughness_state() {
-    assert_eq!(
-        parse(783101, "IsBroken", &[]),
-        Some(ParsedConditionKind::EntityBroken)
-    );
-    assert_eq!(
-        find_key(783101, "IsBroken").map(|definition| definition.role),
-        Some(ConditionRole::Setup {
-            stage: SetupStage::RoundStartCondition,
-            priority: 101,
-        })
-    );
+fn round_start_broken_checks_keep_their_exact_priorities() {
+    for (opcode, priority) in [(783101, 101), (783102, 102)] {
+        assert_eq!(
+            parse(opcode, "IsBroken", &[]),
+            Some(ParsedConditionKind::EntityBroken)
+        );
+        assert_eq!(
+            find_key(opcode, "IsBroken").map(|definition| definition.role),
+            Some(ConditionRole::Setup {
+                stage: SetupStage::RoundStartCondition,
+                priority,
+            })
+        );
+    }
 }
 
 #[test]

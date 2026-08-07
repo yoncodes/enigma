@@ -356,6 +356,7 @@ condition_definitions! {
     [202, 204, 206, 207, 2011, 2082, 900, 901, 903, 905, 908, 910, 930, 1041] "None" => none::skill_action, event_trigger(EventKind::SkillAction, None);
     [2092] "None" => trigger::parse_guard_broken, reaction_targets_owner(event_trigger(EventKind::ToughnessBroken, None));
     [783101] "IsBroken" => trigger::parse_entity_broken, setup_route(SetupStage::RoundStartCondition, 101, &[]);
+    [783102] "IsBroken" => trigger::parse_entity_broken, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [1061] "None" => none::action_queue_committed, event_trigger(EventKind::ActionQueueCommitted, None);
     [2081] "None" => none::skill_cast, uses_active_skill_targets(event_trigger(EventKind::SkillCast, None));
     [209, 211] "None" => none::attacked, event_trigger(EventKind::BeAttacked, None);
@@ -378,6 +379,7 @@ condition_definitions! {
     [19012] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
     [19100] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 100, &[]));
     [19101] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 101, &[]));
+    [19102] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 102, &[]));
     [18201] "HasBuff" => buff::any_status_present, predicate(&[EventKind::BuffChanged]);
     [18202] "HasBuff" => buff::any_status_present, incoming_attack_modifier(event_trigger(EventKind::SkillAction, None));
     [18203] "HasBuff" => buff::first_status_present, predicate(&[EventKind::BuffChanged]);
