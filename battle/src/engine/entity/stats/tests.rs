@@ -1,6 +1,42 @@
 use super::*;
 
 #[test]
+fn stat_inputs_use_only_normalized_battle_build_data() {
+    let hero = HeroBuildInput {
+        hero_id: 3127,
+        level: 121,
+        rank: 4,
+        destiny_rank: 3,
+        talent: 10,
+        talent_style: 2,
+        talent_placements: vec![11, 12],
+        ..Default::default()
+    };
+    let equip = EquipmentBuildInput {
+        equip_id: 1502,
+        level: 50,
+        break_level: 4,
+        ..Default::default()
+    };
+
+    assert_eq!(
+        StatInputs::from_build_input(&hero, Some(&equip)),
+        StatInputs {
+            hero_id: 3127,
+            level: 121,
+            rank: 4,
+            destiny_rank: 3,
+            equip_id: 1502,
+            equip_level: 50,
+            equip_break_level: 4,
+            talent: 10,
+            talent_style: 2,
+            talent_placements: vec![11, 12],
+        }
+    );
+}
+
+#[test]
 fn configured_pickles_stats_are_generated_from_build_inputs() {
     crate::test_support::init_config();
     let stats = Stats::build(&StatInputs {

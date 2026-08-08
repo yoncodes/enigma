@@ -1,5 +1,6 @@
-use database::{db::game::equipment::Equipment, models::game::heros::HeroData};
 use sonettobuf::HeroAttribute;
+
+use super::input::{EquipmentBuildInput, HeroBuildInput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(i32)]
@@ -129,8 +130,8 @@ impl AttrId {
 pub struct Attr;
 
 impl Attr {
-    pub fn get(hero: &HeroData, equips: &[Equipment]) -> HeroAttribute {
-        super::stats::Stats::build_for_hero(hero, equips).base()
+    pub fn get(hero: &HeroBuildInput, equips: &[EquipmentBuildInput]) -> HeroAttribute {
+        super::stats::Stats::build_for_loadout(hero, equips).base()
     }
 }
 
