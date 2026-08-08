@@ -867,6 +867,21 @@ fn project_change(
             }
             effects
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::HeroTemporaryAdded => {
+            let card = changes
+                .added
+                .clone()
+                .expect("hero temporary-card commits retain their added card");
+            let operation = changes
+                .operation
+                .as_ref()
+                .expect("hero temporary-card commits retain their exact operation");
+            let crate::engine::manager::card::CardChange::SpCardAdd { team_type, .. } = operation
+            else {
+                panic!("hero temporary-card commits use SpCardAdd operations")
+            };
+            vec![CardPacket::hero_temp_card(card, *team_type)]
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Enchanted => changes
             .operation
             .clone()

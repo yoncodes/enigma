@@ -23,7 +23,7 @@ pub use command::{
     CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne,
     CardRefreshAiQueue, CardRemoveAiOwner, CardReplaceOwnerSkills, CardSetAiQueue,
     CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUseUniversal, HandCardRankUp,
-    QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard,
+    QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard, TemporaryCardKind,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;

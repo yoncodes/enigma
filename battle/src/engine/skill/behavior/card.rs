@@ -108,6 +108,7 @@ impl BehaviorHandler for Handler {
                     skill_id: *skill_id,
                     reserve_id,
                     team_type: context.source_team,
+                    kind: crate::engine::manager::card::TemporaryCardKind::ConfiguredSkill,
                 }),
             ))]);
         }

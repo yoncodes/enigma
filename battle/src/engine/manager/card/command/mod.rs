@@ -23,12 +23,19 @@ pub struct CardSetup {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TemporaryCardKind {
+    ConfiguredSkill,
+    HeroSkill,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CardAddTemporary {
     pub origin: CommandOrigin,
     pub target_uid: i64,
     pub skill_id: i32,
     pub reserve_id: i64,
     pub team_type: i32,
+    pub kind: TemporaryCardKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -407,6 +414,7 @@ pub enum CardChangeKind {
     UniversalAdded,
     RedealtKeepRanks,
     TemporaryAdded,
+    HeroTemporaryAdded,
     CrystalAdded,
     PrecastAdded,
     TemporaryChanged,
@@ -679,7 +687,10 @@ pub(super) fn execute(
             });
             (
                 Some(add.origin),
-                CardChangeKind::TemporaryAdded,
+                match add.kind {
+                    TemporaryCardKind::ConfiguredSkill => CardChangeKind::TemporaryAdded,
+                    TemporaryCardKind::HeroSkill => CardChangeKind::HeroTemporaryAdded,
+                },
                 Some(card),
                 None,
                 Vec::new(),

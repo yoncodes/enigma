@@ -979,3 +979,18 @@ fn shock_wave_channel_keeps_its_exact_round_end_rule() {
     ));
     assert!(find(1031, "ConsumeBuffContinueChannel").is_none());
 }
+
+#[test]
+fn hero_temp_cards_keep_their_exact_round_start_route() {
+    let definition = find(739, "CreateHeroTempCards").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::CreateHeroTempCards);
+    assert_eq!(
+        runtime_event(739, "CreateHeroTempCards", 105),
+        Some(EventKind::RoundStartCard)
+    );
+    assert!(has_destination(739, "CreateHeroTempCards", &[1, 2, 1]));
+    assert!(!has_destination(739, "CreateHeroTempCards", &[0, 2, 1]));
+    assert!(!has_destination(739, "CreateHeroTempCards", &[1, 2, 2]));
+    assert!(find(739, "AddSpTempCard").is_none());
+}
