@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::engine::{
     manager::{
         BattleManagers,
-        buff::{ActiveBuffFeature, BuffCommand, BuffSetState},
+        buff::{ActiveBuffFeature, BuffActInfoMarkerResult, BuffCommand, BuffSetState},
         card::CardCommand,
         gauge::{GaugeCommand, GaugeKind, GaugeOperation},
     },
@@ -22,28 +22,65 @@ pub(crate) struct Handler;
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         if behavior.spec.kind == BehaviorKind::AddHeatScaleFromBuff {
-            let amount = context
+            if context.source_team == 0 {
+                return Some(Vec::new());
+            }
+            let mut raw_amount = 0_i32;
+            let mut ops = Vec::new();
+            for feature in context
                 .managers
                 .buff
                 .active_features(&context.managers.hp)
                 .into_iter()
                 .filter(|feature| {
                     feature.owner_uid == context.target_uid
-                        && is_kind(feature, BuffActKind::AttrByHeatScale)
+                        && feature.team_type == context.source_team
+                        && is_kind(feature, BuffActKind::HeatScaleDecrCounter)
                 })
-                .filter_map(|feature| {
-                    let act_id = feature.act_id()?;
-                    context
-                        .managers
-                        .buff
-                        .snapshot(feature.owner_uid, feature.buff_uid)
-                        .map(|buff| recorded_heat_scale_amount(&buff, act_id))
-                })
-                .max()
-                .unwrap_or_default();
-            if context.source_team == 0 || amount <= 0 {
-                return Some(Vec::new());
+            {
+                let act_id = feature.act_id()?;
+                let Some(mut buff) = context
+                    .managers
+                    .buff
+                    .snapshot(feature.owner_uid, feature.buff_uid)
+                else {
+                    continue;
+                };
+                let raw = stored_heat_scale_raw_value(&buff, act_id);
+                if raw <= 0 {
+                    continue;
+                }
+                raw_amount = raw_amount.saturating_add(raw);
+                let origin = super::super::skill::buff_act::feature_command_origin(&feature)?;
+                let info = buff
+                    .act_info
+                    .iter_mut()
+                    .find(|info| info.act_id == Some(act_id))?;
+                info.param = vec![0];
+                info.str_param = Some(String::new());
+                ops.push(RuleOp::Command(BattleCommand::Buff(
+                    BuffCommand::SetInternalState(BuffSetState {
+                        origin,
+                        target_uid: feature.owner_uid,
+                        buff_uid: feature.buff_uid,
+                        ex_info: None,
+                        params: None,
+                        act_info: Some(buff.act_info),
+                    }),
+                )));
+                ops.push(RuleOp::BuffActInfoMarker(BuffActInfoMarkerResult {
+                    target_uid: feature.owner_uid,
+                    buff_uid: feature.buff_uid,
+                    act_id,
+                    params: vec![0],
+                    str_param: Some(String::new()),
+                    team_type: 0,
+                }));
             }
+            if raw_amount <= 0 {
+                return Some(ops);
+            }
+            let amount = raw_amount / 1000;
             let command = GaugeCommand::new(
                 super::super::skill::behavior::command_origin(behavior)?,
                 super::lingering_glow::key(context.source_team),
@@ -53,11 +90,12 @@ impl BehaviorHandler for Handler {
                 context.source_uid,
                 GaugeKind::LingeringGlow.shared_pool_config_effect(),
             )
-            .with_raw_delta(amount.saturating_mul(1000));
-            return Some(super::lingering_glow::value_change_rule_ops(
+            .with_raw_delta(raw_amount);
+            ops.extend(super::lingering_glow::value_change_rule_ops(
                 context.managers,
                 command,
             ));
+            return Some(ops);
         }
         if matches!(behavior.spec.kind, BehaviorKind::AddCardRankNext) {
             let count = behavior.arg(0)?;
@@ -102,7 +140,7 @@ impl BehaviorHandler for Handler {
     }
 }
 
-fn recorded_heat_scale_amount(buff: &sonettobuf::BuffInfo, act_id: i32) -> i32 {
+fn stored_heat_scale_raw_value(buff: &sonettobuf::BuffInfo, act_id: i32) -> i32 {
     buff.act_info
         .iter()
         .find(|info| info.act_id == Some(act_id))
@@ -383,12 +421,12 @@ impl HeatScale {
         })
     }
 
-    pub fn decr_counter_info(
+    pub fn decr_counter_infos(
         &self,
         features: &[ActiveBuffFeature],
         team: i32,
-    ) -> Option<HeatScaleCounterInfo> {
-        decr_counter_info(self.raw_value(team), features, team)
+    ) -> Vec<HeatScaleCounterInfo> {
+        decr_counter_infos(self.raw_value(team), features, team)
     }
 
     pub fn take_ready_cast(
@@ -463,14 +501,14 @@ pub fn use_skill_info(
         })
 }
 
-pub fn decr_counter_info(
+pub fn decr_counter_infos(
     raw_current: i32,
     features: &[ActiveBuffFeature],
     team: i32,
-) -> Option<HeatScaleCounterInfo> {
+) -> Vec<HeatScaleCounterInfo> {
     features
         .iter()
-        .find(|feature| {
+        .filter(|feature| {
             feature.team_type == team && is_kind(feature, BuffActKind::HeatScaleDecrCounter)
         })
         .map(|feature| HeatScaleCounterInfo {
@@ -479,6 +517,7 @@ pub fn decr_counter_info(
             act_id: feature.act_id().unwrap_or_default(),
             value: raw_current * feature.values.get(1).copied().unwrap_or_default().max(0) / 1000,
         })
+        .collect()
 }
 
 pub fn creation_specs(

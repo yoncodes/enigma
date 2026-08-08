@@ -17,8 +17,7 @@ use crate::engine::{
     mechanic::{
         bloodtithe,
         heat_scale::{
-            self, HeatScaleCast, HeatScaleCounterInfo, HeatScaleCreate, HeatScaleUseSkillInfo,
-            ready_cast_selection,
+            self, HeatScaleCast, HeatScaleCreate, HeatScaleUseSkillInfo, ready_cast_selection,
         },
     },
     skill::{
@@ -181,7 +180,7 @@ pub fn round_start_attribute_rule_ops_for_team(
             .attributed_to(0, GaugeKind::LingeringGlow.shared_pool_config_effect())
             .with_raw_delta(-depleted_raw),
         )));
-        if let Some(counter) = heat_scale::decr_counter_info(depleted_raw, &features, team) {
+        for counter in heat_scale::decr_counter_infos(depleted_raw, &features, team) {
             let Some(counter_origin) = buff_act::configured_command_origin(
                 counter.act_id,
                 BuffActKind::HeatScaleDecrCounter,
@@ -277,8 +276,9 @@ pub fn value_change_rule_ops(
     mut command: GaugeCommand,
 ) -> Vec<RuleOp> {
     if let GaugeOperation::ChangeValue { delta } = command.operation
-        && delta > 0
+        && delta >= 0
         && let Some(raw_delta) = command.raw_delta
+        && raw_delta > 0
     {
         let GaugeOwner::Team(team) = command.key.owner else {
             return Vec::new();
@@ -447,12 +447,12 @@ impl LingeringGlowRuntime {
             .unwrap_or_default()
     }
 
-    pub fn decrement_counter_info(
+    pub fn decrement_counter_infos(
         &self,
         features: &[ActiveBuffFeature],
         team: i32,
-    ) -> Option<HeatScaleCounterInfo> {
-        heat_scale::decr_counter_info(self.raw_value(team), features, team)
+    ) -> Vec<heat_scale::HeatScaleCounterInfo> {
+        heat_scale::decr_counter_infos(self.raw_value(team), features, team)
     }
 }
 

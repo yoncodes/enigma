@@ -4,22 +4,244 @@ use crate::engine::skill::{
     rule::output::{BattleCommand, RuleOp},
     target::TargetRequest,
 };
-use sonettobuf::{BuffActInfo, BuffInfo};
+use sonettobuf::{BuffActInfo, BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute};
 
 use super::*;
 
 #[test]
-fn heat_scale_restore_reads_the_amount_recorded_on_the_round_start_buff() {
-    let buff = BuffInfo {
-        act_info: vec![BuffActInfo {
-            act_id: Some(1053),
-            param: vec![12],
+fn intermezzo_restores_and_clears_every_stored_value() {
+    crate::test_support::init_config();
+    let stored = [(21, 30810301, 945), (22, 30810302, 3_982)];
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                buffs: stored
+                    .iter()
+                    .map(|(uid, buff_id, value)| BuffInfo {
+                        uid: Some(*uid),
+                        buff_id: Some(*buff_id),
+                        from_uid: Some(10),
+                        act_info: vec![BuffActInfo {
+                            act_id: Some(1062),
+                            param: vec![*value],
+                            str_param: Some(String::new()),
+                        }],
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }],
             ..Default::default()
-        }],
+        }),
         ..Default::default()
     };
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = crate::engine::skill::rule::CommandOrigin {
+        domain: crate::engine::skill::rule::RuleDomain::Behavior,
+        key: crate::engine::skill::rule::DefinitionKey::new(60254, "AddHeatScaleFromBuff"),
+    };
+    managers
+        .execute_gauge(GaugeCommand::new(
+            origin,
+            super::super::lingering_glow::key(1),
+            GaugeOperation::Enable { max: Some(750) },
+        ))
+        .unwrap();
+    let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+    let behavior = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60254, "AddHeatScaleFromBuff"),
+        Vec::new(),
+        Vec::new(),
+    );
+    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
 
-    assert_eq!(recorded_heat_scale_amount(&buff, 1053), 12);
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 30810341,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::SetInternalState(first))),
+            RuleOp::BuffActInfoMarker(first_marker),
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::SetInternalState(second))),
+            RuleOp::BuffActInfoMarker(second_marker),
+            RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
+                operation: GaugeOperation::AccumulateRawValue { amount: 4_927, .. },
+                raw_delta: Some(4_927),
+                ..
+            }))
+        ] if first.buff_uid == 21
+            && first.act_info.as_ref().is_some_and(|info| info[0].param == [0])
+            && first_marker.buff_uid == 21
+            && first_marker.params == [0]
+            && second.buff_uid == 22
+            && second.act_info.as_ref().is_some_and(|info| info[0].param == [0])
+            && second_marker.buff_uid == 22
+            && second_marker.params == [0]
+    ));
+    for op in ops {
+        match op {
+            RuleOp::Command(BattleCommand::Buff(command)) => {
+                managers.execute_buff(command).unwrap();
+            }
+            RuleOp::Command(BattleCommand::Gauge(command)) => {
+                managers.execute_gauge(command).unwrap();
+            }
+            _ => {}
+        }
+    }
+    for (buff_uid, _, _) in stored {
+        let value = managers
+            .buff
+            .snapshot(10, buff_uid)
+            .and_then(|buff| {
+                buff.act_info
+                    .into_iter()
+                    .find(|info| info.act_id == Some(1062))
+            })
+            .and_then(|info| info.param.first().copied());
+        assert_eq!(value, Some(0));
+    }
+    assert_eq!(
+        managers
+            .gauge
+            .raw_value(super::super::lingering_glow::key(1)),
+        Some(4_927)
+    );
+}
+
+#[test]
+fn intermezzo_preserves_sub_stack_raw_progress() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(21),
+                        buff_id: Some(30810301),
+                        from_uid: Some(10),
+                        act_info: vec![BuffActInfo {
+                            act_id: Some(1062),
+                            param: vec![945],
+                            str_param: Some(String::new()),
+                        }],
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(22),
+                        buff_id: Some(31270401),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = crate::engine::skill::rule::CommandOrigin {
+        domain: crate::engine::skill::rule::RuleDomain::Behavior,
+        key: crate::engine::skill::rule::DefinitionKey::new(60254, "AddHeatScaleFromBuff"),
+    };
+    managers
+        .execute_gauge(GaugeCommand::new(
+            origin,
+            super::super::lingering_glow::key(1),
+            GaugeOperation::Enable { max: Some(750) },
+        ))
+        .unwrap();
+    let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+    let behavior = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60254, "AddHeatScaleFromBuff"),
+        Vec::new(),
+        Vec::new(),
+    );
+    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 30810341,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(ops.iter().any(|op| matches!(
+        op,
+        RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
+            operation: GaugeOperation::AccumulateRawValue { amount: 973, .. },
+            raw_delta: Some(973),
+            ..
+        }))
+    )));
+    for op in ops {
+        match op {
+            RuleOp::Command(BattleCommand::Buff(command)) => {
+                managers.execute_buff(command).unwrap();
+            }
+            RuleOp::Command(BattleCommand::Gauge(command)) => {
+                managers.execute_gauge(command).unwrap();
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(
+        managers
+            .gauge
+            .raw_value(super::super::lingering_glow::key(1)),
+        Some(973)
+    );
+    assert_eq!(
+        managers
+            .gauge
+            .get(super::super::lingering_glow::key(1))
+            .map(|state| state.current),
+        Some(0)
+    );
 }
 
 #[test]
