@@ -153,10 +153,20 @@ pub(super) fn dispatch_event_batch(
                 .iter()
                 .filter(|uid| owner_uids.is_none_or(|owners| owners.contains(uid)))
             {
+                let damage_types = events
+                    .iter()
+                    .filter_map(|event| match event {
+                        BattleEvent::Hit(hit) if hit.target_uid == *target_uid => {
+                            pool.entity(hit.source_uid).map(|entity| entity.damage_type)
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
                 for (feature, op) in
                     crate::engine::skill::buff_act::be_attacked_consumption_rule_ops(
                         managers,
                         *target_uid,
+                        &damage_types,
                     )
                 {
                     reactions.after_publish.push(queued_buff_act_feature_op(

@@ -439,6 +439,10 @@ pub(super) fn damage_ops(
             execution.context.damage_target_count_kind,
             crate::engine::entity::attr::AttrId::DmgBonus,
         );
+    let source_damage_type = pool
+        .entity(source_uid)
+        .map(|entity| entity.damage_type)
+        .unwrap_or_default();
     let mut damage_commands = Vec::new();
     let mut additional_damage_commands = Vec::new();
     let mut avoided = Vec::new();
@@ -521,10 +525,23 @@ pub(super) fn damage_ops(
                 target_count_damage_bonus,
             ));
         }
+        let mut linked_attack_attributes = attack_attributes.clone();
+        let incoming_reduction =
+            crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
+                managers,
+                target_uid,
+                source_damage_type,
+                crate::engine::entity::attr::AttrId::DmgTakenReduction,
+            );
+        if incoming_reduction != 0 {
+            attack_attributes.push((
+                crate::engine::entity::attr::AttrId::DmgTakenReduction,
+                incoming_reduction,
+            ));
+        }
         // Linked damage keeps the triggering attack's shared damage lane.
         // Inherent Assassination belongs to its attacker, while a target
         // trigger converts the whole incoming attack, including linked hits.
-        let mut linked_attack_attributes = attack_attributes.clone();
         let assassination = crate::engine::skill::buff_act::assassination::target_modifier(
             managers,
             source_uid,
@@ -676,7 +693,7 @@ pub(super) fn damage_ops(
                 target_uid,
                 damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
             );
-            let additional_attributes = linked_attack_attributes
+            let mut additional_attributes = linked_attack_attributes
                 .iter()
                 .copied()
                 .filter(|(attr, _)| {
@@ -690,6 +707,23 @@ pub(super) fn damage_ops(
                 )
                 })
                 .collect::<Vec<_>>();
+            let additional_damage_type = pool
+                .entity(additional.credited_source_uid)
+                .map(|entity| entity.damage_type)
+                .unwrap_or_default();
+            let incoming_reduction =
+                crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
+                    managers,
+                    target_uid,
+                    additional_damage_type,
+                    crate::engine::entity::attr::AttrId::DmgTakenReduction,
+                );
+            if incoming_reduction != 0 {
+                additional_attributes.push((
+                    crate::engine::entity::attr::AttrId::DmgTakenReduction,
+                    incoming_reduction,
+                ));
+            }
             if let Some(mut command) = damage::resolve_additional_damage_command(
                 damage::DamageRequest {
                     source_uid: additional.credited_source_uid,

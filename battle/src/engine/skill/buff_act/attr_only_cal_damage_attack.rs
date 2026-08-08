@@ -4,12 +4,33 @@ use crate::engine::{
         BattleManagers,
         buff::{ActiveBuffFeature, BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
     },
-    skill::rule::output::{BattleCommand, RuleOp},
+    skill::{
+        rule::output::{BattleCommand, RuleOp},
+        target::EntityDamageType,
+    },
 };
 
 pub fn supports_extra_action(args: &[i32]) -> bool {
     matches!(args, [raw_attr, value]
         if AttrId::from_raw(*raw_attr).is_some() && *value != 0)
+}
+
+pub fn supports_be_attacked_type(args: &[i32]) -> bool {
+    matches!(
+        args,
+        [raw_damage_type, raw_attr, value, 1]
+            if matches!(EntityDamageType::from_wire(*raw_damage_type), EntityDamageType::Reality | EntityDamageType::Mental)
+                && AttrId::from_raw(*raw_attr) == Some(AttrId::DmgTakenReduction)
+                && *value != 0
+    )
+}
+
+pub fn supports_be_attacked(args: &[i32]) -> bool {
+    matches!(
+        args,
+        [raw_attr, value, 1]
+            if AttrId::from_raw(*raw_attr) == Some(AttrId::DmgTakenReduction) && *value != 0
+    )
 }
 
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId) -> i32 {
@@ -20,7 +41,60 @@ pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId) -> i32 {
 }
 
 pub fn consumes_after_attack(feature: &ActiveBuffFeature) -> bool {
-    matches!(feature.values.as_slice(), [_, _, _, consume, ..] if *consume != 0)
+    match super::feature_kind(feature) {
+        Some(super::registry::BuffActKind::AttrOnlyCalDamageBeAttackedType) => {
+            matches!(feature.values.as_slice(), [_, _, _, _, consume] if *consume != 0)
+        }
+        _ => matches!(feature.values.as_slice(), [_, _, _, consume, ..] if *consume != 0),
+    }
+}
+
+pub fn applies_to_incoming_damage(
+    feature: &ActiveBuffFeature,
+    damage_type: EntityDamageType,
+) -> bool {
+    match super::feature_kind(feature) {
+        Some(super::registry::BuffActKind::AttrOnlyCalDamageBeAttacked) => true,
+        Some(super::registry::BuffActKind::AttrOnlyCalDamageBeAttackedType) => {
+            matches!(feature.values.as_slice(), [_, raw_damage_type, ..]
+                if EntityDamageType::from_wire(*raw_damage_type) == damage_type)
+        }
+        _ => false,
+    }
+}
+
+pub fn applies_to_any_incoming_damage(
+    feature: &ActiveBuffFeature,
+    damage_types: &[EntityDamageType],
+) -> bool {
+    match super::feature_kind(feature) {
+        Some(super::registry::BuffActKind::AttrOnlyCalDamageBeAttacked) => true,
+        Some(super::registry::BuffActKind::AttrOnlyCalDamageBeAttackedType) => damage_types
+            .iter()
+            .any(|damage_type| applies_to_incoming_damage(feature, *damage_type)),
+        _ => false,
+    }
+}
+
+pub fn incoming_attribute_delta(
+    feature: &ActiveBuffFeature,
+    damage_type: EntityDamageType,
+    attr_id: AttrId,
+) -> i32 {
+    if !applies_to_incoming_damage(feature, damage_type) {
+        return 0;
+    }
+    match super::feature_kind(feature) {
+        Some(super::registry::BuffActKind::AttrOnlyCalDamageBeAttackedType) => {
+            match feature.values.as_slice() {
+                [_, _, raw_attr, value, _] if AttrId::from_raw(*raw_attr) == Some(attr_id) => {
+                    value.saturating_mul(feature.amount)
+                }
+                _ => 0,
+            }
+        }
+        _ => attribute_delta(feature, attr_id),
+    }
 }
 
 pub fn applies_to_skill(feature: &ActiveBuffFeature, is_big_skill: bool) -> bool {
@@ -216,23 +290,21 @@ mod tests {
             ..Default::default()
         };
         let mut managers = BattleManagers::seeded(&fight);
-        let feature = managers
-            .buff
-            .active_features(&managers.hp)
-            .into_iter()
-            .find(|feature| feature.owner_uid == -1)
-            .unwrap();
 
         assert_eq!(
-            super::super::attack_attribute_delta(
-                &feature,
+            super::super::incoming_target_attack_attribute_delta(
+                &managers,
+                -1,
+                EntityDamageType::Mental,
                 AttrId::DmgTakenReduction,
-                &managers.buff,
-                &managers.hp,
             ),
             250
         );
-        let ops = super::super::be_attacked_consumption_rule_ops(&managers, -1);
+        let ops = super::super::be_attacked_consumption_rule_ops(
+            &managers,
+            -1,
+            &[EntityDamageType::Mental],
+        );
         let [(_, op)] = ops.as_slice() else {
             panic!("expected one target-local consumption");
         };
@@ -242,6 +314,75 @@ mod tests {
         managers.execute_buff(command.clone()).unwrap();
 
         assert!(managers.buff.snapshot(-1, 3).is_none());
+    }
+
+    #[test]
+    fn typed_be_attacked_attribute_matches_damage_type_before_consumption() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(3),
+                        buff_id: Some(3131),
+                        from_uid: Some(-1),
+                        count: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+
+        assert_eq!(
+            super::super::incoming_target_attack_attribute_delta(
+                &managers,
+                -1,
+                EntityDamageType::Mental,
+                AttrId::DmgTakenReduction,
+            ),
+            -250
+        );
+        assert_eq!(
+            super::super::incoming_target_attack_attribute_delta(
+                &managers,
+                -1,
+                EntityDamageType::Reality,
+                AttrId::DmgTakenReduction,
+            ),
+            0
+        );
+        assert_eq!(
+            super::super::be_attacked_consumption_rule_ops(
+                &managers,
+                -1,
+                &[EntityDamageType::Mental],
+            )
+            .len(),
+            1
+        );
+        assert!(
+            super::super::be_attacked_consumption_rule_ops(
+                &managers,
+                -1,
+                &[EntityDamageType::Reality],
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            super::super::be_attacked_consumption_rule_ops(
+                &managers,
+                -1,
+                &[EntityDamageType::Reality, EntityDamageType::Mental],
+            )
+            .len(),
+            1
+        );
     }
 
     #[test]

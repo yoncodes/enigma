@@ -79,6 +79,7 @@ pub enum BuffActKind {
     AttrOnlyCalDamageAttack,
     AttrOnlyCalDamageAttackBigSkill,
     AttrOnlyCalDamageBeAttacked,
+    AttrOnlyCalDamageBeAttackedType,
     AttrOnlyCalDamageInExtra,
     AttrOnlyCalDamageHpReplaceAttackCalSkillDamage,
     AttrOnlyCalDamageReplaceAttr,
@@ -614,7 +615,11 @@ buff_act_definitions! {
         supports: |args| matches!(args, [_, _, consume, ..] if *consume != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1001, "AttrOnlyCalDamageAttackBigSkill"), &[EffectType::Attr as i32]));
     (112, "AttrOnlyCalDamageBeAttacked") => AttrOnlyCalDamageBeAttacked,
         effect_time_subscription: false,
-        supports: |args| matches!(args, [_, _, consume, ..] if *consume != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(112, "AttrOnlyCalDamageBeAttacked"), &[EffectType::None as i32]));
+        supports: super::attr_only_cal_damage_attack::supports_be_attacked, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(112, "AttrOnlyCalDamageBeAttacked"), &[EffectType::None as i32]));
+    (114, "AttrOnlyCalDamageBeAttackedType") => AttrOnlyCalDamageBeAttackedType,
+        effect_time_subscription: false,
+        supports: super::attr_only_cal_damage_attack::supports_be_attacked_type, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(114, "AttrOnlyCalDamageBeAttackedType"), &[EffectType::None as i32]));
     (740, "AttrOnlyCalDamageInExtra") => AttrOnlyCalDamageInExtra,
         effect_time_subscription: false,
         supports: super::attr_only_cal_damage_attack::supports_extra_action, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(740, "AttrOnlyCalDamageInExtra"), &[EffectType::None as i32]));

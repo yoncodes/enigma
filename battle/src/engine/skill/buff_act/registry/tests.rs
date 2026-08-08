@@ -787,6 +787,63 @@ fn skill_target_count_attributes_keep_separate_exact_identities() {
 }
 
 #[test]
+fn damage_type_be_attacked_attribute_keeps_its_exact_identity() {
+    assert!(has_destination(
+        112,
+        "AttrOnlyCalDamageBeAttacked",
+        &[206, 250, 1]
+    ));
+    assert!(!has_destination(
+        112,
+        "AttrOnlyCalDamageBeAttacked",
+        &[205, 250, 1]
+    ));
+    assert!(!has_destination(
+        112,
+        "AttrOnlyCalDamageBeAttacked",
+        &[206, 250, 2]
+    ));
+    assert!(!has_destination(
+        112,
+        "AttrOnlyCalDamageBeAttacked",
+        &[206, 250, 1, 1]
+    ));
+    let definition = find(114, "AttrOnlyCalDamageBeAttackedType").unwrap();
+
+    assert_eq!(
+        definition.kind,
+        BuffActKind::AttrOnlyCalDamageBeAttackedType
+    );
+    assert!(definition.state.consumer);
+    assert!(has_destination(
+        114,
+        "AttrOnlyCalDamageBeAttackedType",
+        &[1, 206, 300, 1]
+    ));
+    assert!(has_destination(
+        114,
+        "AttrOnlyCalDamageBeAttackedType",
+        &[2, 206, -250, 1]
+    ));
+    assert!(!has_destination(
+        114,
+        "AttrOnlyCalDamageBeAttackedType",
+        &[0, 206, -250, 1]
+    ));
+    assert!(!has_destination(
+        114,
+        "AttrOnlyCalDamageBeAttackedType",
+        &[2, 205, -250, 1]
+    ));
+    assert!(!has_destination(
+        114,
+        "AttrOnlyCalDamageBeAttackedType",
+        &[2, 206, -250, 0]
+    ));
+    assert!(find(114, "AttrOnlyCalDamageBeAttacked").is_none());
+}
+
+#[test]
 fn layer_gated_passive_keeps_its_exact_static_route() {
     let definition = find(805, "AddPassiveSkillByLayer").unwrap();
     assert!(definition.state.consumer);
