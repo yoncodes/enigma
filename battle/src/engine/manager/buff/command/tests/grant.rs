@@ -796,6 +796,15 @@ fn static_control_immunity_rejects_without_consuming_the_carrier() {
     assert!(changes.change.removed.is_empty());
     assert!(manager.has_buff_id(-1, 5140006));
     assert!(!manager.has_buff_id(-1, 4010));
+    assert!(matches!(
+        changes.events().as_slice(),
+        [crate::engine::event::payload::BattleEvent::BuffRejected(rejected)]
+            if rejected.source_uid == -2
+                && rejected.target_uid == -1
+                && rejected.buff_id == 4010
+                && rejected.type_id > 0
+                && rejected.blocker_buff_id == 5140006
+    ));
 }
 
 #[test]

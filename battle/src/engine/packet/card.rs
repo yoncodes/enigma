@@ -205,6 +205,17 @@ impl CardPacket {
         }
     }
 
+    pub fn hero_temp_card(card: CardInfo, team_type: i32) -> ActEffect {
+        let card = wire_card(card);
+        ActEffect {
+            target_id: card.uid,
+            effect_type: Some(EffectType::Spcardadd as i32),
+            card_info: Some(card),
+            team_type: Some(team_type),
+            ..Default::default()
+        }
+    }
+
     pub fn change_to_temp_card(target_uid: i64, reserve_str: String, team_type: i32) -> ActEffect {
         ActEffect {
             target_id: Some(target_uid),

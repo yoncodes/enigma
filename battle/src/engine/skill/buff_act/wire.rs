@@ -14,6 +14,7 @@ pub struct BuffActWireDefinition {
     static_read: &'static [i32],
     refresh: &'static [i32],
     pub initial_state: Option<InitialStateRule>,
+    pub initial_state_marker: bool,
     pub initial_private_state: Option<InitialPrivateStateRule>,
     pub max_hp: Option<MaxHpWireRule>,
     pub pre_add: Option<WireEffect>,
@@ -43,6 +44,7 @@ pub enum InitialStateRule {
     CurrentHpPermille,
     FirstArgument,
     SecondArgument,
+    StringCounter,
     GrantValue,
 }
 
@@ -73,6 +75,7 @@ impl BuffActWireDefinition {
             static_read,
             refresh,
             initial_state: None,
+            initial_state_marker: true,
             initial_private_state: None,
             max_hp: None,
             pre_add: None,
@@ -88,6 +91,7 @@ impl BuffActWireDefinition {
             static_read: &[],
             refresh: &[],
             initial_state: None,
+            initial_state_marker: true,
             initial_private_state: None,
             max_hp: None,
             pre_add: None,
@@ -103,6 +107,7 @@ impl BuffActWireDefinition {
             static_read: &[],
             refresh: markers,
             initial_state: None,
+            initial_state_marker: true,
             initial_private_state: None,
             max_hp: None,
             pre_add: None,
@@ -113,6 +118,12 @@ impl BuffActWireDefinition {
 
     pub const fn with_initial_state(mut self, rule: InitialStateRule) -> Self {
         self.initial_state = Some(rule);
+        self
+    }
+
+    pub const fn with_embedded_initial_state(mut self, rule: InitialStateRule) -> Self {
+        self.initial_state = Some(rule);
+        self.initial_state_marker = false;
         self
     }
 

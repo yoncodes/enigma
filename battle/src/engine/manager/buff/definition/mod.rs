@@ -341,6 +341,9 @@ impl BuffDefinition {
         self.features
             .iter()
             .filter_map(|feature| {
+                if !feature.arguments_supported {
+                    return None;
+                }
                 let definition = feature.wire?;
                 let act_id = feature.values.first().copied()?;
                 let (params, str_param, marker_team) = match definition.initial_state? {
@@ -382,6 +385,7 @@ impl BuffDefinition {
                         String::new(),
                         0,
                     ),
+                    InitialStateRule::StringCounter => (Vec::new(), "0".to_owned(), 0),
                     InitialStateRule::GrantValue => return None,
                 };
                 Some(super::BuffActInfoMarkerResult {
@@ -394,6 +398,16 @@ impl BuffDefinition {
                 })
             })
             .collect()
+    }
+
+    pub(super) fn projects_initial_wire_state(&self, act_id: i32) -> bool {
+        self.features.iter().any(|feature| {
+            feature.arguments_supported
+                && feature.values.first() == Some(&act_id)
+                && feature
+                    .wire
+                    .is_some_and(|wire| wire.initial_state.is_some() && wire.initial_state_marker)
+        })
     }
 
     pub(super) fn has_effect_count(&self) -> bool {

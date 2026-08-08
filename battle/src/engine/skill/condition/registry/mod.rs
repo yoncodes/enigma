@@ -404,6 +404,7 @@ condition_definitions! {
     [19304] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEnd, None));
     [19301] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
     [19402] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
+    [64208] "HasRejectBuffId" => buff::rejected_buff_id_or_type, filters_behavior_targets(event_trigger(EventKind::BuffRejected, None));
     [56301] "NoBuff" => buff::first_status_absent, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
     [750101] "PlayerHasBuff" => buff::team_buff_presence, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [514100] "SelfTeamHasBuffTypeLayerLessThan" => buff::team_buff_type_layer_at_most, setup_route(SetupStage::RoundStartCondition, 100, &[EventKind::BuffChanged]);
@@ -557,6 +558,7 @@ condition_definitions! {
     [992101] "PerKillNum" => entity_count::per_kill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [8] "Dead" => lifecycle::entity_dead, event_trigger(EventKind::EntityDied, None);
     [812] "Dead" => lifecycle::entity_dead, reaction_targets_owner(event_trigger(EventKind::EntityDied, None));
+    [648003, 648009] "SelfExit" => lifecycle::entity_dead, reaction_targets_owner(event_trigger(EventKind::EntityDied, None));
     [24102] "TeammateAlive" => entity_count::teammate_alive, event_trigger(EventKind::RoundStart, None);
     [524302] "GroupSummonedNumEqual" => entity_count::group_summoned_equal, event_trigger(EventKind::RoundEnd, None);
     [726304] "BloodPoolValue" => resource::blood_pool_value, event_trigger(EventKind::RoundEndAfterSettlement, None);
@@ -664,11 +666,13 @@ condition_definitions! {
     [744203] "PerHp" => hp::per_hp, predicate(&[EventKind::HpLost]);
     [12203] "LostLifePer" => hp::per_lost_hp, predicate(&[EventKind::HpLost]);
     [623203] "HpLostRatio" => hp::per_lost_hp, predicate(&[EventKind::HpLost]);
+    [623204] "HpLostRatio" => hp::per_lost_hp, incoming_attack_modifier(predicate(&[EventKind::HpLost]));
     [30208] "AttackCrit" => parse::attack_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [30402] "AttackCrit" => parse::attack_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [30210] "AttackCrit" => parse::attack_crit, predicate(&[]);
     [7203] "BeforeCrit" => parse::before_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::Damage));
     [740203] "BloodPoolMax" => resource::blood_pool_max, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [751104] "ExSkillLevel" => target_identity::ex_skill_level, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [718212] "ActOrderRange" => act_order::range, event_trigger(EventKind::AllyAction, None);
     [35201] "ActOrder" => act_order::order, event_trigger(EventKind::SkillAction, None);
     [35203] "ActOrder" => act_order::order, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));

@@ -126,6 +126,102 @@ fn disperse_configured_buff_keeps_its_exact_registry_identity() {
 }
 
 #[test]
+fn eagle_exit_dispel_removes_the_configured_buff_type_family() {
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(90002, "Disperse2"),
+        vec![8001],
+        vec!["8001".into()],
+    );
+
+    let definition = registry::find(&behavior).unwrap();
+    assert_eq!(definition.kind, BehaviorKind::DisperseTypeId);
+    assert!(definition
+        .supports
+        .is_some_and(|supports| supports(&behavior)));
+    let operations = remove_each_buff_family_ops(-1, &behavior).unwrap();
+    let [RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(command)))] =
+        operations.as_slice()
+    else {
+        panic!("expected one buff-family removal command");
+    };
+    assert_eq!(command.target_uid, -1);
+    assert_eq!(command.selector, BuffRemoveSelector::IdOrType(8001));
+    assert!(command.origin.key.matches(90002, "Disperse2"));
+
+    for invalid in [Vec::new(), vec![0], vec![-1], vec![8001, 8002]] {
+        assert!(!definition
+            .supports
+            .is_some_and(|supports| supports(&ParsedBehavior::new(90002, "Disperse2", invalid))));
+    }
+    let grouped = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(90002, "Disperse2"),
+        vec![8001],
+        vec!["8001,8002".into()],
+    );
+    assert!(!definition
+        .supports
+        .is_some_and(|supports| supports(&grouped)));
+    assert!(registry::find_key(90002, "Disperse1").is_none());
+}
+
+#[test]
+fn eagle_death_dispatches_the_exact_cleanup_through_buff_manager() {
+    use crate::engine::{
+        event::payload::{BattleEvent, EntityDiedEvent},
+        manager::BattleManagers,
+        runtime::{determinism::RoundDeterminism, drain},
+        skill::{effect::SkillEffectCatalog, target::TargetContext},
+    };
+
+    crate::test_support::init_config();
+    let mut fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                passive_skill: vec![30060141],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1_000),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(30061),
+                    uid: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    fight.attacker.as_mut().unwrap().entitys[0].current_hp = Some(0);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    drain::run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::EntityDied(EntityDiedEvent {
+            source_uid: -1,
+            target_uid: 10,
+        }),
+    )
+    .unwrap();
+
+    assert!(!managers.buff.has_buff_id(-1, 30061));
+}
+
+#[test]
 fn purify_x_keeps_the_limit_separate_from_status_arguments() {
     let behavior = ParsedBehavior::from_spec(
         crate::engine::skill::behavior::classify::BehaviorSpec::new(20020, "PurifyX"),

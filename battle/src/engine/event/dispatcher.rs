@@ -116,6 +116,43 @@ pub fn dispatch_event_phase(
     )
 }
 
+pub fn dispatch_skill_event_phase(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut crate::engine::runtime::determinism::RoundDeterminism,
+    owner_skill: (i64, i32),
+    event: &BattleEvent,
+    publication: crate::engine::event::subscription::PublicationPhase,
+) -> Result<DispatchBatch, SubscriberError> {
+    let (owner_uid, skill_id) = owner_skill;
+    let skills = catalog
+        .compiled_subscription_lanes(skill_id)
+        .map_err(|route| SubscriberError::UncompiledRoute { skill_id, route })?
+        .into_iter()
+        .filter(|(_, key)| event.subscription_kinds().any(|event| event == key.event))
+        .map(|(slot_index, key)| SkillSubscriber {
+            owner_uid,
+            skill_id,
+            slot_index: Some(slot_index),
+            key,
+        })
+        .collect();
+    let mut subscribers = subscriber::EventSubscribers {
+        skills,
+        buff_acts: Vec::new(),
+    };
+    retain_publication(&mut subscribers, publication);
+    Ok(dispatch_subscribers(
+        subscribers,
+        pool,
+        managers,
+        catalog,
+        determinism,
+        event,
+    ))
+}
+
 fn dispatch_subscribers(
     subscribers: subscriber::EventSubscribers,
     pool: &TargetPool,

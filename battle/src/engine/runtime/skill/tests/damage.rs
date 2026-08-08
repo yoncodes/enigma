@@ -829,6 +829,291 @@ fn source_passive_attack_modifier_is_collected_by_runtime_damage() {
 }
 
 #[test]
+fn configured_single_and_mass_attack_penalties_follow_the_skill_target_count() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(3091),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(3101),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: [-1, -2]
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })
+                .to_vec(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+
+    let damage_amounts = |logic_target| {
+        let mut catalog = SkillEffectCatalog::default();
+        const SKILL_ID: i32 = 999_999_004;
+        catalog.insert(ParsedSkillEffect {
+            skill_id: SKILL_ID,
+            slots: Vec::new(),
+        });
+        catalog.insert_damage_rate(SKILL_ID, 1_000);
+        catalog.insert_logic_target(SKILL_ID, logic_target);
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: SKILL_ID,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(-1);
+        emit_all_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Active,
+        )
+        .unwrap()
+        .into_iter()
+        .flat_map(|op| match op {
+            RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(damage))) => {
+                vec![damage.amount]
+            }
+            RuleOp::Command(BattleCommand::HpBatch(commands)) => commands
+                .into_iter()
+                .filter_map(|command| match command {
+                    HpCommand::Damage(damage) => Some(damage.amount),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        })
+        .collect::<Vec<_>>()
+    };
+
+    assert_eq!(damage_amounts(1), vec![700]);
+    assert_eq!(damage_amounts(201), vec![700, 700]);
+}
+
+#[test]
+fn typed_be_attacked_reduction_uses_the_attackers_damage_type() {
+    crate::test_support::init_config();
+    let damage_amount = |source_model_id| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(source_model_id),
+                    entity_type: Some(1),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![BuffInfo {
+                        uid: Some(3),
+                        buff_id: Some(3131),
+                        from_uid: Some(-1),
+                        count: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let mut catalog = SkillEffectCatalog::default();
+        const SKILL_ID: i32 = 999_999_005;
+        catalog.insert(ParsedSkillEffect {
+            skill_id: SKILL_ID,
+            slots: Vec::new(),
+        });
+        catalog.insert_damage_rate(SKILL_ID, 1_000);
+        catalog.insert_logic_target(SKILL_ID, 1);
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: SKILL_ID,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(-1);
+
+        emit_all_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Active,
+        )
+        .unwrap()
+        .into_iter()
+        .find_map(|op| match op {
+            RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(damage))) => Some(damage.amount),
+            RuleOp::Command(BattleCommand::HpBatch(commands)) => {
+                commands.into_iter().find_map(|command| match command {
+                    HpCommand::Damage(damage) => Some(damage.amount),
+                    _ => None,
+                })
+            }
+            _ => None,
+        })
+        .unwrap()
+    };
+
+    assert_eq!(damage_amount(3070), 1_250);
+    assert_eq!(damage_amount(3102), 1_000);
+}
+
+#[test]
+fn linked_damage_uses_its_credited_sources_damage_type() {
+    crate::test_support::init_config();
+    let damage_pair = |target_buffs| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![
+                    FightEntityInfo {
+                        uid: Some(10),
+                        model_id: Some(3102),
+                        entity_type: Some(1),
+                        current_hp: Some(1_000),
+                        attr: Some(HeroAttribute {
+                            hp: Some(1_000),
+                            attack: Some(1_000),
+                            ..Default::default()
+                        }),
+                        buffs: vec![BuffInfo {
+                            uid: Some(1),
+                            buff_id: Some(31050144),
+                            from_uid: Some(20),
+                            count: Some(1),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    FightEntityInfo {
+                        uid: Some(20),
+                        model_id: Some(3070),
+                        entity_type: Some(1),
+                        current_hp: Some(1_000),
+                        attr: Some(HeroAttribute {
+                            hp: Some(1_000),
+                            attack: Some(1_000),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
+                    buffs: target_buffs,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let mut catalog = SkillEffectCatalog::default();
+        const SKILL_ID: i32 = 999_999_006;
+        catalog.insert_damage_rate(SKILL_ID, 1_000);
+        let invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: SKILL_ID,
+        }
+        .into();
+        let mut execution = SkillExecution::new(TargetContext::default());
+        execution.configured_targets = Some(vec![-1]);
+        execution.activated_additional_damage.extend(
+            plan::additional_damage_activation(&invocation, &managers, &execution)
+                .into_iter()
+                .map(|activation| activation.additional),
+        );
+        let damage = plan::damage_ops(
+            &invocation,
+            &managers,
+            &pool,
+            &catalog,
+            SKILL_ID,
+            &mut RoundDeterminism::default(),
+            &mut execution,
+        );
+        let [HpCommand::Damage(main)] = damage.damage.as_slice() else {
+            panic!("expected main damage")
+        };
+        let [HpCommand::Damage(linked)] = damage.additional_damage.as_slice() else {
+            panic!("expected linked damage")
+        };
+        (main.amount, linked.amount)
+    };
+    let baseline = damage_pair(Vec::new());
+    let typed = damage_pair(vec![BuffInfo {
+        uid: Some(3),
+        buff_id: Some(3131),
+        from_uid: Some(-1),
+        count: Some(1),
+        ..Default::default()
+    }]);
+
+    assert_eq!(typed.0, baseline.0);
+    assert!(typed.1 > baseline.1);
+}
+
+#[test]
 fn additional_damage_keeps_its_own_target_order_and_critical_targets() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {

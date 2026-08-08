@@ -777,7 +777,9 @@ pub(super) fn direct_damage(
     let action_joins_might = formula_rules.combines_action_with_might;
     let target_base_regular = attributes.get(target.uid, AttrId::DmgTakenReduction);
     let target_buff_regular = attribute_delta(target, AttrId::DmgTakenReduction);
-    let target_regular = target_base_regular + target_buff_regular;
+    let target_regular = target_base_regular
+        + target_buff_regular
+        + attack_attribute_delta(AttrId::DmgTakenReduction);
     let playmode_rate = attributes.get(source.uid, AttrId::PlaymodeDmgIncrease)
         + attribute_delta(source, AttrId::PlaymodeDmgIncrease)
         + attack_attribute_delta(AttrId::PlaymodeDmgIncrease)

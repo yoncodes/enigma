@@ -72,11 +72,14 @@ pub enum BuffActKind {
     AttrByHeroId,
     AttrByLostHp,
     AttrByShield,
+    AttrSkillMultiple,
+    AttrSkillSingle,
     AttrByHeatScale,
     AttrFromEntity,
     AttrOnlyCalDamageAttack,
     AttrOnlyCalDamageAttackBigSkill,
     AttrOnlyCalDamageBeAttacked,
+    AttrOnlyCalDamageBeAttackedType,
     AttrOnlyCalDamageInExtra,
     AttrOnlyCalDamageHpReplaceAttackCalSkillDamage,
     AttrOnlyCalDamageReplaceAttr,
@@ -115,6 +118,7 @@ pub enum BuffActKind {
     CountContinueChannel,
     ConduitCardSelection,
     CreateAdditionalDamage,
+    CreateHeroTempCards,
     CreateMaxHpAdditionalDamageAndRemove,
     CritRateAlter2,
     CritRateAlterByOtherBuff,
@@ -611,10 +615,24 @@ buff_act_definitions! {
         supports: |args| matches!(args, [_, _, consume, ..] if *consume != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1001, "AttrOnlyCalDamageAttackBigSkill"), &[EffectType::Attr as i32]));
     (112, "AttrOnlyCalDamageBeAttacked") => AttrOnlyCalDamageBeAttacked,
         effect_time_subscription: false,
-        supports: |args| matches!(args, [_, _, consume, ..] if *consume != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(112, "AttrOnlyCalDamageBeAttacked"), &[EffectType::None as i32]));
+        supports: super::attr_only_cal_damage_attack::supports_be_attacked, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(112, "AttrOnlyCalDamageBeAttacked"), &[EffectType::None as i32]));
+    (114, "AttrOnlyCalDamageBeAttackedType") => AttrOnlyCalDamageBeAttackedType,
+        effect_time_subscription: false,
+        supports: super::attr_only_cal_damage_attack::supports_be_attacked_type, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(114, "AttrOnlyCalDamageBeAttackedType"), &[EffectType::None as i32]));
     (740, "AttrOnlyCalDamageInExtra") => AttrOnlyCalDamageInExtra,
         effect_time_subscription: false,
         supports: super::attr_only_cal_damage_attack::supports_extra_action, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(740, "AttrOnlyCalDamageInExtra"), &[EffectType::None as i32]));
+    (106, "AttrSkillSingle") => AttrSkillSingle, effect_time_subscription: false,
+        supports: super::attr_by_skill_target_count::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(106, "AttrSkillSingle"), &[EffectType::None as i32]));
+    (107, "AttrSkillMultiple") => AttrSkillMultiple, effect_time_subscription: false,
+        supports: super::attr_by_skill_target_count::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(107, "AttrSkillMultiple"), &[EffectType::None as i32]));
+    (739, "CreateHeroTempCards") => CreateHeroTempCards,
+        scoped_runtime: |context| super::add_sp_temp_card::hero_skill_subscriber_rule_ops(context.pool, context.subscriber, context.event?),
+        supports: super::add_sp_temp_card::supports_hero_skill,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(739, "CreateHeroTempCards"), &[EffectType::None as i32]));
     (302, "BeatBack") => BeatBack,
         event: EventKind::SkillAction, phase: HitPassives, frame: CausingFrame, actor: OpposingTeam,
         runtime: |context| super::riposte::holder_rule_ops(context.pool, context.subscriber, context.event?),
@@ -1147,7 +1165,11 @@ buff_act_definitions! {
         runtime: |context| super::special_count_cast_channel::rule_ops(context.subscriber, context.event?, context.catalog),
         supports: |args| matches!(args, [skill_id, ..] if *skill_id > 0);
     (1004, "AddAttrBySpecialCount") => AddAttrBySpecialCount;
-    (1031, "ConsumeBuffAddBuffContinueChannel") => ConsumeBuffAddBuffContinueChannel;
+    (1031, "ConsumeBuffAddBuffContinueChannel") => ConsumeBuffAddBuffContinueChannel,
+        runtime: |context| super::consume_buff_add_buff_continue_channel::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::consume_buff_add_buff_continue_channel::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1031, "ConsumeBuffAddBuffContinueChannel"), &[])
+            .with_embedded_initial_state(super::wire::InitialStateRule::StringCounter));
     (1032, "FixElectricUpgrade") => FixElectricUpgrade,
         effect_time_subscription: false,
         supports: super::fix_electric_upgrade::supports, state_consumer: true,

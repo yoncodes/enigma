@@ -12,6 +12,7 @@ pub enum EventKind {
     BuffChanged,
     BuffStateChanged,
     BuffRemoved,
+    BuffRejected,
     BuffFeatureTriggered,
     HpLost,
     HpHealed,

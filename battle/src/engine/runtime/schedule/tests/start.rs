@@ -621,6 +621,96 @@ fn configured_special_temp_card_runs_during_the_opening_round_start_card_event()
 }
 
 #[test]
+fn configured_hero_temp_card_uses_the_live_group_rank_and_projection() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3070),
+                team_type: Some(1),
+                current_hp: Some(100),
+                skill_group1: vec![307001172, 307001182, 307001192],
+                buffs: vec![BuffInfo {
+                    uid: Some(1444),
+                    buff_id: Some(307002612),
+                    from_uid: Some(10),
+                    duration: Some(0),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let (start, _) = run_start(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 4,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 48,
+        },
+        7,
+    )
+    .unwrap();
+
+    assert!(managers.card.hand().iter().any(|card| {
+        card.skill_id == Some(307001182) && card.uid == Some(10) && card.temp_card == Some(true)
+    }));
+    assert!(!managers.buff.has_buff_id(10, 307002612));
+
+    fn collect_card_effects<'a>(
+        effect: &'a sonettobuf::ActEffect,
+        effects: &mut Vec<&'a sonettobuf::ActEffect>,
+    ) {
+        if matches!(
+            effect.effect_type,
+            Some(
+                value
+            ) if value == sonettobuf::effect_type_enum::EffectType::Spcardadd as i32
+                || value
+                    == sonettobuf::effect_type_enum::EffectType::Changetotempcard as i32
+        ) {
+            effects.push(effect);
+        }
+        if let Some(step) = &effect.fight_step {
+            for nested in &step.act_effect {
+                collect_card_effects(nested, effects);
+            }
+        }
+    }
+    let steps = crate::engine::packet::timeline::project(&start.frames).unwrap();
+    let mut effects = Vec::new();
+    for effect in steps.iter().flat_map(|step| &step.act_effect) {
+        collect_card_effects(effect, &mut effects);
+    }
+    assert_eq!(effects.len(), 1);
+    let effect = effects[0];
+    assert_eq!(
+        effect.effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Spcardadd as i32)
+    );
+    assert_eq!(effect.target_id, Some(10));
+    assert_eq!(effect.team_type, Some(1));
+    assert!(effect.card_info.as_ref().is_some_and(|card| {
+        card.skill_id == Some(307001182)
+            && card.temp_card == Some(true)
+            && card.hero_id == Some(3070)
+    }));
+}
+
+#[test]
 fn twins_round_start_passive_adds_the_captured_precast_card() {
     init_config();
     let fight = Fight {

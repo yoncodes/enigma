@@ -1,6 +1,59 @@
 use super::*;
 
 #[test]
+fn target_missing_hp_scales_only_the_incoming_damage_reduction_lane() {
+    crate::test_support::init_config();
+    let effects = SkillEffectCatalog::from_roots(config::configs::get(), [342440140], []);
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(500),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![342440140],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+
+    assert_eq!(
+        incoming_target_attack_modifiers(
+            10,
+            -1,
+            200,
+            RateRuntime {
+                effects: &effects,
+                managers: &managers,
+                pool: &pool,
+                context: TargetContext::default(),
+            },
+            &mut RoundDeterminism::default(),
+        )
+        .attack_attributes,
+        vec![(AttrId::DmgBonus, -100); 5]
+    );
+}
+
+#[test]
 fn incoming_condition_target_queries_the_attacker() {
     crate::test_support::init_config();
     let effects = SkillEffectCatalog::from_game_db(config::configs::get());

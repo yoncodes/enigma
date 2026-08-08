@@ -65,6 +65,48 @@ fn id_or_type_consume_plans_update_then_depletion_removal() {
 }
 
 #[test]
+fn zero_cost_consume_keeps_and_snapshots_the_current_amount() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(31280113),
+                    uid: Some(2),
+                    layer: Some(110),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    let changes = manager
+        .execute(
+            &HpManager::default(),
+            BuffCommand::Consume(BuffConsume {
+                origin: CommandOrigin {
+                    domain: RuleDomain::BuffAct,
+                    key: DefinitionKey::new(1031, "ConsumeBuffAddBuffContinueChannel"),
+                },
+                target_uid: 10,
+                selector: BuffSelector::IdOrType(31280113),
+                amount: 0,
+                depleted: DepletedBuff::Remove,
+            }),
+        )
+        .unwrap();
+
+    assert_eq!(changes.change.refreshed[0].before.layer, Some(110));
+    assert_eq!(changes.change.refreshed[0].after.layer, Some(110));
+    assert!(manager.has_buff_id(10, 31280113));
+}
+
+#[test]
 fn layered_consume_publishes_only_the_resulting_amount() {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();

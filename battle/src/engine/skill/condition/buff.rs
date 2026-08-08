@@ -332,6 +332,21 @@ pub fn buff_present(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCondit
     buff_presence(raw_args, BuffConditionMode::Present)
 }
 
+pub fn rejected_buff_id_or_type(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    match raw_args {
+        [value] => value
+            .parse::<i32>()
+            .ok()
+            .filter(|value| *value > 0)
+            .map(ParsedConditionKind::RejectedBuffIdOrType),
+        _ => None,
+    }
+}
+
 pub fn exact_buff_present(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     buff_presence(raw_args, BuffConditionMode::ExactPresent)
 }

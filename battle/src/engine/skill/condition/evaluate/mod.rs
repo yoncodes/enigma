@@ -719,6 +719,10 @@ fn condition_kind_matches(
                 .iter()
                 .any(|uid| managers.ex_point.is_full(*uid))
         }),
+        ParsedConditionKind::ExSkillLevel(level) => condition_targets.iter().any(|uid| {
+            pool.entity(*uid)
+                .is_some_and(|entity| entity.ex_skill_level == *level)
+        }),
         ParsedConditionKind::Synchronization { threshold } => {
             let Some(managers) = managers else {
                 return false;
@@ -869,6 +873,9 @@ fn condition_kind_matches(
         }
         ParsedConditionKind::PerKillCount { divisor } => {
             *divisor > 0 && context.action_kill_count >= *divisor
+        }
+        ParsedConditionKind::RejectedBuffIdOrType(id) => {
+            context.rejected_buff_id == *id || context.rejected_buff_type_id == *id
         }
         ParsedConditionKind::TeamEntityExited { .. } => managers.is_some_and(|managers| {
             context.runtime_target_uid != 0

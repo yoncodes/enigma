@@ -263,15 +263,29 @@ impl BuffDurationAdvance {
         })
     }
 
-    pub fn for_event(event: &BattleEvent) -> Option<Self> {
-        let BattleEvent::SkillAction(action) = event else {
-            return None;
+    pub fn for_event(event: &BattleEvent) -> Vec<Self> {
+        let (take_stages, owner_uid) = match event {
+            BattleEvent::SkillAction(action) => (
+                crate::engine::skill::buff_act::effect_time::duration_stage_for_skill_phase(
+                    action.phase,
+                )
+                .into_iter()
+                .collect::<Vec<_>>(),
+                action.source_uid,
+            ),
+            BattleEvent::AllyAction(action) => (
+                crate::engine::skill::buff_act::effect_time::duration_stages_for_event(
+                    crate::engine::event::kind::EventKind::AllyAction,
+                )
+                .collect::<Vec<_>>(),
+                action.source_uid,
+            ),
+            _ => return Vec::new(),
         };
-        let take_stage =
-            crate::engine::skill::buff_act::effect_time::duration_stage_for_skill_phase(
-                action.phase,
-            )?;
-        Self::new(take_stage, vec![action.source_uid], None)
+        take_stages
+            .into_iter()
+            .filter_map(|take_stage| Self::new(take_stage, vec![owner_uid], None))
+            .collect()
     }
 }
 
