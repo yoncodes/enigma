@@ -122,6 +122,8 @@ pub struct TargetContext {
     pub added_buff_target_uid: i64,
     pub removed_buff_id: i32,
     pub removed_buff_target_uid: i64,
+    pub rejected_buff_id: i32,
+    pub rejected_buff_type_id: i32,
     pub buff_overflow_amount: i32,
     pub owner_played_card: bool,
     pub direct_skill_body: bool,

@@ -28,6 +28,16 @@ pub struct BuffStateChangeEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuffRejectedEvent {
+    pub source_uid: i64,
+    pub target_uid: i64,
+    pub buff_uid: i64,
+    pub buff_id: i32,
+    pub type_id: i32,
+    pub blocker_buff_id: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuffFeatureTriggeredEvent {
     pub owner_uid: i64,
     pub source_uid: i64,
@@ -189,6 +199,7 @@ pub enum BattleEvent {
     BuffChanged(BuffChangeEvent),
     BuffStateChanged(BuffStateChangeEvent),
     BuffRemoved(BuffChangeEvent),
+    BuffRejected(BuffRejectedEvent),
     BuffsSettled(Vec<BuffChangeEvent>),
     BuffFeatureTriggered(BuffFeatureTriggeredEvent),
     HpLost {
@@ -245,6 +256,7 @@ impl BattleEvent {
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
                 Some(change.source_uid)
             }
+            Self::BuffRejected(change) => Some(change.source_uid),
             Self::BuffStateChanged(change) => Some(change.source_uid),
             Self::BuffFeatureTriggered(trigger) => Some(trigger.source_uid),
             Self::HpLost { source_uid, .. }
@@ -283,6 +295,7 @@ impl BattleEvent {
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
                 Some(change.target_uid)
             }
+            Self::BuffRejected(change) => Some(change.target_uid),
             Self::BuffStateChanged(change) => Some(change.target_uid),
             Self::BuffFeatureTriggered(trigger) => Some(trigger.target_uid),
             Self::Hit(hit) => Some(hit.target_uid),
@@ -323,6 +336,7 @@ impl BattleEvent {
             Self::BuffChanged(_) => EventKind::BuffChanged,
             Self::BuffStateChanged(_) => EventKind::BuffStateChanged,
             Self::BuffRemoved(_) => EventKind::BuffRemoved,
+            Self::BuffRejected(_) => EventKind::BuffRejected,
             Self::BuffsSettled(_) => EventKind::RoundEndFinalSettlement,
             Self::BuffFeatureTriggered(_) => EventKind::BuffFeatureTriggered,
             Self::HpLost { .. } => EventKind::HpLost,

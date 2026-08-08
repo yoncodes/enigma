@@ -331,6 +331,7 @@ impl BuffManager {
         BuffRejectResult {
             target_uid: route.target_uid,
             blocker_buff_id,
+            type_id: definition.effective_type_id(),
             buff: BuffInfo {
                 buff_id: Some(route.buff_id),
                 duration: Some(definition.duration),

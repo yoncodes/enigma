@@ -179,8 +179,13 @@ pub(super) fn dispatch_event_batch(
             }
             queued_attack_consumption = true;
         }
-        let reentry_skill = current_skill
-            .filter(|_| event.kind() == crate::engine::event::kind::EventKind::BuffAdded);
+        let reentry_skill = current_skill.filter(|_| {
+            matches!(
+                event.kind(),
+                crate::engine::event::kind::EventKind::BuffAdded
+                    | crate::engine::event::kind::EventKind::BuffRejected
+            )
+        });
         let mut dispatched = dispatch_reactions(
             pool,
             managers,
@@ -515,6 +520,25 @@ pub(super) fn dispatch_reactions(
         )?,
         (None, None) => dispatcher::dispatch_event(pool, managers, catalog, determinism, event)?,
     };
+    if event.kind() == crate::engine::event::kind::EventKind::BuffRejected
+        && let (Some((owner_uid, skill_id, _)), Some(publication)) =
+            (reentry_skill, publication_phase)
+    {
+        let current = dispatcher::dispatch_skill_event_phase(
+            pool,
+            managers,
+            catalog,
+            determinism,
+            (owner_uid, skill_id),
+            event,
+            publication,
+        )?;
+        for skill in current.skills {
+            if !dispatched.skills.contains(&skill) {
+                dispatched.skills.push(skill);
+            }
+        }
+    }
     match lane {
         Some(ReactionLane::Skills) => dispatched.buff_acts.clear(),
         Some(ReactionLane::BuffActs) => dispatched.skills.clear(),
@@ -934,6 +958,7 @@ fn event_target(event: &BattleEvent) -> Option<i64> {
         BattleEvent::BuffAdded(change)
         | BattleEvent::BuffChanged(change)
         | BattleEvent::BuffRemoved(change) => Some(change.target_uid),
+        BattleEvent::BuffRejected(change) => Some(change.target_uid),
         BattleEvent::BuffStateChanged(change) => Some(change.target_uid),
         BattleEvent::ExPointChanged(change) | BattleEvent::ExPointOverflow(change) => {
             Some(change.target_uid)
@@ -963,6 +988,7 @@ pub(super) fn reaction_counterparty(
             | BattleEvent::BuffChanged(_)
             | BattleEvent::BuffStateChanged(_)
             | BattleEvent::BuffRemoved(_)
+            | BattleEvent::BuffRejected(_)
     );
     let (source_uid, target_uid) = match event {
         BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action) => {
@@ -973,6 +999,7 @@ pub(super) fn reaction_counterparty(
         BattleEvent::BuffAdded(change)
         | BattleEvent::BuffChanged(change)
         | BattleEvent::BuffRemoved(change) => (change.source_uid, change.target_uid),
+        BattleEvent::BuffRejected(change) => (change.source_uid, change.target_uid),
         BattleEvent::BuffStateChanged(change) => (change.source_uid, change.target_uid),
         BattleEvent::HpLost {
             source_uid,

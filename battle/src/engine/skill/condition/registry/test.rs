@@ -189,6 +189,28 @@ fn follow_up_buff_gate_is_an_exact_inline_predicate() {
 }
 
 #[test]
+fn rejected_buff_gate_is_an_exact_transaction_trigger() {
+    let definition = find_key(64208, "HasRejectBuffId").unwrap();
+
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::BuffRejected,
+            phase: None,
+        }
+    );
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(
+        parse(64208, "HasRejectBuffId", &["4007".into()]),
+        Some(ParsedConditionKind::RejectedBuffIdOrType(4007))
+    );
+    assert!(parse(64208, "HasRejectBuffId", &[]).is_none());
+    assert!(parse(64208, "HasRejectBuffId", &["0".into()]).is_none());
+    assert!(parse(64208, "HasRejectBuffId", &["4007".into(), "1".into()]).is_none());
+    assert!(find_key(64208, "HasBuffId").is_none());
+}
+
+#[test]
 fn regeneration_period_absence_gate_filters_the_source() {
     let definition = find_key(57012, "NoBuffId").unwrap();
 

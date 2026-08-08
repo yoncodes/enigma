@@ -102,6 +102,7 @@ pub enum ParsedConditionKind {
     },
     BuffAdded(Vec<i32>),
     BuffRemoved(Vec<i32>),
+    RejectedBuffIdOrType(i32),
     AccBuffAddedCount {
         buff_ids: Vec<i32>,
         threshold: i32,
