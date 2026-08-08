@@ -7,7 +7,7 @@ use crate::engine::{
     },
     runtime::determinism::RoundDeterminism,
     skill::{
-        action::{SkillModifiers, SkillRateModifier},
+        action::{AfterDamageBuffModifier, SkillModifiers, SkillRateModifier},
         behavior::{
             AttackModifierContext, BehaviorOpContext, classify::BehaviorKind,
             registry::BehaviorHandler,
@@ -63,11 +63,18 @@ impl BehaviorHandler for Handler {
             ]);
         }
         if behavior.spec.kind == BehaviorKind::CrystalAddSkillRate {
-            let [all_rate, raw_limit, focus_rate, buff_id, crystal_type] = behavior.args.as_slice()
+            let [all_rate, raw_limit, focus_rate, buff_id, buff_layer] = behavior.args.as_slice()
             else {
                 return None;
             };
-            let crystal_count = crystal_count(context.managers, context.source_uid, *crystal_type);
+            let crystal_count = context
+                .managers
+                .emanation
+                .count(
+                    context.source_uid,
+                    crate::engine::manager::emanation::EmanationKind::Purple,
+                )
+                .max(0);
             let gauge_key = crate::engine::mechanic::lingering_glow::key(context.source_team);
             if *all_rate != 0 && crystal_count > 0 {
                 context.modifiers.rates.push(SkillRateModifier::new(
@@ -104,6 +111,18 @@ impl BehaviorHandler for Handler {
                     ),
                     crystal_rate_career_scaled(behavior.spec.kind, true),
                 ));
+            }
+            if crystal_count > 0
+                && let Some(origin) = super::command_origin(behavior)
+            {
+                context
+                    .modifiers
+                    .after_damage_buffs
+                    .push(AfterDamageBuffModifier {
+                        origin,
+                        buff_id: *buff_id,
+                        amount: crystal_count.saturating_mul(*buff_layer),
+                    });
             }
             return Some(Vec::new());
         }
@@ -826,6 +845,15 @@ pub(super) fn supports_heat_scale_rate(behavior: &ParsedBehavior) -> bool {
         if *divisor > 0 && *rate > 0 && *limit > 0)
 }
 
+pub(super) fn supports_crystal_skill_rate(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [all_rate, raw_limit, focus_rate, buff_id, buff_layer]
+        if *all_rate > 0
+            && *raw_limit > 0
+            && *focus_rate > 0
+            && *buff_id > 0
+            && *buff_layer > 0)
+}
+
 fn heat_scale_skill_rate(current: i32, args: &[i32]) -> i32 {
     let [divisor, rate, limit] = args else {
         return 0;
@@ -884,13 +912,6 @@ fn card_rank_skill_rate(
         })
         .fold(0_i32, i32::saturating_add);
     total.min(cap)
-}
-
-fn crystal_count(managers: &BattleManagers, source_uid: i64, crystal_type: i32) -> i32 {
-    crate::engine::manager::emanation::EmanationKind::from_id(crystal_type)
-        .map(|kind| managers.emanation.count(source_uid, kind))
-        .unwrap_or_default()
-        .max(0)
 }
 
 fn crystal_rate_career_scaled(kind: BehaviorKind, _focus: bool) -> bool {

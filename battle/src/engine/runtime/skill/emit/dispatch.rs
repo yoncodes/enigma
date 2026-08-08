@@ -135,6 +135,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         invocation.mode,
         crate::engine::skill::action::SkillExecutionMode::Active
             | crate::engine::skill::action::SkillExecutionMode::DirectBig
+            | crate::engine::skill::action::SkillExecutionMode::Device
     ) {
         execution.context.active_skill_is_attack = catalog.is_attack(effect_skill_id);
         if matches!(trigger, SkillOpTrigger::Active) && invocation.card_index > 0 {
@@ -937,6 +938,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             invocation.mode,
             crate::engine::skill::action::SkillExecutionMode::Active
                 | crate::engine::skill::action::SkillExecutionMode::DirectBig
+                | crate::engine::skill::action::SkillExecutionMode::Device
         )
     {
         outputs.push(SkillEmissionOp {
