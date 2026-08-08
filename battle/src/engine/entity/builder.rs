@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use database::{db::game::equipment::Equipment, models::game::heros::HeroData};
 use sonettobuf::{EnhanceInfoBox, EquipRecord, FightEntityInfo, HeroAttribute, PowerInfo};
 
+use crate::engine::manager::ex_point::ExPointKind;
+
 use super::{
     attr::Attr,
     destiny::Destiny,
@@ -56,6 +58,11 @@ impl EntityBuilder {
             .map(Stats::base)
             .unwrap_or_else(|| Attr::get(&self.hero_data, &self.equips));
         let (sg1, sg2) = Skill::get(&self.hero_data, self.is_sub, destiny.as_ref());
+        let ex_point_type = Self::ex_point_type(r.hero_id);
+        let ex_skill = Self::wire_ex_skill(
+            ex_point_type,
+            Skill::get_ex(&self.hero_data, destiny.as_ref()),
+        );
         let passives = Passive::get(&self.hero_data, &self.equips, destiny.as_ref());
         // Source attribution (Insight/Rank/Destiny/Psychube/Extra) is tracked
         // in `PassiveSkill` for downstream consumers; the wire format only
@@ -92,7 +99,7 @@ impl EntityBuilder {
             skill_group1: sg1,
             skill_group2: sg2,
             passive_skill: passive_skill_ids,
-            ex_skill: Some(Skill::get_ex(&self.hero_data, destiny.as_ref())),
+            ex_skill: Some(ex_skill),
             shield_value: Some(0),
             expoint_max_add: Some(0),
             buff_harm_statistic: Some(0),
@@ -112,7 +119,7 @@ impl EntityBuilder {
             status: Some(0),
             guard: Some(-1),
             sub_cd: Some(0),
-            ex_point_type: Some(Self::ex_point_type(r.hero_id)),
+            ex_point_type: Some(ex_point_type),
             equips,
             destiny_stone: Some(r.destiny_stone),
             destiny_rank: Some(r.destiny_rank),
@@ -168,8 +175,10 @@ impl EntityBuilder {
                 });
         }
         let attr = stats.base();
-        let (skill_group1, skill_group2, ex_skill) =
+        let (skill_group1, skill_group2, configured_ex_skill) =
             Skill::for_loadout(trial.hero_id, trial.ex_skill_lv);
+        let ex_point_type = Self::ex_point_type(trial.hero_id);
+        let ex_skill = Self::wire_ex_skill(ex_point_type, configured_ex_skill);
         let mut passive_skill = Passive::for_ranked_loadout(
             trial.hero_id,
             rank,
@@ -229,7 +238,7 @@ impl EntityBuilder {
                 status: Some(0),
                 guard: Some(-1),
                 sub_cd: Some(0),
-                ex_point_type: Some(Self::ex_point_type(trial.hero_id)),
+                ex_point_type: Some(ex_point_type),
                 destiny_stone: Some(trial.facets_id),
                 destiny_rank: Some(trial.facetslevel),
                 custom_unit_id: Some(0),
@@ -298,6 +307,14 @@ impl EntityBuilder {
         Self::ex_point_spec(hero_id).1
     }
 
+    fn wire_ex_skill(ex_point_type: i32, configured: i32) -> i32 {
+        if ExPointKind::from_wire(ex_point_type) == ExPointKind::DevicePower {
+            0
+        } else {
+            configured
+        }
+    }
+
     fn ex_point_spec(hero_id: i32) -> (i32, i32) {
         let game = config::configs::get();
         let spec = game
@@ -354,4 +371,21 @@ fn parse_power_specs(spec: &str) -> Vec<(i32, i32)> {
             Some((power_id.parse().ok()?, max.parse().ok()?))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EntityBuilder;
+
+    #[test]
+    fn device_power_trial_keeps_its_unique_skill_out_of_ex_skill() {
+        crate::test_support::init_config();
+
+        let (entity, _) = EntityBuilder::trial(116385001, 10, 1, 1).unwrap();
+
+        assert_eq!(entity.model_id, Some(3149));
+        assert_eq!(entity.ex_point_type, Some(4));
+        assert_eq!(entity.ex_point_max, Some(100));
+        assert_eq!(entity.ex_skill, Some(0));
+    }
 }
