@@ -140,6 +140,24 @@ fn joe_missing_hp_rate_condition_compiles_as_an_active_modifier() {
 }
 
 #[test]
+fn missing_hp_attack_and_defense_modifiers_compile_as_separate_exact_lanes() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [342440140], []);
+    let effect = catalog.get(342440140).unwrap();
+
+    assert!(catalog.issues(342440140).is_empty());
+    assert!(effect.slots.iter().all(|slot| slot.compiled_route.is_ok()));
+    assert_eq!(effect.slots[0].conditions[0].opcode, 623204);
+    assert_eq!(effect.slots[1].conditions[0].opcode, 623203);
+    assert!(
+        effect
+            .slots
+            .iter()
+            .all(|slot| crate::engine::skill::behavior::has_destination(&slot.behavior))
+    );
+}
+
+#[test]
 fn anjo_negative_status_rate_condition_compiles_as_an_active_modifier() {
     init_config();
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31000441], []);

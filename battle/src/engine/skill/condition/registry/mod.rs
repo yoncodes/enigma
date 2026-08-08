@@ -665,6 +665,7 @@ condition_definitions! {
     [744203] "PerHp" => hp::per_hp, predicate(&[EventKind::HpLost]);
     [12203] "LostLifePer" => hp::per_lost_hp, predicate(&[EventKind::HpLost]);
     [623203] "HpLostRatio" => hp::per_lost_hp, predicate(&[EventKind::HpLost]);
+    [623204] "HpLostRatio" => hp::per_lost_hp, incoming_attack_modifier(predicate(&[EventKind::HpLost]));
     [30208] "AttackCrit" => parse::attack_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [30402] "AttackCrit" => parse::attack_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [30210] "AttackCrit" => parse::attack_crit, predicate(&[]);

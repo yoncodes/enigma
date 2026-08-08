@@ -235,22 +235,32 @@ fn missing_hp_multiplier_is_an_exact_predicate() {
 
 #[test]
 fn hp_lost_ratio_keeps_its_exact_identity() {
-    let definition = find_key(623203, "HpLostRatio").unwrap();
+    for opcode in [623203, 623204] {
+        let definition = find_key(opcode, "HpLostRatio").unwrap();
 
-    assert_eq!(definition.role, ConditionRole::Predicate);
-    assert_eq!(definition.dependencies, &[EventKind::HpLost]);
+        assert_eq!(definition.role, ConditionRole::Predicate);
+        assert_eq!(definition.dependencies, &[EventKind::HpLost]);
+        assert_eq!(
+            parse(opcode, "HpLostRatio", &["100".into()]),
+            Some(ParsedConditionKind::PerLostHp {
+                interval_permille: 100,
+            })
+        );
+        assert_eq!(parse(opcode, "LostLifePer", &["100".into()]), None);
+        assert_eq!(parse(opcode, "HpLostRatio", &["0".into()]), None);
+        assert_eq!(parse(opcode, "HpLostRatio", &["-100".into()]), None);
+        assert_eq!(
+            parse(opcode, "HpLostRatio", &["100".into(), "1".into()]),
+            None
+        );
+    }
     assert_eq!(
-        parse(623203, "HpLostRatio", &["100".into()]),
-        Some(ParsedConditionKind::PerLostHp {
-            interval_permille: 100,
-        })
-    );
-    assert_eq!(parse(623203, "LostLifePer", &["100".into()]), None);
-    assert_eq!(parse(623203, "HpLostRatio", &["0".into()]), None);
-    assert_eq!(parse(623203, "HpLostRatio", &["-100".into()]), None);
-    assert_eq!(
-        parse(623203, "HpLostRatio", &["100".into(), "1".into()]),
+        find_key(623203, "HpLostRatio").and_then(|definition| definition.attack_modifier_side),
         None
+    );
+    assert_eq!(
+        find_key(623204, "HpLostRatio").and_then(|definition| definition.attack_modifier_side),
+        Some(AttackModifierSide::IncomingTarget)
     );
 }
 
