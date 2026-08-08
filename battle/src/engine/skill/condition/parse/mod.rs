@@ -144,6 +144,7 @@ pub enum ParsedConditionKind {
         threshold: i32,
     },
     ExPointFull,
+    ExSkillLevel(i32),
     Synchronization {
         threshold: i32,
     },

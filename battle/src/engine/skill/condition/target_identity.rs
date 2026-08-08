@@ -1,5 +1,15 @@
 use super::parse::{ParsedConditionKind, TargetIdentityMode, first_i32, parse_i32_list};
 
+pub fn ex_skill_level(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [level] = args else {
+        return None;
+    };
+    let level = level.parse().ok()?;
+    (0..=5)
+        .contains(&level)
+        .then_some(ParsedConditionKind::ExSkillLevel(level))
+}
+
 pub fn target_is_self(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind> {
     identity(TargetIdentityMode::TargetIsSelf, 0)
 }

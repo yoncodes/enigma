@@ -2728,3 +2728,22 @@ fn ritual_dance_totals_keep_their_exact_active_skill_routes() {
     );
     assert!(find_key(537201, "TypeIdBuffCountMoreThan").is_none());
 }
+
+#[test]
+fn ultimate_level_keeps_its_exact_round_start_route() {
+    assert_eq!(
+        parse(751104, "ExSkillLevel", &["0".into()]),
+        Some(ParsedConditionKind::ExSkillLevel(0))
+    );
+    assert_eq!(
+        find_key(751104, "ExSkillLevel").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartLate,
+            priority: 0,
+        })
+    );
+    assert!(parse(751104, "ExSkillLevel", &["-1".into()]).is_none());
+    assert!(parse(751104, "ExSkillLevel", &["6".into()]).is_none());
+    assert!(parse(751104, "ExSkillLevel", &["0".into(), "1".into()]).is_none());
+    assert!(find_key(751104, "SkillLevel").is_none());
+}
