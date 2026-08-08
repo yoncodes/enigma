@@ -60,7 +60,7 @@ pub async fn on_start_act229_battle(
         .fight_group
         .as_ref()
         .ok_or(AppError::InvalidRequest)?;
-    let built = battle::dungeon::build_fight(
+    let built = crate::logic::battle_setup::dungeon::build_fight(
         ctx.state.db,
         player_id,
         episode_id,

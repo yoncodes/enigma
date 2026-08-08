@@ -6,6 +6,7 @@
 //! `config::GameDB`.
 
 pub mod activity;
+pub mod battle_setup;
 pub mod bp;
 pub mod charge;
 pub mod collection;
