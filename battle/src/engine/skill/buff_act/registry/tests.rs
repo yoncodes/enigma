@@ -768,6 +768,25 @@ fn targeted_support_dispel_keeps_its_exact_skill_cast_route() {
 }
 
 #[test]
+fn skill_target_count_attributes_keep_separate_exact_identities() {
+    let single = find(106, "AttrSkillSingle").unwrap();
+    let multiple = find(107, "AttrSkillMultiple").unwrap();
+
+    assert_eq!(single.kind, BuffActKind::AttrSkillSingle);
+    assert_eq!(multiple.kind, BuffActKind::AttrSkillMultiple);
+    assert!(single.state.consumer);
+    assert!(multiple.state.consumer);
+    assert!(has_destination(106, "AttrSkillSingle", &[205, -300]));
+    assert!(has_destination(107, "AttrSkillMultiple", &[205, -300]));
+    assert!(!has_destination(106, "AttrSkillSingle", &[205]));
+    assert!(!has_destination(107, "AttrSkillMultiple", &[205, 0]));
+    assert!(!has_destination(106, "AttrSkillSingle", &[205, 300]));
+    assert!(!has_destination(107, "AttrSkillMultiple", &[205, -200]));
+    assert!(find(106, "AttrSkillMultiple").is_none());
+    assert!(find(107, "AttrSkillSingle").is_none());
+}
+
+#[test]
 fn layer_gated_passive_keeps_its_exact_static_route() {
     let definition = find(805, "AddPassiveSkillByLayer").unwrap();
     assert!(definition.state.consumer);

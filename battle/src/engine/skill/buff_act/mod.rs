@@ -22,6 +22,7 @@ pub mod attr_by_heat_scale;
 pub mod attr_by_hero_id;
 pub mod attr_by_lost_hp;
 pub mod attr_by_shield;
+pub mod attr_by_skill_target_count;
 pub mod attr_from_entity;
 pub mod attr_only_cal_damage_attack;
 pub mod attr_only_cal_damage_hp_replace_attack;

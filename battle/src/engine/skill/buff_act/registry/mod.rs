@@ -72,6 +72,8 @@ pub enum BuffActKind {
     AttrByHeroId,
     AttrByLostHp,
     AttrByShield,
+    AttrSkillMultiple,
+    AttrSkillSingle,
     AttrByHeatScale,
     AttrFromEntity,
     AttrOnlyCalDamageAttack,
@@ -616,6 +618,12 @@ buff_act_definitions! {
     (740, "AttrOnlyCalDamageInExtra") => AttrOnlyCalDamageInExtra,
         effect_time_subscription: false,
         supports: super::attr_only_cal_damage_attack::supports_extra_action, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(740, "AttrOnlyCalDamageInExtra"), &[EffectType::None as i32]));
+    (106, "AttrSkillSingle") => AttrSkillSingle, effect_time_subscription: false,
+        supports: super::attr_by_skill_target_count::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(106, "AttrSkillSingle"), &[EffectType::None as i32]));
+    (107, "AttrSkillMultiple") => AttrSkillMultiple, effect_time_subscription: false,
+        supports: super::attr_by_skill_target_count::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(107, "AttrSkillMultiple"), &[EffectType::None as i32]));
     (739, "CreateHeroTempCards") => CreateHeroTempCards,
         scoped_runtime: |context| super::add_sp_temp_card::hero_skill_subscriber_rule_ops(context.pool, context.subscriber, context.event?),
         supports: super::add_sp_temp_card::supports_hero_skill,

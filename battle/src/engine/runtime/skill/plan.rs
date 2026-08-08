@@ -432,6 +432,13 @@ pub(super) fn damage_ops(
             &managers.buff,
             &managers.hp,
         );
+    let target_count_damage_bonus =
+        crate::engine::skill::buff_act::attr_by_skill_target_count::owner_attribute_delta(
+            managers,
+            source_uid,
+            execution.context.damage_target_count_kind,
+            crate::engine::entity::attr::AttrId::DmgBonus,
+        );
     let mut damage_commands = Vec::new();
     let mut additional_damage_commands = Vec::new();
     let mut avoided = Vec::new();
@@ -508,6 +515,12 @@ pub(super) fn damage_ops(
                 &managers.hp,
             );
         let mut attack_attributes = target_modifiers.attack_attributes.clone();
+        if target_count_damage_bonus != 0 {
+            attack_attributes.push((
+                crate::engine::entity::attr::AttrId::DmgBonus,
+                target_count_damage_bonus,
+            ));
+        }
         // Linked damage keeps the triggering attack's shared damage lane.
         // Inherent Assassination belongs to its attacker, while a target
         // trigger converts the whole incoming attack, including linked hits.
