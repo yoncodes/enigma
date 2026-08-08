@@ -52,6 +52,7 @@ effect_time_definitions! {
     104 => BuffActEvent::Runtime(EventKind::RoundStart),
     105 => BuffActEvent::Runtime(EventKind::RoundStartCard),
     106 => BuffActEvent::Runtime(EventKind::RoundStartCard),
+    107 => BuffActEvent::Runtime(EventKind::ActionQueueCommitted),
     201 => BuffActEvent::Runtime(EventKind::SkillAction); SkillPhase::Immediate,
     210 => BuffActEvent::Runtime(EventKind::SkillAction); SkillPhase::AfterHit,
     208 => BuffActEvent::Runtime(EventKind::SkillCast),
@@ -125,6 +126,7 @@ pub fn supports_duration_policy(take_stage: i32) -> bool {
         || take_stage == ROUND_END_AFTER_SETTLEMENT
         || ROUND_START_CARD_STAGES.contains(&take_stage)
         || definition.duration_phase.is_some()
+        || definition.event == BuffActEvent::Runtime(EventKind::ActionQueueCommitted)
         || definition.event == BuffActEvent::Runtime(EventKind::AllyAction)
         || definition.event == BuffActEvent::Runtime(EventKind::SmallRoundEnd)
 }
@@ -183,10 +185,23 @@ mod tests {
     }
 
     #[test]
+    fn before_ap_resolution_owns_action_queue_duration() {
+        assert_eq!(
+            classify(107),
+            BuffActEvent::Runtime(EventKind::ActionQueueCommitted)
+        );
+        assert_eq!(
+            duration_stages_for_event(EventKind::ActionQueueCommitted).collect::<Vec<_>>(),
+            vec![107]
+        );
+    }
+
+    #[test]
     fn duration_support_accepts_non_advancing_and_scheduled_policies() {
         assert!(supports_duration_policy(-1));
         assert!(supports_duration_policy(ROUND_START_DURATION));
         assert!(supports_duration_policy(210));
+        assert!(supports_duration_policy(107));
         assert!(supports_duration_policy(212));
         assert!(supports_duration_policy(301));
         assert!(supports_duration_policy(ROUND_END_ENTITY_SETTLEMENT));
