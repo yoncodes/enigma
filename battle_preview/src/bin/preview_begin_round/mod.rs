@@ -233,17 +233,40 @@ fn replay_cloth_input(
     let Some(parent) = path.parent() else {
         return Ok(());
     };
-    let input = parent.join(format!("UseClothSkillRequest_{round_index}.json"));
-    if !input.exists() {
-        return Ok(());
+    for input in cloth_input_paths(parent, round_index)? {
+        let mut request: serde_json::Value = serde_json::from_str(&fs::read_to_string(&input)?)?;
+        normalize_live_json(&mut request);
+        let request = serde_json::from_value(request)?;
+        runtime
+            .use_cloth_skill(request)
+            .ok_or_else(|| io::Error::other(format!("invalid cloth input: {}", input.display())))?;
     }
-    let mut request: serde_json::Value = serde_json::from_str(&fs::read_to_string(&input)?)?;
-    normalize_live_json(&mut request);
-    let request = serde_json::from_value(request)?;
-    runtime
-        .use_cloth_skill(request)
-        .ok_or_else(|| io::Error::other(format!("invalid cloth input: {}", input.display())))?;
     Ok(())
+}
+
+fn cloth_input_paths(parent: &Path, round_index: i32) -> io::Result<Vec<PathBuf>> {
+    let base_name = format!("UseClothSkillRequest_{round_index}");
+    let mut inputs = fs::read_dir(parent)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| is_cloth_input(path, &base_name))
+        .collect::<Vec<_>>();
+    inputs.sort();
+    Ok(inputs)
+}
+
+fn is_cloth_input(path: &Path, base_name: &str) -> bool {
+    path.file_stem()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            name == base_name
+                || name
+                    .strip_prefix(base_name)
+                    .is_some_and(|suffix| suffix.starts_with('_'))
+        })
+        && path
+            .extension()
+            .is_some_and(|extension| extension == "json")
 }
 
 fn report_rule_issues(round: &FightRound) {
