@@ -30,8 +30,8 @@ pub fn after_round(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKi
     })
 }
 
-pub fn entity_dead(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind> {
-    Some(ParsedConditionKind::EntityDead)
+pub fn entity_dead(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty().then_some(ParsedConditionKind::EntityDead)
 }
 
 pub fn team_entity_exited(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {

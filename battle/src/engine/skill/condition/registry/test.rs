@@ -880,6 +880,27 @@ fn exact_dead_alias_subscribes_to_entity_death() {
 }
 
 #[test]
+fn exact_self_exit_aliases_follow_the_exiting_owner() {
+    for opcode in [648003, 648009] {
+        assert_eq!(
+            parse(opcode, "SelfExit", &[]),
+            Some(ParsedConditionKind::EntityDead)
+        );
+        let definition = find_key(opcode, "SelfExit").unwrap();
+        assert_eq!(
+            definition.role,
+            ConditionRole::Trigger {
+                event: EventKind::EntityDied,
+                phase: None,
+            }
+        );
+        assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+        assert!(parse(opcode, "Dead", &[]).is_none());
+        assert!(parse(opcode, "SelfExit", &["1".into()]).is_none());
+    }
+}
+
+#[test]
 fn exact_alive_team_count_rechecks_on_entity_death() {
     assert!(matches!(
         parse(616012, "TeammateAliveNumNoSp", &["0".into()]),

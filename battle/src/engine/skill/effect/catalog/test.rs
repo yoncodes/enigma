@@ -88,6 +88,26 @@ fn dynamic_current_battle_roots_compile_enigmas_field_condition() {
 }
 
 #[test]
+fn eagle_exit_cleanup_compiles_its_exact_buff_family_dispel() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [30060141], []);
+    let effect = catalog.get(30060141).unwrap();
+
+    assert!(catalog.issues(30060141).is_empty());
+    let cleanup = effect
+        .slots
+        .iter()
+        .filter(|slot| {
+            slot.behavior.spec.key.opcode == 90002
+                && slot.behavior.spec.key.type_name == "Disperse2"
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(cleanup.len(), 2);
+    assert!(cleanup.iter().all(|slot| slot.compiled_route.is_ok()));
+    assert!(cleanup.iter().all(|slot| slot.target.code == 202));
+}
+
+#[test]
 fn exact_enemy_damage_routes_compile_without_runtime_gaps() {
     init_config();
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [260341, 750331], [5112]);
