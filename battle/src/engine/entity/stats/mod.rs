@@ -1,16 +1,14 @@
 use std::collections::HashMap;
 
 use config::configs;
-use database::{
-    db::game::equipment::{self, Equipment},
-    models::game::heros::HeroData,
-};
 use sonettobuf::{HeroAttribute, HeroExAttribute, HeroSpAttribute};
-use sqlx::SqlitePool;
 
-use super::attr::AttrId;
+use super::{
+    attr::AttrId,
+    input::{EquipmentBuildInput, HeroBuildInput},
+};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StatInputs {
     pub hero_id: i32,
     pub level: i32,
@@ -78,40 +76,28 @@ impl BattleBalance {
         input
     }
 
-    pub fn stats_for(self, hero: &HeroData, equips: &[Equipment]) -> Stats {
-        let base = self.apply(StatInputs::from_hero_data(hero, None));
+    pub fn stats_for(self, hero: &HeroBuildInput, equips: &[EquipmentBuildInput]) -> Stats {
+        let base = self.apply(StatInputs::from_build_input(hero, None));
         equips.iter().fold(Stats::build(&base), |stats, equip| {
-            let input = self.apply(StatInputs::from_hero_data(hero, Some(equip)));
+            let input = self.apply(StatInputs::from_build_input(hero, Some(equip)));
             stats + Stats::equipment_bonus(&input)
         })
     }
 }
 
 impl StatInputs {
-    pub fn from_hero_data(hero: &HeroData, equip: Option<&Equipment>) -> Self {
-        let record = &hero.record;
-        let template = hero
-            .talent_templates
-            .iter()
-            .find(|(template, _)| template.template_id == record.use_talent_template_id)
-            .or_else(|| hero.talent_templates.first());
-        let cubes = template
-            .filter(|(_, cubes)| !cubes.is_empty())
-            .map(|(_, cubes)| cubes.as_slice())
-            .unwrap_or(&hero.talent_cubes);
+    pub fn from_build_input(hero: &HeroBuildInput, equip: Option<&EquipmentBuildInput>) -> Self {
         Self {
-            hero_id: record.hero_id,
-            level: record.level,
-            rank: record.rank,
-            destiny_rank: record.destiny_rank,
+            hero_id: hero.hero_id,
+            level: hero.level,
+            rank: hero.rank,
+            destiny_rank: hero.destiny_rank,
             equip_id: equip.map(|equip| equip.equip_id).unwrap_or_default(),
             equip_level: equip.map(|equip| equip.level).unwrap_or_default(),
-            equip_break_level: equip.map(|equip| equip.break_lv).unwrap_or_default(),
-            talent: record.talent,
-            talent_style: template
-                .map(|(template, _)| template.style)
-                .unwrap_or_default(),
-            talent_placements: cubes.iter().map(|cube| cube.cube_id).collect(),
+            equip_break_level: equip.map(|equip| equip.break_level).unwrap_or_default(),
+            talent: hero.talent,
+            talent_style: hero.talent_style,
+            talent_placements: hero.talent_placements.clone(),
         }
     }
 }
@@ -172,10 +158,10 @@ impl std::ops::Add for Stats {
 }
 
 impl Stats {
-    pub fn build_for_hero(hero: &HeroData, equips: &[Equipment]) -> Self {
-        let base = StatInputs::from_hero_data(hero, None);
+    pub fn build_for_loadout(hero: &HeroBuildInput, equips: &[EquipmentBuildInput]) -> Self {
+        let base = StatInputs::from_build_input(hero, None);
         equips.iter().fold(Self::build(&base), |stats, equip| {
-            let input = StatInputs::from_hero_data(hero, Some(equip));
+            let input = StatInputs::from_build_input(hero, Some(equip));
             stats + Self::equipment_bonus(&input)
         })
     }
@@ -236,23 +222,6 @@ impl Stats {
             ..Default::default()
         }
     }
-}
-
-pub async fn hero_info(pool: &SqlitePool, hero: HeroData) -> anyhow::Result<sonettobuf::HeroInfo> {
-    let equip = if hero.record.default_equip_uid == 0 {
-        None
-    } else {
-        Some(
-            equipment::get_equipment_by_uid(
-                pool,
-                hero.record.user_id,
-                hero.record.default_equip_uid,
-            )
-            .await?,
-        )
-    };
-    let stats = Stats::build(&StatInputs::from_hero_data(&hero, equip.as_ref()));
-    Ok(hero.into_proto(stats.base(), stats.ex(), stats.sp()))
 }
 
 pub fn monster_instance_ex_stats(model_id: i32, level: i32) -> Option<Stats> {

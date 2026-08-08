@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use database::{db::game::equipment::Equipment, models::game::heros::HeroData};
 use sonettobuf::{EnhanceInfoBox, EquipRecord, FightEntityInfo, HeroAttribute, PowerInfo};
 
 use crate::engine::manager::ex_point::ExPointKind;
@@ -7,14 +6,15 @@ use crate::engine::manager::ex_point::ExPointKind;
 use super::{
     attr::Attr,
     destiny::Destiny,
+    input::{EquipmentBuildInput, HeroBuildInput},
     passive::Passive,
     skill::Skill,
     stats::{BattleBalance, StatInputs, Stats, rank_from_level},
 };
 
 pub struct EntityBuilder {
-    hero_data: HeroData,
-    equips: Vec<Equipment>,
+    hero: HeroBuildInput,
+    equips: Vec<EquipmentBuildInput>,
     stats: Option<Stats>,
     position: i32,
     team_type: i32,
@@ -22,9 +22,9 @@ pub struct EntityBuilder {
 }
 
 impl EntityBuilder {
-    pub fn new(hero_data: HeroData, position: i32, team_type: i32, is_sub: bool) -> Self {
+    pub fn new(hero: HeroBuildInput, position: i32, team_type: i32, is_sub: bool) -> Self {
         Self {
-            hero_data,
+            hero,
             equips: Vec::new(),
             stats: None,
             position,
@@ -33,16 +33,18 @@ impl EntityBuilder {
         }
     }
 
-    pub fn with_equips(mut self, equips: Vec<Equipment>) -> Self {
+    pub fn with_equips(mut self, equips: Vec<EquipmentBuildInput>) -> Self {
         self.equips = equips;
         self
     }
 
     pub fn with_balance(mut self, balance: BattleBalance, stats: Stats) -> Self {
-        let inputs = balance.apply(StatInputs::from_hero_data(&self.hero_data, None));
-        self.hero_data.record.level = inputs.level;
-        self.hero_data.record.rank = inputs.rank;
-        self.hero_data.record.talent = inputs.talent;
+        let inputs = balance.apply(StatInputs::from_build_input(&self.hero, None));
+        self.hero.level = inputs.level;
+        self.hero.rank = inputs.rank;
+        self.hero.talent = inputs.talent;
+        self.hero.talent_style = inputs.talent_style;
+        self.hero.talent_placements = inputs.talent_placements;
         for equip in &mut self.equips {
             equip.level = equip.level.max(balance.equip_level);
         }
@@ -51,19 +53,16 @@ impl EntityBuilder {
     }
 
     pub fn build(self) -> FightEntityInfo {
-        let r = &self.hero_data.record;
-        let destiny = Destiny::get(r.destiny_stone, r.destiny_rank);
+        let hero = &self.hero;
+        let destiny = Destiny::get(hero.destiny_stone, hero.destiny_rank);
         let attr = self
             .stats
             .map(Stats::base)
-            .unwrap_or_else(|| Attr::get(&self.hero_data, &self.equips));
-        let (sg1, sg2) = Skill::get(&self.hero_data, self.is_sub, destiny.as_ref());
-        let ex_point_type = Self::ex_point_type(r.hero_id);
-        let ex_skill = Self::wire_ex_skill(
-            ex_point_type,
-            Skill::get_ex(&self.hero_data, destiny.as_ref()),
-        );
-        let passives = Passive::get(&self.hero_data, &self.equips, destiny.as_ref());
+            .unwrap_or_else(|| Attr::get(hero, &self.equips));
+        let (sg1, sg2) = Skill::get(hero, self.is_sub, destiny.as_ref());
+        let ex_point_type = Self::ex_point_type(hero.hero_id);
+        let ex_skill = Self::wire_ex_skill(ex_point_type, Skill::get_ex(hero, destiny.as_ref()));
+        let passives = Passive::get(hero, &self.equips, destiny.as_ref());
         // Source attribution (Insight/Rank/Destiny/Psychube/Extra) is tracked
         // in `PassiveSkill` for downstream consumers; the wire format only
         // carries raw skill ids.
@@ -80,19 +79,19 @@ impl EntityBuilder {
                 equip_uid: Some(equip.uid),
                 equip_id: Some(equip.equip_id),
                 equip_lv: Some(equip.level),
-                refine_lv: Some(equip.refine_lv),
+                refine_lv: Some(equip.refine_level),
             })
             .collect();
 
         FightEntityInfo {
-            uid: Some(r.uid),
-            model_id: Some(r.hero_id),
-            skin: Some(r.skin),
+            uid: Some(hero.uid),
+            model_id: Some(hero.hero_id),
+            skin: Some(hero.skin),
             position: Some(self.position),
             entity_type: Some(1),
-            user_id: Some(r.user_id),
+            user_id: Some(hero.user_id),
             ex_point: Some(0),
-            level: Some(r.level),
+            level: Some(hero.level),
             current_hp: attr.hp,
             attr: Some(attr),
             base_attr: Some(attr),
@@ -105,24 +104,24 @@ impl EntityBuilder {
             buff_harm_statistic: Some(0),
             equip_uid: Some(primary_equip_uid),
             trial_equip: Some(EquipRecord::default()),
-            ex_skill_level: Some(r.ex_skill_level),
-            power_infos: Self::hero_power_infos(r.hero_id),
+            ex_skill_level: Some(hero.ex_skill_level),
+            power_infos: Self::hero_power_infos(hero.hero_id),
             ex_skill_point_change: Some(0),
             team_type: Some(self.team_type),
             enhance_info_box: Some(EnhanceInfoBox {
-                uid: Some(r.uid),
+                uid: Some(hero.uid),
                 can_upgrade_ids: vec![],
                 upgraded_options: vec![],
             }),
             trial_id: Some(0),
-            career: Some(Self::career(r.hero_id)),
+            career: Some(Self::career(hero.hero_id)),
             status: Some(0),
             guard: Some(-1),
             sub_cd: Some(0),
             ex_point_type: Some(ex_point_type),
             equips,
-            destiny_stone: Some(r.destiny_stone),
-            destiny_rank: Some(r.destiny_rank),
+            destiny_stone: Some(hero.destiny_stone),
+            destiny_rank: Some(hero.destiny_rank),
             custom_unit_id: Some(0),
             ..Default::default()
         }

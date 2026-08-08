@@ -1,6 +1,7 @@
 use crate::engine::{
     entity::{
         builder::EntityBuilder,
+        input::{EquipmentBuildInput, HeroBuildInput},
         stats::{BattleBalance, StatInputs, Stats},
     },
     fight::{defender::Defender, team::Team},
@@ -162,13 +163,16 @@ impl Attacker {
 
             let hero_data = hero.get_uid(*hero_uid).await?;
             let equips = Self::fetch_equips(pool, &hero_data, fight_group).await?;
+            let hero_input = hero_build_input(&hero_data);
+            let equip_inputs = equips.iter().map(equipment_build_input).collect::<Vec<_>>();
             let stats = balance
-                .map(|balance| balance.stats_for(&hero_data, &equips))
-                .unwrap_or_else(|| Stats::build_for_hero(&hero_data, &equips));
-            ex_attributes.push((hero_data.record.uid, stats.ex()));
-            sp_attributes.push((hero_data.record.uid, stats.sp()));
+                .map(|balance| balance.stats_for(&hero_input, &equip_inputs))
+                .unwrap_or_else(|| Stats::build_for_loadout(&hero_input, &equip_inputs));
+            ex_attributes.push((hero_input.uid, stats.ex()));
+            sp_attributes.push((hero_input.uid, stats.sp()));
 
-            let mut builder = EntityBuilder::new(hero_data, position, 1, false).with_equips(equips);
+            let mut builder =
+                EntityBuilder::new(hero_input, position, 1, false).with_equips(equip_inputs);
             if let Some(balance) = balance {
                 builder = builder.with_balance(balance, stats);
             }
@@ -186,13 +190,15 @@ impl Attacker {
 
             let hero_data = hero.get_uid(*hero_uid).await?;
             let equips = Self::fetch_equips(pool, &hero_data, fight_group).await?;
+            let hero_input = hero_build_input(&hero_data);
+            let equip_inputs = equips.iter().map(equipment_build_input).collect::<Vec<_>>();
             let stats = balance
-                .map(|balance| balance.stats_for(&hero_data, &equips))
-                .unwrap_or_else(|| Stats::build_for_hero(&hero_data, &equips));
-            ex_attributes.push((hero_data.record.uid, stats.ex()));
-            sp_attributes.push((hero_data.record.uid, stats.sp()));
+                .map(|balance| balance.stats_for(&hero_input, &equip_inputs))
+                .unwrap_or_else(|| Stats::build_for_loadout(&hero_input, &equip_inputs));
+            ex_attributes.push((hero_input.uid, stats.ex()));
+            sp_attributes.push((hero_input.uid, stats.sp()));
 
-            let mut builder = EntityBuilder::new(hero_data, -1, 1, true).with_equips(equips);
+            let mut builder = EntityBuilder::new(hero_input, -1, 1, true).with_equips(equip_inputs);
             if let Some(balance) = balance {
                 builder = builder.with_balance(balance, stats);
             }
@@ -357,7 +363,10 @@ impl Attacker {
         ensure!(hero.record.hero_id == support.hero_id);
         ensure!(hero.record.ex_skill_level == support.lv);
 
-        let stats = Stats::build(&StatInputs::from_hero_data(&hero, None));
+        let stats = Stats::build(&StatInputs::from_build_input(
+            &hero_build_input(&hero),
+            None,
+        ));
         let attr = stats.base();
         let entity = FightEntityInfo {
             uid: Some(SUPPORT_UID),
@@ -579,6 +588,45 @@ fn ids(raw: &str) -> Vec<i32> {
     raw.split(['#', '|'])
         .filter_map(|value| value.parse().ok())
         .collect()
+}
+
+fn hero_build_input(hero: &HeroData) -> HeroBuildInput {
+    let record = &hero.record;
+    let template = hero
+        .talent_templates
+        .iter()
+        .find(|(template, _)| template.template_id == record.use_talent_template_id)
+        .or_else(|| hero.talent_templates.first());
+    let cubes = template
+        .filter(|(_, cubes)| !cubes.is_empty())
+        .map(|(_, cubes)| cubes.as_slice())
+        .unwrap_or(&hero.talent_cubes);
+    HeroBuildInput {
+        uid: record.uid,
+        user_id: record.user_id,
+        hero_id: record.hero_id,
+        skin: record.skin,
+        level: record.level,
+        rank: record.rank,
+        ex_skill_level: record.ex_skill_level,
+        talent: record.talent,
+        talent_style: template
+            .map(|(template, _)| template.style)
+            .unwrap_or_default(),
+        talent_placements: cubes.iter().map(|cube| cube.cube_id).collect(),
+        destiny_rank: record.destiny_rank,
+        destiny_stone: record.destiny_stone,
+    }
+}
+
+fn equipment_build_input(equip: &Equipment) -> EquipmentBuildInput {
+    EquipmentBuildInput {
+        uid: equip.uid,
+        equip_id: equip.equip_id,
+        level: equip.level,
+        break_level: equip.break_lv,
+        refine_level: equip.refine_lv,
+    }
 }
 
 fn active_skills(raw: &str) -> Vec<AssistBossSkillInfo> {

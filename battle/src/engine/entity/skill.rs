@@ -1,23 +1,23 @@
-use database::models::game::heros::HeroData;
 use sonettobuf::CardInfo;
 use std::collections::HashMap;
+
+use super::input::HeroBuildInput;
 
 pub struct Skill;
 
 impl Skill {
     pub fn get(
-        hero_data: &HeroData,
+        hero: &HeroBuildInput,
         is_sub: bool,
         destiny: Option<&HashMap<i32, i32>>,
     ) -> (Vec<i32>, Vec<i32>) {
-        let r = &hero_data.record;
         let (mut sg1, mut sg2) = if is_sub {
             (
-                Self::get_from_character(r.hero_id, 1),
-                Self::get_from_character(r.hero_id, 2),
+                Self::get_from_character(hero.hero_id, 1),
+                Self::get_from_character(hero.hero_id, 2),
             )
         } else {
-            Self::get_skill_groups_with_destiny(r.hero_id, r.ex_skill_level, None)
+            Self::get_skill_groups_with_destiny(hero.hero_id, hero.ex_skill_level, None)
         };
 
         if let Some(map) = destiny {
@@ -28,9 +28,8 @@ impl Skill {
         (sg1, sg2)
     }
 
-    pub fn get_ex(hero_data: &HeroData, destiny: Option<&HashMap<i32, i32>>) -> i32 {
-        let r = &hero_data.record;
-        let ex = Self::active_skills(r.hero_id, r.ex_skill_level).2;
+    pub fn get_ex(hero: &HeroBuildInput, destiny: Option<&HashMap<i32, i32>>) -> i32 {
+        let ex = Self::active_skills(hero.hero_id, hero.ex_skill_level).2;
 
         destiny.and_then(|map| map.get(&ex).copied()).unwrap_or(ex)
     }

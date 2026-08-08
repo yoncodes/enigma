@@ -1,9 +1,10 @@
 use config::configs;
-use database::db::game::equipment::Equipment;
-use database::models::game::heros::HeroData;
 use std::collections::HashMap;
 
-use super::destiny::Destiny;
+use super::{
+    destiny::Destiny,
+    input::{EquipmentBuildInput, HeroBuildInput},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PassiveSourceKind {
@@ -45,22 +46,21 @@ pub struct Passive;
 
 impl Passive {
     pub fn get(
-        hero_data: &HeroData,
-        equips: &[Equipment],
+        hero: &HeroBuildInput,
+        equips: &[EquipmentBuildInput],
         destiny: Option<&HashMap<i32, i32>>,
     ) -> Vec<PassiveSkill> {
-        let r = &hero_data.record;
-        let mut passives = Self::base(r.hero_id);
+        let mut passives = Self::base(hero.hero_id);
         Self::apply_upgrades(
             &mut passives,
-            r.hero_id,
-            r.ex_skill_level,
+            hero.hero_id,
+            hero.ex_skill_level,
             destiny,
-            r.destiny_rank,
-            r.destiny_stone,
+            hero.destiny_rank,
+            hero.destiny_stone,
         );
         for equip in equips {
-            passives.extend(Self::psychube(equip.equip_id, Some(equip.refine_lv)));
+            passives.extend(Self::psychube(equip.equip_id, Some(equip.refine_level)));
         }
         passives
     }
