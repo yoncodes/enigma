@@ -69,6 +69,14 @@ pub fn buff_group(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditio
     Some(ParsedConditionKind::BuffGroup(parse_buff_ids(raw_args)?))
 }
 
+pub fn per_buff_group_count(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let [group_id] = raw_args else {
+        return None;
+    };
+    let group_id = group_id.parse().ok()?;
+    (group_id > 0).then_some(ParsedConditionKind::PerBuffGroupCount { group_id })
+}
+
 pub fn no_buff_group(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::NoBuffGroup(parse_buff_ids(raw_args)?))
 }
@@ -77,6 +85,17 @@ pub fn from_and_to_buff(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCo
     Some(ParsedConditionKind::FromBuffAndToBuff {
         from_buff_id: raw_args.first()?.parse().ok()?,
         to_buff_id: raw_args.get(1)?.parse().ok()?,
+    })
+}
+
+pub fn self_buff_type_target_buff_types(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::SelfBuffTypeTargetBuffTypes {
+        self_type_id: raw_args.first()?.parse().ok()?,
+        target_type_ids: parse_buff_ids(raw_args.get(1..2)?)?,
     })
 }
 
@@ -179,6 +198,17 @@ pub fn buff_type_at_least(_: i32, _: &str, raw_args: &[String]) -> Option<Parsed
     buff_type_count(raw_args, ConditionCompare::GreaterThanOrEqual)
 }
 
+pub fn any_target_buff_type_at_least(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::AnyTargetBuffTypeCount {
+        type_ids: parse_buff_ids(raw_args.get(..1)?)?,
+        threshold: raw_args.get(1)?.parse().ok()?,
+    })
+}
+
 pub fn buff_type_pair_at_least(
     _: i32,
     _: &str,
@@ -188,6 +218,19 @@ pub fn buff_type_pair_at_least(
         return None;
     }
     buff_type_count(raw_args, ConditionCompare::GreaterThanOrEqual)
+}
+
+pub fn positive_buff_type_at_least(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [type_id, threshold] = parse_fixed(raw_args)?;
+    (type_id > 0 && threshold > 0).then_some(ParsedConditionKind::BuffTypeCount {
+        type_ids: vec![type_id],
+        compare: ConditionCompare::GreaterThanOrEqual,
+        threshold,
+    })
 }
 
 pub fn buff_type_at_most(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
@@ -234,10 +277,31 @@ pub fn per_team_status_type_count(
     _: &str,
     raw_args: &[String],
 ) -> Option<ParsedConditionKind> {
+    let [divisor, max_count, status_ids] = raw_args else {
+        return None;
+    };
+    let divisor = divisor.parse().ok()?;
+    let max_count = max_count.parse().ok()?;
+    let status_ids = parse_buff_ids(std::slice::from_ref(status_ids))?;
+    if divisor <= 0 || max_count <= 0 || status_ids.iter().any(|status| *status <= 0) {
+        return None;
+    }
     Some(ParsedConditionKind::PerTeamBuffStatusTypeCount {
-        divisor: raw_args.first()?.parse().ok()?,
-        max_count: raw_args.get(1)?.parse().ok()?,
-        status_ids: parse_buff_ids(raw_args.get(2..3)?)?,
+        divisor,
+        max_count,
+        status_ids,
+    })
+}
+
+pub fn per_distinct_status_type_count(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::PerTeamBuffStatusTypeCount {
+        status_ids: parse_buff_ids(raw_args)?,
+        divisor: 1,
+        max_count: i32::MAX,
     })
 }
 

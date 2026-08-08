@@ -58,6 +58,20 @@ impl BehaviorHandler for AssassinateHandler {
     }
 }
 
+pub fn supports_extra_type(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [1 | 3])
+}
+
+pub(super) struct SetExtraTypeHandler;
+
+impl BehaviorHandler for SetExtraTypeHandler {
+    fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+        context.target.extra_skill_kind =
+            super::super::condition::extra::skill_kind_from_is_extra(behavior.arg(0)?)?.id();
+        Some(Vec::new())
+    }
+}
+
 pub(super) struct DamageRateMarkerHandler;
 
 impl BehaviorHandler for DamageRateMarkerHandler {
@@ -183,6 +197,71 @@ mod tests {
 
         assert!(ops.is_empty());
         assert!(target.active_skill_assassinate);
+    }
+
+    #[test]
+    fn set_extra_type_changes_only_the_current_action_kind() {
+        let managers = BattleManagers::default();
+        let pool = TargetPool::default();
+        let mut determinism = RoundDeterminism::default();
+        let mut modifiers = SkillModifiers::default();
+        let mut target = TargetContext::default();
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60271, "SetExtraType"),
+            vec![1],
+            Vec::new(),
+        );
+
+        let ops = behavior::rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 31100531,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+
+        assert!(ops.is_empty());
+        assert_eq!(
+            target.extra_skill_kind,
+            crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction.id()
+        );
+
+        let riposte = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60271, "SetExtraType"),
+            vec![3],
+            Vec::new(),
+        );
+        behavior::rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 30941111,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &riposte,
+        )
+        .unwrap();
+        assert_eq!(
+            target.extra_skill_kind,
+            crate::engine::skill::condition::extra::ExtraSkillKind::Riposte.id()
+        );
     }
 
     #[test]

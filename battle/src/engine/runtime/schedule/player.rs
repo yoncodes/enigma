@@ -377,6 +377,13 @@ pub(crate) fn card_skill_is_blocked(
         || managers
             .buff
             .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::CastChannel)
+        || managers.buff.has_buff_act_kind(
+            owner_uid,
+            buff_act::registry::BuffActKind::ContractCastChannel,
+        )
+        || managers
+            .buff
+            .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::NoneCastChannel)
 }
 
 #[allow(clippy::too_many_arguments)]

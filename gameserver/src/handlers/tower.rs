@@ -93,8 +93,11 @@ pub async fn on_start_battle(
         player_id,
         episode_id,
         episode.battle_id,
-        use_record,
         fight_group,
+        battle::dungeon::FightOptions {
+            is_balance: dungeon_request.is_balance.unwrap_or(false),
+            use_record,
+        },
         tower_context,
     )
     .await?;

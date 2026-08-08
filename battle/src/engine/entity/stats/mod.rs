@@ -24,6 +24,69 @@ pub struct StatInputs {
     pub talent_placements: Vec<i32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BattleBalance {
+    pub level: i32,
+    pub talent: i32,
+    pub equip_level: i32,
+}
+
+impl BattleBalance {
+    pub fn parse(raw: &str) -> Option<Self> {
+        let mut values = raw.split('#').map(str::parse::<i32>);
+        let balance = Self {
+            level: values.next()?.ok()?,
+            talent: values.next()?.ok()?,
+            equip_level: values.next()?.ok()?,
+        };
+        (values.next().is_none()
+            && balance.level > 0
+            && balance.talent > 0
+            && balance.equip_level > 0)
+            .then_some(balance)
+    }
+
+    pub fn apply(self, mut input: StatInputs) -> StatInputs {
+        let max_level = configs::get()
+            .character_level
+            .iter()
+            .filter(|row| row.hero_id == input.hero_id)
+            .map(|row| row.level)
+            .max()
+            .unwrap_or(input.level);
+        let level = self.level.min(max_level).max(input.level);
+        let rank = rank_from_level(input.hero_id, level).max(input.rank);
+        let talent = configs::get()
+            .character_talent
+            .iter()
+            .filter(|row| {
+                row.hero_id == input.hero_id
+                    && row.talent_id <= self.talent
+                    && row.requirement <= rank
+            })
+            .map(|row| row.talent_id)
+            .max()
+            .unwrap_or(1);
+        if talent > input.talent || (input.rank < 3 && rank >= 3) {
+            input.talent = talent;
+            input.talent_style = 0;
+            input.talent_placements.clear();
+        }
+        input.level = level;
+        input.rank = rank;
+        input.equip_level = input.equip_level.max(self.equip_level);
+        input
+    }
+
+    pub fn stats_for(self, hero: &HeroData, equips: &[Equipment]) -> Stats {
+        let base = self.apply(StatInputs::from_hero_data(hero, None));
+        equips.iter().fold(Stats::build(&base), |stats, equip| {
+            let input = self.apply(StatInputs::from_hero_data(hero, Some(equip)));
+            stats + Stats::equipment_bonus(&input)
+        })
+    }
+}
+
 impl StatInputs {
     pub fn from_hero_data(hero: &HeroData, equip: Option<&Equipment>) -> Self {
         let record = &hero.record;
@@ -111,25 +174,29 @@ impl std::ops::Add for Stats {
 impl Stats {
     pub fn build_for_hero(hero: &HeroData, equips: &[Equipment]) -> Self {
         let base = StatInputs::from_hero_data(hero, None);
-        let core_base = level_base(base.hero_id, base.level) + rank_bonus(base.hero_id, base.rank);
         equips.iter().fold(Self::build(&base), |stats, equip| {
             let input = StatInputs::from_hero_data(hero, Some(equip));
-            stats + equip_bonus(&input) + equip_break_bonus(&input, core_base)
+            stats + Self::equipment_bonus(&input)
         })
     }
 
     pub fn build(input: &StatInputs) -> Self {
         let level = level_base(input.hero_id, input.level);
         let rank = rank_bonus(input.hero_id, input.rank);
-        let core_base = level + rank;
         let core = apply_destiny(
             level,
             rank,
             destiny_bonus(input.hero_id, input.destiny_rank),
         );
-        core + talent_bonus(input, level, rank)
-            + equip_bonus(input)
-            + equip_break_bonus(input, core_base)
+        core + talent_bonus(input, level, rank) + Self::equipment_bonus(input)
+    }
+
+    pub(super) fn equipment_bonus(input: &StatInputs) -> Self {
+        equip_bonus(input)
+            + equip_break_bonus(
+                input,
+                level_base(input.hero_id, input.level) + rank_bonus(input.hero_id, input.rank),
+            )
     }
 
     pub fn base(self) -> HeroAttribute {

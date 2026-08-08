@@ -132,6 +132,63 @@ fn regeneration_period_presence_gate_filters_the_source() {
 }
 
 #[test]
+fn round_incantation_rank_count_keeps_its_exact_post_settlement_route() {
+    assert_eq!(
+        parse(622304, "RoundUseSkillLevel", &["2".into(), "2".into()],),
+        Some(ParsedConditionKind::RoundUsedMinimumRank {
+            minimum_rank: 2,
+            threshold: 2,
+        })
+    );
+    let definition = find_key(622304, "RoundUseSkillLevel").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEndAfterSettlement,
+            phase: None,
+        }
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert!(find_key(622304, "ExPointMax").is_none());
+}
+
+#[test]
+fn full_moxie_keeps_its_exact_post_settlement_route() {
+    assert_eq!(
+        parse(745304, "ExPointMax", &[]),
+        Some(ParsedConditionKind::ExPointFull)
+    );
+    assert!(parse(745304, "ExPointMax", &["1".into()]).is_none());
+    let definition = find_key(745304, "ExPointMax").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEndAfterSettlement,
+            phase: None,
+        }
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert!(find_key(745304, "ExPointFull").is_none());
+}
+
+#[test]
+fn follow_up_buff_gate_is_an_exact_inline_predicate() {
+    let definition = find_key(19402, "HasBuffId").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(
+        parse(19402, "HasBuffId", &["30830111".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Present,
+            buff_ids: vec![30830111],
+        })
+    );
+    assert!(find_key(19402, "NoBuffId").is_none());
+}
+
+#[test]
 fn regeneration_period_absence_gate_filters_the_source() {
     let definition = find_key(57012, "NoBuffId").unwrap();
 
@@ -173,6 +230,27 @@ fn missing_hp_multiplier_is_an_exact_predicate() {
         Some(ParsedConditionKind::PerLostHp {
             interval_permille: 100,
         })
+    );
+}
+
+#[test]
+fn hp_lost_ratio_keeps_its_exact_identity() {
+    let definition = find_key(623203, "HpLostRatio").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::HpLost]);
+    assert_eq!(
+        parse(623203, "HpLostRatio", &["100".into()]),
+        Some(ParsedConditionKind::PerLostHp {
+            interval_permille: 100,
+        })
+    );
+    assert_eq!(parse(623203, "LostLifePer", &["100".into()]), None);
+    assert_eq!(parse(623203, "HpLostRatio", &["0".into()]), None);
+    assert_eq!(parse(623203, "HpLostRatio", &["-100".into()]), None);
+    assert_eq!(
+        parse(623203, "HpLostRatio", &["100".into(), "1".into()]),
+        None
     );
 }
 
@@ -512,6 +590,27 @@ fn conduit_attack_count_threshold_runs_after_hit() {
             threshold: 3,
         })
     );
+}
+
+#[test]
+fn maximum_buff_layer_gate_is_an_exact_inline_predicate() {
+    let definition = find_key(51212, "HasTypeIdBuffMoreThan").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert_eq!(
+        parse(
+            51212,
+            "HasTypeIdBuffMoreThan",
+            &["30830161".into(), "12".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![30830161],
+            compare: crate::engine::skill::condition::ConditionCompare::GreaterThanOrEqual,
+            threshold: 12,
+        })
+    );
+    assert!(find_key(51212, "TypeIdBuffCountMoreThan").is_none());
 }
 
 #[test]
@@ -915,6 +1014,26 @@ fn conduit_cost_uses_its_exact_activation_subscription() {
 }
 
 #[test]
+fn use_device_skill_uses_its_exact_activation_subscription() {
+    assert_eq!(
+        parse(792208, "UseDeviceSkill", &[]),
+        Some(ParsedConditionKind::None(NoneMode::Unconditional))
+    );
+    assert_eq!(parse(792208, "UseDeviceSkill", &["1".into()]), None);
+    let definition = find_key(792208, "UseDeviceSkill").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::ConduitActivated,
+            phase: None,
+        }
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert_eq!(definition.reaction_frame_scope, ReactionFrameScope::Causing);
+    assert!(find_key(792208, "PerDeviceCurrCost").is_none());
+}
+
+#[test]
 fn conduit_meter_and_group_conditions_keep_their_setup_stages() {
     assert_eq!(
         parse(787105, "DeviceExPoint", &["1".into(), "100".into()]),
@@ -1008,6 +1127,19 @@ fn skill_target_count_is_a_filter_with_an_event_dependency() {
 
     assert_eq!(definition.role, ConditionRole::Predicate);
     assert_eq!(definition.dependencies, &[EventKind::SkillAction]);
+}
+
+#[test]
+fn immediate_skill_type_gate_keeps_its_exact_identity() {
+    let definition = find_key(500203, "SkillType").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::SkillAction]);
+    assert_eq!(
+        parse(500203, "SkillType", &["1".into()]),
+        Some(ParsedConditionKind::ActiveSkillType(1))
+    );
+    assert!(find_key(500203, "UseSkillEffectTag").is_none());
 }
 
 #[test]
@@ -1257,6 +1389,50 @@ fn received_hit_afflatus_conditions_keep_their_exact_event_lane() {
 }
 
 #[test]
+fn bound_pair_threshold_keeps_its_per_entity_predicate() {
+    assert_eq!(
+        parse(
+            535212,
+            "TypeIdBuffCountMoreThan",
+            &["31000303".into(), "8".into()],
+        ),
+        Some(ParsedConditionKind::AnyTargetBuffTypeCount {
+            type_ids: vec![31000303],
+            threshold: 8,
+        })
+    );
+    assert_eq!(
+        find_key(535212, "TypeIdBuffCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        })
+    );
+    assert!(find_key(535212, "HasTypeIdBuffMoreThan").is_none());
+}
+
+#[test]
+fn distinct_status_type_count_keeps_its_exact_predicate_route() {
+    let definition = find_key(85203, "PerBuffTypeCountGroupByTypeId").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::BuffChanged]);
+    assert_eq!(
+        (definition.parse)(
+            85203,
+            "PerBuffTypeCountGroupByTypeId",
+            &["1,3,5".into(), "14".into()],
+        ),
+        Some(ParsedConditionKind::PerTeamBuffStatusTypeCount {
+            status_ids: vec![1, 3, 5, 14],
+            divisor: 1,
+            max_count: i32::MAX,
+        })
+    );
+    assert!(find_key(85203, "PerBuffTypeCountGroupByTypeIdLimit").is_none());
+}
+
+#[test]
 fn static_status_predicate_keeps_its_exact_source_side_route() {
     let definition = find_key(18201, "HasBuff").unwrap();
     assert_eq!(definition.role, ConditionRole::Predicate);
@@ -1492,6 +1668,63 @@ fn team_status_type_groups_keep_divisor_cap_and_categories() {
             phase: None,
         })
     );
+}
+
+#[test]
+fn active_team_status_type_count_keeps_its_exact_predicate_route() {
+    let definition = find_key(539203, "PerSelfTeamTypeType2BuffTypeIdNum").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::BuffChanged]);
+    assert_eq!(
+        parse(
+            539203,
+            "PerSelfTeamTypeType2BuffTypeIdNum",
+            &["1".into(), "99".into(), "6".into()]
+        ),
+        Some(ParsedConditionKind::PerTeamBuffStatusTypeCount {
+            status_ids: vec![6],
+            divisor: 1,
+            max_count: 99,
+        })
+    );
+    for arguments in [
+        vec!["0".into(), "99".into(), "6".into()],
+        vec!["1".into(), "0".into(), "6".into()],
+        vec!["1".into(), "99".into(), "0".into()],
+        vec!["1".into(), "99".into(), "6".into(), "7".into()],
+    ] {
+        assert_eq!(
+            parse(539203, "PerSelfTeamTypeType2BuffTypeIdNum", &arguments),
+            None
+        );
+    }
+    assert!(find_key(539203, "PerBuffTypeCountGroupByTypeId").is_none());
+}
+
+#[test]
+fn active_buff_group_count_keeps_its_exact_predicate_route() {
+    let definition = find_key(669203, "PerBuffGroupCount").unwrap();
+
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::BuffChanged]);
+    assert_eq!(
+        definition.behavior_target_source,
+        BehaviorTargetSource::ActiveSkillTargets
+    );
+    assert_eq!(
+        parse(669203, "PerBuffGroupCount", &["7".into()]),
+        Some(ParsedConditionKind::PerBuffGroupCount { group_id: 7 })
+    );
+    for arguments in [
+        vec![],
+        vec!["0".into()],
+        vec!["-7".into()],
+        vec!["7".into(), "5".into()],
+    ] {
+        assert_eq!(parse(669203, "PerBuffGroupCount", &arguments), None);
+    }
+    assert!(find_key(669203, "HasBuffGroup").is_none());
 }
 
 #[test]
@@ -1790,6 +2023,48 @@ fn other_ally_extra_action_keeps_its_exact_route() {
         })
     );
     assert!(find_key(403212, "UseSkill").is_none());
+}
+
+#[test]
+fn other_ally_action_kind_keeps_its_exact_route() {
+    assert_eq!(
+        parse(626212, "ActionSkillExtraType", &["1,2,3".into()]),
+        Some(ParsedConditionKind::ExtraAction {
+            mode: super::super::extra::ExtraActionConditionMode::OtherAllyAction,
+            kinds: vec![1, 2, 3],
+        })
+    );
+    assert_eq!(
+        find_key(626212, "ActionSkillExtraType").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        })
+    );
+    assert!(find_key(626212, "SkillExtraType").is_none());
+}
+
+#[test]
+fn bound_ally_buff_types_keep_their_exact_route() {
+    assert_eq!(
+        parse(
+            656212,
+            "SelfBuffTypeTargetBuffTypes",
+            &["31000201".into(), "31000171,31000181".into()],
+        ),
+        Some(ParsedConditionKind::SelfBuffTypeTargetBuffTypes {
+            self_type_id: 31000201,
+            target_type_ids: vec![31000171, 31000181],
+        })
+    );
+    assert_eq!(
+        find_key(656212, "SelfBuffTypeTargetBuffTypes").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        })
+    );
+    assert!(find_key(656212, "FromBuffAndToBuff").is_none());
 }
 
 #[test]
@@ -2378,4 +2653,57 @@ fn hand_skill_presence_keeps_exact_card_identity_and_round_timing() {
             phase: None,
         })
     );
+}
+
+#[test]
+fn ritual_dance_totals_keep_their_exact_active_skill_routes() {
+    let expected = ParsedConditionKind::BuffTypeCount {
+        type_ids: vec![31100201],
+        compare: ConditionCompare::GreaterThanOrEqual,
+        threshold: 4,
+    };
+    assert_eq!(
+        parse(
+            537201,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["31100201".into(), "4".into()],
+        ),
+        Some(expected)
+    );
+    assert_eq!(
+        find_key(537201, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        })
+    );
+    assert_eq!(
+        find_key(537203, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert!(
+        parse(
+            537201,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["0".into(), "4".into()]
+        )
+        .is_none()
+    );
+    assert!(
+        parse(
+            537203,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["31100201".into(), "0".into()]
+        )
+        .is_none()
+    );
+    assert!(
+        parse(
+            537203,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["31100201".into(), "8".into(), "1".into()]
+        )
+        .is_none()
+    );
+    assert!(find_key(537201, "TypeIdBuffCountMoreThan").is_none());
 }

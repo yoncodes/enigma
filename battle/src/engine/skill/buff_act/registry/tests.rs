@@ -59,6 +59,19 @@ fn registry_requires_exact_id_and_type() {
     assert!(!has_destination(933, "SubBuff", &[0]));
     assert!(find(1028, "AddToTarget").is_none());
     assert!(find(999, "RealDamageKill").is_none());
+    assert_eq!(
+        find(728, "ChangeRemoveBuffUseSkillParam").unwrap().kind,
+        BuffActKind::ChangeRemoveBuffUseSkillParam
+    );
+    assert_eq!(
+        destination(728, "ChangeRemoveBuffUseSkillParam", &[1, 1]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert_eq!(
+        destination(728, "ChangeRemoveBuffUseSkillParam", &[1, 2]),
+        None
+    );
+    assert!(find(728, "RemoveBuffUseSkill").is_none());
     assert!(reserves_trigger_child_uid(DefinitionKey::new(
         1053,
         "AttrByHeatScale"
@@ -777,6 +790,113 @@ fn moxie_reduction_immunity_keeps_its_exact_static_identity() {
     assert!(definition.state.consumer);
     assert!(has_destination(509, "ImmunityExpointChange", &[]));
     assert!(find(509, "ExPointCantAdd").is_none());
+}
+
+#[test]
+fn special_moxie_cap_keeps_its_exact_transaction_identity() {
+    let definition = find(832, "SpExPointMaxAdd").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::SpExPointMaxAdd);
+    assert_eq!(
+        definition.transaction.events,
+        &[
+            EventKind::BuffAdded,
+            EventKind::BuffChanged,
+            EventKind::BuffRemoved,
+        ]
+    );
+    assert!(has_destination(832, "SpExPointMaxAdd", &[7]));
+    assert!(has_destination(832, "SpExPointMaxAdd", &[7, 3]));
+    assert!(!has_destination(832, "SpExPointMaxAdd", &[0, 3]));
+    assert!(!has_destination(832, "SpExPointMaxAdd", &[-7]));
+    assert!(!has_destination(832, "SpExPointMaxAdd", &[7, -3]));
+    assert!(find(832, "ExPointMaxAdd").is_none());
+}
+
+#[test]
+fn transferred_moxie_keeps_its_exact_state_route() {
+    let definition = find(833, "TransferAddExPoint").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::TransferAddExPoint);
+    assert_eq!(
+        destination(833, "TransferAddExPoint", &[]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(833, "TransferAddExPoint", &[1]));
+    assert!(find(833, "ExPointCantAdd").is_none());
+}
+
+#[test]
+fn counted_channel_keeps_its_exact_state_event_route() {
+    let definition = find(838, "CountContinueChannel").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::CountContinueChannel);
+    assert_eq!(
+        runtime_event(838, "CountContinueChannel", 1041),
+        Some(EventKind::BuffStateChanged)
+    );
+    assert!(has_destination(
+        838,
+        "CountContinueChannel",
+        &[31000505, 1, 210, 7]
+    ));
+    assert!(!has_destination(
+        838,
+        "CountContinueChannel",
+        &[31000505, 0, 210, 7]
+    ));
+    let wire = super::super::wire::find(838, "CountContinueChannel").unwrap();
+    assert_eq!(
+        wire.initial_private_state(&[838, 31000505, 1, 210, 7]),
+        Some(7)
+    );
+    assert_eq!(wire.initial_private_state(&[838, 31000505, 1, 210]), None);
+    assert!(find(838, "CastChannel").is_none());
+}
+
+#[test]
+fn contract_channel_keeps_its_exact_grant_and_round_start_routes() {
+    let definition = find(836, "ContractCastChannel").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::ContractCastChannel);
+    assert_eq!(definition.transaction.events, &[EventKind::BuffAdded]);
+    assert_eq!(
+        runtime_publication(836, "ContractCastChannel", EventKind::BuffAdded),
+        PublicationPhase::BeforePublish
+    );
+    assert_eq!(
+        runtime_event(836, "ContractCastChannel", 104),
+        Some(EventKind::RoundStart)
+    );
+    assert!(has_destination(
+        836,
+        "ContractCastChannel",
+        &[1, 150, 31_000_151, 31_000_441]
+    ));
+    assert!(!has_destination(
+        836,
+        "ContractCastChannel",
+        &[0, 150, 31_000_151, 31_000_441]
+    ));
+    assert!(!has_destination(
+        836,
+        "ContractCastChannel",
+        &[1, -150, 31_000_151, 31_000_441]
+    ));
+    assert!(find(836, "CastChannel").is_none());
+}
+
+#[test]
+fn bound_channel_lock_keeps_its_exact_state_route() {
+    let definition = find(837, "NoneCastChannel").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::NoneCastChannel);
+    assert_eq!(
+        destination(837, "NoneCastChannel", &[]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(837, "NoneCastChannel", &[1]));
+    assert!(find(837, "ContractCastChannel").is_none());
 }
 
 #[test]

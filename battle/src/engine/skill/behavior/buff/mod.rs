@@ -1,9 +1,11 @@
 use crate::engine::{
     manager::{
+        BattleManagers,
         buff::{
             BuffAmount, BuffChangeDuration, BuffChildUidReservation, BuffCommand, BuffConsume,
             BuffConvert, BuffDispel, BuffGrant, BuffGrantChild, BuffRemove, BuffRemoveSelector,
-            BuffReplace, BuffSelector, BuffSetAmount, BuffStatus, CommandOrigin, DepletedBuff,
+            BuffReplace, BuffSelector, BuffSetAmount, BuffSetState, BuffStatus, CommandOrigin,
+            DepletedBuff,
         },
         card::{CardCommand, CardConsumeForEffect},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
@@ -26,7 +28,7 @@ use crate::engine::{
 };
 
 #[cfg(test)]
-use crate::engine::{manager::BattleManagers, skill::target::TargetPool};
+use crate::engine::skill::target::TargetPool;
 
 mod application;
 mod copy;
@@ -46,12 +48,12 @@ use application::*;
 use copy::copy_status_ops;
 pub(super) use copy::supports_status_copy;
 use dispel::{
-    damage_window_remove_ops, dispel_commands, excluded_dispel_command, sort_buff_by_hp_ops,
-    spread_buff_ops,
+    damage_window_remove_ops, dispel_commands, excluded_dispel_command,
+    remove_each_buff_family_ops, sort_buff_by_hp_ops, spread_buff_ops,
 };
 pub(super) use dispel::{
-    supports_dispel, supports_disperse_force, supports_exact_buff_dispel, supports_excluded_dispel,
-    supports_status_dispel,
+    supports_dispel, supports_disperse_force, supports_disperse_force3, supports_exact_buff_dispel,
+    supports_excluded_dispel, supports_status_dispel,
 };
 use distribute::*;
 pub use grant::random_buff_pool;
@@ -68,6 +70,23 @@ pub(super) fn supports_consume_power_add_buff(behavior: &ParsedBehavior) -> bool
         && behavior
             .arg_list(1)
             .is_some_and(|buffs| buffs.iter().all(|buff_id| *buff_id > 0))
+}
+
+pub(super) fn supports_consume_card_add_buff(behavior: &ParsedBehavior) -> bool {
+    let rewards = if behavior.raw_args.is_empty() {
+        behavior.args.get(1..).map(<[i32]>::to_vec)
+    } else if behavior.raw_args.len() == 2 {
+        behavior.arg_list(1)
+    } else {
+        None
+    };
+    let (Some(buff_id), Some(rewards)) = (behavior.arg(0), rewards) else {
+        return false;
+    };
+
+    rewards.len() == 3
+        && (buff_id > 0 && rewards.iter().all(|reward| *reward > 0)
+            || buff_id == 0 && rewards.iter().all(|reward| *reward == 0))
 }
 
 pub(super) fn supports_consume_power_add_multi_buff(behavior: &ParsedBehavior) -> bool {
@@ -108,6 +127,10 @@ pub(super) fn supports_duration_change(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [buff_id_or_type, delta] if *buff_id_or_type > 0 && *delta != 0)
 }
 
+pub(super) fn supports_channel_count_reduction(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [buff_id_or_type, amount] if *buff_id_or_type > 0 && *amount > 0)
+}
+
 pub(super) fn supports_count_multiplier(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [buff_id, multiplier] if *buff_id > 0 && *multiplier == 2)
 }
@@ -121,10 +144,15 @@ impl BehaviorHandler for Handler {
             BehaviorKind::AddTargetBuffByPoison => {
                 add_target_buff_by_poison_ops(&context, behavior)
             }
-            BehaviorKind::AddBuffRanId => random_pool_grant_commands(&mut context, behavior),
+            BehaviorKind::AddBuffRanId | BehaviorKind::AddBuffRanTypeId => {
+                random_pool_grant_commands(&mut context, behavior)
+            }
             BehaviorKind::AddBuffByHeroId => hero_grant_command(&context, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::DisperseForce2 => damage_window_remove_ops(context.target_uid, behavior),
+            BehaviorKind::DisperseForce3 => {
+                remove_each_buff_family_ops(context.target_uid, behavior)
+            }
             BehaviorKind::DisperseExclude => excluded_dispel_command(context.target_uid, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::Disperse1
@@ -177,6 +205,10 @@ impl BehaviorHandler for Handler {
                 change_duration_command(context.target_uid, behavior, BuffSelector::IdOrType)
                     .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
             }
+            BehaviorKind::ReduceCastChannelCount => {
+                reduce_channel_count_command(context.managers, context.target_uid, behavior)
+                    .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
+            }
             BehaviorKind::AddBuff | BehaviorKind::AddBuffPowerUse | BehaviorKind::AddBuffRound2 => {
                 shield_grant_ops(&context, behavior)
                     .or_else(|| heat_scale_snapshot_grant_ops(&context, behavior))
@@ -226,12 +258,12 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
             .into_iter()
             .filter_map(|index| behavior.arg(index))
             .collect(),
-        // AddBuffDuration selects an existing buff by id or type; it does not
-        // introduce a concrete buff dependency.
-        BehaviorKind::AddBuffDuration => Vec::new(),
-        // 60010 owns an id-or-type selector, so its operand is not necessarily
-        // a concrete buff dependency (for example type 8112).
-        BehaviorKind::DisperseForce2 => Vec::new(),
+        // Both select existing buff state by id or type; neither introduces a
+        // concrete buff dependency.
+        BehaviorKind::AddBuffDuration | BehaviorKind::ReduceCastChannelCount => Vec::new(),
+        // These own id-or-type selectors, so their operands are not necessarily
+        // concrete buff dependencies (for example type 8112).
+        BehaviorKind::DisperseForce2 | BehaviorKind::DisperseForce3 => Vec::new(),
         BehaviorKind::BuffSortByHp | BehaviorKind::BuffSpread => {
             behavior.arg(0).into_iter().collect()
         }
@@ -308,6 +340,32 @@ fn pool_buff_ids(raw: &str) -> Vec<i32> {
         .filter_map(|entry| entry.split(',').next()?.trim().parse().ok())
         .filter(|buff_id| *buff_id > 0)
         .collect()
+}
+
+fn reduce_channel_count_command(
+    managers: &BattleManagers,
+    target_uid: i64,
+    behavior: &ParsedBehavior,
+) -> Option<BuffCommand> {
+    let [buff_id_or_type, amount] = behavior.args.as_slice() else {
+        return None;
+    };
+    let buff_uid = managers
+        .buff
+        .buff_id_or_type_uid(target_uid, *buff_id_or_type)?;
+    let current = managers
+        .buff
+        .snapshot(target_uid, buff_uid)?
+        .ex_info
+        .unwrap_or_default();
+    Some(BuffCommand::SetState(BuffSetState {
+        origin: command_origin(behavior)?,
+        target_uid,
+        buff_uid,
+        ex_info: Some(current.saturating_sub(*amount).max(0)),
+        params: None,
+        act_info: None,
+    }))
 }
 
 #[cfg(test)]

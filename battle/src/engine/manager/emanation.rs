@@ -34,8 +34,7 @@ pub struct EmanationManager {
 
 impl EmanationManager {
     pub fn select(&mut self, owner_uid: i64, packed: i32) -> bool {
-        // The cloth request packs the server slots as Blue, Green, Purple.
-        let counts = [packed / 100, packed % 10, packed / 10 % 10];
+        let counts = [packed / 100, packed / 10 % 10, packed % 10];
         if owner_uid == 0 || counts.iter().any(|count| *count < 0) {
             return false;
         }
@@ -75,7 +74,7 @@ mod tests {
     #[test]
     fn selection_is_owned_per_entity() {
         let mut manager = EmanationManager::default();
-        assert!(manager.select(10, 101));
+        assert!(manager.select(10, 110));
         assert_eq!(manager.counts(10), [1, 1, 0]);
         assert_eq!(manager.count(10, EmanationKind::Blue), 1);
         assert_eq!(manager.count(10, EmanationKind::Purple), 1);

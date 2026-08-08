@@ -14,6 +14,7 @@ pub struct BuffActWireDefinition {
     static_read: &'static [i32],
     refresh: &'static [i32],
     pub initial_state: Option<InitialStateRule>,
+    pub initial_private_state: Option<InitialPrivateStateRule>,
     pub max_hp: Option<MaxHpWireRule>,
     pub pre_add: Option<WireEffect>,
     pub snapshot_reserve: Option<SnapshotReserveRule>,
@@ -46,6 +47,11 @@ pub enum InitialStateRule {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitialPrivateStateRule {
+    FourthArgument,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapshotReserveRule {
     ActCommonParamsTail,
 }
@@ -67,6 +73,7 @@ impl BuffActWireDefinition {
             static_read,
             refresh,
             initial_state: None,
+            initial_private_state: None,
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
@@ -81,6 +88,7 @@ impl BuffActWireDefinition {
             static_read: &[],
             refresh: &[],
             initial_state: None,
+            initial_private_state: None,
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
@@ -95,6 +103,7 @@ impl BuffActWireDefinition {
             static_read: &[],
             refresh: markers,
             initial_state: None,
+            initial_private_state: None,
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
@@ -105,6 +114,17 @@ impl BuffActWireDefinition {
     pub const fn with_initial_state(mut self, rule: InitialStateRule) -> Self {
         self.initial_state = Some(rule);
         self
+    }
+
+    pub const fn with_initial_private_state(mut self, rule: InitialPrivateStateRule) -> Self {
+        self.initial_private_state = Some(rule);
+        self
+    }
+
+    pub fn initial_private_state(self, values: &[i32]) -> Option<i32> {
+        match self.initial_private_state? {
+            InitialPrivateStateRule::FourthArgument => values.get(4).copied(),
+        }
     }
 
     pub const fn with_max_hp(mut self, repeats: u8, buff_act_id: i32) -> Self {
@@ -156,6 +176,7 @@ impl BuffActWireDefinition {
             || !self.static_read.is_empty()
             || !self.refresh.is_empty()
             || self.initial_state.is_some()
+            || self.initial_private_state.is_some()
             || self.max_hp.is_some()
             || self.pre_add.is_some()
             || self.snapshot_reserve.is_some()

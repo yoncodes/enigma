@@ -2,8 +2,8 @@ use crate::engine::{
     manager::{
         buff::{BuffCommand, BuffSetState},
         card::{
-            CardAddUniversal, CardCommand, CardEnchantHand, CardEnergyChange, CardMarkTemporary,
-            CardQueueUse, EnchantedType, HandCardRankUp, QueuedCardRankUp,
+            CardAddTemporary, CardAddUniversal, CardCommand, CardEnchantHand, CardEnergyChange,
+            CardMarkTemporary, CardQueueUse, EnchantedType, HandCardRankUp, QueuedCardRankUp,
         },
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
     },
@@ -42,9 +42,16 @@ pub(super) struct Handler;
 
 impl BehaviorHandler for Handler {
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
-        if behavior.spec.kind == BehaviorKind::AddQueuedSkillCard {
+        if matches!(
+            behavior.spec.kind,
+            BehaviorKind::AddQueuedSkillCard | BehaviorKind::AddSpTempCard2
+        ) {
             return RuleReferences {
-                skills: behavior.arg_list(1).unwrap_or_default(),
+                skills: if behavior.spec.kind == BehaviorKind::AddSpTempCard2 {
+                    behavior.args.clone()
+                } else {
+                    behavior.arg_list(1).unwrap_or_default()
+                },
                 ..Default::default()
             };
         }
@@ -88,6 +95,21 @@ impl BehaviorHandler for Handler {
         }
         if behavior.spec.kind == BehaviorKind::AddQueuedSkillCard {
             return queued_skill_card_ops(context, behavior);
+        }
+        if behavior.spec.kind == BehaviorKind::AddSpTempCard2 {
+            let [skill_id] = behavior.args.as_slice() else {
+                return None;
+            };
+            let reserve_id = i64::from(context.pool.entity(context.source_uid)?.model_id);
+            return Some(vec![RuleOp::Command(BattleCommand::Card(
+                CardCommand::AddTemporary(CardAddTemporary {
+                    origin: super::command_origin(behavior)?,
+                    target_uid: context.target_uid,
+                    skill_id: *skill_id,
+                    reserve_id,
+                    team_type: context.source_team,
+                }),
+            ))]);
         }
         if behavior.spec.kind == BehaviorKind::BufferflyRecordSkill {
             if !behavior.raw_args.is_empty()
@@ -530,6 +552,10 @@ pub(super) fn supports_queued_skill_card(behavior: &ParsedBehavior) -> bool {
     queued_skill_card_arguments(behavior).is_some()
 }
 
+pub(super) fn supports_temporary_skill_card(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [skill_id] if *skill_id > 0)
+}
+
 fn allows_recorded_skill(
     feature: &crate::engine::manager::buff::ActiveBuffFeature,
     skill_id: i32,
@@ -551,6 +577,60 @@ pub(super) fn supports_rank_by_effect_tag(behavior: &ParsedBehavior) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn special_temporary_card_uses_the_source_model_as_reserve_id() {
+        use sonettobuf::{Fight, FightEntityInfo, FightTeam};
+
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3149),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+        let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+        let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext::default();
+        let behavior = ParsedBehavior::new(60300, "AddSpTempCard2", vec![31446013]);
+
+        let ops = Handler::emit_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 0,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            ops.as_slice(),
+            [RuleOp::Command(BattleCommand::Card(CardCommand::AddTemporary(add)))]
+                if add.target_uid == 10
+                    && add.skill_id == 31446013
+                    && add.reserve_id == 3149
+                    && add.team_type == 1
+        ));
+        assert_eq!(Handler::references(&behavior).skills, vec![31446013]);
+    }
 
     #[test]
     fn queued_skill_card_uses_committed_rank_threshold_and_next_queue_index() {

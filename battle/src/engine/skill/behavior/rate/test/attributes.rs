@@ -320,6 +320,79 @@ fn source_modifier_with_target_999_uses_the_current_hit_target() {
 }
 
 #[test]
+fn liang_yue_poison_scaling_uses_the_compiled_target_group_count() {
+    crate::test_support::init_config();
+    let effects = SkillEffectCatalog::from_game_db(config::configs::get());
+    let poison = |uid, amount| BuffInfo {
+        uid: Some(uid),
+        buff_id: Some(30560101),
+        from_uid: Some(10),
+        count: Some(amount),
+        layer: Some(amount),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    buffs: vec![poison(1, 2)],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    current_hp: Some(100),
+                    buffs: vec![poison(2, 1)],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+
+    emit_passive_attack_attributes(
+        &mut modifiers,
+        10,
+        31100563,
+        &[31100563],
+        RateRuntime {
+            effects: &effects,
+            managers: &managers,
+            pool: &pool,
+            context: TargetContext {
+                active_skill_id: 31100563,
+                active_skill_source_uid: 10,
+                active_skill_is_attack: true,
+                logic_target: 202,
+                hit_source_uid: 10,
+                hit_target_uid: -1,
+                runtime_target_uid: -1,
+                ..Default::default()
+            },
+        },
+        &mut RoundDeterminism::default(),
+    );
+
+    assert_eq!(
+        modifiers.attack_attributes,
+        vec![(AttrId::DmgBonus, 100); 3]
+    );
+}
+
+#[test]
 fn bullet_triggered_buff_is_not_applied_before_its_event() {
     crate::test_support::init_config();
     let mut effects = SkillEffectCatalog::default();

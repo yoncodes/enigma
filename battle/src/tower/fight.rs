@@ -17,6 +17,7 @@ use sonettobuf::{
 use sqlx::SqlitePool;
 
 use super::BattleContext;
+use crate::dungeon::FightOptions;
 
 const ASSIST_BOSS_UID: i64 = -1;
 
@@ -25,8 +26,8 @@ pub async fn build_fight(
     player_id: i64,
     episode_id: i32,
     battle_id: i32,
-    use_record: bool,
     fight_group: &FightGroup,
+    options: FightOptions,
     context: BattleContext,
 ) -> anyhow::Result<BuiltFight> {
     let mut built = crate::dungeon::build_fight(
@@ -34,8 +35,8 @@ pub async fn build_fight(
         player_id,
         episode_id,
         battle_id,
-        use_record,
         fight_group,
+        options,
         None,
     )
     .await?;

@@ -51,6 +51,15 @@ macro_rules! parser {
 
 parser!(always, Always);
 parser!(unconditional, Unconditional);
+
+pub fn unconditional_without_arguments(
+    _: i32,
+    _: &str,
+    args: &[String],
+) -> Option<ParsedConditionKind> {
+    args.is_empty()
+        .then_some(ParsedConditionKind::None(NoneMode::Unconditional))
+}
 parser!(enter_battle, EnterBattle);
 parser!(round_start, RoundStart);
 parser!(after_round_start, AfterRoundStart);

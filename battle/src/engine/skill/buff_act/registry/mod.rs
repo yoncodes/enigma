@@ -106,9 +106,13 @@ pub enum BuffActKind {
     CareerRatioFix,
     CareerRestraint,
     CastChannel,
+    ChangeRemoveBuffUseSkillParam,
+    ContractCastChannel,
+    NoneCastChannel,
     ConsumeBuffAddBuffContinueChannel,
     ConsumeBuffContinueChannel,
     ControlTeamInjuryCountRound,
+    CountContinueChannel,
     ConduitCardSelection,
     CreateAdditionalDamage,
     CreateMaxHpAdditionalDamageAndRemove,
@@ -150,6 +154,7 @@ pub enum BuffActKind {
     ExPointCantAdd,
     ExSkillPointChange,
     ExPointMaxAdd,
+    SpExPointMaxAdd,
     ExPointOverflowBank,
     FixAttrBySubBuffLayer,
     FixAttrByTeammateInjuryCountNotReset,
@@ -227,6 +232,7 @@ pub enum BuffActKind {
     TeammateInjuryCount,
     ToughnessOverflowRecord,
     ToughnessRecover,
+    TransferAddExPoint,
     TransferEnergyBuff,
     UseSkillTeamAddEmitterEnergy,
     UseSkillAttrFix,
@@ -672,6 +678,19 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         frame: CausingFrame,
         transaction: super::ex_point_max_transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(703, "ExPointMaxAdd"), &[]));
+    (832, "SpExPointMaxAdd") => SpExPointMaxAdd,
+        transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
+        frame: CausingFrame,
+        transaction: super::sp_ex_point_max_transaction_rule_ops,
+        supports: |args| match args {
+            [max_add] => *max_add > 0,
+            [max_add, ultimate_cost_offset] => *max_add > 0 && *ultimate_cost_offset >= 0,
+            _ => false,
+        },
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(832, "SpExPointMaxAdd"), &[]));
+    (833, "TransferAddExPoint") => TransferAddExPoint, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(833, "TransferAddExPoint"), &[]));
     (607, "ExPointCardMove") => ExPointCardMove,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(607, "ExPointCardMove"), &[EffectType::Expointcardmove as i32]));
     (603, "ExPointCantAdd") => ExPointCantAdd,
@@ -728,6 +747,11 @@ buff_act_definitions! {
     (726, "Burn") => Burn, stat_read: OnTrigger,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(726, "Burn"), &[EffectType::Burn as i32]));
+    (728, "ChangeRemoveBuffUseSkillParam") => ChangeRemoveBuffUseSkillParam,
+        effect_time_subscription: false,
+        supports: super::change_remove_buff_use_skill_param::supports,
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(728, "ChangeRemoveBuffUseSkillParam"), &[]));
     (748, "UseDamageSkillAddToTarget") => UseDamageSkillAddToTarget,
         events: [EventKind::SkillCast],
         publications: [
@@ -904,6 +928,22 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::each_change_attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(834, "EachChangeAttr"), &[EffectType::None as i32]));
+    (836, "ContractCastChannel") => ContractCastChannel,
+        transactions: [EventKind::BuffAdded],
+        publication: BeforePublish, frame: CausingFrame,
+        runtime: |context| super::contract_cast_channel::rule_ops(context.managers, context.catalog, context.subscriber, context.event?),
+        transaction: super::contract_cast_channel::grant_transaction_rule_ops,
+        supports: super::contract_cast_channel::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(836, "ContractCastChannel"), &[]));
+    (837, "NoneCastChannel") => NoneCastChannel, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(837, "NoneCastChannel"), &[]));
+    (838, "CountContinueChannel") => CountContinueChannel,
+        event: EventKind::BuffStateChanged,
+        runtime: |context| super::count_continue_channel::rule_ops(context.subscriber, context.event?),
+        supports: super::count_continue_channel::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(838, "CountContinueChannel"), &[])
+            .with_initial_private_state(super::wire::InitialPrivateStateRule::FourthArgument));
     (861, "FixTempAttrByBuffLayer") => FixTempAttrByBuffLayer, stat_read: OnTrigger,
         supports: super::fix_temp_attr_by_buff_layer::supports, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(861, "FixTempAttrByBuffLayer"), &[EffectType::None as i32]));

@@ -95,10 +95,7 @@ fn action_event(
         crit_count: execution.context.action_crit_count,
         guard_break_count: execution.context.action_guard_break_count,
         additional_moxie: invocation.additional_moxie,
-        extra_skill_kind: invocation
-            .extra_skill_kind
-            .map(|kind| kind.id())
-            .unwrap_or_default(),
+        extra_skill_kind: execution.context.extra_skill_kind,
         mode: invocation.mode,
         teammate_injury_count: execution.injured_allies.len() as i32,
         teammate_injury_count_not_reset: execution.injured_allies.len() as i32,

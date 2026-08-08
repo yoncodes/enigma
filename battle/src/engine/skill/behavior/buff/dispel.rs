@@ -134,12 +134,48 @@ pub(super) fn damage_window_remove_ops(
     )
 }
 
+pub(super) fn remove_each_buff_family_ops(
+    target_uid: i64,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    let origin = super::command_origin(behavior)?;
+    Some(
+        behavior
+            .args
+            .iter()
+            .copied()
+            .map(|buff_id| {
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                    origin,
+                    target_uid,
+                    selector: BuffRemoveSelector::IdOrType(buff_id),
+                })))
+            })
+            .collect(),
+    )
+}
+
 pub(in crate::engine::skill::behavior) fn supports_disperse_force(
     behavior: &ParsedBehavior,
 ) -> bool {
     behavior
         .arg_list(0)
         .is_some_and(|ids| !ids.is_empty() && ids.into_iter().all(|id| id > 0))
+}
+
+pub(in crate::engine::skill::behavior) fn supports_disperse_force3(
+    behavior: &ParsedBehavior,
+) -> bool {
+    if !behavior.raw_args.is_empty() {
+        let [first, second, third] = behavior.raw_args.as_slice() else {
+            return false;
+        };
+        return [first, second, third]
+            .into_iter()
+            .all(|raw| raw.parse::<i32>().is_ok_and(|buff_id| buff_id > 0));
+    }
+
+    matches!(behavior.args.as_slice(), [first, second, third] if *first > 0 && *second > 0 && *third > 0)
 }
 
 pub(in crate::engine::skill::behavior) fn supports_exact_buff_dispel(

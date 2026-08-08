@@ -235,3 +235,84 @@ fn conduit_selection_adds_the_configured_precast_and_commits_the_choice() {
             .is_none()
     );
 }
+
+#[test]
+fn contract_selection_uses_the_offered_uid_and_fight_const_buff_pair() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    career: Some(4),
+                    ex_skill_level: Some(0),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    career: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = BattleRuntime::new(fight);
+    runtime
+        .managers
+        .contract
+        .execute(crate::engine::manager::contract::ContractCommand::Offer {
+            origin: crate::engine::skill::rule::CommandOrigin {
+                domain: crate::engine::skill::rule::RuleDomain::Behavior,
+                key: crate::engine::skill::rule::DefinitionKey::new(60092, "NotifyHeroContract"),
+            },
+            owner_uid: -1,
+            candidates: vec![20],
+        })
+        .unwrap();
+
+    let round = runtime
+        .use_cloth_skill(UseClothSkillRequest {
+            skill_id: Some(0),
+            from_id: Some(-1),
+            to_id: Some(20),
+            r#type: Some(ClothSkillType::Contract as i32),
+        })
+        .unwrap()
+        .round
+        .unwrap();
+
+    assert_eq!(runtime.managers.contract.bound_uid(-1), Some(20));
+    assert!(runtime.managers.buff.has_buff_id(-1, 31000221));
+    assert!(runtime.managers.buff.has_buff_id(20, 31000191));
+    let effects = round
+        .fight_step
+        .iter()
+        .flat_map(|step| &step.act_effect)
+        .collect::<Vec<_>>();
+    let kinds = effects
+        .iter()
+        .map(|effect| effect.effect_type.unwrap_or_default())
+        .collect::<Vec<_>>();
+    let owner_buff = effects
+        .iter()
+        .position(|effect| effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(31000221))
+        .unwrap();
+    let owner = kinds
+        .iter()
+        .position(|kind| *kind == sonettobuf::effect_type_enum::EffectType::Contranct as i32)
+        .unwrap();
+    let bound = kinds
+        .iter()
+        .position(|kind| *kind == sonettobuf::effect_type_enum::EffectType::Becontrancted as i32)
+        .unwrap();
+    let bound_buff = effects
+        .iter()
+        .position(|effect| effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(31000191))
+        .unwrap();
+    assert!(owner_buff < owner && owner < bound_buff && bound_buff < bound);
+}

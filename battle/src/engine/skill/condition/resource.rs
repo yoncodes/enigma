@@ -17,6 +17,10 @@ pub fn ex_point_at_most(_: i32, _: &str, args: &[String]) -> Option<ParsedCondit
     ex_point(args, ConditionCompare::LessThanOrEqual)
 }
 
+pub fn ex_point_full(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty().then_some(ParsedConditionKind::ExPointFull)
+}
+
 fn ex_point(args: &[String], compare: ConditionCompare) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::ExPoint {
         compare,

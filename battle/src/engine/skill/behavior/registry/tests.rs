@@ -76,6 +76,38 @@ fn ignore_beat_back_is_an_exact_argumentless_modifier() {
 }
 
 #[test]
+fn set_extra_type_keeps_its_exact_current_action_destination() {
+    let definition = find_key(60271, "SetExtraType").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::SetExtraType);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert!(definition.collect_attack_modifier.is_none());
+    assert!(supports(&ParsedBehavior::new(
+        60271,
+        "SetExtraType",
+        vec![1]
+    )));
+    assert!(supports(&ParsedBehavior::new(
+        60271,
+        "SetExtraType",
+        vec![3]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60271,
+        "SetExtraType",
+        vec![2]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60271,
+        "SetExtraType",
+        vec![1, 3]
+    )));
+    assert!(find_key(60271, "SkillExtraType").is_none());
+}
+
+#[test]
 fn implemented_skill_casts_own_destinations_but_unimplemented_siblings_do_not() {
     for (opcode, type_name) in [
         (50008, "DirectUseSkill"),
@@ -120,6 +152,183 @@ fn destination_readiness_belongs_to_the_exact_registry_row() {
     ] {
         assert!(find_key(opcode, type_name).unwrap().destination);
     }
+}
+
+#[test]
+fn crystal_skill_rate_validates_its_halo_payload() {
+    let definition = find_key(60243, "CrystalAddSkillRate").unwrap();
+    let valid = ParsedBehavior::new(
+        60243,
+        "CrystalAddSkillRate",
+        vec![4, 1_000_000, 4, 31_340_001, 2],
+    );
+
+    assert!(definition.supports.is_some_and(|supports| supports(&valid)));
+    assert!(find_key(60243, "CrystalAddCardRank").is_none());
+    for args in [
+        vec![4, 1_000_000, 4, 31_340_001],
+        vec![4, 1_000_000, 4, 31_340_001, 0],
+        vec![4, 1_000_000, 4, 31_340_001, 2, 1],
+    ] {
+        let unsupported = ParsedBehavior::new(60243, "CrystalAddSkillRate", args);
+        assert!(
+            !definition
+                .supports
+                .is_some_and(|supports| supports(&unsupported))
+        );
+    }
+}
+
+#[test]
+fn planet_removal_keeps_its_exact_behavior_identity() {
+    let definition = find_key(60252, "DisperseForce3").unwrap();
+    let valid = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60252, "DisperseForce3"),
+        vec![307002112, 307002212, 307001312],
+        vec!["307002112".into(), "307002212".into(), "307001312".into()],
+    );
+
+    assert_eq!(definition.kind, BehaviorKind::DisperseForce3);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert!(definition.supports.is_some_and(|supports| supports(&valid)));
+    for args in [
+        Vec::new(),
+        vec![307002112],
+        vec![307002112, 307002212],
+        vec![307002112, 307002212, 0],
+        vec![307002112, 307002212, -1],
+        vec![307002112, 307002212, 307001312, 307001412],
+    ] {
+        let unsupported = ParsedBehavior::new(60252, "DisperseForce3", args);
+        assert!(
+            !definition
+                .supports
+                .is_some_and(|supports| supports(&unsupported))
+        );
+    }
+    let grouped = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60252, "DisperseForce3"),
+        vec![307001312],
+        vec!["307002112,307002212".into(), "307001312".into()],
+    );
+    assert!(
+        !definition
+            .supports
+            .is_some_and(|supports| supports(&grouped))
+    );
+    assert!(find_key(60252, "DisperseForce2").is_none());
+    assert!(find_key(60010, "DisperseForce3").is_none());
+}
+
+#[test]
+fn contract_offer_keeps_its_exact_argumentless_key() {
+    let definition = find_key(60092, "NotifyHeroContract").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::NotifyHeroContract);
+    assert!(definition.destination);
+    assert!(supports(&ParsedBehavior::new(
+        60092,
+        "NotifyHeroContract",
+        Vec::new()
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60092,
+        "NotifyHeroContract",
+        vec![1]
+    )));
+    assert!(find_key(60092, "ContractEndClearBuff").is_none());
+}
+
+#[test]
+fn contract_cleanup_keeps_its_exact_paired_buff_lists() {
+    let definition = find_key(60093, "ContractEndClearBuff").unwrap();
+    let supports = definition.supports.unwrap();
+    let valid = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60093, "ContractEndClearBuff"),
+        Vec::new(),
+        vec!["11,12".into(), "21,22".into()],
+    );
+
+    assert_eq!(definition.kind, BehaviorKind::ContractEndClearBuff);
+    assert!(definition.destination);
+    assert!(supports(&valid));
+    assert!(!supports(&ParsedBehavior::from_spec(
+        BehaviorSpec::new(60093, "ContractEndClearBuff"),
+        Vec::new(),
+        vec!["11,12".into()],
+    )));
+    assert!(!supports(&ParsedBehavior::from_spec(
+        BehaviorSpec::new(60093, "ContractEndClearBuff"),
+        Vec::new(),
+        vec!["11,12".into(), "21,22".into(), "31".into()],
+    )));
+    assert!(find_key(60093, "NotifyHeroContract").is_none());
+}
+
+#[test]
+fn random_buff_type_pool_keeps_its_exact_identity() {
+    let definition = find_key(20022, "AddBuffRanTypeId").unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::AddBuffRanTypeId);
+    assert!(definition.destination);
+    assert!(find_key(20022, "AddBuffRanId").is_none());
+}
+
+#[test]
+fn remove_buff_use_skill_keeps_its_exact_identity_and_phase() {
+    let definition = find_key(50018, "RemoveBuffUseSkill").unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::RemoveBuffUseSkill);
+    assert_eq!(definition.phase, BehaviorPhase::AfterDamage);
+    assert!(find_key(50018, "ConsumeBuffUseSkill").is_none());
+}
+
+#[test]
+fn special_temporary_card_keeps_its_exact_identity_and_arguments() {
+    let definition = find_key(60300, "AddSpTempCard2").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::AddSpTempCard2);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert!(supports(&ParsedBehavior::new(
+        60300,
+        "AddSpTempCard2",
+        vec![31446013]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60300,
+        "AddSpTempCard2",
+        vec![0]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60300,
+        "AddSpTempCard2",
+        vec![31446013, 1],
+    )));
+    assert!(find_key(60300, "AddSpTempCard").is_none());
+}
+
+#[test]
+fn channel_duration_reduction_keeps_its_exact_identity_and_phase() {
+    let definition = find_key(60094, "ReduceCastChannelCount").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::ReduceCastChannelCount);
+    assert_eq!(definition.phase, BehaviorPhase::AfterDamage);
+    assert!(supports(&ParsedBehavior::new(
+        60094,
+        "ReduceCastChannelCount",
+        vec![31000131, 1],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60094,
+        "ReduceCastChannelCount",
+        vec![31000131, -1],
+    )));
+    assert!(find_key(60094, "ReduceCastChannelCount2").is_none());
 }
 
 #[test]
@@ -220,6 +429,28 @@ fn resource_driven_behaviors_validate_their_configured_operands() {
     ));
     assert!(supports(100005, "Assassinate", Vec::new(), Vec::new()));
     assert!(!supports(100005, "Assassinate", vec![1], Vec::new()));
+}
+
+#[test]
+fn card_consumption_reward_requires_three_rank_values_or_the_destroy_only_shape() {
+    let supports = |raw_args: &[&str]| {
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60222, "ConsumeCardAddBuff"),
+            Vec::new(),
+            raw_args.iter().map(|value| (*value).to_owned()).collect(),
+        );
+        find(&behavior)
+            .and_then(|definition| definition.supports)
+            .is_some_and(|supports| supports(&behavior))
+    };
+
+    assert!(supports(&["31280113", "20,30,50"]));
+    assert!(supports(&["0", "0,0,0"]));
+    assert!(!supports(&["31280113", "20,30"]));
+    assert!(!supports(&["31280113", "20,0,50"]));
+    assert!(!supports(&["0", "20,30,50"]));
+    assert!(!supports(&["31280113", "20,30,50", "1"]));
+    assert!(find_key(60222, "ConsumeCardAddBuff2").is_none());
 }
 
 #[test]

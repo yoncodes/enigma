@@ -1,7 +1,7 @@
 use crate::engine::{
     entity::{
         builder::EntityBuilder,
-        stats::{StatInputs, Stats},
+        stats::{BattleBalance, StatInputs, Stats},
     },
     fight::{defender::Defender, team::Team},
     manager::eureka::PowerType,
@@ -68,6 +68,7 @@ impl Attacker {
         user_id: i64,
         episode_id: i32,
         battle_id: i32,
+        is_balance: bool,
         fight_group: &sonettobuf::FightGroup,
         params: Option<&str>,
     ) -> Result<BuiltAttacker> {
@@ -75,6 +76,12 @@ impl Attacker {
             .battle
             .get(battle_id)
             .ok_or_else(|| anyhow::anyhow!("unknown battle {battle_id}"))?;
+        let balance = is_balance
+            .then(|| {
+                BattleBalance::parse(&battle.balance)
+                    .ok_or_else(|| anyhow::anyhow!("invalid balance config for battle {battle_id}"))
+            })
+            .transpose()?;
         let aid_ids = configured_aid_ids(&battle.aid)?;
         let trial_heroes = configured_trial_heroes(&battle.trial_heros)?;
         let selected_trials = selected_trial_heroes(
@@ -155,15 +162,17 @@ impl Attacker {
 
             let hero_data = hero.get_uid(*hero_uid).await?;
             let equips = Self::fetch_equips(pool, &hero_data, fight_group).await?;
-            let stats = crate::engine::entity::stats::Stats::build_for_hero(&hero_data, &equips);
+            let stats = balance
+                .map(|balance| balance.stats_for(&hero_data, &equips))
+                .unwrap_or_else(|| Stats::build_for_hero(&hero_data, &equips));
             ex_attributes.push((hero_data.record.uid, stats.ex()));
             sp_attributes.push((hero_data.record.uid, stats.sp()));
 
-            entitys.push(
-                EntityBuilder::new(hero_data, position, 1, false)
-                    .with_equips(equips)
-                    .build(),
-            );
+            let mut builder = EntityBuilder::new(hero_data, position, 1, false).with_equips(equips);
+            if let Some(balance) = balance {
+                builder = builder.with_balance(balance, stats);
+            }
+            entitys.push(builder.build());
         }
 
         for hero_uid in fight_group.sub_hero_list.iter() {
@@ -177,15 +186,17 @@ impl Attacker {
 
             let hero_data = hero.get_uid(*hero_uid).await?;
             let equips = Self::fetch_equips(pool, &hero_data, fight_group).await?;
-            let stats = crate::engine::entity::stats::Stats::build_for_hero(&hero_data, &equips);
+            let stats = balance
+                .map(|balance| balance.stats_for(&hero_data, &equips))
+                .unwrap_or_else(|| Stats::build_for_hero(&hero_data, &equips));
             ex_attributes.push((hero_data.record.uid, stats.ex()));
             sp_attributes.push((hero_data.record.uid, stats.sp()));
 
-            sub_entitys.push(
-                EntityBuilder::new(hero_data, -1, 1, true)
-                    .with_equips(equips)
-                    .build(),
-            );
+            let mut builder = EntityBuilder::new(hero_data, -1, 1, true).with_equips(equips);
+            if let Some(balance) = balance {
+                builder = builder.with_balance(balance, stats);
+            }
+            sub_entitys.push(builder.build());
         }
 
         let player_entity = EntityBuilder::player(user_id, 1);
@@ -587,6 +598,7 @@ fn active_skills(raw: &str) -> Vec<AssistBossSkillInfo> {
 #[cfg(test)]
 mod tests {
     use super::{configured_aid_ids, reserved_uid_offset, selected_support, validate_composition};
+    use crate::dungeon::FightOptions;
     use database::models::game::heros::{HeroModel, UserHeroModel};
 
     #[test]
@@ -665,9 +677,17 @@ mod tests {
             ..Default::default()
         };
 
-        let built = super::super::build_fight(&pool, 1, 10103, 11021, false, &fight_group, None)
-            .await
-            .unwrap();
+        let built = super::super::build_fight(
+            &pool,
+            1,
+            10103,
+            11021,
+            &fight_group,
+            FightOptions::default(),
+            None,
+        )
+        .await
+        .unwrap();
         let attacker = built.fight.attacker.unwrap();
 
         assert_eq!(
@@ -700,9 +720,17 @@ mod tests {
             ..Default::default()
         };
 
-        let built = super::super::build_fight(&pool, 1, 1102, 201101, false, &fight_group, None)
-            .await
-            .unwrap();
+        let built = super::super::build_fight(
+            &pool,
+            1,
+            1102,
+            201101,
+            &fight_group,
+            FightOptions::default(),
+            None,
+        )
+        .await
+        .unwrap();
         let attacker = built.fight.attacker.unwrap();
         let trial = &attacker.entitys[0];
 
@@ -737,15 +765,37 @@ mod tests {
         assert!(!trial.passive_skill.is_empty());
     }
 
+    #[test]
+    fn linked_trial_psychube_contributes_stats_and_passives() {
+        crate::test_support::init_config();
+        let (trial, stats) =
+            crate::engine::entity::builder::EntityBuilder::trial(116385001, -1, 1, 1).unwrap();
+
+        assert_eq!(
+            (stats.hp, stats.atk, stats.def, stats.mdef),
+            (14610, 2469, 1005, 1005)
+        );
+        assert!(trial.passive_skill.contains(&437115));
+        assert!(trial.passive_skill.contains(&437215));
+    }
+
     #[tokio::test]
     async fn configured_aids_build_as_allied_monsters_and_reserve_their_uids() {
         crate::test_support::init_config();
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         let fight_group = sonettobuf::FightGroup::default();
 
-        let built = super::super::build_fight(&pool, 1, 10002, 1002, false, &fight_group, None)
-            .await
-            .unwrap();
+        let built = super::super::build_fight(
+            &pool,
+            1,
+            10002,
+            1002,
+            &fight_group,
+            FightOptions::default(),
+            None,
+        )
+        .await
+        .unwrap();
         let mut runtime = crate::engine::runtime::BattleRuntime::new(built.fight.clone());
         let round = runtime.start_round().unwrap();
         let cards = runtime.card_info_push();
@@ -813,9 +863,17 @@ mod tests {
             vec![(Some(-3), Some(100105)), (Some(-4), Some(100106))]
         );
 
-        let built = super::super::build_fight(&pool, 1, 10003, 1003, false, &fight_group, None)
-            .await
-            .unwrap();
+        let built = super::super::build_fight(
+            &pool,
+            1,
+            10003,
+            1003,
+            &fight_group,
+            FightOptions::default(),
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(
             built
                 .fight
@@ -851,9 +909,17 @@ mod tests {
             ..Default::default()
         };
 
-        let built = super::super::build_fight(&pool, 1, 10101, 10101, false, &group, None)
-            .await
-            .unwrap();
+        let built = super::super::build_fight(
+            &pool,
+            1,
+            10101,
+            10101,
+            &group,
+            FightOptions::default(),
+            None,
+        )
+        .await
+        .unwrap();
         let entity = &built.fight.attacker.unwrap().entitys[0];
 
         assert_eq!(entity.equip_uid, Some(0));
@@ -900,9 +966,17 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            super::super::build_fight(&pool, 1, 10101, 10101, false, &stacked, None)
-                .await
-                .is_err()
+            super::super::build_fight(
+                &pool,
+                1,
+                10101,
+                10101,
+                &stacked,
+                FightOptions::default(),
+                None,
+            )
+            .await
+            .is_err()
         );
         let group = sonettobuf::FightGroup {
             hero_list: vec![hero_uid],
@@ -914,9 +988,17 @@ mod tests {
             ..Default::default()
         };
 
-        let built = super::super::build_fight(&pool, 1, 10101, 10101, false, &group, None)
-            .await
-            .unwrap();
+        let built = super::super::build_fight(
+            &pool,
+            1,
+            10101,
+            10101,
+            &group,
+            FightOptions::default(),
+            None,
+        )
+        .await
+        .unwrap();
         let entity = &built.fight.attacker.unwrap().entitys[0];
 
         assert_eq!(entity.equip_uid, Some(primary_uid));
@@ -933,6 +1015,112 @@ mod tests {
         );
         assert!(entity.passive_skill.contains(&437111));
         assert!(entity.passive_skill.contains(&437215));
+    }
+
+    #[tokio::test]
+    async fn configured_balance_floors_only_the_battle_loadout() {
+        crate::test_support::init_config();
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (1, 'balanced-fight', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let heroes = UserHeroModel::new(1, pool.clone());
+        let hero_uid = heroes.create_hero(3127).await.unwrap();
+        sqlx::query("UPDATE heroes SET level = 121, rank = 4, talent = 10 WHERE uid = ?")
+            .bind(hero_uid)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let equip_uid = database::db::game::equipment::add_equipment(&pool, 1, 1502, 1)
+            .await
+            .unwrap()[0];
+        sqlx::query("UPDATE equipment SET level = 50 WHERE uid = ?")
+            .bind(equip_uid)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let group = sonettobuf::FightGroup {
+            hero_list: vec![hero_uid],
+            equips: vec![sonettobuf::FightEquip {
+                hero_uid: Some(hero_uid),
+                equip_uid: vec![equip_uid],
+                ..Default::default()
+            }],
+            trial_hero_list: vec![sonettobuf::TrialHero {
+                trial_id: Some(116385001),
+                pos: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let built = super::super::build_fight(
+            &pool,
+            1,
+            38510113,
+            116385108,
+            &group,
+            FightOptions {
+                is_balance: true,
+                ..Default::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let entity = built
+            .fight
+            .attacker
+            .unwrap()
+            .entitys
+            .into_iter()
+            .find(|entity| entity.uid == Some(hero_uid))
+            .unwrap();
+
+        assert_eq!(entity.level, Some(140));
+        assert_eq!(
+            entity.attr.map(|attr| {
+                (
+                    attr.hp,
+                    attr.attack,
+                    attr.defense,
+                    attr.mdefense,
+                    attr.technic,
+                )
+            }),
+            Some((Some(9628), Some(1737), Some(820), Some(858), Some(504)))
+        );
+        assert_eq!(entity.equips[0].equip_lv, Some(60));
+        assert_eq!(heroes.get_uid(hero_uid).await.unwrap().record.level, 121);
+    }
+
+    #[tokio::test]
+    async fn requested_balance_requires_valid_battle_config() {
+        crate::test_support::init_config();
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+
+        let error = super::super::build_fight(
+            &pool,
+            1,
+            10101,
+            10101,
+            &sonettobuf::FightGroup::default(),
+            FightOptions {
+                is_balance: true,
+                ..Default::default()
+            },
+            None,
+        )
+        .await
+        .err()
+        .unwrap();
+
+        assert!(error.to_string().contains("invalid balance config"));
     }
 
     #[tokio::test]
@@ -973,10 +1161,17 @@ mod tests {
             hero_uid
         );
 
-        let built =
-            super::super::build_fight(&pool, 1, 90400101, 9001101, false, &group, Some(&params))
-                .await
-                .unwrap();
+        let built = super::super::build_fight(
+            &pool,
+            1,
+            90400101,
+            9001101,
+            &group,
+            FightOptions::default(),
+            Some(&params),
+        )
+        .await
+        .unwrap();
         let attacker = built.fight.attacker.unwrap();
         assert_eq!(attacker.assist_boss.unwrap().model_id, Some(306600));
         assert_eq!(built.fight.defender.unwrap().entitys[0].uid, Some(-2),);

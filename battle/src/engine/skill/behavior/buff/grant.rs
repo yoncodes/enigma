@@ -34,7 +34,10 @@ pub(super) fn random_pool_grant_commands(
     behavior: &ParsedBehavior,
 ) -> Option<Vec<RuleOp>> {
     let definition = super::registry::find(behavior)?;
-    if definition.kind != BehaviorKind::AddBuffRanId {
+    if !matches!(
+        definition.kind,
+        BehaviorKind::AddBuffRanId | BehaviorKind::AddBuffRanTypeId
+    ) {
         return None;
     }
     let [_, count] = behavior.args.as_slice() else {
@@ -42,11 +45,13 @@ pub(super) fn random_pool_grant_commands(
     };
     let mut candidates = random_buff_pool(behavior)?
         .into_iter()
-        .filter(|buff_id| {
-            !context
+        .filter(|buff_id| match definition.kind {
+            BehaviorKind::AddBuffRanId => !context
                 .managers
                 .buff
-                .has_buff_id(context.target_uid, *buff_id)
+                .has_buff_id(context.target_uid, *buff_id),
+            BehaviorKind::AddBuffRanTypeId => true,
+            _ => false,
         })
         .collect::<Vec<_>>();
     let mut ops = Vec::new();
@@ -90,7 +95,10 @@ pub(super) fn supports_random_pool(behavior: &ParsedBehavior) -> bool {
 
 pub fn random_buff_pool(behavior: &ParsedBehavior) -> Option<Vec<i32>> {
     let definition = super::registry::find(behavior)?;
-    if definition.kind != BehaviorKind::AddBuffRanId {
+    if !matches!(
+        definition.kind,
+        BehaviorKind::AddBuffRanId | BehaviorKind::AddBuffRanTypeId
+    ) {
         return None;
     }
     config::try_get()

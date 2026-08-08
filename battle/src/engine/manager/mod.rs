@@ -3,6 +3,7 @@ pub mod battle_rule;
 pub mod buff;
 pub mod card;
 pub mod conduit;
+pub mod contract;
 pub mod emanation;
 pub mod emitter;
 pub mod entity;
@@ -56,6 +57,7 @@ pub struct BattleManagers {
     pub(crate) buff: BuffManager,
     pub card: CardManager,
     pub conduit: ConduitManager,
+    pub contract: contract::ContractManager,
     pub emitter: EmitterManager,
     pub entity: entity::EntityManager,
     pub emanation: EmanationManager,
@@ -541,6 +543,18 @@ impl BattleManagers {
         &mut self,
         command: ex_point::ExPointCommand,
     ) -> Result<ex_point::ExPointChanges, ex_point::ExPointCommandError> {
+        let command = match command {
+            ex_point::ExPointCommand::Change(mut change) if change.delta > 0 => {
+                if let Some(source_uid) = self.buff.buff_act_source_uid(
+                    change.target_uid,
+                    crate::engine::skill::buff_act::registry::BuffActKind::TransferAddExPoint,
+                ) {
+                    change.target_uid = source_uid;
+                }
+                ex_point::ExPointCommand::Change(change)
+            }
+            command => command,
+        };
         let target_uid = match command {
             ex_point::ExPointCommand::Change(change) => Some(change.target_uid),
             ex_point::ExPointCommand::Spend(change) => Some(change.target_uid),

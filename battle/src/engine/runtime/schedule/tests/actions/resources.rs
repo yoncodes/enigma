@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::skill::action::{SkillExecutionMode, SkillLifecycle};
 
 #[test]
 fn full_named_boss_power_authorizes_an_ultimate_without_moxie() {
@@ -627,6 +628,79 @@ fn conduit_source_target_uses_the_first_living_main_ally_as_its_frame_anchor() {
             )
     )));
     assert_eq!(managers.conduit.power(1, 1), 1);
+}
+
+#[test]
+fn conduit_attacks_keep_their_lifecycle_without_becoming_active_incantations() {
+    init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(20, 3134), entity(10, 3149)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 1001)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+            crate::engine::manager::buff::BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 20,
+                target_uid: 20,
+                buff_id: 31340006,
+                amount: Some(1),
+                occurrences: 1,
+                child_uid_reservations: 0,
+            },
+        ))
+        .unwrap();
+    assert!(managers.emanation.select(20, 10));
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    let result = run_conduit_phase(
+        &fight,
+        &mut managers,
+        &pool,
+        &mut catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[sonettobuf::FightDeviceOper {
+            uid: Some(10),
+            index: Some(1),
+        }],
+    )
+    .unwrap();
+    assert!(result.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        RuleOutcome::SkillLifecycle(SkillLifecycle::ActionCompleted(action))
+            if action.mode == SkillExecutionMode::Device
+    )));
+    assert!(result.events.iter().any(|event| matches!(
+        event,
+        BattleEvent::SkillAction(action)
+            if action.mode == SkillExecutionMode::Device
+                && action.is_attack
+    )));
+    assert_eq!(managers.buff.buff_id_amount(-1, 31340001), 0);
 }
 
 #[test]

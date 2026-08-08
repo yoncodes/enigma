@@ -54,6 +54,10 @@ pub(super) fn supports_consume_target_buff_use_skill(behavior: &ParsedBehavior) 
         if *buff_id > 0 && *amount > 0 && *skill_id > 0)
 }
 
+pub(super) fn supports_remove_buff_use_skill(behavior: &ParsedBehavior) -> bool {
+    remove_buff_skill_choices(behavior).is_some()
+}
+
 pub(super) fn supports_direct_no_action_skill(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [skill_id] | [skill_id, _] if *skill_id > 0)
 }
@@ -177,6 +181,75 @@ impl BehaviorHandler for Handler {
                     }))),
                     RuleOp::Skill(invocation),
                 ])
+            }
+            BehaviorKind::RemoveBuffUseSkill => {
+                let base_minimum = behavior.arg(1)?;
+                let base_maximum = behavior.arg(2)?;
+                let (minimum, maximum, modifier_consumes) =
+                    crate::engine::skill::buff_act::change_remove_buff_use_skill_param::adjust_range(
+                        context.managers,
+                        context.source_uid,
+                        base_minimum,
+                        base_maximum,
+                    )?;
+                let (buff_id, _, choices) =
+                    remove_buff_skill_choices_in_range(behavior, minimum, maximum)?;
+                let available = context
+                    .managers
+                    .buff
+                    .buff_id_amount(context.source_uid, buff_id);
+                if available <= 0
+                    || (available < minimum
+                        && (modifier_consumes.is_empty() || minimum <= base_minimum))
+                {
+                    return Some(Vec::new());
+                }
+                let scripted = context
+                    .determinism
+                    .has_scripted_random_skill(&behavior.arg_list(3)?);
+                let choices = if available < minimum {
+                    let skill_id = *behavior
+                        .arg_list(3)?
+                        .get(available.saturating_sub(1) as usize)?;
+                    vec![(available, skill_id, 1)]
+                } else {
+                    choices
+                        .into_iter()
+                        .take_while(|(amount, _, _)| *amount <= available)
+                        .collect()
+                };
+                let (amount, skill_id) =
+                    choose_removed_buff_skill(context.determinism, &choices, scripted)?;
+                let origin = super::command_origin(behavior)?;
+                let mut invocation: crate::engine::skill::action::SkillInvocation =
+                    crate::engine::skill::action::SkillRequest {
+                        source_uid: context.source_uid,
+                        skill_id,
+                    }
+                    .into();
+                invocation.target =
+                    crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
+                invocation.extra_skill_kind = skill_kind_from_is_extra(
+                    crate::engine::skill::effect::catalog::configured_extra_kind(skill_id),
+                );
+                if invocation
+                    .extra_skill_kind
+                    .is_some_and(|kind| kind.is_extra_action())
+                {
+                    invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+                }
+                let mut ops = vec![
+                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                        origin,
+                        target_uid: context.source_uid,
+                        selector: BuffSelector::ExactId(buff_id),
+                        amount,
+                        depleted: DepletedBuff::Remove,
+                    }))),
+                    RuleOp::Skill(invocation),
+                ];
+                ops.extend(modifier_consumes);
+                Some(ops)
             }
             BehaviorKind::ConsumePowerDirectUseSkill => {
                 let [cost, skill_id] = behavior.args.as_slice() else {
@@ -475,6 +548,13 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         BehaviorKind::ConsumeBuffUseSkill
         | BehaviorKind::ConsumeBuffUseSkill3
         | BehaviorKind::ConsumeTargetBuffUseSkill => behavior.arg(2).into_iter().collect(),
+        BehaviorKind::RemoveBuffUseSkill => behavior
+            .arg_list(3)
+            .unwrap_or_default()
+            .iter()
+            .copied()
+            .filter(|skill_id| *skill_id > 0)
+            .collect(),
         BehaviorKind::ConsumePowerUseSkill | BehaviorKind::ConsumePowerDirectUseSkill => {
             behavior.arg(1).into_iter().collect()
         }
@@ -500,6 +580,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         BehaviorKind::ConsumeBuffUseSkill
         | BehaviorKind::ConsumeBuffUseSkill3
         | BehaviorKind::ConsumeTargetBuffUseSkill => behavior.arg(0).into_iter().collect(),
+        BehaviorKind::RemoveBuffUseSkill => behavior.arg(0).into_iter().collect(),
         _ => Vec::new(),
     };
     RuleReferences {
@@ -507,6 +588,74 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         buffs,
         models: Vec::new(),
     }
+}
+
+type RemoveBuffSkillChoices = (i32, i32, Vec<(i32, i32, usize)>);
+
+fn remove_buff_skill_choices(behavior: &ParsedBehavior) -> Option<RemoveBuffSkillChoices> {
+    remove_buff_skill_choices_in_range(behavior, behavior.arg(1)?, behavior.arg(2)?)
+}
+
+fn remove_buff_skill_choices_in_range(
+    behavior: &ParsedBehavior,
+    minimum: i32,
+    maximum: i32,
+) -> Option<RemoveBuffSkillChoices> {
+    let buff_id = behavior.arg(0)?;
+    let base_minimum = behavior.arg(1)?;
+    let base_maximum = behavior.arg(2)?;
+    let skills = behavior.arg_list(3)?;
+    let weights = behavior.arg_list(4)?;
+    let count = usize::try_from(base_maximum.checked_sub(base_minimum)?.checked_add(1)?).ok()?;
+    if buff_id <= 0
+        || base_minimum <= 0
+        || base_maximum < base_minimum
+        || minimum <= 0
+        || maximum < minimum
+        || maximum.checked_sub(minimum)? != base_maximum.checked_sub(base_minimum)?
+        || weights.len() != count
+        || skills.len() < maximum as usize
+        || skills.iter().any(|skill_id| *skill_id <= 0)
+    {
+        return None;
+    }
+    let choices = (minimum..=maximum)
+        .zip(weights)
+        .map(|(amount, weight)| {
+            let skill_id = *skills.get(amount.saturating_sub(1) as usize)?;
+            (skill_id > 0 && weight > 0).then_some((amount, skill_id, weight as usize))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    (choices.len() == count).then_some((buff_id, minimum, choices))
+}
+
+fn choose_removed_buff_skill(
+    determinism: &mut RoundDeterminism,
+    choices: &[(i32, i32, usize)],
+    scripted: bool,
+) -> Option<(i32, i32)> {
+    let candidates = choices
+        .iter()
+        .map(|(_, skill_id, _)| *skill_id)
+        .collect::<Vec<_>>();
+    if let Some(skill_id) = determinism.take_random_skill(&candidates) {
+        return choices
+            .iter()
+            .find(|(_, candidate, _)| *candidate == skill_id)
+            .map(|(amount, _, _)| (*amount, skill_id));
+    }
+    if scripted {
+        return None;
+    }
+    let mut roll =
+        determinism.lua_random_index(choices.iter().map(|(_, _, weight)| *weight).sum())?;
+    for (amount, skill_id, weight) in choices {
+        if roll < *weight {
+            return Some((*amount, *skill_id));
+        }
+        roll -= weight;
+    }
+    None
 }
 
 fn direct_no_action_skill(

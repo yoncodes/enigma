@@ -232,7 +232,7 @@ pub fn run_conduit_action(
                     skill_id,
                 },
                 card_index: group,
-                mode: crate::engine::skill::action::SkillExecutionMode::Active,
+                mode: crate::engine::skill::action::SkillExecutionMode::Device,
                 ..crate::engine::skill::action::SkillInvocation::from(
                     crate::engine::skill::action::SkillRequest {
                         source_uid,

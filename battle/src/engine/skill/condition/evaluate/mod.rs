@@ -218,6 +218,12 @@ fn condition_repeat_count(
                 / (*divisor).max(1))
             .clamp(0, *max_count)
         }),
+        ParsedConditionKind::PerBuffGroupCount { group_id } => managers.map(|managers| {
+            condition_targets
+                .iter()
+                .map(|uid| managers.buff.buff_group_amount(*uid, *group_id))
+                .sum()
+        }),
         ParsedConditionKind::PerHp { interval_permille } => managers.map(|managers| {
             condition_targets
                 .iter()
@@ -510,10 +516,27 @@ fn condition_kind_matches(
                 .sum();
             compare_value(amount, *compare, *threshold)
         }
+        ParsedConditionKind::AnyTargetBuffTypeCount {
+            type_ids,
+            threshold,
+        } => managers.is_some_and(|managers| {
+            condition_targets.iter().any(|uid| {
+                type_ids
+                    .iter()
+                    .map(|type_id| managers.buff.buff_type_amount(*uid, *type_id))
+                    .sum::<i32>()
+                    >= *threshold
+            })
+        }),
         ParsedConditionKind::BuffGroup(group_ids) => managers.is_some_and(|managers| {
             condition_targets
                 .iter()
                 .any(|uid| managers.buff.buff_group_type_count(*uid, group_ids) > 0)
+        }),
+        ParsedConditionKind::PerBuffGroupCount { group_id } => managers.is_some_and(|managers| {
+            condition_targets
+                .iter()
+                .any(|uid| managers.buff.buff_group_amount(*uid, *group_id) > 0)
         }),
         ParsedConditionKind::NoBuffGroup(group_ids) => managers.is_some_and(|managers| {
             condition_targets
@@ -532,6 +555,18 @@ fn condition_kind_matches(
                         .buff
                         .has_active_buff_id_or_type(*target_uid, *to_buff_id)
                 })
+        }),
+        ParsedConditionKind::SelfBuffTypeTargetBuffTypes {
+            self_type_id,
+            target_type_ids,
+        } => managers.is_some_and(|managers| {
+            let target_uid = context.active_skill_source_uid;
+            managers.buff.buff_type_amount(source_uid, *self_type_id) > 0
+                && target_uid != 0
+                && condition_targets.contains(&target_uid)
+                && target_type_ids
+                    .iter()
+                    .any(|type_id| managers.buff.buff_type_amount(target_uid, *type_id) > 0)
         }),
         ParsedConditionKind::EnemyHighestBuffTypeCount { type_id, threshold } => managers
             .is_some_and(|managers| {
@@ -655,6 +690,22 @@ fn condition_kind_matches(
                     .is_some_and(|skill_id| skill_ids.contains(&skill_id))
             })
         }),
+        ParsedConditionKind::RoundUsedMinimumRank {
+            minimum_rank,
+            threshold,
+        } => managers.is_some_and(|managers| {
+            let allies = pool.allies(source_uid);
+            managers
+                .card
+                .played()
+                .iter()
+                .filter(|played| allies.iter().any(|ally| ally.uid == played.caster_uid))
+                .filter(|played| {
+                    crate::engine::entity::skill::card_skill_rank(&played.card) >= *minimum_rank
+                })
+                .count()
+                >= *threshold as usize
+        }),
         ParsedConditionKind::ExPoint { compare, threshold } => {
             let Some(managers) = managers else {
                 return false;
@@ -663,6 +714,11 @@ fn condition_kind_matches(
                 .iter()
                 .any(|uid| compare_value(managers.ex_point.get(*uid), *compare, *threshold))
         }
+        ParsedConditionKind::ExPointFull => managers.is_some_and(|managers| {
+            condition_targets
+                .iter()
+                .any(|uid| managers.ex_point.is_full(*uid))
+        }),
         ParsedConditionKind::Synchronization { threshold } => {
             let Some(managers) = managers else {
                 return false;
@@ -1048,6 +1104,7 @@ fn condition_kind_matches(
                 && match mode {
                     super::extra::ExtraActionConditionMode::OtherAllyAction => {
                         context.active_skill_source_uid != 0
+                            && context.active_skill_source_uid != source_uid
                             && condition_targets.contains(&context.active_skill_source_uid)
                     }
                     _ => true,

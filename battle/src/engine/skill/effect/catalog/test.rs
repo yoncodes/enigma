@@ -106,6 +106,52 @@ fn exact_enemy_damage_routes_compile_without_runtime_gaps() {
 }
 
 #[test]
+fn joe_missing_hp_rate_condition_compiles_as_an_active_modifier() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [30940171], []);
+    let effect = catalog.get(30940171).unwrap();
+
+    assert!(catalog.issues(30940171).is_empty());
+    assert!(effect.slots.iter().all(|slot| slot.compiled_route.is_ok()));
+    assert_eq!(effect.slots[0].conditions[0].opcode, 623203);
+    assert!(crate::engine::skill::behavior::has_destination(
+        &effect.slots[0].behavior
+    ));
+}
+
+#[test]
+fn anjo_negative_status_rate_condition_compiles_as_an_active_modifier() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31000441], []);
+    let effect = catalog.get(31000441).unwrap();
+
+    assert!(catalog.issues(31000441).is_empty());
+    assert!(effect.slots.iter().all(|slot| slot.compiled_route.is_ok()));
+    assert_eq!(effect.slots[1].conditions[0].opcode, 539203);
+    assert!(crate::engine::skill::behavior::has_destination(
+        &effect.slots[1].behavior
+    ));
+}
+
+#[test]
+fn kaalaa_baunaa_planet_removal_compiles_through_its_exact_behavior() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [307001333], []);
+    let effect = catalog.get(307001333).unwrap();
+
+    assert!(catalog.issues(307001333).is_empty());
+    assert!(effect.slots.iter().all(|slot| slot.compiled_route.is_ok()));
+    assert_eq!(effect.slots[1].behavior.spec.key.opcode, 60252);
+    assert_eq!(
+        effect.slots[1].behavior.spec.kind,
+        crate::engine::skill::behavior::classify::BehaviorKind::DisperseForce3
+    );
+    assert!(crate::engine::skill::behavior::has_destination(
+        &effect.slots[1].behavior
+    ));
+}
+
+#[test]
 fn entering_entities_extend_the_scoped_catalog_from_their_own_roots() {
     init_config();
     let mut catalog = SkillEffectCatalog::default();
@@ -513,6 +559,60 @@ fn master_halo_immediate_gate_uses_the_skill_extra_type_driver() {
             Some(crate::engine::skill::action::SkillPhase::Immediate),
         )]
     );
+}
+
+#[test]
+fn ritual_dance_threshold_compiles_the_captured_immediate_route() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+
+    assert_eq!(
+        catalog.condition_kind(
+            31100531,
+            crate::engine::skill::rule::DefinitionKey::new(
+                537201,
+                "HasTypeIdBuffTotalCountMoreThan",
+            ),
+        ),
+        Some(&ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![31100201],
+            compare: crate::engine::skill::condition::ConditionCompare::GreaterThanOrEqual,
+            threshold: 4,
+        })
+    );
+    assert!(
+        catalog
+            .compiled_subscriptions(31100531)
+            .unwrap()
+            .iter()
+            .any(|subscription| {
+                subscription.definition
+                    == crate::engine::skill::rule::DefinitionKey::new(
+                        537201,
+                        "HasTypeIdBuffTotalCountMoreThan",
+                    )
+                    && subscription.event == crate::engine::event::kind::EventKind::SkillAction
+                    && subscription.phase
+                        == Some(crate::engine::skill::action::SkillPhase::Immediate)
+            })
+    );
+}
+
+#[test]
+fn liang_yue_poison_scaling_compiles_as_an_active_modifier() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+
+    assert_eq!(
+        catalog.condition_kind(
+            31100563,
+            crate::engine::skill::rule::DefinitionKey::new(669203, "PerBuffGroupCount"),
+        ),
+        Some(&ParsedConditionKind::PerBuffGroupCount { group_id: 7 })
+    );
+    assert!(catalog.issues(31100563).iter().all(|issue| {
+        issue.opcode != Some(669203) || issue.type_name.as_deref() != Some("PerBuffGroupCount")
+    }));
 }
 
 #[test]
