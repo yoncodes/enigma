@@ -186,7 +186,10 @@ impl BuffManager {
             source_uid,
             target_uid,
             buff,
-            pre_markers,
+            pre_markers: pre_markers
+                .into_iter()
+                .filter(|marker| definition.projects_initial_wire_state(marker.act_id))
+                .collect(),
             pre_effects,
             markers,
             fanout: Vec::new(),

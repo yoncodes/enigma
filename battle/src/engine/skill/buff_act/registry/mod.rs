@@ -1147,7 +1147,11 @@ buff_act_definitions! {
         runtime: |context| super::special_count_cast_channel::rule_ops(context.subscriber, context.event?, context.catalog),
         supports: |args| matches!(args, [skill_id, ..] if *skill_id > 0);
     (1004, "AddAttrBySpecialCount") => AddAttrBySpecialCount;
-    (1031, "ConsumeBuffAddBuffContinueChannel") => ConsumeBuffAddBuffContinueChannel;
+    (1031, "ConsumeBuffAddBuffContinueChannel") => ConsumeBuffAddBuffContinueChannel,
+        runtime: |context| super::consume_buff_add_buff_continue_channel::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::consume_buff_add_buff_continue_channel::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1031, "ConsumeBuffAddBuffContinueChannel"), &[])
+            .with_embedded_initial_state(super::wire::InitialStateRule::StringCounter));
     (1032, "FixElectricUpgrade") => FixElectricUpgrade,
         effect_time_subscription: false,
         supports: super::fix_electric_upgrade::supports, state_consumer: true,

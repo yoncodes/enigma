@@ -954,3 +954,28 @@ fn incapacitating_control_buffs_keep_distinct_exact_routes() {
     );
     assert!(find(402, "Dizzy").is_none());
 }
+
+#[test]
+fn shock_wave_channel_keeps_its_exact_round_end_rule() {
+    let definition = find(1031, "ConsumeBuffAddBuffContinueChannel").unwrap();
+
+    assert_eq!(
+        definition.kind,
+        BuffActKind::ConsumeBuffAddBuffContinueChannel
+    );
+    assert_eq!(
+        runtime_event(1031, "ConsumeBuffAddBuffContinueChannel", 302),
+        Some(EventKind::RoundEnd)
+    );
+    assert!(has_destination(
+        1031,
+        "ConsumeBuffAddBuffContinueChannel",
+        &[31280151, 31280113, 0, 50]
+    ));
+    assert!(!has_destination(
+        1031,
+        "ConsumeBuffAddBuffContinueChannel",
+        &[31280151, 31280113, 20, 20]
+    ));
+    assert!(find(1031, "ConsumeBuffContinueChannel").is_none());
+}
