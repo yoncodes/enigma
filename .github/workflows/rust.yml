@@ -22,16 +22,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: linux-amd64
+            artifact_name: enigma-linux
           # - os: ubuntu-latest
           #   target: aarch64-unknown-linux-gnu
           #   artifact_name: linux-arm64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: windows-amd64
+            artifact_name: enigma-windows
           - os: windows-latest
             target: aarch64-pc-windows-msvc
-            artifact_name: windows-arm64
+            artifact_name: enigma-arm
 
     steps:
       - name: Checkout code
@@ -117,9 +117,7 @@ jobs:
           cp common/Config.toml artifacts/config.toml
           cp -r data/excel2json artifacts/data/
           cd artifacts
-          tar -czf ../gameserver-${{ matrix.artifact_name }}.tar.gz gameserver config.toml data
-          tar -czf ../sdkserver-${{ matrix.artifact_name }}.tar.gz sdkserver config.toml data
-          tar -czf ../muipserver-${{ matrix.artifact_name }}.tar.gz muipserver config.toml data
+          tar -czf ../${{ matrix.artifact_name }}.tar.gz gameserver sdkserver muipserver config.toml data
 
       - name: Prepare artifacts (Windows)
         if: runner.os == 'Windows'
@@ -131,27 +129,13 @@ jobs:
           copy common\Config.toml artifacts\config.toml
           xcopy /E /I data\excel2json artifacts\data\excel2json
           cd artifacts
-          tar -czf ..\gameserver-${{ matrix.artifact_name }}.tar.gz gameserver.exe config.toml data
-          tar -czf ..\sdkserver-${{ matrix.artifact_name }}.tar.gz sdkserver.exe config.toml data
-          tar -czf ..\muipserver-${{ matrix.artifact_name }}.tar.gz muipserver.exe config.toml data
+          tar -czf ..\${{ matrix.artifact_name }}.tar.gz gameserver.exe sdkserver.exe muipserver.exe config.toml data
 
-      - name: Upload gameserver artifact
+      - name: Upload server bundle
         uses: actions/upload-artifact@v7
         with:
-          name: gameserver-${{ matrix.artifact_name }}
-          path: gameserver-${{ matrix.artifact_name }}.tar.gz
-
-      - name: Upload sdkserver artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: sdkserver-${{ matrix.artifact_name }}
-          path: sdkserver-${{ matrix.artifact_name }}.tar.gz
-
-      - name: Upload muipserver artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: muipserver-${{ matrix.artifact_name }}
-          path: muipserver-${{ matrix.artifact_name }}.tar.gz
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}.tar.gz
 
   release:
     name: Create Release
@@ -175,8 +159,8 @@ jobs:
             echo "release_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
             echo "prerelease=false" >> $GITHUB_OUTPUT
           else
-            echo "tag_name=dev-${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT
-            echo "release_name=Dev Build ${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT
+            echo "tag_name=latest-v${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT
+            echo "release_name=Latest v${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT
             echo "prerelease=true" >> $GITHUB_OUTPUT
           fi
 
