@@ -724,3 +724,73 @@ fn after_hit_settles_the_acting_owners_take_stage_buff() {
             if changes.change.removed.iter().any(|removed| removed.buff.uid == Some(2))
     )));
 }
+
+#[test]
+fn ally_action_settles_the_acting_owners_take_stage_buff() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        buff_id: Some(30940191),
+                        uid: Some(2),
+                        from_uid: Some(10),
+                        duration: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        buff_id: Some(30940191),
+                        uid: Some(3),
+                        from_uid: Some(20),
+                        duration: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: Vec::new(),
+    });
+
+    let result = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(SkillInvocation {
+            mode: crate::engine::skill::action::SkillExecutionMode::Active,
+            ..SkillRequest {
+                source_uid: 10,
+                skill_id: 100,
+            }
+            .into()
+        })],
+    )
+    .unwrap();
+
+    assert!(managers.buff.snapshot(10, 2).is_none());
+    assert!(managers.buff.snapshot(20, 3).is_some());
+    assert!(result.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        RuleOutcome::Buff(changes)
+            if changes.origin.key.opcode == 212
+                && changes.change.removed.iter().any(|removed| removed.buff.uid == Some(2))
+    )));
+}

@@ -603,21 +603,23 @@ pub(super) fn dispatch_reactions(
         action_path,
         reentry_skill,
     )?);
-    if lane.is_none()
-        && let Some(advance) = crate::engine::manager::buff::BuffDurationAdvance::for_event(event)
-    {
-        reactions.after_publish.push(QueuedOp {
-            op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
-                crate::engine::manager::buff::BuffCommand::AdvanceDuration(advance),
-            )),
-            trigger: SkillOpTrigger::Event(event.clone()),
-            skill_execution: None,
-            frame_path: reuse_path.map(|path| path.to_vec()),
-            parent_path: None,
-            frame_group: None,
-            independent_parent_group: None,
-            frame_owner: Some(FrameOwner::EventRule),
-        });
+    if lane.is_none() {
+        reactions.after_publish.extend(
+            crate::engine::manager::buff::BuffDurationAdvance::for_event(event)
+                .into_iter()
+                .map(|advance| QueuedOp {
+                    op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
+                        crate::engine::manager::buff::BuffCommand::AdvanceDuration(advance),
+                    )),
+                    trigger: SkillOpTrigger::Event(event.clone()),
+                    skill_execution: None,
+                    frame_path: reuse_path.map(|path| path.to_vec()),
+                    parent_path: None,
+                    frame_group: None,
+                    independent_parent_group: None,
+                    frame_owner: Some(FrameOwner::EventRule),
+                }),
+        );
     }
     Ok(reactions)
 }

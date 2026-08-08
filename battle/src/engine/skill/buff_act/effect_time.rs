@@ -125,6 +125,7 @@ pub fn supports_duration_policy(take_stage: i32) -> bool {
         || take_stage == ROUND_END_AFTER_SETTLEMENT
         || ROUND_START_CARD_STAGES.contains(&take_stage)
         || definition.duration_phase.is_some()
+        || definition.event == BuffActEvent::Runtime(EventKind::AllyAction)
         || definition.event == BuffActEvent::Runtime(EventKind::SmallRoundEnd)
 }
 
@@ -186,6 +187,7 @@ mod tests {
         assert!(supports_duration_policy(-1));
         assert!(supports_duration_policy(ROUND_START_DURATION));
         assert!(supports_duration_policy(210));
+        assert!(supports_duration_policy(212));
         assert!(supports_duration_policy(301));
         assert!(supports_duration_policy(ROUND_END_ENTITY_SETTLEMENT));
         assert!(supports_duration_policy(ROUND_END_AFTER_SETTLEMENT));
