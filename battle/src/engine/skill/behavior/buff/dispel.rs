@@ -184,6 +184,19 @@ pub(in crate::engine::skill::behavior) fn supports_exact_buff_dispel(
     !behavior.args.is_empty() && behavior.args.iter().all(|buff_id| *buff_id > 0)
 }
 
+pub(in crate::engine::skill::behavior) fn supports_type_family_dispel(
+    behavior: &ParsedBehavior,
+) -> bool {
+    if !behavior.raw_args.is_empty() {
+        let [raw] = behavior.raw_args.as_slice() else {
+            return false;
+        };
+        return raw.parse::<i32>().is_ok_and(|type_id| type_id > 0);
+    }
+
+    matches!(behavior.args.as_slice(), [type_id] if *type_id > 0)
+}
+
 pub(super) fn dispel_commands(
     target_uid: i64,
     behavior: &ParsedBehavior,

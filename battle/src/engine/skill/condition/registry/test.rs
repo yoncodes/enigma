@@ -189,6 +189,28 @@ fn follow_up_buff_gate_is_an_exact_inline_predicate() {
 }
 
 #[test]
+fn rejected_buff_gate_is_an_exact_transaction_trigger() {
+    let definition = find_key(64208, "HasRejectBuffId").unwrap();
+
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::BuffRejected,
+            phase: None,
+        }
+    );
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(
+        parse(64208, "HasRejectBuffId", &["4007".into()]),
+        Some(ParsedConditionKind::RejectedBuffIdOrType(4007))
+    );
+    assert!(parse(64208, "HasRejectBuffId", &[]).is_none());
+    assert!(parse(64208, "HasRejectBuffId", &["0".into()]).is_none());
+    assert!(parse(64208, "HasRejectBuffId", &["4007".into(), "1".into()]).is_none());
+    assert!(find_key(64208, "HasBuffId").is_none());
+}
+
+#[test]
 fn regeneration_period_absence_gate_filters_the_source() {
     let definition = find_key(57012, "NoBuffId").unwrap();
 
@@ -235,22 +257,32 @@ fn missing_hp_multiplier_is_an_exact_predicate() {
 
 #[test]
 fn hp_lost_ratio_keeps_its_exact_identity() {
-    let definition = find_key(623203, "HpLostRatio").unwrap();
+    for opcode in [623203, 623204] {
+        let definition = find_key(opcode, "HpLostRatio").unwrap();
 
-    assert_eq!(definition.role, ConditionRole::Predicate);
-    assert_eq!(definition.dependencies, &[EventKind::HpLost]);
+        assert_eq!(definition.role, ConditionRole::Predicate);
+        assert_eq!(definition.dependencies, &[EventKind::HpLost]);
+        assert_eq!(
+            parse(opcode, "HpLostRatio", &["100".into()]),
+            Some(ParsedConditionKind::PerLostHp {
+                interval_permille: 100,
+            })
+        );
+        assert_eq!(parse(opcode, "LostLifePer", &["100".into()]), None);
+        assert_eq!(parse(opcode, "HpLostRatio", &["0".into()]), None);
+        assert_eq!(parse(opcode, "HpLostRatio", &["-100".into()]), None);
+        assert_eq!(
+            parse(opcode, "HpLostRatio", &["100".into(), "1".into()]),
+            None
+        );
+    }
     assert_eq!(
-        parse(623203, "HpLostRatio", &["100".into()]),
-        Some(ParsedConditionKind::PerLostHp {
-            interval_permille: 100,
-        })
-    );
-    assert_eq!(parse(623203, "LostLifePer", &["100".into()]), None);
-    assert_eq!(parse(623203, "HpLostRatio", &["0".into()]), None);
-    assert_eq!(parse(623203, "HpLostRatio", &["-100".into()]), None);
-    assert_eq!(
-        parse(623203, "HpLostRatio", &["100".into(), "1".into()]),
+        find_key(623203, "HpLostRatio").and_then(|definition| definition.attack_modifier_side),
         None
+    );
+    assert_eq!(
+        find_key(623204, "HpLostRatio").and_then(|definition| definition.attack_modifier_side),
+        Some(AttackModifierSide::IncomingTarget)
     );
 }
 
@@ -877,6 +909,27 @@ fn exact_dead_alias_subscribes_to_entity_death() {
         find_key(812, "Dead").map(|definition| definition.reaction_frame_target),
         Some(ReactionFrameTarget::Owner)
     );
+}
+
+#[test]
+fn exact_self_exit_aliases_follow_the_exiting_owner() {
+    for opcode in [648003, 648009] {
+        assert_eq!(
+            parse(opcode, "SelfExit", &[]),
+            Some(ParsedConditionKind::EntityDead)
+        );
+        let definition = find_key(opcode, "SelfExit").unwrap();
+        assert_eq!(
+            definition.role,
+            ConditionRole::Trigger {
+                event: EventKind::EntityDied,
+                phase: None,
+            }
+        );
+        assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+        assert!(parse(opcode, "Dead", &[]).is_none());
+        assert!(parse(opcode, "SelfExit", &["1".into()]).is_none());
+    }
 }
 
 #[test]
@@ -2706,4 +2759,23 @@ fn ritual_dance_totals_keep_their_exact_active_skill_routes() {
         .is_none()
     );
     assert!(find_key(537201, "TypeIdBuffCountMoreThan").is_none());
+}
+
+#[test]
+fn ultimate_level_keeps_its_exact_round_start_route() {
+    assert_eq!(
+        parse(751104, "ExSkillLevel", &["0".into()]),
+        Some(ParsedConditionKind::ExSkillLevel(0))
+    );
+    assert_eq!(
+        find_key(751104, "ExSkillLevel").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartLate,
+            priority: 0,
+        })
+    );
+    assert!(parse(751104, "ExSkillLevel", &["-1".into()]).is_none());
+    assert!(parse(751104, "ExSkillLevel", &["6".into()]).is_none());
+    assert!(parse(751104, "ExSkillLevel", &["0".into(), "1".into()]).is_none());
+    assert!(find_key(751104, "SkillLevel").is_none());
 }

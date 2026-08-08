@@ -543,6 +543,7 @@ behavior_definitions! {
     [30008] "Disperse1" => super::buff::Handler, Disperse1, Immediate, destination;
     [30004] "Disperse2" => super::buff::Handler, Disperse2, Immediate, destination, super::buff::supports_exact_buff_dispel;
     [30009] "Disperse2" => super::buff::Handler, Disperse2, Immediate, destination, super::buff::supports_exact_buff_dispel;
+    [90002] "Disperse2" => super::buff::Handler, DisperseTypeId, Immediate, destination, super::buff::supports_type_family_dispel;
     [60060] "DisperseExclude" => super::buff::Handler, DisperseExclude, Immediate, destination, super::buff::supports_excluded_dispel;
     [60010] "DisperseForce2" => super::buff::Handler, DisperseForce2, Immediate, destination, super::buff::supports_disperse_force;
     [60252] "DisperseForce3" => super::buff::Handler, DisperseForce3, Immediate, destination, super::buff::supports_disperse_force3;

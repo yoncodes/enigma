@@ -22,6 +22,7 @@ pub mod attr_by_heat_scale;
 pub mod attr_by_hero_id;
 pub mod attr_by_lost_hp;
 pub mod attr_by_shield;
+pub mod attr_by_skill_target_count;
 pub mod attr_from_entity;
 pub mod attr_only_cal_damage_attack;
 pub mod attr_only_cal_damage_hp_replace_attack;
@@ -39,6 +40,7 @@ pub mod career_restraint;
 pub mod cast_channel;
 pub mod change_remove_buff_use_skill_param;
 pub mod conduit_select;
+pub mod consume_buff_add_buff_continue_channel;
 pub mod contract_cast_channel;
 pub mod control_team_injury_count_round;
 pub mod count_continue_channel;
@@ -492,6 +494,7 @@ pub fn attack_consumption_rule_ops(
 pub fn be_attacked_consumption_rule_ops(
     managers: &BattleManagers,
     target_uid: i64,
+    damage_types: &[crate::engine::skill::target::EntityDamageType],
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
     managers
         .buff
@@ -499,7 +502,7 @@ pub fn be_attacked_consumption_rule_ops(
         .into_iter()
         .filter(|feature| feature.owner_uid == target_uid)
         .filter(|feature| {
-            feature_kind(feature) == Some(registry::BuffActKind::AttrOnlyCalDamageBeAttacked)
+            attr_only_cal_damage_attack::applies_to_any_incoming_damage(feature, damage_types)
         })
         .filter_map(|feature| {
             attr_only_cal_damage_attack::consume_rule_op(managers, &feature).map(|op| (feature, op))
@@ -851,10 +854,9 @@ pub fn attack_attribute_delta_for_skill(
     extra_action: bool,
 ) -> i32 {
     match feature_kind(feature) {
-        Some(
-            registry::BuffActKind::AttrOnlyCalDamageAttack
-            | registry::BuffActKind::AttrOnlyCalDamageBeAttacked,
-        ) => attr_only_cal_damage_attack::attribute_delta(feature, attr_id),
+        Some(registry::BuffActKind::AttrOnlyCalDamageAttack) => {
+            attr_only_cal_damage_attack::attribute_delta(feature, attr_id)
+        }
         Some(registry::BuffActKind::AttrOnlyCalDamageAttackBigSkill) if is_big_skill => {
             attr_only_cal_damage_attack::attribute_delta(feature, attr_id)
         }
@@ -869,6 +871,23 @@ pub fn attack_attribute_delta_for_skill(
         }
         _ => 0,
     }
+}
+
+pub fn incoming_target_attack_attribute_delta(
+    managers: &BattleManagers,
+    target_uid: i64,
+    damage_type: crate::engine::skill::target::EntityDamageType,
+    attr_id: AttrId,
+) -> i32 {
+    managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .filter(|feature| feature.owner_uid == target_uid)
+        .map(|feature| {
+            attr_only_cal_damage_attack::incoming_attribute_delta(&feature, damage_type, attr_id)
+        })
+        .sum()
 }
 
 pub fn calculated_attack_attribute_delta_for_skill(

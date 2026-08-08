@@ -53,7 +53,7 @@ use dispel::{
 };
 pub(super) use dispel::{
     supports_dispel, supports_disperse_force, supports_disperse_force3, supports_exact_buff_dispel,
-    supports_excluded_dispel, supports_status_dispel,
+    supports_excluded_dispel, supports_status_dispel, supports_type_family_dispel,
 };
 use distribute::*;
 pub use grant::random_buff_pool;
@@ -150,7 +150,7 @@ impl BehaviorHandler for Handler {
             BehaviorKind::AddBuffByHeroId => hero_grant_command(&context, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::DisperseForce2 => damage_window_remove_ops(context.target_uid, behavior),
-            BehaviorKind::DisperseForce3 => {
+            BehaviorKind::DisperseForce3 | BehaviorKind::DisperseTypeId => {
                 remove_each_buff_family_ops(context.target_uid, behavior)
             }
             BehaviorKind::DisperseExclude => excluded_dispel_command(context.target_uid, behavior)

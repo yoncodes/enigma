@@ -153,10 +153,20 @@ pub(super) fn dispatch_event_batch(
                 .iter()
                 .filter(|uid| owner_uids.is_none_or(|owners| owners.contains(uid)))
             {
+                let damage_types = events
+                    .iter()
+                    .filter_map(|event| match event {
+                        BattleEvent::Hit(hit) if hit.target_uid == *target_uid => {
+                            pool.entity(hit.source_uid).map(|entity| entity.damage_type)
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
                 for (feature, op) in
                     crate::engine::skill::buff_act::be_attacked_consumption_rule_ops(
                         managers,
                         *target_uid,
+                        &damage_types,
                     )
                 {
                     reactions.after_publish.push(queued_buff_act_feature_op(
@@ -169,8 +179,13 @@ pub(super) fn dispatch_event_batch(
             }
             queued_attack_consumption = true;
         }
-        let reentry_skill = current_skill
-            .filter(|_| event.kind() == crate::engine::event::kind::EventKind::BuffAdded);
+        let reentry_skill = current_skill.filter(|_| {
+            matches!(
+                event.kind(),
+                crate::engine::event::kind::EventKind::BuffAdded
+                    | crate::engine::event::kind::EventKind::BuffRejected
+            )
+        });
         let mut dispatched = dispatch_reactions(
             pool,
             managers,
@@ -505,6 +520,25 @@ pub(super) fn dispatch_reactions(
         )?,
         (None, None) => dispatcher::dispatch_event(pool, managers, catalog, determinism, event)?,
     };
+    if event.kind() == crate::engine::event::kind::EventKind::BuffRejected
+        && let (Some((owner_uid, skill_id, _)), Some(publication)) =
+            (reentry_skill, publication_phase)
+    {
+        let current = dispatcher::dispatch_skill_event_phase(
+            pool,
+            managers,
+            catalog,
+            determinism,
+            (owner_uid, skill_id),
+            event,
+            publication,
+        )?;
+        for skill in current.skills {
+            if !dispatched.skills.contains(&skill) {
+                dispatched.skills.push(skill);
+            }
+        }
+    }
     match lane {
         Some(ReactionLane::Skills) => dispatched.buff_acts.clear(),
         Some(ReactionLane::BuffActs) => dispatched.skills.clear(),
@@ -603,21 +637,53 @@ pub(super) fn dispatch_reactions(
         action_path,
         reentry_skill,
     )?);
-    if lane.is_none()
-        && let Some(advance) = crate::engine::manager::buff::BuffDurationAdvance::for_event(event)
-    {
-        reactions.after_publish.push(QueuedOp {
-            op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
-                crate::engine::manager::buff::BuffCommand::AdvanceDuration(advance),
-            )),
-            trigger: SkillOpTrigger::Event(event.clone()),
-            skill_execution: None,
-            frame_path: reuse_path.map(|path| path.to_vec()),
-            parent_path: None,
-            frame_group: None,
-            independent_parent_group: None,
-            frame_owner: Some(FrameOwner::EventRule),
-        });
+    if lane.is_none() {
+        let duration_advances = match event {
+            BattleEvent::ActionQueueCommitted { team, .. } => {
+                let mut owner_uids = match *team {
+                    1 => pool.attacker_all.iter().map(|entity| entity.uid).collect(),
+                    2 => pool.defender_all.iter().map(|entity| entity.uid).collect(),
+                    _ => Vec::new(),
+                };
+                if let Some(side_uid) = match *team {
+                    1 => Some(crate::engine::fight::rules::ATTACKER_SIDE_UID),
+                    2 => Some(crate::engine::fight::rules::DEFENDER_SIDE_UID),
+                    _ => None,
+                } {
+                    owner_uids.push(side_uid);
+                }
+                crate::engine::skill::buff_act::effect_time::duration_stages_for_event(
+                    crate::engine::event::kind::EventKind::ActionQueueCommitted,
+                )
+                .filter_map(|take_stage| {
+                    let buff_uids = managers.buff.duration_buff_uids(take_stage, &owner_uids);
+                    if buff_uids.is_empty() {
+                        return None;
+                    }
+                    crate::engine::manager::buff::BuffDurationAdvance::new(
+                        take_stage,
+                        owner_uids.clone(),
+                        Some(buff_uids),
+                    )
+                })
+                .collect()
+            }
+            _ => crate::engine::manager::buff::BuffDurationAdvance::for_event(event),
+        };
+        reactions
+            .after_publish
+            .extend(duration_advances.into_iter().map(|advance| QueuedOp {
+                op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
+                    crate::engine::manager::buff::BuffCommand::AdvanceDuration(advance),
+                )),
+                trigger: SkillOpTrigger::Event(event.clone()),
+                skill_execution: None,
+                frame_path: reuse_path.map(|path| path.to_vec()),
+                parent_path: None,
+                frame_group: None,
+                independent_parent_group: None,
+                frame_owner: Some(FrameOwner::EventRule),
+            }));
     }
     Ok(reactions)
 }
@@ -892,6 +958,7 @@ fn event_target(event: &BattleEvent) -> Option<i64> {
         BattleEvent::BuffAdded(change)
         | BattleEvent::BuffChanged(change)
         | BattleEvent::BuffRemoved(change) => Some(change.target_uid),
+        BattleEvent::BuffRejected(change) => Some(change.target_uid),
         BattleEvent::BuffStateChanged(change) => Some(change.target_uid),
         BattleEvent::ExPointChanged(change) | BattleEvent::ExPointOverflow(change) => {
             Some(change.target_uid)
@@ -921,6 +988,7 @@ pub(super) fn reaction_counterparty(
             | BattleEvent::BuffChanged(_)
             | BattleEvent::BuffStateChanged(_)
             | BattleEvent::BuffRemoved(_)
+            | BattleEvent::BuffRejected(_)
     );
     let (source_uid, target_uid) = match event {
         BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action) => {
@@ -931,6 +999,7 @@ pub(super) fn reaction_counterparty(
         BattleEvent::BuffAdded(change)
         | BattleEvent::BuffChanged(change)
         | BattleEvent::BuffRemoved(change) => (change.source_uid, change.target_uid),
+        BattleEvent::BuffRejected(change) => (change.source_uid, change.target_uid),
         BattleEvent::BuffStateChanged(change) => (change.source_uid, change.target_uid),
         BattleEvent::HpLost {
             source_uid,

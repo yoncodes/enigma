@@ -14,6 +14,7 @@ fn temporary_card_projection_uses_the_committed_operation() {
             skill_id: 999,
             reserve_id: 12,
             team_type: 1,
+            kind: crate::engine::manager::card::TemporaryCardKind::ConfiguredSkill,
         }))
         .unwrap();
 

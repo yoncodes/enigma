@@ -186,7 +186,10 @@ impl BuffManager {
             source_uid,
             target_uid,
             buff,
-            pre_markers,
+            pre_markers: pre_markers
+                .into_iter()
+                .filter(|marker| definition.projects_initial_wire_state(marker.act_id))
+                .collect(),
             pre_effects,
             markers,
             fanout: Vec::new(),
@@ -328,6 +331,7 @@ impl BuffManager {
         BuffRejectResult {
             target_uid: route.target_uid,
             blocker_buff_id,
+            type_id: definition.effective_type_id(),
             buff: BuffInfo {
                 buff_id: Some(route.buff_id),
                 duration: Some(definition.duration),

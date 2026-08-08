@@ -132,6 +132,7 @@ fn temporary_card_and_energy_changes_share_one_command_path() {
             skill_id: 999,
             reserve_id: 0,
             team_type: 1,
+            kind: TemporaryCardKind::ConfiguredSkill,
         }))
         .unwrap();
     assert_eq!(added.kind, CardChangeKind::TemporaryAdded);
@@ -600,6 +601,7 @@ fn invalid_temporary_card_does_not_mutate_the_hand() {
         skill_id: 0,
         reserve_id: 0,
         team_type: 1,
+        kind: TemporaryCardKind::ConfiguredSkill,
     }));
 
     assert_eq!(result, Err(CardCommandError::InvalidCommand));

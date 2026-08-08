@@ -99,6 +99,11 @@ pub(super) fn apply_event_context(context: &mut TargetContext, event: &BattleEve
             context.removed_buff_id = change.buff_id;
             context.removed_buff_target_uid = change.target_uid;
         }
+        BattleEvent::BuffRejected(change) => {
+            context.runtime_target_uid = change.target_uid;
+            context.rejected_buff_id = change.buff_id;
+            context.rejected_buff_type_id = change.type_id;
+        }
         BattleEvent::BuffStateChanged(change) => {
             context.runtime_target_uid = change.target_uid;
         }

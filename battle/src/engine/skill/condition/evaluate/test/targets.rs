@@ -1,6 +1,40 @@
 use super::*;
 
 #[test]
+fn ultimate_level_matches_each_resolved_entity_snapshot() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1),
+                ex_skill_level: Some(4),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+
+    assert!(condition_matches(
+        &exact_condition(751104, "ExSkillLevel", &["4"]),
+        10,
+        &[10],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+    assert!(!condition_matches(
+        &exact_condition(751104, "ExSkillLevel", &["3"]),
+        10,
+        &[10],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+}
+
+#[test]
 fn received_hit_afflatus_conditions_only_match_the_hit_owner() {
     init_config();
     let fight = Fight {

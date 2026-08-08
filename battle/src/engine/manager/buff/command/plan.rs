@@ -1033,7 +1033,7 @@ impl BuffManager {
             BuffSelector::TypeId(value) => value > 0,
             BuffSelector::Uid(value) => value > 0,
         };
-        if consume.target_uid == 0 || !selector_valid || consume.amount <= 0 {
+        if consume.target_uid == 0 || !selector_valid || consume.amount < 0 {
             return Err(BuffCommandError::InvalidConsume);
         }
         let actions = if coalesced {
@@ -1292,6 +1292,13 @@ impl BuffManager {
         depleted: DepletedBuff,
         field: ConsumeField,
     ) -> ConsumeAction {
+        if amount == 0 {
+            return ConsumeAction::Update {
+                buff_uid: active.buff.uid.unwrap_or_default(),
+                layer: active.buff.layer,
+                count: active.buff.count,
+            };
+        }
         let uses_stack_layer = active
             .definition
             .as_ref()

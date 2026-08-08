@@ -768,6 +768,82 @@ fn targeted_support_dispel_keeps_its_exact_skill_cast_route() {
 }
 
 #[test]
+fn skill_target_count_attributes_keep_separate_exact_identities() {
+    let single = find(106, "AttrSkillSingle").unwrap();
+    let multiple = find(107, "AttrSkillMultiple").unwrap();
+
+    assert_eq!(single.kind, BuffActKind::AttrSkillSingle);
+    assert_eq!(multiple.kind, BuffActKind::AttrSkillMultiple);
+    assert!(single.state.consumer);
+    assert!(multiple.state.consumer);
+    assert!(has_destination(106, "AttrSkillSingle", &[205, -300]));
+    assert!(has_destination(107, "AttrSkillMultiple", &[205, -300]));
+    assert!(!has_destination(106, "AttrSkillSingle", &[205]));
+    assert!(!has_destination(107, "AttrSkillMultiple", &[205, 0]));
+    assert!(!has_destination(106, "AttrSkillSingle", &[205, 300]));
+    assert!(!has_destination(107, "AttrSkillMultiple", &[205, -200]));
+    assert!(find(106, "AttrSkillMultiple").is_none());
+    assert!(find(107, "AttrSkillSingle").is_none());
+}
+
+#[test]
+fn damage_type_be_attacked_attribute_keeps_its_exact_identity() {
+    assert!(has_destination(
+        112,
+        "AttrOnlyCalDamageBeAttacked",
+        &[206, 250, 1]
+    ));
+    assert!(!has_destination(
+        112,
+        "AttrOnlyCalDamageBeAttacked",
+        &[205, 250, 1]
+    ));
+    assert!(!has_destination(
+        112,
+        "AttrOnlyCalDamageBeAttacked",
+        &[206, 250, 2]
+    ));
+    assert!(!has_destination(
+        112,
+        "AttrOnlyCalDamageBeAttacked",
+        &[206, 250, 1, 1]
+    ));
+    let definition = find(114, "AttrOnlyCalDamageBeAttackedType").unwrap();
+
+    assert_eq!(
+        definition.kind,
+        BuffActKind::AttrOnlyCalDamageBeAttackedType
+    );
+    assert!(definition.state.consumer);
+    assert!(has_destination(
+        114,
+        "AttrOnlyCalDamageBeAttackedType",
+        &[1, 206, 300, 1]
+    ));
+    assert!(has_destination(
+        114,
+        "AttrOnlyCalDamageBeAttackedType",
+        &[2, 206, -250, 1]
+    ));
+    assert!(!has_destination(
+        114,
+        "AttrOnlyCalDamageBeAttackedType",
+        &[0, 206, -250, 1]
+    ));
+    assert!(!has_destination(
+        114,
+        "AttrOnlyCalDamageBeAttackedType",
+        &[2, 205, -250, 1]
+    ));
+    assert!(!has_destination(
+        114,
+        "AttrOnlyCalDamageBeAttackedType",
+        &[2, 206, -250, 0]
+    ));
+    assert!(find(114, "AttrOnlyCalDamageBeAttacked").is_none());
+}
+
+#[test]
 fn layer_gated_passive_keeps_its_exact_static_route() {
     let definition = find(805, "AddPassiveSkillByLayer").unwrap();
     assert!(definition.state.consumer);
@@ -953,4 +1029,44 @@ fn incapacitating_control_buffs_keep_distinct_exact_routes() {
             .has_output()
     );
     assert!(find(402, "Dizzy").is_none());
+}
+
+#[test]
+fn shock_wave_channel_keeps_its_exact_round_end_rule() {
+    let definition = find(1031, "ConsumeBuffAddBuffContinueChannel").unwrap();
+
+    assert_eq!(
+        definition.kind,
+        BuffActKind::ConsumeBuffAddBuffContinueChannel
+    );
+    assert_eq!(
+        runtime_event(1031, "ConsumeBuffAddBuffContinueChannel", 302),
+        Some(EventKind::RoundEnd)
+    );
+    assert!(has_destination(
+        1031,
+        "ConsumeBuffAddBuffContinueChannel",
+        &[31280151, 31280113, 0, 50]
+    ));
+    assert!(!has_destination(
+        1031,
+        "ConsumeBuffAddBuffContinueChannel",
+        &[31280151, 31280113, 20, 20]
+    ));
+    assert!(find(1031, "ConsumeBuffContinueChannel").is_none());
+}
+
+#[test]
+fn hero_temp_cards_keep_their_exact_round_start_route() {
+    let definition = find(739, "CreateHeroTempCards").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::CreateHeroTempCards);
+    assert_eq!(
+        runtime_event(739, "CreateHeroTempCards", 105),
+        Some(EventKind::RoundStartCard)
+    );
+    assert!(has_destination(739, "CreateHeroTempCards", &[1, 2, 1]));
+    assert!(!has_destination(739, "CreateHeroTempCards", &[0, 2, 1]));
+    assert!(!has_destination(739, "CreateHeroTempCards", &[1, 2, 2]));
+    assert!(find(739, "AddSpTempCard").is_none());
 }

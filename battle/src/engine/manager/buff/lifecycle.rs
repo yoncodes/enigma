@@ -277,6 +277,13 @@ impl BuffManager {
         self.plan_duration_advances_matching(take_stage, owner_uids, None)
     }
 
+    pub(crate) fn duration_buff_uids(&self, take_stage: i32, owner_uids: &[i64]) -> Vec<i64> {
+        self.plan_duration_advances(take_stage, owner_uids)
+            .into_iter()
+            .map(|plan| plan.buff_uid)
+            .collect()
+    }
+
     pub(crate) fn plan_duration_advances_for_snapshot(
         &self,
         take_stage: i32,

@@ -810,6 +810,100 @@ fn allied_action_observer_keeps_the_triggering_action_target() {
 }
 
 #[test]
+fn rejected_seal_triggers_the_configured_moxie_fallback() {
+    crate::test_support::init_config();
+    let fight = |immune: bool| Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    attack: Some(1),
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ex_skill: Some(30200135),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100_000),
+                ex_point: Some(5),
+                ex_point_max: Some(5),
+                attr: Some(HeroAttribute {
+                    defense: Some(1_000),
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                buffs: immune
+                    .then_some(BuffInfo {
+                        buff_id: Some(5140006),
+                        uid: Some(20),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    })
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let execute = |fight: &Fight| {
+        let pool = TargetPool::from_fight(fight);
+        let mut managers = BattleManagers::seeded(fight);
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 30200135,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(-1);
+        invocation.mode = SkillExecutionMode::Active;
+        let result = run(
+            &mut managers,
+            &pool,
+            crate::engine::skill::effect::catalog::global(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [RuleOp::Skill(invocation)],
+        )
+        .unwrap();
+        (managers, result)
+    };
+
+    let (immune_managers, immune_result) = execute(&fight(true));
+    assert!(!immune_managers.buff.has_buff_id_or_type(-1, 4007));
+    assert_eq!(immune_managers.ex_point.get(-1), 3);
+    assert!(immune_result.events.iter().any(|event| matches!(
+        event,
+        BattleEvent::BuffRejected(rejected)
+            if rejected.target_uid == -1
+                && rejected.buff_id == 720202
+                && rejected.type_id == 4007
+    )));
+    let immune_steps = crate::engine::packet::timeline::project(&immune_result.frames).unwrap();
+    assert!(
+        immune_steps
+            .iter()
+            .any(|step| step.act_effect.iter().any(|effect| {
+                effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Buffreject as i32)
+                    && effect.target_id == Some(-1)
+            }))
+    );
+
+    let (normal_managers, _) = execute(&fight(false));
+    assert!(normal_managers.buff.has_buff_id_or_type(-1, 4007));
+    assert_eq!(normal_managers.ex_point.get(-1), 5);
+}
+
+#[test]
 fn eureka_threshold_reaction_observes_the_gain_from_the_same_action() {
     crate::test_support::init_config();
     let fight = Fight {

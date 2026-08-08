@@ -107,6 +107,7 @@ pub enum BehaviorKind {
     ReduceCastChannelCount,
     Disperse1,
     Disperse2,
+    DisperseTypeId,
     DisperseExclude,
     DisperseForce2,
     DisperseForce3,

@@ -1,7 +1,7 @@
 use sonettobuf::BuffInfo;
 
 use crate::engine::{
-    event::payload::{BattleEvent, BuffChangeEvent, BuffStateChangeEvent},
+    event::payload::{BattleEvent, BuffChangeEvent, BuffRejectedEvent, BuffStateChangeEvent},
     skill::rule::DefinitionKey,
 };
 
@@ -208,6 +208,16 @@ impl BuffReplaceResult {
                 },
             ))
         }));
+        if let Some(rejected) = &self.rejected {
+            events.push(BattleEvent::BuffRejected(BuffRejectedEvent {
+                source_uid: rejected.buff.from_uid.unwrap_or_default(),
+                target_uid: rejected.target_uid,
+                buff_uid: rejected.buff.uid.unwrap_or_default(),
+                buff_id: rejected.buff.buff_id.unwrap_or_default(),
+                type_id: rejected.type_id,
+                blocker_buff_id: rejected.blocker_buff_id,
+            }));
+        }
         events
     }
 }
@@ -216,5 +226,6 @@ impl BuffReplaceResult {
 pub struct BuffRejectResult {
     pub target_uid: i64,
     pub blocker_buff_id: i32,
+    pub type_id: i32,
     pub buff: BuffInfo,
 }

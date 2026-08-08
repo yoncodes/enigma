@@ -98,6 +98,16 @@ fn initial_wire_state_comes_from_the_resolved_exact_feature() {
         .initial_wire_states(10, 21, 1, 1000);
     assert_eq!(kill[0].act_id, 1028);
     assert_eq!(kill[0].str_param.as_deref(), Some("200"));
+
+    let channel = BuffDefinition::get(31280115)
+        .unwrap()
+        .initial_wire_states(10, 22, 1, 1000);
+    assert_eq!(channel[0].act_id, 1031);
+    assert!(channel[0].params.is_empty());
+    assert_eq!(channel[0].str_param.as_deref(), Some("0"));
+    assert!(!BuffDefinition::get(31280115)
+        .unwrap()
+        .projects_initial_wire_state(1031));
 }
 
 #[test]
