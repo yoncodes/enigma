@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn cloth_input_discovery_returns_same_round_requests_in_capture_order() {
+    let directory = std::env::temp_dir().join(format!(
+        "enigma-cloth-inputs-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir(&directory).unwrap();
+    for name in [
+        "UseClothSkillRequest_3_20260804_192249_251.json",
+        "UseClothSkillRequest_3.json",
+        "UseClothSkillRequest_30.json",
+        "UseClothSkillReply_3.json",
+    ] {
+        fs::write(directory.join(name), "{}").unwrap();
+    }
+
+    let paths = cloth_input_paths(&directory, 3).unwrap();
+
+    assert_eq!(
+        paths
+            .iter()
+            .filter_map(|path| path.file_name()?.to_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "UseClothSkillRequest_3.json",
+            "UseClothSkillRequest_3_20260804_192249_251.json"
+        ]
+    );
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn captured_twins_selection_has_a_committed_runtime_source() {
     init_config().unwrap();
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
