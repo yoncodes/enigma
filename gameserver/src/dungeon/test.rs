@@ -63,7 +63,7 @@ fn saved_start_matches_with_or_without_the_restart_marker() {
     restart.episode_id = Some(10002);
     let tower = ActiveBattle {
         start_request: active.start_request.clone(),
-        tower_context: Some(::battle::tower::BattleContext {
+        tower_context: Some(crate::logic::battle_setup::tower::BattleContext {
             tower_type: 1,
             tower_id: 2,
             layer_id: 3,

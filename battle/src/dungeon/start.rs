@@ -1,8 +1,7 @@
-use super::attacker::Attacker;
+use super::attacker::{Attacker, BattleRoster};
 use crate::engine::fight::{defender::Defender, versions};
 use anyhow::Result;
 use sonettobuf::{Fight, FightGroup, FightTaskBox, fight::FightActType};
-use sqlx::SqlitePool;
 
 pub struct BuiltFight {
     pub fight: Fight,
@@ -17,9 +16,8 @@ pub struct FightOptions {
     pub use_record: bool,
 }
 
-pub async fn build_fight(
-    pool: &SqlitePool,
-    player_id: i64,
+pub fn build_fight(
+    roster: &BattleRoster,
     episode_id: i32,
     battle_id: i32,
     fight_group: &FightGroup,
@@ -27,17 +25,15 @@ pub async fn build_fight(
     params: Option<&str>,
 ) -> Result<BuiltFight> {
     let mut attacker = Attacker::get(
-        pool,
-        player_id,
+        roster,
         episode_id,
         battle_id,
         options.is_balance,
         fight_group,
         params,
-    )
-    .await?;
+    )?;
     let defender_uid_offset = attacker.reserved_uid_offset;
-    let mut defender = Defender::get(battle_id, defender_uid_offset).await?;
+    let mut defender = Defender::get(battle_id, defender_uid_offset)?;
     attacker.team.sp_entitys = defender.attacker_sp_entitys;
     attacker.team.sp_fight_entities = defender.attacker_sp_fight_entities;
     apply_battle_rules(

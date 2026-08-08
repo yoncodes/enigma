@@ -8,85 +8,14 @@ use crate::{
         manager::eureka::PowerType,
     },
 };
-use database::db::game::tower as tower_db;
-use database::models::game::tower::{TowerConstId, TowerType};
 use sonettobuf::{
-    AssistBossInfo, AssistBossSkillInfo, EnhanceInfoBox, EquipRecord, FightEntityInfo, FightGroup,
+    AssistBossInfo, AssistBossSkillInfo, EnhanceInfoBox, EquipRecord, FightEntityInfo,
     HeroAttribute, HeroExAttribute, PowerInfo,
 };
-use sqlx::SqlitePool;
-
-use super::BattleContext;
-use crate::dungeon::FightOptions;
 
 const ASSIST_BOSS_UID: i64 = -1;
 
-pub async fn build_fight(
-    pool: &SqlitePool,
-    player_id: i64,
-    episode_id: i32,
-    battle_id: i32,
-    fight_group: &FightGroup,
-    options: FightOptions,
-    context: BattleContext,
-) -> anyhow::Result<BuiltFight> {
-    let mut built = crate::dungeon::build_fight(
-        pool,
-        player_id,
-        episode_id,
-        battle_id,
-        fight_group,
-        options,
-        None,
-    )
-    .await?;
-    let boss_id = fight_group.assist_boss_id.unwrap_or_default();
-    if boss_id == 0 {
-        return Ok(built);
-    }
-
-    let tables = config::configs::get();
-    let owned_level = tower_db::assist_boss_level(pool, player_id, boss_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("assist boss {boss_id} is not owned"))?;
-    let boss_level = effective_level(tables, context, owned_level);
-    let talent_ids = if let Some(plan) = tables
-        .tower_talent_plan
-        .iter()
-        .find(|plan| plan.boss_id == boss_id && plan.plan_id == context.talent_plan_id)
-    {
-        system_plan_talents(tables, boss_id, boss_level, &plan.talent_ids)
-    } else {
-        tower_db::talent_plan_ids(pool, player_id, boss_id, context.talent_plan_id).await?
-    };
-
-    apply_assist_boss(
-        tables,
-        player_id,
-        boss_id,
-        boss_level,
-        &talent_ids,
-        &mut built,
-    )?;
-    Ok(built)
-}
-
-fn effective_level(tables: &config::GameDB, context: BattleContext, owned_level: i32) -> i32 {
-    match context.tower_type {
-        value if value == TowerType::Boss.id() && context.layer_id == 0 => {
-            tower_const(tables, TowerConstId::TeachBossLevel).unwrap_or(owned_level)
-        }
-        value if value == TowerType::Limited.id() => owned_level
-            .max(tower_const(tables, TowerConstId::BalanceBossLevel).unwrap_or(owned_level)),
-        _ => owned_level,
-    }
-}
-
-fn tower_const(tables: &config::GameDB, id: TowerConstId) -> Option<i32> {
-    tables.tower_const.get(id.id())?.value.parse().ok()
-}
-
-pub(super) fn system_plan_talents(
+pub fn system_plan_talents(
     tables: &config::GameDB,
     boss_id: i32,
     boss_level: i32,
@@ -160,7 +89,7 @@ pub fn system_plan_rule_skills(
     skills
 }
 
-pub(super) fn apply_assist_boss(
+pub fn apply_assist_boss(
     tables: &config::GameDB,
     player_id: i64,
     boss_id: i32,

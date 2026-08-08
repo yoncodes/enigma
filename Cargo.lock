@@ -188,13 +188,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "config",
- "database",
  "protocol",
  "rand 0.9.4",
  "serde",
  "serde_json",
- "sqlx",
- "tokio",
  "tracing",
 ]
 
@@ -208,8 +205,6 @@ dependencies = [
  "config",
  "protocol",
  "serde_json",
- "sqlx",
- "tokio",
 ]
 
 [[package]]
