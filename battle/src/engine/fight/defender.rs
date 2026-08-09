@@ -14,8 +14,20 @@ pub struct DefenderSetup {
 }
 
 impl Defender {
-    pub async fn get(battle_id: i32, uid_offset: usize) -> Result<DefenderSetup> {
-        let game_data = config::configs::get();
+    pub fn get(battle_id: i32, uid_offset: usize) -> Result<DefenderSetup> {
+        Self::configured(
+            crate::catalog::BattleCatalog::global(),
+            battle_id,
+            uid_offset,
+        )
+    }
+
+    pub(crate) fn configured(
+        catalog: crate::catalog::BattleCatalog,
+        battle_id: i32,
+        uid_offset: usize,
+    ) -> Result<DefenderSetup> {
+        let game_data = catalog.game_data();
         let battle = game_data
             .battle
             .get(battle_id)
@@ -33,7 +45,7 @@ impl Defender {
             .get(group_id)
             .ok_or_else(|| anyhow::anyhow!("MonsterGroup {} not found", group_id))?;
         let (entitys, sub_entitys) =
-            Self::build_wave_entities(group_id, monster_max, 2, uid_offset)?;
+            Self::build_wave(catalog, group_id, monster_max, 2, uid_offset)?;
         let mut next_uid_index = uid_offset + monster_max;
         let mut build_specials = |raw: &str, team_type: i32| -> Result<Vec<FightEntityInfo>> {
             monster_ids(raw)
@@ -41,6 +53,7 @@ impl Defender {
                 .enumerate()
                 .map(|(index, monster_id)| {
                     let entity = Self::build_enemy(
+                        catalog,
                         monster_id,
                         next_uid_index,
                         (monster_max + index + 1) as i32,
@@ -73,13 +86,30 @@ impl Defender {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn build_wave_entities(
         group_id: i32,
         monster_max: usize,
         team_type: i32,
         uid_offset: usize,
     ) -> Result<(Vec<FightEntityInfo>, Vec<FightEntityInfo>)> {
-        let game_data = config::configs::get();
+        Self::build_wave(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            group_id,
+            monster_max,
+            team_type,
+            uid_offset,
+        )
+    }
+
+    pub(crate) fn build_wave(
+        catalog: crate::catalog::BattleCatalog,
+        group_id: i32,
+        monster_max: usize,
+        team_type: i32,
+        uid_offset: usize,
+    ) -> Result<(Vec<FightEntityInfo>, Vec<FightEntityInfo>)> {
+        let game_data = catalog.game_data();
         let group = game_data
             .monster_group
             .get(group_id)
@@ -89,6 +119,7 @@ impl Defender {
         let mut entitys = Vec::new();
         for (idx, monster_id) in monster_ids.iter().take(monster_max).enumerate() {
             entitys.push(Self::build_enemy(
+                catalog,
                 *monster_id,
                 uid_offset + idx,
                 (idx + 1) as i32,
@@ -100,6 +131,7 @@ impl Defender {
         for (i, monster_id) in monster_ids.iter().skip(monster_max).enumerate() {
             let idx = monster_max + i;
             sub_entitys.push(Self::build_enemy(
+                catalog,
                 *monster_id,
                 uid_offset + idx,
                 -((i + 1) as i32),
@@ -111,22 +143,40 @@ impl Defender {
     }
 
     fn build_enemy(
+        catalog: crate::catalog::BattleCatalog,
         monster_id: i32,
         idx: usize,
         position: i32,
         team_type: i32,
     ) -> Result<FightEntityInfo> {
         let uid = -((idx + 1) as i64);
-        Self::build_monster_with_uid(monster_id, uid, position, team_type)
+        Self::build_monster(catalog, monster_id, uid, position, team_type)
     }
 
+    #[cfg(test)]
     pub(crate) fn build_monster_with_uid(
         monster_id: i32,
         uid: i64,
         position: i32,
         team_type: i32,
     ) -> Result<FightEntityInfo> {
-        let game_data = config::configs::get();
+        Self::build_monster(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            monster_id,
+            uid,
+            position,
+            team_type,
+        )
+    }
+
+    pub(crate) fn build_monster(
+        catalog: crate::catalog::BattleCatalog,
+        monster_id: i32,
+        uid: i64,
+        position: i32,
+        team_type: i32,
+    ) -> Result<FightEntityInfo> {
+        let game_data = catalog.game_data();
         let monster = game_data
             .monster
             .get(monster_id)
@@ -146,15 +196,14 @@ impl Defender {
             monster.level
         };
 
-        let stats = crate::engine::entity::stats::monster_stats(monster_id, level)
-            .ok_or_else(|| anyhow::anyhow!("Monster stats {} not found", monster_id))?;
+        let stats =
+            crate::engine::entity::stats::configured_monster_stats(game_data, monster_id, level)
+                .ok_or_else(|| anyhow::anyhow!("Monster stats {} not found", monster_id))?;
         let attr = stats.base();
-        let (toughness_value, toughness_point) = crate::engine::manager::toughness::initial_values(
-            &monster.toughness,
-            attr.hp.unwrap_or_default(),
-        )
-        .map(|(value, point)| (Some(value), Some(point)))
-        .unwrap_or_default();
+        let (toughness_value, toughness_point) = catalog
+            .monster_toughness(monster_id, attr.hp.unwrap_or_default())
+            .map(|(value, point)| (Some(value), Some(point)))
+            .unwrap_or_default();
 
         Ok(FightEntityInfo {
             uid: Some(uid),
@@ -254,6 +303,17 @@ mod tests {
         crate::test_support::init_config();
 
         let boss = Defender::build_monster_with_uid(30111001, -1, 1, 2).unwrap();
+        assert_eq!(
+            boss,
+            Defender::build_monster(
+                crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+                30111001,
+                -1,
+                1,
+                2,
+            )
+            .unwrap()
+        );
         let attr = boss.attr.unwrap();
 
         assert_eq!(boss.current_hp, Some(67_680));
@@ -292,11 +352,11 @@ mod tests {
         assert_eq!(monster.ex_point_max, Some(2));
     }
 
-    #[tokio::test]
-    async fn monster_starts_with_configured_moxie() {
+    #[test]
+    fn monster_starts_with_configured_moxie() {
         crate::test_support::init_config();
 
-        let setup = Defender::get(1001, 2).await.unwrap();
+        let setup = Defender::get(1001, 2).unwrap();
         let monster = setup
             .team
             .entitys
@@ -307,11 +367,11 @@ mod tests {
         assert_eq!(monster.ex_point, Some(5));
     }
 
-    #[tokio::test]
-    async fn tower_supporter_uses_reserved_normal_uid_space() {
+    #[test]
+    fn tower_supporter_uses_reserved_normal_uid_space() {
         crate::test_support::init_config();
 
-        let setup = Defender::get(9000303, 1).await.unwrap();
+        let setup = Defender::get(9000303, 1).unwrap();
 
         assert_eq!(
             setup

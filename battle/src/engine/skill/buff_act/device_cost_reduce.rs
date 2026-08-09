@@ -133,6 +133,7 @@ mod tests {
             &fight,
         );
         crate::engine::runtime::schedule::run_conduit_phase(
+            managers.catalog(),
             &fight,
             &mut managers,
             &pool,

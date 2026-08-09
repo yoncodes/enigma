@@ -3,7 +3,7 @@ use crate::engine::round::modifier::RoundModifiers;
 use crate::engine::skill::{
     action::SkillPhase,
     behavior::{AttackModifierContext, BehaviorOpContext, classify::BehaviorKind},
-    effect::ParsedBehavior,
+    effect::{ParsedBehavior, SkillEffectCatalog},
     rule::{DefinitionKey, RuleReferences, SetupStage, output::RuleOp},
 };
 
@@ -110,6 +110,14 @@ pub trait BehaviorHandler {
 
     fn emit_ops(_: BehaviorOpContext<'_>, _: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         None
+    }
+
+    fn emit_runtime_ops(
+        context: BehaviorOpContext<'_>,
+        behavior: &ParsedBehavior,
+        _: &SkillEffectCatalog,
+    ) -> Option<Vec<RuleOp>> {
+        Self::emit_ops(context, behavior)
     }
 
     fn collect_attack_modifier(
@@ -396,6 +404,11 @@ macro_rules! behavior_definitions {
     ($([$opcode:expr] $type_name:literal => $handler:ty, $kind:ident, $phase:ident, $mode:ident $(, @route($route:expr))? $(, $supports:path)?);+ $(;)?) => {
         pub const DEFINITIONS: &[BehaviorDefinition] =
             &[$(behavior_definitions!(@maybe_support $mode, $handler, $opcode, $type_name, $kind, $phase $(, @route($route))? $(, $supports)?)),+];
+        const RUNTIME_EMITTERS: &[for<'a> fn(
+            BehaviorOpContext<'a>,
+            &ParsedBehavior,
+            &SkillEffectCatalog,
+        ) -> Option<Vec<RuleOp>>] = &[$(<$handler as BehaviorHandler>::emit_runtime_ops),+];
     };
     (@maybe_support $mode:ident, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident, @route($route:expr), $supports:path) => {
         $crate::engine::skill::behavior::registry::with_argument_parser(
@@ -463,6 +476,18 @@ macro_rules! behavior_definitions {
     (@definition aggregated_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::aggregated_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
     };
+}
+
+pub(crate) fn emit_runtime_ops(
+    definition: &BehaviorDefinition,
+    context: BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+    catalog: &SkillEffectCatalog,
+) -> Option<Vec<RuleOp>> {
+    let index = DEFINITIONS
+        .iter()
+        .position(|candidate| std::ptr::eq(candidate, definition))?;
+    RUNTIME_EMITTERS[index](context, behavior, catalog)
 }
 
 behavior_definitions! {

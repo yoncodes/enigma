@@ -1,4 +1,5 @@
 use crate::engine::{
+    manager::BattleManagers,
     runtime::record::FrameOwner,
     skill::{
         action::{SkillActionEvent, SkillInvocation, SkillLifecycle, SkillPhase},
@@ -29,6 +30,7 @@ pub(in crate::engine::runtime) struct SkillEmissionOp {
 
 pub(super) fn phase_completed(
     invocation: &SkillInvocation,
+    managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
     pool: &TargetPool,
     execution: &SkillExecution,
@@ -36,7 +38,7 @@ pub(super) fn phase_completed(
 ) -> SkillEmissionOp {
     SkillEmissionOp {
         op: RuleOp::SkillLifecycle(SkillLifecycle::PhaseCompleted(action_event(
-            invocation, catalog, pool, execution, phase,
+            invocation, managers, catalog, pool, execution, phase,
         ))),
         owner: OutputOwner::Skill,
         consequence: ConsequencePolicy::Default,
@@ -46,6 +48,7 @@ pub(super) fn phase_completed(
 
 pub(super) fn effect_started(
     invocation: &SkillInvocation,
+    managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
     pool: &TargetPool,
     execution: &SkillExecution,
@@ -54,6 +57,7 @@ pub(super) fn effect_started(
         op: RuleOp::Publish(
             crate::engine::event::payload::BattleEvent::SkillEffectStarted(action_event(
                 invocation,
+                managers,
                 catalog,
                 pool,
                 execution,
@@ -68,6 +72,7 @@ pub(super) fn effect_started(
 
 fn action_event(
     invocation: &SkillInvocation,
+    managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
     pool: &TargetPool,
     execution: &SkillExecution,
@@ -83,9 +88,13 @@ fn action_event(
         target_uids: execution.affected_targets.clone(),
         attacked_target_uids: execution.attacked_targets.clone(),
         phase,
-        skill_slot: pool.skill_slot(invocation.plan.source_uid, invocation.plan.skill_id),
+        skill_slot: pool.skill_slot(
+            managers,
+            invocation.plan.source_uid,
+            invocation.plan.skill_id,
+        ),
         is_attack: catalog.is_attack(invocation.plan.skill_id),
-        rank: crate::engine::entity::skill::skill_rank(invocation.plan.skill_id),
+        rank: managers.catalog().skill_rank(invocation.plan.skill_id),
         skill_type: catalog.skill_type(invocation.plan.skill_id),
         effect_tag: catalog.effect_tag(invocation.plan.skill_id),
         assassinate: execution.context.active_skill_assassinate,

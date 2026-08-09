@@ -5,6 +5,9 @@ use crate::engine::runtime::BattleRuntime;
 mod attacker;
 mod start;
 
+pub use attacker::{
+    BattleFighter, BattleRoster, BattleRosterPlan, ComposeSupportLookup, plan_roster,
+};
 pub use start::{BuiltFight, FightOptions, build_fight};
 
 pub fn start_reply(runtime: &BattleRuntime) -> StartDungeonReply {

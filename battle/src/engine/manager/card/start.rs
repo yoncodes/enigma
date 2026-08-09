@@ -4,7 +4,7 @@ use sonettobuf::{CardInfo, Fight};
 use crate::engine::manager::card::{
     ai::generate_ai_deck_with_extra_actions,
     draw::draw_guaranteed_by_uid,
-    pool::{active_enemy_entities, active_player_uids, card_for, player_candidate_pool},
+    pool::{active_enemy_entities, active_player_uids, card_for},
 };
 
 const CARDS_PER_HERO: i32 = 16;
@@ -32,8 +32,27 @@ pub fn hand_size_from_count(characters: usize) -> usize {
     }
 }
 
-pub fn configured_opening_deal(fight: &Fight) -> Result<Option<Vec<CardInfo>>, String> {
-    let Some(config) = teaching_card_config(fight) else {
+pub fn configured_opening_deal(
+    game_data: &config::GameDB,
+    fight: &Fight,
+) -> Result<Option<Vec<CardInfo>>, String> {
+    opening_deal_from(fight, |episode_id| {
+        crate::catalog::configured_teaching_cards(game_data, episode_id)
+    })
+}
+
+pub(crate) fn opening_deal(
+    catalog: crate::catalog::BattleCatalog,
+    fight: &Fight,
+) -> Result<Option<Vec<CardInfo>>, String> {
+    opening_deal_from(fight, |episode_id| catalog.teaching_cards(episode_id))
+}
+
+fn opening_deal_from(
+    fight: &Fight,
+    configured: impl FnOnce(i32) -> Option<crate::catalog::ConfiguredTeachingCards>,
+) -> Result<Option<Vec<CardInfo>>, String> {
+    let Some(config) = teaching_card_config(fight, configured) else {
         return Ok(None);
     };
     let cards = resolve_configured_cards(fight, &config.opening_cards)?;
@@ -43,22 +62,42 @@ pub fn configured_opening_deal(fight: &Fight) -> Result<Option<Vec<CardInfo>>, S
     Ok(Some(cards))
 }
 
-pub fn configured_refill_draws(fight: &Fight) -> Result<Vec<CardInfo>, String> {
-    let Some(config) = teaching_card_config(fight) else {
+pub fn configured_refill_draws(
+    game_data: &config::GameDB,
+    fight: &Fight,
+) -> Result<Vec<CardInfo>, String> {
+    refill_draws_from(fight, |episode_id| {
+        crate::catalog::configured_teaching_cards(game_data, episode_id)
+    })
+}
+
+pub(crate) fn refill_draws(
+    catalog: crate::catalog::BattleCatalog,
+    fight: &Fight,
+) -> Result<Vec<CardInfo>, String> {
+    refill_draws_from(fight, |episode_id| catalog.teaching_cards(episode_id))
+}
+
+fn refill_draws_from(
+    fight: &Fight,
+    configured: impl FnOnce(i32) -> Option<crate::catalog::ConfiguredTeachingCards>,
+) -> Result<Vec<CardInfo>, String> {
+    let Some(config) = teaching_card_config(fight, configured) else {
         return Ok(Vec::new());
     };
     resolve_configured_cards(fight, &config.refill_cards)
 }
 
-fn teaching_card_config(fight: &Fight) -> Option<&config::teaching_card::TeachingCard> {
+fn teaching_card_config(
+    fight: &Fight,
+    configured: impl FnOnce(i32) -> Option<crate::catalog::ConfiguredTeachingCards>,
+) -> Option<crate::catalog::ConfiguredTeachingCards> {
     if crate::engine::fight::versions::round_start_setup_layout(fight.version.unwrap_or_default())
         != Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
     {
         return None;
     }
-    config::try_get()?
-        .teaching_card
-        .get(fight.episode_id.unwrap_or_default())
+    configured(fight.episode_id.unwrap_or_default())
 }
 
 fn resolve_configured_cards(fight: &Fight, entries: &str) -> Result<Vec<CardInfo>, String> {
@@ -106,7 +145,27 @@ fn resolve_configured_cards(fight: &Fight, entries: &str) -> Result<Vec<CardInfo
         .collect()
 }
 
-pub fn draw_bag(fight: &Fight) -> Vec<CardInfo> {
+pub fn draw_bag(game_data: &config::GameDB, fight: &Fight) -> Vec<CardInfo> {
+    draw_bag_from(fight, |fight| {
+        crate::engine::manager::card::pool::device_draw_bag(game_data, fight)
+    })
+}
+
+pub(crate) fn configured_draw_bag(
+    catalog: crate::catalog::BattleCatalog,
+    fight: &Fight,
+) -> Vec<CardInfo> {
+    draw_bag_from(fight, |fight| {
+        crate::engine::manager::card::pool::device_draw_bag_from(fight, |model_id| {
+            catalog.device_card_weights(model_id)
+        })
+    })
+}
+
+fn draw_bag_from(
+    fight: &Fight,
+    device_cards: impl FnOnce(&Fight) -> Vec<CardInfo>,
+) -> Vec<CardInfo> {
     let candidates =
         crate::engine::manager::card::pool::normal_player_candidate_pool_with(fight, |_| false);
     let mut cards = active_player_uids(fight)
@@ -121,17 +180,75 @@ pub fn draw_bag(fight: &Fight) -> Vec<CardInfo> {
                 .filter_map(move |index| owner.get(index as usize % owner.len().max(1)).cloned())
         })
         .collect::<Vec<_>>();
-    cards.extend(crate::engine::manager::card::pool::device_draw_bag(fight));
+    cards.extend(device_cards(fight));
     cards
 }
 
 pub fn start_decks_from_fight(
+    game_data: &config::GameDB,
     fight: &Fight,
     ex_point: &crate::engine::manager::ex_point::ExPointManager,
     eureka: &crate::engine::manager::eureka::EurekaManager,
     extra_ai_actions: i32,
     seed_value: i32,
     captured: Option<(Vec<CardInfo>, Vec<CardInfo>)>,
+) -> (Vec<CardInfo>, Vec<CardInfo>) {
+    start_decks_from(
+        fight,
+        ex_point,
+        eureka,
+        extra_ai_actions,
+        seed_value,
+        captured,
+        |allow_ex_skill| {
+            crate::engine::manager::card::pool::player_candidate_pool_from(
+                fight,
+                |entity| {
+                    allow_ex_skill && crate::engine::manager::card::pool::can_use_ex_skill(entity)
+                },
+                |model_id| crate::catalog::configured_device_card_weights(game_data, model_id),
+            )
+        },
+    )
+}
+
+pub(crate) fn configured_start_decks(
+    catalog: crate::catalog::BattleCatalog,
+    fight: &Fight,
+    ex_point: &crate::engine::manager::ex_point::ExPointManager,
+    eureka: &crate::engine::manager::eureka::EurekaManager,
+    extra_ai_actions: i32,
+    seed_value: i32,
+    captured: Option<(Vec<CardInfo>, Vec<CardInfo>)>,
+) -> (Vec<CardInfo>, Vec<CardInfo>) {
+    start_decks_from(
+        fight,
+        ex_point,
+        eureka,
+        extra_ai_actions,
+        seed_value,
+        captured,
+        |allow_ex_skill| {
+            crate::engine::manager::card::pool::player_candidate_pool_from(
+                fight,
+                |entity| {
+                    allow_ex_skill && crate::engine::manager::card::pool::can_use_ex_skill(entity)
+                },
+                |model_id| catalog.device_card_weights(model_id),
+            )
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn start_decks_from(
+    fight: &Fight,
+    ex_point: &crate::engine::manager::ex_point::ExPointManager,
+    eureka: &crate::engine::manager::eureka::EurekaManager,
+    extra_ai_actions: i32,
+    seed_value: i32,
+    captured: Option<(Vec<CardInfo>, Vec<CardInfo>)>,
+    mut player_candidates: impl FnMut(bool) -> Vec<CardInfo>,
 ) -> (Vec<CardInfo>, Vec<CardInfo>) {
     let required_uids = active_player_uids(fight);
     let valid_target_uids = fight
@@ -145,7 +262,7 @@ pub fn start_decks_from_fight(
     let hand_size = hand_size(fight);
     let mut rng = StdRng::seed_from_u64(seed(fight, seed_value));
     if let Some((captured_ai, captured_player)) = captured {
-        let captured_candidates = player_candidate_pool(fight);
+        let captured_candidates = player_candidates(true);
         let ai_candidates = active_enemy_entities(fight)
             .into_iter()
             .flat_map(|entity| {
@@ -188,8 +305,7 @@ pub fn start_decks_from_fight(
         return (ai, player);
     }
 
-    let candidates =
-        crate::engine::manager::card::pool::player_candidate_pool_with(fight, |_| false);
+    let candidates = player_candidates(false);
     let player = draw_guaranteed_by_uid(&candidates, &required_uids, hand_size, &mut rng);
     let ai =
         generate_ai_deck_with_extra_actions(fight, ex_point, eureka, extra_ai_actions, &mut rng);
@@ -243,7 +359,27 @@ mod tests {
         ex_point.seed(&fight);
         let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
         eureka.seed(&fight);
-        let (ai, player) = start_decks_from_fight(&fight, &ex_point, &eureka, 0, 7, None);
+        let (ai, player) = start_decks_from_fight(
+            crate::test_support::game_data(),
+            &fight,
+            &ex_point,
+            &eureka,
+            0,
+            7,
+            None,
+        );
+        assert_eq!(
+            configured_start_decks(
+                crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+                &fight,
+                &ex_point,
+                &eureka,
+                0,
+                7,
+                None,
+            ),
+            (ai.clone(), player.clone())
+        );
 
         assert_eq!(player.len(), 5);
         assert!(player.iter().any(|card| card.uid == Some(10)));
@@ -327,7 +463,15 @@ mod tests {
         ex_point.seed(&fight);
         let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
         eureka.seed(&fight);
-        let (ai, player) = start_decks_from_fight(&fight, &ex_point, &eureka, 0, 0, Some(captured));
+        let (ai, player) = start_decks_from_fight(
+            crate::test_support::game_data(),
+            &fight,
+            &ex_point,
+            &eureka,
+            0,
+            0,
+            Some(captured),
+        );
 
         assert_eq!(ai[0].skill_id, Some(302));
         assert_eq!(ai[0].card_effect, None);
@@ -349,7 +493,7 @@ mod tests {
             ..Default::default()
         };
 
-        let bag = draw_bag(&fight);
+        let bag = draw_bag(crate::test_support::game_data(), &fight);
 
         assert_eq!(bag.len(), 16);
         assert_eq!(
@@ -365,6 +509,7 @@ mod tests {
     #[test]
     fn configured_opening_deals_resolve_every_tracked_model_and_skill_group() {
         crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
         let cases = [
             (
                 10001,
@@ -432,7 +577,11 @@ mod tests {
                 }),
                 ..Default::default()
             };
-            let deal = configured_opening_deal(&fight).unwrap().unwrap();
+            let deal = configured_opening_deal(crate::test_support::game_data(), &fight)
+                .unwrap()
+                .unwrap();
+
+            assert_eq!(opening_deal(catalog, &fight).unwrap(), Some(deal.clone()));
 
             assert_eq!(
                 deal.iter()
@@ -446,6 +595,7 @@ mod tests {
     #[test]
     fn configured_opening_deals_do_not_change_version_six_replays() {
         crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
         let fight = Fight {
             episode_id: Some(10002),
             version: Some(6),
@@ -459,13 +609,24 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(configured_opening_deal(&fight).unwrap().is_none());
-        assert!(configured_refill_draws(&fight).unwrap().is_empty());
+        assert!(
+            configured_opening_deal(crate::test_support::game_data(), &fight)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            configured_refill_draws(crate::test_support::game_data(), &fight)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(opening_deal(catalog, &fight).unwrap().is_none());
+        assert!(refill_draws(catalog, &fight).unwrap().is_empty());
     }
 
     #[test]
     fn configured_refill_draws_resolve_through_the_same_card_groups() {
         crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
         let fight = Fight {
             episode_id: Some(10001),
             version: Some(7),
@@ -479,9 +640,10 @@ mod tests {
             ..Default::default()
         };
 
+        let configured = configured_refill_draws(crate::test_support::game_data(), &fight).unwrap();
+        assert_eq!(refill_draws(catalog, &fight).unwrap(), configured);
         assert_eq!(
-            configured_refill_draws(&fight)
-                .unwrap()
+            configured
                 .iter()
                 .map(|card| (card.uid.unwrap(), card.skill_id.unwrap()))
                 .collect::<Vec<_>>(),
@@ -500,7 +662,13 @@ mod tests {
             ..Default::default()
         };
 
-        let bag = draw_bag(&fight);
+        let bag = draw_bag(crate::test_support::game_data(), &fight);
+        let configured = configured_draw_bag(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            &fight,
+        );
+
+        assert_eq!(configured, bag);
 
         assert_eq!(deck_size(&fight), 16);
         assert_eq!(bag.len(), 26);

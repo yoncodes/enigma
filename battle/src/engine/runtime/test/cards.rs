@@ -20,7 +20,7 @@ fn destination_start_schedule_builds_the_complete_round_wrapper() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
 
     let round = runtime.build_start_round_from_schedule().unwrap();
 
@@ -56,7 +56,7 @@ fn opening_adds_one_ready_ultimate_outside_the_normal_hand() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
 
     let round = runtime.build_start_round_from_schedule().unwrap();
 
@@ -123,7 +123,7 @@ fn opening_push_keeps_composed_cards_and_refills_the_vacated_slot() {
             .chain(std::iter::once(replacement))
             .collect(),
     );
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
 
     let round = runtime.start_round_with_determinism(determinism).unwrap();
     let push = runtime.card_info_push();
@@ -188,7 +188,7 @@ fn teaching_card_opening_replaces_only_the_initial_random_draw() {
         skill_id: Some(30230121),
         ..Default::default()
     }]);
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
 
     let round = runtime.start_round_with_determinism(determinism).unwrap();
 
@@ -279,7 +279,7 @@ fn teaching_card_round_refill_replays_the_live_tutorial_operations() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime
         .start_round_with_determinism(RoundDeterminism::with_seed(0x5eed))
         .unwrap();
@@ -339,7 +339,7 @@ fn teaching_card_opening_composes_the_complete_configured_deal() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
 
     let round = runtime.build_start_round_from_schedule().unwrap();
 
@@ -387,7 +387,7 @@ fn teaching_card_refill_follows_the_configured_draws_after_tutorial_plays() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime
         .start_round_with_determinism(RoundDeterminism::with_seed(0x5eed))
         .unwrap();
@@ -460,7 +460,7 @@ fn teaching_card_without_scripted_refills_preserves_its_composed_hand_size() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime
         .start_round_with_determinism(RoundDeterminism::with_seed(0x5eed))
         .unwrap();
@@ -542,7 +542,7 @@ fn next_round_snapshot_keeps_card_not_cal_size_ultimate() {
         skill_id: Some(skill_id),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime
         .managers
         .execute_card(crate::engine::manager::card::CardCommand::Setup(
@@ -645,7 +645,7 @@ fn round_start_generated_card_is_committed_after_the_before_cards_snapshot() {
         skill_id: Some(skill_id),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime
         .managers
         .execute_card(crate::engine::manager::card::CardCommand::Setup(
@@ -807,7 +807,7 @@ fn lorentz_team_ultimate_spends_beryl_moxie_and_is_not_regenerated() {
     let mut determinism = RoundDeterminism::with_seed(6);
     determinism.enqueue_start_decks(Vec::new(), normal_cards.clone());
     determinism.enqueue_card_draws(normal_cards);
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime.start_round_with_determinism(determinism).unwrap();
     assert!(
         runtime

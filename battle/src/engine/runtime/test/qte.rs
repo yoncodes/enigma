@@ -15,7 +15,7 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         version: Some(7),
         attacker: Some(FightTeam {
             entitys: vec![entity(10, 1, 1_000, 1_000)],

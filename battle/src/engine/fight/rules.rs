@@ -24,7 +24,7 @@ pub enum AdditionRuleType {
 }
 
 impl AdditionRuleType {
-    fn from_id(id: i32) -> Option<Self> {
+    pub(crate) fn from_id(id: i32) -> Option<Self> {
         Some(match id {
             1 => Self::Skill,
             2 => Self::Level,
@@ -45,7 +45,7 @@ pub enum BattleRuleSide {
 }
 
 impl BattleRuleSide {
-    fn from_id(id: i32) -> Option<Self> {
+    pub(crate) fn from_id(id: i32) -> Option<Self> {
         Some(match id {
             1 => Self::Attacker,
             2 => Self::Defender,
@@ -72,42 +72,69 @@ pub struct ConfiguredBattleRule {
 }
 
 pub fn configured(fight: &Fight) -> Vec<ConfiguredBattleRule> {
-    let Some(db) = config::try_get() else {
-        return Vec::new();
-    };
-    let Some(battle) = super::configured_battle(fight) else {
-        return Vec::new();
-    };
-
-    battle
-        .addition_rule
-        .split('|')
-        .chain(battle.hidden_rule.split('|'))
-        .filter_map(|entry| {
-            let (side, rule_id) = entry.split_once('#')?;
-            let side = BattleRuleSide::from_id(side.parse().ok()?)?;
-            let rule_id = rule_id.parse().ok()?;
-            let rule = db.rule.get(rule_id)?;
-            let rule_type = AdditionRuleType::from_id(rule.r#type)?;
-            Some((side, rule_id, rule_type, rule.effect.as_str()))
-        })
-        .flat_map(|(side, rule_id, rule_type, effects)| {
-            effects
-                .split(['#', '|'])
-                .filter_map(|skill_id| skill_id.parse::<i32>().ok())
-                .filter(|skill_id| db.skill.get(*skill_id).is_some())
-                .map(move |skill_id| ConfiguredBattleRule {
-                    rule_id,
-                    skill_id,
-                    side,
-                    rule_type,
-                })
-        })
-        .collect()
+    crate::catalog::BattleCatalog::try_global()
+        .map(|catalog| catalog.battle_rules(fight))
+        .unwrap_or_default()
 }
 
 pub fn configured_fight_skills(fight: &Fight) -> impl Iterator<Item = ConfiguredBattleRule> {
     configured(fight)
         .into_iter()
         .filter(|rule| rule.rule_type == AdditionRuleType::FightSkill)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_catalog_preserves_rule_side_and_order() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            battle_id: Some(9_000_303),
+            ..Default::default()
+        };
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+        let rules = catalog.battle_rules(&fight);
+
+        assert_eq!(configured(&fight), rules);
+        assert_eq!(
+            rules
+                .iter()
+                .map(|rule| (rule.side, rule.rule_id, rule.skill_id, rule.rule_type))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    BattleRuleSide::Defender,
+                    370_003_003,
+                    370_003_003,
+                    AdditionRuleType::Skill
+                ),
+                (
+                    BattleRuleSide::Attacker,
+                    22_301_961,
+                    22_301_961,
+                    AdditionRuleType::Skill
+                ),
+                (
+                    BattleRuleSide::Attacker,
+                    90_120_002,
+                    90_120_002,
+                    AdditionRuleType::Skill
+                ),
+                (
+                    BattleRuleSide::Defender,
+                    22_301_962,
+                    22_301_962,
+                    AdditionRuleType::Skill
+                ),
+                (
+                    BattleRuleSide::Defender,
+                    370_003_013,
+                    370_003_013,
+                    AdditionRuleType::Skill
+                ),
+            ]
+        );
+    }
 }

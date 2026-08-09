@@ -28,13 +28,21 @@ pub struct RoundState {
 }
 
 impl RoundState {
-    pub fn start(fight: &Fight) -> Self {
+    pub fn start(game_data: &config::GameDB, fight: &Fight) -> Self {
+        Self::from_power(fight, ClothPower::initial(game_data, fight))
+    }
+
+    pub(crate) fn seeded(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
+        Self::from_power(fight, ClothPower::seeded(catalog, fight))
+    }
+
+    fn from_power(fight: &Fight, power: i32) -> Self {
         Self {
             act_point: attacker_main_count(fight),
             move_num: 0,
             is_finish: fight.is_finish.unwrap_or(false),
             cur_round: fight.cur_round.unwrap_or(1),
-            power: ClothPower::initial(fight),
+            power,
             last_change_hero_uid: fight.last_change_hero_uid,
             ..Default::default()
         }

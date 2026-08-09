@@ -145,7 +145,12 @@ impl BuffManager {
             count: Some(count),
             layer: Some(layer.max(0)),
             act_common_params: Some(definition.act_common_params.clone()),
-            r#type: Some(buff_wire_type(buff_id, source_uid, target_uid)),
+            r#type: Some(buff_wire_type(
+                self.catalog(),
+                buff_id,
+                source_uid,
+                target_uid,
+            )),
             ..Default::default()
         };
         let current_hp = hp.current(target_uid);
@@ -167,15 +172,20 @@ impl BuffManager {
             definition: Some(definition.clone()),
             buff: buff.clone(),
         });
-        self.record_added(target_uid, buff_id, count_or_layer(&buff));
-        let markers = marker::add_markers(buff_id)
+        self.record_added(
+            target_uid,
+            buff_id,
+            count_or_layer_from(&buff, Some(definition)),
+        );
+        let markers = definition
+            .wire_markers(crate::engine::skill::buff_act::wire::WirePhase::Add)
             .into_iter()
-            .map(|marker| BuffMarkerResult {
+            .map(|effect_type| BuffMarkerResult {
                 target_uid,
-                effect_type: marker.effect_type,
-                effect_num: marker::effect_num(
-                    marker.effect_type,
-                    buff_id,
+                effect_type,
+                effect_num: definition.marker_effect_num(
+                    self.catalog().game_data(),
+                    effect_type,
                     buff.act_common_params.as_deref(),
                 ),
                 buff_act_id: 0,
@@ -346,6 +356,7 @@ impl BuffManager {
                 }),
                 act_common_params: Some(definition.act_common_params.clone()),
                 r#type: Some(buff_wire_type(
+                    self.catalog(),
                     route.buff_id,
                     route.source_uid,
                     route.target_uid,
@@ -484,7 +495,7 @@ impl BuffManager {
             return None;
         }
         let route = BuffRoute::new(source_uid, target_uid, buff_id);
-        let policy = BuffPolicy::for_buff_id(buff_id)?;
+        let policy = BuffPolicy::configured(self.catalog().game_data(), buff_id).ok()?;
         let plan = self.plan_layer_refresh(route, definition, &policy, args)?;
         let promoted_uid = matches!(plan, LayerRefreshPlan::PromoteRestored { .. }).then(|| {
             let planned = uid_policy::plan(
@@ -590,14 +601,14 @@ impl BuffManager {
         }) {
             active.buff.duration = Some(spec.duration);
         }
-        child.markers = halo::fanout_markers(spec.route.buff_id)
+        child.markers = halo::fanout_markers(self.catalog(), spec.route.buff_id)
             .into_iter()
             .map(|marker| BuffMarkerResult {
                 target_uid: spec.route.target_uid,
                 effect_type: marker.effect_type as i32,
-                effect_num: marker::effect_num(
+                effect_num: spec.definition.marker_effect_num(
+                    self.catalog().game_data(),
                     marker.effect_type as i32,
-                    child.buff.buff_id.unwrap_or_default(),
                     child.buff.act_common_params.as_deref(),
                 ),
                 buff_act_id: 0,
@@ -610,9 +621,9 @@ impl BuffManager {
                 .map(|effect_type| BuffMarkerResult {
                     target_uid: spec.route.target_uid,
                     effect_type,
-                    effect_num: marker::effect_num(
+                    effect_num: spec.definition.marker_effect_num(
+                        self.catalog().game_data(),
                         effect_type,
-                        child.buff.buff_id.unwrap_or_default(),
                         child.buff.act_common_params.as_deref(),
                     ),
                     buff_act_id: 0,
@@ -637,14 +648,14 @@ impl BuffManager {
             ) else {
                 continue;
             };
-            let mut markers = halo::fanout_markers(plan.spec.route.buff_id)
+            let mut markers = halo::fanout_markers(self.catalog(), plan.spec.route.buff_id)
                 .into_iter()
                 .map(|marker| BuffMarkerResult {
                     target_uid: plan.spec.route.target_uid,
                     effect_type: marker.effect_type as i32,
-                    effect_num: marker::effect_num(
+                    effect_num: plan.spec.definition.marker_effect_num(
+                        self.catalog().game_data(),
                         marker.effect_type as i32,
-                        update.after.buff_id.unwrap_or_default(),
                         update.after.act_common_params.as_deref(),
                     ),
                     buff_act_id: 0,
@@ -658,9 +669,9 @@ impl BuffManager {
                     .map(|effect_type| BuffMarkerResult {
                         target_uid: plan.spec.route.target_uid,
                         effect_type,
-                        effect_num: marker::effect_num(
+                        effect_num: plan.spec.definition.marker_effect_num(
+                            self.catalog().game_data(),
                             effect_type,
-                            update.after.buff_id.unwrap_or_default(),
                             update.after.act_common_params.as_deref(),
                         ),
                         buff_act_id: 0,

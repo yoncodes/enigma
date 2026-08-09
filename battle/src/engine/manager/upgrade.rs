@@ -72,6 +72,7 @@ pub struct UpgradeManager {
 impl UpgradeManager {
     pub(crate) fn execute_command(
         &mut self,
+        catalog: crate::catalog::BattleCatalog,
         command: UpgradeCommand,
     ) -> Result<UpgradeChange, UpgradeCommandError> {
         if command.owner_uid == 0 {
@@ -92,7 +93,7 @@ impl UpgradeManager {
                 upgrade_id,
                 option_id,
             } if upgrade_id > 0 && option_id > 0 => Some(
-                self.select(command.owner_uid, upgrade_id, option_id)
+                self.select(catalog, command.owner_uid, upgrade_id, option_id)
                     .ok_or(UpgradeCommandError::SelectionRejected)?,
             ),
             _ => return Err(UpgradeCommandError::InvalidCommand),
@@ -120,6 +121,7 @@ impl UpgradeManager {
 
     pub(crate) fn select(
         &mut self,
+        catalog: crate::catalog::BattleCatalog,
         owner_uid: i64,
         upgrade_id: i32,
         option_id: i32,
@@ -127,12 +129,8 @@ impl UpgradeManager {
         if self.offered.get(&owner_uid).copied() != Some(upgrade_id) {
             return None;
         }
-        let db = config::try_get()?;
-        let upgrade = db.hero_upgrade.get(upgrade_id)?;
-        parse_ids(&upgrade.options)
-            .contains(&option_id)
-            .then_some(())?;
-        self.record_selection(owner_uid, upgrade_id, option_id)
+        let selection = catalog.upgrade_selection(upgrade_id, option_id)?;
+        self.record_selection(owner_uid, selection)
     }
 
     pub fn selected_option(&self, owner_uid: i64) -> Option<i32> {
@@ -142,59 +140,16 @@ impl UpgradeManager {
     fn record_selection(
         &mut self,
         owner_uid: i64,
-        upgrade_id: i32,
-        option_id: i32,
+        selection: UpgradeSelection,
     ) -> Option<UpgradeSelection> {
-        if self.selected.get(&owner_uid) == Some(&option_id) {
+        if self.selected.get(&owner_uid) == Some(&selection.option_id) {
             return None;
         }
-        let option = config::try_get()?.hero_upgrade_options.get(option_id)?;
-        let selection = UpgradeSelection {
-            upgrade_id,
-            option_id,
-            add_buff_ids: parse_ids(&option.add_buff),
-            del_buff_ids: parse_ids(&option.del_buff),
-            replace_skill_group1: parse_ids(&option.replace_skill_group1),
-            replace_skill_group2: parse_ids(&option.replace_skill_group2),
-            replace_big_skill: option.replace_big_skill,
-            replace_passive_skills: parse_pairs(&option.replace_passive_skill),
-            add_passive_skill_ids: parse_ids(&option.add_passive_skill),
-        };
         self.offered.remove(&owner_uid);
         self.offer_origins.remove(&owner_uid);
-        self.selected.insert(owner_uid, option_id);
+        self.selected.insert(owner_uid, selection.option_id);
         Some(selection)
     }
-}
-
-pub(crate) fn has_available_option(entity: &FightEntityInfo, upgrade_id: i32) -> Option<bool> {
-    let upgrade = config::try_get()?.hero_upgrade.get(upgrade_id)?;
-    let selected = entity
-        .enhance_info_box
-        .as_ref()
-        .map(|info| info.upgraded_options.as_slice())
-        .unwrap_or_default();
-    Some(
-        parse_ids(&upgrade.options)
-            .into_iter()
-            .any(|option_id| !selected.contains(&option_id)),
-    )
-}
-
-fn parse_ids(raw: &str) -> Vec<i32> {
-    raw.split(['|', '#', ','])
-        .filter_map(|value| value.trim().parse().ok())
-        .filter(|value| *value > 0)
-        .collect()
-}
-
-fn parse_pairs(raw: &str) -> Vec<(i32, i32)> {
-    raw.split('|')
-        .filter_map(|pair| {
-            let mut values = pair.split('#').filter_map(|value| value.parse().ok());
-            Some((values.next()?, values.next()?))
-        })
-        .collect()
 }
 
 #[cfg(test)]
@@ -210,41 +165,52 @@ mod tests {
     #[test]
     fn explicit_selection_must_be_offered_and_is_consumed_once() {
         crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
         let mut upgrades = UpgradeManager::default();
         upgrades.offer(10, 308664);
 
         assert_eq!(
-            upgrades.select(10, 308664, 3086524).unwrap().option_id,
+            upgrades
+                .select(catalog, 10, 308664, 3086524)
+                .unwrap()
+                .option_id,
             3086524
         );
-        assert!(upgrades.select(10, 308664, 3086525).is_none());
+        assert!(upgrades.select(catalog, 10, 308664, 3086525).is_none());
     }
 
     #[test]
     fn commands_keep_offer_and_selection_in_one_owner() {
         crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
         let mut upgrades = UpgradeManager::default();
 
         let offered = upgrades
-            .execute_command(UpgradeCommand {
-                owner_uid: 10,
-                operation: UpgradeOperation::Offer {
-                    origin: ORIGIN,
-                    upgrade_id: 308664,
+            .execute_command(
+                catalog,
+                UpgradeCommand {
+                    owner_uid: 10,
+                    operation: UpgradeOperation::Offer {
+                        origin: ORIGIN,
+                        upgrade_id: 308664,
+                    },
                 },
-            })
+            )
             .unwrap();
         assert_eq!(offered.offered_after, Some(308664));
         assert_eq!(offered.offer_origin, Some(ORIGIN));
 
         let selected = upgrades
-            .execute_command(UpgradeCommand {
-                owner_uid: 10,
-                operation: UpgradeOperation::Select {
-                    upgrade_id: 308664,
-                    option_id: 3086524,
+            .execute_command(
+                catalog,
+                UpgradeCommand {
+                    owner_uid: 10,
+                    operation: UpgradeOperation::Select {
+                        upgrade_id: 308664,
+                        option_id: 3086524,
+                    },
                 },
-            })
+            )
             .unwrap();
         assert_eq!(selected.offered_after, None);
         assert_eq!(selected.selected_after, Some(3086524));
@@ -253,6 +219,8 @@ mod tests {
 
     #[test]
     fn repeated_offer_preserves_the_emitted_operation() {
+        crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
         let mut upgrades = UpgradeManager::default();
         let command = UpgradeCommand {
             owner_uid: 10,
@@ -262,8 +230,8 @@ mod tests {
             },
         };
 
-        upgrades.execute_command(command).unwrap();
-        let repeated = upgrades.execute_command(command).unwrap();
+        upgrades.execute_command(catalog, command).unwrap();
+        let repeated = upgrades.execute_command(catalog, command).unwrap();
 
         assert_eq!(repeated.operation, command.operation);
         assert_eq!(repeated.offered_before, repeated.offered_after);

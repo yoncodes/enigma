@@ -33,7 +33,9 @@ pub(super) fn amount(
         let technique = pool
             .entity(source_uid)
             .zip(pool.entity(target_uid))
-            .map(|(source, target)| critical_technique_bonus(source, target.level, 12))
+            .map(|(source, target)| {
+                critical_technique_bonus(managers.catalog(), source, target.level, 12)
+            })
             .unwrap_or_default();
         let transient_crit = attack_attributes
             .iter()

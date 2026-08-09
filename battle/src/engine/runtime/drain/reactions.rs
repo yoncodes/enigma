@@ -9,7 +9,7 @@ const ULTIMATE_AVAILABILITY_ORIGIN: CommandOrigin = CommandOrigin {
     key: DefinitionKey::new(0, "UltimateAvailability"),
 };
 
-fn queued_ultimate_availability_sync(
+fn queued_invalid_ultimate_removal(
     pool: &TargetPool,
     managers: &BattleManagers,
     event: &BattleEvent,
@@ -32,24 +32,17 @@ fn queued_ultimate_availability_sync(
         .card
         .hand()
         .iter()
-        .find(|card| mechanic.is_ultimate(card, entity))
+        .find(|card| mechanic.is_ultimate(managers, card, entity))
         .cloned();
-    let (card, available) = if mechanic.can_add_normal_ultimate(managers, entity) {
-        (
-            crate::engine::manager::card::pool::card_for_target(entity, entity.ex_skill)?,
-            true,
-        )
-    } else if !mechanic.ultimate_ready(managers, entity) {
-        (current?, false)
-    } else {
+    if mechanic.ultimate_ready(managers, entity) {
         return None;
-    };
+    }
     Some(QueuedOp {
         op: RuleOp::Command(BattleCommand::Card(CardCommand::SetUltimateAvailability(
             CardSetUltimateAvailability {
                 origin: ULTIMATE_AVAILABILITY_ORIGIN,
-                card,
-                available,
+                card: current?,
+                available: false,
             },
         ))),
         trigger: SkillOpTrigger::Event(event.clone()),
@@ -127,7 +120,7 @@ pub(super) fn dispatch_event_batch(
                     .target_uid()
                     .is_none_or(|target_uid| owners.contains(&target_uid))
             })
-            && let Some(sync) = queued_ultimate_availability_sync(pool, managers, event, reuse_path)
+            && let Some(sync) = queued_invalid_ultimate_removal(pool, managers, event, reuse_path)
         {
             reactions.after_publish.push(sync);
         }

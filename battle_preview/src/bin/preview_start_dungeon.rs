@@ -21,7 +21,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn run() -> anyhow::Result<()> {
-    init_config()?;
+    let db = init_config()?;
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures");
     let input_root = root.join("battles");
@@ -31,7 +31,7 @@ fn run() -> anyhow::Result<()> {
 
     for input in inputs {
         let original_text = fs::read_to_string(&input)?;
-        let (generated, cards, original) = generate_reply(&input)?;
+        let (generated, cards, original) = generate_reply(db, &input)?;
         let generated_value = serde_json::to_value(&generated)?;
         let captured = captured_start_reply(&original);
         let output_value = render_json_with_capture_conventions(&generated_value, captured);
@@ -74,10 +74,12 @@ fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn init_config() -> anyhow::Result<()> {
-    let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/excel2json");
+fn init_config() -> anyhow::Result<&'static config::GameDB> {
+    let data = env::var_os("ENIGMA_BATTLE_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/excel2json"));
     config::init(data.to_str().unwrap())?;
-    Ok(())
+    Ok(config::configs::get())
 }
 
 fn start_inputs(root: &Path, args: Vec<String>) -> anyhow::Result<Vec<PathBuf>> {
@@ -110,6 +112,7 @@ fn captured_start_reply(value: &serde_json::Value) -> &serde_json::Value {
 }
 
 fn generate_reply(
+    db: &'static config::GameDB,
     path: &Path,
 ) -> anyhow::Result<(StartDungeonReply, CardInfoPush, serde_json::Value)> {
     let original: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
@@ -129,13 +132,16 @@ fn generate_reply(
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "capture has no round"))?,
     )?;
     let tower_rule_skills = tower_plan_id(path)
-        .map(|plan_id| {
-            battle::tower::system_plan_rule_skills(config::configs::get(), &fight, plan_id)
-        })
+        .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, path)?;
-    let opening_determinism = captured_opening_determinism(&fight, &captured_round);
-    let mut runtime = BattleRuntime::new_with_attributes(fight, ex_attributes, sp_attributes);
+    let opening_determinism = captured_opening_determinism(db, &fight, &captured_round);
+    let mut runtime = BattleRuntime::new_with_attributes(
+        battle::catalog::BattleCatalog::new(db),
+        fight,
+        ex_attributes,
+        sp_attributes,
+    );
     runtime.extend_battle_rule_skills(tower_rule_skills);
     runtime
         .start_round_with_determinism(opening_determinism)

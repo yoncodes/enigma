@@ -509,8 +509,13 @@ fn direct_big_skill_rule_ops(
         .entity(context.target_uid)
         .and_then(|entity| (entity.ex_skill > 0).then_some(entity.ex_skill))?;
     let consumed = context.managers.ex_point.get(context.target_uid).max(0);
-    let refund = consumed
-        .min(crate::engine::skill::effect::catalog::configured_big_skill_point(skill_id).max(0));
+    let refund = consumed.min(
+        context
+            .pool
+            .catalog()
+            .skill_big_skill_point(skill_id)
+            .max(0),
+    );
     let origin = super::command_origin(behavior)?;
     let ex_point = |delta| {
         RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(
@@ -777,7 +782,7 @@ fn choose_drive_skill(
         .into_iter()
         .chain(source.skill_group2.first())
         .copied()
-        .filter(|skill_id| crate::engine::skill::effect::catalog::configured_is_attack(*skill_id))
+        .filter(|skill_id| pool.catalog().skill_is_attack(*skill_id))
         .collect::<Vec<_>>();
     if let Some(skill_id) = determinism.take_random_skill(&candidates) {
         return Some(skill_id);

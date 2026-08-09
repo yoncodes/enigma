@@ -69,8 +69,7 @@ impl CardMechanic {
     }
 
     pub fn required_ultimate_cost(&self, managers: &BattleManagers, entity: &TargetEntity) -> i32 {
-        let configured =
-            crate::engine::skill::effect::catalog::configured_big_skill_point(entity.ex_skill);
+        let configured = managers.catalog().skill_big_skill_point(entity.ex_skill);
         if ExPointKind::from_wire(managers.ex_point.kind(entity.uid)) != ExPointKind::Common {
             return configured.max(0);
         }
@@ -108,21 +107,28 @@ impl CardMechanic {
                 .has_buff_act_kind(entity.uid, BuffActKind::CantGetExskill)
     }
 
-    pub fn is_ultimate(&self, card: &CardInfo, entity: &TargetEntity) -> bool {
+    pub fn is_ultimate(
+        &self,
+        managers: &BattleManagers,
+        card: &CardInfo,
+        entity: &TargetEntity,
+    ) -> bool {
         card.uid == Some(entity.uid)
             && card
                 .skill_id
-                .is_some_and(|skill_id| self.is_ultimate_skill(skill_id, entity))
+                .is_some_and(|skill_id| self.is_ultimate_skill(managers, skill_id, entity))
     }
 
-    pub fn is_ultimate_skill(&self, skill_id: i32, entity: &TargetEntity) -> bool {
+    pub fn is_ultimate_skill(
+        &self,
+        managers: &BattleManagers,
+        skill_id: i32,
+        entity: &TargetEntity,
+    ) -> bool {
         skill_id == entity.ex_skill
-            || config::try_get()
-                .and_then(|db| db.skill.get(skill_id))
-                .is_some_and(|skill| {
-                    skill.hero_id == entity.model_id
-                        && crate::engine::skill::effect::catalog::configured_is_big_skill(skill_id)
-                })
+            || managers
+                .catalog()
+                .skill_is_ultimate_for_model(skill_id, entity.model_id)
     }
 
     pub fn can_add_normal_ultimate(
@@ -137,7 +143,7 @@ impl CardMechanic {
                 .hand()
                 .iter()
                 .chain(managers.card.team_cards())
-                .any(|card| self.is_ultimate(card, entity))
+                .any(|card| self.is_ultimate(managers, card, entity))
     }
 
     pub fn refill_hand_len(&self, managers: &BattleManagers, pool: &TargetPool) -> usize {
@@ -159,7 +165,7 @@ impl CardMechanic {
             && pool
                 .entity(card.uid.unwrap_or_default())
                 .is_none_or(|entity| {
-                    !self.is_ultimate(card, entity)
+                    !self.is_ultimate(managers, card, entity)
                         || !self.ultimate_ignores_limit(
                             managers,
                             entity.uid,
@@ -168,9 +174,9 @@ impl CardMechanic {
                 })
     }
 
-    pub fn is_device_card(&self, card: &CardInfo) -> bool {
+    pub fn is_device_card(&self, managers: &BattleManagers, card: &CardInfo) -> bool {
         card.skill_id.is_some_and(|skill_id| {
-            crate::engine::skill::effect::catalog::configured_effect_tag(skill_id)
+            managers.catalog().skill_effect_tag(skill_id)
                 == crate::engine::skill::effect::catalog::SkillEffectTag::Device as i32
         })
     }
@@ -189,7 +195,7 @@ impl CardMechanic {
                     .card
                     .draw_pile()
                     .iter()
-                    .find(|card| self.is_ultimate(card, entity))
+                    .find(|card| self.is_ultimate(managers, card, entity))
                     .cloned()
                     .or_else(|| {
                         crate::engine::manager::card::pool::card_for_target(entity, entity.ex_skill)
@@ -231,7 +237,7 @@ impl CardMechanic {
                 (self.ultimate_ready(managers, entity)
                     && !before_hand
                         .iter()
-                        .any(|card| self.is_ultimate(card, entity))
+                        .any(|card| self.is_ultimate(managers, card, entity))
                     && self.ultimate_ignores_limit(managers, uid, skill_id))
                 .then(|| crate::engine::manager::card::pool::card_for_target(entity, skill_id))
                 .flatten()
@@ -374,13 +380,14 @@ mod tests {
             ..Default::default()
         };
         let pool = TargetPool::from_fight(&fight);
+        let managers = BattleManagers::default();
         let card = CardInfo {
             uid: Some(10),
             skill_id: Some(31340131),
             ..Default::default()
         };
 
-        assert!(CardMechanic.is_ultimate(&card, &pool.attacker_main[0]));
+        assert!(CardMechanic.is_ultimate(&managers, &card, &pool.attacker_main[0]));
         assert!(
             CardMechanic
                 .special_team_cards(&pool, &BattleManagers::seeded(&fight), &[card])

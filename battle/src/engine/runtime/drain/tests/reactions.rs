@@ -206,7 +206,7 @@ fn moxie_readiness_survives_another_owners_skill_rewrite() {
                     model_id: Some(1),
                     team_type: Some(1),
                     current_hp: Some(100),
-                    ex_point: Some(4),
+                    ex_point: Some(5),
                     ex_skill: Some(900),
                     ..Default::default()
                 },
@@ -228,11 +228,18 @@ fn moxie_readiness_survives_another_owners_skill_rewrite() {
     let mut managers = BattleManagers::seeded(&fight);
     managers
         .execute_card(CardCommand::Setup(CardSetup {
-            hand: vec![CardInfo {
-                uid: Some(11),
-                skill_id: Some(101),
-                ..Default::default()
-            }],
+            hand: vec![
+                CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(900),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(11),
+                    skill_id: Some(101),
+                    ..Default::default()
+                },
+            ],
             draw_pile: Vec::new(),
             deck_num: 1,
         }))
@@ -241,25 +248,6 @@ fn moxie_readiness_survives_another_owners_skill_rewrite() {
         domain: RuleDomain::Lifecycle,
         key: DefinitionKey::new(0, "UltimateAvailabilityTest"),
     };
-
-    run(
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
-        [RuleOp::Command(BattleCommand::ExPoint(
-            ExPointCommand::Change(ExPointChange {
-                origin,
-                source_uid: 10,
-                target_uid: 10,
-                delta: 1,
-                config_effect: 0,
-                effect_type: 0,
-            }),
-        ))],
-    )
-    .unwrap();
 
     let rewrite = run(
         &mut managers,
@@ -331,6 +319,66 @@ fn moxie_readiness_survives_another_owners_skill_rewrite() {
             .refilled()
             .iter()
             .all(|card| card.uid != Some(10) || card.skill_id != Some(900))
+    );
+}
+
+#[test]
+fn moxie_gain_waits_for_the_normal_card_refill() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ex_point: Some(4),
+                ex_skill: Some(900),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![CardInfo {
+                uid: Some(10),
+                skill_id: Some(101),
+                ..Default::default()
+            }],
+            draw_pile: Vec::new(),
+            deck_num: 1,
+        }))
+        .unwrap();
+
+    run(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Command(BattleCommand::ExPoint(
+            ExPointCommand::Change(ExPointChange {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Lifecycle,
+                    key: DefinitionKey::new(0, "UltimateRefillTest"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                delta: 1,
+                config_effect: 0,
+                effect_type: 0,
+            }),
+        ))],
+    )
+    .unwrap();
+
+    assert!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .all(|card| card.skill_id != Some(900))
     );
 }
 

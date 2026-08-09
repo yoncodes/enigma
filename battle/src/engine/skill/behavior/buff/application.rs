@@ -84,7 +84,8 @@ pub(super) fn heat_scale_snapshot_grant_ops(
         return None;
     }
     let buff_id = behavior.arg(0)?;
-    let act_info = crate::engine::skill::buff_act::attr_by_heat_scale::snapshot(
+    let act_info = crate::engine::skill::buff_act::attr_by_heat_scale::definition_snapshot(
+        &context.managers.buff,
         buff_id,
         context.target.heat_scale_value,
     )?;

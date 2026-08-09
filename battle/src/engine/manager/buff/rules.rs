@@ -105,7 +105,9 @@ impl BuffPolicy {
     pub fn try_for_buff_id(buff_id: i32) -> Result<Self, BuffPolicyError> {
         static POLICIES: OnceLock<HashMap<i32, Result<BuffPolicy, BuffPolicyError>>> =
             OnceLock::new();
-        let db = config::try_get().ok_or(BuffPolicyError::MissingDefinition(buff_id))?;
+        let db = crate::catalog::BattleCatalog::try_global()
+            .map(crate::catalog::BattleCatalog::game_data)
+            .ok_or(BuffPolicyError::MissingDefinition(buff_id))?;
         POLICIES
             .get_or_init(|| {
                 db.skill_buff
@@ -122,6 +124,12 @@ impl BuffPolicy {
             .get(&buff_id)
             .cloned()
             .unwrap_or(Err(BuffPolicyError::MissingDefinition(buff_id)))
+    }
+
+    pub(super) fn configured(game: &config::GameDB, buff_id: i32) -> Result<Self, BuffPolicyError> {
+        BuffDefinition::configured(game, buff_id)
+            .ok_or(BuffPolicyError::MissingDefinition(buff_id))
+            .and_then(|definition| Self::compile(&definition))
     }
 
     fn compile(definition: &BuffDefinition) -> Result<Self, BuffPolicyError> {
@@ -281,6 +289,16 @@ mod tests {
     #[test]
     fn reports_only_include_entries_without_runtime_semantics() {
         crate::test_support::init_config();
+        let game = crate::test_support::game_data();
+
+        assert_eq!(
+            BuffPolicy::configured(game, 6200501),
+            BuffPolicy::try_for_buff_id(6200501)
+        );
+        assert_eq!(
+            BuffPolicy::configured(game, -1),
+            Err(BuffPolicyError::MissingDefinition(-1))
+        );
 
         assert!(
             BuffPolicy::try_for_buff_id(31170002)

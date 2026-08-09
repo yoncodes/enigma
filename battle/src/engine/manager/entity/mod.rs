@@ -87,7 +87,18 @@ pub struct EntityManager {
 }
 
 impl EntityManager {
-    pub fn seed(fight: &Fight) -> Self {
+    pub(crate) fn configured(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
+        Self::from_fight(fight, catalog.defender_reservation_count(fight))
+    }
+
+    pub fn seed_with_game_data(game_data: &config::GameDB, fight: &Fight) -> Self {
+        Self::from_fight(
+            fight,
+            crate::catalog::configured_defender_reservation_count(game_data, fight),
+        )
+    }
+
+    fn from_fight(fight: &Fight, reserved_index: usize) -> Self {
         let entities = fight
             .attacker
             .iter()
@@ -145,8 +156,6 @@ impl EntityManager {
             .map(i64::unsigned_abs)
             .max()
             .unwrap_or_default() as usize;
-        let reserved_index = configured_defender_count(fight);
-
         Self {
             teams,
             identities,
@@ -158,8 +167,14 @@ impl EntityManager {
         }
     }
 
+    #[cfg(test)]
+    pub fn seed(fight: &Fight) -> Self {
+        Self::seed_with_game_data(crate::test_support::game_data(), fight)
+    }
+
     pub(crate) fn execute_command(
         &mut self,
+        catalog: crate::catalog::BattleCatalog,
         command: EntityCommand,
         hp: &HpManager,
     ) -> Result<EntityChanges, EntityCommandError> {
@@ -177,7 +192,7 @@ impl EntityManager {
                     .copied()
                     .ok_or(EntityCommandError::MissingSource)?;
                 let uid = self.next_special_uid;
-                let entity = Defender::build_monster_with_uid(model_id, uid, position, team_type)
+                let entity = Defender::build_monster(catalog, model_id, uid, position, team_type)
                     .map_err(|_| EntityCommandError::MissingModel)?;
                 self.next_special_uid -= 1;
                 self.teams.insert(uid, team_type);
@@ -197,7 +212,7 @@ impl EntityManager {
                     .ok_or(EntityCommandError::MissingSource)?;
                 let uid = self.next_special_uid;
                 let entity =
-                    Defender::build_monster_with_uid(model_id, uid, SPECIAL_POSITION, team_type)
+                    Defender::build_monster(catalog, model_id, uid, SPECIAL_POSITION, team_type)
                         .map_err(|_| EntityCommandError::MissingModel)?;
                 self.next_special_uid -= 1;
                 self.teams.insert(uid, team_type);
@@ -218,7 +233,8 @@ impl EntityManager {
                     .get(&command.target_uid)
                     .ok_or(EntityCommandError::MissingSource)?
                     .clone();
-                let mut entity = Defender::build_monster_with_uid(
+                let mut entity = Defender::build_monster(
+                    catalog,
                     model_id,
                     command.target_uid,
                     current.position.unwrap_or_default(),
@@ -226,7 +242,8 @@ impl EntityManager {
                 )
                 .map_err(|_| EntityCommandError::MissingModel)?;
                 let intrinsic_identity = current.model_id.and_then(|current_model_id| {
-                    Defender::build_monster_with_uid(
+                    Defender::build_monster(
+                        catalog,
                         current_model_id,
                         command.target_uid,
                         current.position.unwrap_or_default(),
@@ -637,22 +654,6 @@ fn scale_attribute(
         (i64::from(replacement) * i64::from(current) / i64::from(intrinsic))
             .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
     )
-}
-
-fn configured_defender_count(fight: &Fight) -> usize {
-    let Some(db) = config::try_get() else {
-        return 0;
-    };
-    let Some(battle) = db.battle.get(fight.battle_id.unwrap_or_default()) else {
-        return 0;
-    };
-    battle
-        .monster_group_ids
-        .split('#')
-        .filter_map(|id| id.parse::<i32>().ok())
-        .filter_map(|id| db.monster_group.get(id))
-        .map(|group| group.monster.split('#').filter(|id| !id.is_empty()).count())
-        .sum()
 }
 
 #[cfg(test)]

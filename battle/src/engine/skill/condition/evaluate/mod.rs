@@ -700,9 +700,7 @@ fn condition_kind_matches(
                 .played()
                 .iter()
                 .filter(|played| allies.iter().any(|ally| ally.uid == played.caster_uid))
-                .filter(|played| {
-                    crate::engine::entity::skill::card_skill_rank(&played.card) >= *minimum_rank
-                })
+                .filter(|played| managers.catalog().card_skill_rank(&played.card) >= *minimum_rank)
                 .count()
                 >= *threshold as usize
         }),
@@ -956,8 +954,13 @@ fn condition_kind_matches(
             })
             .is_some_and(|source| {
                 source.ex_skill != 0
-                    && crate::engine::mechanic::card::CardMechanic
-                        .is_ultimate_skill(context.active_skill_id, source)
+                    && managers.is_some_and(|managers| {
+                        crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                            managers,
+                            context.active_skill_id,
+                            source,
+                        )
+                    })
             }),
         ParsedConditionKind::TargetUseExSkill => {
             context.active_skill_source_uid != 0
@@ -966,16 +969,26 @@ fn condition_kind_matches(
                     .entity(context.active_skill_source_uid)
                     .is_some_and(|actor| {
                         actor.ex_skill != 0
-                            && crate::engine::mechanic::card::CardMechanic
-                                .is_ultimate_skill(context.active_skill_id, actor)
+                            && managers.is_some_and(|managers| {
+                                crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                                    managers,
+                                    context.active_skill_id,
+                                    actor,
+                                )
+                            })
                     })
         }
         ParsedConditionKind::TeammateUseExSkill => pool.allies(source_uid).iter().any(|ally| {
             ally.uid != source_uid
                 && ally.uid == context.active_skill_source_uid
                 && ally.ex_skill != 0
-                && crate::engine::mechanic::card::CardMechanic
-                    .is_ultimate_skill(context.active_skill_id, ally)
+                && managers.is_some_and(|managers| {
+                    crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                        managers,
+                        context.active_skill_id,
+                        ally,
+                    )
+                })
         }),
         ParsedConditionKind::ActiveSkillRank { compare, ranks } => {
             context.active_skill_rank != 0
@@ -1044,7 +1057,11 @@ fn condition_kind_matches(
                     .any(crate::engine::skill::buff_act::forces_career_restraint)
             });
             let restrained = forces_restraint
-                || crate::engine::damage::handler::restrains_target(attacker.career, defender);
+                || crate::engine::damage::handler::restrains_target(
+                    pool.catalog(),
+                    attacker.career,
+                    defender,
+                );
             restrained == matches!(condition.kind, ParsedConditionKind::HurtRestrained)
         }
         ParsedConditionKind::EntityCount {
@@ -1193,28 +1210,12 @@ fn specific_skill_matches(
 }
 
 fn has_master_halo(uid: i64, managers: Option<&BattleManagers>) -> bool {
-    let is_halo = |raw: &str| {
-        raw.split('|').any(|feature| {
-            matches!(
-                feature
-                    .split('#')
-                    .next()
-                    .and_then(|value| value.parse().ok()),
-                Some(771 | 772 | 822)
-            )
-        })
-    };
     managers.is_some_and(|managers| {
         managers
             .buff
             .active_for(uid)
-            .filter_map(|buff| {
-                config::try_get()?
-                    .skill_buff
-                    .get(buff.buff_id?)
-                    .map(|row| &row.features)
-            })
-            .any(|features| is_halo(features))
+            .filter_map(|buff| buff.buff_id)
+            .any(|buff_id| managers.catalog().buff_has_master_halo(buff_id))
     })
 }
 

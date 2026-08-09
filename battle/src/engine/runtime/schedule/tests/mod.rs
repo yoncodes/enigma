@@ -6,9 +6,7 @@ use crate::engine::{
         card::CardPlay,
         field::{FieldCommand, FieldDefinition, FieldOperation},
     },
-    mechanic::impromptu::{
-        ImpromptuDefinition, build_plan, enable_rule_ops, inspiration_key, team_energy_key,
-    },
+    mechanic::impromptu::{build_plan, enable_rule_ops, inspiration_key, team_energy_key},
     skill::{
         behavior::classify::BehaviorSpec,
         buff_act,

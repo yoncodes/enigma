@@ -11,3 +11,10 @@ mod core;
 mod qte;
 mod rounds;
 mod terminal;
+
+fn runtime(fight: Fight) -> BattleRuntime {
+    BattleRuntime::new(
+        crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+        fight,
+    )
+}

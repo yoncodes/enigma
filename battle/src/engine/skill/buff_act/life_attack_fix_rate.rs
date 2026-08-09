@@ -1,10 +1,13 @@
 use std::collections::HashSet;
 
-use crate::engine::{
-    damage::{DamageRateComposition, DamageRateTerm},
-    manager::{
-        buff::{ActiveBuffFeature, BuffManager},
-        hp::HpManager,
+use crate::{
+    catalog::BattleCatalog,
+    engine::{
+        damage::{DamageRateComposition, DamageRateTerm},
+        manager::{
+            buff::{ActiveBuffFeature, BuffManager},
+            hp::HpManager,
+        },
     },
 };
 
@@ -17,10 +20,15 @@ pub fn skill_rate_bonus(feature: &ActiveBuffFeature) -> i32 {
 }
 
 pub fn buff_id_skill_rate_bonus(buff_id: i32) -> i32 {
-    config::try_get()
-        .and_then(|db| db.skill_buff.get(buff_id))
+    BattleCatalog::try_global()
+        .map(|catalog| resolve_buff_id_skill_rate_bonus(catalog, buff_id))
+        .unwrap_or_default()
+}
+
+fn resolve_buff_id_skill_rate_bonus(catalog: BattleCatalog, buff_id: i32) -> i32 {
+    catalog
+        .buff_feature_rows(buff_id)
         .into_iter()
-        .flat_map(|buff| buff.features.split('|'))
         .map(|raw| {
             raw.split('#')
                 .filter_map(|value| value.parse::<i32>().ok())
@@ -29,8 +37,8 @@ pub fn buff_id_skill_rate_bonus(buff_id: i32) -> i32 {
         .filter(|values| {
             values
                 .first()
-                .and_then(|act_id| config::try_get()?.buff_act.get(*act_id))
-                .and_then(|act| super::registry::kind(act.id, &act.r#type))
+                .and_then(|act_id| catalog.buff_act_definition(*act_id))
+                .map(|definition| definition.kind)
                 == Some(super::registry::BuffActKind::LifeAttackFixRate)
         })
         .map(|values| values_bonus(&values, 1))
@@ -117,9 +125,12 @@ mod tests {
     #[test]
     fn channel_can_read_its_transient_rate_buff_without_activating_it() {
         crate::test_support::init_config();
+        let catalog = BattleCatalog::try_global().unwrap();
 
         assert_eq!(buff_id_skill_rate_bonus(31260161), 100);
         assert_eq!(buff_id_skill_rate_bonus(31260181), 20);
+        assert_eq!(resolve_buff_id_skill_rate_bonus(catalog, 31260161), 100);
+        assert_eq!(resolve_buff_id_skill_rate_bonus(catalog, -1), 0);
     }
 
     #[test]

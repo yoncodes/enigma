@@ -64,7 +64,7 @@ impl SkillEffectCatalog {
                     .filter_map(|skill| skill.skill_id),
             );
         }
-        if let Some(battle) = crate::engine::fight::configured_battle(fight) {
+        if let Some(battle) = crate::engine::fight::configured_battle_with_game_data(db, fight) {
             for rule_id in
                 numeric_ids(&battle.addition_rule).chain(numeric_ids(&battle.hidden_rule))
             {
@@ -74,7 +74,10 @@ impl SkillEffectCatalog {
                 }
             }
         }
-        skills.extend(crate::engine::manager::conduit::ConduitManager::seed(fight).skill_ids());
+        skills.extend(
+            crate::engine::manager::conduit::ConduitManager::seed_with_game_data(db, fight)
+                .skill_ids(),
+        );
         let catalog = Self::from_roots(db, skills, buffs);
         catalog.warn_unsupported(db);
         catalog
@@ -276,8 +279,8 @@ impl SkillEffectCatalog {
                             .map(|request| request.skill_id),
                         ),
                         Some(BuffActKind::EmitterTag) => skills.extend(
-                            crate::engine::mechanic::impromptu::ImpromptuDefinition::from_config()
-                                .map(|definition| definition.skill_id()),
+                            crate::catalog::impromptu_definition(db)
+                            .map(|definition| definition.skill_id()),
                         ),
                         Some(BuffActKind::BeatBackDependOnAttackMe) => {
                             skills.extend(values.iter().skip(1).take(2).copied())

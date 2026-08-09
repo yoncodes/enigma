@@ -91,21 +91,25 @@ pub fn rule_op(
 }
 
 pub fn grant_transaction_rule_ops(
-    _managers: &BattleManagers,
+    managers: &BattleManagers,
     event: &BattleEvent,
 ) -> Vec<(crate::engine::manager::buff::ActiveBuffFeature, RuleOp)> {
-    super::changed_features(event, super::registry::BuffActKind::AddBuffByOtherExSkill)
-        .into_iter()
-        .map(|(feature, _)| {
-            let op = RuleOp::BuffFeatureMarker {
-                target_uid: feature.owner_uid,
-                effect_type: sonettobuf::effect_type_enum::EffectType::None as i32,
-                effect_num: 0,
-                buff_act_id: 0,
-            };
-            (feature, op)
-        })
-        .collect()
+    super::changed_features(
+        managers,
+        event,
+        super::registry::BuffActKind::AddBuffByOtherExSkill,
+    )
+    .into_iter()
+    .map(|(feature, _)| {
+        let op = RuleOp::BuffFeatureMarker {
+            target_uid: feature.owner_uid,
+            effect_type: sonettobuf::effect_type_enum::EffectType::None as i32,
+            effect_num: 0,
+            buff_act_id: 0,
+        };
+        (feature, op)
+    })
+    .collect()
 }
 
 #[cfg(test)]

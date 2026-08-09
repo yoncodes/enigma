@@ -36,6 +36,7 @@ impl BehaviorHandler for Handler {
             || *chance <= 0
             || (*chance < 1000 && !context.determinism.roll_permille(*chance))
             || crate::engine::skill::buff_act::additional_damage::configured(
+                context.managers.catalog(),
                 *buff_id,
                 context.source_uid,
                 context.source_uid,

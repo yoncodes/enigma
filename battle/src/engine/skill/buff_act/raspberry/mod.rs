@@ -1,5 +1,6 @@
 use sonettobuf::{BuffActInfo, BuffInfo};
 
+use crate::catalog::BattleCatalog;
 use crate::engine::{
     entity::attr::AttrId,
     event::payload::BattleEvent,
@@ -25,6 +26,9 @@ use crate::engine::{
 use super::{is_kind, registry::BuffActKind, subscriber_is_kind};
 
 pub fn attribute_delta(buffs: &BuffManager, owner_uid: i64, attr_id: AttrId) -> i32 {
+    let Some(catalog) = buffs.try_catalog().or_else(BattleCatalog::try_global) else {
+        return 0;
+    };
     let regular = buffs
         .active_for(owner_uid)
         .filter_map(|buff| {
@@ -33,27 +37,25 @@ pub fn attribute_delta(buffs: &BuffManager, owner_uid: i64, attr_id: AttrId) -> 
                 .as_deref()
                 .and_then(parse_capacity)
                 .map(|(current, _)| current)?;
-            let definition = config::try_get()?.skill_buff.get(buff.buff_id?)?;
-            definition
-                .features
-                .split('|')
-                .find_map(|raw| raspberry_attribute_rates(raw, attr_id))
+            catalog
+                .buff_feature_rows(buff.buff_id?)
+                .into_iter()
+                .find_map(|raw| raspberry_attribute_rates(catalog, raw, attr_id))
                 .map(|rates| stepped_attribute(current, rates.regular))
         })
         .sum::<i32>();
     let Some(rates) = buffs.active_for(owner_uid).find_map(|buff| {
-        let definition = config::try_get()?.skill_buff.get(buff.buff_id?)?;
-        definition
-            .features
-            .split('|')
-            .find_map(|raw| raspberry_attribute_rates(raw, attr_id))
+        catalog
+            .buff_feature_rows(buff.buff_id?)
+            .into_iter()
+            .find_map(|raw| raspberry_attribute_rates(catalog, raw, attr_id))
     }) else {
         return regular;
     };
     regular
         + buffs
             .active_for(owner_uid)
-            .filter_map(big_skill_points)
+            .filter_map(|buff| big_skill_points(catalog, buff))
             .map(|points| feast_attribute(points, rates))
             .sum::<i32>()
 }
@@ -64,9 +66,18 @@ struct RaspberryAttributeRates {
     feast_tenths: i32,
 }
 
-fn raspberry_attribute_rates(raw: &str, attr_id: AttrId) -> Option<RaspberryAttributeRates> {
+fn raspberry_attribute_rates(
+    catalog: BattleCatalog,
+    raw: &str,
+    attr_id: AttrId,
+) -> Option<RaspberryAttributeRates> {
     let parts = raw.split('#').collect::<Vec<_>>();
-    if parts.len() != 12 || !parts[0].parse().ok().is_some_and(is_raspberry_act_id) {
+    if parts.len() != 12
+        || !parts[0]
+            .parse()
+            .ok()
+            .is_some_and(|act_id| is_raspberry_act_id(catalog, act_id))
+    {
         return None;
     }
     [(5, 6, 10), (7, 8, 11)]
@@ -103,12 +114,14 @@ fn feast_attribute(points: i32, rates: RaspberryAttributeRates) -> i32 {
     regular.saturating_mul(rates.feast_tenths.max(0)) / denominator
 }
 
-fn big_skill_points(buff: &BuffInfo) -> Option<i32> {
-    let definition = config::try_get()?.skill_buff.get(buff.buff_id?)?;
-    let act_id = definition.features.split('|').find_map(|raw| {
-        let act_id = raw.split('#').next()?.parse().ok()?;
-        is_big_skill_act_id(act_id).then_some(act_id)
-    })?;
+fn big_skill_points(catalog: BattleCatalog, buff: &BuffInfo) -> Option<i32> {
+    let act_id = catalog
+        .buff_feature_rows(buff.buff_id?)
+        .into_iter()
+        .find_map(|raw| {
+            let act_id = raw.split('#').next()?.parse().ok()?;
+            is_big_skill_act_id(catalog, act_id).then_some(act_id)
+        })?;
     buff.act_info
         .iter()
         .find(|info| info.act_id == Some(act_id))?
@@ -195,6 +208,15 @@ impl RaspberryBuffAct {
     }
 
     pub fn capacity(self, buff: &BuffInfo, fallback_cap: i32) -> (i32, i32) {
+        self.capacity_inner(BattleCatalog::try_global(), buff, fallback_cap)
+    }
+
+    fn capacity_inner(
+        self,
+        catalog: Option<BattleCatalog>,
+        buff: &BuffInfo,
+        fallback_cap: i32,
+    ) -> (i32, i32) {
         let parsed = buff
             .act_common_params
             .as_deref()
@@ -202,7 +224,11 @@ impl RaspberryBuffAct {
             .or_else(|| {
                 buff.act_info
                     .iter()
-                    .find(|info| info.act_id.is_some_and(is_raspberry_act_id))
+                    .find(|info| {
+                        info.act_id.is_some_and(|act_id| {
+                            catalog.is_some_and(|catalog| is_raspberry_act_id(catalog, act_id))
+                        })
+                    })
                     .and_then(|info| Some((*info.param.first()?, *info.param.get(1)?)))
             });
         parsed
@@ -326,7 +352,7 @@ pub(crate) fn execute_add_count(
         .snapshot(command.target_uid, act.buff_uid)
         .ok_or(CapacityError::InvalidCommand)?;
     let fallback_cap = act.max_cap_from_source_hp(managers.hp.max(command.source_uid));
-    let (current, cap) = act.capacity(&buff, fallback_cap);
+    let (current, cap) = act.capacity_inner(Some(managers.catalog()), &buff, fallback_cap);
     let attr_value = match command.attr_id {
         AttrId::CurrentHp => managers.hp.current(command.source_uid),
         AttrId::Hp => managers.hp.max(command.target_uid),
@@ -457,7 +483,7 @@ pub fn big_skill_rule_ops(
     if source_uid == 0 || target_uid == 0 || transfer_rate < 0 || buff_id <= 0 {
         return None;
     }
-    let act_id = big_skill_act_id(buff_id)?;
+    let act_id = big_skill_act_id(managers.catalog(), buff_id)?;
     let Some(team) = managers.buff.team_type(target_uid) else {
         return Some(Vec::new());
     };
@@ -475,7 +501,7 @@ pub fn big_skill_rule_ops(
             let buff = managers.buff.snapshot(act.owner_uid, act.buff_uid)?;
             let fallback_cap =
                 act.max_cap_from_source_hp(managers.hp.max(act.source_or_owner_uid()));
-            let (current, cap) = act.capacity(&buff, fallback_cap);
+            let (current, cap) = act.capacity_inner(Some(managers.catalog()), &buff, fallback_cap);
             if current <= 0 {
                 return None;
             }
@@ -527,14 +553,14 @@ pub fn big_skill_rule_ops(
     Some(ops)
 }
 
-fn big_skill_act_id(buff_id: i32) -> Option<i32> {
-    let definition = config::try_get()?.skill_buff.get(buff_id)?;
-    definition.features.split('|').find_map(|raw| {
-        let act_id = raw.split('#').next()?.parse().ok()?;
-        let act = config::try_get()?.buff_act.get(act_id)?;
-        (super::registry::kind(act_id, &act.r#type) == Some(BuffActKind::RaspberryBigSkill))
-            .then_some(act_id)
-    })
+fn big_skill_act_id(catalog: BattleCatalog, buff_id: i32) -> Option<i32> {
+    catalog
+        .buff_feature_rows(buff_id)
+        .into_iter()
+        .find_map(|raw| {
+            let act_id = raw.split('#').next()?.parse().ok()?;
+            is_big_skill_act_id(catalog, act_id).then_some(act_id)
+        })
 }
 
 pub fn round_start_rule_op(
@@ -577,7 +603,7 @@ pub fn rule_ops(
         return None;
     }
     if let BattleEvent::BuffRemoved(change) = event {
-        if !is_big_skill_act_id(change.act_id)
+        if !is_big_skill_act_id(managers.catalog(), change.act_id)
             || change.act_value <= 0
             || managers.buff.team_type(change.target_uid) != Some(subscriber.team_type)
             || !super::is_primary_team_subscriber(managers, subscriber, BuffActKind::Raspberry)
@@ -645,18 +671,16 @@ fn parse_capacity(raw: &str) -> Option<(i32, i32)> {
     Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
 }
 
-fn is_raspberry_act_id(act_id: i32) -> bool {
-    let Some(act) = config::try_get().and_then(|db| db.buff_act.get(act_id)) else {
-        return false;
-    };
-    super::registry::kind(act_id, &act.r#type) == Some(BuffActKind::Raspberry)
+fn is_raspberry_act_id(catalog: BattleCatalog, act_id: i32) -> bool {
+    catalog
+        .buff_act_definition(act_id)
+        .is_some_and(|definition| definition.kind == BuffActKind::Raspberry)
 }
 
-fn is_big_skill_act_id(act_id: i32) -> bool {
-    let Some(act) = config::try_get().and_then(|db| db.buff_act.get(act_id)) else {
-        return false;
-    };
-    super::registry::kind(act_id, &act.r#type) == Some(BuffActKind::RaspberryBigSkill)
+fn is_big_skill_act_id(catalog: BattleCatalog, act_id: i32) -> bool {
+    catalog
+        .buff_act_definition(act_id)
+        .is_some_and(|definition| definition.kind == BuffActKind::RaspberryBigSkill)
 }
 
 fn rate(feature: &ActiveBuffFeature, index_after_act_id: usize) -> i32 {

@@ -142,8 +142,18 @@ fn run_card_refill(
     );
     append_round_phase(&mut result, composition);
     loop {
-        let ready_normal =
-            crate::engine::mechanic::card::CardMechanic.normal_ultimate_cards(pool, managers);
+        let needs_normal_card = match stage {
+            RefillStage::Opening => managers.card.hand().len() < hand_size,
+            RefillStage::AfterActions | RefillStage::RoundStart => {
+                crate::engine::mechanic::card::CardMechanic.refill_hand_len(managers, pool)
+                    < hand_size
+            }
+        };
+        let ready_normal = if stage == RefillStage::Opening || needs_normal_card {
+            crate::engine::mechanic::card::CardMechanic.normal_ultimate_cards(pool, managers)
+        } else {
+            Vec::new()
+        };
         let ready_special = if stage == RefillStage::AfterActions {
             crate::engine::mechanic::card::CardMechanic
                 .special_team_cards(pool, managers, managers.card.hand())
@@ -156,13 +166,6 @@ fn run_card_refill(
                 .collect::<Vec<_>>()
         } else {
             Vec::new()
-        };
-        let needs_normal_card = match stage {
-            RefillStage::Opening => managers.card.hand().len() < hand_size,
-            RefillStage::AfterActions | RefillStage::RoundStart => {
-                crate::engine::mechanic::card::CardMechanic.refill_hand_len(managers, pool)
-                    < hand_size
-            }
         };
         if !needs_normal_card
             && ready_normal.is_empty()
@@ -204,7 +207,8 @@ fn run_card_refill(
             .filter(|card| {
                 pool.entity(card.uid.unwrap_or_default())
                     .is_none_or(|entity| {
-                        !crate::engine::mechanic::card::CardMechanic.is_ultimate(card, entity)
+                        !crate::engine::mechanic::card::CardMechanic
+                            .is_ultimate(managers, card, entity)
                     })
             })
             .cloned()
@@ -238,9 +242,9 @@ fn run_card_refill(
         let is_ultimate = pool
             .entity(card.uid.unwrap_or_default())
             .is_some_and(|entity| {
-                crate::engine::mechanic::card::CardMechanic.is_ultimate(&card, entity)
+                crate::engine::mechanic::card::CardMechanic.is_ultimate(managers, &card, entity)
             });
-        let is_device = crate::engine::mechanic::card::CardMechanic.is_device_card(&card);
+        let is_device = crate::engine::mechanic::card::CardMechanic.is_device_card(managers, &card);
         if is_ultimate
             && !ready_ultimates
                 .iter()

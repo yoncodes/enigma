@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn rejects_unknown_cloth_skill_type_at_runtime_boundary() {
     crate::test_support::init_config();
-    let mut runtime = BattleRuntime::new(Fight::default());
+    let mut runtime = runtime(Fight::default());
     runtime.pending_redeal = Some(RedealCardInfoPush::default());
 
     assert!(
@@ -48,7 +48,7 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime.catalog =
         SkillEffectCatalog::from_roots(config::configs::get(), [30010201, 30010202], []);
     runtime
@@ -187,7 +187,7 @@ fn conduit_selection_adds_the_configured_precast_and_commits_the_choice() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     let reply = runtime
         .use_cloth_skill(UseClothSkillRequest {
             skill_id: Some(0),
@@ -261,7 +261,7 @@ fn contract_selection_uses_the_offered_uid_and_fight_const_buff_pair() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime
         .managers
         .contract

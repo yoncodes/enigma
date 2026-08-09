@@ -67,8 +67,11 @@ pub struct TargetEntity {
 struct TargetBuff {
     id: i32,
     type_id: i32,
+    status: Option<crate::engine::manager::buff::BuffStatus>,
     source_uid: i64,
-    features: Vec<&'static str>,
+    features: Vec<String>,
+    act_kinds: Vec<crate::engine::skill::buff_act::registry::BuffActKind>,
+    monster_labels: Vec<i32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -146,6 +149,7 @@ pub struct TargetContext {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TargetPool {
+    catalog_data: Option<crate::catalog::BattleCatalog>,
     pub attacker_main: Vec<TargetEntity>,
     pub attacker_all: Vec<TargetEntity>,
     pub defender_main: Vec<TargetEntity>,
@@ -158,15 +162,24 @@ pub struct TargetPool {
 }
 
 impl TargetPool {
+    #[cfg(test)]
     pub fn from_fight(fight: &Fight) -> Self {
+        Self::from_fight_with_catalog(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            fight,
+        )
+    }
+
+    pub fn from_fight_with_catalog(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
         let mut pool = Self {
-            boss_model_ids: configured_boss_model_ids(fight),
+            catalog_data: Some(catalog),
+            boss_model_ids: catalog.boss_model_ids(fight),
             ..Self::default()
         };
         if let Some(team) = &fight.attacker {
             pool.teams
                 .extend(team_identities(team).filter_map(|entity| entity.uid.map(|uid| (uid, 1))));
-            pool.attacker_main = alive_uids(&team.entitys);
+            pool.attacker_main = alive_uids(catalog, &team.entitys);
             if let Some(uid) = team.assist_boss.as_ref().and_then(|entity| entity.uid) {
                 pool.assist_bosses.insert(1, uid);
                 pool.assist_boss_skills.push((
@@ -176,13 +189,13 @@ impl TargetPool {
                         .map(|entity| entity.passive_skill.clone())
                         .unwrap_or_default(),
                 ));
-                pool.virtual_entities.extend(
-                    team.assist_boss
-                        .as_ref()
-                        .and_then(TargetEntity::from_fight_entity),
-                );
+                pool.virtual_entities
+                    .extend(team.assist_boss.as_ref().and_then(|entity| {
+                        TargetEntity::from_fight_entity_with_catalog(catalog, entity)
+                    }));
             }
             pool.attacker_all = alive_uids(
+                catalog,
                 team.entitys
                     .iter()
                     .chain(&team.sub_entitys)
@@ -192,7 +205,7 @@ impl TargetPool {
         if let Some(team) = &fight.defender {
             pool.teams
                 .extend(team_identities(team).filter_map(|entity| entity.uid.map(|uid| (uid, 2))));
-            pool.defender_main = alive_uids(&team.entitys);
+            pool.defender_main = alive_uids(catalog, &team.entitys);
             if let Some(uid) = team.assist_boss.as_ref().and_then(|entity| entity.uid) {
                 pool.assist_bosses.insert(2, uid);
                 pool.assist_boss_skills.push((
@@ -202,13 +215,13 @@ impl TargetPool {
                         .map(|entity| entity.passive_skill.clone())
                         .unwrap_or_default(),
                 ));
-                pool.virtual_entities.extend(
-                    team.assist_boss
-                        .as_ref()
-                        .and_then(TargetEntity::from_fight_entity),
-                );
+                pool.virtual_entities
+                    .extend(team.assist_boss.as_ref().and_then(|entity| {
+                        TargetEntity::from_fight_entity_with_catalog(catalog, entity)
+                    }));
             }
             pool.defender_all = alive_uids(
+                catalog,
                 team.entitys
                     .iter()
                     .chain(&team.sub_entitys)
@@ -223,6 +236,11 @@ impl TargetPool {
         pool
     }
 
+    pub(crate) fn catalog(&self) -> crate::catalog::BattleCatalog {
+        self.catalog_data
+            .expect("target pool was not constructed with a catalog")
+    }
+
     pub(crate) fn runtime_view(&self, managers: &BattleManagers) -> Self {
         self.runtime_view_including(managers, None)
     }
@@ -233,6 +251,7 @@ impl TargetPool {
         included_uid: Option<i64>,
     ) -> Self {
         let mut pool = self.clone();
+        let catalog = pool.catalog();
         for entities in [
             &mut pool.attacker_main,
             &mut pool.attacker_all,
@@ -240,11 +259,14 @@ impl TargetPool {
             &mut pool.defender_all,
         ] {
             entities.retain_mut(|entity| {
-                if let Some(identity) = managers
-                    .entity
-                    .snapshot(entity.uid)
-                    .as_ref()
-                    .and_then(TargetEntity::from_fight_entity)
+                if let Some(identity) =
+                    managers
+                        .entity
+                        .snapshot(entity.uid)
+                        .as_ref()
+                        .and_then(|entity| {
+                            TargetEntity::from_fight_entity_with_catalog(catalog, entity)
+                        })
                 {
                     *entity = identity;
                 }
@@ -254,7 +276,7 @@ impl TargetPool {
                 entity.buffs = managers
                     .buff
                     .active_for(entity.uid)
-                    .map(TargetBuff::from_buff_info)
+                    .map(|buff| TargetBuff::from_buff_info(catalog, buff))
                     .collect();
                 entity.current_hp > 0 || included_uid == Some(entity.uid)
             });
@@ -264,7 +286,7 @@ impl TargetPool {
                 .entity
                 .snapshot(entity.uid)
                 .as_ref()
-                .and_then(TargetEntity::from_fight_entity)
+                .and_then(|entity| TargetEntity::from_fight_entity_with_catalog(catalog, entity))
             {
                 *entity = identity;
             }
@@ -277,7 +299,7 @@ impl TargetPool {
             entity.buffs = managers
                 .buff
                 .active_for(entity.uid)
-                .map(TargetBuff::from_buff_info)
+                .map(|buff| TargetBuff::from_buff_info(catalog, buff))
                 .collect();
         }
         pool
@@ -289,18 +311,20 @@ impl TargetPool {
             .find(|entity| entity.uid == uid)
     }
 
-    pub fn skill_slot(&self, source_uid: i64, skill_id: i32) -> i32 {
+    pub fn skill_slot(&self, managers: &BattleManagers, source_uid: i64, skill_id: i32) -> i32 {
         let Some(source) = self.entity(source_uid) else {
             return -1;
         };
-        let effect_id = crate::engine::skill::effect::catalog::configured_effect_id(skill_id);
+        let effect_id = managers.catalog().skill_effect_id(skill_id);
         if source.skill_group1.contains(&skill_id) || source.skill_group1.contains(&effect_id) {
             1
         } else if source.skill_group2.contains(&skill_id)
             || source.skill_group2.contains(&effect_id)
         {
             2
-        } else if crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(skill_id, source) {
+        } else if crate::engine::mechanic::card::CardMechanic
+            .is_ultimate_skill(managers, skill_id, source)
+        {
             3
         } else {
             -1
@@ -399,26 +423,6 @@ impl TargetPool {
     }
 }
 
-fn configured_boss_model_ids(fight: &Fight) -> Vec<i32> {
-    let Some(db) = config::try_get() else {
-        return Vec::new();
-    };
-    let Some(battle) = crate::engine::fight::configured_battle(fight) else {
-        return Vec::new();
-    };
-    let wave = fight.cur_wave.unwrap_or(1).max(1) as usize - 1;
-    battle
-        .monster_group_ids
-        .split('#')
-        .filter_map(|id| id.parse::<i32>().ok())
-        .nth(wave)
-        .and_then(|group_id| db.monster_group.get(group_id))
-        .into_iter()
-        .flat_map(|group| group.boss_id.split('#'))
-        .filter_map(|id| id.parse().ok())
-        .collect()
-}
-
 fn team_identities(team: &FightTeam) -> impl Iterator<Item = &FightEntityInfo> {
     team.entitys
         .iter()
@@ -456,31 +460,51 @@ fn average_emitter(allies: &[TargetEntity]) -> TargetEntity {
     }
 }
 
-fn alive_uids<'a>(entities: impl IntoIterator<Item = &'a FightEntityInfo>) -> Vec<TargetEntity> {
+fn alive_uids<'a>(
+    catalog: crate::catalog::BattleCatalog,
+    entities: impl IntoIterator<Item = &'a FightEntityInfo>,
+) -> Vec<TargetEntity> {
     entities
         .into_iter()
-        .filter_map(TargetEntity::from_fight_entity)
+        .filter_map(|entity| TargetEntity::from_fight_entity_with_catalog(catalog, entity))
         .collect()
 }
 
 impl TargetEntity {
+    #[cfg(test)]
     pub(crate) fn from_fight_entity(entity: &FightEntityInfo) -> Option<Self> {
+        Self::from_fight_entity_with_catalog(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            entity,
+        )
+    }
+
+    pub(crate) fn from_fight_entity_with_catalog(
+        catalog: crate::catalog::BattleCatalog,
+        entity: &FightEntityInfo,
+    ) -> Option<Self> {
         let current_hp = entity.current_hp.unwrap_or(1);
         if current_hp <= 0 {
             return None;
         }
 
         let attr = entity.attr.as_ref();
-        let ex = base_ex_attributes(entity);
+        let ex = catalog.entity_ex_attributes(
+            entity.model_id.unwrap_or_default(),
+            entity.level,
+            entity.entity_type,
+        );
         Some(Self {
             uid: entity.uid?,
             level: entity.level.unwrap_or_default(),
             model_id: entity.model_id.unwrap_or_default(),
-            model_label: model_label(entity.model_id.unwrap_or_default()),
+            model_label: catalog.model_label(entity.model_id.unwrap_or_default()),
             career: entity.career.unwrap_or_default(),
-            careers: configured_careers(entity.career.unwrap_or_default()),
+            careers: catalog.careers(entity.career.unwrap_or_default()),
             weak_careers: entity.weak_careers.clone(),
-            damage_type: damage_type(entity),
+            damage_type: EntityDamageType::from_wire(
+                catalog.entity_damage_type(entity.model_id.unwrap_or_default(), entity.entity_type),
+            ),
             position: entity.position.unwrap_or_default(),
             current_hp,
             max_hp: attr.and_then(|attr| attr.hp).unwrap_or(1),
@@ -488,7 +512,12 @@ impl TargetEntity {
             defense: attr.and_then(|attr| attr.defense).unwrap_or_default(),
             mdefense: attr.and_then(|attr| attr.mdefense).unwrap_or_default(),
             technic: attr.and_then(|attr| attr.technic).unwrap_or_default(),
-            base_technic: base_technic(entity),
+            base_technic: catalog.entity_base_technic(
+                entity.model_id.unwrap_or_default(),
+                entity.level.unwrap_or_default(),
+                entity.entity_type,
+                attr.and_then(|attr| attr.technic).unwrap_or_default(),
+            ),
             crit_rate: ex.crit_rate,
             crit_resist: ex.crit_resist,
             crit_dmg: ex.crit_dmg,
@@ -503,11 +532,15 @@ impl TargetEntity {
             passive_skills: entity.passive_skill.clone(),
             destiny_stone: entity.destiny_stone.unwrap_or_default(),
             destiny_rank: entity.destiny_rank.unwrap_or_default(),
-            battle_tags: battle_tags(entity),
+            battle_tags: catalog.entity_battle_tags(
+                entity.model_id.unwrap_or_default(),
+                entity.destiny_stone.unwrap_or_default(),
+                entity.destiny_rank.unwrap_or_default(),
+            ),
             buffs: entity
                 .buffs
                 .iter()
-                .map(TargetBuff::from_buff_info)
+                .map(|buff| TargetBuff::from_buff_info(catalog, buff))
                 .collect(),
         })
     }
@@ -519,9 +552,7 @@ impl TargetEntity {
     }
 
     pub(super) fn has_buff_status(&self, status: crate::engine::manager::buff::BuffStatus) -> bool {
-        self.buffs
-            .iter()
-            .any(|buff| crate::engine::manager::buff::configured_status(buff.id) == Some(status))
+        self.buffs.iter().any(|buff| buff.status == Some(status))
     }
 
     pub(super) fn has_buff_act_kind(
@@ -557,179 +588,35 @@ impl TargetEntity {
     }
 }
 
-fn configured_careers(career: i32) -> Vec<i32> {
-    config::try_get()
-        .and_then(|db| db.fight_effect_group.get(career))
-        .map(|group| {
-            group
-                .career
-                .split('#')
-                .filter_map(|value| value.parse().ok())
-                .collect::<Vec<_>>()
-        })
-        .filter(|careers| !careers.is_empty())
-        .unwrap_or_else(|| vec![career])
-}
-
-fn battle_tags(entity: &FightEntityInfo) -> Vec<i32> {
-    let stone_tags = crate::engine::entity::destiny::Destiny::battle_tags(
-        entity.destiny_stone.unwrap_or_default(),
-        entity.destiny_rank.unwrap_or_default(),
-    );
-    let mut tags = stone_tags.unwrap_or_else(|| {
-        config::try_get()
-            .and_then(|db| db.character.get(entity.model_id.unwrap_or_default()))
-            .map(|character| {
-                character
-                    .battle_tag
-                    .split('#')
-                    .filter_map(|tag| tag.parse().ok())
-                    .collect()
-            })
-            .unwrap_or_default()
-    });
-    tags.sort_unstable();
-    tags.dedup();
-    tags
-}
-
-fn damage_type(entity: &FightEntityInfo) -> EntityDamageType {
-    let Some(db) = config::try_get() else {
-        return EntityDamageType::Unknown;
-    };
-    let model_id = entity.model_id.unwrap_or_default();
-    if entity.entity_type == Some(1) {
-        return EntityDamageType::from_wire(
-            db.character
-                .get(model_id)
-                .map(|row| row.dmg_type)
-                .unwrap_or_default(),
-        );
-    }
-    EntityDamageType::from_wire(
-        db.monster
-            .get(model_id)
-            .and_then(|monster| db.monster_skill_template.get(monster.skill_template))
-            .map(|row| row.dmg_type)
-            .unwrap_or_default(),
-    )
-}
-
-fn base_technic(entity: &FightEntityInfo) -> i32 {
-    let fallback = entity
-        .attr
-        .as_ref()
-        .and_then(|attr| attr.technic)
-        .unwrap_or_default();
-    if entity.entity_type != Some(1) {
-        return fallback;
-    }
-    let Some(db) = config::try_get() else {
-        return fallback;
-    };
-    db.character_level
-        .iter()
-        .find(|row| {
-            row.hero_id == entity.model_id.unwrap_or_default()
-                && row.level == entity.level.unwrap_or_default()
-        })
-        .map(|row| row.technic)
-        .unwrap_or(fallback)
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ExAttributes {
-    crit_rate: i32,
-    crit_resist: i32,
-    crit_dmg: i32,
-    crit_def: i32,
-    add_dmg: i32,
-    drop_dmg: i32,
-}
-
-impl Default for ExAttributes {
-    fn default() -> Self {
-        Self {
-            crit_rate: 0,
-            crit_resist: 0,
-            crit_dmg: 1000,
-            crit_def: 0,
-            add_dmg: 0,
-            drop_dmg: 0,
-        }
-    }
-}
-
-fn base_ex_attributes(entity: &FightEntityInfo) -> ExAttributes {
-    let Some(db) = config::try_get() else {
-        return ExAttributes::default();
-    };
-    let model_id = entity.model_id.unwrap_or_default();
-    if entity.entity_type == Some(1) {
-        return db
-            .character_level
-            .iter()
-            .find(|row| row.hero_id == model_id && row.level == entity.level.unwrap_or_default())
-            .map(|row| ExAttributes {
-                crit_rate: row.cri,
-                crit_resist: row.recri,
-                crit_dmg: row.cri_dmg,
-                crit_def: row.cri_def,
-                add_dmg: row.add_dmg,
-                drop_dmg: row.drop_dmg,
-            })
-            .unwrap_or_default();
-    }
-    let Some(monster) = db.monster.get(model_id) else {
-        return ExAttributes::default();
-    };
-    if let Some(stats) = crate::engine::entity::stats::monster_instance_ex_stats(
-        model_id,
-        entity.level.unwrap_or_default(),
-    ) {
-        return ExAttributes {
-            crit_rate: stats.cri,
-            crit_resist: stats.recri,
-            crit_dmg: stats.cri_dmg,
-            crit_def: stats.cri_def,
-            add_dmg: stats.add_dmg,
-            drop_dmg: stats.drop_dmg,
-        };
-    }
-    let level = entity.level.unwrap_or(monster.level_true);
-    let template_id = if monster.template != 0 {
-        monster.template
-    } else {
-        monster.id
-    };
-    db.monster_template
-        .iter()
-        .find(|row| row.template == template_id)
-        .map(|row| ExAttributes {
-            crit_rate: row.cri + row.cri_grow * level,
-            crit_resist: row.recri + row.recri_grow * level,
-            crit_dmg: row.cri_dmg + row.cri_dmg_grow * level,
-            crit_def: row.cri_def + row.cri_def_grow * level,
-            add_dmg: row.add_dmg + row.add_dmg_grow * level,
-            drop_dmg: row.drop_dmg + row.drop_dmg_grow * level,
-        })
-        .unwrap_or_default()
-}
-
 impl TargetBuff {
-    fn from_buff_info(buff: &BuffInfo) -> Self {
+    fn from_buff_info(catalog: crate::catalog::BattleCatalog, buff: &BuffInfo) -> Self {
         let id = buff.buff_id.unwrap_or_default();
-        let row = config::try_get().and_then(|db| db.skill_buff.get(id));
+        let features = catalog.buff_feature_tokens(id);
         Self {
             id,
-            type_id: buff
-                .r#type
-                .or_else(|| row.map(|row| row.type_id))
-                .unwrap_or_default(),
+            type_id: buff.r#type.unwrap_or_else(|| catalog.buff_type_id(id)),
+            status: catalog.buff_status(id),
             source_uid: buff.from_uid.unwrap_or_default(),
-            features: row
-                .map(|row| split_features(&row.features))
-                .unwrap_or_default(),
+            features: features.clone(),
+            act_kinds: features
+                .iter()
+                .filter_map(|feature| {
+                    let opcode = feature.split('#').next()?.parse().ok()?;
+                    Some(catalog.buff_act_definition(opcode)?.kind)
+                })
+                .collect(),
+            monster_labels: features
+                .iter()
+                .filter_map(|feature| {
+                    let mut values = feature
+                        .split('#')
+                        .filter_map(|value| value.parse::<i32>().ok());
+                    let opcode = values.next()?;
+                    (catalog.buff_act_definition(opcode)?.kind
+                        == crate::engine::skill::buff_act::registry::BuffActKind::MonsterLabel)
+                        .then(|| values.next())?
+                })
+                .collect(),
         }
     }
 
@@ -737,52 +624,12 @@ impl TargetBuff {
         &self,
         kind: crate::engine::skill::buff_act::registry::BuffActKind,
     ) -> bool {
-        self.features.iter().any(|feature| {
-            let Some(opcode) = feature
-                .split('#')
-                .next()
-                .and_then(|value| value.parse::<i32>().ok())
-            else {
-                return false;
-            };
-            config::try_get()
-                .and_then(|db| db.buff_act.get(opcode))
-                .and_then(|act| crate::engine::skill::buff_act::registry::kind(opcode, &act.r#type))
-                == Some(kind)
-        })
+        self.act_kinds.contains(&kind)
     }
 
     fn has_monster_label(&self, label: i32) -> bool {
-        self.features.iter().any(|feature| {
-            let mut values = feature
-                .split('#')
-                .filter_map(|value| value.parse::<i32>().ok());
-            let Some(act_id) = values.next() else {
-                return false;
-            };
-            let is_label = config::try_get()
-                .and_then(|db| db.buff_act.get(act_id))
-                .and_then(|act| {
-                    crate::engine::skill::buff_act::registry::kind(act.id, &act.r#type)
-                })
-                == Some(crate::engine::skill::buff_act::registry::BuffActKind::MonsterLabel);
-            is_label && values.next() == Some(label)
-        })
+        self.monster_labels.contains(&label)
     }
-}
-
-pub(crate) fn model_label(model_id: i32) -> i32 {
-    config::try_get()
-        .and_then(|db| db.monster.get(model_id))
-        .map(|monster| monster.label)
-        .unwrap_or_default()
-}
-
-fn split_features(raw: &'static str) -> Vec<&'static str> {
-    raw.split('|')
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .collect()
 }
 
 #[cfg(test)]

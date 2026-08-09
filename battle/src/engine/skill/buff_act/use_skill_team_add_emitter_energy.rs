@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use sonettobuf::effect_type_enum::EffectType;
 
 use crate::engine::{
-    entity::skill::skill_rank,
     event::payload::BattleEvent,
     manager::{
         BattleManagers,
@@ -32,7 +31,7 @@ pub fn rule_ops(
     let Some((power_id, inspiration)) = spec(
         feature,
         catalog.is_attack(action.skill_id),
-        skill_rank(action.skill_id),
+        managers.catalog().skill_rank(action.skill_id),
     ) else {
         return Some(Vec::new());
     };

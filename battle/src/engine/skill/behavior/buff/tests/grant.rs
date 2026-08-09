@@ -471,7 +471,7 @@ fn add_buff_round_extends_existing_type_family_without_granting_a_new_buff() {
         vec![31080131, 2],
         Vec::new(),
     );
-    let command = change_duration_command(10, &behavior, BuffSelector::IdOrType).unwrap();
+    let command = change_duration_command(10, &behavior).unwrap();
     let BuffCommand::ChangeDuration(change) = &command else {
         panic!("expected one duration change");
     };
@@ -530,19 +530,33 @@ fn channel_count_reduction_updates_the_matching_buff_types_private_state() {
 }
 
 #[test]
-fn add_buff_duration_updates_owned_instances_through_one_manager_command() {
+fn add_buff_duration_refreshes_matching_buff_types_to_the_configured_duration() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 current_hp: Some(100),
-                buffs: vec![BuffInfo {
-                    uid: Some(1),
-                    buff_id: Some(31080131),
-                    duration: Some(1),
-                    ..Default::default()
-                }],
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(31270501),
+                        duration: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(31270501),
+                        duration: Some(0),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(3),
+                        buff_id: Some(31270501),
+                        duration: Some(5),
+                        ..Default::default()
+                    },
+                ],
                 ..Default::default()
             }],
             ..Default::default()
@@ -552,16 +566,37 @@ fn add_buff_duration_updates_owned_instances_through_one_manager_command() {
     let mut managers = BattleManagers::seeded(&fight);
     let behavior = ParsedBehavior::from_spec(
         crate::engine::skill::behavior::classify::BehaviorSpec::new(60145, "AddBuffDuration"),
-        vec![31080131, 5],
+        vec![5001, 3],
         Vec::new(),
     );
-    let command = change_duration_command(10, &behavior, BuffSelector::ExactId).unwrap();
+    let command = refresh_duration_command(10, &behavior).unwrap();
+    let BuffCommand::RefreshDurationBySelector(refresh) = &command else {
+        panic!("expected one duration refresh");
+    };
+
+    assert_eq!(refresh.selector, BuffSelector::IdOrType(5001));
+    assert_eq!(refresh.minimum_duration, 3);
+
+    let changes = managers.execute_buff(command.clone()).unwrap();
+
+    assert_eq!(changes.change.refreshed.len(), 2);
+    assert_eq!(changes.change.refreshed[0].before.duration, Some(1));
+    assert_eq!(changes.change.refreshed[0].after.duration, Some(3));
+    assert_eq!(changes.change.refreshed[1].before.duration, Some(5));
+    assert_eq!(changes.change.refreshed[1].after.duration, Some(5));
+    assert_eq!(
+        managers
+            .buff
+            .active_for(10)
+            .find(|active| active.uid == Some(2))
+            .and_then(|active| active.duration),
+        Some(0)
+    );
 
     let changes = managers.execute_buff(command).unwrap();
-
-    assert_eq!(changes.change.refreshed.len(), 1);
-    assert_eq!(changes.change.refreshed[0].before.duration, Some(1));
-    assert_eq!(changes.change.refreshed[0].after.duration, Some(6));
+    assert_eq!(changes.change.refreshed.len(), 2);
+    assert_eq!(changes.change.refreshed[0].before.duration, Some(3));
+    assert_eq!(changes.change.refreshed[0].after.duration, Some(3));
 }
 
 #[test]

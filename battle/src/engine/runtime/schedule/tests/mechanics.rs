@@ -38,9 +38,14 @@ fn card_energy_allocation_commits_cards_then_spends_only_allocated_gauge() {
         }))
         .unwrap();
     let features = managers.buff.active_features(&managers.hp);
-    let enabled = enable_rule_ops(&managers.gauge, &features, 99998)
-        .pop()
-        .unwrap();
+    let enabled = enable_rule_ops(
+        crate::catalog::impromptu_definition(crate::test_support::game_data()),
+        &managers.gauge,
+        &features,
+        99998,
+    )
+    .pop()
+    .unwrap();
     let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter else {
         unreachable!()
     };
@@ -441,9 +446,14 @@ fn action_queue_commit_collects_played_card_energy_as_inspiration() {
         .iter()
         .find(|feature| buff_act::is_kind(feature, buff_act::registry::BuffActKind::EmitterTag))
         .unwrap();
-    let enabled = enable_rule_ops(&managers.gauge, &features, 99998)
-        .pop()
-        .unwrap();
+    let enabled = enable_rule_ops(
+        crate::catalog::impromptu_definition(crate::test_support::game_data()),
+        &managers.gauge,
+        &features,
+        99998,
+    )
+    .pop()
+    .unwrap();
     let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter else {
         unreachable!()
     };
@@ -563,9 +573,14 @@ fn player_actions_resolved_activates_internal_inspiration_thresholds() {
         .iter()
         .find(|feature| buff_act::is_kind(feature, buff_act::registry::BuffActKind::EmitterTag))
         .unwrap();
-    let enabled = enable_rule_ops(&managers.gauge, &features, 99998)
-        .pop()
-        .unwrap();
+    let enabled = enable_rule_ops(
+        crate::catalog::impromptu_definition(crate::test_support::game_data()),
+        &managers.gauge,
+        &features,
+        99998,
+    )
+    .pop()
+    .unwrap();
     let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter else {
         unreachable!()
     };
@@ -616,7 +631,8 @@ fn player_actions_resolved_activates_internal_inspiration_thresholds() {
     assert!(managers.buff.has_buff_id(99998, 31080152));
     assert!(managers.buff.has_buff_id(99998, 31080153));
     let plan = build_plan(&managers, 1, 99998).unwrap();
-    let definition = ImpromptuDefinition::from_config().unwrap();
+    let definition =
+        crate::catalog::impromptu_definition(crate::test_support::game_data()).unwrap();
     assert_eq!(plan.skill_id, definition.skill_id());
     assert_eq!(plan.inspiration, 6);
     assert_eq!(plan.attack_count, 3);
@@ -682,9 +698,14 @@ fn idle_impromptu_finalizes_card_and_emitter_energy_once() {
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
     let features = managers.buff.active_features(&managers.hp);
-    let enabled = enable_rule_ops(&managers.gauge, &features, 99_998)
-        .pop()
-        .unwrap();
+    let enabled = enable_rule_ops(
+        crate::catalog::impromptu_definition(crate::test_support::game_data()),
+        &managers.gauge,
+        &features,
+        99_998,
+    )
+    .pop()
+    .unwrap();
     let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter else {
         unreachable!()
     };
@@ -778,9 +799,14 @@ fn impromptu_executes_the_transient_plan_then_resets_inspiration() {
         .iter()
         .find(|feature| buff_act::is_kind(feature, buff_act::registry::BuffActKind::EmitterTag))
         .unwrap();
-    let enabled = enable_rule_ops(&managers.gauge, &features, 99998)
-        .pop()
-        .unwrap();
+    let enabled = enable_rule_ops(
+        crate::catalog::impromptu_definition(crate::test_support::game_data()),
+        &managers.gauge,
+        &features,
+        99998,
+    )
+    .pop()
+    .unwrap();
     let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter else {
         unreachable!()
     };
@@ -799,7 +825,8 @@ fn impromptu_executes_the_transient_plan_then_resets_inspiration() {
         ))
         .unwrap();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
-    let definition = ImpromptuDefinition::from_config().unwrap();
+    let definition =
+        crate::catalog::impromptu_definition(crate::test_support::game_data()).unwrap();
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_hidden_crits(definition.skill_id(), 99998, [true; 6]);
 

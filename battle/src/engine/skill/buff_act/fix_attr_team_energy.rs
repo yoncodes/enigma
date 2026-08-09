@@ -32,7 +32,9 @@ pub fn grant_params(
     target_uid: i64,
     team_type: i32,
 ) -> Option<String> {
-    let feature = BuffManager::configured_features(buff_id)
+    let feature = managers
+        .buff
+        .definition_features(buff_id)
         .into_iter()
         .find(|feature| {
             matches!(

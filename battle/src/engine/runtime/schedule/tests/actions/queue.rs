@@ -550,6 +550,104 @@ fn terminal_player_action_stops_the_remaining_action_queue() {
 }
 
 #[test]
+fn repeated_play_index_tracks_the_mutating_hand() {
+    init_config();
+    let entity = |uid, skill_id| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(1),
+        current_hp: Some(100),
+        skill_group1: vec![skill_id],
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 100), entity(20, 200)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![
+                CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(100),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(20),
+                    skill_id: Some(200),
+                    ..Default::default()
+                },
+            ],
+            draw_pile: Vec::new(),
+            deck_num: 2,
+        }))
+        .unwrap();
+    let mut catalog = SkillEffectCatalog::default();
+    for skill_id in [100, 200] {
+        catalog.insert(ParsedSkillEffect {
+            skill_id,
+            slots: Vec::new(),
+        });
+        catalog.insert_logic_target(
+            skill_id,
+            crate::engine::skill::target::request::SOURCE_TARGET_CODE,
+        );
+    }
+
+    let result = run_player_phase(
+        &fight,
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [
+            RoundCommand::PlayCard {
+                card_index: 0,
+                target_uid: None,
+                chosen_skill_id: None,
+                recorded_skill: None,
+            },
+            RoundCommand::PlayCard {
+                card_index: 0,
+                target_uid: None,
+                chosen_skill_id: None,
+                recorded_skill: None,
+            },
+        ],
+        1,
+        0,
+    )
+    .unwrap();
+
+    let completed = result
+        .outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            RuleOutcome::SkillLifecycle(
+                crate::engine::skill::action::SkillLifecycle::ActionCompleted(action),
+            ) => Some(action.skill_id),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(completed, vec![100, 200]);
+    assert!(managers.card.hand().is_empty());
+}
+
+#[test]
 fn queued_play_projects_composition_reward_before_the_triggering_skill() {
     init_config();
     let entity = |uid, skills| FightEntityInfo {

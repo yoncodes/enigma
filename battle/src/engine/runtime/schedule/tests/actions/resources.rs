@@ -549,6 +549,7 @@ fn conduit_attack_does_not_begin_without_a_living_enemy() {
     let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
 
     let result = run_conduit_phase(
+        managers.catalog(),
         &fight,
         &mut managers,
         &pool,
@@ -595,6 +596,7 @@ fn conduit_source_target_uses_the_first_living_main_ally_as_its_frame_anchor() {
     let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
 
     let result = run_conduit_phase(
+        managers.catalog(),
         &fight,
         &mut managers,
         &pool,
@@ -677,6 +679,7 @@ fn conduit_attacks_keep_their_lifecycle_without_becoming_active_incantations() {
     let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
 
     let result = run_conduit_phase(
+        managers.catalog(),
         &fight,
         &mut managers,
         &pool,
@@ -751,6 +754,7 @@ fn conduit_repeats_a_paid_skill_until_its_energy_is_spent() {
     let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
 
     run_conduit_phase(
+        managers.catalog(),
         &fight,
         &mut managers,
         &pool,
@@ -818,6 +822,7 @@ fn conduit_does_not_start_another_device_after_battle_ends() {
     let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
 
     run_conduit_phase(
+        managers.catalog(),
         &fight,
         &mut managers,
         &pool,

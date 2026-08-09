@@ -1,4 +1,4 @@
-use sonettobuf::{Fight, FightStep, RedealCardInfoPush, UseClothSkillReply, UseClothSkillRequest};
+use sonettobuf::{FightStep, RedealCardInfoPush, UseClothSkillReply, UseClothSkillRequest};
 
 use crate::engine::round::state::next_round_shell;
 
@@ -59,8 +59,11 @@ impl BattleRuntime {
                 let source_uid = request.from_id.unwrap_or_default();
                 let skill_id = request.skill_id?;
                 let use_count = self.cloth_skill_uses.get(&skill_id).copied().unwrap_or(0);
-                let (cost, next_cost, cooldown) =
-                    cloth_skill_terms(&self.fight, skill_id, use_count)?;
+                let cloth_id = self.fight.attacker.as_ref()?.cloth_id;
+                let (cost, next_cost, cooldown) = self
+                    .catalog_data
+                    .expect("battle runtime was not constructed with a catalog")
+                    .cloth_skill_terms(cloth_id, skill_id, use_count)?;
                 let skill_info = self
                     .fight
                     .attacker
@@ -71,8 +74,12 @@ impl BattleRuntime {
                 if skill_info.cd.unwrap_or_default() > 0 || self.round_state.power < cost {
                     return None;
                 }
-                let pool = crate::engine::skill::target::TargetPool::from_fight(&self.fight)
-                    .runtime_view(&self.managers);
+                let pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+                    self.catalog_data
+                        .expect("battle runtime was not constructed with a catalog"),
+                    &self.fight,
+                )
+                .runtime_view(&self.managers);
                 let result = drain::run_skill(
                     &mut self.managers,
                     &pool,
@@ -156,7 +163,7 @@ impl BattleRuntime {
                 let owner = self.managers.entity_snapshot(owner_uid)?;
                 let bound = self.managers.entity_snapshot(bound_uid)?;
                 let (owner_buff_id, bound_buff_id) =
-                    crate::engine::manager::contract::binding_buffs(
+                    self.managers.catalog().contract_binding_buffs(
                         owner.ex_skill_level.unwrap_or_default(),
                         bound.career?,
                     )?;
@@ -343,8 +350,12 @@ impl BattleRuntime {
                     2 => definition.skills[1],
                     _ => return None,
                 };
-                let pool = crate::engine::skill::target::TargetPool::from_fight(&self.fight)
-                    .runtime_view(&self.managers);
+                let pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+                    self.catalog_data
+                        .expect("battle runtime was not constructed with a catalog"),
+                    &self.fight,
+                )
+                .runtime_view(&self.managers);
                 if !self.managers.buff.has_buff_act_kind(
                     owner_uid,
                     crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
@@ -401,26 +412,6 @@ impl BattleRuntime {
     pub fn take_redeal_card_push(&mut self) -> Option<RedealCardInfoPush> {
         self.pending_redeal.take()
     }
-}
-
-fn cloth_skill_terms(fight: &Fight, skill_id: i32, use_count: usize) -> Option<(i32, i32, i32)> {
-    let cloth_id = fight.attacker.as_ref()?.cloth_id.unwrap_or(1);
-    let cloth = config::configs::get()
-        .cloth_level
-        .iter()
-        .find(|cloth| cloth.id == cloth_id && cloth.level == 1)?;
-    let (costs, cooldown) = if cloth.skill1 == skill_id {
-        (&cloth.use_power1, cloth.cd1)
-    } else if cloth.skill2 == skill_id {
-        (&cloth.use_power2, cloth.cd2)
-    } else {
-        return None;
-    };
-    let cost = *costs.get(use_count.min(costs.len().checked_sub(1)?))?;
-    let next = *costs
-        .get((use_count + 1).min(costs.len().saturating_sub(1)))
-        .unwrap_or(&cost);
-    Some((cost, next, cooldown))
 }
 
 fn project_changes(

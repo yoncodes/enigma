@@ -9,13 +9,8 @@ private-fixtures = []
 [dependencies]
 anyhow.workspace = true
 config.workspace = true
-database.workspace = true
 protocol.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sqlx.workspace = true
 tracing.workspace = true
-
-[dev-dependencies]
-tokio.workspace = true

@@ -150,21 +150,21 @@ impl SummonManager {
             operation: command.operation,
         })
     }
-    pub fn active_unique_skills(&self) -> Vec<(i64, i32)> {
-        let Some(db) = config::try_get() else {
-            return Vec::new();
-        };
+    pub fn active_unique_skills(&self, game_data: &config::GameDB) -> Vec<(i64, i32)> {
+        self.skill_owners(|summoned_id| {
+            crate::catalog::summoned_unique_skills(game_data, summoned_id)
+        })
+    }
+
+    pub(crate) fn skill_owners(&self, mut skills: impl FnMut(i32) -> Vec<i32>) -> Vec<(i64, i32)> {
         let mut active = self.active.keys().copied().collect::<Vec<_>>();
         active.sort_by_key(|(owner_uid, summoned_id)| (*owner_uid, -summoned_lane(*summoned_id)));
         active
             .into_iter()
             .flat_map(|(owner_uid, summoned_id)| {
-                db.summoned
-                    .get(summoned_id)
+                skills(summoned_id)
                     .into_iter()
-                    .flat_map(move |row| {
-                        parse_ids(&row.unique_skills).map(move |skill_id| (owner_uid, skill_id))
-                    })
+                    .map(move |skill_id| (owner_uid, skill_id))
             })
             .collect()
     }
@@ -259,12 +259,6 @@ impl SummonManager {
     }
 }
 
-fn parse_ids(raw: &str) -> impl Iterator<Item = i32> + '_ {
-    raw.split(['#', '|', ','])
-        .filter_map(|value| value.trim().parse().ok())
-        .filter(|value| *value > 0)
-}
-
 fn result(source_uid: i64, summoned_id: i32, level: i32) -> SummonApplyResult {
     SummonApplyResult {
         target_uid: source_uid,
@@ -352,5 +346,23 @@ mod tests {
         assert_eq!(summons.count(10, 15003, 0), 1);
         assert_eq!(summons.count(10, 15003, 2), 1);
         assert_eq!(summons.total(10, 0), 1);
+    }
+
+    #[test]
+    fn active_unique_skills_use_the_selected_catalog_and_summon_order() {
+        crate::test_support::init_config();
+        let game_data = crate::test_support::game_data();
+        let catalog = crate::catalog::BattleCatalog::new(game_data);
+        let mut summons = SummonManager::default();
+        summons.add(20, 20, 15_001, 1, 1);
+        summons.add(10, 10, 15_001, 1, 1);
+        summons.add(10, 10, 150_011, 1, 1);
+        let expected = vec![(10, 307_401_711), (10, 30_740_171), (20, 30_740_171)];
+
+        assert_eq!(summons.active_unique_skills(game_data), expected);
+        assert_eq!(
+            summons.skill_owners(|summoned_id| catalog.summoned_unique_skills(summoned_id)),
+            expected
+        );
     }
 }

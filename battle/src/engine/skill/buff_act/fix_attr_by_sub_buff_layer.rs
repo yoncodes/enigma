@@ -48,15 +48,18 @@ fn layer_attribute_delta(attributes: &[i32], layer: i32, attr_id: AttrId) -> i32
 }
 
 pub fn owner_attribute_delta(buffs: &BuffManager, owner_uid: i64, attr_id: AttrId) -> i32 {
+    let Some(catalog) = buffs
+        .try_catalog()
+        .or_else(crate::catalog::BattleCatalog::try_global)
+    else {
+        return 0;
+    };
     let mut total = 0;
     for buff in buffs.active_for(owner_uid) {
         let Some(buff_id) = buff.buff_id else {
             continue;
         };
-        let Some(definition) = config::try_get().and_then(|db| db.skill_buff.get(buff_id)) else {
-            continue;
-        };
-        for raw in definition.features.split('|') {
+        for raw in catalog.buff_feature_rows(buff_id) {
             let values = raw
                 .split('#')
                 .flat_map(|value| value.split(','))
@@ -65,9 +68,7 @@ pub fn owner_attribute_delta(buffs: &BuffManager, owner_uid: i64, attr_id: AttrI
             let [act_id, required_buff, attributes @ ..] = values.as_slice() else {
                 continue;
             };
-            if config::try_get()
-                .and_then(|db| db.buff_act.get(*act_id))
-                .and_then(|act| super::registry::kind(*act_id, &act.r#type))
+            if catalog.buff_act_definition(*act_id).map(|act| act.kind)
                 == Some(super::registry::BuffActKind::FixAttrBySubBuffLayer)
             {
                 total += layer_attribute_delta(
@@ -83,6 +84,8 @@ pub fn owner_attribute_delta(buffs: &BuffManager, owner_uid: i64, attr_id: AttrI
 
 #[cfg(test)]
 mod tests {
+    use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
+
     use super::*;
 
     #[test]
@@ -117,5 +120,38 @@ mod tests {
         assert!(!supports(&[31260151]));
         assert!(!supports(&[31260151, 999, 300, 0]));
         assert!(!supports(&[31260151, 201, 300]));
+    }
+
+    #[test]
+    fn owner_delta_uses_owned_catalog_with_global_compatibility() {
+        crate::test_support::init_config();
+        let mut buffs = BuffManager::default();
+        buffs.seed(&Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(1),
+                    buffs: vec![
+                        BuffInfo {
+                            buff_id: Some(31130122),
+                            layer: Some(3),
+                            ..Default::default()
+                        },
+                        BuffInfo {
+                            buff_id: Some(31130124),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        assert_eq!(owner_attribute_delta(&buffs, 1, AttrId::MentalDef), -140);
+        buffs.set_catalog(crate::catalog::BattleCatalog::new(
+            crate::test_support::game_data(),
+        ));
+        assert_eq!(owner_attribute_delta(&buffs, 1, AttrId::MentalDef), -140);
     }
 }

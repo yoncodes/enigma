@@ -9,7 +9,14 @@ pub struct BattleRuleManager {
 
 impl BattleRuleManager {
     pub fn seed(fight: &Fight) -> Self {
-        let rules = crate::engine::fight::rules::configured(fight);
+        let Some(catalog) = crate::catalog::BattleCatalog::try_global() else {
+            return Self::default();
+        };
+        Self::seed_with_catalog(catalog, fight)
+    }
+
+    pub(crate) fn seed_with_catalog(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
+        let rules = catalog.battle_rules(fight);
         let owned_skills = rules
             .iter()
             .filter(|rule| rule.rule_type == AdditionRuleType::FightSkill)

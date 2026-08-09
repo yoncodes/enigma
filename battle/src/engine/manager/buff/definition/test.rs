@@ -40,13 +40,22 @@ fn halo_fanout_keeps_add_markers_from_non_halo_features() {
 fn initializes_common_params_for_stateful_buff_acts() {
     crate::test_support::init_config();
 
-    assert_eq!(initial_act_common_params("772#1|806#5"), "806#0");
     assert_eq!(
-        initial_act_common_params("1004#205#500#500#228003"),
+        initial_act_common_params(config::get(), "772#1|806#5"),
+        "806#0"
+    );
+    assert_eq!(
+        initial_act_common_params(config::get(), "1004#205#500#500#228003"),
         "1004#0"
     );
-    assert_eq!(initial_act_common_params("1003#1#228004#6"), "1003#0");
-    assert_eq!(initial_act_common_params("10000"), "10000#1,0,0");
+    assert_eq!(
+        initial_act_common_params(config::get(), "1003#1#228004#6"),
+        "1003#0"
+    );
+    assert_eq!(
+        initial_act_common_params(config::get(), "10000"),
+        "10000#1,0,0"
+    );
 }
 
 #[test]
@@ -77,7 +86,7 @@ fn maps_real_harm_fix_to_genesis_damage_bonus() {
     crate::test_support::init_config();
 
     assert_eq!(
-        parse_attribute_deltas("522#70"),
+        parse_attribute_deltas(config::get(), "522#70"),
         vec![(AttrId::GenesisDmgBonus, 70)]
     );
 }
@@ -105,9 +114,11 @@ fn initial_wire_state_comes_from_the_resolved_exact_feature() {
     assert_eq!(channel[0].act_id, 1031);
     assert!(channel[0].params.is_empty());
     assert_eq!(channel[0].str_param.as_deref(), Some("0"));
-    assert!(!BuffDefinition::get(31280115)
-        .unwrap()
-        .projects_initial_wire_state(1031));
+    assert!(
+        !BuffDefinition::get(31280115)
+            .unwrap()
+            .projects_initial_wire_state(1031)
+    );
 }
 
 #[test]
@@ -172,8 +183,10 @@ fn stacked_include_value_is_the_layer_cap() {
 
 #[test]
 fn parses_attribute_features_once() {
+    crate::test_support::init_config();
+
     assert_eq!(
-        parse_attribute_deltas("100#102#10|926#1|100#205#15"),
+        parse_attribute_deltas(config::get(), "100#102#10|926#1|100#205#15"),
         vec![(AttrId::Attack, 10), (AttrId::DmgBonus, 15)]
     );
 }

@@ -1,5 +1,4 @@
 use crate::engine::{
-    entity::skill::skill_rank,
     event::{kind::EventKind, payload::BattleEvent},
     manager::{
         buff::{ActiveBuffFeature, BuffCommand, BuffRemove, BuffRemoveSelector},
@@ -88,7 +87,7 @@ pub fn hero_skill_subscriber_rule_ops(
     let skill_id = skills
         .iter()
         .copied()
-        .find(|skill_id| skill_rank(*skill_id) == *rank)?;
+        .find(|skill_id| pool.catalog().skill_rank(*skill_id) == *rank)?;
     temporary_card_rule_ops(
         subscriber,
         skill_id,

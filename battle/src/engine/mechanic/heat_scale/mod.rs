@@ -671,36 +671,6 @@ fn raw_value(raw_amount: i32, amount: i32) -> i32 {
     }
 }
 
-pub fn attribute_buff() -> Option<(i32, i32)> {
-    const ATTRIBUTE_BUFF_CONFIG_ID: i32 = 2;
-    let db = config::try_get()?;
-    let buff_id = db
-        .fight_jgz_const
-        .get(ATTRIBUTE_BUFF_CONFIG_ID)?
-        .value
-        .parse()
-        .ok()?;
-    let buff = db.skill_buff.get(buff_id)?;
-    attr_value(&buff.features).map(|(act_id, _)| (buff_id, act_id))
-}
-
-fn attr_value(features: &str) -> Option<(i32, i32)> {
-    features.split('|').find_map(|feature| {
-        let values: Vec<_> = feature
-            .split('#')
-            .filter_map(|part| part.trim().parse::<i32>().ok())
-            .collect();
-        let act_id = *values.first()?;
-        let act = config::try_get()?.buff_act.get(act_id)?;
-        if crate::engine::skill::buff_act::registry::kind(act_id, &act.r#type)
-            != Some(crate::engine::skill::buff_act::registry::BuffActKind::AttrByHeatScale)
-        {
-            return None;
-        }
-        Some((act_id, *values.get(2)?))
-    })
-}
-
 fn is_burn_or_halo(feature: &ActiveBuffFeature) -> bool {
     matches!(
         crate::engine::skill::buff_act::feature_kind(feature),

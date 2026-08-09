@@ -10,11 +10,47 @@ fn ally_action_context_preserves_assassination_identity() {
         ..Default::default()
     });
 
-    super::super::invoke::apply_event_context(&mut context, &event);
+    super::super::invoke::apply_event_context(
+        crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+        &mut context,
+        &event,
+    );
 
     assert_eq!(context.active_skill_source_uid, 10);
     assert_eq!(context.active_skill_id, 100);
     assert!(context.active_skill_assassinate);
+}
+
+#[test]
+fn hit_context_uses_the_explicit_skill_catalog_rank() {
+    let db = crate::test_support::game_data();
+    let skill_id = 30_230_111;
+    let mut context = TargetContext::default();
+    let event = BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+        origin: crate::engine::skill::rule::CommandOrigin {
+            domain: crate::engine::skill::rule::RuleDomain::Behavior,
+            key: crate::engine::skill::rule::DefinitionKey::new(10_005, "Damage"),
+        },
+        source_uid: 10,
+        target_uid: -1,
+        skill_id,
+        amount: 1,
+        shield_absorbed: 0,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+        assassinate: false,
+        ignore_riposte: false,
+    });
+
+    super::super::invoke::apply_event_context(
+        crate::catalog::BattleCatalog::new(db),
+        &mut context,
+        &event,
+    );
+
+    assert_eq!(
+        context.active_skill_rank,
+        db.skill.get(skill_id).unwrap().skill_rank
+    );
 }
 
 #[test]

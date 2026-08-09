@@ -21,7 +21,7 @@ use crate::engine::{
 
 use super::{
     affinity::career_multiplier_against, critical_technique_bonus, regular_multiplier,
-    restrains_target, strongest_career_multiplier,
+    restrains_target,
 };
 
 #[derive(Clone, Copy)]
@@ -47,7 +47,7 @@ pub struct DamageRuntime<'a> {
     pub buffs: &'a BuffManager,
     pub target_buffs: &'a BuffManager,
     pub hp: &'a HpManager,
-    pub fields: Option<&'a FieldManager>,
+    pub fields: Option<(&'a FieldManager, crate::catalog::BattleCatalog)>,
     pub emitter: Option<&'a crate::engine::manager::emitter::EmitterManager>,
     pub team_inspiration: i32,
 }
@@ -129,7 +129,9 @@ pub fn resolve_configured_replacement_damage_command(
     config_effect: i32,
     hurt_effect_type: i32,
 ) -> Option<HpCommand> {
-    let mut feature = BuffManager::configured_features(replacement_buff_id)
+    let mut feature = runtime
+        .buffs
+        .definition_features(replacement_buff_id)
         .into_iter()
         .find(|feature| is_kind(feature, BuffActKind::AttrOnlyCalDamageReplaceAttr))?;
     feature.owner_uid = request.source_uid;
@@ -168,6 +170,7 @@ pub fn resolve_configured_replacement_damage_command(
             from_uid: request.source_uid,
             is_crit: request.is_crit,
             career_restraint: restrains_target(
+                runtime.pool.catalog(),
                 request.attack_career.unwrap_or(source.career),
                 target,
             ),
@@ -240,7 +243,11 @@ fn resolve_row_damage_result(
             attack_replacement,
         },
     );
-    let career_restraint = restrains_target(request.attack_career.unwrap_or(source.career), target);
+    let career_restraint = restrains_target(
+        runtime.pool.catalog(),
+        request.attack_career.unwrap_or(source.career),
+        target,
+    );
     (amount > 0).then_some(ResolvedRowDamage {
         source_uid,
         target_uid,
@@ -525,7 +532,9 @@ pub(super) fn direct_damage(
             (
                 "circle",
                 fields
-                    .map(|fields| fields.attribute_delta(entity.uid, attr_id, runtime.pool))
+                    .map(|(fields, catalog)| {
+                        fields.attribute_delta(catalog, entity.uid, attr_id, runtime.pool)
+                    })
                     .unwrap_or_default(),
             ),
             (
@@ -622,7 +631,7 @@ pub(super) fn direct_damage(
             .filter_map(|(actual, delta)| (*actual == attr_id).then_some(*delta))
             .sum::<i32>()
     };
-    let is_ultimate = crate::engine::skill::effect::catalog::configured_is_big_skill(skill_id);
+    let is_ultimate = runtime.pool.catalog().skill_is_big(skill_id);
     let extra_action =
         crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind)
             .is_some_and(|kind| kind.is_extra_action());
@@ -699,12 +708,15 @@ pub(super) fn direct_damage(
     } else {
         source.career
     };
-    let natural_career = career_multiplier_against(source_career, target);
+    let natural_career = career_multiplier_against(runtime.pool.catalog(), source_career, target);
     let career = if formula_rules.applies_career && (natural_career > 1000 || forced_career) {
         (if natural_career > 1000 {
             natural_career
         } else {
-            strongest_career_multiplier(source_career)
+            runtime
+                .pool
+                .catalog()
+                .strongest_career_multiplier(source_career)
         }) + source_active_features
             .iter()
             .filter(|feature| feature.owner_uid == source.uid)
@@ -805,7 +817,7 @@ pub(super) fn direct_damage(
     let final_rate = (1000 + separate_final_delta).max(300);
 
     let source_crit = attributes.get(source.uid, AttrId::CriticalDmg);
-    let technique_crit = critical_technique_bonus(source, target.level, 12);
+    let technique_crit = critical_technique_bonus(runtime.pool.catalog(), source, target.level, 12);
     let buff_crit = attribute_delta(source, AttrId::CriticalDmg)
         + attack_attribute_delta(AttrId::CriticalDmg)
         + attack_local_attribute(AttrId::CriticalDmg);

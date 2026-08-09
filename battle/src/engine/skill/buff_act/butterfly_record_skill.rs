@@ -3,7 +3,7 @@ use crate::engine::{
     manager::{
         BattleManagers,
         buff::{BuffCommand, BuffSetState},
-        card::{CardAddPrecast, CardCommand, precast_card},
+        card::{CardAddPrecast, CardCommand, temp::runtime_precast_card},
     },
     skill::{
         rule::output::{BattleCommand, RuleOp},
@@ -45,11 +45,12 @@ pub fn rule_ops(
         .find(|entity| {
             entity.skill_group1.contains(&skill_id)
                 || entity.skill_group2.contains(&skill_id)
-                || crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(skill_id, entity)
+                || crate::engine::mechanic::card::CardMechanic
+                    .is_ultimate_skill(managers, skill_id, entity)
         })?
         .uid;
     let origin = super::command_origin(subscriber)?;
-    let mut card = precast_card(owner_uid, skill_id);
+    let mut card = runtime_precast_card(managers, owner_uid, skill_id);
     card.enchants.push(sonettobuf::CardEnchant {
         enchant_id: Some(enchant_id),
         duration: Some(1),

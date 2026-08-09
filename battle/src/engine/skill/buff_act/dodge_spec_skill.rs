@@ -63,14 +63,19 @@ pub fn marker_effect_type(feature: &ActiveBuffFeature) -> Option<i32> {
         .copied()
 }
 
-pub fn trigger_rule_ops(feature: &ActiveBuffFeature) -> Option<Vec<RuleOp>> {
+pub fn trigger_rule_ops(
+    managers: &BattleManagers,
+    feature: &ActiveBuffFeature,
+) -> Option<Vec<RuleOp>> {
     let mut ops = vec![RuleOp::BuffFeatureMarker {
         target_uid: feature.owner_uid,
         effect_type: marker_effect_type(feature)?,
         effect_num: feature.buff_id,
         buff_act_id: feature.act_id()?,
     }];
-    if is_kind(feature, BuffActKind::DodgeDamageType) && configured_trigger_count(feature.buff_id) {
+    if is_kind(feature, BuffActKind::DodgeDamageType)
+        && configured_trigger_count(managers, feature.buff_id)
+    {
         ops.push(RuleOp::Command(BattleCommand::Buff(
             BuffCommand::ConsumeEffectCount(BuffConsume {
                 origin: super::feature_command_origin(feature)?,
@@ -85,12 +90,15 @@ pub fn trigger_rule_ops(feature: &ActiveBuffFeature) -> Option<Vec<RuleOp>> {
 }
 
 pub fn expire_after_owner_action(
+    managers: &BattleManagers,
     subscriber: &BuffActSubscriber,
     event: &BattleEvent,
 ) -> Option<Vec<RuleOp>> {
     let expires = match super::subscriber_kind(subscriber) {
         Some(BuffActKind::DodgeSpecSkill) => true,
-        Some(BuffActKind::DodgeDamageType) => configured_owner_attack_expiry(subscriber.buff_id),
+        Some(BuffActKind::DodgeDamageType) => managers
+            .catalog()
+            .buff_expires_after_owner_attack(subscriber.buff_id),
         _ => return None,
     };
     if !expires {
@@ -118,27 +126,9 @@ pub fn expire_after_owner_action(
     ))])
 }
 
-fn configured_trigger_count(buff_id: i32) -> bool {
-    config::try_get()
-        .and_then(|db| db.skill_buff.get(buff_id))
-        .is_some_and(|buff| buff.effect_count > 0 && !configured_owner_attack_expiry(buff_id))
-}
-
-fn configured_owner_attack_expiry(buff_id: i32) -> bool {
-    let Some(db) = config::try_get() else {
-        return false;
-    };
-    let Some(buff) = db.skill_buff.get(buff_id) else {
-        return false;
-    };
-    let type_id = if buff.type_id == 0 {
-        buff.id
-    } else {
-        buff.type_id
-    };
-    db.skill_bufftype
-        .get(type_id)
-        .is_some_and(|buff_type| buff_type.take_act == "1")
+fn configured_trigger_count(managers: &BattleManagers, buff_id: i32) -> bool {
+    managers.catalog().buff_has_effect_count(buff_id)
+        && !managers.catalog().buff_expires_after_owner_attack(buff_id)
 }
 
 #[cfg(test)]
@@ -258,6 +248,7 @@ mod tests {
 
     #[test]
     fn temporary_dodge_expires_only_after_its_owner_acts() {
+        let managers = BattleManagers::default();
         let subscriber = BuffActSubscriber {
             owner_uid: 10,
             source_uid: 10,
@@ -284,12 +275,12 @@ mod tests {
         };
 
         assert!(
-            expire_after_owner_action(&subscriber, &action(11))
+            expire_after_owner_action(&managers, &subscriber, &action(11))
                 .unwrap()
                 .is_empty()
         );
         assert!(matches!(
-            expire_after_owner_action(&subscriber, &action(10))
+            expire_after_owner_action(&managers, &subscriber, &action(10))
                 .unwrap()
                 .as_slice(),
             [RuleOp::Command(BattleCommand::Buff(
@@ -303,7 +294,7 @@ mod tests {
     #[test]
     fn counted_damage_type_dodge_consumes_one_trigger_charge() {
         crate::test_support::init_config();
-        let feature = BattleManagers::seeded(&Fight {
+        let managers = BattleManagers::seeded(&Fight {
             defender: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
                     uid: Some(-1),
@@ -324,15 +315,16 @@ mod tests {
                 ..Default::default()
             }),
             ..Default::default()
-        })
-        .buff
-        .active_features(&crate::engine::manager::hp::HpManager::default())
-        .into_iter()
-        .next()
-        .unwrap();
+        });
+        let feature = managers
+            .buff
+            .active_features(&crate::engine::manager::hp::HpManager::default())
+            .into_iter()
+            .next()
+            .unwrap();
 
         assert!(matches!(
-            trigger_rule_ops(&feature).unwrap().as_slice(),
+            trigger_rule_ops(&managers, &feature).unwrap().as_slice(),
             [
                 RuleOp::BuffFeatureMarker {
                     effect_type,
@@ -355,6 +347,7 @@ mod tests {
     #[test]
     fn configured_owner_attack_expiry_is_not_consumed_on_dodge() {
         crate::test_support::init_config();
+        let managers = BattleManagers::default();
         let subscriber = BuffActSubscriber {
             owner_uid: 10,
             source_uid: 10,
@@ -388,9 +381,10 @@ mod tests {
             values: vec![507, 1, 2],
         };
 
-        assert_eq!(trigger_rule_ops(&feature).unwrap().len(), 1);
+        assert_eq!(trigger_rule_ops(&managers, &feature).unwrap().len(), 1);
         assert!(
             expire_after_owner_action(
+                &managers,
                 &subscriber,
                 &BattleEvent::AllyAction(ActionEvent {
                     source_uid: 10,
@@ -403,6 +397,7 @@ mod tests {
         );
         assert!(matches!(
             expire_after_owner_action(
+                &managers,
                 &subscriber,
                 &BattleEvent::AllyAction(ActionEvent {
                     source_uid: 10,
@@ -421,6 +416,7 @@ mod tests {
     #[test]
     fn counted_damage_type_dodge_is_a_supported_noop_on_owner_action() {
         crate::test_support::init_config();
+        let managers = BattleManagers::default();
         let subscriber = BuffActSubscriber {
             owner_uid: 10,
             source_uid: 10,
@@ -442,6 +438,7 @@ mod tests {
 
         assert!(
             expire_after_owner_action(
+                &managers,
                 &subscriber,
                 &BattleEvent::AllyAction(ActionEvent {
                     source_uid: 10,

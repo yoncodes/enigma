@@ -45,14 +45,14 @@ pub fn configured_delta(
     owner_uid: i64,
     managers: &BattleManagers,
 ) -> Option<(AttrId, i32)> {
-    let definition = config::try_get()?.skill_buff.get(buff_id)?;
-    definition.features.split('|').find_map(|raw| {
+    let catalog = managers.catalog();
+    catalog.buff_feature_rows(buff_id).iter().find_map(|raw| {
         let values = raw
             .split('#')
             .filter_map(|value| value.parse::<i32>().ok())
             .collect::<Vec<_>>();
         let act_id = *values.first()?;
-        let act_type = &config::try_get()?.buff_act.get(act_id)?.r#type;
+        let act_type = catalog.buff_act_definition(act_id)?.key.type_name;
         delta_from_values(
             &values,
             act_type,

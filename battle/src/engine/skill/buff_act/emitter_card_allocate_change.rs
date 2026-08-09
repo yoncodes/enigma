@@ -1,6 +1,4 @@
-use crate::engine::{
-    entity::skill::skill_rank, manager::buff::ActiveBuffFeature, skill::effect::SkillEffectCatalog,
-};
+use crate::engine::{manager::buff::ActiveBuffFeature, skill::effect::SkillEffectCatalog};
 
 use super::{is_kind, registry::BuffActKind};
 
@@ -17,6 +15,20 @@ pub fn weight_bonus(
     catalog: &SkillEffectCatalog,
     skill_id: i32,
 ) -> i32 {
+    configured_weight_bonus(
+        feature,
+        catalog,
+        crate::catalog::BattleCatalog::try_global(),
+        skill_id,
+    )
+}
+
+pub(crate) fn configured_weight_bonus(
+    feature: &ActiveBuffFeature,
+    catalog: &SkillEffectCatalog,
+    battle_catalog: Option<crate::catalog::BattleCatalog>,
+    skill_id: i32,
+) -> i32 {
     if !is_kind(feature, BuffActKind::EmitterCardAllocateChange) {
         return 0;
     }
@@ -24,7 +36,12 @@ pub fn weight_bonus(
         return 0;
     };
     if (*card_kind == 1 && !catalog.is_attack(skill_id))
-        || (!ranks.is_empty() && !ranks.contains(&skill_rank(skill_id)))
+        || (!ranks.is_empty()
+            && !ranks.contains(
+                &battle_catalog
+                    .map(|catalog| catalog.skill_rank(skill_id))
+                    .unwrap_or_default(),
+            ))
     {
         return 0;
     }

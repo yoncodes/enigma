@@ -20,17 +20,17 @@ pub(crate) fn collect_hero_roots(
         .with_context(|| format!("hero {hero_id} is missing from character config"))?;
 
     let destiny = if let Some(stone) = options.destiny_stone {
-        let choices = Destiny::stones_for_hero(hero_id);
+        let choices = Destiny::stones(db, hero_id);
         if !choices.contains(&stone) {
             bail!("destiny stone {stone} is not available to hero {hero_id}; choices={choices:?}");
         }
         let rank = options.destiny_rank.unwrap();
-        let max_rank = Destiny::max_rank(stone);
+        let max_rank = Destiny::rank_limit(db, stone);
         if rank <= 0 || rank > max_rank {
             bail!("destiny rank {rank} is invalid for stone {stone}; valid=1..={max_rank}");
         }
         println!("destiny_stone={stone} rank={rank}");
-        Destiny::get(stone, rank)
+        Destiny::exchanges(db, stone, rank)
     } else {
         None
     };
@@ -91,7 +91,8 @@ pub(crate) fn collect_hero_roots(
     if ex_skill > 0 {
         enqueue(skills, ex_skill, format!("hero {hero_id} > ultimate"));
     }
-    for passive in Passive::for_config(
+    for passive in Passive::configured(
+        db,
         hero_id,
         options.psychube_id.zip(options.psychube_level),
         options.destiny_stone.zip(options.destiny_rank),
@@ -105,10 +106,10 @@ pub(crate) fn collect_hero_roots(
             ),
         );
     }
-    if options.destiny_stone.is_none() && !Destiny::stones_for_hero(hero_id).is_empty() {
+    if options.destiny_stone.is_none() && !Destiny::stones(db, hero_id).is_empty() {
         report.warning(format!(
             "DestinyStoneNotSelected path=hero {hero_id} choices={:?}",
-            Destiny::stones_for_hero(hero_id)
+            Destiny::stones(db, hero_id)
         ));
     }
     Ok(())

@@ -3,9 +3,9 @@ use crate::engine::{
         BattleManagers,
         buff::{
             BuffAmount, BuffChangeDuration, BuffChildUidReservation, BuffCommand, BuffConsume,
-            BuffConvert, BuffDispel, BuffGrant, BuffGrantChild, BuffRemove, BuffRemoveSelector,
-            BuffReplace, BuffSelector, BuffSetAmount, BuffSetState, BuffStatus, CommandOrigin,
-            DepletedBuff,
+            BuffConvert, BuffDispel, BuffGrant, BuffGrantChild, BuffRefreshDurationBySelector,
+            BuffRemove, BuffRemoveSelector, BuffReplace, BuffSelector, BuffSetAmount, BuffSetState,
+            BuffStatus, CommandOrigin, DepletedBuff,
         },
         card::{CardCommand, CardConsumeForEffect},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
@@ -197,14 +197,10 @@ impl BehaviorHandler for Handler {
                 consume_buff_command(context.target_uid, behavior)
                     .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
             }
-            BehaviorKind::AddBuffDuration => {
-                change_duration_command(context.target_uid, behavior, BuffSelector::ExactId)
-                    .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
-            }
-            BehaviorKind::AddBuffRound => {
-                change_duration_command(context.target_uid, behavior, BuffSelector::IdOrType)
-                    .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
-            }
+            BehaviorKind::AddBuffDuration => refresh_duration_command(context.target_uid, behavior)
+                .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
+            BehaviorKind::AddBuffRound => change_duration_command(context.target_uid, behavior)
+                .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::ReduceCastChannelCount => {
                 reduce_channel_count_command(context.managers, context.target_uid, behavior)
                     .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
@@ -333,13 +329,6 @@ fn add_buff_from_skill_additions_ops(
         behavior,
     )
     .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
-}
-
-fn pool_buff_ids(raw: &str) -> Vec<i32> {
-    raw.split('#')
-        .filter_map(|entry| entry.split(',').next()?.trim().parse().ok())
-        .filter(|buff_id| *buff_id > 0)
-        .collect()
 }
 
 fn reduce_channel_count_command(

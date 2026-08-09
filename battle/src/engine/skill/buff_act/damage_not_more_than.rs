@@ -30,6 +30,7 @@ pub fn cap(feature: &ActiveBuffFeature, hp: &HpManager) -> Option<i32> {
 }
 
 pub fn consume_after_hit(
+    managers: &crate::engine::manager::BattleManagers,
     subscriber: &BuffActSubscriber,
     event: &BattleEvent,
 ) -> Option<Vec<RuleOp>> {
@@ -40,9 +41,7 @@ pub fn consume_after_hit(
         return Some(Vec::new());
     };
     if hit.target_uid != subscriber.owner_uid
-        || config::try_get()
-            .and_then(|db| db.skill_buff.get(subscriber.buff_id))
-            .is_none_or(|buff| buff.effect_count <= 0)
+        || !managers.catalog().buff_has_effect_count(subscriber.buff_id)
     {
         return Some(Vec::new());
     }
@@ -108,31 +107,6 @@ mod tests {
     fn stacked_cap_consumes_one_layer_after_its_owner_is_hit() {
         crate::test_support::init_config();
 
-        assert!(
-            consume_after_hit(&subscriber(6240530), &hit(11))
-                .unwrap()
-                .is_empty()
-        );
-        assert!(
-            consume_after_hit(&subscriber(610091), &hit(10))
-                .unwrap()
-                .is_empty()
-        );
-        assert!(matches!(
-            consume_after_hit(&subscriber(6240530), &hit(10))
-                .unwrap()
-                .as_slice(),
-            [RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(
-                BuffConsume {
-                    target_uid: 10,
-                    selector: BuffSelector::Uid(20),
-                    amount: 1,
-                    depleted: DepletedBuff::Remove,
-                    ..
-                }
-            )))]
-        ));
-
         let fight = sonettobuf::Fight {
             attacker: Some(sonettobuf::FightTeam {
                 entitys: vec![sonettobuf::FightEntityInfo {
@@ -152,8 +126,34 @@ mod tests {
             ..Default::default()
         };
         let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
+
+        assert!(
+            consume_after_hit(&managers, &subscriber(6240530), &hit(11))
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            consume_after_hit(&managers, &subscriber(610091), &hit(10))
+                .unwrap()
+                .is_empty()
+        );
+        assert!(matches!(
+            consume_after_hit(&managers, &subscriber(6240530), &hit(10))
+                .unwrap()
+                .as_slice(),
+            [RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(
+                BuffConsume {
+                    target_uid: 10,
+                    selector: BuffSelector::Uid(20),
+                    amount: 1,
+                    depleted: DepletedBuff::Remove,
+                    ..
+                }
+            )))]
+        ));
+
         let RuleOp::Command(BattleCommand::Buff(command)) =
-            consume_after_hit(&subscriber(6240530), &hit(10))
+            consume_after_hit(&managers, &subscriber(6240530), &hit(10))
                 .unwrap()
                 .pop()
                 .unwrap()

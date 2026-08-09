@@ -80,7 +80,7 @@ fn destination_begin_round_owns_the_round_transition_and_reply_buckets() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
 
     let round = runtime
         .build_begin_round_from_schedule(&BeginRoundRequest::default())
@@ -141,7 +141,7 @@ fn opening_round_uses_action_point_buffs_applied_during_setup() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
 
     let round = runtime.start_round().unwrap();
 
@@ -193,7 +193,7 @@ fn opening_round_collects_static_ap_rules_without_runtime_dispatch() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
 
     let round = runtime.start_round().unwrap();
 
@@ -223,7 +223,7 @@ fn round_modifier_with_output_keeps_its_setup_command() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime.extend_battle_rule_skills([crate::engine::fight::rules::OwnedBattleSkill {
         owner_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
         skill_id: 1_182_004,
@@ -286,7 +286,7 @@ fn begin_round_refills_any_normal_hand_deficit() {
         temp_card: Some(false),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime
         .managers
         .execute_card(crate::engine::manager::card::CardCommand::Setup(
@@ -325,9 +325,9 @@ fn round_start_keeps_precast_above_normal_hand_capacity() {
         .join("../battle_preview/fixtures/battles/battle6/StartDungeonReply.json");
     let mut value: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(fixture).unwrap()).unwrap();
-    crate::preview::normalize_live_json(&mut value);
+    sonettobuf::normalize::normalize_live_json(&mut value);
     let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
 
     runtime.start_round().unwrap();
     assert!(
@@ -348,7 +348,7 @@ fn round_start_keeps_precast_above_normal_hand_capacity() {
         .unwrap(),
     )
     .unwrap();
-    crate::preview::normalize_live_json(&mut request_value);
+    sonettobuf::normalize::normalize_live_json(&mut request_value);
     let request: BeginRoundRequest = serde_json::from_value(request_value).unwrap();
     let round = runtime.build_begin_round_from_schedule(&request).unwrap();
     let normal = runtime.managers.card.normal_hand_len();
@@ -394,9 +394,9 @@ fn rank_three_emanation_updates_lingering_glow() {
         &std::fs::read_to_string(battle.join("StartDungeonReply.json")).unwrap(),
     )
     .unwrap();
-    crate::preview::normalize_live_json(&mut value);
+    sonettobuf::normalize::normalize_live_json(&mut value);
     let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime.start_round().unwrap();
     assert!(
         runtime
@@ -415,7 +415,7 @@ fn rank_three_emanation_updates_lingering_glow() {
                 .unwrap(),
         )
         .unwrap();
-        crate::preview::normalize_live_json(&mut value);
+        sonettobuf::normalize::normalize_live_json(&mut value);
         serde_json::from_value::<BeginRoundRequest>(value).unwrap()
     };
     runtime
@@ -481,7 +481,7 @@ fn begin_round_projects_the_canonical_hand_after_the_deal_composes() {
         ..Default::default()
     };
     let original = vec![card(200), card(300), card(400), card(500), card(100)];
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime
         .managers
         .execute_card(crate::engine::manager::card::CardCommand::Setup(
@@ -558,11 +558,11 @@ fn opening_random_pool_never_contains_an_ultimate() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime.managers.ex_point.add(10, 10, 1, 0);
 
     assert_eq!(
-        super::start::available_player_cards(&runtime.fight)
+        super::start::available_player_cards(runtime.managers.catalog(), &runtime.fight)
             .into_iter()
             .filter_map(|card| card.skill_id)
             .collect::<Vec<_>>(),
@@ -580,7 +580,7 @@ fn finished_round_does_not_promote_reserves_and_still_projects_the_next_round() 
         position: Some(position),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         cur_round: Some(1),
         version: Some(6),
         attacker: Some(FightTeam {

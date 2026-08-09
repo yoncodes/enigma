@@ -56,19 +56,78 @@ pub struct ToughnessManager {
 }
 
 impl ToughnessManager {
-    pub fn seed(&mut self, fight: &Fight) {
+    pub fn seed_with_game_data(&mut self, game_data: &config::GameDB, fight: &Fight) {
+        self.seed_from(fight, |entity| {
+            entity
+                .model_id
+                .zip(entity.attr.as_ref().and_then(|attr| attr.hp))
+                .and_then(|(model_id, max_hp)| {
+                    crate::catalog::configured_monster_toughness(game_data, model_id, max_hp)
+                })
+        });
+    }
+
+    pub(crate) fn seed_configured(
+        &mut self,
+        catalog: crate::catalog::BattleCatalog,
+        fight: &Fight,
+    ) {
+        self.seed_from(fight, |entity| {
+            entity
+                .model_id
+                .zip(entity.attr.as_ref().and_then(|attr| attr.hp))
+                .and_then(|(model_id, max_hp)| catalog.monster_toughness(model_id, max_hp))
+        });
+    }
+
+    fn seed_from(
+        &mut self,
+        fight: &Fight,
+        mut configured: impl FnMut(&FightEntityInfo) -> Option<(i32, i32)>,
+    ) {
         self.states.clear();
         self.recovery_penalties.clear();
         for entity in entities(fight) {
-            self.register(entity);
+            let values = configured(entity);
+            self.register_from(entity, values);
         }
     }
 
-    pub fn register(&mut self, entity: &FightEntityInfo) {
+    #[cfg(test)]
+    pub fn seed(&mut self, fight: &Fight) {
+        self.seed_with_game_data(crate::test_support::game_data(), fight);
+    }
+
+    pub fn register_with_game_data(
+        &mut self,
+        game_data: &config::GameDB,
+        entity: &FightEntityInfo,
+    ) {
+        let configured = entity
+            .model_id
+            .zip(entity.attr.as_ref().and_then(|attr| attr.hp))
+            .and_then(|(model_id, max_hp)| {
+                crate::catalog::configured_monster_toughness(game_data, model_id, max_hp)
+            });
+        self.register_from(entity, configured);
+    }
+
+    pub(crate) fn register_configured(
+        &mut self,
+        catalog: crate::catalog::BattleCatalog,
+        entity: &FightEntityInfo,
+    ) {
+        let configured = entity
+            .model_id
+            .zip(entity.attr.as_ref().and_then(|attr| attr.hp))
+            .and_then(|(model_id, max_hp)| catalog.monster_toughness(model_id, max_hp));
+        self.register_from(entity, configured);
+    }
+
+    fn register_from(&mut self, entity: &FightEntityInfo, configured: Option<(i32, i32)>) {
         let Some(uid) = entity.uid else { return };
         let value = entity.toughness_value.unwrap_or_default().max(0);
         let point = entity.toughness_point.unwrap_or_default().max(0);
-        let configured = configured_values(entity);
         let segment_value = configured.map_or(value, |values| values.0);
         let max_point = configured.map_or(point, |values| values.1);
         if segment_value <= 0 {
@@ -198,27 +257,6 @@ impl ToughnessManager {
     }
 }
 
-pub(crate) fn initial_values(raw: &str, max_hp: i32) -> Option<(i32, i32)> {
-    let mut parts = raw.split('#').filter_map(|value| value.parse::<i32>().ok());
-    let amount = parts.next()?;
-    let points = parts.next()?.max(0);
-    let show_type = parts.next().unwrap_or_default();
-    let segment = match show_type {
-        0 => amount,
-        1 => (i64::from(max_hp.max(0)) * i64::from(amount) / 1000).clamp(0, i64::from(i32::MAX))
-            as i32,
-        _ => return None,
-    };
-    (segment > 0 && points > 0).then_some((segment, points))
-}
-
-fn configured_values(entity: &FightEntityInfo) -> Option<(i32, i32)> {
-    let db = config::try_get()?;
-    let monster = db.monster.get(entity.model_id?)?;
-    let max_hp = entity.attr.as_ref()?.hp?;
-    initial_values(&monster.toughness, max_hp)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,8 +321,26 @@ mod tests {
     }
 
     #[test]
-    fn percent_config_builds_each_guard_segment_from_max_hp() {
-        assert_eq!(initial_values("100#3#1", 1_015_000), Some((101_500, 3)));
+    fn configured_percent_builds_each_guard_segment_from_max_hp() {
+        crate::test_support::init_config();
+        let mut manager = ToughnessManager::default();
+        manager.register_with_game_data(
+            crate::test_support::game_data(),
+            &FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(109_350_003),
+                toughness_value: Some(101_500),
+                toughness_point: Some(4),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(1_015_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(manager.get(-1).unwrap().segment_value, 101_500);
+        assert_eq!(manager.get(-1).unwrap().max_point, 4);
     }
 
     #[test]

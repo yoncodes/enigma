@@ -122,6 +122,7 @@ pub use start::*;
 use start::{RoundStartSettlementPlan, raspberry_losses, run_round_start_owner_settlement};
 
 pub fn run_wave_start_triggers(
+    battle_catalog: crate::catalog::BattleCatalog,
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
@@ -129,11 +130,7 @@ pub fn run_wave_start_triggers(
     context: TargetContext,
     wave: i32,
 ) -> Result<DrainResult, DrainError> {
-    let actions = crate::engine::fight::trigger::wave_start_actions(
-        config::configs::get(),
-        context.battle_id,
-        wave,
-    )?;
+    let actions = battle_catalog.wave_start_actions(context.battle_id, wave)?;
     if actions.is_empty() {
         return Ok(DrainResult::default());
     }
@@ -325,8 +322,11 @@ pub fn run_ai_actions(
                 },
             );
             let is_ultimate = pool.entity(choice.source_uid).is_some_and(|entity| {
-                crate::engine::mechanic::card::CardMechanic
-                    .is_ultimate_skill(choice.skill_id, entity)
+                crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                    managers,
+                    choice.skill_id,
+                    entity,
+                )
             });
             if let Some(delta) = card_play_resource_delta(
                 managers,
@@ -350,6 +350,28 @@ pub fn run_ai_actions(
             continue;
         }
         if card_skill_is_blocked(managers, catalog, choice.source_uid, choice.skill_id) {
+            push_attributed_cue(
+                &mut result.frames,
+                choice.source_uid,
+                RoundCue::CardInvalid {
+                    card_index,
+                    team_type: managers
+                        .buff
+                        .team_type(choice.source_uid)
+                        .unwrap_or_default(),
+                    reason: CardInvalidReason::Default,
+                },
+            );
+            continue;
+        }
+        if let Some(entity) = pool.entity(choice.source_uid)
+            && crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                managers,
+                choice.skill_id,
+                entity,
+            )
+            && !crate::engine::mechanic::card::CardMechanic.ultimate_ready(managers, entity)
+        {
             push_attributed_cue(
                 &mut result.frames,
                 choice.source_uid,
@@ -438,7 +460,7 @@ pub fn run_promotions(
     context: TargetContext,
     promotions: impl IntoIterator<Item = crate::engine::fight::reserve::Promotion>,
 ) -> Result<DrainResult, DrainError> {
-    let pool = TargetPool::from_fight(fight);
+    let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
     let mut result = DrainResult::default();
     for promotion in promotions {
         let entering_uid = promotion.entering_uid;

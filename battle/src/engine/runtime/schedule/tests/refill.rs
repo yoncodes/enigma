@@ -468,7 +468,7 @@ fn round_refill_uses_one_normal_slot_for_a_unique_ultimate() {
 }
 
 #[test]
-fn round_start_refill_adds_a_newly_ready_ultimate_to_a_full_hand() {
+fn round_start_refill_waits_for_a_deficit_before_adding_a_newly_ready_ultimate() {
     init_config();
     let fight = Fight {
         version: Some(7),
@@ -547,7 +547,7 @@ fn round_start_refill_adds_a_newly_ready_ultimate_to_a_full_hand() {
             .iter()
             .filter_map(|card| card.skill_id)
             .collect::<Vec<_>>(),
-        vec![100, 900]
+        vec![100]
     );
 }
 

@@ -18,11 +18,14 @@ pub fn allocate(
     use_priority_rule: bool,
     determinism: &mut RoundDeterminism,
 ) -> Option<Vec<CardInfo>> {
+    let battle_catalog = buffs
+        .try_catalog()
+        .or_else(crate::catalog::BattleCatalog::try_global);
     if available <= 0 {
         return None;
     }
 
-    let eligible = eligible_cards(cards, catalog, use_priority_rule);
+    let eligible = eligible_cards(cards, catalog, battle_catalog, use_priority_rule);
     if eligible.is_empty() {
         return None;
     }
@@ -50,9 +53,10 @@ pub fn allocate(
                     let bonus = features
                         .iter()
                         .map(|feature| {
-                            crate::engine::skill::buff_act::emitter_card_allocate_change::weight_bonus(
+                            crate::engine::skill::buff_act::emitter_card_allocate_change::configured_weight_bonus(
                                 feature,
                                 catalog,
+                                battle_catalog,
                                 card.skill_id.unwrap_or_default(),
                             )
                         })
@@ -79,6 +83,7 @@ pub fn allocate(
 fn eligible_cards<'a>(
     cards: &'a [CardInfo],
     catalog: &SkillEffectCatalog,
+    battle_catalog: Option<crate::catalog::BattleCatalog>,
     weighted: bool,
 ) -> Vec<(usize, &'a CardInfo)> {
     cards
@@ -89,7 +94,11 @@ fn eligible_cards<'a>(
         .filter(|(_, card)| {
             card.skill_id.is_some_and(|skill_id| {
                 !catalog.is_big_skill(skill_id)
-                    && (1..=3).contains(&crate::engine::entity::skill::card_skill_rank(card))
+                    && (1..=3).contains(
+                        &battle_catalog
+                            .map(|catalog| catalog.card_skill_rank(card))
+                            .unwrap_or_else(|| card.card_effect.unwrap_or_default()),
+                    )
             })
         })
         .collect()

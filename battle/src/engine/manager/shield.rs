@@ -2,8 +2,8 @@ use crate::engine::{
     manager::{
         BattleManagers,
         buff::{
-            BuffChanges, BuffCommand, BuffCommandError, BuffGrant, BuffMarkerResult, BuffPlan,
-            BuffPolicy, BuffRefreshDuration, BuffSetState,
+            BuffChanges, BuffCommand, BuffCommandError, BuffGrant, BuffManager, BuffMarkerResult,
+            BuffPlan, BuffPolicy, BuffRefreshDuration, BuffSetState,
         },
         hp::{HpChanges, HpCommand, HpCommandError, ShieldGrant, TeamSharedShieldGain},
     },
@@ -118,14 +118,12 @@ fn plan(
                         .duration;
                     (current_duration > 0 && configured_duration > 0)
                         .then(|| {
-                            managers.plan_buff(BuffCommand::RefreshDuration(
-                                BuffRefreshDuration {
-                                    origin: command.origin,
-                                    target_uid: command.target_uid,
-                                    buff_uid,
-                                    minimum_duration: configured_duration,
-                                },
-                            ))
+                            managers.plan_buff(BuffCommand::RefreshDuration(BuffRefreshDuration {
+                                origin: command.origin,
+                                target_uid: command.target_uid,
+                                buff_uid,
+                                minimum_duration: configured_duration,
+                            }))
                         })
                         .transpose()?
                 }
@@ -151,8 +149,12 @@ fn plan(
             })
         }
         ShieldScope::TeamShared => {
-            let act_id = configured_act_id(command.buff_id, BuffActKind::TeamShareShield)
-                .ok_or(ShieldCommandError::Buff(BuffCommandError::InvalidSetState))?;
+            let act_id = configured_act_id(
+                &managers.buff,
+                command.buff_id,
+                BuffActKind::TeamShareShield,
+            )
+            .ok_or(ShieldCommandError::Buff(BuffCommandError::InvalidSetState))?;
             let max = max.max(0);
             let before = carrier_uid
                 .and_then(|buff_uid| managers.buff.snapshot(command.target_uid, buff_uid))
@@ -171,7 +173,7 @@ fn plan(
                     .snapshot(command.target_uid, buff_uid)
                     .ok_or(ShieldCommandError::Buff(BuffCommandError::InvalidSetState))?;
                 upsert_act_info(&mut snapshot.act_info, act_id, after);
-                sort_act_info(command.buff_id, &mut snapshot.act_info);
+                sort_act_info(&managers.buff, command.buff_id, &mut snapshot.act_info);
                 (
                     Some(PlannedBuff {
                         plan: managers.plan_buff(BuffCommand::SetInternalState(BuffSetState {
@@ -280,8 +282,9 @@ fn commit(managers: &mut BattleManagers, plan: ShieldPlan) -> ShieldChanges {
     }
 }
 
-fn configured_act_id(buff_id: i32, kind: BuffActKind) -> Option<i32> {
-    crate::engine::manager::buff::BuffManager::configured_features(buff_id)
+fn configured_act_id(buffs: &BuffManager, buff_id: i32, kind: BuffActKind) -> Option<i32> {
+    buffs
+        .definition_features(buff_id)
         .into_iter()
         .find_map(|feature| {
             let act_id = feature.act_id()?;
@@ -304,8 +307,9 @@ fn upsert_act_info(act_info: &mut Vec<sonettobuf::BuffActInfo>, act_id: i32, val
     }
 }
 
-fn sort_act_info(buff_id: i32, act_info: &mut [sonettobuf::BuffActInfo]) {
-    let order = crate::engine::manager::buff::BuffManager::configured_features(buff_id)
+fn sort_act_info(buffs: &BuffManager, buff_id: i32, act_info: &mut [sonettobuf::BuffActInfo]) {
+    let order = buffs
+        .definition_features(buff_id)
         .into_iter()
         .filter_map(|feature| feature.act_id())
         .collect::<Vec<_>>();

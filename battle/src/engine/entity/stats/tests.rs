@@ -1,9 +1,45 @@
 use super::*;
 
 #[test]
+fn stat_inputs_use_only_normalized_battle_build_data() {
+    let hero = HeroBuildInput {
+        hero_id: 3127,
+        level: 121,
+        rank: 4,
+        destiny_rank: 3,
+        talent: 10,
+        talent_style: 2,
+        talent_placements: vec![11, 12],
+        ..Default::default()
+    };
+    let equip = EquipmentBuildInput {
+        equip_id: 1502,
+        level: 50,
+        break_level: 4,
+        ..Default::default()
+    };
+
+    assert_eq!(
+        StatInputs::from_build_input(&hero, Some(&equip)),
+        StatInputs {
+            hero_id: 3127,
+            level: 121,
+            rank: 4,
+            destiny_rank: 3,
+            equip_id: 1502,
+            equip_level: 50,
+            equip_break_level: 4,
+            talent: 10,
+            talent_style: 2,
+            talent_placements: vec![11, 12],
+        }
+    );
+}
+
+#[test]
 fn configured_pickles_stats_are_generated_from_build_inputs() {
     crate::test_support::init_config();
-    let stats = Stats::build(&StatInputs {
+    let input = StatInputs {
         hero_id: 3063,
         level: 180,
         rank: 4,
@@ -14,7 +50,12 @@ fn configured_pickles_stats_are_generated_from_build_inputs() {
         talent_style: 0,
         talent_placements: vec![10, 10, 61, 15, 12, 10, 12, 16, 17, 13, 14, 17, 19, 19],
         ..Default::default()
-    });
+    };
+    let stats = Stats::build(&input);
+    assert_eq!(
+        Stats::configured(crate::test_support::game_data(), &input),
+        stats
+    );
     assert_eq!(
         (stats.hp, stats.atk, stats.def, stats.mdef, stats.technic),
         (10914, 1874, 831, 927, 305)
@@ -71,18 +112,22 @@ fn destiny_poison_rate_uses_unlocked_config_slots() {
 fn battle_balance_applies_configured_stat_floors() {
     crate::test_support::init_config();
 
-    let inputs = BattleBalance::parse("140#12#60")
-        .unwrap()
-        .apply(StatInputs {
-            hero_id: 3127,
-            level: 121,
-            rank: 4,
-            equip_id: 1502,
-            equip_level: 50,
-            talent: 10,
-            talent_placements: vec![1, 2, 3],
-            ..Default::default()
-        });
+    let balance = BattleBalance::parse("140#12#60").unwrap();
+    let base = StatInputs {
+        hero_id: 3127,
+        level: 121,
+        rank: 4,
+        equip_id: 1502,
+        equip_level: 50,
+        talent: 10,
+        talent_placements: vec![1, 2, 3],
+        ..Default::default()
+    };
+    let inputs = balance.apply(base.clone());
+    assert_eq!(
+        balance.configured(crate::test_support::game_data(), base),
+        inputs
+    );
     let stats = Stats::build(&inputs);
 
     assert_eq!(

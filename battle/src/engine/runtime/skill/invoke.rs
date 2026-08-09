@@ -85,7 +85,11 @@ pub(super) fn resource_fire_count(
     ))
 }
 
-pub(super) fn apply_event_context(context: &mut TargetContext, event: &BattleEvent) {
+pub(super) fn apply_event_context(
+    catalog: crate::catalog::BattleCatalog,
+    context: &mut TargetContext,
+    event: &BattleEvent,
+) {
     context.event_source_uid = event.source_uid().unwrap_or_default();
     match event {
         BattleEvent::BuffAdded(change) | BattleEvent::BuffChanged(change) => {
@@ -126,7 +130,7 @@ pub(super) fn apply_event_context(context: &mut TargetContext, event: &BattleEve
             context.hit_damage_from = Some(hit.damage_from);
             context.active_skill_id = hit.skill_id;
             context.active_skill_source_uid = hit.source_uid;
-            context.active_skill_rank = crate::engine::entity::skill::skill_rank(hit.skill_id);
+            context.active_skill_rank = catalog.skill_rank(hit.skill_id);
         }
         BattleEvent::EntityDied(death) => context.runtime_target_uid = death.target_uid,
         BattleEvent::EntityEntered { target_uid }

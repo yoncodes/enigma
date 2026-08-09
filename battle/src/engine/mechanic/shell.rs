@@ -127,8 +127,7 @@ fn deploy(
     stock_buff_id: i32,
     requested: i32,
 ) -> Result<ShellChanges, ShellError> {
-    let deployed_buff_id = crate::engine::skill::buff_act::shell::deployed_buff_id(stock_buff_id)
-        .ok_or(ShellError::InvalidCommand)?;
+    let deployed_buff_id = runtime_deployed_buff_id(managers, stock_buff_id)?;
     let available = managers
         .buff
         .buff_id_amount(source_uid, stock_buff_id)
@@ -182,8 +181,7 @@ fn retrieve_all(
     source_uid: i64,
     stock_buff_id: i32,
 ) -> Result<ShellChanges, ShellError> {
-    let deployed_buff_id = crate::engine::skill::buff_act::shell::deployed_buff_id(stock_buff_id)
-        .ok_or(ShellError::InvalidCommand)?;
+    let deployed_buff_id = runtime_deployed_buff_id(managers, stock_buff_id)?;
     let mut deployed = managers
         .buff
         .active_features(&managers.hp)
@@ -236,8 +234,7 @@ fn retrieve(
     stock_buff_id: i32,
     requested: i32,
 ) -> Result<ShellChanges, ShellError> {
-    let deployed_buff_id = crate::engine::skill::buff_act::shell::deployed_buff_id(stock_buff_id)
-        .ok_or(ShellError::InvalidCommand)?;
+    let deployed_buff_id = runtime_deployed_buff_id(managers, stock_buff_id)?;
     let available = managers
         .buff
         .buff_id_amount(target_uid, deployed_buff_id)
@@ -282,6 +279,19 @@ fn retrieve(
         }],
         skills: Vec::new(),
     })
+}
+
+fn runtime_deployed_buff_id(
+    managers: &BattleManagers,
+    stock_buff_id: i32,
+) -> Result<i32, ShellError> {
+    let catalog = managers
+        .buff
+        .try_catalog()
+        .or_else(crate::catalog::BattleCatalog::try_global)
+        .ok_or(ShellError::InvalidCommand)?;
+    crate::engine::skill::buff_act::shell::resolve_deployed_buff_id(catalog, stock_buff_id)
+        .ok_or(ShellError::InvalidCommand)
 }
 
 fn accumulate_and_use_skill(

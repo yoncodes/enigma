@@ -237,17 +237,35 @@ pub struct ConduitManager {
 }
 
 impl ConduitManager {
-    pub fn seed(fight: &Fight) -> Self {
+    pub(crate) fn configured(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
+        Self::from_fight(fight, |model_id| catalog.conduit_device(model_id))
+    }
+
+    pub fn seed_with_game_data(game_data: &config::GameDB, fight: &Fight) -> Self {
+        Self::from_fight(fight, |model_id| {
+            crate::catalog::configured_conduit_device(game_data, model_id)
+        })
+    }
+
+    fn from_fight(
+        fight: &Fight,
+        configured: impl Fn(i32) -> Result<Option<Vec<Vec<ConduitSkill>>>, ConduitError>,
+    ) -> Self {
         let mut manager = Self::default();
         for (team, fight_team) in [(1, fight.attacker.as_ref()), (2, fight.defender.as_ref())] {
             let Some(fight_team) = fight_team else {
                 continue;
             };
             for entity in &fight_team.entitys {
-                manager.seed_entity(team, entity);
+                manager.seed_entity(&configured, team, entity);
             }
         }
         manager
+    }
+
+    #[cfg(test)]
+    pub fn seed(fight: &Fight) -> Self {
+        Self::seed_with_game_data(crate::test_support::game_data(), fight)
     }
 
     pub fn initialization_commands(&self) -> Vec<ConduitCommand> {
@@ -748,45 +766,23 @@ impl ConduitManager {
         Ok(team)
     }
 
-    fn seed_entity(&mut self, team: i32, entity: &FightEntityInfo) {
+    fn seed_entity(
+        &mut self,
+        configured: &impl Fn(i32) -> Result<Option<Vec<Vec<ConduitSkill>>>, ConduitError>,
+        team: i32,
+        entity: &FightEntityInfo,
+    ) {
         let (Some(uid), Some(model_id)) = (entity.uid, entity.model_id) else {
             return;
         };
-        let configs = config::configs::get();
-        let Some(character) = configs.character.get(model_id) else {
-            return;
-        };
-        if character.device_id == 0 {
-            return;
-        }
-        let Some(definition) = configs.fight_device.get(character.device_id) else {
-            self.initialization_errors
-                .push(ConduitError::MissingDefinition(character.device_id));
-            return;
-        };
-        let groups = [
-            parse_skill_group(
-                character.device_id,
-                ConduitSkillGroup::Primary,
-                &definition.skill1,
-            ),
-            parse_skill_group(
-                character.device_id,
-                ConduitSkillGroup::Secondary,
-                &definition.skill2,
-            ),
-            parse_unique_skill(character.device_id, &definition.unique_skill),
-        ];
-        let mut skill_groups = Vec::with_capacity(groups.len());
-        for group in groups {
-            match group {
-                Ok(group) => skill_groups.push(group),
-                Err(error) => {
-                    self.initialization_errors.push(error);
-                    return;
-                }
+        let skill_groups = match configured(model_id) {
+            Ok(Some(skill_groups)) => skill_groups,
+            Ok(None) => return,
+            Err(error) => {
+                self.initialization_errors.push(error);
+                return;
             }
-        }
+        };
         self.areas
             .entry(team)
             .or_insert_with(|| ConduitArea {
@@ -845,45 +841,6 @@ impl ConduitChange {
     }
 }
 
-fn parse_skill_group(
-    device_id: i32,
-    group: ConduitSkillGroup,
-    value: &str,
-) -> Result<Vec<ConduitSkill>, ConduitError> {
-    value
-        .split('|')
-        .map(|entry| {
-            let parts = entry.split('#').collect::<Vec<_>>();
-            if parts.len() != 3 {
-                return Err(invalid_skill(device_id, group));
-            }
-            Ok(ConduitSkill {
-                skill_id: parse_part(device_id, group, parts[0])?,
-                cost_type: parse_part(device_id, group, parts[1])?,
-                cost_value: parse_part(device_id, group, parts[2])?,
-                is_stopped: false,
-            })
-        })
-        .collect()
-}
-
-fn parse_unique_skill(device_id: i32, value: &str) -> Result<Vec<ConduitSkill>, ConduitError> {
-    Ok(vec![ConduitSkill {
-        skill_id: parse_part(device_id, ConduitSkillGroup::Unique, value)?,
-        cost_type: 999,
-        cost_value: 0,
-        is_stopped: false,
-    }])
-}
-
-fn parse_part(device_id: i32, group: ConduitSkillGroup, part: &str) -> Result<i32, ConduitError> {
-    part.parse().map_err(|_| invalid_skill(device_id, group))
-}
-
-fn invalid_skill(device_id: i32, group: ConduitSkillGroup) -> ConduitError {
-    ConduitError::InvalidSkill { device_id, group }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -897,8 +854,13 @@ mod tests {
 
     #[test]
     fn parses_configured_skill_group_without_losing_cost_identity() {
+        crate::test_support::init_config();
+        let groups =
+            crate::catalog::configured_conduit_device(crate::test_support::game_data(), 3149)
+                .unwrap()
+                .unwrap();
         assert_eq!(
-            parse_skill_group(1, ConduitSkillGroup::Primary, "31490111#1#0|31490121#1#3",).unwrap(),
+            groups[0],
             vec![
                 ConduitSkill {
                     skill_id: 31490111,
@@ -913,6 +875,34 @@ mod tests {
                     is_stopped: false,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn configured_seed_matches_the_borrowed_database_adapter() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3149),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let configured = ConduitManager::configured(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            &fight,
+        );
+        let legacy = ConduitManager::seed_with_game_data(crate::test_support::game_data(), &fight);
+
+        assert_eq!(configured.areas, legacy.areas);
+        assert_eq!(
+            configured.initialization_errors,
+            legacy.initialization_errors
         );
     }
 

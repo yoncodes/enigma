@@ -3,7 +3,46 @@ use chrono::Datelike;
 use database::db::game::{equipment, sign_in};
 
 pub(crate) async fn snapshot_data(db: &SqlitePool, hero: HeroData) -> Result<HeroInfo, AppError> {
-    Ok(battle::engine::entity::stats::hero_info(db, hero).await?)
+    let equip = if hero.record.default_equip_uid == 0 {
+        None
+    } else {
+        Some(
+            equipment::get_equipment_by_uid(db, hero.record.user_id, hero.record.default_equip_uid)
+                .await?,
+        )
+    };
+    let stats = battle::engine::entity::stats::Stats::build(&stat_inputs(&hero, equip.as_ref()));
+    Ok(hero.into_proto(stats.base(), stats.ex(), stats.sp()))
+}
+
+fn stat_inputs(
+    hero: &HeroData,
+    equip: Option<&database::models::game::equipment::Equipment>,
+) -> battle::engine::entity::stats::StatInputs {
+    let record = &hero.record;
+    let template = hero
+        .talent_templates
+        .iter()
+        .find(|(template, _)| template.template_id == record.use_talent_template_id)
+        .or_else(|| hero.talent_templates.first());
+    let cubes = template
+        .filter(|(_, cubes)| !cubes.is_empty())
+        .map(|(_, cubes)| cubes.as_slice())
+        .unwrap_or(&hero.talent_cubes);
+    battle::engine::entity::stats::StatInputs {
+        hero_id: record.hero_id,
+        level: record.level,
+        rank: record.rank,
+        destiny_rank: record.destiny_rank,
+        equip_id: equip.map(|equip| equip.equip_id).unwrap_or_default(),
+        equip_level: equip.map(|equip| equip.level).unwrap_or_default(),
+        equip_break_level: equip.map(|equip| equip.break_lv).unwrap_or_default(),
+        talent: record.talent,
+        talent_style: template
+            .map(|(template, _)| template.style)
+            .unwrap_or_default(),
+        talent_placements: cubes.iter().map(|cube| cube.cube_id).collect(),
+    }
 }
 
 impl HeroManager {

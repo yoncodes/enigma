@@ -115,6 +115,7 @@ impl BuffManager {
             .iter_mut()
             .find(|active| active.owner_uid == target_uid && active.buff.uid == Some(buff_uid))?;
         let before = active.buff.clone();
+        let before_amount = count_or_layer_from(&before, active.definition.as_ref());
 
         if let Some(layer) = layer {
             active.buff.layer = Some(layer);
@@ -125,12 +126,14 @@ impl BuffManager {
         if let Some(duration) = duration {
             active.buff.duration = Some(duration);
         }
+        let after = active.buff.clone();
+        let added =
+            (count_or_layer_from(&after, active.definition.as_ref()) - before_amount).max(0);
         let result = BuffUpdateResult {
             target_uid,
             before,
-            after: active.buff.clone(),
+            after,
         };
-        let added = (count_or_layer(&result.after) - count_or_layer(&result.before)).max(0);
         if let Some(buff_id) = result.after.buff_id {
             self.record_added(target_uid, buff_id, added);
         }
@@ -227,7 +230,7 @@ impl BuffManager {
             .definition
             .as_ref()
             .is_some_and(|definition| definition.uses_typed_count());
-        let before_amount = count_or_layer(&active.buff);
+        let before_amount = count_or_layer_from(&active.buff, active.definition.as_ref());
         if let Some(buff_uid) = active.buff.uid {
             self.remove_act_states(buff_uid);
         }
@@ -236,7 +239,7 @@ impl BuffManager {
             .buff
             .buff_id
             .into_iter()
-            .flat_map(halo::carriers)
+            .flat_map(|buff_id| halo::carriers(self.catalog(), buff_id))
             .filter_map(|carrier| carrier.linked_buff_id)
             .collect::<Vec<_>>();
         let mut removed = Vec::new();
@@ -248,7 +251,7 @@ impl BuffManager {
                         .buff
                         .buff_id
                         .into_iter()
-                        .flat_map(halo::carriers)
+                        .flat_map(|buff_id| halo::carriers(self.catalog(), buff_id))
                         .any(|carrier| carrier.linked_buff_id == Some(linked_id))
             });
             if still_owned {

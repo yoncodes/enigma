@@ -14,7 +14,7 @@ use crate::engine::{
             rate::{self, RateRuntime},
             registry::BehaviorHandler,
         },
-        effect::ParsedBehavior,
+        effect::{ParsedBehavior, SkillEffectCatalog},
         rule::{
             RuleReferences,
             output::{BattleCommand, RuleOp},
@@ -32,7 +32,15 @@ impl BehaviorHandler for Handler {
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
-        emit_ops(context, behavior)
+        emit_ops(context, behavior, None)
+    }
+
+    fn emit_runtime_ops(
+        context: BehaviorOpContext<'_>,
+        behavior: &ParsedBehavior,
+        catalog: &SkillEffectCatalog,
+    ) -> Option<Vec<RuleOp>> {
+        emit_ops(context, behavior, Some(catalog))
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
@@ -40,7 +48,11 @@ impl BehaviorHandler for Handler {
     }
 }
 
-fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+fn emit_ops(
+    context: BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+    effects: Option<&SkillEffectCatalog>,
+) -> Option<Vec<RuleOp>> {
     let [
         random_replacement,
         random_rate,
@@ -70,7 +82,7 @@ fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option
         buffs: &context.managers.buff,
         target_buffs: &context.managers.buff,
         hp: &context.managers.hp,
-        fields: Some(&context.managers.field),
+        fields: Some((&context.managers.field, context.managers.catalog())),
         emitter: None,
         team_inspiration: 0,
     };
@@ -82,6 +94,10 @@ fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option
                 .map(|index| enemies[index])
         })
         .collect::<Option<Vec<_>>>()?;
+    let effects = match effects {
+        Some(effects) => effects,
+        None => crate::engine::skill::effect::catalog::global(),
+    };
     let mut damage = |target_uid, replacement_buff_id, rate| {
         let mut modifiers = context.modifiers.clone();
         let mut target_context = *context.target;
@@ -99,7 +115,7 @@ fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option
             context.active_skill_id,
             passive_skills,
             RateRuntime {
-                effects: crate::engine::skill::effect::catalog::global(),
+                effects,
                 managers: context.managers,
                 pool: context.pool,
                 context: target_context,
@@ -111,7 +127,7 @@ fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option
             target_uid,
             context.active_skill_id,
             RateRuntime {
-                effects: crate::engine::skill::effect::catalog::global(),
+                effects,
                 managers: context.managers,
                 pool: context.pool,
                 context: target_context,
@@ -405,6 +421,7 @@ mod tests {
                 target: &mut target,
             },
             &behavior,
+            Some(crate::engine::skill::effect::catalog::global()),
         )
         .unwrap();
 

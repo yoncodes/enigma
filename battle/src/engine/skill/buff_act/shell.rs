@@ -1,15 +1,18 @@
-use crate::engine::{
-    damage::handler as damage,
-    entity::attr::AttrId,
-    event::payload::BattleEvent,
-    manager::{BattleManagers, hp::HurtDamageFromType},
-    mechanic::shell::{ShellChangeKind, ShellCommand},
-    runtime::determinism::RoundDeterminism,
-    skill::{
-        buff_act::registry::{self, BuffActKind},
-        rule::output::{BattleCommand, RuleOp},
-        subscriber::BuffActSubscriber,
-        target::TargetPool,
+use crate::{
+    catalog::BattleCatalog,
+    engine::{
+        damage::handler as damage,
+        entity::attr::AttrId,
+        event::payload::BattleEvent,
+        manager::{BattleManagers, hp::HurtDamageFromType},
+        mechanic::shell::{ShellChangeKind, ShellCommand},
+        runtime::determinism::RoundDeterminism,
+        skill::{
+            buff_act::registry::BuffActKind,
+            rule::output::{BattleCommand, RuleOp},
+            subscriber::BuffActSubscriber,
+            target::TargetPool,
+        },
     },
 };
 
@@ -46,29 +49,51 @@ fn process_spec_from_args(args: &[i32]) -> Option<ShellProcessSpec> {
 }
 
 pub fn process_spec(buff_id: i32) -> Option<ShellProcessSpec> {
-    let db = config::try_get()?;
-    let buff = db.skill_buff.get(buff_id)?;
-    buff.features.split('|').find_map(|raw| {
-        let fields = raw
-            .split('#')
-            .map(str::parse::<i32>)
-            .collect::<Result<Vec<_>, _>>()
-            .ok()?;
-        let [act_id, args @ ..] = fields.as_slice() else {
-            return None;
-        };
-        let act_type = &db.buff_act.get(*act_id)?.r#type;
-        let spec = process_spec_from_args(args)?;
-        (registry::kind(*act_id, act_type) == Some(BuffActKind::ShellProcess)
-            && (spec.stock_buff_id == buff_id || spec.deployed_buff_id == buff_id))
-            .then_some(spec)
-    })
+    resolve_process_spec(BattleCatalog::try_global()?, buff_id)
+}
+
+pub(crate) fn resolve_process_spec(
+    catalog: BattleCatalog,
+    buff_id: i32,
+) -> Option<ShellProcessSpec> {
+    catalog
+        .buff_feature_rows(buff_id)
+        .into_iter()
+        .find_map(|raw| {
+            let fields = raw
+                .split('#')
+                .map(str::parse::<i32>)
+                .collect::<Result<Vec<_>, _>>()
+                .ok()?;
+            let [act_id, args @ ..] = fields.as_slice() else {
+                return None;
+            };
+            let spec = process_spec_from_args(args)?;
+            (catalog.buff_act_definition(*act_id).map(|act| act.kind)
+                == Some(BuffActKind::ShellProcess)
+                && (spec.stock_buff_id == buff_id || spec.deployed_buff_id == buff_id))
+                .then_some(spec)
+        })
 }
 
 pub fn deployed_buff_id(stock_buff_id: i32) -> Option<i32> {
     process_spec(stock_buff_id)
         .filter(|spec| spec.stock_buff_id == stock_buff_id)
         .map(|spec| spec.deployed_buff_id)
+}
+
+pub(crate) fn resolve_deployed_buff_id(catalog: BattleCatalog, stock_buff_id: i32) -> Option<i32> {
+    resolve_process_spec(catalog, stock_buff_id)
+        .filter(|spec| spec.stock_buff_id == stock_buff_id)
+        .map(|spec| spec.deployed_buff_id)
+}
+
+fn runtime_process_spec(managers: &BattleManagers, buff_id: i32) -> Option<ShellProcessSpec> {
+    let catalog = managers
+        .buff
+        .try_catalog()
+        .or_else(BattleCatalog::try_global)?;
+    resolve_process_spec(catalog, buff_id)
 }
 
 pub fn rule_ops(
@@ -96,7 +121,7 @@ pub fn rule_ops(
             {
                 return Some(Vec::new());
             }
-            let spec = process_spec(subscriber.buff_id)?;
+            let spec = runtime_process_spec(managers, subscriber.buff_id)?;
             let amount = subscriber.args.first().copied().unwrap_or(1).max(0);
             if amount == 0
                 || managers
@@ -124,7 +149,7 @@ pub fn rule_ops(
             {
                 return Some(Vec::new());
             }
-            let spec = process_spec(subscriber.buff_id)?;
+            let spec = runtime_process_spec(managers, subscriber.buff_id)?;
             let amount = subscriber.args.first().copied().unwrap_or(1).max(0);
             if amount == 0 {
                 return Some(Vec::new());
@@ -314,8 +339,10 @@ mod tests {
     #[test]
     fn shell_pair_comes_from_the_stock_buffs_shell_process_feature() {
         crate::test_support::init_config();
+        let catalog = BattleCatalog::try_global().unwrap();
 
         assert_eq!(deployed_buff_id(31090111), Some(31090112));
+        assert_eq!(resolve_deployed_buff_id(catalog, 31090111), Some(31090112));
         assert_eq!(deployed_buff_id(31090113), Some(31090114));
         assert_eq!(
             process_spec(31090118),

@@ -24,7 +24,6 @@ pub(super) fn consume_buff_command(
 pub(super) fn change_duration_command(
     target_uid: i64,
     behavior: &ParsedBehavior,
-    selector: fn(i32) -> BuffSelector,
 ) -> Option<BuffCommand> {
     let [buff_id, delta] = behavior.args.as_slice() else {
         return None;
@@ -32,9 +31,26 @@ pub(super) fn change_duration_command(
     Some(BuffCommand::ChangeDuration(BuffChangeDuration {
         origin: super::command_origin(behavior)?,
         target_uid,
-        selector: selector(*buff_id),
+        selector: BuffSelector::IdOrType(*buff_id),
         delta: *delta,
     }))
+}
+
+pub(super) fn refresh_duration_command(
+    target_uid: i64,
+    behavior: &ParsedBehavior,
+) -> Option<BuffCommand> {
+    let [buff_id_or_type, minimum_duration] = behavior.args.as_slice() else {
+        return None;
+    };
+    Some(BuffCommand::RefreshDurationBySelector(
+        BuffRefreshDurationBySelector {
+            origin: super::command_origin(behavior)?,
+            target_uid,
+            selector: BuffSelector::IdOrType(*buff_id_or_type),
+            minimum_duration: *minimum_duration,
+        },
+    ))
 }
 
 pub(super) fn replace_buff2_ops(

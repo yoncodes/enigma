@@ -53,7 +53,13 @@ pub fn rule_ops(
     if amount <= 0 {
         return Some(Vec::new());
     }
-    reflection_ops(subscriber, hit.source_uid, amount, DepletedBuff::Keep)
+    reflection_ops(
+        managers,
+        subscriber,
+        hit.source_uid,
+        amount,
+        DepletedBuff::Keep,
+    )
 }
 
 pub fn damage_based_rule_ops(
@@ -84,10 +90,17 @@ pub fn damage_based_rule_ops(
         modifiers::genesis_multiplier(managers, subscriber.owner_uid, hit.source_uid),
     ))
     .max(1);
-    reflection_ops(subscriber, hit.source_uid, amount, DepletedBuff::Remove)
+    reflection_ops(
+        managers,
+        subscriber,
+        hit.source_uid,
+        amount,
+        DepletedBuff::Remove,
+    )
 }
 
 fn reflection_ops(
+    managers: &BattleManagers,
     subscriber: &BuffActSubscriber,
     target_uid: i64,
     amount: i32,
@@ -116,10 +129,7 @@ fn reflection_ops(
             }),
         },
     )))];
-    if config::try_get()
-        .and_then(|db| db.skill_buff.get(subscriber.buff_id))
-        .is_some_and(|buff| buff.effect_count > 0)
-    {
+    if managers.catalog().buff_has_effect_count(subscriber.buff_id) {
         let consume = BuffConsume {
             origin,
             target_uid: subscriber.owner_uid,

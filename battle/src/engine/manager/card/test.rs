@@ -372,6 +372,8 @@ fn rewritten_choice_keeps_consumed_card_and_resolved_caster_distinct() {
 fn wire_temp_card_uid_does_not_erase_its_manager_owned_caster() {
     let source = precast_card(10, 900);
     let wire = temp_card(900);
+    assert_eq!(source.card_effect, None);
+    assert_eq!(wire.card_effect, None);
     let mut cards = CardManager::new(vec![source.clone()]);
 
     let played = cards
@@ -505,6 +507,18 @@ fn removing_an_owner_composes_the_new_ai_queue_neighbors() {
     assert_eq!(manager.ai_queue()[0].skill_id, Some(101));
     assert_eq!(manager.ai_queue()[0].temp_card, Some(false));
     assert_eq!(manager.ai_queue()[0].energy, Some(0));
+}
+
+#[test]
+fn reset_preserves_the_attached_catalog() {
+    crate::test_support::init_config();
+    let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+    let mut manager = CardManager::default();
+    manager.set_catalog(catalog);
+
+    manager.reset_with_draw_pile(vec![card(10, 100)], vec![card(11, 200)], 2);
+
+    assert_eq!(manager.deck.attached_catalog(), Some(catalog));
 }
 
 #[test]

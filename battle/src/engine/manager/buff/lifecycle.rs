@@ -417,7 +417,10 @@ impl BuffManager {
             if let Some(uid) = buff.uid {
                 self.allocator_for(team_type).observe(uid);
             }
-            let definition = BuffDefinition::get(buff.buff_id.unwrap_or_default());
+            let definition = BuffDefinition::configured(
+                self.catalog().game_data(),
+                buff.buff_id.unwrap_or_default(),
+            );
             let type_id = definition
                 .as_ref()
                 .map(BuffDefinition::effective_type_id)

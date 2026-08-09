@@ -163,12 +163,13 @@ fn setup_reserves_summoned_lanes_before_the_next_buff() {
         .join("../battle_preview/fixtures/battles/battle7/StartDungeonReply.json");
     let mut value: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(fixture).unwrap()).unwrap();
-    crate::preview::normalize_live_json(&mut value);
+    sonettobuf::normalize::normalize_live_json(&mut value);
     let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
 
     run_start(
+        managers.catalog(),
         &mut managers,
         &pool,
         crate::engine::skill::effect::catalog::global(),
@@ -200,7 +201,7 @@ fn heat_tag_setup_selects_lingering_glow_over_bloodtithe() {
         .join("../battle_preview/fixtures/battles/battle6/StartDungeonReply.json");
     let mut value: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(fixture).unwrap()).unwrap();
-    crate::preview::normalize_live_json(&mut value);
+    sonettobuf::normalize::normalize_live_json(&mut value);
     let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);

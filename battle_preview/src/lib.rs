@@ -16,7 +16,11 @@ pub use normalize::normalize_live_json;
 
 /// Replays the captured opening RNG decisions through the engine's validated
 /// card candidates instead of treating the captured hand as authoritative state.
-pub fn captured_opening_determinism(fight: &Fight, round: &FightRound) -> RoundDeterminism {
+pub fn captured_opening_determinism(
+    game_data: &config::GameDB,
+    fight: &Fight,
+    round: &FightRound,
+) -> RoundDeterminism {
     let mut determinism =
         RoundDeterminism::with_seed(fight.battle_id.unwrap_or_default().max(0) as u64);
     let draws = round
@@ -26,7 +30,8 @@ pub fn captured_opening_determinism(fight: &Fight, round: &FightRound) -> RoundD
         .cloned()
         .collect::<Vec<_>>();
     let hand_size = battle::engine::manager::card::hand_size(fight);
-    let player_candidates = battle::engine::manager::card::pool::player_candidate_pool(fight);
+    let player_candidates =
+        battle::engine::manager::card::pool::player_candidate_pool(game_data, fight);
     let enemies = battle::engine::manager::card::pool::active_enemy_entities(fight);
     let enemy_count = enemies.len();
     let ai_candidates = enemies
@@ -67,9 +72,11 @@ pub fn captured_opening_determinism(fight: &Fight, round: &FightRound) -> RoundD
     determinism
 }
 
-#[cfg(all(test, feature = "private-fixtures"))]
+#[cfg(test)]
 pub(crate) fn init_test_config() {
-    let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/excel2json");
+    let data = std::env::var_os("ENIGMA_BATTLE_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/excel2json"));
     config::init(
         data.to_str()
             .expect("workspace game-data path must be valid UTF-8"),
@@ -409,6 +416,7 @@ mod tests {
 
     #[test]
     fn captured_opening_rng_keeps_raw_draw_order_and_excludes_temporary_cards() {
+        super::init_test_config();
         let fight = Fight {
             battle_id: Some(77),
             attacker: Some(FightTeam {
@@ -440,6 +448,7 @@ mod tests {
         ];
         let ai = vec![card(-1, 201, false)];
         let mut determinism = super::captured_opening_determinism(
+            config::configs::get(),
             &fight,
             &FightRound {
                 team_a_cards1: vec![
@@ -463,6 +472,7 @@ mod tests {
 
     #[test]
     fn captured_opening_rng_rejects_an_invalid_seed_as_a_whole() {
+        super::init_test_config();
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
@@ -486,6 +496,7 @@ mod tests {
             ..Default::default()
         };
         let mut determinism = super::captured_opening_determinism(
+            config::configs::get(),
             &fight,
             &FightRound {
                 team_a_cards1: vec![
@@ -501,6 +512,7 @@ mod tests {
         assert_eq!(determinism.take_start_decks(), None);
 
         let mut determinism = super::captured_opening_determinism(
+            config::configs::get(),
             &fight,
             &FightRound {
                 team_a_cards1: vec![

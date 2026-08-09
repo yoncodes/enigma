@@ -8,7 +8,7 @@ fn entity_info_projects_manager_owned_state() {
     };
 
     crate::test_support::init_config();
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
@@ -56,7 +56,7 @@ fn third_wave_entity_info_uses_the_latest_authoritative_roster() {
     crate::test_support::init_config();
     let (entitys, sub_entitys) =
         crate::engine::fight::defender::Defender::build_wave_entities(161301, 3, 2, 0).unwrap();
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         battle_id: Some(1613),
         episode_id: Some(10624),
         version: Some(7),
@@ -97,16 +97,26 @@ fn third_wave_entity_info_uses_the_latest_authoritative_roster() {
 }
 
 #[test]
-fn refill_and_player_move_compositions_grant_cloth_power() {
+fn refill_and_all_compositions_grant_cloth_power() {
     crate::test_support::init_config();
-    let power = crate::engine::round::power::ClothPower::for_fight(&Fight {
+    let fight = Fight {
         attacker: Some(FightTeam {
             cloth_id: Some(1),
             ..Default::default()
         }),
         ..Default::default()
-    })
-    .unwrap();
+    };
+    let power = crate::catalog::BattleCatalog::new(crate::test_support::game_data())
+        .cloth_power(&fight)
+        .unwrap();
+    assert_eq!(
+        power,
+        crate::engine::round::power::ClothPower::for_fight(
+            crate::test_support::game_data(),
+            &fight,
+        )
+        .unwrap()
+    );
 
     assert_eq!(
         round::cloth_power_after_card_change(
@@ -115,7 +125,6 @@ fn refill_and_player_move_compositions_grant_cloth_power() {
             crate::engine::manager::card::CardChangeKind::Refilled,
             false,
             1,
-            false,
         ),
         17
     );
@@ -126,18 +135,6 @@ fn refill_and_player_move_compositions_grant_cloth_power() {
             crate::engine::manager::card::CardChangeKind::Composed,
             false,
             1,
-            false,
-        ),
-        15
-    );
-    assert_eq!(
-        round::cloth_power_after_card_change(
-            &power,
-            15,
-            crate::engine::manager::card::CardChangeKind::Composed,
-            false,
-            1,
-            true,
         ),
         17
     );
@@ -171,7 +168,7 @@ fn end_fight_statistics_project_owned_runtime_history() {
     };
 
     crate::test_support::init_config();
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),

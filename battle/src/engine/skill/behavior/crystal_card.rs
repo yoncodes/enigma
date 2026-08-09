@@ -51,7 +51,7 @@ impl BehaviorHandler for Handler {
             .iter()
             .filter_map(|group| group.get(crystal).copied())
             .collect();
-        let card = generated_card(context.source_uid, skill_id);
+        let card = generated_card(context.managers, context.source_uid, skill_id);
         let origin = super::command_origin(behavior)?;
         Some(vec![
             RuleOp::Command(BattleCommand::Buff(BuffCommand::ReserveChildUids(
@@ -107,8 +107,12 @@ fn weighted_index(weights: &[i32], roll: i32) -> usize {
     weights.len().saturating_sub(1)
 }
 
-fn generated_card(source_uid: i64, skill_id: i32) -> sonettobuf::CardInfo {
-    crate::engine::manager::card::precast_card(source_uid, skill_id)
+fn generated_card(
+    managers: &crate::engine::manager::BattleManagers,
+    source_uid: i64,
+    skill_id: i32,
+) -> sonettobuf::CardInfo {
+    crate::engine::manager::card::temp::runtime_precast_card(managers, source_uid, skill_id)
 }
 
 fn candidate_groups(behavior: &ParsedBehavior) -> Vec<Vec<i32>> {
@@ -146,7 +150,7 @@ mod tests {
 
     #[test]
     fn generated_crystal_is_an_owner_bound_precast_card() {
-        let card = generated_card(10, 101);
+        let card = generated_card(&crate::engine::manager::BattleManagers::default(), 10, 101);
 
         assert_eq!(card.uid, Some(10));
         assert_eq!(card.temp_card, Some(true));

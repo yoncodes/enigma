@@ -73,7 +73,7 @@ pub async fn on_start_battle(
         .await?;
     let msg = StartTowerBattleRequest::decode(&req.data[..])?;
     let (dungeon_request, tower_context) =
-        battle::tower::validate_battle_start(configs::get(), &msg)?;
+        crate::logic::battle_setup::tower::validate_battle_start(configs::get(), &msg)?;
     let episode_id = dungeon_request.episode_id.ok_or(AppError::InvalidRequest)?;
     let episode = configs::get()
         .episode
@@ -88,7 +88,7 @@ pub async fn on_start_battle(
         .fight_group
         .as_ref()
         .ok_or(AppError::InvalidRequest)?;
-    let built = battle::tower::build_fight(
+    let built = crate::logic::battle_setup::tower::build_fight(
         ctx.state.db,
         player_id,
         episode_id,

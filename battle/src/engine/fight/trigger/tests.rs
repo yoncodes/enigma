@@ -7,6 +7,13 @@ fn battle_nine_wave_one_resolves_its_configured_prompt() {
     let actions = wave_start_actions(config::configs::get(), 9_001_101, 1).unwrap();
 
     assert_eq!(
+        crate::catalog::BattleCatalog::new(config::configs::get())
+            .wave_start_actions(9_001_101, 1)
+            .unwrap(),
+        actions
+    );
+
+    assert_eq!(
         actions,
         vec![WaveStartAction {
             trigger_id: 330_102,

@@ -88,6 +88,76 @@ fn ai_actions_invalidate_dead_card_owners_and_grant_committed_basic_card_resourc
 }
 
 #[test]
+fn ai_actions_invalidate_a_queued_ultimate_after_its_resource_is_lost() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ex_point: Some(5),
+                ex_skill: Some(40231731),
+                team_type: Some(-1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_ex_point(ExPointCommand::Change(ExPointChange {
+            origin: CARD_PLAY_ORIGIN,
+            source_uid: -1,
+            target_uid: -1,
+            delta: -5,
+            config_effect: 30001,
+            effect_type: 0,
+        }))
+        .unwrap();
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 40231731,
+        slots: Vec::new(),
+    });
+
+    let result = run_ai_actions(
+        &fight,
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [AiSkillChoice {
+            source_uid: -1,
+            skill_id: 40231731,
+            target_uid: 10,
+        }],
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(-1), 0);
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].from_id, Some(-1));
+    assert!(!steps.iter().any(|step| step.act_id == Some(40231731)));
+    assert_eq!(
+        steps[0].act_effect[0].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Cardinvalid as i32)
+    );
+    assert_eq!(steps[0].act_effect[0].effect_num, Some(1));
+}
+
+#[test]
 fn entity_card_cleanup_groups_dead_owners_in_one_owned_phase() {
     init_config();
     let fight = Fight {

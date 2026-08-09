@@ -4,7 +4,9 @@ use crate::engine::{
         buff::{
             BuffChanges, BuffCommand, BuffCommandError, BuffConsume, BuffSelector, DepletedBuff,
         },
-        card::{CardAddPrecast, CardChanges, CardCommand, CardCommandError, precast_card},
+        card::{
+            CardAddPrecast, CardChanges, CardCommand, CardCommandError, temp::runtime_precast_card,
+        },
     },
     skill::rule::CommandOrigin,
 };
@@ -81,7 +83,7 @@ pub(crate) fn execute(
     }))?;
     let card = managers.execute_card(CardCommand::AddPrecast(CardAddPrecast {
         origin: command.origin,
-        card: precast_card(command.source_uid, option.skill_id),
+        card: runtime_precast_card(managers, command.source_uid, option.skill_id),
     }))?;
 
     Ok(Some(BuffPrecastChanges { buff, card }))

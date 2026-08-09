@@ -33,7 +33,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn run() -> anyhow::Result<()> {
-    init_config()?;
+    let db = init_config()?;
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures");
     let input_root = root.join("battles");
@@ -43,7 +43,7 @@ fn run() -> anyhow::Result<()> {
 
     for input in inputs {
         let original_text = fs::read_to_string(&input)?;
-        let (generated, original) = generate_reply(&input)?;
+        let (generated, original) = generate_reply(db, &input)?;
         if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage)
             && let Some(generated_round) = generated.round.as_ref()
         {
@@ -81,10 +81,12 @@ fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn init_config() -> anyhow::Result<()> {
-    let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/excel2json");
+fn init_config() -> anyhow::Result<&'static config::GameDB> {
+    let data = env::var_os("ENIGMA_BATTLE_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/excel2json"));
     config::init(data.to_str().unwrap())?;
-    Ok(())
+    Ok(config::configs::get())
 }
 
 fn captured_start_reply(round_path: &Path) -> anyhow::Result<serde_json::Value> {
@@ -102,17 +104,20 @@ fn captured_start_reply(round_path: &Path) -> anyhow::Result<serde_json::Value> 
     Ok(value)
 }
 
-fn generate_reply(path: &Path) -> anyhow::Result<(BeginRoundReply, serde_json::Value)> {
+fn generate_reply(
+    db: &'static config::GameDB,
+    path: &Path,
+) -> anyhow::Result<(BeginRoundReply, serde_json::Value)> {
     let mut original: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
     expand_compressed_fight_steps(&mut original)?;
-    let round = replay_to_round(path)?;
+    let round = replay_to_round(db, path)?;
 
     Ok((BeginRoundReply { round: Some(round) }, original))
 }
 
 /// Replays captured requests through `BattleRuntime` from the captured start-state fixture.
 /// Later captured replies are comparison evidence and never supply generated round results.
-fn replay_to_round(path: &Path) -> anyhow::Result<FightRound> {
+fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<FightRound> {
     let round_index = round_index(path)?;
     let value = captured_start_reply(path)?;
     let fight = value.get("fight").cloned().ok_or_else(|| {
@@ -130,12 +135,15 @@ fn replay_to_round(path: &Path) -> anyhow::Result<FightRound> {
     )?;
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, path)?;
     let tower_rule_skills = tower_plan_id(path)
-        .map(|plan_id| {
-            battle::tower::system_plan_rule_skills(config::configs::get(), &fight, plan_id)
-        })
+        .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
-    let opening_determinism = captured_opening_determinism(&fight, &captured_start_round);
-    let mut runtime = BattleRuntime::new_with_attributes(fight, ex_attributes, sp_attributes);
+    let opening_determinism = captured_opening_determinism(db, &fight, &captured_start_round);
+    let mut runtime = BattleRuntime::new_with_attributes(
+        battle::catalog::BattleCatalog::new(db),
+        fight,
+        ex_attributes,
+        sp_attributes,
+    );
     runtime.extend_battle_rule_skills(tower_rule_skills);
     let mut round_reply = runtime
         .start_round_with_determinism(opening_determinism)

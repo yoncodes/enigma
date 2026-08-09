@@ -131,9 +131,13 @@ impl BehaviorHandler for Handler {
                             crate::engine::skill::buff_act::registry::BuffActKind::ButterflyRecordSkill,
                         )
                 });
-            let Some(feature) = feature
-                .filter(|feature| allows_recorded_skill(feature, context.target.recorded_skill_id))
-            else {
+            let Some(feature) = feature.filter(|feature| {
+                allows_recorded_skill(
+                    context.managers.catalog(),
+                    feature,
+                    context.target.recorded_skill_id,
+                )
+            }) else {
                 return Some(Vec::new());
             };
             let count = *feature.values.get(1)?;
@@ -161,23 +165,22 @@ impl BehaviorHandler for Handler {
                 .iter()
                 .filter(|card| {
                     card.card.uid == Some(context.source_uid)
-                        && context.pool.skill_slot(context.source_uid, card.skill_id) == skill_slot
-                        && effect_tags.contains(
-                            &crate::engine::skill::effect::catalog::configured_effect_tag(
-                                card.skill_id,
-                            ),
-                        )
+                        && context.pool.skill_slot(
+                            context.managers,
+                            context.source_uid,
+                            card.skill_id,
+                        ) == skill_slot
+                        && effect_tags
+                            .contains(&context.managers.catalog().skill_effect_tag(card.skill_id))
                 })
                 .filter_map(|card| {
-                    let effect_tag =
-                        crate::engine::skill::effect::catalog::configured_effect_tag(card.skill_id);
+                    let effect_tag = context.managers.catalog().skill_effect_tag(card.skill_id);
                     let levels = played
                         .iter()
                         .filter(|other| {
                             other.card_index != card.card_index
-                                && crate::engine::skill::effect::catalog::configured_effect_tag(
-                                    other.skill_id,
-                                ) == effect_tag
+                                && context.managers.catalog().skill_effect_tag(other.skill_id)
+                                    == effect_tag
                         })
                         .count() as i32;
                     (levels > 0).then_some(QueuedCardRankUp {
@@ -453,7 +456,7 @@ fn power_card_upgrade_ops(
             })
             .filter_map(|(hand_index, card)| {
                 let skill_id = card.skill_id?;
-                let rank = crate::engine::entity::skill::skill_rank(skill_id);
+                let rank = context.managers.catalog().skill_rank(skill_id);
                 let cost = match rank {
                     1 => *rank_one_cost,
                     2 => *rank_two_cost,
@@ -558,13 +561,14 @@ pub(super) fn supports_temporary_skill_card(behavior: &ParsedBehavior) -> bool {
 }
 
 fn allows_recorded_skill(
+    catalog: crate::catalog::BattleCatalog,
     feature: &crate::engine::manager::buff::ActiveBuffFeature,
     skill_id: i32,
 ) -> bool {
-    if crate::engine::skill::effect::catalog::configured_is_big_skill(skill_id) {
+    if catalog.skill_is_big(skill_id) {
         return false;
     }
-    let effect_tag = crate::engine::skill::effect::catalog::configured_effect_tag(skill_id);
+    let effect_tag = catalog.skill_effect_tag(skill_id);
     feature
         .values
         .get(3..)
@@ -880,6 +884,7 @@ mod tests {
     #[test]
     fn butterfly_records_basic_incantations_by_effect_tag() {
         crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
         let feature = crate::engine::manager::buff::ActiveBuffFeature {
             owner_uid: 10,
             source_uid: 10,
@@ -903,9 +908,9 @@ mod tests {
             crate::engine::skill::effect::catalog::configured_effect_tag(31390111),
             3
         );
-        assert!(allows_recorded_skill(&feature, 31390111));
-        assert!(allows_recorded_skill(&feature, 31390121));
-        assert!(!allows_recorded_skill(&feature, 31390131));
+        assert!(allows_recorded_skill(catalog, &feature, 31390111));
+        assert!(allows_recorded_skill(catalog, &feature, 31390121));
+        assert!(!allows_recorded_skill(catalog, &feature, 31390131));
     }
 
     #[test]

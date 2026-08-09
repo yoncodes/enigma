@@ -40,7 +40,19 @@ pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, buffs: &Buf
 }
 
 pub fn snapshot(buff_id: i32, visible: i32) -> Option<Vec<BuffActInfo>> {
-    let infos = BuffManager::configured_features(buff_id)
+    snapshot_features(BuffManager::configured_features(buff_id), visible)
+}
+
+pub(crate) fn definition_snapshot(
+    buffs: &BuffManager,
+    buff_id: i32,
+    visible: i32,
+) -> Option<Vec<BuffActInfo>> {
+    snapshot_features(buffs.definition_features(buff_id), visible)
+}
+
+fn snapshot_features(features: Vec<ActiveBuffFeature>, visible: i32) -> Option<Vec<BuffActInfo>> {
+    let infos = features
         .into_iter()
         .filter(|feature| super::is_kind(feature, super::registry::BuffActKind::AttrByHeatScale))
         .filter_map(|feature| Some((feature.act_id()?, snapshot_delta(&feature, visible)?)))

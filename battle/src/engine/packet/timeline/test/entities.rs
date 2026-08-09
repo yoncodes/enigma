@@ -92,16 +92,19 @@ fn transformed_entity_projects_the_committed_replacement() {
 fn upgrade_offer_projects_without_loading_the_selected_entity() {
     let mut upgrades = UpgradeManager::default();
     let change = upgrades
-        .execute_command(UpgradeCommand {
-            owner_uid: 10,
-            operation: UpgradeOperation::Offer {
-                origin: CommandOrigin {
-                    domain: RuleDomain::Behavior,
-                    key: DefinitionKey::new(60037, "NotifyUpgradeHero"),
+        .execute_command(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            UpgradeCommand {
+                owner_uid: 10,
+                operation: UpgradeOperation::Offer {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Behavior,
+                        key: DefinitionKey::new(60037, "NotifyUpgradeHero"),
+                    },
+                    upgrade_id: 308665,
                 },
-                upgrade_id: 308665,
             },
-        })
+        )
         .unwrap();
 
     let effects = project_change_for_test(&BattleChange::Upgrade(change)).unwrap();

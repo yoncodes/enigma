@@ -1,6 +1,13 @@
 use super::*;
 use sqlx::sqlite::SqlitePoolOptions;
 
+fn runtime(fight: sonettobuf::Fight) -> battle::engine::runtime::BattleRuntime {
+    battle::engine::runtime::BattleRuntime::new(
+        battle::catalog::BattleCatalog::new(config::configs::get()),
+        fight,
+    )
+}
+
 #[test]
 fn battle_params_route_through_the_matching_compose_episode() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
@@ -71,7 +78,7 @@ async fn winning_a_normal_layer_advances_compose_progress() {
             })
             .to_string(),
         ),
-        runtime: battle::engine::runtime::BattleRuntime::new(sonettobuf::Fight {
+        runtime: runtime(sonettobuf::Fight {
             battle_id: Some(battle_id),
             attacker: Some(sonettobuf::FightTeam {
                 entitys: vec![entity(1, 100)],

@@ -26,7 +26,14 @@ fn reachable_timed_buff_reports_a_missing_duration_route() {
         ..Default::default()
     };
 
-    scan_closure(db, &mut catalog, &mut skills, &mut buffs, &mut report);
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut buffs,
+        &mut report,
+    );
 
     assert!(
         report
@@ -70,6 +77,7 @@ fn transformed_models_expand_the_checked_skill_closure() {
     );
     scan_closure(
         db,
+        battle::catalog::BattleCatalog::new(db),
         &mut catalog,
         &mut skills,
         &mut VecDeque::new(),
@@ -98,6 +106,7 @@ fn tower_assist_boss_forms_accept_the_implemented_group_capacity_policy() {
     );
     scan_closure(
         db,
+        battle::catalog::BattleCatalog::new(db),
         &mut catalog,
         &mut skills,
         &mut VecDeque::new(),

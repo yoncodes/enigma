@@ -11,10 +11,10 @@ pub struct AttributeManager {
 }
 
 impl AttributeManager {
-    pub fn seed(&mut self, fight: &Fight) {
+    pub fn seed_with_catalog(&mut self, catalog: crate::catalog::BattleCatalog, fight: &Fight) {
         self.base_values.clear();
         self.values.clear();
-        let pool = TargetPool::from_fight(fight);
+        let pool = TargetPool::from_fight_with_catalog(catalog, fight);
         let emitter = pool.entity(crate::engine::manager::emitter::UID);
         for target in pool.entities().chain(emitter) {
             self.register_values(
@@ -45,12 +45,27 @@ impl AttributeManager {
             .chain(fight.defender.iter())
             .filter_map(|team| team.assist_boss.as_ref())
         {
-            self.register(entity);
+            self.register_with_catalog(catalog, entity);
         }
     }
 
-    pub fn register(&mut self, entity: &FightEntityInfo) {
-        let Some(target) = crate::engine::skill::target::TargetEntity::from_fight_entity(entity)
+    #[cfg(test)]
+    pub fn seed(&mut self, fight: &Fight) {
+        self.seed_with_catalog(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            fight,
+        );
+    }
+
+    pub fn register_with_catalog(
+        &mut self,
+        catalog: crate::catalog::BattleCatalog,
+        entity: &FightEntityInfo,
+    ) {
+        let Some(target) =
+            crate::engine::skill::target::TargetEntity::from_fight_entity_with_catalog(
+                catalog, entity,
+            )
         else {
             return;
         };
@@ -66,6 +81,14 @@ impl AttributeManager {
             target.crit_def,
             target.add_dmg,
             target.drop_dmg,
+        );
+    }
+
+    #[cfg(test)]
+    pub fn register(&mut self, entity: &FightEntityInfo) {
+        self.register_with_catalog(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            entity,
         );
     }
 

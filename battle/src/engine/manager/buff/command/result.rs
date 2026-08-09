@@ -1,7 +1,4 @@
-use super::super::{
-    BuffFanoutResult, BuffRemoveResult, BuffUpdateResult, emits_existing_layer_on_refresh,
-    state_snapshot_wire,
-};
+use super::super::{BuffDefinition, BuffFanoutResult, BuffRemoveResult, BuffUpdateResult};
 use super::*;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,19 +34,32 @@ pub struct BuffStateSnapshotWire {
 }
 
 impl BuffChanges {
-    pub(super) fn new(origin: CommandOrigin, change: BuffReplaceResult) -> Self {
-        Self::with_refresh_echo(origin, change, true)
+    pub(super) fn new(
+        catalog: crate::catalog::BattleCatalog,
+        origin: CommandOrigin,
+        change: BuffReplaceResult,
+    ) -> Self {
+        Self::with_refresh_echo(catalog, origin, change, true)
     }
 
-    pub(super) fn set_amount(origin: CommandOrigin, change: BuffReplaceResult) -> Self {
-        Self::without_refresh_echo(origin, change)
+    pub(super) fn set_amount(
+        catalog: crate::catalog::BattleCatalog,
+        origin: CommandOrigin,
+        change: BuffReplaceResult,
+    ) -> Self {
+        Self::without_refresh_echo(catalog, origin, change)
     }
 
-    pub(super) fn without_refresh_echo(origin: CommandOrigin, change: BuffReplaceResult) -> Self {
-        Self::with_refresh_echo(origin, change, false)
+    pub(super) fn without_refresh_echo(
+        catalog: crate::catalog::BattleCatalog,
+        origin: CommandOrigin,
+        change: BuffReplaceResult,
+    ) -> Self {
+        Self::with_refresh_echo(catalog, origin, change, false)
     }
 
     fn with_refresh_echo(
+        catalog: crate::catalog::BattleCatalog,
         origin: CommandOrigin,
         mut change: BuffReplaceResult,
         echo_existing_layer: bool,
@@ -63,34 +73,50 @@ impl BuffChanges {
         let refresh_wire = change
             .refreshed
             .iter()
-            .map(|refresh| BuffRefreshWire {
-                echo_before: echo_existing_layer
-                    && emits_existing_layer_on_refresh(refresh.after.buff_id.unwrap_or_default())
-                    && refresh.before.uid == refresh.after.uid
-                    && refresh.before.layer.unwrap_or_default() > 0,
-                markers: if !has_add
+            .map(|refresh| {
+                let definition = BuffDefinition::configured(
+                    catalog.game_data(),
+                    refresh.after.buff_id.unwrap_or_default(),
+                );
+                let markers = if !has_add
                     && (refresh_increases_effect_value(refresh)
-                        || super::super::refreshes_unchanged(
-                            refresh.after.buff_id.unwrap_or_default(),
-                        )) {
-                    crate::engine::buff::marker::refresh_markers(
-                        refresh.after.buff_id.unwrap_or_default(),
-                    )
-                    .into_iter()
-                    .map(|marker| BuffMarkerResult {
-                        target_uid: refresh.target_uid,
-                        effect_type: marker.effect_type,
-                        effect_num: crate::engine::buff::marker::effect_num(
-                            marker.effect_type,
-                            refresh.after.buff_id.unwrap_or_default(),
-                            refresh.after.act_common_params.as_deref(),
-                        ),
-                        buff_act_id: 0,
-                    })
-                    .collect()
+                        || definition
+                            .as_ref()
+                            .is_some_and(BuffDefinition::refreshes_unchanged))
+                {
+                    definition
+                        .as_ref()
+                        .map(|definition| {
+                            definition
+                                .wire_markers(
+                                    crate::engine::skill::buff_act::wire::WirePhase::Refresh,
+                                )
+                                .into_iter()
+                                .map(|effect_type| BuffMarkerResult {
+                                    target_uid: refresh.target_uid,
+                                    effect_type,
+                                    effect_num: definition.marker_effect_num(
+                                        catalog.game_data(),
+                                        effect_type,
+                                        refresh.after.act_common_params.as_deref(),
+                                    ),
+                                    buff_act_id: 0,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default()
                 } else {
                     Vec::new()
-                },
+                };
+                BuffRefreshWire {
+                    echo_before: echo_existing_layer
+                        && definition
+                            .as_ref()
+                            .is_some_and(BuffDefinition::emits_existing_layer_on_refresh)
+                        && refresh.before.uid == refresh.after.uid
+                        && refresh.before.layer.unwrap_or_default() > 0,
+                    markers,
+                }
             })
             .collect();
         let mut fanout = std::mem::take(&mut change.fanout);
@@ -154,18 +180,24 @@ impl BuffChanges {
         self.wire_visible
     }
 
-    pub(super) fn with_state_snapshot_wire(mut self) -> Self {
+    pub(super) fn with_state_snapshot_wire(
+        mut self,
+        catalog: crate::catalog::BattleCatalog,
+    ) -> Self {
         self.state_snapshot_wire = self
             .change
             .refreshed
             .iter()
             .enumerate()
             .flat_map(|(refresh_index, refresh)| {
-                state_snapshot_wire(
+                BuffDefinition::configured(
+                    catalog.game_data(),
                     refresh.after.buff_id.unwrap_or_default(),
-                    refresh.after.act_common_params.as_deref(),
                 )
                 .into_iter()
+                .flat_map(|definition| {
+                    definition.state_snapshot_wire(refresh.after.act_common_params.as_deref())
+                })
                 .map(move |(effect_type, reserve_str)| BuffStateSnapshotWire {
                     refresh_index,
                     effect_type,

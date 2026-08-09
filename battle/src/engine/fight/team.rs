@@ -41,43 +41,55 @@ impl Team {
     }
 
     pub fn get_player_skills(cloth_id: Option<i32>) -> Vec<PlayerSkillInfo> {
-        let game_data = config::configs::get();
-        let cloth_id = cloth_id.unwrap_or(1);
+        Self::player_skills(crate::catalog::BattleCatalog::global(), cloth_id)
+    }
 
-        let Some(cloth) = game_data
-            .cloth_level
-            .iter()
-            .find(|c| c.id == cloth_id && c.level == 1)
-        else {
-            return vec![];
-        };
+    pub(crate) fn player_skills(
+        catalog: crate::catalog::BattleCatalog,
+        cloth_id: Option<i32>,
+    ) -> Vec<PlayerSkillInfo> {
+        catalog
+            .player_skills(cloth_id)
+            .into_iter()
+            .map(|skill| PlayerSkillInfo {
+                skill_id: Some(skill.skill_id),
+                cd: Some(0),
+                need_power: skill.need_power,
+                r#type: Some(0),
+            })
+            .collect()
+    }
+}
 
-        let mut skills = Vec::new();
-        if cloth.skill1 != 0 {
-            skills.push(PlayerSkillInfo {
-                skill_id: Some(cloth.skill1),
-                cd: Some(0),
-                need_power: Some(cloth.use_power1.first().copied().unwrap_or(0)),
-                r#type: Some(0),
-            });
-        }
-        if cloth.skill2 != 0 {
-            skills.push(PlayerSkillInfo {
-                skill_id: Some(cloth.skill2),
-                cd: Some(0),
-                need_power: Some(cloth.use_power2.first().copied().unwrap_or(0)),
-                r#type: Some(0),
-            });
-        }
-        if cloth.skill3 != 0 {
-            skills.push(PlayerSkillInfo {
-                skill_id: Some(cloth.skill3),
-                cd: Some(0),
-                need_power: None,
-                r#type: Some(0),
-            });
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        skills
+    #[test]
+    fn projects_configured_player_skills() {
+        crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+
+        assert_eq!(
+            Team::player_skills(catalog, Some(1)),
+            Team::get_player_skills(Some(1))
+        );
+        assert_eq!(
+            Team::player_skills(catalog, Some(1)),
+            vec![
+                PlayerSkillInfo {
+                    skill_id: Some(30010201),
+                    cd: Some(0),
+                    need_power: Some(40),
+                    r#type: Some(0),
+                },
+                PlayerSkillInfo {
+                    skill_id: Some(30010202),
+                    cd: Some(0),
+                    need_power: Some(25),
+                    r#type: Some(0),
+                },
+            ]
+        );
     }
 }

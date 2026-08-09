@@ -1,6 +1,13 @@
 use super::*;
 use flate2::read::GzDecoder;
 
+fn runtime(fight: sonettobuf::Fight) -> ::battle::engine::runtime::BattleRuntime {
+    ::battle::engine::runtime::BattleRuntime::new(
+        ::battle::catalog::BattleCatalog::new(config::configs::get()),
+        fight,
+    )
+}
+
 #[test]
 fn team_level_is_absent_when_no_entity_has_a_level() {
     let empty = sonettobuf::FightTeam::default();
@@ -51,7 +58,7 @@ fn replay_mode_is_projected_from_the_active_battle() {
     let _ = config::init(&data_dir);
     let active = ActiveBattle {
         is_replay: Some(true),
-        runtime: ::battle::engine::runtime::BattleRuntime::new(sonettobuf::Fight {
+        runtime: runtime(sonettobuf::Fight {
             is_record: Some(false),
             ..Default::default()
         }),

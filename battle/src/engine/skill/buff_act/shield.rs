@@ -10,8 +10,11 @@ pub fn configured_attr_rate(
     source_uid: i64,
     buffs: &BuffManager,
 ) -> Option<(AttrId, i32)> {
-    let row = config::try_get()?.skill_buff.get(buff_id)?;
-    row.features.split('|').find_map(|feature| {
+    let catalog = buffs
+        .try_catalog()
+        .or_else(crate::catalog::BattleCatalog::try_global)?;
+    let features = catalog.buff_feature_rows(buff_id);
+    features.iter().find_map(|feature| {
         let values = feature
             .split('#')
             .map(str::trim)
@@ -19,7 +22,7 @@ pub fn configured_attr_rate(
             .collect::<Result<Vec<_>, _>>()
             .ok()?;
         let act_id = *values.first()?;
-        let act_type = &config::try_get()?.buff_act.get(act_id)?.r#type;
+        let act_type = catalog.buff_act_definition(act_id)?.key.type_name;
         match registry::kind(act_id, act_type)? {
             registry::BuffActKind::Shield => {
                 let [_, _, raw_attr, rate, ..] = values.as_slice() else {
@@ -94,6 +97,13 @@ mod tests {
             ..Default::default()
         });
 
+        assert_eq!(
+            configured_attr_rate(30940121, 10, &buffs),
+            Some((AttrId::Attack, 1180))
+        );
+        buffs.set_catalog(crate::catalog::BattleCatalog::new(
+            crate::test_support::game_data(),
+        ));
         assert_eq!(
             configured_attr_rate(30940121, 10, &buffs),
             Some((AttrId::Attack, 1180))

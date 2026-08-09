@@ -36,7 +36,7 @@ pub fn rule_ops(managers: &BattleManagers, subscriber: &BuffActSubscriber) -> Ve
         buff_act_id: 0,
     }];
     for output in outputs {
-        let Some(origin) = super::configured_command_origin(
+        let Some(origin) = managers.catalog().buff_act_origin(
             output.output_act_id,
             super::registry::BuffActKind::AddAttrBySpecialCount,
         ) else {

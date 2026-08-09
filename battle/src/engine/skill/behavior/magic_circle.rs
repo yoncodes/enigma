@@ -29,7 +29,7 @@ pub fn deploy_rule_ops(
         return None;
     }
     let circle_id = behavior.arg(0)?;
-    let row = config::try_get()?.magic_circle.get(circle_id)?;
+    let definition = managers.catalog().magic_circle(circle_id)?;
     let origin = super::command_origin(behavior)?;
     let field = RuleOp::Command(BattleCommand::Field(FieldCommand {
         origin,
@@ -37,7 +37,7 @@ pub fn deploy_rule_ops(
         operation: FieldOperation::DeployIfAbsent {
             definition: FieldDefinition {
                 field_id: circle_id,
-                duration: row.round,
+                duration: definition.duration,
             },
             create_uid: source_uid,
             initial_level: behavior.arg(1).unwrap_or_default(),
@@ -47,13 +47,18 @@ pub fn deploy_rule_ops(
     if managers.field.get(team).is_some() {
         return Some(vec![field]);
     }
-    let (ally_buffs, enemy_buffs) = crate::engine::mechanic::magic_circle::linked_buffs(circle_id);
     let grants = pool
         .allies(source_uid)
         .iter()
-        .flat_map(|entity| ally_buffs.iter().map(move |buff_id| (entity.uid, *buff_id)))
+        .flat_map(|entity| {
+            definition
+                .allied_buffs
+                .iter()
+                .map(move |buff_id| (entity.uid, *buff_id))
+        })
         .chain(pool.enemies(source_uid, true).iter().flat_map(|entity| {
-            enemy_buffs
+            definition
+                .enemy_buffs
                 .iter()
                 .map(move |buff_id| (entity.uid, *buff_id))
         }));
@@ -103,24 +108,7 @@ pub(crate) fn field_thresholds(
     team: i32,
     managers: &BattleManagers,
 ) -> Vec<FieldThreshold> {
-    let Some(db) = config::try_get() else {
-        return Vec::new();
-    };
-    let mut thresholds = db
-        .fight_dnsz
-        .iter()
-        .filter_map(|threshold| {
-            let circle = db.magic_circle.get(threshold.id)?;
-            Some(FieldThreshold {
-                level: threshold.level,
-                progress: threshold.progress,
-                definition: FieldDefinition {
-                    field_id: threshold.id,
-                    duration: circle.round,
-                },
-            })
-        })
-        .collect::<Vec<_>>();
+    let mut thresholds = managers.catalog().magic_circle_thresholds();
     thresholds.sort_by_key(|threshold| threshold.level);
     if !thresholds
         .iter()
@@ -141,15 +129,17 @@ impl BehaviorHandler for Handler {
     const VALIDATES_ARGUMENTS: bool = true;
 
     fn supports(behavior: &ParsedBehavior) -> bool {
+        let configured = |circle_id| {
+            crate::catalog::BattleCatalog::try_global()
+                .is_some_and(|catalog| catalog.magic_circle(circle_id).is_some())
+        };
         match (behavior.spec.kind, behavior.args.as_slice()) {
             (BehaviorKind::AddMagicCircle, [circle_id, rest @ ..]) => {
                 rest.len() <= 1
                     && rest.first().is_none_or(|level| *level >= 0)
-                    && config::try_get().is_some_and(|db| db.magic_circle.get(*circle_id).is_some())
+                    && configured(*circle_id)
             }
-            (BehaviorKind::RemoveMagicCircleById, [circle_id]) => {
-                config::try_get().is_some_and(|db| db.magic_circle.get(*circle_id).is_some())
-            }
+            (BehaviorKind::RemoveMagicCircleById, [circle_id]) => configured(*circle_id),
             _ => false,
         }
     }
@@ -189,15 +179,9 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
 }
 
 pub fn self_skills(circle_id: i32) -> Vec<i32> {
-    config::try_get()
-        .and_then(|db| db.magic_circle.get(circle_id))
-        .map(|row| {
-            row.self_skills
-                .split(['|', '#'])
-                .filter_map(|id| id.trim().parse().ok())
-                .filter(|id| *id > 0)
-                .collect()
-        })
+    crate::catalog::BattleCatalog::try_global()
+        .and_then(|catalog| catalog.magic_circle(circle_id))
+        .map(|definition| definition.self_skills)
         .unwrap_or_default()
 }
 
@@ -208,7 +192,8 @@ pub fn active_self_skills(
 ) -> Vec<i32> {
     pool.team_type(source_uid)
         .and_then(|team| managers.field.get(team))
-        .map(|field| self_skills(field.definition.field_id))
+        .and_then(|field| managers.catalog().magic_circle(field.definition.field_id))
+        .map(|definition| definition.self_skills)
         .unwrap_or_default()
 }
 

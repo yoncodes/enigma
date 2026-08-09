@@ -4,6 +4,7 @@ use super::*;
 /// Diagnostics cannot make unsupported configuration runnable.
 pub(crate) fn scan_closure(
     db: &config::GameDB,
+    battle_catalog: battle::catalog::BattleCatalog,
     catalog: &mut SkillEffectCatalog,
     skills: &mut VecDeque<Pending>,
     buffs: &mut VecDeque<Pending>,
@@ -15,7 +16,7 @@ pub(crate) fn scan_closure(
             scan_skill(db, catalog, pending, skills, buffs, report);
         }
         while let Some(pending) = buffs.pop_front() {
-            scan_buff(db, pending, skills, buffs, report);
+            scan_buff(db, battle_catalog, pending, skills, buffs, report);
         }
     }
 }
@@ -257,6 +258,7 @@ pub(super) fn enqueue_monster_skills(
 
 fn scan_buff(
     db: &config::GameDB,
+    battle_catalog: battle::catalog::BattleCatalog,
     pending: Pending,
     skills: &mut VecDeque<Pending>,
     buffs: &mut VecDeque<Pending>,
@@ -353,7 +355,7 @@ fn scan_buff(
             pending.path, pending.id
         )),
     }
-    for linked_buff_id in halo::carriers(pending.id)
+    for linked_buff_id in halo::carriers(battle_catalog, pending.id)
         .into_iter()
         .filter_map(|carrier| carrier.linked_buff_id)
     {

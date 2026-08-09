@@ -1,5 +1,12 @@
 use super::*;
 
+fn runtime(fight: sonettobuf::Fight) -> battle::engine::runtime::BattleRuntime {
+    battle::engine::runtime::BattleRuntime::new(
+        battle::catalog::BattleCatalog::new(config::configs::get()),
+        fight,
+    )
+}
+
 #[tokio::test]
 async fn first_clear_uses_the_configured_first_battle() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -63,7 +70,7 @@ fn saved_start_matches_with_or_without_the_restart_marker() {
     restart.episode_id = Some(10002);
     let tower = ActiveBattle {
         start_request: active.start_request.clone(),
-        tower_context: Some(::battle::tower::BattleContext {
+        tower_context: Some(crate::logic::battle_setup::tower::BattleContext {
             tower_type: 1,
             tower_id: 2,
             layer_id: 3,
@@ -447,7 +454,7 @@ async fn abort_dungeon_keeps_saved_progress_but_reports_no_new_star() {
     let active = ActiveBattle {
         chapter_id: 9000,
         episode_id: 90002501,
-        runtime: battle::engine::runtime::BattleRuntime::new(sonettobuf::Fight {
+        runtime: runtime(sonettobuf::Fight {
             cur_round: Some(15),
             ..Default::default()
         }),
@@ -835,7 +842,7 @@ fn normal_push_uses_the_runtime_outcome() {
     let active = ActiveBattle {
         fight_id: Some(42),
         fight_group: Some(Default::default()),
-        runtime: battle::engine::runtime::BattleRuntime::new(sonettobuf::Fight {
+        runtime: runtime(sonettobuf::Fight {
             attacker: Some(sonettobuf::FightTeam {
                 entitys: vec![sonettobuf::FightEntityInfo {
                     uid: Some(1),
@@ -892,7 +899,7 @@ async fn act229_victory_uses_only_act229_settlement() {
     .await
     .unwrap();
 
-    let runtime = battle::engine::runtime::BattleRuntime::new(Fight {
+    let runtime = runtime(Fight {
         cur_round: Some(2),
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -1008,7 +1015,7 @@ fn battle_star_uses_configured_round_condition() {
         .unwrap()
         .join("data/excel2json");
     config::init(data_dir.to_str().unwrap()).unwrap();
-    let runtime = battle::engine::runtime::BattleRuntime::new(sonettobuf::Fight {
+    let runtime = runtime(sonettobuf::Fight {
         cur_round: Some(3),
         attacker: Some(sonettobuf::FightTeam {
             entitys: vec![sonettobuf::FightEntityInfo {
@@ -1599,7 +1606,7 @@ async fn incomplete_act128_settlement_persists_score_without_dungeon_completion(
             BeginRoundOper, BeginRoundRequest, CardInfo, Fight, FightEntityInfo, FightTeam,
         };
 
-        let mut runtime = ::battle::engine::runtime::BattleRuntime::new(Fight {
+        let mut runtime = runtime(Fight {
             episode_id: Some(13500420),
             battle_id: Some(118353100),
             version: Some(7),

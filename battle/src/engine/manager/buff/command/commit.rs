@@ -4,20 +4,22 @@ impl BuffManager {
     /// Applies a validated `BuffPlan` exactly once without re-resolving its policies.
     pub(crate) fn commit(&mut self, hp: &HpManager, plan: BuffPlan) -> BuffChanges {
         let origin = plan.origin;
+        let catalog = self.catalog();
         match plan.action {
             BuffPlanAction::Grant(plan) => {
                 let change = self.commit_grant_plan(hp, *plan);
-                BuffChanges::new(origin, change)
+                BuffChanges::new(catalog, origin, change)
             }
             BuffPlanAction::GrantInternalChild(plan) => {
                 let change = self.commit_grant_plan(hp, *plan);
-                BuffChanges::new(origin, change).internal()
+                BuffChanges::new(catalog, origin, change).internal()
             }
             BuffPlanAction::Accumulate(plan) => {
                 let change = self.commit_grant_plan(hp, *plan);
-                BuffChanges::without_refresh_echo(origin, change)
+                BuffChanges::without_refresh_echo(catalog, origin, change)
             }
             BuffPlanAction::Consume(plan) => BuffChanges::without_refresh_echo(
+                catalog,
                 origin,
                 plan.actions.into_iter().fold(
                     BuffReplaceResult::default(),
@@ -33,7 +35,7 @@ impl BuffManager {
                 for action in plan.actions {
                     self.commit_consume_action(plan.target_uid, action);
                 }
-                BuffChanges::new(origin, BuffReplaceResult::default())
+                BuffChanges::new(catalog, origin, BuffReplaceResult::default())
             }
             BuffPlanAction::Convert(plan) => {
                 let ConvertPlan { consume, grant } = *plan;
@@ -54,12 +56,13 @@ impl BuffManager {
                     change.rejected = granted.rejected;
                     change.fanout.extend(granted.fanout);
                 }
-                BuffChanges::new(origin, change)
+                BuffChanges::new(catalog, origin, change)
             }
             BuffPlanAction::Replace(plan) => {
-                BuffChanges::new(origin, self.commit_replace_plan(hp, *plan))
+                BuffChanges::new(catalog, origin, self.commit_replace_plan(hp, *plan))
             }
             BuffPlanAction::Remove(plan) => BuffChanges::new(
+                catalog,
                 origin,
                 BuffReplaceResult {
                     removed: plan
@@ -93,6 +96,7 @@ impl BuffManager {
                 },
             ),
             BuffPlanAction::SetAmount(plan) => BuffChanges::set_amount(
+                catalog,
                 origin,
                 BuffReplaceResult {
                     removed: Vec::new(),
@@ -114,6 +118,7 @@ impl BuffManager {
                 },
             ),
             BuffPlanAction::SetState(plan) => BuffChanges::new(
+                catalog,
                 origin,
                 BuffReplaceResult {
                     removed: Vec::new(),
@@ -138,6 +143,7 @@ impl BuffManager {
                 },
             ),
             BuffPlanAction::SetInternalState(plan) => BuffChanges::new(
+                catalog,
                 origin,
                 BuffReplaceResult {
                     removed: Vec::new(),
@@ -162,6 +168,7 @@ impl BuffManager {
             )
             .internal(),
             BuffPlanAction::SetStateSnapshot(plan) => BuffChanges::new(
+                catalog,
                 origin,
                 BuffReplaceResult {
                     removed: Vec::new(),
@@ -184,12 +191,13 @@ impl BuffManager {
                     fanout: Vec::new(),
                 },
             )
-            .with_state_snapshot_wire(),
+            .with_state_snapshot_wire(catalog),
             BuffPlanAction::AccumulateActValue(update) => {
                 self.accumulate_act_value(update.buff_uid, update.act_id, update.delta);
-                BuffChanges::new(origin, BuffReplaceResult::default())
+                BuffChanges::new(catalog, origin, BuffReplaceResult::default())
             }
             BuffPlanAction::ChangeDuration(plans) => BuffChanges::new(
+                catalog,
                 origin,
                 BuffReplaceResult {
                     refreshed: plans
@@ -208,6 +216,7 @@ impl BuffManager {
                 },
             ),
             BuffPlanAction::AddSpecialCount(plan) => BuffChanges::new(
+                catalog,
                 origin,
                 BuffReplaceResult {
                     removed: Vec::new(),
@@ -225,12 +234,12 @@ impl BuffManager {
                 for uid in plan.uids {
                     super::uid_policy::commit(self, plan.target_uid, uid);
                 }
-                BuffChanges::new(origin, BuffReplaceResult::default())
+                BuffChanges::new(catalog, origin, BuffReplaceResult::default())
             }
             BuffPlanAction::ReserveGrantUid(plan) => {
                 let uid = super::uid_policy::commit(self, plan.target_uid, plan.uid);
                 self.reserve_grant_uid(plan.target_uid, plan.buff_id, uid);
-                BuffChanges::new(origin, BuffReplaceResult::default())
+                BuffChanges::new(catalog, origin, BuffReplaceResult::default())
             }
             BuffPlanAction::AdvanceDuration(plans) => {
                 let mut transitions = Vec::new();
@@ -256,10 +265,11 @@ impl BuffManager {
                             }
                             changes
                         });
-                BuffChanges::without_refresh_echo(origin, change)
+                BuffChanges::without_refresh_echo(catalog, origin, change)
                     .with_lifecycle_transitions(transitions)
             }
             BuffPlanAction::SyncRoundStartDuration(plans) => BuffChanges::new(
+                catalog,
                 origin,
                 BuffReplaceResult {
                     refreshed: plans
@@ -349,9 +359,9 @@ impl BuffManager {
         {
             added.buff = update.after;
             for marker in &mut added.markers {
-                marker.effect_num = crate::engine::buff::marker::effect_num(
+                marker.effect_num = plan.definition.marker_effect_num(
+                    self.catalog().game_data(),
                     marker.effect_type,
-                    added.buff.buff_id.unwrap_or_default(),
                     added.buff.act_common_params.as_deref(),
                 );
             }

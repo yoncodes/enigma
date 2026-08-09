@@ -1,9 +1,9 @@
-use config::configs;
-use database::db::game::equipment::Equipment;
-use database::models::game::heros::HeroData;
 use std::collections::HashMap;
 
-use super::destiny::Destiny;
+use super::{
+    destiny::Destiny,
+    input::{EquipmentBuildInput, HeroBuildInput},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PassiveSourceKind {
@@ -45,22 +45,40 @@ pub struct Passive;
 
 impl Passive {
     pub fn get(
-        hero_data: &HeroData,
-        equips: &[Equipment],
+        hero: &HeroBuildInput,
+        equips: &[EquipmentBuildInput],
         destiny: Option<&HashMap<i32, i32>>,
     ) -> Vec<PassiveSkill> {
-        let r = &hero_data.record;
-        let mut passives = Self::base(r.hero_id);
-        Self::apply_upgrades(
-            &mut passives,
-            r.hero_id,
-            r.ex_skill_level,
+        Self::for_build(
+            crate::catalog::BattleCatalog::global().game_data(),
+            hero,
+            equips,
             destiny,
-            r.destiny_rank,
-            r.destiny_stone,
+        )
+    }
+
+    pub(crate) fn for_build(
+        game: &config::GameDB,
+        hero: &HeroBuildInput,
+        equips: &[EquipmentBuildInput],
+        destiny: Option<&HashMap<i32, i32>>,
+    ) -> Vec<PassiveSkill> {
+        let mut passives = Self::base(game, hero.hero_id);
+        Self::apply_upgrades(
+            game,
+            &mut passives,
+            hero.hero_id,
+            hero.ex_skill_level,
+            destiny,
+            hero.destiny_rank,
+            hero.destiny_stone,
         );
         for equip in equips {
-            passives.extend(Self::psychube(equip.equip_id, Some(equip.refine_lv)));
+            passives.extend(Self::psychube_from(
+                game,
+                equip.equip_id,
+                Some(equip.refine_level),
+            ));
         }
         passives
     }
@@ -70,14 +88,28 @@ impl Passive {
         psychube: Option<(i32, i32)>,
         destiny: Option<(i32, i32)>,
     ) -> Vec<PassiveSkill> {
-        let ex_level = configs::get()
+        Self::configured(
+            crate::catalog::BattleCatalog::global().game_data(),
+            hero_id,
+            psychube,
+            destiny,
+        )
+    }
+
+    pub fn configured(
+        game: &config::GameDB,
+        hero_id: i32,
+        psychube: Option<(i32, i32)>,
+        destiny: Option<(i32, i32)>,
+    ) -> Vec<PassiveSkill> {
+        let ex_level = game
             .skill_ex_level
             .iter()
             .filter(|row| row.hero_id == hero_id)
             .map(|row| row.skill_level)
             .max()
             .unwrap_or_default();
-        Self::for_loadout(hero_id, ex_level, psychube, destiny)
+        Self::loadout(game, hero_id, ex_level, psychube, destiny)
     }
 
     pub fn for_loadout(
@@ -86,10 +118,27 @@ impl Passive {
         psychube: Option<(i32, i32)>,
         destiny: Option<(i32, i32)>,
     ) -> Vec<PassiveSkill> {
+        Self::loadout(
+            crate::catalog::BattleCatalog::global().game_data(),
+            hero_id,
+            ex_level,
+            psychube,
+            destiny,
+        )
+    }
+
+    fn loadout(
+        game: &config::GameDB,
+        hero_id: i32,
+        ex_level: i32,
+        psychube: Option<(i32, i32)>,
+        destiny: Option<(i32, i32)>,
+    ) -> Vec<PassiveSkill> {
         let (destiny_stone, destiny_rank) = destiny.unwrap_or_default();
-        let destiny = Destiny::get(destiny_stone, destiny_rank);
-        let mut passives = Self::base(hero_id);
+        let destiny = Destiny::exchanges(game, destiny_stone, destiny_rank);
+        let mut passives = Self::base(game, hero_id);
         Self::apply_upgrades(
+            game,
             &mut passives,
             hero_id,
             ex_level,
@@ -98,7 +147,7 @@ impl Passive {
             destiny_stone,
         );
         if let Some((psychube_id, psychube_level)) = psychube {
-            passives.extend(Self::psychube(psychube_id, Some(psychube_level)));
+            passives.extend(Self::psychube_from(game, psychube_id, Some(psychube_level)));
         }
         passives
     }
@@ -110,7 +159,24 @@ impl Passive {
         psychube: Option<(i32, i32)>,
         destiny: Option<(i32, i32)>,
     ) -> Vec<PassiveSkill> {
-        let game = configs::get();
+        Self::ranked(
+            crate::catalog::BattleCatalog::global().game_data(),
+            hero_id,
+            rank,
+            ex_level,
+            psychube,
+            destiny,
+        )
+    }
+
+    pub(crate) fn ranked(
+        game: &config::GameDB,
+        hero_id: i32,
+        rank: i32,
+        ex_level: i32,
+        psychube: Option<(i32, i32)>,
+        destiny: Option<(i32, i32)>,
+    ) -> Vec<PassiveSkill> {
         let insight_level = game
             .character_rank
             .iter()
@@ -122,7 +188,7 @@ impl Passive {
                     .find_map(|(kind, value)| (kind == "2").then(|| value.parse().ok()).flatten())
             })
             .unwrap_or_default();
-        let mut passives = Self::base(hero_id)
+        let mut passives = Self::base(game, hero_id)
             .into_iter()
             .filter(|passive| {
                 passive.source.kind != PassiveSourceKind::Insight
@@ -145,8 +211,9 @@ impl Passive {
         );
 
         let (destiny_stone, destiny_rank) = destiny.unwrap_or_default();
-        let destiny = Destiny::get(destiny_stone, destiny_rank);
+        let destiny = Destiny::exchanges(game, destiny_stone, destiny_rank);
         Self::apply_upgrades(
+            game,
             &mut passives,
             hero_id,
             ex_level,
@@ -155,13 +222,13 @@ impl Passive {
             destiny_stone,
         );
         if let Some((psychube_id, psychube_level)) = psychube {
-            passives.extend(Self::psychube(psychube_id, Some(psychube_level)));
+            passives.extend(Self::psychube_from(game, psychube_id, Some(psychube_level)));
         }
         passives
     }
 
-    fn base(hero_id: i32) -> Vec<PassiveSkill> {
-        if let Some(base_ids) = Self::activity_base(hero_id) {
+    fn base(game: &config::GameDB, hero_id: i32) -> Vec<PassiveSkill> {
+        if let Some(base_ids) = Self::activity_base(game, hero_id) {
             return base_ids
                 .into_iter()
                 .map(|skill_id| PassiveSkill {
@@ -170,7 +237,7 @@ impl Passive {
                 })
                 .collect();
         }
-        let mut rows = configs::get()
+        let mut rows = game
             .skill_passive_level
             .iter()
             .filter(|row| row.hero_id == hero_id && row.skill_passive != 0)
@@ -194,6 +261,7 @@ impl Passive {
     }
 
     fn apply_upgrades(
+        game: &config::GameDB,
         passives: &mut [PassiveSkill],
         hero_id: i32,
         ex_level: i32,
@@ -201,7 +269,7 @@ impl Passive {
         destiny_rank: i32,
         destiny_stone: i32,
     ) {
-        let ex_map = Self::build_ex_map(hero_id, ex_level);
+        let ex_map = Self::build_ex_map(game, hero_id, ex_level);
         for passive in passives {
             if let Some(&overridden) = destiny.and_then(|map| map.get(&passive.skill_id)) {
                 passive.skill_id = overridden;
@@ -216,11 +284,12 @@ impl Passive {
         }
     }
 
-    pub(super) fn psychube(equip_id: i32, skill_level: Option<i32>) -> Vec<PassiveSkill> {
-        let mut rows = configs::get()
-            .equip_skill
-            .iter()
-            .filter(|row| row.id == equip_id);
+    pub(crate) fn psychube_from(
+        game: &config::GameDB,
+        equip_id: i32,
+        skill_level: Option<i32>,
+    ) -> Vec<PassiveSkill> {
+        let mut rows = game.equip_skill.iter().filter(|row| row.id == equip_id);
         let row = if let Some(skill_level) = skill_level {
             rows.find(|row| row.skill_lv == skill_level)
         } else {
@@ -239,9 +308,7 @@ impl Passive {
             .collect()
     }
 
-    fn activity_base(hero_id: i32) -> Option<Vec<i32>> {
-        let game = configs::get();
-
+    fn activity_base(game: &config::GameDB, hero_id: i32) -> Option<Vec<i32>> {
         if let Some(r) = game.activity174_role.iter().find(|r| r.hero_id == hero_id)
             && !r.passive_skill.is_empty()
         {
@@ -267,8 +334,7 @@ impl Passive {
         None
     }
 
-    fn build_ex_map(hero_id: i32, ex_level: i32) -> HashMap<i32, i32> {
-        let game = configs::get();
+    fn build_ex_map(game: &config::GameDB, hero_id: i32, ex_level: i32) -> HashMap<i32, i32> {
         let mut map = HashMap::new();
 
         for lvl in 1..=ex_level {
@@ -300,6 +366,15 @@ mod tests {
     fn selected_build_uses_requested_psychube_and_destiny_levels() {
         init_config();
         let passives = Passive::for_config(3086, Some((1527, 4)), Some((308601, 3)));
+        assert_eq!(
+            passives,
+            Passive::configured(
+                crate::test_support::game_data(),
+                3086,
+                Some((1527, 4)),
+                Some((308601, 3)),
+            )
+        );
 
         assert!(passives.iter().any(|passive| {
             passive.skill_id == 432714

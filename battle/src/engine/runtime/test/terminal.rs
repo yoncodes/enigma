@@ -16,7 +16,7 @@ fn terminal_attacker_settlement_does_not_enter_defender_card_cleanup() {
         current_hp: Some(hp),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         cur_round: Some(1),
         version: Some(6),
         attacker: Some(FightTeam {
@@ -54,7 +54,7 @@ fn version_seven_terminal_round_does_not_advance_to_an_unplayed_round() {
         current_hp: Some(hp),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         cur_round: Some(3),
         version: Some(7),
         attacker: Some(FightTeam {
@@ -92,7 +92,7 @@ fn next_ai_snapshot_is_published_after_current_ai_settlement() {
         }),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         cur_round: Some(1),
         version: Some(7),
         attacker: Some(FightTeam {
@@ -134,7 +134,7 @@ fn configured_wave_advances_before_the_next_round_cue() {
     crate::test_support::init_config();
     let (entitys, sub_entitys) =
         crate::engine::fight::defender::Defender::build_wave_entities(251401, 2, 2, 0).unwrap();
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         battle_id: Some(2514),
         episode_id: Some(20514),
         version: Some(6),
@@ -234,7 +234,7 @@ fn wave_entry_round_start_condition_is_not_repeated_on_the_next_request() {
     let (entitys, sub_entitys) =
         crate::engine::fight::defender::Defender::build_wave_entities(251401, 2, 2, 0).unwrap();
     let skill_ids = [9_900_040, 9_900_050, 9_900_060];
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         battle_id: Some(2514),
         version: Some(7),
         cur_round: Some(1),
@@ -376,7 +376,7 @@ fn wave_clear_defers_card_refill_to_the_next_round_deal() {
     };
     let remaining = card(30230111);
     let dealt = vec![card(30230121), card(30230111)];
-    let mut runtime = BattleRuntime::new(Fight {
+    let mut runtime = runtime(Fight {
         battle_id: Some(2514),
         version: Some(7),
         cur_round: Some(1),

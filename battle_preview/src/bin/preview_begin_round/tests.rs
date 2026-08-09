@@ -35,15 +35,21 @@ fn cloth_input_discovery_returns_same_round_requests_in_capture_order() {
     fs::remove_dir_all(directory).unwrap();
 }
 
+#[cfg(feature = "private-fixtures")]
 #[test]
 fn captured_twins_selection_has_a_committed_runtime_source() {
-    init_config().unwrap();
+    let db = init_config().unwrap();
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures/battles/battle116385108/BeginRoundReply_1.json");
     let value = captured_start_reply(&path).unwrap();
     let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, &path).unwrap();
-    let mut runtime = BattleRuntime::new_with_attributes(fight, ex_attributes, sp_attributes);
+    let mut runtime = BattleRuntime::new_with_attributes(
+        battle::catalog::BattleCatalog::new(db),
+        fight,
+        ex_attributes,
+        sp_attributes,
+    );
     runtime.start_round().unwrap();
     let captured = captured_round(&path).unwrap();
     seed_captured_randomness(&mut runtime, &captured);
@@ -114,6 +120,7 @@ fn captured_twins_selection_has_a_committed_runtime_source() {
     }));
 }
 
+#[cfg(feature = "private-fixtures")]
 #[test]
 fn captured_version7_conduit_sentinel_keeps_activation_sequence() {
     fn contains_act(step: &FightStep, act_id: i32) -> bool {
@@ -139,10 +146,10 @@ fn captured_version7_conduit_sentinel_keeps_activation_sequence() {
             .find_map(|nested| parent_of(nested, act_id))
     }
 
-    init_config().unwrap();
+    let db = init_config().unwrap();
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures/battles/battle72/BeginRoundReply_1.json");
-    let generated = generate_reply(&path).unwrap().0.round.unwrap();
+    let generated = generate_reply(db, &path).unwrap().0.round.unwrap();
     let captured = captured_round(&path).unwrap();
 
     assert!(
@@ -222,9 +229,10 @@ fn captured_version7_conduit_sentinel_keeps_activation_sequence() {
     );
 }
 
+#[cfg(feature = "private-fixtures")]
 #[test]
 fn generated_round_uses_captured_rng_but_not_damage_amounts() {
-    init_config().unwrap();
+    let db = init_config().unwrap();
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/battles/battle71");
     let temporary = std::env::temp_dir().join(format!(
         "enigma-preview-{}-{}",
@@ -243,7 +251,7 @@ fn generated_round_uses_captured_rng_but_not_damage_amounts() {
         fs::copy(source.join(name), temporary.join(name)).unwrap();
     }
 
-    let expected = replay_to_round(&source.join("BeginRoundReply_1.json")).unwrap();
+    let expected = replay_to_round(db, &source.join("BeginRoundReply_1.json")).unwrap();
     let reply_path = temporary.join("BeginRoundReply_1.json");
     let mut captured: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&reply_path).unwrap()).unwrap();
@@ -254,16 +262,17 @@ fn generated_round_uses_captured_rng_but_not_damage_amounts() {
     round["fightStep"][2]["actEffect"][0]["hurtInfo"]["damage"] = serde_json::json!(999_999);
     fs::write(&reply_path, serde_json::to_vec(&captured).unwrap()).unwrap();
 
-    let actual = replay_to_round(&reply_path).unwrap();
+    let actual = replay_to_round(db, &reply_path).unwrap();
     captured.get_mut("round").unwrap()["teamACards2"] = serde_json::json!([]);
     fs::write(&reply_path, serde_json::to_vec(&captured).unwrap()).unwrap();
-    let without_card_choices = replay_to_round(&reply_path).unwrap();
+    let without_card_choices = replay_to_round(db, &reply_path).unwrap();
     fs::remove_dir_all(temporary).unwrap();
 
     assert_eq!(actual, expected);
     assert_ne!(without_card_choices, expected);
 }
 
+#[cfg(feature = "private-fixtures")]
 #[test]
 fn reads_dungeon_and_tower_start_reply_envelopes() {
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/battles");

@@ -54,6 +54,7 @@ pub fn run_action_phase_start(
 
 #[allow(clippy::too_many_arguments)]
 pub fn run_conduit_phase(
+    battle_catalog: crate::catalog::BattleCatalog,
     fight: &sonettobuf::Fight,
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -74,8 +75,8 @@ pub fn run_conduit_phase(
             .conduit
             .selected_skills(source_uid)
             .map_err(|error| DrainError::Command(error.into()))?;
-        catalog.extend_roots_and_warn(
-            config::configs::get(),
+        battle_catalog.extend_skill_roots(
+            catalog,
             skills.iter().map(|skill| skill.skill_id),
             std::iter::empty(),
         );
@@ -707,8 +708,11 @@ fn run_player_card_ops(
         let source_uid = skill.plan.source_uid;
         let source_alive = !is_card_action || managers.hp.current(source_uid) > 0;
         let is_ultimate = pool.entity(source_uid).is_some_and(|entity| {
-            crate::engine::mechanic::card::CardMechanic
-                .is_ultimate_skill(skill.plan.skill_id, entity)
+            crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                managers,
+                skill.plan.skill_id,
+                entity,
+            )
         });
         if source_alive
             && let crate::engine::skill::action::SkillTarget::Explicit(target_uid) = skill.target
@@ -997,7 +1001,11 @@ pub(super) fn run_active_action(
     }
     let source_uid = skill.plan.source_uid;
     let is_ultimate = pool.entity(source_uid).is_some_and(|entity| {
-        crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(skill.plan.skill_id, entity)
+        crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+            managers,
+            skill.plan.skill_id,
+            entity,
+        )
     });
     let boss_power =
         crate::engine::mechanic::card::CardMechanic.boss_ultimate_power(managers, source_uid);

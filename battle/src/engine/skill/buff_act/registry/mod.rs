@@ -645,7 +645,7 @@ buff_act_definitions! {
         supports: super::rebound::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(303, "Rebound"), &[EffectType::Rebound as i32]));
     (305, "AddToAttacker") => AddToAttacker,
         runtime_marker: BeforeChanges(EventSource),
-        scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
+        scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool),
         supports: |args| matches!(args, [buff_id] if *buff_id > 0),
         wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(305, "AddToAttacker"), &[], &[EffectType::Addtoattacker as i32], &[]));
     (401, "Dizzy") => Dizzy, effect_time_subscription: false,
@@ -665,25 +665,25 @@ buff_act_definitions! {
         publications: [
             EventKind::SkillCast => BeforePublish
         ],
-        scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
+        scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(503, "AddToTarget"), &[EffectType::Addtotarget as i32]));
     (505, "DodgeSpecSkill") => DodgeSpecSkill, effect_time_subscription: false,
         events: [EventKind::AllyAction],
-        runtime: |context| super::dodge_spec_skill::expire_after_owner_action(context.subscriber, context.event?),
+        runtime: |context| super::dodge_spec_skill::expire_after_owner_action(context.managers, context.subscriber, context.event?),
         supports: super::dodge_spec_skill::supports_skill_slots, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(505, "DodgeSpecSkill"), &[EffectType::Dodgespecskill as i32]));
     (507, "DodgeSpecSkill2") => DodgeDamageType, effect_time_subscription: false,
         events: [EventKind::AllyAction],
-        runtime: |context| super::dodge_spec_skill::expire_after_owner_action(context.subscriber, context.event?),
+        runtime: |context| super::dodge_spec_skill::expire_after_owner_action(context.managers, context.subscriber, context.event?),
         supports: super::dodge_spec_skill::supports_damage_types, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(507, "DodgeSpecSkill2"), &[EffectType::Dodgespecskill2 as i32]));
     (510, "DamageNotMoreThan") => DamageNotMoreThan, effect_time_subscription: false,
         events: [EventKind::TargetAttacked],
-        runtime: |context| super::damage_not_more_than::consume_after_hit(context.subscriber, context.event?),
+        runtime: |context| super::damage_not_more_than::consume_after_hit(context.managers, context.subscriber, context.event?),
         supports: super::damage_not_more_than::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(510, "DamageNotMoreThan"), &[EffectType::Damagenotmorethan as i32]));
     (509, "ImmunityExpointChange") => MoxieReductionImmunity,
         effect_time_subscription: false, supports: |args| args.is_empty(), state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(509, "ImmunityExpointChange"), &[EffectType::None as i32]));
     (518, "AddToTarget") => AddToTarget,
-        scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
+        scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool),
         supports: |_| true;
     (519, "RealHurtFix") => RealHurtFix, effect_time_subscription: false,
         supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(519, "RealHurtFix"), &[EffectType::Realhurtfix as i32]));
@@ -756,7 +756,7 @@ buff_act_definitions! {
     (795, "None") => TargetingTag,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(795, "None"), &[EffectType::None as i32]));
     (725, "AddToTarget") => AddToTarget,
-        runtime: |context| super::add_to_target::rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
+        runtime: |context| super::add_to_target::rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool),
         supports: |_| true;
     (731, "CastChannel") => CastChannel,
         event: EventKind::RoundStart,
@@ -1071,7 +1071,7 @@ buff_act_definitions! {
         wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(933, "SubBuff"), &[EffectType::None as i32]));
     (928, "AddToTarget") => AddToAttackTargets,
         event: EventKind::SkillAction, phase: AfterDamage,
-        runtime: |context| super::add_to_target::rule_ops(context.subscriber, context.event?, context.catalog, context.pool),
+        runtime: |context| super::add_to_target::rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(928, "AddToTarget"), &[EffectType::Addtotarget as i32]));
     (929, "AddCardRecordByRound") => AddCardRecordByRound,
         event: EventKind::ActionQueueCommitted, publication: BeforePublish,

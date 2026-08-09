@@ -1,5 +1,7 @@
 use sonettobuf::Fight;
 
+use crate::catalog::BattleCatalog;
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ClothPower {
     max: i32,
@@ -10,24 +12,48 @@ pub struct ClothPower {
 }
 
 impl ClothPower {
-    pub fn for_fight(fight: &Fight) -> Option<Self> {
+    pub(crate) fn configured(
+        max: i32,
+        use_card: i32,
+        move_card: i32,
+        compose: i32,
+        recovery: &str,
+    ) -> Self {
+        Self {
+            max,
+            use_card,
+            move_card,
+            compose,
+            recovery: parse_recovery(recovery),
+        }
+    }
+
+    pub fn for_fight(game_data: &config::GameDB, fight: &Fight) -> Option<Self> {
         let cloth_id = fight.attacker.as_ref()?.cloth_id.unwrap_or(1);
-        let config = config::try_get()?
+        let config = game_data
             .cloth_level
             .iter()
             .find(|cloth| cloth.id == cloth_id && cloth.level == 1)?;
 
-        Some(Self {
-            max: config.max_power,
-            use_card: config.r#use,
-            move_card: config.r#move,
-            compose: config.compose,
-            recovery: parse_recovery(&config.recover),
-        })
+        Some(Self::configured(
+            config.max_power,
+            config.r#use,
+            config.r#move,
+            config.compose,
+            &config.recover,
+        ))
     }
 
-    pub fn initial(fight: &Fight) -> i32 {
-        let Some(rule) = Self::for_fight(fight) else {
+    pub fn initial(game_data: &config::GameDB, fight: &Fight) -> i32 {
+        Self::initial_value(Self::for_fight(game_data, fight), fight)
+    }
+
+    pub(crate) fn seeded(catalog: BattleCatalog, fight: &Fight) -> i32 {
+        Self::initial_value(catalog.cloth_power(fight), fight)
+    }
+
+    fn initial_value(rule: Option<Self>, fight: &Fight) -> i32 {
+        let Some(rule) = rule else {
             return fight
                 .attacker
                 .as_ref()

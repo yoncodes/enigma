@@ -1,13 +1,15 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-pub(crate) fn current() -> Result<i32> {
-    config::configs::get()
-        .r#const
-        .get(1707) // ConstEnum.FightVersion in Lua.
-        .context("FightVersion config 1707 is missing")?
-        .value
-        .parse()
-        .context("FightVersion config 1707 is not an integer")
+pub(crate) fn current(catalog: crate::catalog::BattleCatalog) -> Result<i32> {
+    match catalog.fight_version() {
+        crate::catalog::ConfiguredFightVersion::Missing => {
+            Err(anyhow::anyhow!("FightVersion config 1707 is missing"))
+        }
+        crate::catalog::ConfiguredFightVersion::Invalid => Err(anyhow::anyhow!(
+            "FightVersion config 1707 is not an integer"
+        )),
+        crate::catalog::ConfiguredFightVersion::Value(version) => Ok(version),
+    }
 }
 
 pub(crate) fn writes_reduce_hp(version: i32) -> bool {

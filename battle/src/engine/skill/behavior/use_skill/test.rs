@@ -618,6 +618,66 @@ fn drive_without_an_attack_candidate_is_a_no_op() {
 }
 
 #[test]
+fn direct_big_skill_refunds_only_the_configured_ultimate_cost() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ex_point: Some(5),
+                ex_skill: Some(30020131),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::new(60175, "DirectUseBigSkill", Vec::new());
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: -1,
+            source_team: 2,
+            target_uid: 10,
+            active_skill_id: 0,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [
+            RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(ExPointChange {
+                delta: -5,
+                ..
+            }))),
+            RuleOp::Skill(invocation),
+            RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(ExPointChange {
+                delta: 5,
+                ..
+            })))
+        ] if invocation.plan.source_uid == 10
+            && invocation.plan.skill_id == 30020131
+            && invocation.mode == crate::engine::skill::action::SkillExecutionMode::DirectBig
+            && invocation.additional_moxie == 5
+    ));
+}
+
+#[test]
 fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
     let managers = crate::engine::manager::BattleManagers::default();
     let pool = TargetPool::default();

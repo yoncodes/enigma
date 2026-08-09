@@ -121,19 +121,12 @@ pub fn extra_action_cost_op(
 }
 
 pub fn configured(
+    catalog: crate::catalog::BattleCatalog,
     buff_id: i32,
     owner_uid: i64,
     source_uid: i64,
 ) -> Option<(ActiveBuffFeature, AdditionalDamageSpec)> {
-    let definition = config::try_get()?.skill_buff.get(buff_id)?;
-    definition.features.split('|').find_map(|raw| {
-        let values = raw
-            .split('#')
-            .map(str::parse)
-            .collect::<Result<Vec<i32>, _>>()
-            .ok()?;
-        let act_id = *values.first()?;
-        let act = config::try_get()?.buff_act.get(act_id)?;
+    catalog.buff_features(buff_id).into_iter().find_map(|row| {
         let feature = ActiveBuffFeature {
             owner_uid,
             source_uid,
@@ -142,11 +135,11 @@ pub fn configured(
             amount: 1,
             team_type: 0,
             owner_alive: true,
-            act_type: act.r#type.clone(),
-            effect_time: act.effect_time,
-            effect_condition: act.effect_condition,
-            raw: raw.to_owned(),
-            values,
+            act_type: row.act_type,
+            effect_time: row.effect_time,
+            effect_condition: row.effect_condition,
+            raw: row.raw,
+            values: row.values,
         };
         resolve(&feature).map(|spec| (feature, spec))
     })

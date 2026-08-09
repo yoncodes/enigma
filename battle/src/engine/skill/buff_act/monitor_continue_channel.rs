@@ -123,7 +123,8 @@ fn rate_modifier(
     if buffs.has_buff_id(subscriber.owner_uid, buff_id) {
         return None;
     }
-    BuffManager::configured_features(buff_id)
+    buffs
+        .definition_features(buff_id)
         .into_iter()
         .find_map(|feature| {
             let delta = super::skill_rate_bonus(&feature);
@@ -249,6 +250,7 @@ mod tests {
 
     #[test]
     fn channel_cast_owns_only_the_linked_skill_frame() {
+        crate::test_support::init_config();
         let invocation = SkillInvocation::from(SkillRequest {
             source_uid: 10,
             skill_id: 20,

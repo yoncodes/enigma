@@ -132,60 +132,64 @@ impl BuffDefinition {
 
     pub fn get(buff_id: i32) -> Option<Self> {
         static DEFINITIONS: OnceLock<HashMap<i32, BuffDefinition>> = OnceLock::new();
-        let db = config::try_get()?;
+        let db = crate::catalog::BattleCatalog::try_global()?.game_data();
         DEFINITIONS
             .get_or_init(|| {
                 db.skill_buff
                     .all()
                     .iter()
-                    .map(|row| {
-                        let effective_type_id = if row.type_id != 0 {
-                            row.type_id
-                        } else {
-                            row.id
-                        };
-                        let buff_type = db.skill_bufftype.get(effective_type_id);
-                        let include_types = buff_type
-                            .map(|row| row.include_types.as_str())
-                            .unwrap_or_default();
-                        let exclude_types = buff_type
-                            .map(|row| row.exclude_types.as_str())
-                            .unwrap_or_default();
-                        let take_stage = buff_type.map(|row| row.take_stage).unwrap_or_default();
-                        let features = row.features.as_str();
-                        let status_id = buff_type.map(|row| row.r#type).unwrap_or(row.is_good_buff);
-                        let include_entries = parse_include_entries(include_types);
-                        let include_types_valid = include_entries.is_ok();
-                        (
-                            row.id,
-                            Self {
-                                id: row.id,
-                                type_id: row.type_id,
-                                group: buff_type.map(|row| row.group).unwrap_or_default(),
-                                is_no_show: row.is_no_show != 0,
-                                status_id,
-                                status: BuffStatus::from_id(status_id),
-                                duration: row.during_time,
-                                count: row.effect_count,
-                                exclude_buff_ids: parse_exclude_buff_ids(exclude_types),
-                                exclude_status_ids: parse_exclude_status_ids(exclude_types),
-                                include_entries: include_entries.unwrap_or_default(),
-                                include_types_valid,
-                                attribute_deltas: parse_attribute_deltas(features),
-                                features: super::feature::resolve_features(features),
-                                has_features: !features.trim().is_empty(),
-                                act_common_params: initial_act_common_params(features),
-                                take_stage,
-                                take_act: buff_type
-                                    .map(|row| row.take_act.clone())
-                                    .unwrap_or_default(),
-                            },
-                        )
-                    })
+                    .map(|row| (row.id, Self::from_row(db, row)))
                     .collect()
             })
             .get(&buff_id)
             .cloned()
+    }
+
+    pub(super) fn configured(game: &config::GameDB, buff_id: i32) -> Option<Self> {
+        game.skill_buff
+            .get(buff_id)
+            .map(|row| Self::from_row(game, row))
+    }
+
+    fn from_row(game: &config::GameDB, row: &config::skill_buff::SkillBuff) -> Self {
+        let effective_type_id = if row.type_id != 0 {
+            row.type_id
+        } else {
+            row.id
+        };
+        let buff_type = game.skill_bufftype.get(effective_type_id);
+        let include_types = buff_type
+            .map(|row| row.include_types.as_str())
+            .unwrap_or_default();
+        let exclude_types = buff_type
+            .map(|row| row.exclude_types.as_str())
+            .unwrap_or_default();
+        let features = row.features.as_str();
+        let status_id = buff_type.map(|row| row.r#type).unwrap_or(row.is_good_buff);
+        let include_entries = parse_include_entries(include_types);
+        let include_types_valid = include_entries.is_ok();
+        Self {
+            id: row.id,
+            type_id: row.type_id,
+            group: buff_type.map(|row| row.group).unwrap_or_default(),
+            is_no_show: row.is_no_show != 0,
+            status_id,
+            status: BuffStatus::from_id(status_id),
+            duration: row.during_time,
+            count: row.effect_count,
+            exclude_buff_ids: parse_exclude_buff_ids(exclude_types),
+            exclude_status_ids: parse_exclude_status_ids(exclude_types),
+            include_entries: include_entries.unwrap_or_default(),
+            include_types_valid,
+            attribute_deltas: parse_attribute_deltas(game, features),
+            features: super::feature::resolve_features_from(Some(game), features),
+            has_features: !features.trim().is_empty(),
+            act_common_params: initial_act_common_params(game, features),
+            take_stage: buff_type.map(|row| row.take_stage).unwrap_or_default(),
+            take_act: buff_type
+                .map(|row| row.take_act.clone())
+                .unwrap_or_default(),
+        }
     }
 
     pub fn effective_type_id(&self) -> i32 {
@@ -266,6 +270,50 @@ impl BuffDefinition {
                     .flat_map(move |definition| definition.markers(phase).iter().copied())
             })
             .collect()
+    }
+
+    pub(super) fn marker_effect_num(
+        &self,
+        game: &config::GameDB,
+        effect_type: i32,
+        act_common_params: Option<&str>,
+    ) -> i32 {
+        use sonettobuf::effect_type_enum::EffectType;
+
+        if effect_type == EffectType::Exskillpointchange as i32 {
+            return super::active_feature(
+                Some(game),
+                0,
+                0,
+                true,
+                &sonettobuf::BuffInfo {
+                    buff_id: Some(self.id),
+                    count: Some(1),
+                    layer: Some(1),
+                    ..Default::default()
+                },
+                Some(self),
+            )
+            .iter()
+            .filter(|feature| {
+                crate::engine::skill::buff_act::is_kind(feature, BuffActKind::ExSkillPointChange)
+            })
+            .filter_map(|feature| feature.values.get(1))
+            .copied()
+            .sum();
+        }
+        if ![
+            EffectType::Fixattrteamenergy as i32,
+            EffectType::Fixattrteamenergyandbuff as i32,
+        ]
+        .contains(&effect_type)
+        {
+            return 0;
+        }
+        act_common_params
+            .and_then(|raw| raw.split('#').nth(1))
+            .and_then(|value| value.parse().ok())
+            .unwrap_or_default()
     }
 
     pub(super) fn state_snapshot_wire(&self, params: Option<&str>) -> Vec<(i32, Option<String>)> {
@@ -809,7 +857,7 @@ fn parse_exclude_values(raw: &str, expected_prefix: &str) -> Vec<i32> {
         .collect()
 }
 
-fn parse_attribute_deltas(features: &str) -> Vec<(AttrId, i32)> {
+fn parse_attribute_deltas(game: &config::GameDB, features: &str) -> Vec<(AttrId, i32)> {
     features
         .split('|')
         .filter_map(|feature| {
@@ -819,8 +867,9 @@ fn parse_attribute_deltas(features: &str) -> Vec<(AttrId, i32)> {
                 .collect::<Vec<i32>>();
             match values.as_slice() {
                 [act_id, attr_id, value]
-                    if config::try_get()
-                        .and_then(|db| db.buff_act.get(*act_id))
+                    if game
+                        .buff_act
+                        .get(*act_id)
                         .and_then(|act| {
                             crate::engine::skill::buff_act::registry::kind(*act_id, &act.r#type)
                         })
@@ -829,8 +878,9 @@ fn parse_attribute_deltas(features: &str) -> Vec<(AttrId, i32)> {
                     Some((AttrId::from_raw(*attr_id)?, *value))
                 }
                 [act_id, value]
-                    if config::try_get()
-                        .and_then(|db| db.buff_act.get(*act_id))
+                    if game
+                        .buff_act
+                        .get(*act_id)
                         .and_then(|act| {
                             crate::engine::skill::buff_act::registry::kind(*act_id, &act.r#type)
                         })
@@ -880,14 +930,14 @@ fn has_include_value(include_type: i32) -> bool {
     matches!(include_type, 7 | 10 | 11 | 12 | 13 | 14 | 15 | 17)
 }
 
-fn initial_act_common_params(features: &str) -> String {
+fn initial_act_common_params(game: &config::GameDB, features: &str) -> String {
     features
         .split('|')
         .map(str::trim)
         .filter(|raw| !raw.is_empty())
         .filter_map(|raw| raw.split('#').next()?.trim().parse::<i32>().ok())
         .find_map(|act_id| {
-            let act = config::try_get()?.buff_act.get(act_id)?;
+            let act = game.buff_act.get(act_id)?;
             match crate::engine::skill::buff_act::registry::kind(act_id, &act.r#type)? {
                 crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill => {
                     Some(format!("{act_id}#1,0,0"))

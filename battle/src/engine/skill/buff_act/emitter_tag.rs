@@ -21,6 +21,7 @@ pub fn setup_rule_ops(
         return Some(Vec::new());
     }
     let enable = impromptu::enable_rule_ops(
+        managers.catalog().impromptu_definition(),
         &managers.gauge,
         &managers.buff.active_features(&managers.hp),
         crate::engine::manager::emitter::UID,

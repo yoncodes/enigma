@@ -18,6 +18,7 @@ fn field_event(kind: crate::engine::manager::field::FieldChangeKind) -> BattleEv
 fn field_level_activates_added_field_conditions_but_progress_does_not() {
     let mut level_context = TargetContext::default();
     apply_event_context(
+        crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
         &mut level_context,
         &field_event(crate::engine::manager::field::FieldChangeKind::Level),
     );
@@ -26,6 +27,7 @@ fn field_level_activates_added_field_conditions_but_progress_does_not() {
 
     let mut progress_context = TargetContext::default();
     apply_event_context(
+        crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
         &mut progress_context,
         &field_event(crate::engine::manager::field::FieldChangeKind::Progress),
     );
@@ -124,6 +126,7 @@ fn active_skill_rate_modifier_reads_the_authoritative_field_state() {
 fn buff_feature_event_preserves_the_exact_act_identity() {
     let mut context = TargetContext::default();
     apply_event_context(
+        crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
         &mut context,
         &BattleEvent::BuffFeatureTriggered(
             crate::engine::event::payload::BuffFeatureTriggeredEvent {

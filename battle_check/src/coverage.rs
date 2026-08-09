@@ -49,6 +49,7 @@ impl Witness {
 
 pub(crate) fn print_coverage_plan(
     db: &config::GameDB,
+    battle_catalog: battle::catalog::BattleCatalog,
     catalog: &mut SkillEffectCatalog,
     focus_heroes: &[i32],
     domain_filter: Option<&str>,
@@ -98,7 +99,14 @@ pub(crate) fn print_coverage_plan(
             ..Default::default()
         };
         collect_hero_roots(&options, hero.id, db, &mut skills, &mut report)?;
-        scan_closure(db, catalog, &mut skills, &mut VecDeque::new(), &mut report);
+        scan_closure(
+            db,
+            battle_catalog,
+            catalog,
+            &mut skills,
+            &mut VecDeque::new(),
+            &mut report,
+        );
         hero_readiness.push(HeroReadiness {
             id: hero.id,
             name: witness.name.clone(),
@@ -173,7 +181,14 @@ pub(crate) fn print_coverage_plan(
         if let Some(tower_id) = tower_id {
             collect_tower_assist_boss_roots(tower_id, db, &mut skills)?;
         }
-        scan_closure(db, catalog, &mut skills, &mut VecDeque::new(), &mut report);
+        scan_closure(
+            db,
+            battle_catalog,
+            catalog,
+            &mut skills,
+            &mut VecDeque::new(),
+            &mut report,
+        );
         index_report(
             witness,
             report,

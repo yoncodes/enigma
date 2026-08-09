@@ -43,7 +43,7 @@ pub(super) fn random_pool_grant_commands(
     let [_, count] = behavior.args.as_slice() else {
         return None;
     };
-    let mut candidates = random_buff_pool(behavior)?
+    let mut candidates = resolve_random_buff_pool(context.managers.catalog(), behavior)?
         .into_iter()
         .filter(|buff_id| match definition.kind {
             BehaviorKind::AddBuffRanId => !context
@@ -94,6 +94,13 @@ pub(super) fn supports_random_pool(behavior: &ParsedBehavior) -> bool {
 }
 
 pub fn random_buff_pool(behavior: &ParsedBehavior) -> Option<Vec<i32>> {
+    resolve_random_buff_pool(crate::catalog::BattleCatalog::try_global()?, behavior)
+}
+
+fn resolve_random_buff_pool(
+    catalog: crate::catalog::BattleCatalog,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<i32>> {
     let definition = super::registry::find(behavior)?;
     if !matches!(
         definition.kind,
@@ -101,7 +108,5 @@ pub fn random_buff_pool(behavior: &ParsedBehavior) -> Option<Vec<i32>> {
     ) {
         return None;
     }
-    config::try_get()
-        .and_then(|db| db.skill_buff.get(behavior.arg(0)?))
-        .map(|row| pool_buff_ids(&row.features))
+    catalog.buff_pool(behavior.arg(0)?)
 }

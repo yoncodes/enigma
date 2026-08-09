@@ -266,6 +266,7 @@ pub fn transaction_rule_ops(
 }
 
 fn changed_features(
+    managers: &BattleManagers,
     event: &BattleEvent,
     kind: registry::BuffActKind,
 ) -> Vec<(ActiveBuffFeature, i32)> {
@@ -276,7 +277,9 @@ fn changed_features(
         _ => return Vec::new(),
     };
     let amount_delta = change.after_amount - change.before_amount;
-    crate::engine::manager::buff::BuffManager::configured_features(change.buff_id)
+    managers
+        .buff
+        .definition_features(change.buff_id)
         .into_iter()
         .filter_map(|mut feature| {
             (feature_kind(&feature) == Some(kind)).then(|| {
@@ -296,7 +299,7 @@ fn attribute_transaction_rule_ops(
     kind: registry::BuffActKind,
     rule_op: fn(&BattleManagers, &ActiveBuffFeature, i32) -> Option<RuleOp>,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
-    changed_features(event, kind)
+    changed_features(managers, event, kind)
         .into_iter()
         .flat_map(|(feature, amount_delta)| {
             let Some(op) = rule_op(managers, &feature, amount_delta) else {
@@ -330,45 +333,54 @@ fn attribute_transaction_rule_ops(
 }
 
 fn ex_point_max_transaction_rule_ops(
-    _managers: &BattleManagers,
+    managers: &BattleManagers,
     event: &BattleEvent,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
-    ex_point_max_rule_ops(event, registry::BuffActKind::ExPointMaxAdd, |_| {
-        Some(crate::engine::manager::ex_point::ExPointMaxWire::Delta)
-    })
+    ex_point_max_rule_ops(
+        managers,
+        event,
+        registry::BuffActKind::ExPointMaxAdd,
+        |_| Some(crate::engine::manager::ex_point::ExPointMaxWire::Delta),
+    )
 }
 
 fn sp_ex_point_max_transaction_rule_ops(
     managers: &BattleManagers,
     event: &BattleEvent,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
-    ex_point_max_rule_ops(event, registry::BuffActKind::SpExPointMaxAdd, |feature| {
-        (crate::engine::manager::ex_point::ExPointKind::from_wire(
-            managers.ex_point.kind(feature.owner_uid),
-        ) == crate::engine::manager::ex_point::ExPointKind::Common)
-            .then(
-                || crate::engine::manager::ex_point::ExPointMaxWire::Special {
-                    max_add: managers.buff.buff_act_argument_scalar(
-                        feature.owner_uid,
-                        registry::BuffActKind::SpExPointMaxAdd,
-                        0,
-                    ),
-                    ultimate_cost_offset: managers.buff.buff_act_argument_scalar(
-                        feature.owner_uid,
-                        registry::BuffActKind::SpExPointMaxAdd,
-                        1,
-                    ),
-                },
-            )
-    })
+    ex_point_max_rule_ops(
+        managers,
+        event,
+        registry::BuffActKind::SpExPointMaxAdd,
+        |feature| {
+            (crate::engine::manager::ex_point::ExPointKind::from_wire(
+                managers.ex_point.kind(feature.owner_uid),
+            ) == crate::engine::manager::ex_point::ExPointKind::Common)
+                .then(
+                    || crate::engine::manager::ex_point::ExPointMaxWire::Special {
+                        max_add: managers.buff.buff_act_argument_scalar(
+                            feature.owner_uid,
+                            registry::BuffActKind::SpExPointMaxAdd,
+                            0,
+                        ),
+                        ultimate_cost_offset: managers.buff.buff_act_argument_scalar(
+                            feature.owner_uid,
+                            registry::BuffActKind::SpExPointMaxAdd,
+                            1,
+                        ),
+                    },
+                )
+        },
+    )
 }
 
 fn ex_point_max_rule_ops(
+    managers: &BattleManagers,
     event: &BattleEvent,
     kind: registry::BuffActKind,
     wire: impl Fn(&ActiveBuffFeature) -> Option<crate::engine::manager::ex_point::ExPointMaxWire>,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
-    changed_features(event, kind)
+    changed_features(managers, event, kind)
         .into_iter()
         .filter_map(|(feature, amount_delta)| {
             let [_, delta, ..] = feature.values.as_slice() else {
@@ -436,10 +448,10 @@ fn with_feature_runtime_markers(
 }
 
 fn power_max_transaction_rule_ops(
-    _managers: &BattleManagers,
+    managers: &BattleManagers,
     event: &BattleEvent,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
-    changed_features(event, registry::BuffActKind::PowerMaxAdd)
+    changed_features(managers, event, registry::BuffActKind::PowerMaxAdd)
         .into_iter()
         .filter_map(|(feature, amount_delta)| {
             let [_, power_id, delta] = feature.values.as_slice() else {
@@ -514,12 +526,7 @@ pub fn configured_command_origin(
     act_id: i32,
     expected_kind: registry::BuffActKind,
 ) -> Option<CommandOrigin> {
-    let act_type = &config::try_get()?.buff_act.get(act_id)?.r#type;
-    let definition = registry::find(act_id, act_type)?;
-    (definition.kind == expected_kind).then_some(CommandOrigin {
-        domain: RuleDomain::BuffAct,
-        key: definition.key,
-    })
+    crate::catalog::BattleCatalog::try_global()?.buff_act_origin(act_id, expected_kind)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -63,7 +63,9 @@ fn noncritical_heal_remains_owned_by_its_declaring_skill() {
 #[test]
 fn burn_applies_its_unstackable_healing_taken_reduction() {
     crate::test_support::init_config();
-    let burn_type = super::heal::burn_type_id().expect("FightConst 29 defines Burn");
+    let burn_type = crate::catalog::BattleCatalog::new(crate::test_support::game_data())
+        .burn_buff_type_id()
+        .expect("FightConst 29 defines Burn");
     let fight = sonettobuf::Fight {
         attacker: Some(sonettobuf::FightTeam {
             entitys: vec![sonettobuf::FightEntityInfo {

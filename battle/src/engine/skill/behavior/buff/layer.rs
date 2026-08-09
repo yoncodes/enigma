@@ -183,11 +183,12 @@ pub(super) fn add_buff_from_enemy_burn_ops(
             .iter()
             .filter(|change| {
                 context.managers.buff.team_type(change.target_uid) != Some(context.source_team)
-                    && crate::engine::manager::buff::BuffManager::configured_features(
-                        change.buff_id,
-                    )
-                    .iter()
-                    .any(|feature| is_kind(feature, BuffActKind::Burn))
+                    && context
+                        .managers
+                        .buff
+                        .definition_features(change.buff_id)
+                        .iter()
+                        .any(|feature| is_kind(feature, BuffActKind::Burn))
             })
             .map(|change| change.before_amount - change.after_amount)
             .max()

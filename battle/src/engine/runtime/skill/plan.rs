@@ -290,6 +290,7 @@ fn additional_damage(
         .iter()
         .filter_map(|modifier| {
             crate::engine::skill::buff_act::additional_damage::configured(
+                managers.catalog(),
                 modifier.buff_id,
                 source_uid,
                 source_uid,
@@ -454,7 +455,7 @@ pub(super) fn damage_ops(
             && let Some(feature) = crate::engine::skill::buff_act::dodge_spec_skill::avoidance(
                 managers,
                 target_uid,
-                pool.skill_slot(source_uid, skill_id),
+                pool.skill_slot(managers, source_uid, skill_id),
                 pool.entity(source_uid)
                     .map(|entity| entity.damage_type)
                     .unwrap_or_default(),
@@ -667,7 +668,7 @@ pub(super) fn damage_ops(
                 buffs: &managers.buff,
                 target_buffs: &managers.buff,
                 hp: &managers.hp,
-                fields: Some(&managers.field),
+                fields: Some((&managers.field, managers.catalog())),
                 emitter: None,
                 team_inspiration: 0,
             },
@@ -751,7 +752,7 @@ pub(super) fn damage_ops(
                     buffs: &managers.buff,
                     target_buffs: &managers.buff,
                     hp: &managers.hp,
-                    fields: Some(&managers.field),
+                    fields: Some((&managers.field, managers.catalog())),
                     emitter: None,
                     team_inspiration: 0,
                 },
@@ -859,7 +860,7 @@ fn damage_targets(
     };
     let base_count = catalog
         .target_limit(effect_skill_id)
-        .max(crate::engine::skill::target::request::target_count(request.code).max(0) as usize)
+        .max(managers.catalog().target_count(request.code).max(0) as usize)
         .max(1);
     let behavior_extra_count = execution.context.additional_skill_target_count.max(0) as usize;
     let extra_count =

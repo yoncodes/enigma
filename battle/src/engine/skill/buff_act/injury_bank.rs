@@ -86,7 +86,7 @@ pub fn grant_transaction_rule_ops(
     managers: &BattleManagers,
     event: &BattleEvent,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
-    super::changed_features(event, BuffActKind::InjuryBank)
+    super::changed_features(managers, event, BuffActKind::InjuryBank)
         .into_iter()
         .filter_map(|(feature, _)| grant_rule_op(managers, &feature).map(|op| (feature, op)))
         .collect()

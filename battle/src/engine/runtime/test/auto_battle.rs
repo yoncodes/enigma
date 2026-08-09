@@ -49,7 +49,7 @@ fn auto_runtime() -> BattleRuntime {
         temp_card: Some(temp_card),
         ..Default::default()
     };
-    let mut runtime = BattleRuntime::new(fight);
+    let mut runtime = runtime(fight);
     runtime
         .managers
         .execute_card(CardCommand::Setup(CardSetup {

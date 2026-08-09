@@ -241,6 +241,7 @@ fn hero_round_interval_alternates_from_its_configured_start_round() {
 #[test]
 fn use_ex_skill_checks_the_active_skill_payload() {
     init_config();
+    let managers = BattleManagers::default();
     let pool = TargetPool::from_fight(&Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -264,7 +265,7 @@ fn use_ex_skill_checks_the_active_skill_payload() {
             &condition,
             10,
             &[10],
-            None,
+            Some(&managers),
             &pool,
             TargetContext {
                 active_skill_id,
@@ -281,6 +282,7 @@ fn use_ex_skill_checks_the_active_skill_payload() {
 #[test]
 fn negated_use_ex_skill_matches_basic_incantations_only() {
     init_config();
+    let managers = BattleManagers::default();
     let pool = TargetPool::from_fight(&Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -304,7 +306,7 @@ fn negated_use_ex_skill_matches_basic_incantations_only() {
             &condition,
             10,
             &[10],
-            None,
+            Some(&managers),
             &pool,
             TargetContext {
                 active_skill_id,
@@ -320,6 +322,7 @@ fn negated_use_ex_skill_matches_basic_incantations_only() {
 #[test]
 fn use_ex_skill_does_not_treat_an_enhanced_basic_skill_as_an_ultimate() {
     init_config();
+    let managers = BattleManagers::default();
     let pool = TargetPool::from_fight(&Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -343,7 +346,7 @@ fn use_ex_skill_does_not_treat_an_enhanced_basic_skill_as_an_ultimate() {
             &condition,
             10,
             &[10],
-            None,
+            Some(&managers),
             &pool,
             TargetContext {
                 active_skill_id,
@@ -359,6 +362,7 @@ fn use_ex_skill_does_not_treat_an_enhanced_basic_skill_as_an_ultimate() {
 #[test]
 fn teammate_ex_skill_requires_the_other_ally_as_runtime_source() {
     init_config();
+    let managers = BattleManagers::default();
     let pool = TargetPool::from_fight(&Fight {
         attacker: Some(FightTeam {
             entitys: vec![
@@ -388,7 +392,7 @@ fn teammate_ex_skill_requires_the_other_ally_as_runtime_source() {
             &condition,
             10,
             &[10],
-            None,
+            Some(&managers),
             &pool,
             TargetContext {
                 active_skill_source_uid,
@@ -406,6 +410,7 @@ fn teammate_ex_skill_requires_the_other_ally_as_runtime_source() {
 #[test]
 fn target_use_ex_skill_requires_the_selected_runtime_actor() {
     init_config();
+    let managers = BattleManagers::default();
     let pool = TargetPool::from_fight(&Fight {
         attacker: Some(FightTeam {
             entitys: vec![
@@ -435,7 +440,7 @@ fn target_use_ex_skill_requires_the_selected_runtime_actor() {
             &condition,
             10,
             condition_targets,
-            None,
+            Some(&managers),
             &pool,
             TargetContext {
                 active_skill_source_uid,

@@ -4,7 +4,7 @@ use crate::engine::{
     event::payload::BattleEvent,
     manager::{
         BattleManagers,
-        buff::{ActiveBuffFeature, BuffManager},
+        buff::ActiveBuffFeature,
         card::{CardCommand, CardQueueUse, CardRecordCastChannel, CastChannelState, PlayedCard},
     },
     skill::{
@@ -32,7 +32,9 @@ pub fn transaction_rule_ops(
         BattleEvent::BuffRemoved(change) => (change, false),
         _ => return Vec::new(),
     };
-    BuffManager::configured_features(change.buff_id)
+    managers
+        .buff
+        .definition_features(change.buff_id)
         .into_iter()
         .filter_map(|mut feature| {
             if super::feature_kind(&feature)? != super::registry::BuffActKind::AddCardCastChannel {

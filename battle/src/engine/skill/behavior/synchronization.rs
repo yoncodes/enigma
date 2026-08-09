@@ -175,7 +175,7 @@ fn damage_rule_ops(
             buffs: &context.managers.buff,
             target_buffs: &context.managers.buff,
             hp: &context.managers.hp,
-            fields: Some(&context.managers.field),
+            fields: Some((&context.managers.field, context.managers.catalog())),
             emitter: None,
             team_inspiration: 0,
         },

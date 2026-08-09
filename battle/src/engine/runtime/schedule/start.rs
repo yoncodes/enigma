@@ -485,7 +485,9 @@ pub fn run_finished_round_transition(managers: &BattleManagers) -> (DrainResult,
     (fight_steps, next_round_begin_steps)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_start(
+    battle_catalog: crate::catalog::BattleCatalog,
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
@@ -655,7 +657,7 @@ pub fn run_start(
             if !supplemental.is_empty() {
                 let deck_cost = supplemental
                     .iter()
-                    .filter(|card| !card_mechanic.is_device_card(card))
+                    .filter(|card| !card_mechanic.is_device_card(managers, card))
                     .count() as i32;
                 append(
                     &mut result,
@@ -743,7 +745,15 @@ pub fn run_start(
         if stage == SetupStage::EnterFight {
             append(
                 &mut result,
-                run_wave_start_triggers(managers, pool, catalog, determinism, context, 1)?,
+                run_wave_start_triggers(
+                    battle_catalog,
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    1,
+                )?,
             );
         }
         if stage == SetupStage::RoundStart && priority == 2 {

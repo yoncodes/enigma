@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::manager::card::enchant::collect_round_end_current_hp_losses;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettlementSide {
     Attacker,
@@ -135,44 +136,44 @@ fn run_card_enchant_round_end(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
 ) -> Result<DrainResult, DrainError> {
-    let commands =
-        crate::engine::manager::card::enchant::round_end_current_hp_losses(managers.card.hand())
-            .into_iter()
-            .filter_map(|loss| {
-                let current_hp = managers.hp.current(loss.owner_uid);
-                let amount = (i64::from(current_hp) * i64::from(loss.permille) / 1000)
-                    .clamp(0, i64::from(i32::MAX)) as i32;
-                (amount > 0).then_some(crate::engine::manager::hp::HpCommand::Lose(
-                    crate::engine::manager::hp::HpLoss {
-                        origin: crate::engine::skill::rule::CommandOrigin {
-                            domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
-                            key: crate::engine::skill::rule::DefinitionKey::new(
-                                0,
-                                "ScaldingRoundEnd",
-                            ),
-                        },
-                        source_uid: loss.owner_uid,
-                        target_uid: loss.owner_uid,
-                        amount,
-                        config_effect: 0,
-                        hurt: Some(crate::engine::manager::hp::HurtInfoData {
-                            from_uid: loss.owner_uid,
-                            is_crit: false,
-                            career_restraint: false,
-                            reduce_hp: -amount,
-                            effect_id: 0,
-                            skill_id: 0,
-                            damage_from: crate::engine::manager::hp::HurtDamageFromType::None,
-                            buff_act_id: 0,
-                            buff_uid: 0,
-                            hurt_effect_type:
-                                sonettobuf::effect_type_enum::EffectType::Enchantburndamage as i32,
-                            display_amount: Some(amount),
-                        }),
+    let battle_catalog = managers.catalog();
+    let losses = collect_round_end_current_hp_losses(managers.card.hand(), |enchant_id| {
+        battle_catalog.card_enchant_current_hp_loss_permille(enchant_id)
+    });
+    let commands = losses
+        .into_iter()
+        .filter_map(|loss| {
+            let current_hp = managers.hp.current(loss.owner_uid);
+            let amount = (i64::from(current_hp) * i64::from(loss.permille) / 1000)
+                .clamp(0, i64::from(i32::MAX)) as i32;
+            (amount > 0).then_some(crate::engine::manager::hp::HpCommand::Lose(
+                crate::engine::manager::hp::HpLoss {
+                    origin: crate::engine::skill::rule::CommandOrigin {
+                        domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                        key: crate::engine::skill::rule::DefinitionKey::new(0, "ScaldingRoundEnd"),
                     },
-                ))
-            })
-            .collect::<Vec<_>>();
+                    source_uid: loss.owner_uid,
+                    target_uid: loss.owner_uid,
+                    amount,
+                    config_effect: 0,
+                    hurt: Some(crate::engine::manager::hp::HurtInfoData {
+                        from_uid: loss.owner_uid,
+                        is_crit: false,
+                        career_restraint: false,
+                        reduce_hp: -amount,
+                        effect_id: 0,
+                        skill_id: 0,
+                        damage_from: crate::engine::manager::hp::HurtDamageFromType::None,
+                        buff_act_id: 0,
+                        buff_uid: 0,
+                        hurt_effect_type:
+                            sonettobuf::effect_type_enum::EffectType::Enchantburndamage as i32,
+                        display_amount: Some(amount),
+                    }),
+                },
+            ))
+        })
+        .collect::<Vec<_>>();
     if commands.is_empty() {
         return Ok(DrainResult::default());
     }

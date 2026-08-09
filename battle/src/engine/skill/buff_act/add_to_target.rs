@@ -15,6 +15,7 @@ use crate::engine::{
 };
 
 pub fn rule_ops(
+    managers: &crate::engine::manager::BattleManagers,
     subscriber: &BuffActSubscriber,
     event: &BattleEvent,
     catalog: &SkillEffectCatalog,
@@ -96,7 +97,7 @@ pub fn rule_ops(
     if ops.is_empty() {
         return Some(Vec::new());
     }
-    if consumes_effect_count(subscriber) {
+    if consumes_effect_count(managers, subscriber) {
         ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(
             BuffConsume {
                 origin: super::command_origin(subscriber)?,
@@ -111,12 +112,13 @@ pub fn rule_ops(
 }
 
 pub fn scoped_rule_ops(
+    managers: &crate::engine::manager::BattleManagers,
     subscriber: &BuffActSubscriber,
     event: &BattleEvent,
     catalog: &SkillEffectCatalog,
     pool: &crate::engine::skill::target::TargetPool,
 ) -> Option<Vec<super::BuffActRuleOp>> {
-    rule_ops(subscriber, event, catalog, pool).map(|ops| {
+    rule_ops(managers, subscriber, event, catalog, pool).map(|ops| {
         ops.into_iter()
             .map(super::BuffActRuleOp::subscriber_from_owner)
             .collect()
@@ -132,12 +134,13 @@ fn matches(subscriber: &BuffActSubscriber) -> bool {
     )
 }
 
-fn consumes_effect_count(subscriber: &BuffActSubscriber) -> bool {
+fn consumes_effect_count(
+    managers: &crate::engine::manager::BattleManagers,
+    subscriber: &BuffActSubscriber,
+) -> bool {
     registry::kind(subscriber.key.definition.opcode, &subscriber.act_type)
         == Some(BuffActKind::AddToAttackTargets)
-        && config::try_get()
-            .and_then(|db| db.skill_buff.get(subscriber.buff_id))
-            .is_some_and(|buff| buff.effect_count > 0)
+        && managers.catalog().buff_has_effect_count(subscriber.buff_id)
 }
 
 fn grant_command(
@@ -392,7 +395,13 @@ mod tests {
             1
         );
         assert_eq!(
-            rule_ops(&subscriber, &hit(11), &SkillEffectCatalog::default(), &pool,),
+            rule_ops(
+                &managers,
+                &subscriber,
+                &hit(11),
+                &SkillEffectCatalog::default(),
+                &pool,
+            ),
             Some(Vec::new())
         );
     }
@@ -450,8 +459,16 @@ mod tests {
             ignore_riposte: false,
         });
 
-        let ops =
-            scoped_rule_ops(&subscriber, &event, &SkillEffectCatalog::default(), &pool).unwrap();
+        let managers = crate::engine::manager::BattleManagers::default();
+
+        let ops = scoped_rule_ops(
+            &managers,
+            &subscriber,
+            &event,
+            &SkillEffectCatalog::default(),
+            &pool,
+        )
+        .unwrap();
 
         assert!(!ops.is_empty());
         assert!(
@@ -526,7 +543,16 @@ mod tests {
             buff_additions: Vec::new(),
         });
 
-        let ops = rule_ops(&subscriber, &event, &SkillEffectCatalog::default(), &pool).unwrap();
+        let managers = crate::engine::manager::BattleManagers::default();
+
+        let ops = rule_ops(
+            &managers,
+            &subscriber,
+            &event,
+            &SkillEffectCatalog::default(),
+            &pool,
+        )
+        .unwrap();
 
         assert!(ops.iter().any(|op| matches!(
             op,

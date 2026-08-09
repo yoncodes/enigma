@@ -1,4 +1,3 @@
-use config::configs;
 use std::{collections::HashMap, sync::OnceLock};
 
 pub struct Destiny;
@@ -8,9 +7,8 @@ type DestinyCache = HashMap<(i32, i32), HashMap<i32, i32>>;
 static DESTINY_CACHE: OnceLock<DestinyCache> = OnceLock::new();
 
 impl Destiny {
-    pub fn stones_for_hero(hero_id: i32) -> Vec<i32> {
-        configs::get()
-            .character_destiny
+    pub fn stones(game: &config::GameDB, hero_id: i32) -> Vec<i32> {
+        game.character_destiny
             .iter()
             .find(|row| row.hero_id == hero_id)
             .map(|row| {
@@ -22,14 +20,48 @@ impl Destiny {
             .unwrap_or_default()
     }
 
-    pub fn max_rank(facets_id: i32) -> i32 {
-        configs::get()
-            .character_destiny_facets
+    pub fn stones_for_hero(hero_id: i32) -> Vec<i32> {
+        Self::stones(crate::catalog::BattleCatalog::global().game_data(), hero_id)
+    }
+
+    pub fn rank_limit(game: &config::GameDB, facets_id: i32) -> i32 {
+        game.character_destiny_facets
             .iter()
             .filter(|row| row.facets_id == facets_id)
             .map(|row| row.level)
             .max()
             .unwrap_or_default()
+    }
+
+    pub fn max_rank(facets_id: i32) -> i32 {
+        Self::rank_limit(
+            crate::catalog::BattleCatalog::global().game_data(),
+            facets_id,
+        )
+    }
+
+    pub fn exchanges(
+        game: &config::GameDB,
+        facets_id: i32,
+        rank: i32,
+    ) -> Option<HashMap<i32, i32>> {
+        if facets_id <= 0 || rank <= 0 {
+            return None;
+        }
+        let mut rows = game
+            .character_destiny_facets
+            .iter()
+            .filter(|row| row.facets_id == facets_id && row.level > 0 && row.level <= rank)
+            .collect::<Vec<_>>();
+        rows.sort_by_key(|row| row.level);
+        if rows.is_empty() {
+            return None;
+        }
+        let mut exchanges = HashMap::new();
+        for row in rows {
+            Self::parse_exchange_into(&row.exchange_skills, &mut exchanges);
+        }
+        Some(exchanges)
     }
 
     pub fn get(facets_id: i32, rank: i32) -> Option<HashMap<i32, i32>> {
@@ -58,7 +90,8 @@ impl Destiny {
             return None;
         }
 
-        configs::get()
+        crate::catalog::BattleCatalog::global()
+            .game_data()
             .character_destiny_facets_consume
             .iter()
             .find(|row| row.facets_id == facets_id)
@@ -84,7 +117,7 @@ impl Destiny {
 }
 
 fn build_cache() -> DestinyCache {
-    let game = configs::get();
+    let game = crate::catalog::BattleCatalog::global().game_data();
     let mut grouped: HashMap<i32, Vec<(i32, &str)>> = HashMap::new();
 
     for row in game.character_destiny_facets.iter() {
@@ -119,6 +152,18 @@ mod tests {
         crate::test_support::init_config();
         assert_eq!(Destiny::stones_for_hero(3074), vec![307401, 307402]);
         assert_eq!(Destiny::max_rank(307401), 4);
+        assert_eq!(
+            Destiny::stones(crate::test_support::game_data(), 3074),
+            Destiny::stones_for_hero(3074)
+        );
+        assert_eq!(
+            Destiny::rank_limit(crate::test_support::game_data(), 307401),
+            Destiny::max_rank(307401)
+        );
+        assert_eq!(
+            Destiny::exchanges(crate::test_support::game_data(), 307401, 4),
+            Destiny::get(307401, 4)
+        );
     }
 
     #[test]

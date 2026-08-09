@@ -25,7 +25,11 @@ impl BattleRuntime {
         team: i32,
         emitter_uid: i64,
     ) -> Result<Vec<FightStep>, String> {
-        let pool = crate::engine::skill::target::TargetPool::from_fight(&self.fight);
+        let pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+            self.catalog_data
+                .expect("battle runtime was not constructed with a catalog"),
+            &self.fight,
+        );
         let result = schedule::run_player_action_queue(
             &mut self.managers,
             &pool,
@@ -48,6 +52,9 @@ impl BattleRuntime {
         &mut self,
         request: &BeginRoundRequest,
     ) -> Result<FightRound, String> {
+        let battle_catalog = self
+            .catalog_data
+            .expect("battle runtime was not constructed with a catalog");
         let active_round = self.round_state.cur_round;
         self.round_state.begin_round();
         self.fight.cur_round = Some(self.round_state.cur_round);
@@ -70,8 +77,8 @@ impl BattleRuntime {
             .filter(|skill_id| *skill_id > 0)
             .chain(self.determinism.card_play_skill_ids())
             .collect::<Vec<_>>();
-        self.catalog.extend_roots_and_warn(
-            config::configs::get(),
+        battle_catalog.extend_skill_roots(
+            &mut self.catalog,
             request
                 .opers
                 .iter()
@@ -82,8 +89,8 @@ impl BattleRuntime {
         );
         let captured_ai_choices = self.determinism.take_ai_skills();
         if let Some(choices) = &captured_ai_choices {
-            self.catalog.extend_roots_and_warn(
-                config::configs::get(),
+            battle_catalog.extend_skill_roots(
+                &mut self.catalog,
                 choices.iter().map(|choice| choice.skill_id),
                 std::iter::empty(),
             );
@@ -91,7 +98,11 @@ impl BattleRuntime {
         let mut ai_envelope = self.managers.card.ai_queue().to_vec();
 
         let catalog = &mut self.catalog;
-        let mut pool = crate::engine::skill::target::TargetPool::from_fight(&self.fight);
+        let mut pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+            self.catalog_data
+                .expect("battle runtime was not constructed with a catalog"),
+            &self.fight,
+        );
         let context = crate::engine::skill::target::TargetContext {
             battle_id: self.fight.battle_id.unwrap_or_default(),
             current_round: self.round_state.cur_round,
@@ -150,6 +161,7 @@ impl BattleRuntime {
             Default::default()
         } else {
             schedule::run_conduit_phase(
+                battle_catalog,
                 &self.fight,
                 &mut self.managers,
                 &pool,
@@ -176,7 +188,11 @@ impl BattleRuntime {
         self.objectives.record_promotions(&promotions);
         if !promotions.is_empty() {
             self.managers.sync_roster(&self.fight);
-            pool = crate::engine::skill::target::TargetPool::from_fight(&self.fight);
+            pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+                self.catalog_data
+                    .expect("battle runtime was not constructed with a catalog"),
+                &self.fight,
+            );
         }
         if !promotions.is_empty() {
             fight_steps.extend(project_result(
@@ -335,11 +351,15 @@ impl BattleRuntime {
                 .map_err(|error| error.to_string())?
         {
             wave_entering_uids = change.entering_uids.clone();
-            catalog.extend_entities_and_warn(
-                config::configs::get(),
+            battle_catalog.extend_skill_entities(
+                catalog,
                 crate::engine::manager::wave::entering_entities(&change),
             );
-            pool = crate::engine::skill::target::TargetPool::from_fight(&self.fight);
+            pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+                self.catalog_data
+                    .expect("battle runtime was not constructed with a catalog"),
+                &self.fight,
+            );
             fight_steps.extend(project_result(
                 schedule::run_wave_entry(
                     &mut self.managers,
@@ -352,7 +372,8 @@ impl BattleRuntime {
                 .map_err(|error| format!("{error:?}"))?,
                 fight_version,
             )?);
-            let (next_ai, _) = crate::engine::manager::card::start_decks_from_fight(
+            let (next_ai, _) = crate::engine::manager::card::start::configured_start_decks(
+                self.managers.catalog(),
                 &self.fight,
                 &self.managers.ex_point,
                 &self.managers.eureka,
@@ -366,8 +387,8 @@ impl BattleRuntime {
                 self.fight.battle_id.unwrap_or_default(),
                 None,
             );
-            catalog.extend_roots_and_warn(
-                config::configs::get(),
+            battle_catalog.extend_skill_roots(
+                catalog,
                 next_ai.iter().filter_map(|card| card.skill_id),
                 std::iter::empty(),
             );
@@ -419,7 +440,11 @@ impl BattleRuntime {
                 &mut self.determinism,
                 context,
             );
-            if let Some(power) = ClothPower::for_fight(&self.fight) {
+            if let Some(power) = self
+                .catalog_data
+                .expect("battle runtime was not constructed with a catalog")
+                .cloth_power(&self.fight)
+            {
                 self.round_state.power =
                     power.recover_round(self.round_state.power, self.round_state.cur_round);
             }
@@ -442,7 +467,8 @@ impl BattleRuntime {
         finish_if_battle_ended(&mut self.round_state, &self.fight, &pool, &self.managers);
         fight_steps.extend(project_result(round_start, fight_version)?);
         if !self.round_state.is_finish {
-            let cards = crate::engine::manager::card::start_decks_from_fight(
+            let cards = crate::engine::manager::card::start::configured_start_decks(
+                self.managers.catalog(),
                 &self.fight,
                 &self.managers.ex_point,
                 &self.managers.eureka,
@@ -459,8 +485,8 @@ impl BattleRuntime {
                     .map(|cards| (cards, Vec::new())),
             )
             .0;
-            catalog.extend_roots_and_warn(
-                config::configs::get(),
+            battle_catalog.extend_skill_roots(
+                catalog,
                 cards.iter().filter_map(|card| card.skill_id),
                 std::iter::empty(),
             );
@@ -553,25 +579,20 @@ fn apply_cloth_power(
     state: &mut RoundState,
     result: &drain::DrainResult,
 ) {
-    let Some(power) = ClothPower::for_fight(fight) else {
+    let Some(power) = managers.catalog().cloth_power(fight) else {
         return;
     };
-    let mut moved_card = false;
     for outcome in &result.outcomes {
         let executor::RuleOutcome::Card(changes) = outcome else {
             continue;
         };
-        let composition_from_move =
-            changes.kind == crate::engine::manager::card::CardChangeKind::Composed && moved_card;
         state.power = cloth_power_after_card_change(
             &power,
             state.power,
             changes.kind,
             changes.played.is_some(),
             eligible_composition_count(managers, &changes.composed_owners),
-            composition_from_move,
         );
-        moved_card = changes.kind == crate::engine::manager::card::CardChangeKind::Moved;
     }
 }
 
@@ -591,17 +612,16 @@ pub(super) fn cloth_power_after_card_change(
     kind: crate::engine::manager::card::CardChangeKind,
     has_played: bool,
     composed_count: usize,
-    composition_from_move: bool,
 ) -> i32 {
     match kind {
         crate::engine::manager::card::CardChangeKind::Moved => power.card_moved(current),
         crate::engine::manager::card::CardChangeKind::Played if has_played => {
             power.card_used(current)
         }
-        crate::engine::manager::card::CardChangeKind::Refilled if composed_count > 0 => {
-            power.cards_composed(current, composed_count)
-        }
-        crate::engine::manager::card::CardChangeKind::Composed if composition_from_move => {
+        crate::engine::manager::card::CardChangeKind::Refilled
+        | crate::engine::manager::card::CardChangeKind::Composed
+            if composed_count > 0 =>
+        {
             power.cards_composed(current, composed_count)
         }
         _ => current,

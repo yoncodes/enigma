@@ -9,7 +9,7 @@ use crate::engine::{
 use super::{
     ActiveBuff, BuffActInfoMarkerResult, BuffAddArgs, BuffDefinition, BuffDeleteReason,
     BuffManager, BuffMarkerResult, BuffPolicy, BuffReplaceResult, BuffRoute,
-    BuffShieldRemoveResult, BuffStatus, count_or_layer,
+    BuffShieldRemoveResult, BuffStatus, count_or_layer_from,
     grant_plan::{GrantAction, LayerRefreshPlan, PlannedFanout, PlannedFanoutRefresh},
     typed_count_repeat,
     uid_policy::{self, UidAllocationPlan},
@@ -198,6 +198,14 @@ pub struct BuffRefreshDuration {
     pub minimum_duration: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuffRefreshDurationBySelector {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub selector: BuffSelector,
+    pub minimum_duration: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuffSpecialCount {
     pub origin: CommandOrigin,
@@ -319,6 +327,7 @@ pub enum BuffCommand {
     AccumulateActValue(BuffAccumulateActValue),
     ChangeDuration(BuffChangeDuration),
     RefreshDuration(BuffRefreshDuration),
+    RefreshDurationBySelector(BuffRefreshDurationBySelector),
     AddSpecialCount(BuffSpecialCount),
     ReserveChildUids(BuffChildUidReservation),
     ReserveGrantUid(BuffGrantUidReservation),

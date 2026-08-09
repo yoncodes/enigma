@@ -3,6 +3,24 @@ use sonettobuf::{FightTeam, HeroAttribute};
 use super::*;
 use crate::engine::skill::rule::{DefinitionKey, RuleDomain};
 
+fn catalog() -> crate::catalog::BattleCatalog {
+    crate::catalog::BattleCatalog::new(crate::test_support::game_data())
+}
+
+#[test]
+fn configured_seed_preserves_defender_uid_reservations() {
+    let fight = Fight {
+        battle_id: Some(9_000_161),
+        ..Default::default()
+    };
+
+    let configured = EntityManager::configured(catalog(), &fight);
+    let legacy = EntityManager::seed_with_game_data(crate::test_support::game_data(), &fight);
+
+    assert_eq!(configured.next_special_uid, -3);
+    assert_eq!(configured.next_special_uid, legacy.next_special_uid);
+}
+
 #[test]
 fn configured_ultimate_kind_applies_only_to_the_current_ultimate() {
     let fight = Fight {
@@ -66,6 +84,7 @@ fn special_summon_uses_a_uid_after_the_configured_wave_roster() {
 
     let changes = manager
         .execute_command(
+            catalog(),
             EntityCommand {
                 origin,
                 source_uid: -2,
@@ -100,6 +119,7 @@ fn attacker_summon_keeps_its_registered_team_despite_negative_uid() {
     let mut manager = EntityManager::seed(&fight);
     let changes = manager
         .execute_command(
+            catalog(),
             EntityCommand {
                 origin: CommandOrigin {
                     domain: RuleDomain::Behavior,
@@ -179,6 +199,7 @@ fn transform_replaces_identity_without_changing_uid_or_position() {
 
     let changes = manager
         .execute_command(
+            catalog(),
             EntityCommand {
                 origin: CommandOrigin {
                     domain: RuleDomain::Behavior,
@@ -239,6 +260,7 @@ fn transform_carries_encounter_attribute_scaling_into_the_new_form() {
 
     let changes = manager
         .execute_command(
+            catalog(),
             EntityCommand {
                 origin: CommandOrigin {
                     domain: RuleDomain::Behavior,
@@ -288,6 +310,7 @@ fn transform_without_hp_restoration_preserves_current_hp_and_phase_marker() {
 
     let changes = manager
         .execute_command(
+            catalog(),
             EntityCommand {
                 origin: CommandOrigin {
                     domain: RuleDomain::Behavior,
@@ -332,6 +355,7 @@ fn combatant_summon_joins_the_active_team_at_the_allocated_position() {
     let mut manager = EntityManager::seed(&fight);
     let changes = manager
         .execute_command(
+            catalog(),
             EntityCommand {
                 origin: CommandOrigin {
                     domain: RuleDomain::Behavior,
