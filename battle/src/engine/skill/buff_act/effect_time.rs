@@ -5,6 +5,9 @@ use crate::engine::skill::rule::DefinitionKey;
 pub const ROUND_END_ENTITY_SETTLEMENT: i32 = 303;
 pub const ROUND_END_AFTER_SETTLEMENT: i32 = 304;
 pub const ROUND_START_DURATION: i32 = 103;
+pub const ROUND_START_AFTER_REACTION_DURATION: i32 = 104;
+pub const ROUND_START_DURATION_STAGES: [i32; 2] =
+    [ROUND_START_DURATION, ROUND_START_AFTER_REACTION_DURATION];
 pub const ROUND_START_CARD_STAGES: [i32; 2] = [105, 106];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -121,7 +124,7 @@ pub fn supports_duration_policy(take_stage: i32) -> bool {
     let Some(definition) = find(take_stage) else {
         return false;
     };
-    take_stage == ROUND_START_DURATION
+    ROUND_START_DURATION_STAGES.contains(&take_stage)
         || take_stage == ROUND_END_ENTITY_SETTLEMENT
         || take_stage == ROUND_END_AFTER_SETTLEMENT
         || ROUND_START_CARD_STAGES.contains(&take_stage)
@@ -200,6 +203,9 @@ mod tests {
     fn duration_support_accepts_non_advancing_and_scheduled_policies() {
         assert!(supports_duration_policy(-1));
         assert!(supports_duration_policy(ROUND_START_DURATION));
+        assert!(supports_duration_policy(
+            ROUND_START_AFTER_REACTION_DURATION
+        ));
         assert!(supports_duration_policy(210));
         assert!(supports_duration_policy(107));
         assert!(supports_duration_policy(212));

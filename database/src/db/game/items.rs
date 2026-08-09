@@ -207,6 +207,25 @@ pub async fn convert_expired_power_items(
     currency_id: i32,
     currency_amount: i32,
 ) -> sqlx::Result<bool> {
+    convert_expired_power_items_up_to_limit(
+        pool,
+        user_id,
+        item_uids,
+        currency_id,
+        currency_amount,
+        i32::MAX,
+    )
+    .await
+}
+
+pub async fn convert_expired_power_items_up_to_limit(
+    pool: &SqlitePool,
+    user_id: i64,
+    item_uids: &[i64],
+    currency_id: i32,
+    currency_amount: i32,
+    currency_limit: i32,
+) -> sqlx::Result<bool> {
     let mut tx = pool.begin().await?;
     for uid in item_uids {
         let deleted = sqlx::query(
@@ -224,11 +243,12 @@ pub async fn convert_expired_power_items(
         }
     }
     if currency_amount > 0 {
-        super::currencies::add_currency_in_transaction(
+        super::currencies::add_currency_up_to_limit_in_transaction(
             &mut tx,
             user_id,
             currency_id,
             currency_amount,
+            currency_limit,
             ServerTime::now_ms(),
         )
         .await?;

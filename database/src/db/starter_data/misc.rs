@@ -54,10 +54,14 @@ pub async fn load_starter_system_state(
     .execute(&mut **tx)
     .await?;
 
-    sqlx::query("INSERT INTO user_power_maker_state (user_id) VALUES (?)")
-        .bind(user_id)
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query(
+        "INSERT INTO user_power_maker_state (user_id, next_remain_second, updated_at)
+         VALUES (?, 43200, ?)",
+    )
+    .bind(user_id)
+    .bind(common::time::ServerTime::now_ms())
+    .execute(&mut **tx)
+    .await?;
 
     Ok(())
 }

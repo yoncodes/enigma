@@ -1,4 +1,3 @@
-use common::time::ServerTime;
 use sonettobuf;
 use sqlx::{FromRow, SqlitePool};
 
@@ -60,36 +59,21 @@ impl CurrencyModel<Currency> for UserCurrencyModel {
     }
 
     async fn create(&self, currency_id: i32, amount: i32) -> Result<Vec<i32>, sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO currencies (user_id, currency_id, quantity, last_recover_time, expired_time)
-             VALUES (?, ?, ?, ?, 0)
-             ON CONFLICT(user_id, currency_id) DO UPDATE SET
-                 quantity = quantity + excluded.quantity,
-                 last_recover_time = excluded.last_recover_time",
-        )
-        .bind(self.user_id)
-        .bind(currency_id)
-        .bind(amount)
-        .bind(ServerTime::now_ms())
-        .execute(&self.pool)
-        .await?;
+        crate::db::game::currencies::add_currency(&self.pool, self.user_id, currency_id, amount)
+            .await?;
 
         Ok(vec![currency_id])
     }
 
     async fn update_quantity(&self, currency_id: i32, delta: i32) -> Result<bool, sqlx::Error> {
-        let current: Option<i32> = sqlx::query_scalar(
-            "SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = ?",
-        )
-        .bind(self.user_id)
-        .bind(currency_id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        let current_qty = current.unwrap_or(0);
-
-        if delta < 0 && current_qty < delta.abs() {
-            return Ok(false);
+        if delta < 0 {
+            return crate::db::game::currencies::remove_currency(
+                &self.pool,
+                self.user_id,
+                currency_id,
+                delta.saturating_abs(),
+            )
+            .await;
         }
 
         CurrencyModel::<Currency>::create(self, currency_id, delta).await?;

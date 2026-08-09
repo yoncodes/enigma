@@ -140,6 +140,15 @@ async fn cost_validation_does_not_partially_consume() {
             CREATE TABLE users (
                 id INTEGER PRIMARY KEY,
                 level INTEGER NOT NULL
+            );
+            CREATE TABLE user_power_maker_state (
+                user_id INTEGER PRIMARY KEY,
+                status INTEGER NOT NULL DEFAULT 0,
+                next_remain_second INTEGER NOT NULL DEFAULT 0,
+                make_count INTEGER NOT NULL DEFAULT 0,
+                logout_second INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                last_logout_at INTEGER NOT NULL DEFAULT 0
             );",
     )
     .execute(&pool)

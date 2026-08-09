@@ -20,12 +20,14 @@ pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<
         }
     };
 
+    let registration = ctx.state.lock_session(session.user_id).await;
     let updated_tasks = session::start_session(ctx, session).await?;
     let payload = session::login_reply_payload(session.user_id);
     ctx.send_raw_reply_fixed(CmdId::LoginCmd, payload, 0, req.up_tag)
         .await?;
 
     ctx.register();
+    drop(registration);
     let critter_infos = ctx
         .player()?
         .critter

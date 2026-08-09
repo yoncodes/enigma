@@ -915,6 +915,125 @@ fn opening_keeps_new_one_round_buffs_until_their_configured_duration_stage() {
 }
 
 #[test]
+fn version_seven_opening_reacts_before_late_duration_and_keeps_new_outputs_unsnapped() {
+    init_config();
+    let entity = |uid, team_type, passive_skill| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100),
+        team_type: Some(team_type),
+        passive_skill,
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, vec![40]), entity(11, 1, Vec::new())],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, Vec::new())],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let enter_fight_slot = |behavior| {
+        let mut slot = SkillEffectSlot::new(behavior, TargetRequest::self_only());
+        slot.conditions = vec![ParsedCondition {
+            opcode: 5,
+            type_name: "EnterFight".to_owned(),
+            kind: ParsedConditionKind::Lifecycle(
+                crate::engine::skill::condition::lifecycle::LifecycleMode::EnterFight,
+            ),
+            raw_args: Vec::new(),
+        }];
+        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+        slot
+    };
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 40,
+        slots: vec![
+            enter_fight_slot(ParsedBehavior::new(1, "AddBuff", vec![31070121])),
+            enter_fight_slot(ParsedBehavior::new(
+                60204,
+                "AddBuffSpecialCount",
+                vec![3, 31070121],
+            )),
+        ],
+    });
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    let (opening, _) = run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        0,
+    )
+    .unwrap();
+
+    let channel_reaction = opening
+        .outcomes
+        .iter()
+        .position(|outcome| {
+            matches!(
+                outcome,
+                RuleOutcome::BuffFeatureMarker(marker)
+                    if marker.target_uid == 10
+                        && marker.effect_type
+                            == sonettobuf::effect_type_enum::EffectType::Triggeranalysis as i32
+            )
+        })
+        .expect("opening round reacts to the configured Ulrich channel");
+    let channel_advance = opening
+        .outcomes
+        .iter()
+        .position(|outcome| {
+            matches!(
+                outcome,
+                RuleOutcome::BuffBatch(changes)
+                    if changes.iter().any(|change| {
+                        change.origin.key.opcode
+                            == crate::engine::skill::buff_act::effect_time::ROUND_START_AFTER_REACTION_DURATION
+                            && change.change.refreshed.iter().any(|refresh| {
+                                refresh.after.buff_id == Some(31070121)
+                                    && refresh.after.duration == Some(2)
+                            })
+                    })
+            )
+        })
+        .expect("opening round advances the configured takeStage 104 channel");
+    assert!(channel_reaction < channel_advance);
+    assert_eq!(
+        managers
+            .buff
+            .active_for(10)
+            .find(|buff| buff.buff_id == Some(31070121))
+            .and_then(|buff| buff.duration),
+        Some(2)
+    );
+    for owner_uid in [10, 11] {
+        let output = managers
+            .buff
+            .active_for(owner_uid)
+            .find(|buff| buff.buff_id == Some(31070151))
+            .expect("opening channel grants its configured ally output");
+        assert_eq!(output.duration, Some(1));
+    }
+}
+
+#[test]
 fn configured_conduit_is_initialized_before_battle_start_rules() {
     init_config();
     let fight = Fight {

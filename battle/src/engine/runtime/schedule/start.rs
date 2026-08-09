@@ -196,7 +196,7 @@ pub fn run_round_start_after_ai_split(
         catalog,
         determinism,
         context,
-        duration_advance_rule(effect_time::ROUND_START_DURATION, &duration_snapshot),
+        round_start_duration_rules(&duration_snapshot),
     )?;
     append_round_phase(&mut settlement, duration);
     let (event_setup, independent_setup) = run_round_start_after_duration_setup(
@@ -451,6 +451,12 @@ fn duration_advance_rule(take_stage: i32, snapshot: &[(i64, i64)]) -> Option<Rul
     })
 }
 
+fn round_start_duration_rules(snapshot: &[(i64, i64)]) -> impl Iterator<Item = RuleOp> + '_ {
+    effect_time::ROUND_START_DURATION_STAGES
+        .into_iter()
+        .filter_map(move |take_stage| duration_advance_rule(take_stage, snapshot))
+}
+
 fn duration_snapshot(managers: &BattleManagers, owner_uids: &[i64]) -> Vec<(i64, i64)> {
     owner_uids
         .iter()
@@ -546,7 +552,7 @@ pub fn run_start(
         if version7_opening && stage == SetupStage::RoundStart && priority == 1 {
             let mut settlement = begin_round_phase(RoundPhase::RoundStartSettlement);
             let duration_snapshot = opening_duration_snapshot
-                .take()
+                .as_deref()
                 .expect("opening schedule reaches round start before the late setup lane");
             append_round_phase(
                 &mut settlement,
@@ -556,7 +562,7 @@ pub fn run_start(
                     catalog,
                     determinism,
                     context,
-                    duration_advance_rule(effect_time::ROUND_START_DURATION, &duration_snapshot),
+                    duration_advance_rule(effect_time::ROUND_START_DURATION, duration_snapshot),
                 )?,
             );
             opening_settlement = Some(settlement);
@@ -577,10 +583,7 @@ pub fn run_start(
                         catalog,
                         determinism,
                         context,
-                        duration_advance_rule(
-                            effect_time::ROUND_START_DURATION,
-                            &duration_snapshot,
-                        ),
+                        round_start_duration_rules(&duration_snapshot),
                     )?,
                 );
             }
@@ -816,6 +819,28 @@ pub fn run_start(
                 );
                 opening_settlement = Some(settlement);
             }
+            if version7_opening {
+                let duration_snapshot = opening_duration_snapshot
+                    .take()
+                    .expect("Version7 advances late duration after round-start reactions");
+                let duration = drain::run(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    duration_advance_rule(
+                        effect_time::ROUND_START_AFTER_REACTION_DURATION,
+                        &duration_snapshot,
+                    ),
+                )?;
+                append_opening_round_phase(
+                    opening_settlement
+                        .as_mut()
+                        .expect("Version7 keeps settlement open through late duration"),
+                    duration,
+                );
+            }
         }
         if stage == SetupStage::AfterRoundStart {
             let owner_uids = pool
@@ -1010,7 +1035,7 @@ fn run_round_start_before_duration(
             catalog,
             determinism,
             context,
-            duration_advance_rule(effect_time::ROUND_START_DURATION, &duration_snapshot),
+            round_start_duration_rules(&duration_snapshot),
         )?,
     );
     append_round_phase(

@@ -1,11 +1,20 @@
 use super::{
-    buy_power, currency_list, exchange_diamond, exchange_same_currency, item_rewards,
-    pop_exchange_same_currency, use_insight_item, use_items, use_power_item,
+    auto_use_expired_power_items, buy_power, currency_list, exchange_diamond,
+    exchange_same_currency, item_rewards, pop_exchange_same_currency, use_insight_item, use_items,
+    use_power_item,
 };
 use common::time::ServerTime;
 use database::models::game::heros::{InsightUpgrade, UserHeroModel};
 use sonettobuf::M2qEntry;
 use sqlx::SqlitePool;
+use std::path::{Path, PathBuf};
+
+fn init_config() {
+    let data = std::env::var_os("ENIGMA_BATTLE_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/excel2json"));
+    config::init(data.to_str().unwrap()).unwrap();
+}
 
 #[test]
 fn selector_preserves_selected_reward_type_by_index() {
@@ -359,6 +368,52 @@ async fn expired_power_conversion_rolls_back_when_the_set_changed() {
     .unwrap();
     assert_eq!(remaining, 1);
     assert_eq!(stamina, None);
+}
+
+#[tokio::test]
+async fn expired_power_conversion_stops_at_the_configured_stamina_limit() {
+    init_config();
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (27, 'expired-power-limit', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO currencies
+             (user_id, currency_id, quantity, last_recover_time, expired_time)
+         VALUES (27, 4, 1580, ?, 0)",
+    )
+    .bind(ServerTime::now_ms())
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO power_items (uid, user_id, item_id, quantity, expire_time, created_at)
+         VALUES (43, 27, 20, 1, 1, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let reply = auto_use_expired_power_items(&pool, 27).await.unwrap();
+
+    assert_eq!(reply.used, Some(true));
+    let stamina: i32 = sqlx::query_scalar(
+        "SELECT quantity FROM currencies WHERE user_id = 27 AND currency_id = 4",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM power_items WHERE user_id = 27")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stamina, 1600);
+    assert_eq!(remaining, 0);
 }
 
 #[tokio::test]

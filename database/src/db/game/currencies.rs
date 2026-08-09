@@ -5,6 +5,15 @@ use std::collections::{HashMap, HashSet};
 
 pub const POWER_CURRENCY_ID: i32 = 4;
 
+#[derive(Clone, Copy)]
+pub(crate) struct PowerRecovery {
+    pub quantity: i32,
+    pub last_recover_time: Option<i64>,
+    pub limit: i32,
+    pub interval_seconds: i32,
+    pub amount: i32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LimitedExchangeResult {
     Applied,
@@ -188,6 +197,36 @@ pub async fn add_currency_in_transaction(
     Ok(())
 }
 
+pub(super) async fn add_currency_up_to_limit_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    currency_id: i32,
+    amount: i32,
+    limit: i32,
+    now: i64,
+) -> sqlx::Result<()> {
+    if currency_id == POWER_CURRENCY_ID {
+        settle_power_recovery_in_transaction(tx, user_id, now).await?;
+    }
+    let amount = amount.min(limit).max(0);
+    sqlx::query(
+        "INSERT INTO currencies
+             (user_id, currency_id, quantity, last_recover_time, expired_time)
+         VALUES (?, ?, ?, ?, 0)
+         ON CONFLICT(user_id, currency_id) DO UPDATE SET
+             quantity = MAX(quantity, MIN(quantity + excluded.quantity, ?)),
+             last_recover_time = excluded.last_recover_time",
+    )
+    .bind(user_id)
+    .bind(currency_id)
+    .bind(amount)
+    .bind(now)
+    .bind(limit)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 pub async fn get_currencies(
     pool: &SqlitePool,
     user_id: i64,
@@ -255,7 +294,7 @@ pub async fn settle_power_recovery(pool: &SqlitePool, user_id: i64) -> sqlx::Res
     tx.commit().await
 }
 
-async fn settle_power_recovery_in_transaction(
+pub(crate) async fn settle_power_recovery_in_transaction(
     tx: &mut Transaction<'_, Sqlite>,
     user_id: i64,
     now: i64,
@@ -271,6 +310,7 @@ async fn settle_power_recovery_in_transaction(
     .fetch_optional(&mut **tx)
     .await?
     else {
+        super::power_maker::settle_in_transaction(tx, user_id, now, false, None).await?;
         return Ok(());
     };
 
@@ -283,11 +323,33 @@ async fn settle_power_recovery_in_transaction(
         .player_level(level)
         .ok_or_else(|| sqlx::Error::Protocol(format!("missing player level {level}")))?
         .max_auto_recover_power;
-    if quantity >= recover_limit {
+    settle_loaded_power(
+        tx,
+        user_id,
+        now,
+        PowerRecovery {
+            quantity,
+            last_recover_time,
+            limit: recover_limit,
+            interval_seconds: currency.recover_time,
+            amount: currency.recover_num,
+        },
+    )
+    .await
+}
+
+pub(crate) async fn settle_loaded_power(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    now: i64,
+    recovery: PowerRecovery,
+) -> sqlx::Result<()> {
+    if recovery.quantity >= recovery.limit {
+        super::power_maker::settle_in_transaction(tx, user_id, now, true, None).await?;
         return Ok(());
     }
 
-    let Some(last_recover_time) = last_recover_time else {
+    let Some(last_recover_time) = recovery.last_recover_time else {
         sqlx::query(
             "UPDATE currencies SET last_recover_time = ?
              WHERE user_id = ? AND currency_id = ?",
@@ -297,37 +359,53 @@ async fn settle_power_recovery_in_transaction(
         .bind(POWER_CURRENCY_ID)
         .execute(&mut **tx)
         .await?;
+        super::power_maker::settle_in_transaction(tx, user_id, now, false, None).await?;
         return Ok(());
     };
-    let interval = i64::from(currency.recover_time) * 1_000;
-    if interval <= 0 || currency.recover_num <= 0 {
+    let interval = i64::from(recovery.interval_seconds) * 1_000;
+    if interval <= 0 || recovery.amount <= 0 {
+        super::power_maker::settle_in_transaction(tx, user_id, now, false, None).await?;
         return Ok(());
     }
     let ticks = now.saturating_sub(last_recover_time) / interval;
     if ticks == 0 {
+        super::power_maker::settle_in_transaction(tx, user_id, now, false, None).await?;
         return Ok(());
     }
 
-    let recovered = ticks.saturating_mul(i64::from(currency.recover_num));
-    let quantity = i64::from(quantity)
+    let recovered = ticks.saturating_mul(i64::from(recovery.amount));
+    let recovered_quantity = i64::from(recovery.quantity)
         .saturating_add(recovered)
-        .min(i64::from(recover_limit)) as i32;
-    let last_recover_time = last_recover_time.saturating_add(ticks.saturating_mul(interval));
+        .min(i64::from(recovery.limit)) as i32;
+    let recovered_at = last_recover_time.saturating_add(ticks.saturating_mul(interval));
     sqlx::query(
         "UPDATE currencies
          SET quantity = ?, last_recover_time = ?
          WHERE user_id = ? AND currency_id = ?",
     )
-    .bind(quantity)
-    .bind(last_recover_time)
+    .bind(recovered_quantity)
+    .bind(recovered_at)
     .bind(user_id)
     .bind(POWER_CURRENCY_ID)
     .execute(&mut **tx)
     .await?;
+    let started_at = (recovered_quantity >= recovery.limit).then(|| {
+        let missing = i64::from(recovery.limit - recovery.quantity);
+        let step = i64::from(recovery.amount);
+        let needed_ticks = (missing + step - 1) / step;
+        last_recover_time.saturating_add(needed_ticks.saturating_mul(interval))
+    });
+    super::power_maker::settle_in_transaction(tx, user_id, now, started_at.is_some(), started_at)
+        .await?;
     Ok(())
 }
 
 pub async fn save_currency(pool: &SqlitePool, currency: &Currency) -> sqlx::Result<()> {
+    let mut tx = pool.begin().await?;
+    if currency.currency_id == POWER_CURRENCY_ID {
+        settle_power_recovery_in_transaction(&mut tx, currency.user_id, ServerTime::now_ms())
+            .await?;
+    }
     sqlx::query(
         "INSERT INTO currencies (user_id, currency_id, quantity, last_recover_time, expired_time)
          VALUES (?, ?, ?, ?, ?)
@@ -341,9 +419,9 @@ pub async fn save_currency(pool: &SqlitePool, currency: &Currency) -> sqlx::Resu
     .bind(currency.quantity)
     .bind(currency.last_recover_time)
     .bind(currency.expired_time)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
-    Ok(())
+    tx.commit().await
 }
 
 pub async fn add_currency(
@@ -353,6 +431,10 @@ pub async fn add_currency(
     amount: i32,
 ) -> sqlx::Result<()> {
     let timestamp = ServerTime::now_ms();
+    let mut tx = pool.begin().await?;
+    if currency_id == POWER_CURRENCY_ID {
+        settle_power_recovery_in_transaction(&mut tx, user_id, timestamp).await?;
+    }
 
     sqlx::query(
         "INSERT INTO currencies (user_id, currency_id, quantity, last_recover_time, expired_time)
@@ -365,9 +447,9 @@ pub async fn add_currency(
     .bind(currency_id)
     .bind(amount)
     .bind(timestamp)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
-    Ok(())
+    tx.commit().await
 }
 
 pub async fn remove_currency(
@@ -376,18 +458,22 @@ pub async fn remove_currency(
     currency_id: i32,
     amount: i32,
 ) -> sqlx::Result<bool> {
+    let timestamp = ServerTime::now_ms();
+    let mut tx = pool.begin().await?;
+    if currency_id == POWER_CURRENCY_ID {
+        settle_power_recovery_in_transaction(&mut tx, user_id, timestamp).await?;
+    }
     let current: Option<i32> =
         sqlx::query_scalar("SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = ?")
             .bind(user_id)
             .bind(currency_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *tx)
             .await?;
 
     if current.unwrap_or(0) < amount {
         return Ok(false);
     }
 
-    let timestamp = ServerTime::now_ms();
     sqlx::query(
         "UPDATE currencies
          SET quantity = quantity - ?, last_recover_time = ?
@@ -397,9 +483,9 @@ pub async fn remove_currency(
     .bind(timestamp)
     .bind(user_id)
     .bind(currency_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
-
+    tx.commit().await?;
     Ok(true)
 }
 
@@ -410,6 +496,10 @@ pub async fn set_currency(
     quantity: i32,
 ) -> sqlx::Result<()> {
     let timestamp = ServerTime::now_ms();
+    let mut tx = pool.begin().await?;
+    if currency_id == POWER_CURRENCY_ID {
+        settle_power_recovery_in_transaction(&mut tx, user_id, timestamp).await?;
+    }
 
     sqlx::query(
         "INSERT INTO currencies (user_id, currency_id, quantity, last_recover_time, expired_time)
@@ -422,9 +512,9 @@ pub async fn set_currency(
     .bind(currency_id)
     .bind(quantity)
     .bind(timestamp)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
-    Ok(())
+    tx.commit().await
 }
 
 pub async fn get_poped_exchange_currency_ids(

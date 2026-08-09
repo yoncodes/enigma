@@ -149,12 +149,18 @@ pub(super) async fn auto_use_expired_power_items(
     }
 
     let uids = expired.iter().map(|item| item.uid).collect::<Vec<_>>();
-    if !items::convert_expired_power_items(
+    let stamina_limit = config::configs::get()
+        .currency
+        .get(currencies::POWER_CURRENCY_ID)
+        .ok_or(AppError::InvalidRequest)?
+        .max_limit;
+    if !items::convert_expired_power_items_up_to_limit(
         db,
         player_id,
         &uids,
         currencies::POWER_CURRENCY_ID,
         stamina,
+        stamina_limit,
     )
     .await?
     {

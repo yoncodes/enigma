@@ -45,18 +45,33 @@ pub async fn handle_client(socket: TcpStream, state: &'static AppState) -> anyho
         }
     };
 
-    let player_id = if let Ok(player) = ctx.player() {
+    let saved_player_id = if let Ok(player) = ctx.player() {
         let player_id = player.id;
-        if let Err(e) = ctx.save_player().await {
-            tracing::error!("Failed to save player state for {}: {}", player_id, e);
+        let _session = ctx.state.lock_session(player_id).await;
+        if ctx.state.is_current_session(player_id, &ctx.outbound) {
+            if let Err(e) =
+                database::db::game::power_maker::record_logout(ctx.state.db, player_id).await
+            {
+                tracing::error!(
+                    "Failed to record power maker logout for {}: {}",
+                    player_id,
+                    e
+                );
+            }
+            if let Err(e) = ctx.save_player().await {
+                tracing::error!("Failed to save player state for {}: {}", player_id, e);
+            }
+            ctx.state
+                .unregister_session_if_current(player_id, &ctx.outbound);
+            Some(player_id)
+        } else {
+            None
         }
-        ctx.state.unregister_session(player_id);
-        Some(player_id)
     } else {
         None
     };
 
-    if let Some(player_id) = player_id {
+    if let Some(player_id) = saved_player_id {
         tracing::warn!("Player {} disconnected and saved progress", player_id);
     }
 

@@ -19,12 +19,12 @@ impl InventoryManager {
         db: &SqlitePool,
         is_login: bool,
     ) -> Result<GetPowerMakerInfoReply, AppError> {
-        let state = power_maker::get_state(db, self.player_id).await?;
+        let state = power_maker::take_state(db, self.player_id, is_login).await?;
         Ok(GetPowerMakerInfoReply {
             status: Some(state.status),
             next_remain_second: Some(state.next_remain_second),
-            make_count: Some(if is_login { state.make_count } else { 0 }),
-            logout_second: Some(if is_login { state.logout_second } else { 0 }),
+            make_count: Some(state.make_count),
+            logout_second: Some(state.logout_second),
             power_maker_items: power_maker::get_maker_items(db, self.player_id).await?,
         })
     }

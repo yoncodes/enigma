@@ -2,6 +2,102 @@ use super::*;
 use crate::engine::runtime::record::SetupSide;
 
 #[test]
+fn ulrich_channel_reacts_before_take_stage_104_expires_from_the_round_snapshot() {
+    init_config();
+    let entity = |uid, team_type, buffs| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100),
+        team_type: Some(team_type),
+        buffs,
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(
+                    10,
+                    1,
+                    vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(31070121),
+                        from_uid: Some(10),
+                        duration: Some(1),
+                        ..Default::default()
+                    }],
+                ),
+                entity(11, 1, Vec::new()),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, Vec::new())],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.buff.add_special_count(10, &[31070121], 3);
+
+    let (round, _) = run_round_start_split(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        1,
+    )
+    .unwrap();
+
+    let channel_reaction = round
+        .outcomes
+        .iter()
+        .position(|outcome| {
+            matches!(
+                outcome,
+                RuleOutcome::BuffFeatureMarker(marker)
+                    if marker.target_uid == 10
+                        && marker.effect_type
+                            == sonettobuf::effect_type_enum::EffectType::Triggeranalysis as i32
+            )
+        })
+        .expect("the channel reacts while its source buff is active");
+    let channel_expiry = round
+        .outcomes
+        .iter()
+        .position(|outcome| {
+            matches!(
+                outcome,
+                RuleOutcome::BuffBatch(changes)
+                    if changes.iter().any(|change| {
+                        change.origin.key.opcode == 104
+                            && change
+                                .change
+                                .removed
+                                .iter()
+                                .any(|removed| removed.buff.uid == Some(20))
+                    })
+            )
+        })
+        .expect("takeStage 104 expires the one-round channel");
+    assert!(channel_reaction < channel_expiry);
+    assert!(!managers.buff.has_buff_id(10, 31070121));
+
+    for owner_uid in [10, 11] {
+        let output = managers
+            .buff
+            .active_for(owner_uid)
+            .find(|buff| buff.buff_id == Some(31070151))
+            .expect("the channel grants its configured ally output");
+        assert_eq!(output.duration, Some(1));
+    }
+}
+
+#[test]
 fn voiceless_switches_afflatus_weakness_after_recovery() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
