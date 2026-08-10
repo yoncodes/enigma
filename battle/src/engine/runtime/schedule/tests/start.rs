@@ -177,16 +177,18 @@ fn opening_raw_deal_uses_surplus_cards_to_refill_composed_slots() {
 }
 
 #[test]
-fn opening_setup_applies_the_active_draw_limit_before_dealing() {
+fn opening_setup_applies_the_configured_fourth_ally_limit_before_dealing() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: (0..4)
                 .map(|index| FightEntityInfo {
                     uid: Some(index + 1),
+                    position: Some(index as i32 + 1),
+                    career: Some(if index == 3 { 101 } else { 6 }),
                     team_type: Some(1),
                     current_hp: Some(100),
-                    passive_skill: (index == 0).then_some(40).into_iter().collect(),
+                    passive_skill: (index == 3).then_some(40).into_iter().collect(),
                     ..Default::default()
                 })
                 .collect(),
@@ -196,6 +198,12 @@ fn opening_setup_applies_the_active_draw_limit_before_dealing() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .battle_rule
+        .extend_owned_skills([crate::engine::fight::rules::OwnedBattleSkill {
+            owner_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+            skill_id: 1163852001,
+        }]);
     let mut slot = SkillEffectSlot::new(
         ParsedBehavior::new(1, "AddBuff", vec![31490001]),
         TargetRequest::self_only(),
@@ -209,7 +217,8 @@ fn opening_setup_applies_the_active_draw_limit_before_dealing() {
         raw_args: Vec::new(),
     }];
     slot.compiled_route = ConditionRoute::compile(&slot.conditions);
-    let mut catalog = SkillEffectCatalog::default();
+    let mut catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [1163852001], std::iter::empty());
     catalog.insert(ParsedSkillEffect {
         skill_id: 40,
         slots: vec![slot],
@@ -219,28 +228,45 @@ fn opening_setup_applies_the_active_draw_limit_before_dealing() {
         skill_id: Some(skill_id),
         ..Default::default()
     };
+    let opening = [
+        31070111, 31280121, 31070121, 31430121, 31430111, 31280111, 31446011, 31446011, 31070111,
+        31070121, 31430111,
+    ]
+    .into_iter()
+    .map(card)
+    .collect::<Vec<_>>();
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_card_draws(opening[8..].to_vec());
 
     let (start, dealt) = run_start(
         managers.catalog(),
         &mut managers,
         &pool,
         &catalog,
-        &mut RoundDeterminism::default(),
+        &mut determinism,
         TargetContext::default(),
         CardSetup {
-            hand: (1..=8).map(card).collect(),
-            draw_pile: (9..=10)
-                .flat_map(|skill_id| [card(skill_id), card(skill_id)])
-                .collect(),
-            deck_num: 64,
+            hand: opening[..8].to_vec(),
+            draw_pile: opening[8..].to_vec(),
+            deck_num: 48,
         },
         8,
     )
     .unwrap();
 
-    assert_eq!(dealt.len(), 10);
-    assert_eq!(managers.card.normal_hand_len(), 10);
-    assert_eq!(managers.card.deck_num(), 62);
+    assert!(
+        managers
+            .buff
+            .active_for(4)
+            .any(|buff| buff.buff_id == Some(1163852002))
+    );
+    assert_eq!(
+        crate::engine::mechanic::card::CardMechanic.normal_hand_limit(8, &managers, &pool),
+        11
+    );
+    assert_eq!(dealt, opening);
+    assert_eq!(managers.card.normal_hand_len(), 11);
+    assert_eq!(managers.card.deck_num(), 45);
     let steps = crate::engine::packet::timeline::project(&start.frames).unwrap();
     assert_eq!(
         steps
@@ -252,7 +278,7 @@ fn opening_setup_applies_the_active_draw_limit_before_dealing() {
             })
             .filter_map(|effect| effect.effect_num)
             .collect::<Vec<_>>(),
-        vec![64, 62, 62]
+        vec![48, 45, 45]
     );
 }
 
@@ -500,6 +526,7 @@ fn start_schedule_finishes_unconditional_setup_before_round_start() {
         .position(|(stage, _)| *stage == SetupStage::RoundStart)
         .unwrap();
 
+    assert!(!START.contains(&(SetupStage::EnterBattleStatic, 0)));
     assert!(unconditional < first_round_start);
     let sync = START
         .iter()
@@ -515,6 +542,167 @@ fn start_schedule_finishes_unconditional_setup_before_round_start() {
         .unwrap();
 
     assert!(sync < late && late < settlement);
+}
+
+fn collect_effects_of_type<'a>(
+    effect: &'a sonettobuf::ActEffect,
+    effect_type: i32,
+    matches: &mut Vec<&'a sonettobuf::ActEffect>,
+) {
+    if effect.effect_type == Some(effect_type) {
+        matches.push(effect);
+    }
+    if let Some(step) = &effect.fight_step {
+        for nested in &step.act_effect {
+            collect_effects_of_type(nested, effect_type, matches);
+        }
+    }
+}
+
+fn step_contains_effect(step: &sonettobuf::FightStep, effect_type: i32) -> bool {
+    let mut matches = Vec::new();
+    for effect in &step.act_effect {
+        collect_effects_of_type(effect, effect_type, &mut matches);
+    }
+    !matches.is_empty()
+}
+
+#[test]
+fn anjo_contract_is_offered_once_during_opening_and_not_on_later_rounds() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3100),
+                    position: Some(1),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill: vec![31000141],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    model_id: Some(3086),
+                    position: Some(2),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let subscribers = crate::engine::event::dispatcher::dispatch_compiled_setup(
+        &pool,
+        &managers,
+        &catalog,
+        SetupStage::EnterBattleStatic,
+        0,
+    )
+    .unwrap();
+    assert_eq!(subscribers.len(), 1);
+    assert_eq!(subscribers[0].0.owner_uid, 10);
+    assert_eq!(subscribers[0].0.skill_id, 31000141);
+    let mut determinism = RoundDeterminism::default();
+    let (opening, _) = run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        0,
+    )
+    .unwrap();
+
+    let contract_type = sonettobuf::effect_type_enum::EffectType::Notifiyherocontract as i32;
+    let opening_steps =
+        crate::engine::packet::timeline::project_for_version(&opening.frames, 7).unwrap();
+    let mut opening_contracts = Vec::new();
+    for effect in opening_steps.iter().flat_map(|step| &step.act_effect) {
+        collect_effects_of_type(effect, contract_type, &mut opening_contracts);
+    }
+    assert_eq!(opening_contracts.len(), 1);
+    assert_eq!(opening_contracts[0].target_id, Some(10));
+    assert_eq!(opening_contracts[0].config_effect, Some(60092));
+    assert_eq!(opening_contracts[0].reserve_str.as_deref(), Some("20"));
+    assert!(managers.contract.selection_origin(10, 20).is_some());
+    let enter_fight_deal = sonettobuf::effect_type_enum::EffectType::Enterfightdeal as i32;
+    let deck_count = sonettobuf::effect_type_enum::EffectType::Carddecknum as i32;
+    let enter_fight_deal = opening_steps
+        .iter()
+        .position(|step| step_contains_effect(step, enter_fight_deal))
+        .unwrap();
+    let deck_counts = opening_steps
+        .iter()
+        .enumerate()
+        .filter(|(_, step)| step_contains_effect(step, deck_count))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let contract = opening_steps
+        .iter()
+        .position(|step| step_contains_effect(step, contract_type))
+        .unwrap();
+    assert_eq!(deck_counts.len(), 2);
+    assert_eq!(
+        opening_steps[deck_counts[0]]
+            .act_effect
+            .iter()
+            .filter(|effect| effect.effect_type == Some(deck_count))
+            .count(),
+        2
+    );
+    assert_eq!(
+        opening_steps[deck_counts[1]]
+            .act_effect
+            .iter()
+            .filter(|effect| effect.effect_type == Some(deck_count))
+            .count(),
+        1
+    );
+    assert!(enter_fight_deal < deck_counts[0]);
+    assert!(deck_counts[0] < contract && contract < deck_counts[1]);
+
+    for round in [2, 3] {
+        let (transition, _) = run_round_start_split(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext {
+                current_round: round,
+                ..Default::default()
+            },
+            1,
+        )
+        .unwrap();
+        let steps =
+            crate::engine::packet::timeline::project_for_version(&transition.frames, 7).unwrap();
+        let mut contracts = Vec::new();
+        for effect in steps.iter().flat_map(|step| &step.act_effect) {
+            collect_effects_of_type(effect, contract_type, &mut contracts);
+        }
+        assert!(
+            contracts.is_empty(),
+            "round {round} repeated the entry-only Contract offer"
+        );
+        assert!(managers.contract.selection_origin(10, 20).is_some());
+    }
 }
 
 #[test]
@@ -846,6 +1034,117 @@ fn opening_round_start_conditions_only_run_for_the_player_side() {
 
     assert_eq!(managers.ex_point.get(10), 1);
     assert_eq!(managers.ex_point.get(-1), 0);
+}
+
+#[test]
+fn configured_round_after_runs_for_defenders_during_opening() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: [-1, -2, -3]
+                .into_iter()
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(2),
+                    current_hp: Some(100),
+                    passive_skill: vec![116362110],
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    let (result, _) = run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        0,
+    )
+    .unwrap();
+
+    for uid in [-1, -2, -3] {
+        let buffs = managers
+            .buff
+            .active_for(uid)
+            .filter(|buff| buff.buff_id == Some(116362001))
+            .collect::<Vec<_>>();
+        assert_eq!(buffs.len(), 1, "uid={uid}");
+        assert_eq!(buffs[0].from_uid, Some(uid));
+        assert_eq!(buffs[0].duration, Some(4));
+        assert!(
+            [116362002, 116362003, 116362004]
+                .into_iter()
+                .all(|buff_id| !managers.buff.has_buff_id(uid, buff_id))
+        );
+    }
+
+    fn collect_round_after(step: &sonettobuf::FightStep, actions: &mut Vec<(i64, i64)>) -> bool {
+        let mut found = false;
+        if step.act_id == Some(116362110) {
+            actions.push((
+                step.from_id.expect("configured action has a source"),
+                step.to_id.expect("configured action has a target"),
+            ));
+            found = true;
+        }
+        for child in step
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+        {
+            found |= collect_round_after(child, actions);
+        }
+        found
+    }
+
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let mut actions = Vec::new();
+    let action_positions = steps
+        .iter()
+        .enumerate()
+        .filter_map(|(index, step)| collect_round_after(step, &mut actions).then_some(index))
+        .collect::<Vec<_>>();
+    assert_eq!(actions, vec![(-1, -1), (-2, -2), (-3, -3)]);
+    let deal_position = steps
+        .iter()
+        .position(|step| {
+            step.act_effect.iter().any(|effect| {
+                effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Enterfightdeal as i32)
+            })
+        })
+        .expect("opening projects card setup after round-start conditions");
+    assert!(
+        action_positions
+            .into_iter()
+            .all(|position| position < deal_position)
+    );
 }
 
 #[test]

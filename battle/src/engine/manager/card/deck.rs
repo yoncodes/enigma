@@ -192,6 +192,17 @@ impl CardDeck {
         }
     }
 
+    pub(super) fn remove_owner_cards(&mut self, owner_uid: i64) {
+        for index in (0..self.hand.len()).rev() {
+            if self.hand[index].uid == Some(owner_uid) {
+                self.remove_card(index);
+            }
+        }
+        self.draw_pile.retain(|card| card.uid != Some(owner_uid));
+        self.discard_pile.retain(|card| card.uid != Some(owner_uid));
+        self.generated.retain(|card| card.uid != Some(owner_uid));
+    }
+
     pub fn draw(&mut self, count: usize) -> Vec<CardInfo> {
         let take = count.min(self.draw_pile.len());
         let drawn: Vec<_> = self.draw_pile.drain(..take).collect();
@@ -583,6 +594,24 @@ mod tests {
         deck.expire_temporary(&marked);
 
         assert_eq!(deck.hand(), &[card(11, 200)]);
+    }
+
+    #[test]
+    fn removing_an_owner_clears_every_deck_zone_without_composing() {
+        let mut deck = CardDeck::with_draw_pile(
+            vec![card(10, 100), card(11, 200), card(10, 100)],
+            vec![card(10, 300), card(12, 400)],
+        );
+        assert!(deck.consume_draw_card(&card(10, 300)));
+        deck.add_temp_card(10, 500);
+
+        deck.remove_owner_cards(10);
+
+        assert_eq!(deck.hand, vec![card(11, 200)]);
+        assert_eq!(deck.hand_ids.len(), 1);
+        assert_eq!(deck.draw_pile, vec![card(12, 400)]);
+        assert!(deck.discard_pile.is_empty());
+        assert!(deck.generated.is_empty());
     }
 
     #[test]

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
-use crate::engine::manager::BattleManagers;
+use crate::engine::{manager::BattleManagers, skill::action::SkillExecutionMode};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(i32)]
@@ -95,6 +95,7 @@ pub struct TargetContext {
     pub active_skill_type: i32,
     pub active_skill_effect_tag: i32,
     pub active_skill_assassinate: bool,
+    pub active_skill_mode: SkillExecutionMode,
     pub extra_skill_kind: i32,
     pub damage_target_count_kind: i32,
     pub additional_skill_target_count: i32,

@@ -8,6 +8,12 @@ pub fn active_use(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKin
     })
 }
 
+pub fn active_ally_use(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::ActiveAllyUseSkill {
+        slot: first_i32(args)?,
+    })
+}
+
 pub fn use_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::UseSkillRank(parse_i32_list(
         args.first()?,
@@ -125,8 +131,8 @@ mod tests {
     #[test]
     fn aleph_active_attack_conditions_use_the_ally_action_lane() {
         assert_eq!(
-            active_use(502212, "ActiveUseSkill", &["0".into()]),
-            Some(ParsedConditionKind::ActiveUseSkill { slot: 0 })
+            active_ally_use(502212, "ActiveUseSkill", &["0".into()]),
+            Some(ParsedConditionKind::ActiveAllyUseSkill { slot: 0 })
         );
         assert_eq!(
             hurt_skill(501212, "UseHurtSkill", &[]),

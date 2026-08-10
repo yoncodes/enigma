@@ -199,12 +199,13 @@ pub fn run_round_start_after_ai_split(
         round_start_duration_rules(&duration_snapshot),
     )?;
     append_round_phase(&mut settlement, duration);
-    let (event_setup, independent_setup) = run_round_start_after_duration_setup(
+    let event_setup = drain::run_setup_schedule_for_owners_in_round_phase(
         managers,
         pool,
         catalog,
         determinism,
         context,
+        ROUND_START_EVENT_SETUP,
         &owner_uids,
     )?;
     let setup_layout =
@@ -233,7 +234,6 @@ pub fn run_round_start_after_ai_split(
     )?;
     append_round_phase(&mut settlement, settlement_setup);
     append(&mut fight_steps, settlement);
-    append(&mut fight_steps, independent_setup);
     let sync_schedule = match setup_layout {
         Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) => {
             ROUND_START_VERSION7_SYNC_SETUP
@@ -690,13 +690,12 @@ pub fn run_start(
             opening_deck_counts = Some((initial_deck_num, managers.card.deck_num()));
         }
         let stage_result = if stage == SetupStage::RoundStartCondition {
-            drain::run_setup_stage_for_owners(
+            drain::run_opening_round_start_conditions(
                 managers,
                 pool,
                 catalog,
                 determinism,
                 context,
-                stage,
                 priority,
                 &owner_uids,
             )?
@@ -895,6 +894,18 @@ pub fn run_start(
     );
     append_round_phase(&mut opening_refill, setup_deck_counts);
     append(&mut result, opening_refill);
+    append(
+        &mut result,
+        drain::run_setup_stage(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            SetupStage::EnterBattleStatic,
+            0,
+        )?,
+    );
     push_cue(
         &mut result.frames,
         RoundCue::DeckCount {
@@ -1051,18 +1062,6 @@ fn run_round_start_before_duration(
         )?,
     );
     append(&mut result, round_start_event);
-    append(
-        &mut result,
-        drain::run_setup_schedule_for_owners(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            ROUND_START_INDEPENDENT_SETUP,
-            owner_uids,
-        )?,
-    );
     Ok((result, RoundStartSettlementPlan::default()))
 }
 
@@ -1269,34 +1268,4 @@ pub(super) fn run_round_start_owner_settlement(
     })();
     managers.buff.end_transaction();
     owner_settlement
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_round_start_after_duration_setup(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    owner_uids: &[i64],
-) -> Result<(DrainResult, DrainResult), DrainError> {
-    let event_setup = drain::run_setup_schedule_for_owners_in_round_phase(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        ROUND_START_EVENT_SETUP,
-        owner_uids,
-    )?;
-    let independent_setup = drain::run_setup_schedule_for_owners(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        ROUND_START_INDEPENDENT_SETUP,
-        owner_uids,
-    )?;
-    Ok((event_setup, independent_setup))
 }

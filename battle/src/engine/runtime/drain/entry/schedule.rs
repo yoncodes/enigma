@@ -79,28 +79,6 @@ pub fn run_setup_schedule(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn run_setup_schedule_for_owners(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    schedule: &[(SetupStage, i32)],
-    owner_uids: &[i64],
-) -> Result<DrainResult, DrainError> {
-    run_setup_schedule_with_container(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        schedule,
-        Some(owner_uids),
-        SetupFrameContainer::Standalone,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
 pub fn run_setup_schedule_for_owners_in_round_phase(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -218,6 +196,7 @@ fn run_setup_schedule_with_container(
             std::iter::empty(),
             |_| Vec::new(),
             owner_uids,
+            false,
             frame_container,
         )?;
         result.outcomes.extend(stage_result.outcomes);

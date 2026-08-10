@@ -67,6 +67,146 @@ fn twins_conduit_activation_consumes_chirp_signal_through_the_captured_passive()
 }
 
 #[test]
+fn contract_psychube_buffs_the_owner_then_the_selected_bound_ally() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3100),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill: vec![433611],
+                    buffs: vec![BuffInfo {
+                        uid: Some(100),
+                        buff_id: Some(31000221),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(30),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(60092, "NotifyHeroContract"),
+    };
+    managers
+        .contract
+        .execute(crate::engine::manager::contract::ContractCommand::Offer {
+            origin,
+            owner_uid: 10,
+            candidates: vec![20, 30],
+        })
+        .unwrap();
+    managers
+        .contract
+        .execute(
+            crate::engine::manager::contract::ContractCommand::SelectOwner {
+                owner_uid: 10,
+                bound_uid: 20,
+            },
+        )
+        .unwrap();
+    managers
+        .contract
+        .execute(
+            crate::engine::manager::contract::ContractCommand::SelectBound {
+                owner_uid: 10,
+                bound_uid: 20,
+            },
+        )
+        .unwrap();
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    let result = run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+            source_uid: 10,
+            skill_id: 31000451,
+            target_uid: -1,
+            target_uids: vec![-1],
+            attacked_target_uids: vec![-1],
+            phase: crate::engine::skill::action::SkillPhase::AfterHit,
+            skill_slot: 1,
+            is_attack: true,
+            rank: 1,
+            skill_type: 0,
+            effect_tag: 1,
+            assassinate: false,
+            ignore_riposte: false,
+            damage_amount: 0,
+            kill_count: 0,
+            crit_count: 0,
+            guard_break_count: 0,
+            additional_moxie: 0,
+            extra_skill_kind: 0,
+            mode: crate::engine::skill::action::SkillExecutionMode::Active,
+            teammate_injury_count: 0,
+            teammate_injury_count_not_reset: 0,
+            team_injury_count_round: 0,
+            card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
+        }),
+    )
+    .unwrap();
+
+    assert!(managers.buff.has_buff_id(10, 433621));
+    assert!(managers.buff.has_buff_id(20, 433621));
+    assert!(!managers.buff.has_buff_id(30, 433621));
+
+    fn collect_targets(effect: &sonettobuf::ActEffect, targets: &mut Vec<i64>) {
+        if effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Buffadd as i32)
+            && effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(433621)
+        {
+            targets.push(effect.target_id.unwrap());
+        }
+        if let Some(step) = &effect.fight_step {
+            for nested in &step.act_effect {
+                collect_targets(nested, targets);
+            }
+        }
+    }
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let mut targets = Vec::new();
+    for effect in steps.iter().flat_map(|step| &step.act_effect) {
+        collect_targets(effect, &mut targets);
+    }
+    assert_eq!(targets, vec![10, 20]);
+}
+
+#[test]
 fn received_skill_rank_applies_only_its_configured_extra_burn() {
     crate::test_support::init_config();
     let burn_layers = |skill_id| {

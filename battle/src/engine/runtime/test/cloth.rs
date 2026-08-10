@@ -316,3 +316,113 @@ fn contract_selection_uses_the_offered_uid_and_fight_const_buff_pair() {
         .unwrap();
     assert!(owner_buff < owner && owner < bound_buff && bound_buff < bound);
 }
+
+#[test]
+fn configured_upgrade_and_contract_prompts_resolve_in_opening_order() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3086),
+                    position: Some(1),
+                    team_type: Some(1),
+                    career: Some(6),
+                    current_hp: Some(100),
+                    passive_skill: vec![30864156, 30864112],
+                    enhance_info_box: Some(sonettobuf::EnhanceInfoBox {
+                        uid: Some(10),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    model_id: Some(3100),
+                    position: Some(2),
+                    team_type: Some(1),
+                    career: Some(4),
+                    ex_skill_level: Some(0),
+                    current_hp: Some(100),
+                    passive_skill: vec![31000141],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(30),
+                    position: Some(3),
+                    team_type: Some(1),
+                    career: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(fight);
+    let opening = runtime.start_round().unwrap();
+    let upgrade = sonettobuf::effect_type_enum::EffectType::Notifyupgradehero as i32;
+    let contract = sonettobuf::effect_type_enum::EffectType::Notifiyherocontract as i32;
+    fn collect_prompts(
+        effect: &sonettobuf::ActEffect,
+        upgrade: i32,
+        contract: i32,
+        prompts: &mut Vec<(i32, i64)>,
+    ) {
+        if effect
+            .effect_type
+            .is_some_and(|kind| kind == upgrade || kind == contract)
+        {
+            prompts.push((
+                effect.effect_type.unwrap(),
+                effect.target_id.unwrap_or_default(),
+            ));
+        }
+        if let Some(step) = &effect.fight_step {
+            for nested in &step.act_effect {
+                collect_prompts(nested, upgrade, contract, prompts);
+            }
+        }
+    }
+    let mut prompts = Vec::new();
+    for effect in opening.fight_step.iter().flat_map(|step| &step.act_effect) {
+        collect_prompts(effect, upgrade, contract, &mut prompts);
+    }
+    let contract_prompt = prompts
+        .iter()
+        .position(|prompt| *prompt == (contract, 20))
+        .unwrap();
+    assert!(contract_prompt > 0);
+    assert!(
+        prompts[..contract_prompt]
+            .iter()
+            .all(|prompt| *prompt == (upgrade, 10))
+    );
+    assert_eq!(&prompts[contract_prompt..], &[(contract, 20)]);
+
+    assert!(
+        runtime
+            .use_cloth_skill(UseClothSkillRequest {
+                skill_id: Some(308665),
+                from_id: Some(10),
+                to_id: Some(3086515),
+                r#type: Some(ClothSkillType::HeroUpgrade as i32),
+            })
+            .is_some()
+    );
+    assert!(
+        runtime
+            .use_cloth_skill(UseClothSkillRequest {
+                skill_id: Some(0),
+                from_id: Some(20),
+                to_id: Some(30),
+                r#type: Some(ClothSkillType::Contract as i32),
+            })
+            .is_some()
+    );
+    assert_eq!(runtime.managers.upgrade.selected_option(10), Some(3086515));
+    assert_eq!(runtime.managers.contract.bound_uid(20), Some(30));
+}

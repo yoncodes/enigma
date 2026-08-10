@@ -403,16 +403,33 @@ pub fn run_entity_settlement(
                     append(&mut result, skills);
                     result
                 } else {
-                    drain::run_grouped_owner_event(
+                    let mut result = drain::run_grouped_owner_event(
                         managers,
                         pool,
                         catalog,
                         determinism,
                         context,
-                        event,
+                        event.clone(),
                         owner_uids,
                         drain::ReactionLane::Skills,
-                    )?
+                    )?;
+                    if *kind == EventKind::RoundEndEntitySettlement {
+                        let mut buff_acts = drain::run_grouped_owner_event(
+                            managers,
+                            pool,
+                            catalog,
+                            determinism,
+                            context,
+                            event.clone(),
+                            owner_uids,
+                            drain::ReactionLane::BuffActs,
+                        )?;
+                        if buff_acts.events.first() == Some(&event) {
+                            buff_acts.events.remove(0);
+                        }
+                        append(&mut result, buff_acts);
+                    }
+                    result
                 }
             }
             SettlementStep::Settlement => {

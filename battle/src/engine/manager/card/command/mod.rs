@@ -204,6 +204,8 @@ pub struct CardRemoveAiOwner {
     pub team_type: i32,
 }
 
+pub type CardRemoveOwner = CardRemoveAiOwner;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardReplaceOwnerSkills {
     pub origin: CommandOrigin,
@@ -402,6 +404,12 @@ pub enum CardCommand {
         buff_uid: i64,
     },
     QueueUseCard(CardQueueUse),
+}
+
+impl CardCommand {
+    pub const fn remove_owner(command: CardRemoveOwner) -> Self {
+        Self::RemoveAiOwner(command)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -987,7 +995,7 @@ pub(super) fn execute(
             if remove.owner_uid == 0 || remove.team_type == 0 {
                 return Err(CardCommandError::InvalidCommand);
             }
-            let owners = manager.remove_ai_owner_cards(remove.owner_uid);
+            let owners = manager.remove_owner_cards(remove.owner_uid, remove.team_type);
             if owners.is_some() {
                 owner_removal = Some(CardOwnerRemoval {
                     owner_uid: remove.owner_uid,

@@ -1162,8 +1162,9 @@ buff_act_definitions! {
         runtime: |context| Some(super::special_count_continue_channel::rule_ops(context.managers, context.subscriber)),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1003, "SpecialCountContinueChannelBuff"), &[EffectType::None as i32]));
     (1002, "SpecialCountCastChannel") => SpecialCountCastChannel,
-        runtime: |context| super::special_count_cast_channel::rule_ops(context.subscriber, context.event?, context.catalog),
-        supports: |args| matches!(args, [skill_id, ..] if *skill_id > 0);
+        scoped_runtime: |context| super::special_count_cast_channel::scoped_rule_ops(context.subscriber, context.event?, context.catalog),
+        supports: |args| matches!(args, [skill_id, ..] if *skill_id > 0),
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1002, "SpecialCountCastChannel"), &[]));
     (1004, "AddAttrBySpecialCount") => AddAttrBySpecialCount;
     (1031, "ConsumeBuffAddBuffContinueChannel") => ConsumeBuffAddBuffContinueChannel,
         runtime: |context| super::consume_buff_add_buff_continue_channel::rule_ops(context.managers, context.subscriber, context.event?),

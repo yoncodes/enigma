@@ -48,6 +48,7 @@ pub fn run_setup_stage(
         std::iter::empty(),
         |_| Vec::new(),
         None,
+        false,
         SetupFrameContainer::Standalone,
     )
 }
@@ -74,6 +75,33 @@ pub fn run_setup_stage_for_owners(
         std::iter::empty(),
         |_| Vec::new(),
         Some(owner_uids),
+        false,
+        SetupFrameContainer::Standalone,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_opening_round_start_conditions(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    priority: i32,
+    player_owner_uids: &[i64],
+) -> Result<DrainResult, DrainError> {
+    run_setup_stage_filtered(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        SetupStage::RoundStartCondition,
+        priority,
+        std::iter::empty(),
+        |_| Vec::new(),
+        Some(player_owner_uids),
+        true,
         SetupFrameContainer::Standalone,
     )
 }
@@ -90,6 +118,7 @@ pub(super) fn run_setup_stage_filtered(
     prelude: impl IntoIterator<Item = (SetupSide, RuleOp)>,
     postlude: impl FnOnce(&BattleManagers) -> Vec<(SetupSide, RuleOp)>,
     owner_uids: Option<&[i64]>,
+    include_both_sides_opening: bool,
     frame_container: SetupFrameContainer,
 ) -> Result<DrainResult, DrainError> {
     let context = context_for_setup_stage(context, stage);
@@ -133,6 +162,15 @@ pub(super) fn run_setup_stage_filtered(
             .into_iter()
             .filter(|(subscriber, _)| {
                 owner_uids.is_none_or(|uids| uids.contains(&subscriber.owner_uid))
+                    || (include_both_sides_opening
+                        && crate::engine::skill::condition::registry::opening_owner_eligibility(
+                            subscriber.key.opcode,
+                            subscriber.key.type_name,
+                        )
+                        .is_some_and(|eligibility| {
+                            eligibility
+                                == crate::engine::skill::condition::registry::OpeningOwnerEligibility::BothSides
+                        }))
             });
     let subscribers = subscribers.collect::<Vec<_>>();
     let mut frames = std::mem::take(&mut result.frames);

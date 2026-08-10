@@ -510,6 +510,25 @@ fn removing_an_owner_composes_the_new_ai_queue_neighbors() {
 }
 
 #[test]
+fn removing_a_player_owner_clears_player_cards_without_touching_ai() {
+    let mut manager = CardManager::with_draw_pile(
+        vec![card(10, 100), card(11, 200)],
+        vec![card(10, 300), card(12, 400)],
+    );
+    manager.set_team_cards(vec![card(10, 500), card(13, 600)]);
+    manager.set_ai_queue(vec![card(-1, 700)]);
+    manager.add_temp_card_for(10, 800, 0, 1);
+
+    assert_eq!(manager.remove_owner_cards(10, 1), Some(Vec::new()));
+    assert!(manager.hand().iter().all(|card| card.uid != Some(10)));
+    assert!(manager.draw_pile().iter().all(|card| card.uid != Some(10)));
+    assert!(manager.generated().iter().all(|card| card.uid != Some(10)));
+    assert!(manager.team_cards().iter().all(|card| card.uid != Some(10)));
+    assert_eq!(manager.ai_queue(), &[card(-1, 700)]);
+    assert_eq!(manager.remove_owner_cards(10, 1), None);
+}
+
+#[test]
 fn reset_preserves_the_attached_catalog() {
     crate::test_support::init_config();
     let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());

@@ -145,7 +145,7 @@ fn owner_incantation_rank_rejects_an_ally_action() {
 }
 
 #[test]
-fn synthetic_emitter_is_not_an_active_incantation_user() {
+fn completed_active_use_skill_requires_an_active_execution_mode_and_real_source() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -159,14 +159,12 @@ fn synthetic_emitter_is_not_an_active_incantation_user() {
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
-    let matches = |kind, active_skill_source_uid, extra_skill_kind| {
+    let matches = |condition: &ParsedCondition,
+                   active_skill_source_uid,
+                   extra_skill_kind,
+                   active_skill_mode| {
         condition_matches(
-            &ParsedCondition {
-                opcode: 502212,
-                type_name: String::new(),
-                kind,
-                raw_args: Vec::new(),
-            },
+            condition,
             10,
             &[10],
             None,
@@ -174,33 +172,82 @@ fn synthetic_emitter_is_not_an_active_incantation_user() {
             TargetContext {
                 active_skill_source_uid,
                 active_skill_is_attack: true,
+                active_skill_mode,
                 extra_skill_kind,
                 direct_skill_body: true,
                 ..Default::default()
             },
         )
     };
+    let completed = exact_condition(502212, "ActiveUseSkill", &["0"]);
 
     assert!(matches(
-        ParsedConditionKind::ActiveUseSkill { slot: 0 },
+        &completed,
         10,
-        0
+        0,
+        crate::engine::skill::action::SkillExecutionMode::Active,
     ));
-    assert!(!matches(
-        ParsedConditionKind::ActiveUseSkill { slot: 0 },
+    assert!(matches(
+        &completed,
         10,
-        crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp.id()
+        0,
+        crate::engine::skill::action::SkillExecutionMode::DirectBig,
     ));
-    assert!(matches(ParsedConditionKind::UseHurtSkill, 10, 0));
-    assert!(!matches(
-        ParsedConditionKind::ActiveUseSkill { slot: 0 },
-        crate::engine::manager::emitter::UID,
-        0
+    assert!(matches(
+        &completed,
+        10,
+        0,
+        crate::engine::skill::action::SkillExecutionMode::Device,
     ));
     assert!(!matches(
-        ParsedConditionKind::UseHurtSkill,
+        &completed,
+        10,
+        0,
+        crate::engine::skill::action::SkillExecutionMode::DeviceCard,
+    ));
+    assert!(!matches(
+        &completed,
+        10,
+        0,
+        crate::engine::skill::action::SkillExecutionMode::Nested,
+    ));
+    assert!(!matches(
+        &completed,
+        10,
+        crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp.id(),
+        crate::engine::skill::action::SkillExecutionMode::Active,
+    ));
+    for opcode in [502203, 502208, 502210] {
+        assert!(matches(
+            &exact_condition(opcode, "ActiveUseSkill", &["0"]),
+            10,
+            0,
+            crate::engine::skill::action::SkillExecutionMode::DeviceCard,
+        ));
+        assert!(matches(
+            &exact_condition(opcode, "ActiveUseSkill", &["0"]),
+            10,
+            0,
+            crate::engine::skill::action::SkillExecutionMode::Device,
+        ));
+    }
+    assert!(matches(
+        &exact_condition(501212, "UseHurtSkill", &[]),
+        10,
+        0,
+        crate::engine::skill::action::SkillExecutionMode::Device,
+    ));
+    assert!(!matches(
+        &completed,
         crate::engine::manager::emitter::UID,
-        0
+        0,
+        crate::engine::skill::action::SkillExecutionMode::Active,
+    ));
+    assert!(!matches(
+        &exact_condition(501212, "UseHurtSkill", &[]),
+        crate::engine::manager::emitter::UID,
+        0,
+        crate::engine::skill::action::SkillExecutionMode::Active,
     ));
 }
 

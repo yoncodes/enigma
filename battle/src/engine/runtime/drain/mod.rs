@@ -150,6 +150,46 @@ struct QueuedOp {
     frame_owner: Option<FrameOwner>,
 }
 
+fn queued_defeated_owner_card_cleanup(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    death: crate::engine::manager::hp::DeathTransition,
+    parent_path: &[usize],
+) -> Option<QueuedOp> {
+    let team_type = pool
+        .team_type(death.target_uid)
+        .or_else(|| managers.buff.team_type(death.target_uid))?;
+    if team_type != 1 {
+        return None;
+    }
+    Some(QueuedOp {
+        op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Card(
+            crate::engine::manager::card::CardCommand::remove_owner(
+                crate::engine::manager::card::CardRemoveOwner {
+                    origin: crate::engine::skill::rule::CommandOrigin {
+                        domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                        key: crate::engine::skill::rule::DefinitionKey::new(0, "EntityCardCleanup"),
+                    },
+                    owner_uid: death.target_uid,
+                    team_type,
+                },
+            ),
+        )),
+        trigger: SkillOpTrigger::Event(BattleEvent::EntityDied(
+            crate::engine::event::payload::EntityDiedEvent {
+                source_uid: death.source_uid,
+                target_uid: death.target_uid,
+            },
+        )),
+        skill_execution: None,
+        frame_path: None,
+        parent_path: Some(parent_path.to_vec()),
+        frame_group: None,
+        independent_parent_group: None,
+        frame_owner: Some(FrameOwner::EventRule),
+    })
+}
+
 pub(super) fn attack_has_no_target(
     invocation: &crate::engine::skill::action::SkillInvocation,
     catalog: &SkillEffectCatalog,
@@ -458,6 +498,7 @@ fn drain_queue_with_deferred(
                 if !skill_from_buff_act && let Some(group) = &frame_group {
                     *group.borrow_mut() = Some(frame_path.clone());
                 }
+                let mut defeated_owner_card_cleanups = Vec::new();
                 if matches!(trigger, SkillOpTrigger::Active)
                     && invocation.phase
                         == Some(crate::engine::skill::action::SkillPhase::AfterDamage)
@@ -472,6 +513,7 @@ fn drain_queue_with_deferred(
                             &frame_path,
                             crate::engine::runtime::change::BattleChange::Death(death),
                         );
+                        defeated_owner_card_cleanups.push(death);
                     }
                 }
                 let mut execution = skill_execution.unwrap_or_else(|| SkillExecution::new(context));
@@ -512,7 +554,12 @@ fn drain_queue_with_deferred(
                     );
                 }
                 set_skill_target(&mut result.frames, &frame_path, emission.target_uid);
-                let mut outputs = Vec::new();
+                let mut outputs = defeated_owner_card_cleanups
+                    .into_iter()
+                    .filter_map(|death| {
+                        queued_defeated_owner_card_cleanup(pool, managers, death, &frame_path)
+                    })
+                    .collect::<Vec<_>>();
                 for emission in emission.ops {
                     let skill::SkillEmissionOp {
                         op,
@@ -1134,6 +1181,7 @@ fn drain_queue_with_deferred(
                     .into_iter()
                     .filter(|death| managers.hp.current(death.target_uid) == 0)
                     .collect::<Vec<_>>();
+                let mut cleanup_deaths = Vec::new();
                 if let Some(action_scope) = action_scope.as_ref() {
                     state.record_deaths(action_scope.clone(), settled_deaths.iter().copied());
                 } else {
@@ -1144,21 +1192,23 @@ fn drain_queue_with_deferred(
                             crate::engine::runtime::change::BattleChange::Death(*death),
                         );
                     }
+                    cleanup_deaths.extend(settled_deaths.iter().copied());
                 }
-                if releases_pending_hits
-                    && let Some(action_scope) = action_scope.as_ref()
-                    && let Some(deaths) = state.take_deaths(action_scope)
-                {
-                    for death in deaths
+                if releases_pending_hits && let Some(action_scope) = action_scope.as_ref() {
+                    let deaths = state
+                        .take_deaths(action_scope)
+                        .unwrap_or_default()
                         .into_iter()
                         .filter(|death| managers.hp.current(death.target_uid) == 0)
-                    {
+                        .collect::<Vec<_>>();
+                    for death in &deaths {
                         push_change(
                             &mut result.frames,
                             action_scope,
-                            crate::engine::runtime::change::BattleChange::Death(death),
+                            crate::engine::runtime::change::BattleChange::Death(*death),
                         );
                     }
+                    cleanup_deaths.extend(deaths);
                 }
                 if !settled_deaths.is_empty()
                     && matches!(trigger, SkillOpTrigger::Active)
@@ -1171,6 +1221,18 @@ fn drain_queue_with_deferred(
                 {
                     execution.record_kills(settled_deaths.len() as i32);
                 }
+                let cleanup_parent_path = action_scope.as_deref().unwrap_or(&frame_path);
+                after_publish.splice(
+                    0..0,
+                    cleanup_deaths.into_iter().filter_map(|death| {
+                        queued_defeated_owner_card_cleanup(
+                            pool,
+                            managers,
+                            death,
+                            cleanup_parent_path,
+                        )
+                    }),
+                );
                 let after_action = if completes_action {
                     state.take_after_action(&frame_path)
                 } else {

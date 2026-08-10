@@ -21,6 +21,12 @@ fn overlapping_enemy_codes_keep_their_exact_rules() {
 }
 
 #[test]
+fn target_309_is_the_selected_bound_ally() {
+    assert_eq!(target_rule(309), Some(TargetRule::BoundAlly));
+    assert_eq!(targets_enemy(309), Some(false));
+}
+
+#[test]
 fn target_203_selects_the_event_source() {
     init_config();
     let fight = Fight {

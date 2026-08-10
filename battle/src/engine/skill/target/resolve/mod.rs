@@ -18,6 +18,7 @@ enum TargetRule {
     BossAllies,
     MainAllies,
     OtherAllies,
+    BoundAlly,
     RandomAllyByRng,
     RandomOtherAllyByRng,
     LowestHpPercentageAlly,
@@ -29,7 +30,6 @@ enum TargetRule {
     AdjacentAllies,
     AdjacentAlly(i32),
     RelativeAllies { before: bool, include_source: bool },
-    OddPositionAllies,
     AlliesWithBattleTag,
     AlliesWithMonsterLabel(i32),
     Runtime,
@@ -193,6 +193,10 @@ impl TargetResolver {
             TargetRule::BossAllies => pool.boss_allies(source_uid),
             TargetRule::MainAllies => uids(pool.main_allies(source_uid)),
             TargetRule::OtherAllies => other_allies(pool, source_uid, context),
+            TargetRule::BoundAlly => managers
+                .and_then(|managers| managers.contract.bound_uid(source_uid))
+                .into_iter()
+                .collect(),
             TargetRule::RandomAllyByRng => random_ally_by_rng(pool.allies(source_uid), determinism),
             TargetRule::RandomOtherAllyByRng => random_ally_by_rng(
                 &pool
@@ -221,12 +225,6 @@ impl TargetResolver {
             } => {
                 allies_before_or_after(pool.allies(source_uid), source_uid, before, include_source)
             }
-            TargetRule::OddPositionAllies => pool
-                .allies(source_uid)
-                .iter()
-                .filter(|entity| matches!(entity.position, 1 | 3))
-                .map(|entity| entity.uid)
-                .collect(),
             TargetRule::AlliesWithBattleTag => request
                 .raw
                 .first()
@@ -494,6 +492,7 @@ pub fn targets_enemy(code: i32) -> Option<bool> {
         | TargetRule::BossAllies
         | TargetRule::MainAllies
         | TargetRule::OtherAllies
+        | TargetRule::BoundAlly
         | TargetRule::RandomAllyByRng
         | TargetRule::RandomOtherAllyByRng
         | TargetRule::LowestHpPercentageAlly
@@ -505,7 +504,6 @@ pub fn targets_enemy(code: i32) -> Option<bool> {
         | TargetRule::AdjacentAllies
         | TargetRule::AdjacentAlly(_)
         | TargetRule::RelativeAllies { .. }
-        | TargetRule::OddPositionAllies
         | TargetRule::AlliesWithBattleTag
         | TargetRule::AlliesWithMonsterLabel(_)
         | TargetRule::AlliesWithStatus
@@ -548,6 +546,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         1005 => TargetRule::BossAllies,
         101 => TargetRule::MainAllies,
         102 => TargetRule::OtherAllies,
+        309 => TargetRule::BoundAlly,
         106 => TargetRule::RandomAllyByRng,
         131 => TargetRule::RandomOtherAllyByRng,
         107 => TargetRule::LowestHpPercentageAlly,
@@ -577,7 +576,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
             include_source: false,
         },
         124 => TargetRule::AllyPosition(1),
-        127 => TargetRule::OddPositionAllies,
+        127 => TargetRule::AllyPosition(4),
         132 => TargetRule::AlliesWithBattleTag,
         1007 => TargetRule::AlliesWithMonsterLabel(7),
         1008 => TargetRule::AlliesWithMonsterLabel(8),

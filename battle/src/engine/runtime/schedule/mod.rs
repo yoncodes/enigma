@@ -86,8 +86,6 @@ fn opening_setup(version: i32) -> Vec<(SetupStage, i32)> {
     setup
 }
 
-const ROUND_START_INDEPENDENT_SETUP: &[(SetupStage, i32)] = &[(SetupStage::EnterBattleStatic, 0)];
-
 const ROUND_START_SETTLEMENT_SETUP: &[(SetupStage, i32)] = &[(SetupStage::RoundStart, 3)];
 
 const ROUND_START_THRESHOLD_SETUP: &[(SetupStage, i32)] = &[(SetupStage::RoundStart, 4)];

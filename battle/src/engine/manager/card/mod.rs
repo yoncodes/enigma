@@ -21,7 +21,7 @@ pub use command::{
     CardEnergyAllocation, CardEnergyChange, CardHandLimitChange, CardInvalidatePlayed,
     CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPlay, CardQueueUse, CardRankChange,
     CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne,
-    CardRefreshAiQueue, CardRemoveAiOwner, CardReplaceOwnerSkills, CardSetAiQueue,
+    CardRefreshAiQueue, CardRemoveAiOwner, CardRemoveOwner, CardReplaceOwnerSkills, CardSetAiQueue,
     CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUseUniversal, HandCardRankUp,
     QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard, TemporaryCardKind,
 };
@@ -48,7 +48,7 @@ pub struct CardManager {
     deck_num: i32,
     deck_capacity: i32,
     ai_queue: Vec<CardInfo>,
-    cleaned_ai_owners: HashSet<i64>,
+    cleaned_owners: HashSet<i64>,
     played: Vec<PlayedCard>,
     refilled: Vec<CardInfo>,
     rank_up: HashMap<(i64, i32), i32>,
@@ -99,7 +99,7 @@ impl CardManager {
             deck_num: 0,
             deck_capacity: 0,
             ai_queue: Vec::new(),
-            cleaned_ai_owners: HashSet::new(),
+            cleaned_owners: HashSet::new(),
             played: Vec::new(),
             refilled: Vec::new(),
             rank_up: HashMap::new(),
@@ -119,7 +119,7 @@ impl CardManager {
             deck_num: 0,
             deck_capacity: 0,
             ai_queue: Vec::new(),
-            cleaned_ai_owners: HashSet::new(),
+            cleaned_owners: HashSet::new(),
             played: Vec::new(),
             refilled: Vec::new(),
             rank_up: HashMap::new(),
@@ -196,7 +196,7 @@ impl CardManager {
 
     fn set_ai_queue(&mut self, cards: Vec<CardInfo>) {
         for owner_uid in cards.iter().filter_map(|card| card.uid) {
-            self.cleaned_ai_owners.remove(&owner_uid);
+            self.cleaned_owners.remove(&owner_uid);
         }
         self.ai_queue = cards;
     }
@@ -227,7 +227,7 @@ impl CardManager {
     }
 
     fn remove_ai_owner_cards(&mut self, owner_uid: i64) -> Option<Vec<i64>> {
-        if !self.cleaned_ai_owners.insert(owner_uid) {
+        if !self.cleaned_owners.insert(owner_uid) {
             return None;
         }
         self.ai_queue.retain(|card| card.uid != Some(owner_uid));
@@ -239,6 +239,18 @@ impl CardManager {
         let composed_owners = deck.compose_adjacent(&self.rank_up);
         self.ai_queue = deck.into_hand();
         Some(composed_owners)
+    }
+
+    fn remove_owner_cards(&mut self, owner_uid: i64, team_type: i32) -> Option<Vec<i64>> {
+        if team_type != 1 {
+            return self.remove_ai_owner_cards(owner_uid);
+        }
+        if !self.cleaned_owners.insert(owner_uid) {
+            return None;
+        }
+        self.deck.remove_owner_cards(owner_uid);
+        self.team_cards.retain(|card| card.uid != Some(owner_uid));
+        Some(Vec::new())
     }
 
     pub(crate) fn hand_mut(&mut self) -> &mut [CardInfo] {

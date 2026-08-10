@@ -633,6 +633,255 @@ fn conduit_source_target_uses_the_first_living_main_ally_as_its_frame_anchor() {
 }
 
 #[test]
+fn device_power_card_keeps_ally_action_without_granting_loop_chain() {
+    init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(10, 3149),
+                FightEntityInfo {
+                    passive_skill: vec![31430151],
+                    skill_group1: vec![31430121],
+                    ..entity(30, 3143)
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 1001)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![
+                CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(31446011),
+                    temp_card: Some(false),
+                    card_type: Some(0),
+                    hero_id: Some(3149),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(30),
+                    skill_id: Some(31430121),
+                    hero_id: Some(3143),
+                    ..Default::default()
+                },
+            ],
+            draw_pile: Vec::new(),
+            deck_num: 2,
+        }))
+        .unwrap();
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    managers
+        .catalog()
+        .extend_skill_roots(&mut catalog, [31446011], std::iter::empty());
+    let play = || CardPlay {
+        origin: CARD_PLAY_ORIGIN,
+        hand_index: 0,
+        target_uid: None,
+        chosen_skill_id: None,
+        choice: None,
+        recorded_skill: None,
+    };
+
+    let device = run_player_action_queue(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [play()],
+        1,
+        crate::engine::manager::emitter::UID,
+    )
+    .unwrap();
+
+    assert!(device.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        RuleOutcome::SkillLifecycle(SkillLifecycle::ActionCompleted(action))
+            if action.skill_id == 31446011 && action.mode == SkillExecutionMode::DeviceCard
+    )));
+    assert!(device.events.iter().any(|event| matches!(
+        event,
+        BattleEvent::AllyAction(action)
+            if action.skill_id == 31446011 && action.mode == SkillExecutionMode::DeviceCard
+    )));
+    assert_eq!(managers.buff.buff_id_amount(30, 31430151), 0);
+
+    let active = run_player_action_queue(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [play()],
+        1,
+        crate::engine::manager::emitter::UID,
+    )
+    .unwrap();
+
+    assert!(active.events.iter().any(|event| matches!(
+        event,
+        BattleEvent::AllyAction(action)
+            if action.skill_id == 31430121 && action.mode == SkillExecutionMode::Active
+    )));
+    assert_eq!(managers.buff.buff_id_amount(30, 31430151), 1);
+}
+
+#[test]
+fn conduit_attacks_complete_loop_chain_and_grant_moxie() {
+    init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(10, 3149),
+                FightEntityInfo {
+                    ex_point: Some(4),
+                    ex_skill: Some(31430131),
+                    passive_skill: vec![31430141, 31430151],
+                    ..entity(30, 3143)
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 1001)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(1, "AddBuff"),
+    };
+    managers
+        .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+            crate::engine::manager::buff::BuffGrant {
+                origin,
+                source_uid: 30,
+                target_uid: 30,
+                buff_id: 31430151,
+                amount: Some(3),
+                occurrences: 1,
+                child_uid_reservations: 0,
+            },
+        ))
+        .unwrap();
+    managers
+        .conduit
+        .execute(
+            crate::engine::manager::conduit::ConduitCommand::ChangePower(
+                crate::engine::manager::conduit::ConduitPowerChange {
+                    origin,
+                    source_uid: 10,
+                    team: 1,
+                    power_id: 1,
+                    delta: 3,
+                    kind: crate::engine::manager::conduit::ConduitPowerChangeKind::Standard,
+                },
+            ),
+        )
+        .unwrap();
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    let result = run_conduit_phase(
+        managers.catalog(),
+        &fight,
+        &mut managers,
+        &pool,
+        &mut catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[sonettobuf::FightDeviceOper {
+            uid: Some(10),
+            index: Some(1),
+        }],
+    )
+    .unwrap();
+
+    for skill_id in [31490111, 31490121] {
+        assert!(result.events.iter().any(|event| matches!(
+            event,
+            BattleEvent::AllyAction(action)
+                if action.skill_id == skill_id && action.mode == SkillExecutionMode::Device
+        )));
+    }
+    assert_eq!(managers.buff.buff_id_amount(30, 31430151), 1);
+    assert_eq!(managers.ex_point.get(30), 5);
+
+    fn find_step(step: &sonettobuf::FightStep, act_id: i32) -> Option<&sonettobuf::FightStep> {
+        (step.act_id == Some(act_id)).then_some(step).or_else(|| {
+            step.act_effect
+                .iter()
+                .filter_map(|effect| effect.fight_step.as_ref())
+                .find_map(|nested| find_step(nested, act_id))
+        })
+    }
+    fn collect_loop_chain_layers(step: &sonettobuf::FightStep, layers: &mut Vec<i32>) {
+        for effect in &step.act_effect {
+            if let Some(buff) = effect
+                .buff
+                .as_ref()
+                .filter(|buff| buff.buff_id == Some(31430151))
+            {
+                layers.push(buff.layer.unwrap_or_default());
+            }
+            if let Some(nested) = effect.fight_step.as_ref() {
+                collect_loop_chain_layers(nested, layers);
+            }
+        }
+    }
+
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let mut layers = Vec::new();
+    for step in &steps {
+        collect_loop_chain_layers(step, &mut layers);
+    }
+    assert!(layers.windows(2).any(|layers| layers == [3, 4]));
+    assert!(layers.windows(2).any(|layers| layers == [4, 5]));
+    let threshold = steps
+        .iter()
+        .find_map(|step| find_step(step, 31430141))
+        .unwrap();
+    assert!(threshold.act_effect.iter().any(|effect| {
+        effect
+            .fight_step
+            .as_ref()
+            .is_some_and(|step| step.act_id == Some(31430181))
+    }));
+}
+
+#[test]
 fn conduit_attacks_keep_their_lifecycle_without_becoming_active_incantations() {
     init_config();
     let entity = |uid, model_id| FightEntityInfo {
