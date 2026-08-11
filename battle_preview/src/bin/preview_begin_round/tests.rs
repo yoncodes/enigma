@@ -204,10 +204,10 @@ fn captured_version7_conduit_sentinel_keeps_activation_sequence() {
         )
     };
 
-    let captured = signature(&captured);
-    assert_eq!(signature(&generated), captured);
+    let captured_signature = signature(&captured);
+    assert_eq!(signature(&generated), captured_signature);
     assert_eq!(
-        captured.1,
+        captured_signature.1,
         vec![
             (
                 Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32),
@@ -226,6 +226,125 @@ fn captured_version7_conduit_sentinel_keeps_activation_sequence() {
                 Some(63),
             ),
         ]
+    );
+
+    fn child_of<'a>(step: &'a FightStep, parent_id: i32, child_id: i32) -> Option<&'a FightStep> {
+        if step.act_id == Some(parent_id) {
+            return step.act_effect.iter().find_map(|effect| {
+                effect
+                    .fight_step
+                    .as_ref()
+                    .filter(|child| child.act_id == Some(child_id))
+            });
+        }
+        step.act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .find_map(|nested| child_of(nested, parent_id, child_id))
+    }
+
+    fn reaction_frame(round: &FightRound) -> &FightStep {
+        round
+            .fight_step
+            .iter()
+            .find_map(|step| child_of(step, 31490111, 31430151))
+            .expect("Atomic active-ally reaction frame")
+    }
+    assert_eq!(reaction_frame(&captured).to_id, Some(263620439));
+    let generated_reaction = reaction_frame(&generated);
+    assert_eq!(generated_reaction.to_id, Some(263620439));
+    assert!(
+        generated_reaction
+            .act_effect
+            .iter()
+            .all(|effect| effect.target_id == Some(263620439))
+    );
+}
+
+#[cfg(feature = "private-fixtures")]
+#[test]
+fn captured_116385711_keeps_opening_owner_and_source_threshold_semantics() {
+    fn contains_act(step: &FightStep, act_id: i32) -> bool {
+        step.act_id == Some(act_id)
+            || step
+                .act_effect
+                .iter()
+                .filter_map(|effect| effect.fight_step.as_ref())
+                .any(|nested| contains_act(nested, act_id))
+    }
+    fn real_damage_kill_values(round: &FightRound) -> (Vec<String>, Vec<String>) {
+        fn collect(step: &FightStep, markers: &mut Vec<String>, buffs: &mut Vec<String>) {
+            for effect in &step.act_effect {
+                if let Some(info) = effect
+                    .buff_act_info
+                    .as_ref()
+                    .filter(|info| info.act_id == Some(1028))
+                {
+                    markers.push(info.str_param.clone().unwrap_or_default());
+                }
+                if let Some(buff) = effect.buff.as_ref() {
+                    buffs.extend(
+                        buff.act_info
+                            .iter()
+                            .filter(|info| info.act_id == Some(1028))
+                            .map(|info| info.str_param.clone().unwrap_or_default()),
+                    );
+                }
+                if let Some(nested) = effect.fight_step.as_ref() {
+                    collect(nested, markers, buffs);
+                }
+            }
+        }
+
+        let mut markers = Vec::new();
+        let mut buffs = Vec::new();
+        for step in &round.fight_step {
+            collect(step, &mut markers, &mut buffs);
+        }
+        (markers, buffs)
+    }
+
+    let db = init_config().unwrap();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/battles/battle72/BeginRoundReply_1.json");
+    let value = captured_start_reply(&path).unwrap();
+    let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
+    let captured: FightRound = serde_json::from_value(value["round"].clone()).unwrap();
+    let (ex_attributes, sp_attributes) = preview_attributes(&fight, &path).unwrap();
+    let opening_determinism = captured_opening_determinism(db, &fight, &captured);
+    let mut runtime = BattleRuntime::new_with_attributes(
+        battle::catalog::BattleCatalog::new(db),
+        fight,
+        ex_attributes,
+        sp_attributes,
+    );
+    runtime
+        .start_round_with_determinism(opening_determinism)
+        .unwrap();
+    let generated = battle::dungeon::start_reply(&runtime).round.unwrap();
+
+    assert_eq!(generated.fight_step.len(), captured.fight_step.len());
+    assert!(
+        !captured
+            .fight_step
+            .iter()
+            .any(|step| contains_act(step, 1163855066))
+    );
+    assert!(
+        !generated
+            .fight_step
+            .iter()
+            .any(|step| contains_act(step, 1163855066))
+    );
+
+    let expected = vec!["75680".to_owned(); 3];
+    assert_eq!(
+        real_damage_kill_values(&captured),
+        (expected.clone(), expected.clone())
+    );
+    assert_eq!(
+        real_damage_kill_values(&generated),
+        (expected.clone(), expected)
     );
 }
 

@@ -69,6 +69,23 @@ impl EffectPacket {
         )
     }
 
+    pub fn conduit_skill_fight_step(
+        act_id: i32,
+        from_uid: i64,
+        to_uid: i64,
+        card_index: i32,
+        effects: Vec<ActEffect>,
+    ) -> ActEffect {
+        Self::nested_step(
+            fight_step::ActType::Device as i32,
+            from_uid,
+            to_uid,
+            act_id,
+            card_index,
+            effects,
+        )
+    }
+
     pub fn conduit_fight_step(
         source_uid: i64,
         target_uid: i64,

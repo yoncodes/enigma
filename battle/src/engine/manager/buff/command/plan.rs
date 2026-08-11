@@ -966,7 +966,7 @@ impl BuffManager {
         let dot_snapshots =
             Self::plan_grant_snapshots(&definition, route.source_uid, source_attack, args);
         let grant_values = self.plan_grant_values(&definition, route.source_uid);
-        let initial_act_info = definition.initial_grant_value_act_info(&grant_values);
+        let initial_act_info = definition.initial_planned_act_info(source_attack, &grant_values);
         let initial_params = self.plan_grant_params(&definition, route.source_uid);
         let replacement_uids = if action == GrantAction::ReplaceExisting {
             self.buffs

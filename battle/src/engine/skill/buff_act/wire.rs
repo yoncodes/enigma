@@ -42,6 +42,7 @@ pub enum InitialStateRule {
     ButterflyAllowedSkillKinds,
     HeatScale,
     CurrentHpPermille,
+    SourceAttackThreshold,
     FirstArgument,
     SecondArgument,
     StringCounter,

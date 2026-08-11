@@ -816,7 +816,6 @@ fn condition_kind_matches(
         }
         ParsedConditionKind::AllyAttacked => {
             context.hit_target_uid != 0
-                && context.hit_target_uid != source_uid
                 && pool.entity(source_uid).is_some()
                 && pool.entity(context.hit_target_uid).is_some()
                 && pool.source_is_attacker(source_uid)

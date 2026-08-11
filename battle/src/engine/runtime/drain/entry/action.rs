@@ -246,7 +246,7 @@ pub fn run_conduit_action(
             parent_path: Some(root.clone()),
             frame_group: Some(skill_frame.clone()),
             independent_parent_group: None,
-            frame_owner: Some(FrameOwner::Skill {
+            frame_owner: Some(FrameOwner::ConduitSkill {
                 source_uid,
                 skill_id,
                 card_index: group,

@@ -253,6 +253,7 @@ fn one_skill_event_groups_all_of_its_subscribed_rules() {
         None,
         None,
         None,
+        None,
     )
     .unwrap();
 
@@ -300,6 +301,7 @@ fn queued_reaction_rejects_an_unregistered_exact_condition() {
         },
         &BattleEvent::Kind(EventKind::SkillAction),
         Some(&[0]),
+        None,
         None,
         None,
         None,

@@ -137,6 +137,7 @@ pub enum ConduitChange {
         source_uid: i64,
         team: i32,
         skill_id: i32,
+        power_id: i32,
         activation_cost: i32,
         consumed_this_round: i32,
     },
@@ -555,6 +556,7 @@ impl ConduitManager {
                     source_uid,
                     team: activation.team,
                     skill_id,
+                    power_id: activation.power_id,
                     activation_cost: activation.activation_cost,
                     consumed_this_round: *consumed,
                 })
@@ -982,12 +984,21 @@ mod tests {
                 cost_reduction: 0,
             })
             .unwrap();
-        manager
+        let committed = manager
             .execute(ConduitCommand::CommitSkillCost {
                 source_uid: 10,
                 skill_id: 31490121,
             })
             .unwrap();
+        assert!(matches!(
+            committed,
+            ConduitChange::SkillCostCommitted {
+                power_id: 1,
+                activation_cost: 3,
+                consumed_this_round: 3,
+                ..
+            }
+        ));
         manager
             .execute(ConduitCommand::CompleteActivation {
                 source_uid: 10,

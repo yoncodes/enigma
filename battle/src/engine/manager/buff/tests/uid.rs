@@ -72,6 +72,42 @@ fn version_seven_shares_one_buff_uid_lane_across_both_sides() {
 }
 
 #[test]
+fn visible_layer_carrier_grants_keep_shared_uids_consecutive() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: [10_i64, 11, 12, 13]
+                .into_iter()
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    let carrier_uids = [10_i64, 11, 12, 13]
+        .into_iter()
+        .map(|uid| manager.add(&hp, uid, uid, 31430141, 1).unwrap().buff.uid)
+        .collect::<Vec<_>>();
+    let following = manager.add(&hp, 10, 10, 101, 0).unwrap();
+
+    assert_eq!(
+        carrier_uids,
+        [Some(1002), Some(1003), Some(1004), Some(1005)]
+    );
+    assert_eq!(following.buff.uid, Some(1007));
+}
+
+#[test]
 fn repeated_condition_grant_uses_the_final_layer_child_uid() {
     init_config();
     let fight = Fight {
@@ -100,20 +136,29 @@ fn repeated_condition_grant_uses_the_final_layer_child_uid() {
 }
 
 #[test]
-fn hidden_three_stack_buff_reserves_a_child_after_its_first_apply() {
+fn hidden_attr_three_stack_grants_use_consecutive_child_uids() {
     init_config();
     let fight = Fight {
+        version: Some(7),
         attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                team_type: Some(1),
-                buffs: vec![BuffInfo {
-                    uid: Some(58),
-                    buff_id: Some(31070111),
+            entitys: [10_i64, 11, 12, 13]
+                .into_iter()
+                .enumerate()
+                .map(|(index, uid)| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    buffs: if index == 0 {
+                        vec![BuffInfo {
+                            uid: Some(1141),
+                            buff_id: Some(101),
+                            ..Default::default()
+                        }]
+                    } else {
+                        Vec::new()
+                    },
                     ..Default::default()
-                }],
-                ..Default::default()
-            }],
+                })
+                .collect(),
             ..Default::default()
         }),
         ..Default::default()
@@ -121,18 +166,31 @@ fn hidden_three_stack_buff_reserves_a_child_after_its_first_apply() {
     let mut manager = BuffManager::default();
     manager.seed(&fight);
 
-    let stacked = manager.add_replacing_excluded_with_layer_specified(
-        &HpManager::default(),
-        10,
-        10,
-        435011,
-        0,
-        false,
-    );
+    let carrier_uids = [10_i64, 11, 12, 13]
+        .into_iter()
+        .map(|uid| {
+            manager
+                .add_replacing_excluded_with_layer_specified(
+                    &HpManager::default(),
+                    uid,
+                    uid,
+                    435421,
+                    0,
+                    false,
+                )
+                .added
+                .unwrap()
+                .buff
+                .uid
+        })
+        .collect::<Vec<_>>();
     let following = manager.add(&HpManager::default(), 10, 10, 101, 0).unwrap();
 
-    assert_eq!(stacked.added.unwrap().buff.uid, Some(59));
-    assert_eq!(following.buff.uid, Some(62));
+    assert_eq!(
+        carrier_uids,
+        [Some(1142), Some(1143), Some(1144), Some(1145)]
+    );
+    assert_eq!(following.buff.uid, Some(1147));
 }
 
 #[test]

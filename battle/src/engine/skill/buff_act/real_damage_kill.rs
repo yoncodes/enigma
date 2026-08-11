@@ -20,6 +20,14 @@ pub fn supports(args: &[i32]) -> bool {
     matches!(args, [_, raw_attr_id, _] if AttrId::from_raw(*raw_attr_id).is_some())
 }
 
+pub fn initial_source_attack_threshold(source_attack: i32, args: &[i32]) -> Option<i64> {
+    let [_, raw_attr_id, attr_rate_permille] = args else {
+        return None;
+    };
+    (AttrId::from_raw(*raw_attr_id) == Some(AttrId::Attack))
+        .then_some(scaled_source_threshold(source_attack, *attr_rate_permille))
+}
+
 pub fn rule_ops(
     managers: &BattleManagers,
     pool: &TargetPool,
@@ -74,10 +82,14 @@ fn kill_amount(
         }
         _ => managers.attribute.get(source.uid, attr_id),
     };
-    let source_threshold = i64::from(source_attr) * i64::from(*attr_rate_permille) / 1000;
+    let source_threshold = scaled_source_threshold(source_attr, *attr_rate_permille);
     let below_hp_threshold = target.max > 0
         && (target.current as i64 * 1000) <= target.max as i64 * *threshold_permille as i64;
     (below_hp_threshold && i64::from(target.current) <= source_threshold).then_some(target.current)
+}
+
+fn scaled_source_threshold(source_attr: i32, attr_rate_permille: i32) -> i64 {
+    i64::from(source_attr) * i64::from(attr_rate_permille) / 1000
 }
 
 fn hurt(subscriber: &BuffActSubscriber) -> HurtInfoData {
@@ -205,7 +217,6 @@ mod tests {
             }),
             ..Default::default()
         };
-        let managers = BattleManagers::seeded(&fight);
         let subscriber = BuffActSubscriber {
             owner_uid: -1,
             source_uid: 10,
@@ -222,10 +233,29 @@ mod tests {
             raw: "1028#200#102#40000".to_owned(),
         };
 
+        let managers = BattleManagers::seeded(&fight);
         assert!(
             rule_ops(&managers, &TargetPool::from_fight(&fight), &subscriber)
                 .unwrap()
                 .is_empty()
+        );
+
+        let mut source_limited = fight;
+        source_limited.attacker.as_mut().unwrap().entitys[0]
+            .attr
+            .as_mut()
+            .unwrap()
+            .attack = Some(1);
+        source_limited.defender.as_mut().unwrap().entitys[0].current_hp = Some(150);
+        let managers = BattleManagers::seeded(&source_limited);
+        assert!(
+            rule_ops(
+                &managers,
+                &TargetPool::from_fight(&source_limited),
+                &subscriber,
+            )
+            .unwrap()
+            .is_empty()
         );
     }
 }

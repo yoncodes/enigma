@@ -1106,12 +1106,21 @@ impl BattleManagers {
             .filter(|entity| entity.team_type == Some(2))
             .filter(|entity| entity.uid.is_some_and(|uid| self.hp.current(uid) > 0))
             .filter_map(|entity| {
+                let uid = entity.uid?;
+                let mut attribute = monster_sp_attribute(
+                    self.catalog().monster_resistances(entity.model_id?),
+                    fight_version,
+                );
+                attribute.play_drop_rate = Some(
+                    attribute.play_drop_rate.unwrap_or_default()
+                        + self.buff.attribute_delta(
+                            uid,
+                            crate::engine::entity::attr::AttrId::PlaymodeDmgImmunity,
+                        ),
+                );
                 Some(FightHeroSpAttributeInfo {
-                    uid: entity.uid,
-                    attribute: Some(monster_sp_attribute(
-                        self.catalog().monster_resistances(entity.model_id?),
-                        fight_version,
-                    )),
+                    uid: Some(uid),
+                    attribute: Some(attribute),
                 })
             })
             .collect()

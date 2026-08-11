@@ -17,30 +17,35 @@ pub fn run_player_actions_resolved(
     team: i32,
     emitter_uid: i64,
 ) -> Result<DrainResult, DrainError> {
-    let mut result = drain::run_event(
+    drain::run_event(
         managers,
         pool,
         catalog,
         determinism,
         context,
         BattleEvent::PlayerActionsResolved { team, emitter_uid },
-    )?;
-    append(
-        &mut result,
-        drain::run_command_group(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            [RuleOp::Command(BattleCommand::Card(
-                CardCommand::ClearEnergy {
-                    origin: CARD_ENERGY_CLEAR_ORIGIN,
-                },
-            ))],
-        )?,
-    );
-    Ok(result)
+    )
+}
+
+pub fn run_card_energy_clear(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+) -> Result<DrainResult, DrainError> {
+    drain::run_command_group(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        [RuleOp::Command(BattleCommand::Card(
+            CardCommand::ClearEnergy {
+                origin: CARD_ENERGY_CLEAR_ORIGIN,
+            },
+        ))],
+    )
 }
 
 pub fn run_impromptu_resolved(

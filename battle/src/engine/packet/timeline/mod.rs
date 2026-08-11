@@ -107,6 +107,20 @@ fn project_frame(
                 effects,
             ),
         ))),
+        FrameOwner::ConduitSkill {
+            source_uid,
+            skill_id,
+            card_index,
+            target_uid,
+        } => Ok(Some(normalize_framed_step(
+            EffectPacket::conduit_skill_fight_step(
+                *skill_id,
+                *source_uid,
+                target_uid.unwrap_or_default(),
+                *card_index,
+                effects,
+            ),
+        ))),
         FrameOwner::ConduitAction {
             source_uid,
             group,
@@ -579,8 +593,15 @@ fn project_change(
             area,
         )) => vec![EffectPacket::conduit_initialized(area)],
         BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::GroupSelected {
-            ..
-        }) => Vec::new(),
+            source_uid,
+            team,
+            group,
+        }) => vec![EffectPacket::conduit_group_selected(
+            *source_uid,
+            *team,
+            *group,
+            0,
+        )],
         BattleChange::Conduit(
             crate::engine::manager::conduit::ConduitChange::SkillGroupChanged {
                 origin,
@@ -597,9 +618,12 @@ fn project_change(
         BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::SkillBegan {
             team,
             power_id,
+            activation_cost,
             spent,
             ..
-        }) if *spent > 0 => vec![EffectPacket::conduit_skill_began(*team, *power_id, *spent)],
+        }) if *power_id != 999 && (*spent > 0 || *activation_cost == 0) => {
+            vec![EffectPacket::conduit_skill_began(*team, *power_id, *spent)]
+        }
         BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::SkillBegan {
             ..
         }) => Vec::new(),
@@ -607,11 +631,11 @@ fn project_change(
             crate::engine::manager::conduit::ConduitChange::SkillCostCommitted {
                 source_uid,
                 team,
-                activation_cost,
+                power_id,
                 consumed_this_round,
                 ..
             },
-        ) if *activation_cost > 0 => vec![EffectPacket::conduit_skill_cost_committed(
+        ) if *power_id != 999 => vec![EffectPacket::conduit_skill_cost_committed(
             *source_uid,
             *team,
             *consumed_this_round,

@@ -407,6 +407,7 @@ fn cards_without_a_living_current_enemy_resolve_support_effects_or_only_grant_mo
                 chosen_skill_id: None,
                 recorded_skill: None,
             }],
+            Vec::new(),
             1,
             0,
         )
@@ -534,6 +535,7 @@ fn terminal_player_action_stops_the_remaining_action_queue() {
                 recorded_skill: None,
             },
         ],
+        Vec::new(),
         1,
         0,
     )
@@ -628,6 +630,7 @@ fn repeated_play_index_tracks_the_mutating_hand() {
                 recorded_skill: None,
             },
         ],
+        Vec::new(),
         1,
         0,
     )

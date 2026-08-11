@@ -72,6 +72,7 @@ pub enum ReactionFrameTarget {
     #[default]
     Counterparty,
     Owner,
+    CausingFrame,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -274,6 +275,11 @@ pub const fn uses_hit_targets(mut metadata: ConditionMetadata) -> ConditionMetad
 
 pub const fn reaction_targets_owner(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_frame_target = ReactionFrameTarget::Owner;
+    metadata
+}
+
+pub const fn reaction_targets_causing_frame(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_frame_target = ReactionFrameTarget::CausingFrame;
     metadata
 }
 
@@ -589,7 +595,7 @@ condition_definitions! {
     ] "TriggerTypeBullet" => trigger::parse_buff_feature, event_trigger(EventKind::BuffFeatureTriggered, None);
     [46301, 46303, 46304, 46307] "NoActRound" => trigger::parse_no_action_round, event_trigger(EventKind::NoActionRound, None);
     [22202, 22204, 22209, 22211] "BeAttacked" => trigger::parse_target_attacked, event_trigger(EventKind::TargetAttacked, None);
-    [22213] "BeAttacked" => trigger::parse_ally_attacked, ally_of_attacked_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)));
+    [22213] "BeAttacked" => trigger::parse_ally_attacked, before_publish(ally_of_attacked_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives))));
     [695213] "ShareDamage" => trigger::parse_share_damage, event_trigger(EventKind::TargetAttacked, None);
     [1001203] "Assassinate" => trigger::parse_assassinate, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [1001204] "Assassinate" => trigger::parse_assassinate, event_trigger(EventKind::SkillAction, None);
@@ -605,7 +611,7 @@ condition_definitions! {
     [564203] "BurnOverflow" => buff::burn_overflow, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [25212] "UseExSkill" => trigger::parse_target_use_ex_skill, event_trigger(EventKind::AllyAction, None);
     [720212] "TeammateUseExSkill" => trigger::parse_teammate_use_ex_skill, event_trigger(EventKind::AllyAction, None);
-    [502212] "ActiveUseSkill" => active_skill::active_ally_use, normal_buff_grant(event_trigger(EventKind::AllyAction, None));
+    [502212] "ActiveUseSkill" => active_skill::active_ally_use, reaction_targets_causing_frame(normal_buff_grant(event_trigger(EventKind::AllyAction, None)));
     [620212] "CurrSkillLevel" => active_skill::rank, event_trigger(EventKind::AllyAction, None);
     [502203] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [502208] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));

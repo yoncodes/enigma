@@ -21,6 +21,7 @@ pub fn run_event(
         None,
         None,
         None,
+        None,
         context.current_round > 0,
         None,
     )?
@@ -68,6 +69,7 @@ pub fn run_group_event(
         determinism,
         &event,
         Some(&scope),
+        None,
         None,
         None,
         None,
@@ -129,6 +131,7 @@ pub fn run_grouped_owner_event(
                 determinism,
                 &event,
                 Some(&scope),
+                None,
                 None,
                 None,
                 None,

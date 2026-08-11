@@ -1144,7 +1144,7 @@ buff_act_definitions! {
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1027, "AddBuffByChargingTimes"), &[EffectType::None as i32]));
     (1028, "RealDamageKill") => RealDamageKill, event: super::real_damage_kill::EVENT,
         runtime: |context| super::real_damage_kill::rule_ops(context.managers, context.pool, context.subscriber),
-        supports: super::real_damage_kill::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1028, "RealDamageKill"), &[]).with_initial_state(super::wire::InitialStateRule::CurrentHpPermille));
+        supports: super::real_damage_kill::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1028, "RealDamageKill"), &[]).with_initial_state(super::wire::InitialStateRule::SourceAttackThreshold));
     (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,
         effect_time_subscription: false,
         supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,

@@ -672,6 +672,10 @@ fn trigger_families_reject_unconfigured_ids_and_wrong_types() {
         Some(SkillActionObserver::AllyOfAttackedTarget)
     );
     assert_eq!(
+        find_key(22213, "BeAttacked").map(|definition| definition.publication),
+        Some(PublicationPhase::BeforePublish)
+    );
+    assert_eq!(
         find_key(1001212, "Assassinate")
             .map(|definition| { (definition.role, definition.skill_action_observer) }),
         Some((
@@ -1232,6 +1236,24 @@ fn child_buff_allocation_is_owned_by_the_exact_condition_route() {
         find_key(662208, "ActiveUseSkillId").map(|definition| definition.behavior_target_source),
         Some(BehaviorTargetSource::ActiveSkillTargets)
     );
+}
+
+#[test]
+fn active_ally_reactions_inherit_the_causing_frame_target() {
+    let definition = find_key(502212, "ActiveUseSkill").unwrap();
+
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        }
+    );
+    assert_eq!(
+        definition.reaction_frame_target,
+        ReactionFrameTarget::CausingFrame
+    );
+    assert_eq!(definition.consequence, ConsequencePolicy::NormalBuffGrant);
 }
 
 #[test]

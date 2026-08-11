@@ -29,6 +29,19 @@ fn terminal_attacker_settlement_does_not_enter_defender_card_cleanup() {
         }),
         ..Default::default()
     });
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Setup(
+            crate::engine::manager::card::CardSetup {
+                hand: vec![sonettobuf::CardInfo {
+                    energy: Some(2),
+                    ..Default::default()
+                }],
+                draw_pile: Vec::new(),
+                deck_num: 1,
+            },
+        ))
+        .unwrap();
     runtime.managers.hp.lose(-1, 100, 10);
 
     let round = runtime
@@ -37,6 +50,20 @@ fn terminal_attacker_settlement_does_not_enter_defender_card_cleanup() {
 
     assert_eq!(round.is_finish, Some(true));
     assert_eq!(round.cur_round, Some(2));
+    assert_eq!(runtime.managers.card.hand()[0].energy, Some(0));
+    assert_eq!(
+        round
+            .fight_step
+            .iter()
+            .flat_map(|step| step.act_effect.iter())
+            .filter(|effect| {
+                effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Allocatecardenergy as i32)
+                    && effect.effect_num1 == Some(0)
+            })
+            .count(),
+        1
+    );
     assert!(round.fight_step.iter().all(|step| {
         step.act_effect.iter().all(|effect| {
             effect.effect_type

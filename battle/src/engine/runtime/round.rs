@@ -132,7 +132,6 @@ impl BattleRuntime {
             }),
         )
         .map_err(|error| format!("{error:?}"))?;
-        let mut fight_steps = project_result(conduit_selection, fight_version)?;
         let player = schedule::run_player_phase(
             &self.fight,
             &mut self.managers,
@@ -141,6 +140,7 @@ impl BattleRuntime {
             &mut self.determinism,
             context,
             commands.iter().cloned(),
+            conduit_selection.frames,
             1,
             crate::engine::manager::emitter::UID,
         )
@@ -172,13 +172,22 @@ impl BattleRuntime {
             )
             .map_err(|error| format!("{error:?}"))?
         };
+        let card_energy_clear = schedule::run_card_energy_clear(
+            &mut self.managers,
+            &pool,
+            catalog,
+            &mut self.determinism,
+            context,
+        )
+        .map_err(|error| format!("{error:?}"))?;
         let hand_size = crate::engine::mechanic::card::CardMechanic.normal_hand_limit(
             crate::engine::manager::card::start::hand_size(&self.fight),
             &self.managers,
             &pool,
         );
-        fight_steps.extend(project_result(player, fight_version)?);
+        let mut fight_steps = project_result(player, fight_version)?;
         fight_steps.extend(project_result(conduit, fight_version)?);
+        fight_steps.extend(project_result(card_energy_clear, fight_version)?);
         let ended_during_attacker_actions = battle_ended(&self.fight, &pool, &self.managers);
         let promotions = if ended_during_attacker_actions {
             Vec::new()

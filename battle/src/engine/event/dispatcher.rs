@@ -290,8 +290,7 @@ fn skill_subscriber_observes_action(
         crate::engine::skill::condition::registry::SkillActionObserver::AllyOfAttackedTarget => {
             action.is_attack
                 && action.attacked_target_uids.iter().any(|target_uid| {
-                    *target_uid != subscriber.owner_uid
-                        && pool.entity(*target_uid).is_some()
+                    pool.entity(*target_uid).is_some()
                         && pool.source_is_attacker(*target_uid)
                             == pool.source_is_attacker(subscriber.owner_uid)
                 })
@@ -680,7 +679,7 @@ mod tests {
         ));
 
         action.attacked_target_uids = vec![10];
-        assert!(!skill_subscriber_observes_action(
+        assert!(skill_subscriber_observes_action(
             &pool,
             &subscriber(10),
             &action

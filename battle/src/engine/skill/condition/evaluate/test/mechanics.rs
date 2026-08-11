@@ -113,7 +113,7 @@ fn blood_pool_value_selects_the_configured_shared_gauge() {
 }
 
 #[test]
-fn ally_attacked_is_distinct_from_carrier_attacked() {
+fn ally_attacked_matches_owner_and_teammate_but_not_opponent() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -163,7 +163,7 @@ fn ally_attacked_is_distinct_from_carrier_attacked() {
     };
 
     assert!(matches(11));
-    assert!(!matches(10));
+    assert!(matches(10));
     assert!(!matches(-1));
 }
 

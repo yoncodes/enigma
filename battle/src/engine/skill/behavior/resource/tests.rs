@@ -695,14 +695,19 @@ fn exact_conduit_group_behavior_changes_the_manager_owned_selection() {
         panic!("expected one Conduit command");
     };
 
+    let change = managers.conduit.execute(*command).unwrap();
     assert!(matches!(
-        managers.conduit.execute(*command).unwrap(),
+        change,
         crate::engine::manager::conduit::ConduitChange::SkillGroupChanged {
+            origin,
             source_uid: 10,
             team: 1,
             group: 3,
             ..
-        }
+        } if origin.key == crate::engine::skill::rule::DefinitionKey::new(
+            60293,
+            "SetDeviceSkillIndex",
+        )
     ));
     assert_eq!(managers.conduit.selected_group(10), Some(3));
 }

@@ -89,7 +89,7 @@ pub fn run_before_ai_round_start(
         .map(|entity| entity.uid)
         .collect::<Vec<_>>();
     owner_uids.extend(pool.assist_boss(crate::engine::fight::rules::DEFENDER_SIDE_UID));
-    let (result, pending_settlement) = run_round_start_before_duration(
+    let (mut result, pending_settlement) = run_round_start_before_duration(
         managers,
         pool,
         catalog,
@@ -101,6 +101,19 @@ pub fn run_before_ai_round_start(
         wave_entry_condition_uids,
     )?;
     debug_assert!(pending_settlement.capacity_groups.is_empty());
+    append(
+        &mut result,
+        drain::run_setup_stage_for_owners(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            SetupStage::RoundStartLate,
+            0,
+            &owner_uids,
+        )?,
+    );
     Ok(result)
 }
 
@@ -550,22 +563,7 @@ pub fn run_start(
             opening_duration_captured = true;
         }
         if version7_opening && stage == SetupStage::RoundStart && priority == 1 {
-            let mut settlement = begin_round_phase(RoundPhase::RoundStartSettlement);
-            let duration_snapshot = opening_duration_snapshot
-                .as_deref()
-                .expect("opening schedule reaches round start before the late setup lane");
-            append_round_phase(
-                &mut settlement,
-                drain::run(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
-                    duration_advance_rule(effect_time::ROUND_START_DURATION, duration_snapshot),
-                )?,
-            );
-            opening_settlement = Some(settlement);
+            opening_settlement = Some(begin_round_phase(RoundPhase::RoundStartSettlement));
         }
         if stage == SetupStage::BuffGate {
             let mut settlement = opening_settlement
@@ -689,13 +687,17 @@ pub fn run_start(
             push_cue(&mut result.frames, RoundCue::EnterFightDeal);
             opening_deck_counts = Some((initial_deck_num, managers.card.deck_num()));
         }
-        let stage_result = if stage == SetupStage::RoundStartCondition {
-            drain::run_opening_round_start_conditions(
+        let stage_result = if matches!(
+            stage,
+            SetupStage::RoundStartCondition | SetupStage::RoundStartLate
+        ) {
+            drain::run_opening_setup_stage_for_owners(
                 managers,
                 pool,
                 catalog,
                 determinism,
                 context,
+                stage,
                 priority,
                 &owner_uids,
             )?
@@ -759,6 +761,25 @@ pub fn run_start(
             );
         }
         if stage == SetupStage::RoundStart && priority == 2 {
+            if version7_opening {
+                let duration_snapshot = opening_duration_snapshot
+                    .as_deref()
+                    .expect("Version7 captures duration before the opening setup lanes");
+                let duration = drain::run(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    duration_advance_rule(effect_time::ROUND_START_DURATION, duration_snapshot),
+                )?;
+                append_opening_round_phase(
+                    opening_settlement
+                        .as_mut()
+                        .expect("Version7 keeps settlement open through duration setup"),
+                    duration,
+                );
+            }
             let (losses, settlement_plan) = run_round_start_loss_mechanics(
                 managers,
                 pool,

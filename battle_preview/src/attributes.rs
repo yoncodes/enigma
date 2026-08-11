@@ -1,6 +1,13 @@
-use std::{collections::HashMap, fs, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::Path,
+};
 
-use battle::engine::entity::stats::{StatInputs, Stats, rank_from_level};
+use battle::engine::entity::{
+    input::{EquipmentBuildInput, HeroBuildInput},
+    stats::{StatInputs, Stats, rank_from_level},
+};
 use sonettobuf::{
     Fight, FightEntityInfo, HeroExAttribute, HeroInfo, HeroInfoListReply, HeroSpAttribute,
     HeroUpdatePush,
@@ -16,19 +23,32 @@ enum HeroMetadata {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+enum MissingAttackerMetadataReason {
+    RosterAttributes,
+    SupplementalEquipment,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct MissingAttackerMetadata {
     uid: i64,
     model_id: i32,
+    reason: MissingAttackerMetadataReason,
 }
 
 pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<PreviewAttributes> {
     let local = battle_hero_metadata(battle_path)?;
     let (attributes, missing) = hydrate_preview_attributes(fight, &local);
     for missing in &missing {
-        eprintln!(
-            "attribute preview missing attacker metadata uid={} hero={}; using battle defaults",
-            missing.uid, missing.model_id,
-        );
+        match &missing.reason {
+            MissingAttackerMetadataReason::RosterAttributes => eprintln!(
+                "attribute preview missing attacker metadata uid={} hero={}; using battle defaults",
+                missing.uid, missing.model_id,
+            ),
+            MissingAttackerMetadataReason::SupplementalEquipment => eprintln!(
+                "attribute preview incomplete supplemental equipment metadata uid={} hero={}; preserved roster attributes",
+                missing.uid, missing.model_id,
+            ),
+        }
     }
     Ok(attributes)
 }
@@ -50,16 +70,28 @@ fn hydrate_preview_attributes(
         };
         match local.get(&uid) {
             Some(HeroMetadata::Roster(hero)) => {
-                if let Some(attributes) = hero.ex_attr {
+                let RosterPreviewAttributes {
+                    ex,
+                    sp,
+                    supplemental_rejected,
+                } = roster_attributes(entity, hero);
+                if let Some(attributes) = ex {
                     ex_attributes.push((uid, attributes));
                 }
-                if let Some(attributes) = hero.sp_attr {
+                if let Some(attributes) = sp {
                     sp_attributes.push((uid, attributes));
                 }
                 if hero.ex_attr.is_none() || hero.sp_attr.is_none() {
                     missing.push(MissingAttackerMetadata {
                         uid,
                         model_id: entity.model_id.unwrap_or_default(),
+                        reason: MissingAttackerMetadataReason::RosterAttributes,
+                    });
+                } else if supplemental_rejected {
+                    missing.push(MissingAttackerMetadata {
+                        uid,
+                        model_id: entity.model_id.unwrap_or_default(),
+                        reason: MissingAttackerMetadataReason::SupplementalEquipment,
                     });
                 } else if battle::engine::diagnostics::enabled(
                     battle::engine::diagnostics::TraceArea::Damage,
@@ -87,10 +119,127 @@ fn hydrate_preview_attributes(
             None => missing.push(MissingAttackerMetadata {
                 uid,
                 model_id: entity.model_id.unwrap_or_default(),
+                reason: MissingAttackerMetadataReason::RosterAttributes,
             }),
         }
     }
     ((ex_attributes, sp_attributes), missing)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct RosterPreviewAttributes {
+    ex: Option<HeroExAttribute>,
+    sp: Option<HeroSpAttribute>,
+    supplemental_rejected: bool,
+}
+
+fn roster_attributes(entity: &FightEntityInfo, hero: &HeroInfo) -> RosterPreviewAttributes {
+    let (break_stats, supplemental_rejected) = match supplemental_equipment_stats(entity, hero) {
+        Ok(stats) => (stats, false),
+        Err(()) => (Stats::default(), true),
+    };
+    let ex = hero.ex_attr.map(|mut attributes| {
+        add_stat(&mut attributes.cri, break_stats.cri);
+        add_stat(&mut attributes.recri, break_stats.recri);
+        add_stat(&mut attributes.cri_dmg, break_stats.cri_dmg);
+        add_stat(&mut attributes.cri_def, break_stats.cri_def);
+        add_stat(&mut attributes.add_dmg, break_stats.add_dmg);
+        add_stat(&mut attributes.drop_dmg, break_stats.drop_dmg);
+        attributes
+    });
+    let sp = hero.sp_attr.map(|mut attributes| {
+        add_stat(&mut attributes.revive, break_stats.revive);
+        add_stat(&mut attributes.heal, break_stats.heal);
+        add_stat(&mut attributes.absorb, break_stats.absorb);
+        add_stat(&mut attributes.defense_ignore, break_stats.defense_ignore);
+        add_stat(&mut attributes.clutch, break_stats.clutch);
+        add_stat(
+            &mut attributes.normal_skill_rate,
+            break_stats.normal_skill_rate,
+        );
+        add_stat(&mut attributes.rebound_dmg, break_stats.rebound_dmg);
+        add_stat(&mut attributes.extra_dmg, break_stats.extra_dmg);
+        add_stat(&mut attributes.reuse_dmg, break_stats.reuse_dmg);
+        attributes
+    });
+    RosterPreviewAttributes {
+        ex,
+        sp,
+        supplemental_rejected,
+    }
+}
+
+fn supplemental_equipment_stats(entity: &FightEntityInfo, hero: &HeroInfo) -> Result<Stats, ()> {
+    if entity.equips.is_empty() {
+        return match (hero.default_equip_uid, entity.equip_uid) {
+            (None | Some(0), None | Some(0)) => Ok(Stats::default()),
+            _ => Err(()),
+        };
+    }
+    if entity.model_id.filter(|model_id| *model_id > 0) != Some(hero.hero_id) {
+        return Err(());
+    }
+    let default_equip_uid = hero.default_equip_uid.filter(|uid| *uid > 0).ok_or(())?;
+    let selected_equip_uid = entity.equip_uid.filter(|uid| *uid > 0).ok_or(())?;
+    if selected_equip_uid != default_equip_uid {
+        return Err(());
+    }
+    let primary = entity.equips.first().ok_or(())?;
+    if primary.equip_uid != Some(selected_equip_uid) {
+        return Err(());
+    }
+    let game = config::configs::get();
+    let mut equip_uids = HashSet::with_capacity(entity.equips.len());
+    for equip in &entity.equips {
+        let uid = equip.equip_uid.filter(|uid| *uid > 0).ok_or(())?;
+        if !equip_uids.insert(uid) {
+            return Err(());
+        }
+    }
+    let primary_equip_id = primary.equip_id.filter(|id| *id > 0).ok_or(())?;
+    let primary_equipment = game.equip.get(primary_equip_id).ok_or(())?;
+    let primary_level = primary.equip_lv.filter(|level| *level > 0).ok_or(())?;
+    game.equip_strengthen_cost(primary_equipment.rare, primary_level)
+        .ok_or(())?;
+
+    if entity.equips.len() > 2 {
+        return Err(());
+    }
+    let linked_equip_id = game.linked_psychube_id(hero.hero_id, primary_equip_id);
+    let equips = entity
+        .equips
+        .get(1)
+        .map(|equip| {
+            let uid = equip.equip_uid.ok_or(())?;
+            let equip_id = equip.equip_id.filter(|id| *id > 0).ok_or(())?;
+            if Some(equip_id) != linked_equip_id {
+                return Err(());
+            }
+            let equipment = game.equip.get(equip_id).ok_or(())?;
+            let level = equip.equip_lv.filter(|level| *level > 0).ok_or(())?;
+            game.equip_strengthen_cost(equipment.rare, level)
+                .ok_or(())?;
+            Ok(EquipmentBuildInput {
+                uid,
+                equip_id,
+                level,
+                break_level: 0,
+                refine_level: equip.refine_lv.unwrap_or_default(),
+            })
+        })
+        .transpose()?
+        .into_iter()
+        .collect::<Vec<_>>();
+    Ok(Stats::build_for_loadout(
+        &HeroBuildInput::default(),
+        &equips,
+    ))
+}
+
+fn add_stat(value: &mut Option<i32>, addition: i32) {
+    if let Some(value) = value {
+        *value += addition;
+    }
 }
 
 fn battle_hero_metadata(path: &Path) -> anyhow::Result<HashMap<i64, HeroMetadata>> {
@@ -197,13 +346,18 @@ mod tests {
                 entitys: vec![FightEntityInfo {
                     uid: Some(uid),
                     model_id: Some(3149),
+                    equip_uid: Some(100),
                     equips: vec![
                         EquipRecord {
+                            equip_uid: Some(100),
                             equip_id: Some(1571),
+                            equip_lv: Some(60),
                             ..Default::default()
                         },
                         EquipRecord {
+                            equip_uid: Some(200),
                             equip_id: Some(1572),
+                            equip_lv: Some(60),
                             ..Default::default()
                         },
                     ],
@@ -233,12 +387,14 @@ mod tests {
                 device_skill_rate: Some(70),
                 ..Default::default()
             }),
+            default_equip_uid: Some(100),
             ..Default::default()
         }
     }
 
     #[test]
-    fn roster_fallback_uses_exact_attributes_without_changing_fight_loadout() {
+    fn roster_fallback_keeps_default_equip_and_adds_supplemental_break_attributes() {
+        crate::init_test_config();
         let directory = test_directory("roster");
         let uid = 42;
         fs::write(
@@ -255,12 +411,297 @@ mod tests {
 
         let (extended, special) = preview_attributes(&fight, &battle_path).unwrap();
 
-        assert_eq!(extended, vec![(uid, hero(uid, 1485).ex_attr.unwrap())]);
+        let mut expected = hero(uid, 1485).ex_attr.unwrap();
+        expected.cri_dmg = Some(1725);
+        assert_eq!(extended, vec![(uid, expected)]);
         assert_eq!(special, vec![(uid, hero(uid, 1485).sp_attr.unwrap())]);
         let entity = &fight.attacker.as_ref().unwrap().entitys[0];
         assert_eq!(entity.equips.len(), 2);
         assert_eq!(entity.passive_skill, vec![437111, 437215]);
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    fn assert_roster_attributes_preserved(fight: &Fight, hero: &HeroInfo) {
+        let entity = &fight.attacker.as_ref().unwrap().entitys[0];
+        let attributes = roster_attributes(entity, hero);
+        assert_eq!((attributes.ex, attributes.sp), (hero.ex_attr, hero.sp_attr));
+        assert!(attributes.supplemental_rejected);
+    }
+
+    #[test]
+    fn roster_fallback_rejects_missing_default_equip_uid() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut roster = hero(uid, 1485);
+        roster.default_equip_uid = None;
+
+        assert_roster_attributes_preserved(&fight(uid), &roster);
+    }
+
+    #[test]
+    fn roster_fallback_rejects_missing_selected_primary_uid() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equip_uid = None;
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_zero_selected_primary_uid() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equip_uid = Some(0);
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_mismatched_selected_primary_uid() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equip_uid = Some(300);
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_missing_or_mismatched_model_id() {
+        crate::init_test_config();
+        let uid = 42;
+
+        for model_id in [None, Some(3028)] {
+            let mut fight = fight(uid);
+            fight.attacker.as_mut().unwrap().entitys[0].model_id = model_id;
+
+            assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+        }
+    }
+
+    #[test]
+    fn roster_fallback_rejects_reordered_primary_equip() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0]
+            .equips
+            .swap(0, 1);
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_missing_fight_equip_uid() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equips[1].equip_uid = None;
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_zero_supplemental_equip_uid() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equips[1].equip_uid = Some(0);
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_zero_default_equip_uid() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut roster = hero(uid, 1485);
+        roster.default_equip_uid = Some(0);
+
+        assert_roster_attributes_preserved(&fight(uid), &roster);
+    }
+
+    #[test]
+    fn empty_fight_loadout_with_absent_or_zero_default_has_no_supplemental_attributes() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
+        entity.equips.clear();
+
+        for (default_equip_uid, selected_equip_uid) in [(None, None), (Some(0), Some(0))] {
+            entity.equip_uid = selected_equip_uid;
+            let mut roster = hero(uid, 1485);
+            roster.default_equip_uid = default_equip_uid;
+            let attributes = roster_attributes(entity, &roster);
+
+            assert_eq!(
+                (attributes.ex, attributes.sp),
+                (roster.ex_attr, roster.sp_attr)
+            );
+            assert!(!attributes.supplemental_rejected);
+        }
+    }
+
+    #[test]
+    fn empty_fight_loadout_rejects_selected_equipment_without_a_record() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
+        entity.equips.clear();
+        let mut roster = hero(uid, 1485);
+        roster.default_equip_uid = None;
+
+        assert_roster_attributes_preserved(&fight, &roster);
+    }
+
+    #[test]
+    fn roster_fallback_accepts_default_only_without_a_linked_companion() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
+        entity.model_id = Some(3028);
+        entity.equips.truncate(1);
+        let mut roster = hero(uid, 1485);
+        roster.hero_id = 3028;
+
+        let attributes = roster_attributes(entity, &roster);
+
+        assert_eq!(config::configs::get().linked_psychube_id(3028, 1571), None);
+        assert_eq!(
+            (attributes.ex, attributes.sp),
+            (roster.ex_attr, roster.sp_attr)
+        );
+        assert!(!attributes.supplemental_rejected);
+    }
+
+    #[test]
+    fn roster_fallback_rejects_invalid_primary_configuration() {
+        crate::init_test_config();
+        let uid = 42;
+
+        for (equip_id, equip_lv) in [
+            (None, Some(60)),
+            (Some(999999), Some(60)),
+            (Some(1571), None),
+            (Some(1571), Some(61)),
+        ] {
+            let mut fight = fight(uid);
+            let primary = &mut fight.attacker.as_mut().unwrap().entitys[0].equips[0];
+            primary.equip_id = equip_id;
+            primary.equip_lv = equip_lv;
+
+            assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+        }
+    }
+
+    #[test]
+    fn roster_fallback_rejects_missing_supplemental_equip_id() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equips[1].equip_id = None;
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_missing_supplemental_level() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equips[1].equip_lv = None;
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_unknown_supplemental_equip_id() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equips[1].equip_id = Some(999999);
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_unlinked_supplemental_equip() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equips[1].equip_id = Some(1501);
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_excess_supplemental_equips() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0]
+            .equips
+            .push(EquipRecord {
+                equip_uid: Some(300),
+                equip_id: Some(1501),
+                equip_lv: Some(60),
+                ..Default::default()
+            });
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_out_of_range_supplemental_level() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equips[1].equip_lv = Some(61);
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn roster_fallback_rejects_duplicate_equip_uid() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equips[1].equip_uid = Some(100);
+
+        assert_roster_attributes_preserved(&fight, &hero(uid, 1485));
+    }
+
+    #[test]
+    fn partial_roster_attributes_add_present_break_fields_only() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
+        let mut roster = hero(uid, 1485);
+        roster.ex_attr = Some(HeroExAttribute {
+            cri_dmg: Some(1485),
+            ..Default::default()
+        });
+        roster.sp_attr = Some(HeroSpAttribute::default());
+
+        let RosterPreviewAttributes {
+            ex,
+            sp,
+            supplemental_rejected,
+        } = roster_attributes(entity, &roster);
+        let ex = ex.unwrap();
+        let sp = sp.unwrap();
+        assert!(!supplemental_rejected);
+        assert_eq!(ex.cri_dmg, Some(1725));
+        assert_eq!(ex.cri, None);
+        assert_eq!(sp.clutch, None);
+        assert_eq!(sp.heal, None);
+        assert_eq!(sp.device_skill_rate, None);
     }
 
     #[test]
@@ -332,7 +773,37 @@ mod tests {
             missing,
             vec![MissingAttackerMetadata {
                 uid,
-                model_id: 3149
+                model_id: 3149,
+                reason: MissingAttackerMetadataReason::RosterAttributes,
+            }]
+        );
+    }
+
+    #[test]
+    fn rejected_supplemental_metadata_is_reported_without_using_battle_defaults() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        fight.attacker.as_mut().unwrap().entitys[0].equips[1].equip_lv = None;
+        let hero = hero(uid, 1485);
+        let mut local = HashMap::new();
+        local.insert(uid, HeroMetadata::Roster(hero.clone()));
+
+        let (attributes, missing) = hydrate_preview_attributes(&fight, &local);
+
+        assert_eq!(
+            attributes,
+            (
+                vec![(uid, hero.ex_attr.unwrap())],
+                vec![(uid, hero.sp_attr.unwrap())]
+            )
+        );
+        assert_eq!(
+            missing,
+            vec![MissingAttackerMetadata {
+                uid,
+                model_id: 3149,
+                reason: MissingAttackerMetadataReason::SupplementalEquipment,
             }]
         );
     }

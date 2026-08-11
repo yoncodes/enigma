@@ -81,12 +81,13 @@ pub fn run_setup_stage_for_owners(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn run_opening_round_start_conditions(
+pub fn run_opening_setup_stage_for_owners(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
+    stage: SetupStage,
     priority: i32,
     player_owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
@@ -96,7 +97,7 @@ pub fn run_opening_round_start_conditions(
         catalog,
         determinism,
         context,
-        SetupStage::RoundStartCondition,
+        stage,
         priority,
         std::iter::empty(),
         |_| Vec::new(),

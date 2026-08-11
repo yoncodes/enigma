@@ -778,6 +778,100 @@ fn round_start_executes_each_team_at_its_own_turn_boundary() {
 }
 
 #[test]
+fn defender_round_start_late_applies_configured_buffs_before_ai_and_filters_owners() {
+    init_config();
+    let entity = |uid, current_hp| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(2),
+        current_hp: Some(current_hp),
+        ex_point: Some(5),
+        passive_skill: vec![1163855066],
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    ex_skill: Some(999),
+                    ..entity(-1, 100)
+                },
+                entity(-2, 50),
+                entity(-3, 0),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 999,
+        slots: Vec::new(),
+    });
+    catalog.insert_damage_rate(999, 1_000);
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut determinism = RoundDeterminism::default();
+
+    run_before_ai_round_start(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        1,
+        &[],
+    )
+    .unwrap();
+
+    for buff_id in [5081, 23501] {
+        assert!(managers.buff.has_buff_id(-1, buff_id));
+        assert!(!managers.buff.has_buff_id(-2, buff_id));
+        assert!(!managers.buff.has_buff_id(-3, buff_id));
+    }
+
+    run_ai_actions(
+        &fight,
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        [AiSkillChoice {
+            source_uid: -1,
+            skill_id: 999,
+            target_uid: 10,
+        }],
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(-1), 0);
+    assert_eq!(managers.hp.current(10), 8_800);
+}
+
+#[test]
 fn round_start_zero_reads_timed_stacks_before_duration_advances() {
     init_config();
     let fight = Fight {

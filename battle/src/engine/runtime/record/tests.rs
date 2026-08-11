@@ -183,3 +183,76 @@ fn event_skills_keep_committed_changes_in_the_active_action_scope() {
 
     assert_eq!(active_skill_scope_path(&frames, &reaction), Some(action));
 }
+
+#[test]
+fn conduit_child_is_the_active_skill_scope_but_the_wrapper_is_not() {
+    let mut frames = Vec::new();
+    let wrapper = push_root(
+        &mut frames,
+        FrameOwner::ConduitAction {
+            source_uid: 10,
+            group: 1,
+            skill_position: 1,
+            target_uid: None,
+        },
+        FrameTrigger::Active,
+    );
+    let child = push_child(
+        &mut frames,
+        &wrapper,
+        FrameOwner::ConduitSkill {
+            source_uid: 10,
+            skill_id: 31490111,
+            card_index: 1,
+            target_uid: None,
+        },
+        FrameTrigger::Active,
+    );
+
+    assert_eq!(active_skill_scope_path(&frames, &wrapper), None);
+    assert_eq!(active_skill_scope_path(&frames, &child), Some(child));
+}
+
+#[test]
+fn conduit_child_target_updates_both_anchors_without_replacing_them() {
+    let mut frames = Vec::new();
+    let wrapper = push_root(
+        &mut frames,
+        FrameOwner::ConduitAction {
+            source_uid: 10,
+            group: 1,
+            skill_position: 1,
+            target_uid: None,
+        },
+        FrameTrigger::Active,
+    );
+    let child = push_child(
+        &mut frames,
+        &wrapper,
+        FrameOwner::ConduitSkill {
+            source_uid: 10,
+            skill_id: 31490111,
+            card_index: 1,
+            target_uid: None,
+        },
+        FrameTrigger::Active,
+    );
+
+    set_skill_target(&mut frames, &child, Some(20));
+    set_skill_target(&mut frames, &child, Some(30));
+
+    assert!(matches!(
+        frames[0].owner,
+        FrameOwner::ConduitAction {
+            target_uid: Some(20),
+            ..
+        }
+    ));
+    assert!(matches!(
+        owner_at_path(&frames, &child),
+        FrameOwner::ConduitSkill {
+            target_uid: Some(20),
+            ..
+        }
+    ));
+}

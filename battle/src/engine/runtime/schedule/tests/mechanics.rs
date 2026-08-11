@@ -610,7 +610,7 @@ fn player_actions_resolved_activates_internal_inspiration_thresholds() {
     )
     .unwrap();
 
-    assert_eq!(activated.outcomes.len(), 3);
+    assert_eq!(activated.outcomes.len(), 2);
     assert_eq!(
         activated
             .events
@@ -620,14 +620,7 @@ fn player_actions_resolved_activates_internal_inspiration_thresholds() {
         vec![EventKind::PlayerActionsResolved]
     );
     let steps = crate::engine::packet::timeline::project(&activated.frames).unwrap();
-    assert!(matches!(
-        steps.as_slice(),
-        [step]
-            if step.act_effect.len() == 1
-                && step.act_effect[0].effect_type
-                    == Some(sonettobuf::effect_type_enum::EffectType::Allocatecardenergy as i32)
-                && step.act_effect[0].effect_num1 == Some(0)
-    ));
+    assert!(steps.is_empty());
     assert!(managers.buff.has_buff_id(99998, 31080152));
     assert!(managers.buff.has_buff_id(99998, 31080153));
     let plan = build_plan(&managers, 1, 99998).unwrap();
@@ -731,12 +724,8 @@ fn idle_impromptu_finalizes_card_and_emitter_energy_once() {
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     assert!(matches!(
         steps.as_slice(),
-        [clear, finalization]
-            if clear.act_effect.len() == 1
-                && clear.act_effect[0].effect_type
-                    == Some(sonettobuf::effect_type_enum::EffectType::Allocatecardenergy as i32)
-                && clear.act_effect[0].effect_num1 == Some(0)
-                && finalization.act_effect.len() == 2
+        [finalization]
+            if finalization.act_effect.len() == 2
                 && finalization.act_effect[0].effect_type
                     == Some(sonettobuf::effect_type_enum::EffectType::Allocatecardenergy as i32)
                 && finalization.act_effect[0].effect_num1 == Some(0)

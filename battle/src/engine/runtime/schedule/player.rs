@@ -189,6 +189,7 @@ pub fn run_player_action_queue(
         team,
         emitter_uid,
         None,
+        Vec::new(),
     )
 }
 
@@ -261,6 +262,7 @@ pub fn run_player_commands(
         team,
         emitter_uid,
         None,
+        Vec::new(),
     )
 }
 
@@ -273,6 +275,7 @@ pub fn run_player_phase(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     commands: impl IntoIterator<Item = RoundCommand>,
+    before_actions: Vec<SemanticFrame>,
     team: i32,
     emitter_uid: i64,
 ) -> Result<DrainResult, DrainError> {
@@ -291,6 +294,7 @@ pub fn run_player_phase(
         team,
         emitter_uid,
         Some(fight),
+        before_actions,
     )?;
     append(
         &mut result,
@@ -398,6 +402,7 @@ fn run_player_card_ops(
     team: i32,
     emitter_uid: i64,
     fight: Option<&sonettobuf::Fight>,
+    before_actions: Vec<SemanticFrame>,
 ) -> Result<DrainResult, DrainError> {
     let mut result = DrainResult::default();
     let mut skills = Vec::new();
@@ -623,6 +628,7 @@ fn run_player_card_ops(
                 pending_rewards,
             )?,
         );
+        result.frames.extend(before_actions);
         return Ok(result);
     }
     if !pending_rewards.is_empty() {
@@ -656,6 +662,7 @@ fn run_player_card_ops(
         })
     }));
     append(&mut result, committed);
+    result.frames.extend(before_actions);
     let queue_preparation = queue_preparation_ops(managers, pool, catalog, context, &skills);
     if !queue_preparation.is_empty() {
         append(

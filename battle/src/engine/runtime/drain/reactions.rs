@@ -98,6 +98,7 @@ pub(super) fn dispatch_event_batch(
 ) -> Result<ReactionBatch, DrainError> {
     let scoped_owner_uids = terminal_owner_scope(pool, managers, owner_uids);
     let owner_uids = scoped_owner_uids.as_deref();
+    let current_skill_target = current_skill.and_then(|(_, _, target_uid)| target_uid);
     let after_publish =
         publication_phase == crate::engine::event::subscription::PublicationPhase::AfterPublish;
     let attack_sources = if include_attack_consumption && after_publish {
@@ -189,6 +190,7 @@ pub(super) fn dispatch_event_batch(
             Some(reuse_path),
             action_path,
             reentry_skill,
+            current_skill_target,
             None,
             owner_uids,
             execute_unscoped_after_action,
@@ -378,6 +380,7 @@ pub(super) fn dispatch_reactions(
     reuse_path: Option<&[usize]>,
     action_path: Option<&[usize]>,
     reentry_skill: Option<(i64, i32, Option<i64>)>,
+    current_skill_target: Option<i64>,
     lane: Option<ReactionLane>,
     owner_uids: Option<&[i64]>,
     execute_unscoped_after_action: bool,
@@ -566,6 +569,7 @@ pub(super) fn dispatch_reactions(
         reuse_path,
         action_path,
         reentry_skill,
+        current_skill_target,
     )?);
     if lane.is_none()
         && let BattleEvent::SkillAction(action) = event
@@ -620,6 +624,7 @@ pub(super) fn dispatch_reactions(
         reuse_path,
         action_path,
         reentry_skill,
+        current_skill_target,
     )?);
     reactions.after_skill.extend(queued_reactions(
         pool,
@@ -629,6 +634,7 @@ pub(super) fn dispatch_reactions(
         reuse_path,
         action_path,
         reentry_skill,
+        current_skill_target,
     )?);
     if lane.is_none() {
         let duration_advances = match event {
@@ -743,7 +749,7 @@ pub(super) fn dispatch_owner_reactions(
         event,
         &scoped_owner_uids,
     )?;
-    queued_reactions(pool, dispatched, event, None, None, None, None)
+    queued_reactions(pool, dispatched, event, None, None, None, None, None)
 }
 
 fn terminal_owner_scope(
@@ -769,6 +775,7 @@ fn terminal_owner_scope(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn queued_reactions(
     pool: &TargetPool,
     dispatched: dispatcher::DispatchBatch,
@@ -777,6 +784,7 @@ pub(super) fn queued_reactions(
     reuse_path: Option<&[usize]>,
     action_path: Option<&[usize]>,
     reentry_skill: Option<(i64, i32, Option<i64>)>,
+    current_skill_target: Option<i64>,
 ) -> Result<Vec<QueuedOp>, DrainError> {
     let mut skill_groups = HashMap::<(i64, i32), Rc<RefCell<Option<FramePath>>>>::new();
     let mut reactions = dispatched
@@ -845,6 +853,7 @@ pub(super) fn queued_reactions(
                             event,
                             subscriber.owner_uid,
                             definition.reaction_frame_target,
+                            current_skill_target,
                         )
                     }),
                 }),
@@ -1037,11 +1046,13 @@ pub(super) fn reaction_skill_target(
     event: &BattleEvent,
     owner_uid: i64,
     target: crate::engine::skill::condition::registry::ReactionFrameTarget,
+    current_skill_target: Option<i64>,
 ) -> Option<i64> {
     use crate::engine::skill::condition::registry::ReactionFrameTarget;
 
     match target {
         ReactionFrameTarget::Counterparty => reaction_counterparty(pool, event, owner_uid),
         ReactionFrameTarget::Owner => Some(owner_uid),
+        ReactionFrameTarget::CausingFrame => current_skill_target.or_else(|| event.target_uid()),
     }
 }

@@ -837,6 +837,12 @@ fn drain_queue_with_deferred(
                         skill_id,
                         target_uid,
                         ..
+                    }
+                    | FrameOwner::ConduitSkill {
+                        source_uid,
+                        skill_id,
+                        target_uid,
+                        ..
                     } => Some((*source_uid, *skill_id, *target_uid)),
                     _ => None,
                 };

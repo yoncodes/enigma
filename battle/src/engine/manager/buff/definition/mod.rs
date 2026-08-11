@@ -423,6 +423,7 @@ impl BuffDefinition {
                             .to_string(),
                         0,
                     ),
+                    InitialStateRule::SourceAttackThreshold => return None,
                     InitialStateRule::FirstArgument => (
                         vec![feature.values.get(1).copied().unwrap_or_default()],
                         String::new(),
@@ -474,27 +475,43 @@ impl BuffDefinition {
         &self.attribute_deltas
     }
 
-    pub(super) fn initial_grant_value_act_info(
+    pub(super) fn initial_planned_act_info(
         &self,
+        source_attack: Option<i32>,
         grant_values: &[(i32, i32)],
     ) -> Option<Vec<sonettobuf::BuffActInfo>> {
         let values = self
             .features
             .iter()
-            .filter(|feature| {
-                feature.wire.and_then(|wire| wire.initial_state)
-                    == Some(crate::engine::skill::buff_act::wire::InitialStateRule::GrantValue)
-            })
             .filter_map(|feature| {
+                use crate::engine::skill::buff_act::wire::InitialStateRule;
+
+                let initial_state = feature.wire?.initial_state?;
                 let act_id = *feature.values.first()?;
-                let value = grant_values
-                    .iter()
-                    .find_map(|(actual, value)| (*actual == act_id).then_some(*value))?;
-                Some(sonettobuf::BuffActInfo {
-                    act_id: Some(act_id),
-                    param: vec![value],
-                    str_param: Some(String::new()),
-                })
+                match initial_state {
+                    InitialStateRule::SourceAttackThreshold => Some(sonettobuf::BuffActInfo {
+                        act_id: Some(act_id),
+                        param: Vec::new(),
+                        str_param: Some(
+                            crate::engine::skill::buff_act::real_damage_kill::initial_source_attack_threshold(
+                                source_attack?,
+                                feature.values.get(1..)?,
+                            )?
+                            .to_string(),
+                        ),
+                    }),
+                    InitialStateRule::GrantValue => {
+                        let value = grant_values
+                            .iter()
+                            .find_map(|(actual, value)| (*actual == act_id).then_some(*value))?;
+                        Some(sonettobuf::BuffActInfo {
+                            act_id: Some(act_id),
+                            param: vec![value],
+                            str_param: Some(String::new()),
+                        })
+                    }
+                    _ => None,
+                }
             })
             .collect::<Vec<_>>();
         (!values.is_empty()).then_some(values)
@@ -563,10 +580,20 @@ impl BuffDefinition {
     pub(super) fn reserves_child_after_first_apply(&self) -> bool {
         !self.has_include_type(BuffIncludeType::OwnUid)
             && self.has_features
+            && !self
+                .features
+                .iter()
+                .any(|feature| feature.kind == Some(BuffActKind::ExtraValueElectricTransform))
             && ((self.has_include_type(BuffIncludeType::Stacked)
                 && !self.is_no_show
                 && self.status == BuffStatus::Special)
-                || (self.uses_stack_layer() && self.is_no_show && self.stack_max_layer() == 3))
+                || (self.uses_stack_layer()
+                    && self.is_no_show
+                    && self.stack_max_layer() == 3
+                    && !self
+                        .features
+                        .iter()
+                        .any(|feature| feature.kind == Some(BuffActKind::Attr))))
     }
 
     pub(super) fn reserves_child_before_explicit_layer_apply(&self) -> bool {
