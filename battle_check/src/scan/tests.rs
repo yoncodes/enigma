@@ -89,6 +89,33 @@ fn transformed_models_expand_the_checked_skill_closure() {
 }
 
 #[test]
+fn count_continue_channel_expands_the_checked_skill_closure() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut catalog = SkillEffectCatalog::default();
+    let mut skills = VecDeque::new();
+    let mut buffs = VecDeque::from([Pending {
+        id: 31_000_133,
+        path: "test root".to_owned(),
+    }]);
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut buffs,
+        &mut report,
+    );
+
+    assert!(report.checked_skills.contains(&31_000_193));
+}
+
+#[test]
 fn tower_assist_boss_forms_accept_the_implemented_group_capacity_policy() {
     crate::init_config().unwrap();
     let db = config::get();

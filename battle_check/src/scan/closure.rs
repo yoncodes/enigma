@@ -593,6 +593,15 @@ fn scan_buff(
                         );
                     }
                 }
+                Some(BuffActKind::CountContinueChannel) => {
+                    if let Some(&skill_id) = values.get(1) {
+                        enqueue(
+                            skills,
+                            skill_id,
+                            format!("{} > buff {}", pending.path, pending.id),
+                        );
+                    }
+                }
                 Some(BuffActKind::CastChannel) => {
                     if let Some(skill_id) = buff_act::cast_channel::referenced_skill(&values[1..]) {
                         enqueue(

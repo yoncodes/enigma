@@ -233,6 +233,15 @@ fn fight_catalog_follows_paper_circle_continuation_skill() {
 }
 
 #[test]
+fn fight_catalog_follows_count_continue_channel_skill() {
+    init_config();
+
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [31000133]);
+
+    assert!(catalog.get(31000193).is_some());
+}
+
+#[test]
 fn fight_catalog_follows_buff_act_linked_skill_aliases() {
     init_config();
 

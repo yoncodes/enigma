@@ -210,6 +210,7 @@ impl SkillEffectCatalog {
                         Some(BuffActKind::AddPassiveSkills)
                         | Some(BuffActKind::AddSpTempCard)
                         | Some(BuffActKind::CastChannel)
+                        | Some(BuffActKind::CountContinueChannel)
                         | Some(BuffActKind::SpecialCountCastChannel) => {
                             skills.extend(values.get(1).copied())
                         }
