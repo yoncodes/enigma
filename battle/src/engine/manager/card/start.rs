@@ -255,7 +255,7 @@ fn start_decks_from(
         .attacker
         .iter()
         .chain(&fight.defender)
-        .flat_map(|team| &team.entitys)
+        .flat_map(|team| team.entitys.iter().chain(&team.sp_entitys))
         .filter(|entity| entity.current_hp.unwrap_or(1) > 0)
         .filter_map(|entity| entity.uid)
         .collect::<std::collections::HashSet<_>>();
@@ -422,6 +422,7 @@ mod tests {
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![entity(12, 1002, 1, &[202], &[203])],
+                sp_entitys: vec![entity(13, 3002, 1, &[], &[])],
                 ..Default::default()
             }),
             defender: Some(FightTeam {
@@ -436,7 +437,7 @@ mod tests {
                     uid: Some(-2),
                     skill_id: Some(302),
                     card_effect: Some(999),
-                    target_uid: Some(12),
+                    target_uid: Some(13),
                     ..Default::default()
                 },
                 CardInfo {
@@ -475,7 +476,7 @@ mod tests {
 
         assert_eq!(ai[0].skill_id, Some(302));
         assert_eq!(ai[0].card_effect, None);
-        assert_eq!(ai[0].target_uid, Some(12));
+        assert_eq!(ai[0].target_uid, Some(13));
         assert_eq!(ai[1].skill_id, Some(303));
         assert_eq!(ai[1].target_uid, Some(0));
         assert_eq!(ai.len(), 2);
