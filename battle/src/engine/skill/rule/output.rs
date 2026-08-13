@@ -123,6 +123,7 @@ pub enum RuleOp {
     ModifyActiveSkillTargets {
         additional_count: i32,
     },
+    FreezeActiveSkillRates,
     NuoDiKaHit(crate::engine::mechanic::nuo_di_ka::NuoDiKaHit),
 }
 

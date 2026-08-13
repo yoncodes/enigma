@@ -103,6 +103,13 @@ impl SkillExecution {
         self.context.additional_moxie = additional_moxie;
     }
 
+    pub(in crate::engine::runtime) fn freeze_rate_amounts(
+        &mut self,
+        gauges: &crate::engine::manager::gauge::GaugeManager,
+    ) {
+        self.modifiers.freeze_rate_amounts(gauges);
+    }
+
     pub(in crate::engine::runtime) fn add_skill_targets(&mut self, count: i32) {
         self.context.additional_skill_target_count += count.max(0);
     }

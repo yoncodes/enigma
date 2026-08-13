@@ -649,6 +649,20 @@ fn drain_queue_with_deferred(
                 }
                 prepend(queue, outputs);
             }
+            RuleOp::FreezeActiveSkillRates => {
+                let frame_path = frame_path.ok_or(DrainError::MissingActiveSkillContext)?;
+                let execution = queue
+                    .iter_mut()
+                    .find_map(|queued| {
+                        (matches!(queued.trigger, SkillOpTrigger::Active)
+                            && queued.frame_path.as_ref() == Some(&frame_path)
+                            && matches!(queued.op, RuleOp::Skill(_)))
+                        .then_some(queued.skill_execution.as_mut())
+                        .flatten()
+                    })
+                    .ok_or(DrainError::MissingActiveSkillContext)?;
+                execution.freeze_rate_amounts(&managers.gauge);
+            }
             mut command @ (RuleOp::Command(_)
             | RuleOp::Publish(_)
             | RuleOp::SkillLifecycle(_)

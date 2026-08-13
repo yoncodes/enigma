@@ -783,6 +783,7 @@ pub(crate) fn execute_rule_op(
         RuleOp::ModifyActiveSkillTargets { additional_count } => {
             Ok(RuleOutcome::ActiveSkillTargetsModified(additional_count))
         }
+        RuleOp::FreezeActiveSkillRates => unreachable!("rate freezing is owned by the skill drain"),
     }
 }
 

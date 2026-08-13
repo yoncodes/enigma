@@ -201,12 +201,18 @@ fn purple_emanation_applies_configured_halo_before_destined_doom_damage() {
             _ => None,
         })
         .collect::<Vec<_>>();
+    let freeze = immediate
+        .ops
+        .iter()
+        .position(|emission| matches!(emission.op, RuleOp::FreezeActiveSkillRates))
+        .unwrap();
 
+    assert_eq!(freeze, immediate_completed + 1);
     assert_eq!(
         halo,
         vec![
-            (immediate_completed + 1, -1, Some(2)),
-            (immediate_completed + 2, -2, Some(2)),
+            (freeze + 1, -1, Some(2)),
+            (freeze + 2, -2, Some(2)),
         ]
     );
     assert!(!immediate.ops.iter().any(|emission| matches!(

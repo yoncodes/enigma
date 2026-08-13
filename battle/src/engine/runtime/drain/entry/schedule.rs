@@ -26,6 +26,7 @@ pub fn run_command_group(
                 | RuleOp::BuffActInfoMarker(_)
                 | RuleOp::MarkBuffActFired { .. }
                 | RuleOp::ModifyActiveSkillTargets { .. }
+                | RuleOp::FreezeActiveSkillRates
                 | RuleOp::NuoDiKaHit(_) => (Some(root.clone()), None),
             };
             QueuedOp {

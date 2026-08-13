@@ -54,6 +54,215 @@ fn after_skill_reaction_waits_for_remaining_ops_in_the_skill_frame() {
 }
 
 #[test]
+fn active_skill_rates_freeze_after_immediate_reactions_and_before_later_gauge_changes() {
+    use crate::engine::{
+        manager::gauge::{GaugeCommand, GaugeOperation},
+        mechanic::lingering_glow,
+        skill::{
+            action::{SkillModifiers, SkillPhase, SkillRateAmount, SkillRateModifier},
+            rule::output::BattleCommand,
+        },
+    };
+
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(10_000),
+                passive_skill: vec![200],
+                attr: Some(HeroAttribute {
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(60243, "CrystalAddSkillRate"),
+    };
+    let gauge_key = lingering_glow::key(1);
+    managers
+        .gauge
+        .execute_command(GaugeCommand::new(
+            origin,
+            gauge_key,
+            GaugeOperation::Enable { max: Some(1_000) },
+        ))
+        .unwrap();
+    managers
+        .gauge
+        .execute_command(GaugeCommand::new(
+            origin,
+            gauge_key,
+            GaugeOperation::ChangeValue { delta: 106 },
+        ))
+        .unwrap();
+
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: Vec::new(),
+    });
+    let mut reaction = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(60191, "BloodPoolValueChange"),
+            vec![33_000, 1],
+            Vec::new(),
+        ),
+        TargetRequest::self_only(),
+    );
+    reaction.conditions = vec![ParsedCondition {
+        opcode: 203,
+        type_name: "None".to_owned(),
+        kind: ParsedConditionKind::None(NoneMode::SkillActionStart),
+        raw_args: Vec::new(),
+    }];
+    reaction.compiled_route = ConditionRoute::compile(&reaction.conditions);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 200,
+        slots: vec![reaction],
+    });
+    catalog.insert_damage_rate(100, 1_000);
+    catalog.insert_logic_target(100, 1);
+    let mut continuation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    continuation.mode = SkillExecutionMode::Active;
+    continuation.phase = Some(SkillPhase::Damage);
+    continuation.target = SkillTarget::Explicit(-1);
+    let execution = SkillExecution::with_modifiers(
+        TargetContext::default(),
+        SkillModifiers {
+            rates: vec![
+                SkillRateModifier::new(
+                    -1,
+                    60243,
+                    SkillRateAmount::gauge_current(gauge_key, 1_000, 4, 1),
+                    true,
+                ),
+                SkillRateModifier::new(
+                    -1,
+                    60243,
+                    SkillRateAmount::gauge_current(gauge_key, 1_000, 4, 1),
+                    true,
+                ),
+            ],
+            ..Default::default()
+        },
+    );
+
+    let mut frames = Vec::new();
+    let frame_path = push_root(
+        &mut frames,
+        FrameOwner::Skill {
+            source_uid: 10,
+            skill_id: 100,
+            card_index: 0,
+            target_uid: Some(-1),
+        },
+        FrameTrigger::Active,
+    );
+    let queued = |op, skill_execution| QueuedOp {
+        op,
+        trigger: SkillOpTrigger::Active,
+        skill_execution,
+        frame_path: Some(frame_path.clone()),
+        parent_path: None,
+        frame_group: None,
+        independent_parent_group: None,
+        frame_owner: None,
+        subscriber_owner_uid: None,
+    };
+    let mut queue = VecDeque::from([
+        queued(
+            RuleOp::SkillLifecycle(
+                crate::engine::skill::action::SkillLifecycle::PhaseCompleted(
+                    crate::engine::skill::action::SkillActionEvent {
+                        source_uid: 10,
+                        skill_id: 100,
+                        target_uid: -1,
+                        target_uids: vec![-1],
+                        attacked_target_uids: Vec::new(),
+                        phase: SkillPhase::Immediate,
+                        skill_slot: 1,
+                        is_attack: true,
+                        rank: 1,
+                        skill_type: 1,
+                        effect_tag: 1,
+                        assassinate: false,
+                        ignore_riposte: false,
+                        damage_amount: 0,
+                        kill_count: 0,
+                        crit_count: 0,
+                        guard_break_count: 0,
+                        additional_moxie: 0,
+                        extra_skill_kind: 0,
+                        mode: SkillExecutionMode::Active,
+                        teammate_injury_count: 0,
+                        teammate_injury_count_not_reset: 0,
+                        team_injury_count_round: 0,
+                        card_enchants: Vec::new(),
+                        buff_additions: Vec::new(),
+                    },
+                ),
+            ),
+            None,
+        ),
+        queued(RuleOp::FreezeActiveSkillRates, None),
+        queued(
+            RuleOp::Command(BattleCommand::Gauge(GaugeCommand::new(
+                origin,
+                gauge_key,
+                GaugeOperation::ChangeValue { delta: 10 },
+            ))),
+            None,
+        ),
+        queued(RuleOp::Skill(continuation), Some(execution)),
+    ]);
+
+    let result = drain_queue_with_frames(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &mut queue,
+        frames,
+    )
+    .unwrap();
+
+    assert_eq!(managers.gauge.get(gauge_key).unwrap().current, 149);
+    assert_eq!(
+        result
+            .outcomes
+            .iter()
+            .map(RuleOutcome::applied_damage)
+            .sum::<i32>(),
+        2_112
+    );
+}
+
+#[test]
 fn after_current_action_skill_starts_after_parent_action_completed() {
     crate::test_support::init_config();
     let fight = Fight {

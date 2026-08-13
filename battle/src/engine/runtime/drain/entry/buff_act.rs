@@ -137,6 +137,7 @@ fn run_owned_buff_act_groups(
                 | RuleOp::BuffActInfoMarker(_)
                 | RuleOp::MarkBuffActFired { .. }
                 | RuleOp::ModifyActiveSkillTargets { .. }
+                | RuleOp::FreezeActiveSkillRates
                 | RuleOp::NuoDiKaHit(_) => (Some(buff_act.clone()), None),
                 RuleOp::Skill(_) => (None, Some(buff_act.clone())),
             };

@@ -635,6 +635,19 @@ pub(in crate::engine::runtime) fn emit_ops(
         } else {
             outputs.push(phase_completed);
         }
+        if execution
+            .modifiers
+            .rates
+            .iter()
+            .any(|modifier| modifier.fixed_value().is_none())
+        {
+            outputs.push(SkillEmissionOp {
+                op: RuleOp::FreezeActiveSkillRates,
+                owner: behavior::registry::OutputOwner::Skill,
+                consequence: ConsequencePolicy::Default,
+                frame_owner: None,
+            });
+        }
         outputs.extend(
             execution
                 .modifiers
