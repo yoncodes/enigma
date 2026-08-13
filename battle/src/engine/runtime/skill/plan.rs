@@ -1,19 +1,12 @@
 use crate::engine::{
     damage::{AttackPlan, DamageRateTerm, handler as damage},
-    manager::{
-        BattleManagers,
-        buff::{ActiveBuffFeature, BuffCommand, BuffGrant},
-        hp::HpCommand,
-    },
+    manager::{BattleManagers, buff::ActiveBuffFeature, hp::HpCommand},
     runtime::determinism::RoundDeterminism,
     skill::{
         action::{SkillInvocation, SkillModifiers},
         behavior::rate,
         effect::SkillEffectCatalog,
-        rule::{
-            CommandOrigin, DefinitionKey, RuleDomain,
-            output::{BattleCommand, RuleOp},
-        },
+        rule::{CommandOrigin, DefinitionKey, RuleDomain, output::RuleOp},
         target::{TargetContext, TargetPool, TargetRequest, TargetResolver},
     },
 };
@@ -452,7 +445,6 @@ pub(super) fn damage_ops(
     let mut damage_commands = Vec::new();
     let mut additional_damage_commands = Vec::new();
     let mut avoided = Vec::new();
-    let mut hit_targets = Vec::new();
     let mut crit_count = 0;
     let inherent_assassinate = execution.context.active_skill_assassinate;
     for (index, target_uid) in targets.into_iter().enumerate() {
@@ -685,7 +677,6 @@ pub(super) fn damage_ops(
                 key: DefinitionKey::new(skill_id, "SkillDamage"),
             },
         ) {
-            hit_targets.push(target_uid);
             if let HpCommand::Damage(damage) = &mut command {
                 damage.ignore_riposte = target_modifiers.ignore_riposte;
             }
@@ -793,29 +784,10 @@ pub(super) fn damage_ops(
     if execution.planned_crits.is_none() {
         execution.record_crits(crit_count);
     }
-    let mut after_damage = rend
+    let after_damage = rend
         .as_ref()
         .map(|rend| rend.after_damage_rule_ops())
         .unwrap_or_default();
-    after_damage.extend(
-        execution
-            .modifiers
-            .after_damage_buffs
-            .iter()
-            .flat_map(|modifier| {
-                hit_targets.iter().map(|target_uid| {
-                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
-                        origin: modifier.origin,
-                        source_uid,
-                        target_uid: *target_uid,
-                        buff_id: modifier.buff_id,
-                        amount: Some(modifier.amount),
-                        occurrences: 1,
-                        child_uid_reservations: 0,
-                    })))
-                })
-            }),
-    );
     DamageOps {
         buff_act_frame_owner: rend.as_ref().and_then(|rend| rend.frame_owner()),
         before_damage: rend

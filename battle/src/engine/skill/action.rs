@@ -321,7 +321,7 @@ pub struct AdditionalDamageModifier {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AfterDamageBuffModifier {
+pub struct PostImmediateTargetBuffModifier {
     pub origin: CommandOrigin,
     pub buff_id: i32,
     pub amount: i32,
@@ -339,7 +339,7 @@ pub struct SkillModifiers {
     pub attack_career: Option<i32>,
     pub additional_attack_career: Option<i32>,
     pub additional_damage: Vec<AdditionalDamageModifier>,
-    pub after_damage_buffs: Vec<AfterDamageBuffModifier>,
+    pub post_immediate_target_buffs: Vec<PostImmediateTargetBuffModifier>,
     pub consume_team_injury_count_round: Option<DefinitionKey>,
 }
 
@@ -361,8 +361,8 @@ impl SkillModifiers {
             .additional_attack_career
             .or(other.additional_attack_career);
         self.additional_damage.append(&mut other.additional_damage);
-        self.after_damage_buffs
-            .append(&mut other.after_damage_buffs);
+        self.post_immediate_target_buffs
+            .append(&mut other.post_immediate_target_buffs);
         self.consume_team_injury_count_round = self
             .consume_team_injury_count_round
             .or(other.consume_team_injury_count_round);

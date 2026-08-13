@@ -115,7 +115,7 @@ fn configured_damage_target_overrides_an_unmapped_logic_target() {
 }
 
 #[test]
-fn purple_emanation_applies_configured_halo_after_destined_doom_damage() {
+fn purple_emanation_applies_configured_halo_before_destined_doom_damage() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -159,29 +159,40 @@ fn purple_emanation_applies_configured_halo_after_destined_doom_damage() {
     invocation.mode = SkillExecutionMode::Active;
     invocation.target = SkillTarget::Explicit(-1);
 
-    let ops = emit_all_ops(
+    let mut execution = SkillExecution::new(TargetContext::default());
+    let mut determinism = RoundDeterminism::default();
+    let immediate = emit_ops(
         invocation,
         &managers,
         &pool,
         &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        &mut determinism,
+        &mut execution,
         &SkillOpTrigger::Active,
     )
     .unwrap();
-    let damage_end = ops
+    let immediate_completed = immediate
+        .ops
         .iter()
-        .rposition(|op| {
+        .position(|op| {
             matches!(
-                op,
-                RuleOp::Command(BattleCommand::Hp(_) | BattleCommand::HpBatch(_))
+                op.op,
+                RuleOp::SkillLifecycle(
+                    crate::engine::skill::action::SkillLifecycle::PhaseCompleted(
+                        crate::engine::skill::action::SkillActionEvent {
+                            phase: SkillPhase::Immediate,
+                            ..
+                        }
+                    )
+                )
             )
         })
         .unwrap();
-    let halo = ops
+    let halo = immediate
+        .ops
         .iter()
         .enumerate()
-        .filter_map(|(index, op)| match op {
+        .filter_map(|(index, emission)| match &emission.op {
             RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))
                 if grant.buff_id == 31340001 =>
             {
@@ -193,8 +204,37 @@ fn purple_emanation_applies_configured_halo_after_destined_doom_damage() {
 
     assert_eq!(
         halo,
-        vec![(damage_end + 1, -1, Some(2)), (damage_end + 2, -2, Some(2))]
+        vec![
+            (immediate_completed + 1, -1, Some(2)),
+            (immediate_completed + 2, -2, Some(2)),
+        ]
     );
+    assert!(!immediate.ops.iter().any(|emission| matches!(
+        emission.op,
+        RuleOp::Command(BattleCommand::Hp(_) | BattleCommand::HpBatch(_))
+    )));
+
+    let continuation = immediate.continuation.unwrap();
+    assert_eq!(continuation.phase, Some(SkillPhase::Damage));
+    let damage = emit_ops(
+        continuation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        &mut execution,
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+    assert!(damage.ops.iter().any(|emission| matches!(
+        emission.op,
+        RuleOp::Command(BattleCommand::Hp(_) | BattleCommand::HpBatch(_))
+    )));
+    assert!(!damage.ops.iter().any(|emission| matches!(
+        &emission.op,
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))
+            if grant.buff_id == 31340001
+    )));
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use crate::engine::{
     manager::{
         BattleManagers,
-        buff::{BuffCommand, BuffRemove, BuffRemoveSelector},
+        buff::{BuffCommand, BuffGrant, BuffRemove, BuffRemoveSelector},
     },
     runtime::determinism::RoundDeterminism,
     skill::{
@@ -635,6 +635,35 @@ pub(in crate::engine::runtime) fn emit_ops(
         } else {
             outputs.push(phase_completed);
         }
+        outputs.extend(
+            execution
+                .modifiers
+                .post_immediate_target_buffs
+                .iter()
+                .flat_map(|modifier| {
+                    execution
+                        .configured_targets
+                        .as_deref()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|target_uid| SkillEmissionOp {
+                            op: RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
+                                BuffGrant {
+                                    origin: modifier.origin,
+                                    source_uid: invocation.plan.source_uid,
+                                    target_uid: *target_uid,
+                                    buff_id: modifier.buff_id,
+                                    amount: Some(modifier.amount),
+                                    occurrences: 1,
+                                    child_uid_reservations: 0,
+                                },
+                            ))),
+                            owner: behavior::registry::OutputOwner::Skill,
+                            consequence: ConsequencePolicy::Default,
+                            frame_owner: None,
+                        })
+                }),
+        );
     }
     if active_phase == Some(SkillPhase::Immediate) && has_row_damage {
         let activations = plan::additional_damage_activation(&invocation, managers, execution);

@@ -7,7 +7,7 @@ use crate::engine::{
     },
     runtime::determinism::RoundDeterminism,
     skill::{
-        action::{AfterDamageBuffModifier, SkillModifiers, SkillRateModifier},
+        action::{PostImmediateTargetBuffModifier, SkillModifiers, SkillRateModifier},
         behavior::{
             AttackModifierContext, BehaviorOpContext, classify::BehaviorKind,
             registry::BehaviorHandler,
@@ -110,17 +110,14 @@ impl BehaviorHandler for Handler {
                     crystal_rate_career_scaled(behavior.spec.kind, true),
                 ));
             }
-            if crystal_count > 0
-                && let Some(origin) = super::command_origin(behavior)
-            {
-                context
-                    .modifiers
-                    .after_damage_buffs
-                    .push(AfterDamageBuffModifier {
-                        origin,
+            if crystal_count > 0 {
+                context.modifiers.post_immediate_target_buffs.push(
+                    PostImmediateTargetBuffModifier {
+                        origin: super::command_origin(behavior)?,
                         buff_id: *buff_id,
                         amount: crystal_count.saturating_mul(*buff_layer),
-                    });
+                    },
+                );
             }
             return Some(Vec::new());
         }
