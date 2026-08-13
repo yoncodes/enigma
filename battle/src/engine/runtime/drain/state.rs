@@ -17,6 +17,7 @@ pub(super) struct DrainState {
     budget: DrainBudget,
     context: TargetContext,
     depth: usize,
+    death_settlement_depth: usize,
 }
 
 impl DrainState {
@@ -45,6 +46,18 @@ impl DrainState {
 
     pub(super) fn consume_budget(&mut self) -> Result<(), DrainError> {
         self.budget.consume(self.depth)
+    }
+
+    pub(super) fn enter_death_settlement(&mut self) {
+        self.death_settlement_depth += 1;
+    }
+
+    pub(super) fn leave_death_settlement(&mut self) {
+        self.death_settlement_depth -= 1;
+    }
+
+    pub(super) fn death_settlement_in_progress(&self) -> bool {
+        self.death_settlement_depth > 0
     }
 
     pub(super) fn defer_after_hit(&mut self, action_path: Option<&[usize]>, queued: Vec<QueuedOp>) {

@@ -552,6 +552,110 @@ fn round_start_refill_waits_for_a_deficit_before_adding_a_newly_ready_ultimate()
 }
 
 #[test]
+fn opening_refill_defers_an_ultimate_made_ready_during_setup() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ex_point: Some(4),
+                ex_skill: Some(900),
+                skill_group1: vec![100],
+                passive_skill: vec![40],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = vec![ParsedCondition {
+        opcode: 100,
+        type_name: "None".to_owned(),
+        kind: ParsedConditionKind::None(NoneMode::RoundStart),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 40,
+        slots: vec![slot],
+    });
+
+    run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        CardSetup {
+            hand: vec![CardInfo {
+                uid: Some(10),
+                skill_id: Some(100),
+                ..Default::default()
+            }],
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        1,
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(10), 5);
+    assert_eq!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>(),
+        vec![100]
+    );
+
+    managers
+        .execute_card(CardCommand::Play(CardPlay {
+            origin: CARD_PLAY_ORIGIN,
+            hand_index: 0,
+            target_uid: None,
+            chosen_skill_id: None,
+            choice: None,
+            recorded_skill: None,
+        }))
+        .unwrap();
+    run_round_start_refill(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        1,
+        1,
+    )
+    .unwrap();
+
+    assert_eq!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>(),
+        vec![900]
+    );
+}
+
+#[test]
 fn configured_ultimate_alias_does_not_consume_the_incantation_deck() {
     init_config();
     let fight = Fight {

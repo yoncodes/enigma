@@ -33,7 +33,6 @@ pub fn captured_opening_determinism(
     let player_candidates =
         battle::engine::manager::card::pool::player_candidate_pool(game_data, fight);
     let enemies = battle::engine::manager::card::pool::active_enemy_entities(fight);
-    let enemy_count = enemies.len();
     let ai_candidates = enemies
         .into_iter()
         .flat_map(|entity| {
@@ -54,7 +53,6 @@ pub fn captured_opening_determinism(
         })
     };
     if draws.len() >= hand_size
-        && round.ai_use_cards.len() == enemy_count
         && draws
             .iter()
             .all(|card| valid_identity(card, &player_candidates))
@@ -63,11 +61,11 @@ pub fn captured_opening_determinism(
             .iter()
             .all(|card| valid_identity(card, &ai_candidates))
     {
-        determinism.enqueue_start_decks(
+        determinism.enqueue_opening_seed(
             round.ai_use_cards.clone(),
             draws.iter().take(hand_size).cloned().collect(),
+            draws,
         );
-        determinism.enqueue_card_draws(draws);
     }
     determinism
 }
@@ -415,7 +413,8 @@ mod tests {
     }
 
     #[test]
-    fn captured_opening_rng_keeps_raw_draw_order_and_excludes_temporary_cards() {
+    fn captured_opening_rng_keeps_raw_draw_order_excludes_temporary_cards_and_accepts_two_ai_cards()
+    {
         super::init_test_config();
         let fight = Fight {
             battle_id: Some(77),
@@ -434,6 +433,7 @@ mod tests {
                     uid: Some(-1),
                     current_hp: Some(100),
                     skill_group1: vec![201],
+                    skill_group2: vec![202],
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -446,7 +446,7 @@ mod tests {
             card(10, 103, false),
             card(10, 101, false),
         ];
-        let ai = vec![card(-1, 201, false)];
+        let ai = vec![card(-1, 201, false), card(-1, 202, false)];
         let mut determinism = super::captured_opening_determinism(
             config::configs::get(),
             &fight,
@@ -465,9 +465,8 @@ mod tests {
 
         assert_eq!(
             determinism.take_start_decks(),
-            Some((ai, normal[..3].to_vec()))
+            Some((ai, normal[..3].to_vec(), normal))
         );
-        assert_eq!(determinism.draw_cards(&normal, normal.len()), normal);
     }
 
     #[test]
@@ -520,7 +519,7 @@ mod tests {
                     card(10, 102, false),
                     card(10, 101, false),
                 ],
-                ai_use_cards: Vec::new(),
+                ai_use_cards: vec![card(-1, 999, false)],
                 ..Default::default()
             },
         );

@@ -102,7 +102,7 @@ fn parse_tenths(raw: &str) -> Option<i32> {
 }
 
 fn stepped_attribute(points: i32, rate: i32) -> i32 {
-    points.max(0) * rate.max(0) / 10_000 * 10
+    points.max(0) * rate.max(0) / 1_000
 }
 
 fn feast_attribute(points: i32, rates: RaspberryAttributeRates) -> i32 {

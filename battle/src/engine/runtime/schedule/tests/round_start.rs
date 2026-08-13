@@ -464,6 +464,91 @@ fn round_start_resolves_field_with_configured_allied_threshold_modifiers() {
     assert_eq!(field.next_upgrade_progress, 120);
 }
 
+fn scheduled_round_start(version: i32, model_id: Option<i32>) -> DrainResult {
+    init_config();
+    let fight = Fight {
+        version: Some(version),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id,
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    run_round_start_after_ai_split(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 3,
+            ..Default::default()
+        },
+        &[],
+        0,
+    )
+    .unwrap()
+    .0
+}
+
+fn change_round_effect_num(round: &DrainResult) -> i32 {
+    let steps = crate::engine::packet::timeline::project(&round.frames).unwrap();
+    steps
+        .iter()
+        .flat_map(|step| &step.act_effect)
+        .find(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Changeround as i32)
+        })
+        .and_then(|effect| effect.effect_num)
+        .expect("round start emits a CHANGE_ROUND marker")
+}
+
+#[test]
+fn change_round_payload_is_zero_without_a_conduit_area() {
+    assert_eq!(change_round_effect_num(&scheduled_round_start(7, None)), 0);
+}
+
+#[test]
+fn change_round_payload_is_zero_when_the_layout_does_not_reset_conduit_power() {
+    let round = scheduled_round_start(6, Some(3149));
+    assert_eq!(change_round_effect_num(&round), 0);
+    assert!(round.outcomes.iter().all(|outcome| !matches!(
+        outcome,
+        RuleOutcome::Conduit(crate::engine::manager::conduit::ConduitChange::PowersReset { .. })
+    )));
+}
+
+#[test]
+fn change_round_payload_follows_the_conduit_action_phase_reset() {
+    let round = scheduled_round_start(7, Some(3149));
+    assert_eq!(change_round_effect_num(&round), 3);
+    let conduit_changes = round
+        .outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            RuleOutcome::Conduit(change) => Some(change),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(matches!(
+        conduit_changes.as_slice(),
+        [
+            crate::engine::manager::conduit::ConduitChange::PowersReset { team: 1 },
+            crate::engine::manager::conduit::ConduitChange::DeviceRestarted {
+                source_uid: 10,
+                team: 1,
+            },
+        ]
+    ));
+}
+
 #[test]
 fn round_start_excludes_before_ap_resolution_from_its_phase_buckets() {
     init_config();

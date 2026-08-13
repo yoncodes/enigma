@@ -10,7 +10,96 @@ fn queued(op: RuleOp) -> QueuedOp {
         frame_group: None,
         independent_parent_group: None,
         frame_owner: None,
+        subscriber_owner_uid: None,
     }
+}
+
+fn entity(uid: i64, model_id: i32, hp: i32, passive_skill: Vec<i32>) -> FightEntityInfo {
+    FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(hp),
+        ex_point: Some(0),
+        passive_skill,
+        attr: Some(HeroAttribute {
+            hp: Some(hp),
+            attack: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+fn dead_slot(behavior: ParsedBehavior) -> SkillEffectSlot {
+    let mut slot = SkillEffectSlot::new(behavior, TargetRequest::self_only());
+    slot.conditions = vec![ParsedCondition {
+        opcode: 812,
+        type_name: "Dead".to_owned(),
+        kind: crate::engine::skill::condition::registry::parse(812, "Dead", &[]).unwrap(),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    slot
+}
+
+fn death_reaction_result(heal: bool) -> (BattleManagers, DrainResult) {
+    crate::test_support::init_config();
+    let fight = Fight {
+        battle_id: Some(301110),
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, 100, Vec::new())],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 30111005, 1, vec![300])],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut slots = vec![dead_slot(ParsedBehavior::from_spec(
+        BehaviorSpec::new(20002, "AddExPoint"),
+        vec![1],
+        Vec::new(),
+    ))];
+    if heal {
+        slots.push(dead_slot(ParsedBehavior::from_spec(
+            BehaviorSpec::new(20001, "Heal"),
+            vec![1],
+            vec!["1".into()],
+        )));
+    }
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 300,
+        slots,
+    });
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 200,
+        slots: Vec::new(),
+    });
+    catalog.insert_damage_rate(200, 1_000);
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut attack: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 200,
+    }
+    .into();
+    attack.mode = SkillExecutionMode::Active;
+    attack.target = SkillTarget::Explicit(-1);
+    let result = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            battle_id: 301110,
+            ..Default::default()
+        },
+        [RuleOp::Skill(attack)],
+    )
+    .unwrap();
+    (managers, result)
 }
 
 #[test]
@@ -93,6 +182,32 @@ fn nested_drain_restores_depth_after_error() {
 }
 
 #[test]
+fn death_settlement_restores_depth_after_nested_error() {
+    let fight = Fight::default();
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut result = DrainResult::default();
+    let mut state = DrainState::new(TargetContext::default());
+
+    let error = drain_death_settlement_queue(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        VecDeque::from([queued(RuleOp::ModifyActiveSkillTargets {
+            additional_count: 1,
+        })]),
+        &mut result,
+        &mut state,
+    )
+    .unwrap_err();
+
+    assert!(matches!(error, DrainError::MissingActiveSkillContext));
+    assert_eq!(state.depth(), 0);
+    assert!(!state.death_settlement_in_progress());
+}
+
+#[test]
 fn missing_buff_act_definition_preserves_exact_runtime_identity() {
     assert_eq!(
         required_buff_act_definition(Some(999_999), "MissingExactType").unwrap_err(),
@@ -101,6 +216,180 @@ fn missing_buff_act_definition_preserves_exact_runtime_identity() {
             type_name: "MissingExactType".to_owned(),
         }
     );
+}
+
+#[test]
+fn dead_passive_nonheal_then_heal_prevents_terminal() {
+    let (managers, result) = death_reaction_result(true);
+
+    let resource = result
+        .events
+        .iter()
+        .position(|event| {
+            matches!(
+                event,
+                BattleEvent::ExPointChanged(change) if change.source_uid == -1
+            )
+        })
+        .unwrap();
+    let heal = result
+        .events
+        .iter()
+        .position(|event| {
+            matches!(
+                event,
+                BattleEvent::HpHealed {
+                    source_uid: -1,
+                    target_uid: -1,
+                    amount: 1,
+                    ..
+                }
+            )
+        })
+        .unwrap();
+    assert!(resource < heal);
+    assert_eq!(managers.hp.current(-1), 1);
+    assert!(
+        !result
+            .events
+            .iter()
+            .any(|event| matches!(event, BattleEvent::BattleTerminalCommitted { .. }))
+    );
+}
+
+#[test]
+fn dead_passive_without_heal_commits_terminal_once() {
+    let (managers, result) = death_reaction_result(false);
+
+    assert_eq!(managers.hp.current(-1), 0);
+    assert!(result.events.iter().any(|event| matches!(
+        event,
+        BattleEvent::ExPointChanged(change) if change.source_uid == -1
+    )));
+    assert_eq!(
+        result
+            .events
+            .iter()
+            .filter(|event| matches!(event, BattleEvent::BattleTerminalCommitted { .. }))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn terminal_skips_unstarted_losing_subscribers_by_presentation_frame_owner() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, 100, Vec::new())],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                entity(-1, 2, 100, Vec::new()),
+                entity(-2, 3, 100, Vec::new()),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let trigger = SkillOpTrigger::Event(BattleEvent::Kind(
+        crate::engine::event::kind::EventKind::TargetAttacked,
+    ));
+    let owner = FrameOwner::BuffAct {
+        owner_uid: -1,
+        source_uid: 10,
+        buff_uid: 20,
+        buff_id: 30,
+        key: DefinitionKey::new(1028, "RealDamageKill"),
+    };
+    let cases = [
+        ("Command", FrameOwner::Command),
+        (
+            "EventEffect",
+            FrameOwner::EventEffect {
+                source_uid: 10,
+                target_uid: -2,
+            },
+        ),
+    ];
+    for (label, losing_frame_owner) in cases {
+        let mut managers = BattleManagers::seeded(&fight);
+        assert!(managers.commit_terminal(crate::engine::round::outcome::BattleOutcome::Victory));
+        let mut frames = Vec::new();
+        let path = push_root(&mut frames, owner.clone(), frame_trigger(&trigger));
+        let mut queue = VecDeque::from([
+            QueuedOp {
+                op: RuleOp::BuffFeatureMarker {
+                    target_uid: -1,
+                    effect_type: sonettobuf::effect_type_enum::EffectType::Realdamagekill as i32,
+                    effect_num: 9999,
+                    buff_act_id: 0,
+                },
+                trigger: trigger.clone(),
+                skill_execution: None,
+                frame_path: None,
+                parent_path: None,
+                frame_group: Some(Rc::new(RefCell::new(Some(path.clone())))),
+                independent_parent_group: None,
+                frame_owner: Some(owner.clone()),
+                subscriber_owner_uid: Some(-1),
+            },
+            QueuedOp {
+                op: RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(
+                    ExPointChange {
+                        origin: CommandOrigin {
+                            domain: RuleDomain::Behavior,
+                            key: DefinitionKey::new(0, "QueuedLoserTest"),
+                        },
+                        source_uid: -2,
+                        target_uid: -2,
+                        delta: 1,
+                        config_effect: 0,
+                        effect_type: 0,
+                    },
+                ))),
+                trigger: trigger.clone(),
+                skill_execution: None,
+                frame_path: Some(path),
+                parent_path: None,
+                frame_group: Some(Rc::new(RefCell::new(None))),
+                independent_parent_group: None,
+                frame_owner: Some(losing_frame_owner),
+                subscriber_owner_uid: Some(-2),
+            },
+        ]);
+
+        let result = drain_queue_with_frames(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &mut queue,
+            frames,
+        )
+        .unwrap();
+
+        assert!(
+            result.outcomes.iter().any(|outcome| matches!(
+                outcome,
+                RuleOutcome::BuffFeatureMarker(marker)
+                    if marker.target_uid == -1
+                        && marker.effect_type
+                            == sonettobuf::effect_type_enum::EffectType::Realdamagekill as i32
+            )),
+            "populated group must remain allowed for {label}"
+        );
+        assert!(
+            !result.events.iter().any(|event| matches!(
+                event,
+                BattleEvent::ExPointChanged(change) if change.source_uid == -2
+            )),
+            "unstarted losing subscriber must be skipped for {label}"
+        );
+    }
 }
 
 #[test]
@@ -308,10 +597,22 @@ fn terminal_commit_keeps_winner_reactions_and_completes_the_current_action() {
         event,
         BattleEvent::ExPointChanged(change) if change.source_uid == 10
     )));
-    assert!(!result.events.iter().any(|event| matches!(
-        event,
-        BattleEvent::ExPointChanged(change) if change.source_uid == -2
-    )));
+    let losing_reaction = result
+        .events
+        .iter()
+        .position(|event| {
+            matches!(
+                event,
+                BattleEvent::ExPointChanged(change) if change.source_uid == -2
+            )
+        })
+        .unwrap();
+    let terminal_commit = result
+        .events
+        .iter()
+        .position(|event| matches!(event, BattleEvent::BattleTerminalCommitted { .. }))
+        .unwrap();
+    assert!(losing_reaction < terminal_commit);
     assert_eq!(
         result
             .events

@@ -145,6 +145,7 @@ pub(super) fn run_setup_stage_filtered(
             frame_group: None,
             independent_parent_group: None,
             frame_owner: None,
+            subscriber_owner_uid: None,
         });
     }
     let mut result = drain_queue_with_frames(
@@ -267,6 +268,7 @@ pub(super) fn run_setup_stage_filtered(
                 card_index: 0,
                 target_uid: Some(subscriber.owner_uid),
             }),
+            subscriber_owner_uid: None,
         });
     }
     let stage_result = drain_queue_with_frames(
@@ -390,6 +392,7 @@ pub(super) fn run_setup_stage_filtered(
                 frame_group: None,
                 independent_parent_group: None,
                 frame_owner: None,
+                subscriber_owner_uid: None,
             });
         }
     }
@@ -453,6 +456,7 @@ pub(super) fn run_setup_stage_filtered(
             frame_group: None,
             independent_parent_group: None,
             frame_owner: None,
+            subscriber_owner_uid: None,
         });
     }
     let postlude_result = drain_queue_with_frames(

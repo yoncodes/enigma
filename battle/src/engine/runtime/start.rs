@@ -20,6 +20,7 @@ fn run_start_schedule(
     cards: CardSetup,
     determinism: &mut RoundDeterminism,
     hand_size: usize,
+    absorb_hurt_map_layout: crate::engine::fight::versions::AbsorbHurtMapLayout,
 ) -> Result<(Vec<FightStep>, Vec<CardInfo>), String> {
     let battle_catalog = managers.catalog();
     let pool =
@@ -42,9 +43,10 @@ fn run_start_schedule(
     );
     managers.gauge.finish_opening_setup();
     let (result, visible_cards) = result.map_err(|error| format!("{error:?}"))?;
-    let steps = crate::engine::packet::timeline::project_for_version(
+    let steps = crate::engine::packet::timeline::project_for_version_with_absorb_map_layout(
         &result.frames,
         fight.version.unwrap_or_default(),
+        absorb_hurt_map_layout,
     )
     .map_err(|error| format!("{error:?}"))?;
     Ok((steps, visible_cards))
@@ -88,6 +90,7 @@ impl BattleRuntime {
             cards,
             determinism,
             hand_size,
+            self.absorb_hurt_map_layout,
         )
     }
 
@@ -119,15 +122,35 @@ impl BattleRuntime {
             &mut self.determinism,
             context,
         );
-        let (ai_deck, player_deck) = crate::engine::manager::card::start::configured_start_decks(
+        let (captured, captured_draws) = self
+            .determinism
+            .take_start_decks()
+            .map(|(ai, player, draws)| {
+                (
+                    Some(
+                        crate::engine::manager::card::start::CapturedDeckSeed::Opening {
+                            ai,
+                            player,
+                        },
+                    ),
+                    draws,
+                )
+            })
+            .unwrap_or_default();
+        let decks = crate::engine::manager::card::start::configured_start_decks(
             self.managers.catalog(),
             &self.fight,
             &self.managers.ex_point,
             &self.managers.eureka,
             extra_ai_actions,
             battle_id,
-            self.determinism.take_start_decks(),
+            captured,
         );
+        if decks.used_capture {
+            self.determinism.enqueue_card_draws(captured_draws);
+        }
+        let ai_deck = decks.ai;
+        let player_deck = decks.player;
         self.catalog_data
             .expect("battle runtime was not constructed with a catalog")
             .extend_skill_roots(

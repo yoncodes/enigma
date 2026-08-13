@@ -144,10 +144,14 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
         ex_attributes,
         sp_attributes,
     );
+    runtime
+        .inherit_absorb_hurt_map_layout(&captured_start_round)
+        .map_err(anyhow::Error::msg)?;
     runtime.extend_battle_rule_skills(tower_rule_skills);
     let mut round_reply = runtime
         .start_round_with_determinism(opening_determinism)
         .map_err(io::Error::other)?;
+    let mut previous_captured_round = captured_start_round;
     replay_cloth_input(path, 0, &mut runtime)?;
     if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage)
         && let Some(captured) = value.get("round").cloned()
@@ -171,10 +175,12 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
         let request_path = path.with_file_name(request_name);
         let request = begin_round_request(&request_path)?;
         let captured = captured_round(&path.with_file_name(reply_name))?;
+        validate_captured_round_continuity(&previous_captured_round, &captured)?;
         report_rule_issues(&captured);
         seed_captured_randomness(&mut runtime, &captured);
         round_reply = runtime.advance_round(request).map_err(io::Error::other)?;
         replay_cloth_input(path, index, &mut runtime)?;
+        previous_captured_round = captured;
     }
 
     Ok(round_reply)
@@ -413,6 +419,23 @@ fn captured_round(path: &Path) -> anyhow::Result<FightRound> {
         )
     })?;
     Ok(serde_json::from_value(round)?)
+}
+
+fn validate_captured_round_continuity(previous: &FightRound, next: &FightRound) -> io::Result<()> {
+    match (previous.cur_round, next.cur_round) {
+        (Some(previous), Some(next_round))
+            if i64::from(next_round) != i64::from(previous) + 1
+                && !(next_round == previous && next.is_finish == Some(true)) =>
+        {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "captured round sequence is misaligned: previous round {previous}, next round {next_round}"
+                ),
+            ))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn round_index(path: &Path) -> anyhow::Result<i32> {

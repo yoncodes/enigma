@@ -52,6 +52,7 @@ fn queued_invalid_ultimate_removal(
         frame_group: None,
         independent_parent_group: None,
         frame_owner: Some(FrameOwner::EventRule),
+        subscriber_owner_uid: None,
     })
 }
 
@@ -77,6 +78,7 @@ fn queued_buff_act_feature_op(
             buff_id: feature.buff_id,
             key,
         }),
+        subscriber_owner_uid: Some(feature.owner_uid),
     })
 }
 
@@ -455,14 +457,17 @@ pub(super) fn dispatch_reactions(
             }
         };
 
-        let frame_group = (frame_scope
-            == crate::engine::skill::buff_act::registry::RuntimeFrameScope::SubscriberFrame)
-            .then(|| {
-                transaction_frame_groups
-                    .entry((feature.owner_uid, feature.buff_uid, feature.act_id()))
-                    .or_insert_with(|| std::rc::Rc::new(std::cell::RefCell::new(None)))
-                    .clone()
-            });
+        let frame_group = matches!(
+            frame_scope,
+            crate::engine::skill::buff_act::registry::RuntimeFrameScope::CausingFrame
+                | crate::engine::skill::buff_act::registry::RuntimeFrameScope::SubscriberFrame
+        )
+        .then(|| {
+            transaction_frame_groups
+                .entry((feature.owner_uid, feature.buff_uid, feature.act_id()))
+                .or_insert_with(|| std::rc::Rc::new(std::cell::RefCell::new(None)))
+                .clone()
+        });
         let queued = QueuedOp {
             op,
             trigger: SkillOpTrigger::Event(event.clone()),
@@ -478,6 +483,7 @@ pub(super) fn dispatch_reactions(
                 buff_id: feature.buff_id,
                 key: definition.key,
             }),
+            subscriber_owner_uid: Some(feature.owner_uid),
         };
         if timing == crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::AfterAction {
             reactions.after_action.push(queued);
@@ -613,6 +619,7 @@ pub(super) fn dispatch_reactions(
                             buff_id: expiry.buff_id,
                             key: expiry.trigger.key(),
                         }),
+                        subscriber_owner_uid: None,
                     }),
             );
     }
@@ -682,6 +689,7 @@ pub(super) fn dispatch_reactions(
                 frame_group: None,
                 independent_parent_group: None,
                 frame_owner: Some(FrameOwner::EventRule),
+                subscriber_owner_uid: None,
             }));
     }
     Ok(reactions)
@@ -827,14 +835,17 @@ pub(super) fn queued_reactions(
             } else {
                 (None, parent_path.map(|path| path.to_vec()))
             };
-            let frame_group = (frame_scope
-                == crate::engine::skill::condition::registry::ReactionFrameScope::Subscriber)
-                .then(|| {
-                    skill_groups
-                        .entry((subscriber.owner_uid, subscriber.skill_id))
-                        .or_default()
-                        .clone()
-                });
+            let frame_group = matches!(
+                frame_scope,
+                crate::engine::skill::condition::registry::ReactionFrameScope::Causing
+                    | crate::engine::skill::condition::registry::ReactionFrameScope::Subscriber
+            )
+            .then(|| {
+                skill_groups
+                    .entry((subscriber.owner_uid, subscriber.skill_id))
+                    .or_default()
+                    .clone()
+            });
             Ok(QueuedOp {
                 op,
                 trigger: SkillOpTrigger::Event(event.clone()),
@@ -857,6 +868,7 @@ pub(super) fn queued_reactions(
                         )
                     }),
                 }),
+                subscriber_owner_uid: Some(subscriber.owner_uid),
             })
         })
         .collect::<Result<Vec<_>, DrainError>>()?;
@@ -908,8 +920,7 @@ pub(super) fn queued_reactions(
                         .map(|path| path.to_vec())
                     })
                     .flatten(),
-                frame_group: (!causing_frame && scoped.group_with_siblings)
-                    .then(|| frame_group.clone()),
+                frame_group: scoped.group_with_siblings.then(|| frame_group.clone()),
                 independent_parent_group: (independent_event && scoped.group_with_siblings)
                     .then(|| independent_parent_group.clone()),
                 frame_owner: Some(
@@ -943,6 +954,7 @@ pub(super) fn queued_reactions(
                         }
                     },
                 ),
+                subscriber_owner_uid: Some(subscriber.owner_uid),
             }
         }));
     }

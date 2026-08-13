@@ -294,16 +294,18 @@ impl ConduitManager {
     }
 
     pub fn action_phase_start_commands(&self, team: i32) -> Vec<ConduitCommand> {
-        std::iter::once(ConduitCommand::ResetPowers { team })
-            .chain(
-                self.areas
-                    .get(&team)
-                    .into_iter()
-                    .flat_map(|area| &area.devices)
-                    .map(|device| ConduitCommand::RestartDevice {
-                        source_uid: device.uid,
-                    }),
-            )
+        self.areas
+            .get(&team)
+            .into_iter()
+            .flat_map(|area| {
+                std::iter::once(ConduitCommand::ResetPowers { team }).chain(
+                    area.devices
+                        .iter()
+                        .map(|device| ConduitCommand::RestartDevice {
+                            source_uid: device.uid,
+                        }),
+                )
+            })
             .collect()
     }
 
@@ -1243,5 +1245,40 @@ mod tests {
                 }
             ]
         ));
+    }
+
+    #[test]
+    fn action_phase_start_commands_require_an_existing_area() {
+        let mut manager = ConduitManager::default();
+        assert!(manager.action_phase_start_commands(1).is_empty());
+
+        manager.areas.insert(
+            1,
+            ConduitArea {
+                team: 1,
+                devices: vec![
+                    ConduitDevice {
+                        uid: 10,
+                        selected_group: 1,
+                        skill_groups: Vec::new(),
+                    },
+                    ConduitDevice {
+                        uid: 20,
+                        selected_group: 1,
+                        skill_groups: Vec::new(),
+                    },
+                ],
+                powers: Vec::new(),
+            },
+        );
+
+        assert_eq!(
+            manager.action_phase_start_commands(1),
+            vec![
+                ConduitCommand::ResetPowers { team: 1 },
+                ConduitCommand::RestartDevice { source_uid: 10 },
+                ConduitCommand::RestartDevice { source_uid: 20 },
+            ]
+        );
     }
 }

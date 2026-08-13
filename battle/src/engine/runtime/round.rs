@@ -41,9 +41,10 @@ impl BattleRuntime {
             emitter_uid,
         )
         .map_err(|error| format!("{error:?}"))?;
-        crate::engine::packet::timeline::project_for_version(
+        crate::engine::packet::timeline::project_for_version_with_absorb_map_layout(
             &result.frames,
             self.fight.version.unwrap_or_default(),
+            self.absorb_hurt_map_layout,
         )
         .map_err(|error| format!("{error:?}"))
     }
@@ -108,8 +109,11 @@ impl BattleRuntime {
             current_round: self.round_state.cur_round,
             ..Default::default()
         };
+        let defenders_depleted_before_player_actions =
+            crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         let commands = commands_from_opers(&request.opers);
         let fight_version = self.fight.version.unwrap_or_default();
+        let absorb_hurt_map_layout = self.absorb_hurt_map_layout;
         let uses_action_phase_power_clear =
             crate::engine::fight::versions::round_start_setup_layout(fight_version)
                 == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
@@ -185,9 +189,17 @@ impl BattleRuntime {
             &self.managers,
             &pool,
         );
-        let mut fight_steps = project_result(player, fight_version)?;
-        fight_steps.extend(project_result(conduit, fight_version)?);
-        fight_steps.extend(project_result(card_energy_clear, fight_version)?);
+        let mut fight_steps = project_result(player, fight_version, absorb_hurt_map_layout)?;
+        fight_steps.extend(project_result(
+            conduit,
+            fight_version,
+            absorb_hurt_map_layout,
+        )?);
+        fight_steps.extend(project_result(
+            card_energy_clear,
+            fight_version,
+            absorb_hurt_map_layout,
+        )?);
         let ended_during_attacker_actions = battle_ended(&self.fight, &pool, &self.managers);
         let promotions = if ended_during_attacker_actions {
             Vec::new()
@@ -215,6 +227,7 @@ impl BattleRuntime {
                 )
                 .map_err(|error| format!("{error:?}"))?,
                 fight_version,
+                absorb_hurt_map_layout,
             )?);
             ai_envelope = self.managers.card.ai_queue().to_vec();
         }
@@ -236,17 +249,27 @@ impl BattleRuntime {
             )
         }
         .map_err(|error| format!("{error:?}"))?;
-        fight_steps.extend(project_result(attacker_settlement, fight_version)?);
+        fight_steps.extend(project_result(
+            attacker_settlement,
+            fight_version,
+            absorb_hurt_map_layout,
+        )?);
         let ended_after_attacker_settlement = battle_ended(&self.fight, &pool, &self.managers);
         let current_wave_defeated =
             crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
-        let runs_enemy_phase = !ended_after_attacker_settlement && !current_wave_defeated;
+        let runs_phase_two = !ended_after_attacker_settlement
+            && (!current_wave_defeated || defenders_depleted_before_player_actions);
         let needs_refill = crate::engine::mechanic::card::CardMechanic
             .refill_hand_len(&self.managers, &pool)
             < hand_size;
-        if needs_refill && runs_enemy_phase {
+        let phase_two_refill_deferred = needs_refill && !runs_phase_two;
+        if needs_refill && runs_phase_two {
             self.round_state.before_cards2 = round_field_cards(self.managers.card.hand());
-            fight_steps.extend(project_result(schedule::run_round_deal(2), fight_version)?);
+            fight_steps.extend(project_result(
+                schedule::run_round_deal(2),
+                fight_version,
+                absorb_hurt_map_layout,
+            )?);
         }
         if !ended_after_attacker_settlement {
             let defeated_defenders = pool
@@ -266,9 +289,10 @@ impl BattleRuntime {
                 )
                 .map_err(|error| format!("{error:?}"))?,
                 fight_version,
+                absorb_hurt_map_layout,
             )?);
         }
-        if needs_refill && runs_enemy_phase {
+        if needs_refill && runs_phase_two {
             let refill = schedule::run_round_refill(
                 &mut self.managers,
                 &pool,
@@ -280,11 +304,15 @@ impl BattleRuntime {
             )
             .map_err(|error| format!("{error:?}"))?;
             apply_cloth_power(&self.fight, &self.managers, &mut self.round_state, &refill);
-            fight_steps.extend(project_result(refill, fight_version)?);
+            fight_steps.extend(project_result(
+                refill,
+                fight_version,
+                absorb_hurt_map_layout,
+            )?);
             self.round_state.team_a_cards2 = round_field_cards(self.managers.card.refilled());
         }
-        if runs_enemy_phase {
-            if uses_action_phase_power_clear {
+        if runs_phase_two {
+            if uses_action_phase_power_clear && !current_wave_defeated {
                 fight_steps.extend(project_result(
                     schedule::run_action_phase_start(
                         &mut self.managers,
@@ -296,6 +324,7 @@ impl BattleRuntime {
                     )
                     .map_err(|error| format!("{error:?}"))?,
                     fight_version,
+                    absorb_hurt_map_layout,
                 )?);
             }
             let wave_entry_condition_uids = std::mem::take(&mut self.wave_entry_condition_uids);
@@ -311,6 +340,7 @@ impl BattleRuntime {
                 )
                 .map_err(|error| format!("{error:?}"))?,
                 fight_version,
+                absorb_hurt_map_layout,
             )?);
             let choices = captured_ai_choices.unwrap_or_else(|| {
                 ai_envelope
@@ -334,7 +364,7 @@ impl BattleRuntime {
                 choices,
             )
             .map_err(|error| format!("{error:?}"))?;
-            fight_steps.extend(project_result(ai, fight_version)?);
+            fight_steps.extend(project_result(ai, fight_version, absorb_hurt_map_layout)?);
             let after_ai_round_end = schedule::run_after_ai_round_end(
                 &mut self.managers,
                 &pool,
@@ -343,7 +373,11 @@ impl BattleRuntime {
                 context,
             )
             .map_err(|error| format!("{error:?}"))?;
-            fight_steps.extend(project_result(after_ai_round_end, fight_version)?);
+            fight_steps.extend(project_result(
+                after_ai_round_end,
+                fight_version,
+                absorb_hurt_map_layout,
+            )?);
         }
         let mut wave_entering_uids = Vec::new();
         if current_wave_defeated {
@@ -380,8 +414,9 @@ impl BattleRuntime {
                 )
                 .map_err(|error| format!("{error:?}"))?,
                 fight_version,
+                absorb_hurt_map_layout,
             )?);
-            let (next_ai, _) = crate::engine::manager::card::start::configured_start_decks(
+            let next_ai = crate::engine::manager::card::start::configured_start_decks(
                 self.managers.catalog(),
                 &self.fight,
                 &self.managers.ex_point,
@@ -395,7 +430,8 @@ impl BattleRuntime {
                 ),
                 self.fight.battle_id.unwrap_or_default(),
                 None,
-            );
+            )
+            .ai;
             battle_catalog.extend_skill_roots(
                 catalog,
                 next_ai.iter().filter_map(|card| card.skill_id),
@@ -474,7 +510,13 @@ impl BattleRuntime {
             (round_start, next_round, hand_snapshot, dealt_cards, true)
         };
         finish_if_battle_ended(&mut self.round_state, &self.fight, &pool, &self.managers);
-        fight_steps.extend(project_result(round_start, fight_version)?);
+        let terminal_during_next_round_preparation =
+            next_round_prepared && self.round_state.is_finish;
+        fight_steps.extend(project_result(
+            round_start,
+            fight_version,
+            absorb_hurt_map_layout,
+        )?);
         if !self.round_state.is_finish {
             let cards = crate::engine::manager::card::start::configured_start_decks(
                 self.managers.catalog(),
@@ -491,9 +533,9 @@ impl BattleRuntime {
                 self.round_state.cur_round,
                 self.determinism
                     .take_next_ai_card_snapshot()
-                    .map(|cards| (cards, Vec::new())),
+                    .map(crate::engine::manager::card::start::CapturedDeckSeed::NextAi),
             )
-            .0;
+            .ai;
             battle_catalog.extend_skill_roots(
                 catalog,
                 cards.iter().filter_map(|card| card.skill_id),
@@ -510,18 +552,39 @@ impl BattleRuntime {
                 )
                 .map_err(|error| format!("{error:?}"))?,
                 fight_version,
+                absorb_hurt_map_layout,
             )?);
         }
-        let next_round_begin_step = project_result(next_round, fight_version)?;
+        let next_round_begin_step =
+            project_result(next_round, fight_version, absorb_hurt_map_layout)?;
 
         self.managers.sync_entities(&mut self.fight);
-        if uses_action_phase_power_clear && self.round_state.is_finish {
+        if uses_action_phase_power_clear
+            && self.round_state.is_finish
+            && !terminal_during_next_round_preparation
+        {
             self.round_state.cur_round = active_round;
         }
         self.round_state.hero_sp_attributes = self.managers.hero_sp_attributes(&self.fight);
         self.round_state.last_change_hero_uid = self.fight.last_change_hero_uid;
         self.fight.cur_round = Some(self.round_state.cur_round);
         self.fight.is_finish = Some(self.round_state.is_finish);
+        let (next_round_hand_snapshot, next_round_dealt_cards) =
+            if terminal_during_next_round_preparation {
+                let team_cards = self.managers.card.team_cards().to_vec();
+                if phase_two_refill_deferred {
+                    self.round_state.before_cards2 = next_round_hand_snapshot;
+                    self.round_state.team_a_cards2 = next_round_dealt_cards
+                        .strip_suffix(team_cards.as_slice())
+                        .ok_or_else(|| {
+                            "prepared team cards are not the dealt-card suffix".to_owned()
+                        })?
+                        .to_vec();
+                }
+                (self.managers.card.hand().to_vec(), team_cards)
+            } else {
+                (next_round_hand_snapshot, next_round_dealt_cards)
+            };
         let mut round = next_round_shell(
             &self.fight,
             &self.round_state,

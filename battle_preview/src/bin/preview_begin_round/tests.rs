@@ -1,6 +1,65 @@
 use super::*;
 
 #[test]
+fn captured_round_continuity_rejects_skips_and_reversals() {
+    let previous = FightRound {
+        cur_round: Some(1),
+        ..Default::default()
+    };
+    let skipped = FightRound {
+        cur_round: Some(3),
+        ..Default::default()
+    };
+    let reversed = FightRound {
+        cur_round: Some(0),
+        ..Default::default()
+    };
+
+    let error = validate_captured_round_continuity(&previous, &skipped).unwrap_err();
+
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    assert!(error.to_string().contains("previous round 1"));
+    assert!(error.to_string().contains("next round 3"));
+    assert!(validate_captured_round_continuity(&previous, &reversed).is_err());
+}
+
+#[test]
+fn captured_round_continuity_accepts_next_terminal_and_missing_evidence() {
+    let previous = FightRound {
+        cur_round: Some(3),
+        ..Default::default()
+    };
+    let next = FightRound {
+        cur_round: Some(4),
+        ..Default::default()
+    };
+    let terminal = FightRound {
+        is_finish: Some(true),
+        ..next.clone()
+    };
+    assert!(validate_captured_round_continuity(&previous, &next).is_ok());
+    assert!(validate_captured_round_continuity(&next, &terminal).is_ok());
+    assert!(validate_captured_round_continuity(&FightRound::default(), &next).is_ok());
+    assert!(validate_captured_round_continuity(&next, &FightRound::default()).is_ok());
+}
+
+#[test]
+fn captured_round_continuity_rejects_same_round_without_terminal_evidence() {
+    let round = FightRound {
+        cur_round: Some(4),
+        ..Default::default()
+    };
+
+    assert!(validate_captured_round_continuity(&round, &round).is_err());
+
+    let maximum = FightRound {
+        cur_round: Some(i32::MAX),
+        ..Default::default()
+    };
+    assert!(validate_captured_round_continuity(&maximum, &maximum).is_err());
+}
+
+#[test]
 fn cloth_input_discovery_returns_same_round_requests_in_capture_order() {
     let directory = std::env::temp_dir().join(format!(
         "enigma-cloth-inputs-{}-{}",

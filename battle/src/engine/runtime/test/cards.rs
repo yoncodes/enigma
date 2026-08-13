@@ -36,6 +36,62 @@ fn destination_start_schedule_builds_the_complete_round_wrapper() {
 }
 
 #[test]
+fn rejected_opening_seed_does_not_retain_captured_draws() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        battle_id: Some(17),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(1001),
+                position: Some(1),
+                current_hp: Some(100),
+                skill_group1: vec![101],
+                skill_group2: vec![102],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(2001),
+                position: Some(1),
+                current_hp: Some(100),
+                skill_group1: vec![201],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let player_card = |skill_id| sonettobuf::CardInfo {
+        uid: Some(10),
+        skill_id: Some(skill_id),
+        ..Default::default()
+    };
+    let ai_card = sonettobuf::CardInfo {
+        uid: Some(-1),
+        skill_id: Some(201),
+        ..Default::default()
+    };
+    let mut baseline = runtime(fight.clone());
+    let baseline_round = baseline.start_round().unwrap();
+    let mut determinism = RoundDeterminism::with_seed(17);
+    determinism.enqueue_opening_seed(
+        vec![ai_card.clone(), ai_card],
+        vec![player_card(101), player_card(102), player_card(101)],
+        vec![player_card(102), player_card(102), player_card(102)],
+    );
+    let mut replay = runtime(fight);
+    let replay_round = replay.start_round_with_determinism(determinism).unwrap();
+
+    assert_eq!(replay_round.ai_use_cards, baseline_round.ai_use_cards);
+    assert_eq!(replay_round.team_a_cards1, baseline_round.team_a_cards1);
+}
+
+#[test]
 fn opening_adds_one_ready_ultimate_outside_the_normal_hand() {
     crate::test_support::init_config();
     let fight = Fight {

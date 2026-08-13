@@ -6,7 +6,7 @@ use sonettobuf::{
 
 use crate::engine::{
     buff::marker,
-    fight::versions::HurtInfoWireLayout,
+    fight::versions::{AbsorbHurtMapLayout, HurtInfoWireLayout},
     manager::{
         buff::{
             BuffApplyResult, BuffMarkerResult, BuffRejectResult, BuffRemoveResult, BuffUpdateResult,

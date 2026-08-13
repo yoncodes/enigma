@@ -4,6 +4,7 @@ use sonettobuf::{
     BeginRoundOper, BeginRoundRequest, FightEntityInfo, FightTeam, UseClothSkillRequest,
 };
 
+mod absorb_layout;
 mod auto_battle;
 mod cards;
 mod cloth;

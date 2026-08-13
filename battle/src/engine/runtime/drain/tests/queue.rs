@@ -22,6 +22,7 @@ fn after_skill_reaction_waits_for_remaining_ops_in_the_skill_frame() {
             frame_group: None,
             independent_parent_group: None,
             frame_owner: None,
+            subscriber_owner_uid: None,
         }
     }
 

@@ -29,9 +29,10 @@ fn ignores_non_raspberry_or_dead_features() {
 }
 
 #[test]
-fn projects_threshold_attributes_from_current_capacity() {
-    assert_eq!(1_909 * 50 / 10_000 * 10, 90);
-    assert_eq!(1_909 * 33 / 10_000 * 10, 60);
+fn projects_fractional_threshold_attributes_without_ten_point_floor() {
+    assert_eq!(stepped_attribute(1_167, 50), 58);
+    assert_eq!(stepped_attribute(1_200, 50), 60);
+    assert_eq!(stepped_attribute(1_909, 33), 62);
 }
 
 #[test]
@@ -76,7 +77,7 @@ fn shadow_feast_uses_the_configured_reduced_attribute_rates() {
     assert_eq!(attribute_delta(&managers.buff, 10, AttrId::CriticalDmg), 90);
     assert_eq!(
         attribute_delta(&managers.buff, 10, AttrId::UltimateMight),
-        54
+        59
     );
 }
 

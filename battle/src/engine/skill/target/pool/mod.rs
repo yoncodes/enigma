@@ -495,6 +495,25 @@ impl TargetEntity {
             entity.level,
             entity.entity_type,
         );
+        let configured_groups = catalog.trial_skill_groups(
+            entity.trial_id.unwrap_or_default(),
+            entity.model_id.unwrap_or_default(),
+        );
+        let skill_group1 = if entity.skill_group1.is_empty() {
+            configured_groups
+                .as_ref()
+                .map(|groups| groups.group1.clone())
+                .unwrap_or_default()
+        } else {
+            entity.skill_group1.clone()
+        };
+        let skill_group2 = if entity.skill_group2.is_empty() {
+            configured_groups
+                .map(|groups| groups.group2)
+                .unwrap_or_default()
+        } else {
+            entity.skill_group2.clone()
+        };
         Some(Self {
             uid: entity.uid?,
             level: entity.level.unwrap_or_default(),
@@ -528,8 +547,8 @@ impl TargetEntity {
             ex_point: entity.ex_point.unwrap_or_default(),
             ex_skill: entity.ex_skill.unwrap_or_default(),
             ex_skill_level: entity.ex_skill_level.unwrap_or_default(),
-            skill_group1: entity.skill_group1.clone(),
-            skill_group2: entity.skill_group2.clone(),
+            skill_group1,
+            skill_group2,
             passive_skills: entity.passive_skill.clone(),
             destiny_stone: entity.destiny_stone.unwrap_or_default(),
             destiny_rank: entity.destiny_rank.unwrap_or_default(),

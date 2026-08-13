@@ -54,6 +54,7 @@ impl BattleRuntime {
         self.pending_redeal = None;
         let skill_type = ClothSkillType::try_from(request.r#type?).ok()?;
         let fight_version = self.fight.version.unwrap_or_default();
+        let absorb_hurt_map_layout = self.absorb_hurt_map_layout;
         let steps = match skill_type {
             ClothSkillType::ClothSkill => {
                 let source_uid = request.from_id.unwrap_or_default();
@@ -129,7 +130,7 @@ impl BattleRuntime {
                         crate::engine::fight::versions::RedealWireLayout::Version6 => redeal,
                         crate::engine::fight::versions::RedealWireLayout::Version7 => None,
                     };
-                project_result(result, fight_version)
+                project_result(result, fight_version, absorb_hurt_map_layout)
                     .inspect_err(|error| tracing::warn!(%error, "cloth skill projection failed"))
                     .ok()?
             }
@@ -146,6 +147,7 @@ impl BattleRuntime {
                 project_changes(
                     [change::BattleChange::UpgradeApplied(Box::new(applied))],
                     fight_version,
+                    absorb_hurt_map_layout,
                 )
                 .inspect_err(|error| tracing::warn!(%error, "hero upgrade projection failed"))
                 .ok()?
@@ -223,6 +225,7 @@ impl BattleRuntime {
                         change::BattleChange::Contract(bound_selected),
                     ],
                     fight_version,
+                    absorb_hurt_map_layout,
                 )
                 .inspect_err(|error| tracing::warn!(%error, "contract selection projection failed"))
                 .ok()?
@@ -242,6 +245,7 @@ impl BattleRuntime {
                         change::BattleChange::BuffActInfoMarker(selection.marker),
                     ],
                     fight_version,
+                    absorb_hurt_map_layout,
                 )
                 .inspect_err(|error| tracing::warn!(%error, "crystal selection projection failed"))
                 .ok()?
@@ -332,7 +336,7 @@ impl BattleRuntime {
                         team_type: feature.team_type,
                     },
                 ));
-                project_changes(changes, fight_version)
+                project_changes(changes, fight_version, absorb_hurt_map_layout)
                     .inspect_err(
                         |error| tracing::warn!(%error, "conduit selection projection failed"),
                     )
@@ -389,7 +393,7 @@ impl BattleRuntime {
                 )
                 .inspect_err(|error| tracing::warn!(?error, "cloth skill execution failed"))
                 .ok()?;
-                project_result(result, fight_version)
+                project_result(result, fight_version, absorb_hurt_map_layout)
                     .inspect_err(|error| tracing::warn!(%error, "cloth skill projection failed"))
                     .ok()?
             }
@@ -417,6 +421,7 @@ impl BattleRuntime {
 fn project_changes(
     changes: impl IntoIterator<Item = change::BattleChange>,
     fight_version: i32,
+    absorb_hurt_map_layout: crate::engine::fight::versions::AbsorbHurtMapLayout,
 ) -> Result<Vec<FightStep>, String> {
     let frame = record::SemanticFrame {
         owner: record::FrameOwner::Command,
@@ -426,8 +431,12 @@ fn project_changes(
             .map(|change| record::FrameItem::Change(Box::new(change)))
             .collect(),
     };
-    crate::engine::packet::timeline::project_for_version(&[frame], fight_version)
-        .map_err(|error| format!("{error:?}"))
+    crate::engine::packet::timeline::project_for_version_with_absorb_map_layout(
+        &[frame],
+        fight_version,
+        absorb_hurt_map_layout,
+    )
+    .map_err(|error| format!("{error:?}"))
 }
 
 #[cfg(test)]

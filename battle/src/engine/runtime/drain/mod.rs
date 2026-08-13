@@ -148,6 +148,7 @@ struct QueuedOp {
     frame_group: Option<Rc<RefCell<Option<FramePath>>>>,
     independent_parent_group: Option<Rc<RefCell<Option<FramePath>>>>,
     frame_owner: Option<FrameOwner>,
+    subscriber_owner_uid: Option<i64>,
 }
 
 fn queued_defeated_owner_card_cleanup(
@@ -187,6 +188,7 @@ fn queued_defeated_owner_card_cleanup(
         frame_group: None,
         independent_parent_group: None,
         frame_owner: Some(FrameOwner::EventRule),
+        subscriber_owner_uid: None,
     })
 }
 
@@ -384,6 +386,7 @@ fn drain_queue_with_deferred(
         frame_group,
         independent_parent_group,
         frame_owner,
+        subscriber_owner_uid,
     }) = queue.pop_front()
     {
         // Root and nested drains share this budget, so reaction cycles fail the
@@ -417,6 +420,22 @@ fn drain_queue_with_deferred(
                 .as_ref()
                 .and_then(|group| group.borrow().clone())
         });
+        let frame_group_started = frame_group
+            .as_ref()
+            .is_some_and(|group| group.borrow().is_some());
+        if matches!(trigger, SkillOpTrigger::Event(_))
+            && !frame_group_started
+            && managers
+                .terminal_outcome()
+                .and_then(|outcome| outcome.winning_team())
+                .is_some_and(|winning_team| {
+                    subscriber_owner_uid
+                        .and_then(|owner_uid| base_pool.team_type(owner_uid))
+                        .is_some_and(|team| team != winning_team)
+                })
+        {
+            continue;
+        }
         let parent_path = if let Some(group) = &independent_parent_group {
             let existing = group.borrow().clone();
             let path = existing.unwrap_or_else(|| {
@@ -581,6 +600,7 @@ fn drain_queue_with_deferred(
                                 frame_group: None,
                                 independent_parent_group: None,
                                 frame_owner: None,
+                                subscriber_owner_uid: None,
                             };
                             if after_current_action {
                                 state.push_after_action(frame_path.clone(), queued);
@@ -598,6 +618,7 @@ fn drain_queue_with_deferred(
                                 frame_group: None,
                                 independent_parent_group: None,
                                 frame_owner: Some(frame_owner),
+                                subscriber_owner_uid: None,
                             },
                             None => QueuedOp {
                                 op: command,
@@ -608,6 +629,7 @@ fn drain_queue_with_deferred(
                                 frame_group: None,
                                 independent_parent_group: None,
                                 frame_owner: None,
+                                subscriber_owner_uid: None,
                             },
                         }),
                     }
@@ -622,6 +644,7 @@ fn drain_queue_with_deferred(
                         frame_group: None,
                         independent_parent_group: None,
                         frame_owner: None,
+                        subscriber_owner_uid: None,
                     });
                 }
                 prepend(queue, outputs);
@@ -666,6 +689,7 @@ fn drain_queue_with_deferred(
                         frame_group,
                         independent_parent_group,
                         frame_owner,
+                        subscriber_owner_uid,
                     });
                     prepend(queue, observers);
                     continue;
@@ -1059,28 +1083,10 @@ fn drain_queue_with_deferred(
                 let was_hp_batch = matches!(&outcome, RuleOutcome::HpBatch(_));
                 result.outcomes.push(outcome);
 
-                // Battle outcome logic selects the terminal boundary. Its manager
-                // commits that boundary here; later reactions are limited to the winner.
-                if managers.terminal_outcome().is_none()
-                    && context.battle_id > 0
-                    && let Some(outcome) =
-                        crate::engine::round::outcome::terminal_outcome_for_battle_id(
-                            context.battle_id,
-                            pool,
-                            managers,
-                        )
-                    && let Some(winning_team) = outcome.winning_team()
-                    && managers.commit_terminal(outcome)
-                {
-                    result.events.push(BattleEvent::BattleTerminalCommitted {
-                        outcome,
-                        winning_team,
-                    });
-                }
                 let terminal_owner_uids = managers
                     .terminal_outcome()
                     .and_then(|outcome| outcome.winning_team())
-                    .map(|winning_team| pool.team_uids(winning_team));
+                    .map(|winning_team| base_pool.team_uids(winning_team));
 
                 // AfterPublish reactions are partitioned by their declared release
                 // lane; after-hit and after-action work stays action-scoped in state.
@@ -1169,7 +1175,7 @@ fn drain_queue_with_deferred(
                             queued_runtime_settlement_phase(queued)
                                 == crate::engine::skill::buff_act::registry::RuntimeSettlementPhase::After
                         });
-                    drain_nested_queue(
+                    drain_death_settlement_queue(
                         managers,
                         pool,
                         catalog,
@@ -1180,6 +1186,8 @@ fn drain_queue_with_deferred(
                     )?;
                     after_publish = after_settlement;
                 }
+
+                commit_terminal(managers, base_pool, context, state, &mut result.events);
 
                 // A pending death becomes a frame change only if HP is still zero.
                 // Active-action deaths wait for the shared HitPassives release.
@@ -1268,6 +1276,7 @@ fn drain_queue_with_deferred(
                         frame_group: None,
                         independent_parent_group: None,
                         frame_owner: deferred_followup_owner.clone(),
+                        subscriber_owner_uid: None,
                     };
                     if let Some(skill_path) = skill_path {
                         state.push_after_action(skill_path, queued);
@@ -1310,6 +1319,46 @@ fn drain_nested_queue(
     result.events.extend(nested.events);
     result.frames = nested.frames;
     Ok(())
+}
+
+fn drain_death_settlement_queue(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    queue: VecDeque<QueuedOp>,
+    result: &mut DrainResult,
+    state: &mut DrainState,
+) -> Result<(), DrainError> {
+    state.enter_death_settlement();
+    let nested = drain_nested_queue(managers, pool, catalog, determinism, queue, result, state);
+    state.leave_death_settlement();
+    nested
+}
+
+fn commit_terminal(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    context: TargetContext,
+    state: &DrainState,
+    events: &mut Vec<BattleEvent>,
+) {
+    if !state.death_settlement_in_progress()
+        && managers.terminal_outcome().is_none()
+        && context.battle_id > 0
+        && let Some(outcome) = crate::engine::round::outcome::terminal_outcome_for_battle_id(
+            context.battle_id,
+            pool,
+            managers,
+        )
+        && let Some(winning_team) = outcome.winning_team()
+        && managers.commit_terminal(outcome)
+    {
+        events.push(BattleEvent::BattleTerminalCommitted {
+            outcome,
+            winning_team,
+        });
+    }
 }
 
 fn invocation_frame_target(

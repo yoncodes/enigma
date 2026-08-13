@@ -144,6 +144,76 @@ fn skill_slot_resolves_card_skill_ids_to_their_configured_effect() {
 }
 
 #[test]
+fn trial_skill_identity_fills_only_missing_groups_without_changing_deck_ownership() {
+    crate::test_support::init_config();
+    let configured = crate::catalog::BattleCatalog::new(crate::test_support::game_data())
+        .trial_skill_groups(116_385_001, 3_149)
+        .unwrap();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(3_149),
+                trial_id: Some(116_385_001),
+                current_hp: Some(1),
+                skill_group1: vec![999],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let entity = TargetPool::from_fight(&fight).attacker_main.remove(0);
+
+    assert_eq!(entity.skill_group1, vec![999]);
+    assert_eq!(entity.skill_group2, configured.group2);
+    assert_eq!(crate::engine::manager::card::start::deck_size(&fight), 16);
+
+    let empty_captured_groups = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(3_149),
+                trial_id: Some(116_385_001),
+                current_hp: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let runtime_entity = TargetPool::from_fight(&empty_captured_groups)
+        .attacker_main
+        .remove(0);
+
+    assert_eq!(runtime_entity.skill_group1, configured.group1);
+    assert_eq!(
+        crate::engine::manager::card::start::deck_size(&empty_captured_groups),
+        0
+    );
+}
+
+#[test]
+fn trial_skill_identity_rejects_missing_or_mismatched_identity() {
+    crate::test_support::init_config();
+
+    for (trial_id, model_id) in [(None, 3_149), (Some(0), 3_149), (Some(116_385_001), 999)] {
+        let entity = TargetEntity::from_fight_entity(&FightEntityInfo {
+            uid: Some(1),
+            model_id: Some(model_id),
+            trial_id,
+            current_hp: Some(1),
+            ..Default::default()
+        })
+        .unwrap();
+
+        assert!(entity.skill_group1.is_empty());
+        assert!(entity.skill_group2.is_empty());
+    }
+}
+
+#[test]
 fn emitter_uses_average_attacker_stats_without_joining_the_team() {
     let entity = |uid, attack| FightEntityInfo {
         uid: Some(uid),

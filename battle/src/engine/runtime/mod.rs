@@ -8,6 +8,7 @@ use sonettobuf::{
 use crate::{
     catalog::BattleCatalog,
     engine::{
+        fight::versions::AbsorbHurtMapLayout,
         manager::BattleManagers,
         round::{outcome::battle_outcome, state::RoundState},
         skill::effect::SkillEffectCatalog,
@@ -50,6 +51,7 @@ pub struct BattleRuntime {
     wave_entry_condition_uids: Vec<i64>,
     cloth_skill_uses: HashMap<i32, usize>,
     objectives: objective::ObjectiveProgress,
+    absorb_hurt_map_layout: AbsorbHurtMapLayout,
 }
 
 impl BattleRuntime {
@@ -85,6 +87,14 @@ impl BattleRuntime {
 
     pub fn fight_version(&self) -> i32 {
         self.fight.version.unwrap_or_default()
+    }
+
+    /// Preserves the absorb-map schema already established by an authoritative opening round.
+    pub fn inherit_absorb_hurt_map_layout(&mut self, round: &FightRound) -> Result<(), String> {
+        if let Some(layout) = observed_absorb_hurt_map_layout(round)? {
+            self.absorb_hurt_map_layout = layout;
+        }
+        Ok(())
     }
 
     /// Returns the synchronized fight state and most recently committed round for reconnect.
@@ -273,6 +283,7 @@ impl BattleRuntime {
             wave_entry_condition_uids: Vec::new(),
             cloth_skill_uses: HashMap::new(),
             objectives: Default::default(),
+            absorb_hurt_map_layout: AbsorbHurtMapLayout::default(),
         }
     }
 }
@@ -280,9 +291,70 @@ impl BattleRuntime {
 fn project_result(
     result: drain::DrainResult,
     fight_version: i32,
+    absorb_hurt_map_layout: AbsorbHurtMapLayout,
 ) -> Result<Vec<sonettobuf::FightStep>, String> {
-    crate::engine::packet::timeline::project_for_version(&result.frames, fight_version)
-        .map_err(|error| format!("{error:?}"))
+    let projected = if absorb_hurt_map_layout == AbsorbHurtMapLayout::default() {
+        crate::engine::packet::timeline::project_for_version(&result.frames, fight_version)
+    } else {
+        crate::engine::packet::timeline::project_for_version_with_absorb_map_layout(
+            &result.frames,
+            fight_version,
+            absorb_hurt_map_layout,
+        )
+    };
+    projected.map_err(|error| format!("{error:?}"))
+}
+
+fn observed_absorb_hurt_map_layout(
+    round: &FightRound,
+) -> Result<Option<AbsorbHurtMapLayout>, String> {
+    fn visit(
+        steps: &[sonettobuf::FightStep],
+        observed: &mut Option<AbsorbHurtMapLayout>,
+    ) -> Result<(), String> {
+        for step in steps {
+            for effect in &step.act_effect {
+                if let Some(param) = effect
+                    .hurt_info
+                    .as_ref()
+                    .and_then(|hurt| hurt.absorb_hurt_param.as_deref())
+                {
+                    let map =
+                        serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(param)
+                            .map_err(|error| format!("invalid absorbHurtParam: {error}"))?;
+                    let has_string =
+                        |key| matches!(map.get(key), Some(serde_json::Value::String(_)));
+                    let layout = match map.len() {
+                        2 if has_string("reduceTeamShareShieldBuffMap")
+                            && has_string("reduceShieldBuffMap") =>
+                        {
+                            AbsorbHurtMapLayout::TwoMaps
+                        }
+                        3 if has_string("reduceTeamShareShieldBuffMap")
+                            && has_string("reduceShieldBuffMap")
+                            && map.get("consumeFakeHpBuffMap")
+                                == Some(&serde_json::Value::String(String::new())) =>
+                        {
+                            AbsorbHurtMapLayout::ThreeMaps
+                        }
+                        _ => return Err("absorbHurtParam has an unsupported map layout".into()),
+                    };
+                    if observed.is_some_and(|current| current != layout) {
+                        return Err("opening round mixes absorbHurtParam layouts".into());
+                    }
+                    *observed = Some(layout);
+                }
+                if let Some(child) = effect.fight_step.as_ref() {
+                    visit(std::slice::from_ref(child), observed)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    let mut observed = None;
+    visit(&round.fight_step, &mut observed)?;
+    Ok(observed)
 }
 
 #[cfg(test)]

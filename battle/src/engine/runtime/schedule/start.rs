@@ -142,13 +142,16 @@ pub fn run_round_start_after_ai_split(
         .collect::<Vec<_>>();
     owner_uids.extend(pool.assist_boss(crate::engine::fight::rules::ATTACKER_SIDE_UID));
     let duration_snapshot = duration_snapshot(managers, &owner_uids);
+    let setup_layout =
+        crate::engine::fight::versions::round_start_setup_layout(managers.fight_version());
+    let emits_conduit_action_phase_reset = setup_layout
+        == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
+        && !managers.conduit.action_phase_start_commands(1).is_empty();
     let mut fight_steps = DrainResult::default();
     push_cue(
         &mut fight_steps.frames,
         RoundCue::ChangeRound {
-            round: if crate::engine::fight::versions::writes_change_round_number(
-                managers.fight_version(),
-            ) {
+            round: if emits_conduit_action_phase_reset {
                 context.current_round
             } else {
                 0
@@ -221,8 +224,6 @@ pub fn run_round_start_after_ai_split(
         ROUND_START_EVENT_SETUP,
         &owner_uids,
     )?;
-    let setup_layout =
-        crate::engine::fight::versions::round_start_setup_layout(managers.fight_version());
     if setup_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) {
         append_round_phase(
             &mut settlement,
@@ -515,6 +516,15 @@ pub fn run_start(
     card_setup: CardSetup,
     hand_size: usize,
 ) -> Result<(DrainResult, Vec<sonettobuf::CardInfo>), DrainError> {
+    let opening_ultimate_owner_uids = pool
+        .attacker_main
+        .iter()
+        .filter(|entity| managers.hp.current(entity.uid) > 0)
+        .filter(|entity| {
+            crate::engine::mechanic::card::CardMechanic.ultimate_ready(managers, entity)
+        })
+        .map(|entity| entity.uid)
+        .collect::<Vec<_>>();
     let mut result = DrainResult::default();
     let conduit_initializations = managers
         .conduit
@@ -895,7 +905,10 @@ pub fn run_start(
         determinism,
         context,
         crate::engine::mechanic::card::CardMechanic.normal_hand_limit(hand_size, managers, pool),
-        opening_draws,
+        super::OpeningRefillSeed {
+            draws: opening_draws,
+            ultimate_owner_uids: &opening_ultimate_owner_uids,
+        },
     )?;
     let (initial_deck_num, setup_deck_num) =
         opening_deck_counts.expect("start schedule has one CardSetup stage");

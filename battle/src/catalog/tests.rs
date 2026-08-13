@@ -76,7 +76,16 @@ fn normalizes_entity_ex_point_max() {
         configured_ex_point_max(game_data, Some(17), Some(3120), 180),
         Some(17)
     );
+    assert_eq!(
+        configured_ex_point_max(game_data, None, Some(109_360_002), 1),
+        Some(2)
+    );
+    assert_eq!(
+        configured_ex_point_max(game_data, None, Some(4_030_703), 1),
+        Some(5)
+    );
     assert_eq!(configured_ex_point_max(game_data, None, None, 1), None);
+    assert_eq!(configured_ex_point_max(game_data, None, Some(-1), 1), None);
 }
 
 #[test]
@@ -700,6 +709,59 @@ fn normalizes_device_card_weights() {
         ]
     );
     assert!(catalog.device_card_weights(-1).is_empty());
+}
+
+#[test]
+fn trial_skill_groups_require_exact_positive_identity() {
+    crate::test_support::init_config();
+    let catalog = BattleCatalog::new(crate::test_support::game_data());
+    let (configured, _) =
+        crate::engine::entity::builder::EntityBuilder::trial(116_385_001, 42, 0, 1).unwrap();
+
+    assert_eq!(
+        catalog.trial_skill_groups(116_385_001, 3_149),
+        Some(ConfiguredSkillGroups {
+            group1: configured.skill_group1,
+            group2: configured.skill_group2,
+        })
+    );
+    assert_eq!(catalog.trial_skill_groups(0, 3_149), None);
+    assert_eq!(catalog.trial_skill_groups(116_385_001, 999), None);
+}
+
+#[test]
+fn fight_skill_catalog_includes_missing_exact_trial_groups() {
+    crate::test_support::init_config();
+    let catalog = BattleCatalog::new(crate::test_support::game_data());
+    let configured = catalog.trial_skill_groups(116_385_001, 3_149).unwrap();
+    let fight = sonettobuf::Fight {
+        attacker: Some(sonettobuf::FightTeam {
+            entitys: vec![sonettobuf::FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(3_149),
+                trial_id: Some(116_385_001),
+                current_hp: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let effects = catalog.skill_effects_for_fight(&fight);
+
+    assert!(
+        configured
+            .group1
+            .iter()
+            .all(|skill_id| effects.get(*skill_id).is_some())
+    );
+    assert!(
+        configured
+            .group2
+            .iter()
+            .all(|skill_id| effects.get(*skill_id).is_some())
+    );
 }
 
 #[test]

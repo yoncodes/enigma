@@ -85,6 +85,36 @@ fn enemy_ai_selects_ultimates_from_current_resource_state() {
         .is_empty()
     );
 
+    let mut mixed = ready.clone();
+    mixed
+        .defender
+        .as_mut()
+        .unwrap()
+        .entitys
+        .push(FightEntityInfo {
+            uid: Some(-2),
+            model_id: Some(200),
+            current_hp: Some(100),
+            ..Default::default()
+        });
+    let (mixed_ex_point, mixed_eureka) = resources(&mixed);
+    let mut mixed_rng = StdRng::seed_from_u64(1);
+    assert_eq!(
+        ai::generated_ai_action_count(&mixed, &mixed_ex_point, &mixed_eureka, 1),
+        2
+    );
+    assert_eq!(
+        ai::generate_ai_deck_with_extra_actions(
+            &mixed,
+            &mixed_ex_point,
+            &mixed_eureka,
+            1,
+            &mut mixed_rng,
+        )
+        .len(),
+        2
+    );
+
     let fallback = fight(5, None);
     let (fallback_ex_point, fallback_eureka) = resources(&fallback);
     let mut fallback_rng = StdRng::seed_from_u64(1);

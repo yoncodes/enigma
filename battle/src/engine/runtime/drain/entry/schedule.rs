@@ -37,6 +37,7 @@ pub fn run_command_group(
                 frame_group: None,
                 independent_parent_group: None,
                 frame_owner: None,
+                subscriber_owner_uid: None,
             }
         })
         .collect::<VecDeque<_>>();

@@ -1,7 +1,7 @@
 use sonettobuf::{ActEffect, FightStep, MagicCircleInfo};
 
 use crate::engine::{
-    fight::versions::{HurtInfoWireLayout, RedealWireLayout},
+    fight::versions::{AbsorbHurtMapLayout, HurtInfoWireLayout, RedealWireLayout},
     manager::{
         card::{CARD_PLAY_ORIGIN, CardChangeKind},
         eureka::EurekaChanges,
@@ -39,6 +39,18 @@ pub fn project_for_version(
     frames: &[SemanticFrame],
     fight_version: i32,
 ) -> Result<Vec<FightStep>, ProjectionError> {
+    project_for_version_with_absorb_map_layout(
+        frames,
+        fight_version,
+        AbsorbHurtMapLayout::default(),
+    )
+}
+
+pub(crate) fn project_for_version_with_absorb_map_layout(
+    frames: &[SemanticFrame],
+    fight_version: i32,
+    absorb_map_layout: AbsorbHurtMapLayout,
+) -> Result<Vec<FightStep>, ProjectionError> {
     let hurt_info_layout = crate::engine::fight::versions::hurt_info_wire_layout(fight_version)
         .ok_or(ProjectionError::FightVersion(fight_version))?;
     let redeal_layout = crate::engine::fight::versions::redeal_wire_layout(fight_version)
@@ -47,6 +59,7 @@ pub fn project_for_version(
         frames,
         crate::engine::fight::versions::writes_reduce_hp(fight_version),
         hurt_info_layout,
+        absorb_map_layout,
         redeal_layout,
     )
 }
@@ -60,6 +73,7 @@ fn project_with_reduce_hp(
         frames,
         writes_reduce_hp,
         HurtInfoWireLayout::Version6,
+        AbsorbHurtMapLayout::default(),
         RedealWireLayout::Version6,
     )
 }
@@ -68,11 +82,20 @@ fn project_frames(
     frames: &[SemanticFrame],
     writes_reduce_hp: bool,
     hurt_info_layout: HurtInfoWireLayout,
+    absorb_map_layout: AbsorbHurtMapLayout,
     redeal_layout: RedealWireLayout,
 ) -> Result<Vec<FightStep>, ProjectionError> {
     let frames = frames
         .iter()
-        .map(|frame| project_frame(frame, writes_reduce_hp, hurt_info_layout, redeal_layout))
+        .map(|frame| {
+            project_frame(
+                frame,
+                writes_reduce_hp,
+                hurt_info_layout,
+                absorb_map_layout,
+                redeal_layout,
+            )
+        })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(frames.into_iter().flatten().collect())
 }
@@ -81,12 +104,14 @@ fn project_frame(
     frame: &SemanticFrame,
     writes_reduce_hp: bool,
     hurt_info_layout: HurtInfoWireLayout,
+    absorb_map_layout: AbsorbHurtMapLayout,
     redeal_layout: RedealWireLayout,
 ) -> Result<Option<FightStep>, ProjectionError> {
     let effects = project_frame_items(
         &frame.items,
         writes_reduce_hp,
         hurt_info_layout,
+        absorb_map_layout,
         redeal_layout,
     )?;
     if effects.is_empty() {
@@ -173,6 +198,7 @@ fn project_frame_items(
     items: &[FrameItem],
     writes_reduce_hp: bool,
     hurt_info_layout: HurtInfoWireLayout,
+    absorb_map_layout: AbsorbHurtMapLayout,
     redeal_layout: RedealWireLayout,
 ) -> Result<Vec<ActEffect>, ProjectionError> {
     let mut effects = Vec::new();
@@ -182,12 +208,14 @@ fn project_frame_items(
                 change.as_ref(),
                 writes_reduce_hp,
                 hurt_info_layout,
+                absorb_map_layout,
                 redeal_layout,
             )?),
             FrameItem::Child(frame) => effects.extend(project_child(
                 frame,
                 writes_reduce_hp,
                 hurt_info_layout,
+                absorb_map_layout,
                 redeal_layout,
             )?),
             FrameItem::Cue(cue) => effects.extend(project_cue(cue, redeal_layout)),
@@ -200,12 +228,17 @@ fn project_child(
     frame: &SemanticFrame,
     writes_reduce_hp: bool,
     hurt_info_layout: HurtInfoWireLayout,
+    absorb_map_layout: AbsorbHurtMapLayout,
     redeal_layout: RedealWireLayout,
 ) -> Result<Option<ActEffect>, ProjectionError> {
-    Ok(
-        project_frame(frame, writes_reduce_hp, hurt_info_layout, redeal_layout)?
-            .map(EffectPacket::from_fight_step),
-    )
+    Ok(project_frame(
+        frame,
+        writes_reduce_hp,
+        hurt_info_layout,
+        absorb_map_layout,
+        redeal_layout,
+    )?
+    .map(EffectPacket::from_fight_step))
 }
 
 fn normalize_framed_step(effect: ActEffect) -> FightStep {
@@ -228,6 +261,7 @@ fn project_change_with_reduce_hp(
         change,
         writes_reduce_hp,
         HurtInfoWireLayout::Version6,
+        AbsorbHurtMapLayout::default(),
         RedealWireLayout::Version6,
     )
 }
@@ -236,6 +270,7 @@ fn project_change(
     change: &BattleChange,
     writes_reduce_hp: bool,
     hurt_info_layout: HurtInfoWireLayout,
+    absorb_map_layout: AbsorbHurtMapLayout,
     redeal_layout: RedealWireLayout,
 ) -> Result<Vec<ActEffect>, ProjectionError> {
     Ok(match change {
@@ -366,6 +401,7 @@ fn project_change(
                             hp,
                             hurt.buff_act_id,
                             hurt_info_layout,
+                            absorb_map_layout,
                         )
                     })
                     .unwrap_or_else(|| {
@@ -373,6 +409,7 @@ fn project_change(
                             hp,
                             changes.toughness,
                             hurt_info_layout,
+                            absorb_map_layout,
                         )
                     });
                 apply_absorbed_shield_wire(
@@ -380,6 +417,7 @@ fn project_change(
                     changes.team_shared_shield_absorbed,
                     changes.shield_absorbed,
                     hurt_info_layout,
+                    absorb_map_layout,
                 );
                 effects.push(effect);
             } else if let Some(damage) = changes.damage {
@@ -388,12 +426,14 @@ fn project_change(
                     damage,
                     changes.toughness,
                     hurt_info_layout,
+                    absorb_map_layout,
                 );
                 apply_absorbed_shield_wire(
                     &mut effect,
                     changes.team_shared_shield_absorbed,
                     changes.shield_absorbed,
                     hurt_info_layout,
+                    absorb_map_layout,
                 );
                 effects.push(effect);
             }
@@ -1102,6 +1142,7 @@ fn apply_absorbed_shield_wire(
     team_shared: Option<crate::engine::manager::hp::TeamSharedShieldAbsorption>,
     shield: Option<crate::engine::manager::hp::ShieldChange>,
     layout: HurtInfoWireLayout,
+    absorb_map_layout: AbsorbHurtMapLayout,
 ) {
     if layout != HurtInfoWireLayout::Version7 || (team_shared.is_none() && shield.is_none()) {
         return;
@@ -1115,9 +1156,14 @@ fn apply_absorbed_shield_wire(
     let shield = shield
         .map(|change| format!("{}#{}", change.buff_uid, change.absorbed))
         .unwrap_or_default();
-    hurt.absorb_hurt_param = Some(format!(
-        r#"{{"consumeFakeHpBuffMap":"","reduceTeamShareShieldBuffMap":"{team_shared}","reduceShieldBuffMap":"{shield}"}}"#
-    ));
+    hurt.absorb_hurt_param = Some(match absorb_map_layout {
+        AbsorbHurtMapLayout::TwoMaps => format!(
+            r#"{{"reduceTeamShareShieldBuffMap":"{team_shared}","reduceShieldBuffMap":"{shield}"}}"#
+        ),
+        AbsorbHurtMapLayout::ThreeMaps => format!(
+            r#"{{"consumeFakeHpBuffMap":"","reduceTeamShareShieldBuffMap":"{team_shared}","reduceShieldBuffMap":"{shield}"}}"#
+        ),
+    });
 }
 
 fn apply_hp_wire_layout(

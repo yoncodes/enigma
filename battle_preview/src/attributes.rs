@@ -6,7 +6,7 @@ use std::{
 
 use battle::engine::entity::{
     input::{EquipmentBuildInput, HeroBuildInput},
-    stats::{StatInputs, Stats, rank_from_level},
+    stats::{BattleBalance, StatInputs, Stats, rank_from_level},
 };
 use sonettobuf::{
     Fight, FightEntityInfo, HeroExAttribute, HeroInfo, HeroInfoListReply, HeroSpAttribute,
@@ -37,7 +37,9 @@ struct MissingAttackerMetadata {
 
 pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<PreviewAttributes> {
     let local = battle_hero_metadata(battle_path)?;
-    let (attributes, missing) = hydrate_preview_attributes(fight, &local);
+    let battle_balance = captured_battle_balance(fight, battle_path)?;
+    let (attributes, missing) =
+        hydrate_preview_attributes_with_balance(fight, &local, battle_balance);
     for missing in &missing {
         match &missing.reason {
             MissingAttackerMetadataReason::RosterAttributes => eprintln!(
@@ -45,7 +47,7 @@ pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<P
                 missing.uid, missing.model_id,
             ),
             MissingAttackerMetadataReason::SupplementalEquipment => eprintln!(
-                "attribute preview incomplete supplemental equipment metadata uid={} hero={}; preserved roster attributes",
+                "attribute preview incomplete supplemental equipment metadata uid={} hero={}; preserved authoritative attributes",
                 missing.uid, missing.model_id,
             ),
         }
@@ -53,9 +55,18 @@ pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<P
     Ok(attributes)
 }
 
+#[cfg(test)]
 fn hydrate_preview_attributes(
     fight: &Fight,
     local: &HashMap<i64, HeroMetadata>,
+) -> (PreviewAttributes, Vec<MissingAttackerMetadata>) {
+    hydrate_preview_attributes_with_balance(fight, local, None)
+}
+
+fn hydrate_preview_attributes_with_balance(
+    fight: &Fight,
+    local: &HashMap<i64, HeroMetadata>,
+    battle_balance: Option<BattleBalance>,
 ) -> (PreviewAttributes, Vec<MissingAttackerMetadata>) {
     let mut ex_attributes = Vec::new();
     let mut sp_attributes = Vec::new();
@@ -74,7 +85,9 @@ fn hydrate_preview_attributes(
                     ex,
                     sp,
                     supplemental_rejected,
-                } = roster_attributes(entity, hero);
+                } = battle_balance
+                    .map(|balance| balanced_roster_attributes(entity, hero, balance))
+                    .unwrap_or_else(|| roster_attributes(entity, hero));
                 if let Some(attributes) = ex {
                     ex_attributes.push((uid, attributes));
                 }
@@ -97,14 +110,27 @@ fn hydrate_preview_attributes(
                     battle::engine::diagnostics::TraceArea::Damage,
                 ) {
                     eprintln!(
-                        "attribute preview uid={uid} hero={} source=hero-roster",
+                        "attribute preview uid={uid} hero={} source={}",
                         entity.model_id.unwrap_or_default(),
+                        if battle_balance.is_some() {
+                            "hero-roster-balanced"
+                        } else {
+                            "hero-roster"
+                        },
                     );
                 }
             }
             Some(HeroMetadata::Update(hero)) => {
                 let inputs = preview_stat_inputs(entity, hero);
                 let stats = Stats::build(&inputs);
+                let mut ex = stats.ex();
+                let mut sp = stats.sp();
+                let supplemental_rejected = add_supplemental_equipment_attributes(
+                    entity,
+                    hero,
+                    Some(&mut ex),
+                    Some(&mut sp),
+                );
                 if battle::engine::diagnostics::enabled(
                     battle::engine::diagnostics::TraceArea::Damage,
                 ) {
@@ -113,17 +139,91 @@ fn hydrate_preview_attributes(
                         entity.model_id.unwrap_or_default(),
                     );
                 }
-                ex_attributes.push((uid, stats.ex()));
-                sp_attributes.push((uid, stats.sp()));
+                ex_attributes.push((uid, ex));
+                sp_attributes.push((uid, sp));
+                if supplemental_rejected {
+                    missing.push(MissingAttackerMetadata {
+                        uid,
+                        model_id: entity.model_id.unwrap_or_default(),
+                        reason: MissingAttackerMetadataReason::SupplementalEquipment,
+                    });
+                }
             }
-            None => missing.push(MissingAttackerMetadata {
-                uid,
-                model_id: entity.model_id.unwrap_or_default(),
-                reason: MissingAttackerMetadataReason::RosterAttributes,
-            }),
+            None => {
+                if let Some((ex, sp)) = configured_trial_attributes(entity) {
+                    ex_attributes.push((uid, ex));
+                    sp_attributes.push((uid, sp));
+                } else {
+                    missing.push(MissingAttackerMetadata {
+                        uid,
+                        model_id: entity.model_id.unwrap_or_default(),
+                        reason: MissingAttackerMetadataReason::RosterAttributes,
+                    });
+                }
+            }
         }
     }
     ((ex_attributes, sp_attributes), missing)
+}
+
+fn captured_battle_balance(
+    fight: &Fight,
+    battle_path: &Path,
+) -> anyhow::Result<Option<BattleBalance>> {
+    let Some(parent) = battle_path.parent() else {
+        return Ok(None);
+    };
+    let request_path = parent.join("StartDungeonRequest.json");
+    if !request_path.exists() {
+        return Ok(None);
+    }
+    let request: serde_json::Value = serde_json::from_str(&fs::read_to_string(request_path)?)?;
+    let is_balance = request
+        .get("isBalance")
+        .or_else(|| request.get("is_balance"))
+        .map(|value| {
+            value
+                .as_bool()
+                .ok_or_else(|| anyhow::anyhow!("invalid isBalance value"))
+        })
+        .transpose()?
+        .unwrap_or_default();
+    if !is_balance {
+        return Ok(None);
+    }
+    let battle_id = fight
+        .battle_id
+        .filter(|battle_id| *battle_id > 0)
+        .ok_or_else(|| anyhow::anyhow!("balanced request missing battle id"))?;
+    let battle = config::configs::get()
+        .battle
+        .get(battle_id)
+        .ok_or_else(|| anyhow::anyhow!("unknown battle {battle_id}"))?;
+    BattleBalance::parse(&battle.balance)
+        .map(Some)
+        .ok_or_else(|| anyhow::anyhow!("invalid balance config for battle {battle_id}"))
+}
+
+fn configured_trial_attributes(
+    entity: &FightEntityInfo,
+) -> Option<(HeroExAttribute, HeroSpAttribute)> {
+    let (_, stats) = configured_trial(entity)?;
+    Some((stats.ex(), stats.sp()))
+}
+
+fn configured_trial(
+    entity: &FightEntityInfo,
+) -> Option<(FightEntityInfo, battle::engine::entity::stats::Stats)> {
+    let trial_id = entity.trial_id.filter(|trial_id| *trial_id > 0)?;
+    let uid = entity.uid?;
+    let (trial, stats) = battle::engine::entity::builder::EntityBuilder::trial(
+        trial_id,
+        uid,
+        entity.position.unwrap_or_default(),
+        entity.team_type.unwrap_or_default(),
+    )
+    .ok()?;
+    (trial.model_id == entity.model_id).then_some((trial, stats))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -134,20 +234,74 @@ struct RosterPreviewAttributes {
 }
 
 fn roster_attributes(entity: &FightEntityInfo, hero: &HeroInfo) -> RosterPreviewAttributes {
-    let (break_stats, supplemental_rejected) = match supplemental_equipment_stats(entity, hero) {
-        Ok(stats) => (stats, false),
-        Err(()) => (Stats::default(), true),
+    let mut ex = hero.ex_attr;
+    let mut sp = hero.sp_attr;
+    let supplemental_rejected =
+        add_roster_equipment_attributes(entity, hero, ex.as_mut(), sp.as_mut());
+    RosterPreviewAttributes {
+        ex,
+        sp,
+        supplemental_rejected,
+    }
+}
+
+fn add_roster_equipment_attributes(
+    entity: &FightEntityInfo,
+    hero: &HeroInfo,
+    ex: Option<&mut HeroExAttribute>,
+    sp: Option<&mut HeroSpAttribute>,
+) -> bool {
+    let Ok(loadout_stats) = roster_equipment_stats(entity, hero) else {
+        return true;
     };
-    let ex = hero.ex_attr.map(|mut attributes| {
+    add_equipment_attributes(loadout_stats, ex, sp);
+    false
+}
+
+fn balanced_roster_attributes(
+    entity: &FightEntityInfo,
+    hero: &HeroInfo,
+    balance: BattleBalance,
+) -> RosterPreviewAttributes {
+    let stats = Stats::build(&balance.apply(preview_stat_inputs(entity, hero)));
+    let mut ex = stats.ex();
+    let mut sp = stats.sp();
+    let supplemental_rejected =
+        add_supplemental_equipment_attributes(entity, hero, Some(&mut ex), Some(&mut sp));
+    RosterPreviewAttributes {
+        ex: Some(ex),
+        sp: Some(sp),
+        supplemental_rejected,
+    }
+}
+
+fn add_supplemental_equipment_attributes(
+    entity: &FightEntityInfo,
+    hero: &HeroInfo,
+    ex: Option<&mut HeroExAttribute>,
+    sp: Option<&mut HeroSpAttribute>,
+) -> bool {
+    let Ok(break_stats) = supplemental_equipment_stats(entity, hero) else {
+        return true;
+    };
+    add_equipment_attributes(break_stats, ex, sp);
+    false
+}
+
+fn add_equipment_attributes(
+    break_stats: Stats,
+    ex: Option<&mut HeroExAttribute>,
+    sp: Option<&mut HeroSpAttribute>,
+) {
+    if let Some(attributes) = ex {
         add_stat(&mut attributes.cri, break_stats.cri);
         add_stat(&mut attributes.recri, break_stats.recri);
         add_stat(&mut attributes.cri_dmg, break_stats.cri_dmg);
         add_stat(&mut attributes.cri_def, break_stats.cri_def);
         add_stat(&mut attributes.add_dmg, break_stats.add_dmg);
         add_stat(&mut attributes.drop_dmg, break_stats.drop_dmg);
-        attributes
-    });
-    let sp = hero.sp_attr.map(|mut attributes| {
+    }
+    if let Some(attributes) = sp {
         add_stat(&mut attributes.revive, break_stats.revive);
         add_stat(&mut attributes.heal, break_stats.heal);
         add_stat(&mut attributes.absorb, break_stats.absorb);
@@ -160,19 +314,33 @@ fn roster_attributes(entity: &FightEntityInfo, hero: &HeroInfo) -> RosterPreview
         add_stat(&mut attributes.rebound_dmg, break_stats.rebound_dmg);
         add_stat(&mut attributes.extra_dmg, break_stats.extra_dmg);
         add_stat(&mut attributes.reuse_dmg, break_stats.reuse_dmg);
-        attributes
-    });
-    RosterPreviewAttributes {
-        ex,
-        sp,
-        supplemental_rejected,
     }
 }
 
+fn roster_equipment_stats(entity: &FightEntityInfo, hero: &HeroInfo) -> Result<Stats, ()> {
+    let equips = validated_equipment_loadout(entity, hero)?;
+    Ok(Stats::build_for_loadout(
+        &HeroBuildInput::default(),
+        &equips,
+    ))
+}
+
 fn supplemental_equipment_stats(entity: &FightEntityInfo, hero: &HeroInfo) -> Result<Stats, ()> {
+    let equips = validated_equipment_loadout(entity, hero)?;
+    let supplemental = equips.into_iter().skip(1).collect::<Vec<_>>();
+    Ok(Stats::build_for_loadout(
+        &HeroBuildInput::default(),
+        &supplemental,
+    ))
+}
+
+fn validated_equipment_loadout(
+    entity: &FightEntityInfo,
+    hero: &HeroInfo,
+) -> Result<Vec<EquipmentBuildInput>, ()> {
     if entity.equips.is_empty() {
         return match (hero.default_equip_uid, entity.equip_uid) {
-            (None | Some(0), None | Some(0)) => Ok(Stats::default()),
+            (None | Some(0), None | Some(0)) => Ok(Vec::new()),
             _ => Err(()),
         };
     }
@@ -202,6 +370,14 @@ fn supplemental_equipment_stats(entity: &FightEntityInfo, hero: &HeroInfo) -> Re
     game.equip_strengthen_cost(primary_equipment.rare, primary_level)
         .ok_or(())?;
 
+    let primary = EquipmentBuildInput {
+        uid: selected_equip_uid,
+        equip_id: primary_equip_id,
+        level: primary_level,
+        break_level: 0,
+        refine_level: primary.refine_lv.unwrap_or_default(),
+    };
+
     if entity.equips.len() > 2 {
         return Err(());
     }
@@ -228,12 +404,8 @@ fn supplemental_equipment_stats(entity: &FightEntityInfo, hero: &HeroInfo) -> Re
             })
         })
         .transpose()?
-        .into_iter()
-        .collect::<Vec<_>>();
-    Ok(Stats::build_for_loadout(
-        &HeroBuildInput::default(),
-        &equips,
-    ))
+        .into_iter();
+    Ok(std::iter::once(primary).chain(equips).collect())
 }
 
 fn add_stat(value: &mut Option<i32>, addition: i32) {
@@ -411,13 +583,122 @@ mod tests {
 
         let (extended, special) = preview_attributes(&fight, &battle_path).unwrap();
 
-        let mut expected = hero(uid, 1485).ex_attr.unwrap();
+        let entity = &fight.attacker.as_ref().unwrap().entitys[0];
+        let roster = hero(uid, 1485);
+        let loadout_stats = roster_equipment_stats(entity, &roster).unwrap();
+        let supplemental_stats = supplemental_equipment_stats(entity, &roster).unwrap();
+        assert_eq!(loadout_stats.cri, 160);
+        assert_eq!(loadout_stats.cri_dmg, 240);
+        assert_eq!(supplemental_stats.cri, 0);
+        assert_eq!(supplemental_stats.cri_dmg, 240);
+        let mut expected = roster.ex_attr.unwrap();
+        expected.cri = Some(545);
         expected.cri_dmg = Some(1725);
         assert_eq!(extended, vec![(uid, expected)]);
-        assert_eq!(special, vec![(uid, hero(uid, 1485).sp_attr.unwrap())]);
-        let entity = &fight.attacker.as_ref().unwrap().entitys[0];
+        assert_eq!(special, vec![(uid, roster.sp_attr.unwrap())]);
         assert_eq!(entity.equips.len(), 2);
         assert_eq!(entity.passive_skill, vec![437111, 437215]);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn balanced_roster_reconstructs_configured_extended_attributes() {
+        crate::init_test_config();
+        let directory = test_directory("balanced-roster");
+        let uid = 42;
+        let fight = Fight {
+            battle_id: Some(116385108),
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(uid),
+                    model_id: Some(3127),
+                    level: Some(140),
+                    equip_uid: Some(100),
+                    equips: vec![EquipRecord {
+                        equip_uid: Some(100),
+                        equip_id: Some(1502),
+                        equip_lv: Some(60),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let roster = HeroInfo {
+            uid,
+            user_id: 1,
+            hero_id: 3127,
+            level: Some(121),
+            rank: Some(4),
+            talent: Some(10),
+            talent_cube_infos: vec![
+                TalentCubeInfo {
+                    cube_id: Some(10),
+                    ..Default::default()
+                },
+                TalentCubeInfo {
+                    cube_id: Some(12),
+                    ..Default::default()
+                },
+            ],
+            default_equip_uid: Some(100),
+            ex_attr: Some(HeroExAttribute {
+                cri: Some(205),
+                ..Default::default()
+            }),
+            sp_attr: Some(HeroSpAttribute::default()),
+            ..Default::default()
+        };
+        fs::write(
+            directory.join("HeroInfoListReply_1.json"),
+            serde_json::to_vec(&HeroInfoListReply {
+                heros: vec![roster],
+                ..Default::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        let request_path = directory.join("StartDungeonRequest.json");
+        fs::write(
+            &request_path,
+            serde_json::to_vec(&serde_json::json!({ "isBalance": true })).unwrap(),
+        )
+        .unwrap();
+        let battle_path = directory.join("BeginRoundReply_1.json");
+
+        let (extended, _) = preview_attributes(&fight, &battle_path).unwrap();
+
+        assert_eq!(
+            captured_battle_balance(&fight, &battle_path).unwrap(),
+            BattleBalance::parse("140#12#60"),
+        );
+        assert_eq!(extended[0].1.cri, Some(325));
+
+        fs::write(
+            &request_path,
+            serde_json::to_vec(&serde_json::json!({ "isBalance": false })).unwrap(),
+        )
+        .unwrap();
+        let (extended, _) = preview_attributes(&fight, &battle_path).unwrap();
+        assert_eq!(extended[0].1.cri, Some(205));
+
+        fs::write(
+            &request_path,
+            serde_json::to_vec(&serde_json::json!({ "isBalance": "true" })).unwrap(),
+        )
+        .unwrap();
+        assert!(preview_attributes(&fight, &battle_path).is_err());
+
+        fs::write(
+            request_path,
+            serde_json::to_vec(&serde_json::json!({ "isBalance": true })).unwrap(),
+        )
+        .unwrap();
+        let mut missing_battle = fight.clone();
+        missing_battle.battle_id = None;
+        assert!(preview_attributes(&missing_battle, &battle_path).is_err());
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -570,11 +851,13 @@ mod tests {
         roster.hero_id = 3028;
 
         let attributes = roster_attributes(entity, &roster);
+        let mut expected = roster.ex_attr.unwrap();
+        expected.cri = Some(545);
 
         assert_eq!(config::configs::get().linked_psychube_id(3028, 1571), None);
         assert_eq!(
             (attributes.ex, attributes.sp),
-            (roster.ex_attr, roster.sp_attr)
+            (Some(expected), roster.sp_attr)
         );
         assert!(!attributes.supplemental_rejected);
     }
@@ -705,7 +988,7 @@ mod tests {
     }
 
     #[test]
-    fn sorted_hero_updates_override_roster_metadata() {
+    fn sorted_hero_updates_override_balanced_roster_and_receive_supplemental_attributes() {
         crate::init_test_config();
         let directory = test_directory("precedence");
         let uid = 42;
@@ -748,35 +1031,83 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
+        fs::write(
+            directory.join("StartDungeonRequest.json"),
+            serde_json::to_vec(&serde_json::json!({ "isBalance": true })).unwrap(),
+        )
+        .unwrap();
 
-        let fight = fight(uid);
+        let mut fight = fight(uid);
+        fight.battle_id = Some(116385108);
         let battle_path = directory.join("BeginRoundReply_1.json");
         let (extended, special) = preview_attributes(&fight, &battle_path).unwrap();
         let entity = &fight.attacker.as_ref().unwrap().entitys[0];
         let expected = Stats::build(&preview_stat_inputs(entity, &later_update));
         let earlier = Stats::build(&preview_stat_inputs(entity, &earlier_update));
+        let supplemental = supplemental_equipment_stats(entity, &later_update).unwrap();
+        let mut expected_ex = expected.ex();
+        let mut earlier_ex = earlier.ex();
+        assert_eq!(supplemental.cri_dmg, 240);
+        add_stat(&mut expected_ex.cri_dmg, supplemental.cri_dmg);
+        add_stat(&mut earlier_ex.cri_dmg, supplemental.cri_dmg);
 
-        assert_eq!(extended, vec![(uid, expected.ex())]);
+        assert_eq!(extended, vec![(uid, expected_ex)]);
         assert_eq!(special, vec![(uid, expected.sp())]);
-        assert_ne!(extended, vec![(uid, earlier.ex())]);
+        assert_ne!(extended, vec![(uid, earlier_ex)]);
         assert_ne!(extended, vec![(uid, hero(uid, 1485).ex_attr.unwrap())]);
         fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn missing_attacker_metadata_is_reported_without_failing() {
-        let uid = 42;
-        let (attributes, missing) = hydrate_preview_attributes(&fight(uid), &HashMap::new());
+        for trial_id in [None, Some(0)] {
+            let uid = 42;
+            let mut fight = fight(uid);
+            fight.attacker.as_mut().unwrap().entitys[0].trial_id = trial_id;
 
-        assert_eq!(attributes, (Vec::new(), Vec::new()));
+            let (attributes, missing) = hydrate_preview_attributes(&fight, &HashMap::new());
+
+            assert_eq!(attributes, (Vec::new(), Vec::new()));
+            assert_eq!(
+                missing,
+                vec![MissingAttackerMetadata {
+                    uid,
+                    model_id: 3149,
+                    reason: MissingAttackerMetadataReason::RosterAttributes,
+                }]
+            );
+        }
+    }
+
+    #[test]
+    fn configured_trial_metadata_bypasses_active_battle_balance() {
+        crate::init_test_config();
+        let directory = test_directory("balanced-trial");
+        let uid = 42;
+        let trial_id = 116385001;
+        let mut fight = fight(uid);
+        fight.battle_id = Some(116385108);
+        let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
+        entity.trial_id = Some(trial_id);
+        fs::write(
+            directory.join("StartDungeonRequest.json"),
+            serde_json::to_vec(&serde_json::json!({ "isBalance": true })).unwrap(),
+        )
+        .unwrap();
+        let battle_path = directory.join("BeginRoundReply_1.json");
+
+        let (_, expected_stats) =
+            battle::engine::entity::builder::EntityBuilder::trial(trial_id, uid, 0, 0).unwrap();
+        let attributes = preview_attributes(&fight, &battle_path).unwrap();
+
         assert_eq!(
-            missing,
-            vec![MissingAttackerMetadata {
-                uid,
-                model_id: 3149,
-                reason: MissingAttackerMetadataReason::RosterAttributes,
-            }]
+            attributes,
+            (
+                vec![(uid, expected_stats.ex())],
+                vec![(uid, expected_stats.sp())]
+            )
         );
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

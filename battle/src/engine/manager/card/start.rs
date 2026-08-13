@@ -2,7 +2,7 @@ use rand::{SeedableRng, rngs::StdRng};
 use sonettobuf::{CardInfo, Fight};
 
 use crate::engine::manager::card::{
-    ai::generate_ai_deck_with_extra_actions,
+    ai::{generate_ai_deck_with_extra_actions, generated_ai_action_count},
     draw::draw_guaranteed_by_uid,
     pool::{active_enemy_entities, active_player_uids, card_for},
 };
@@ -193,13 +193,13 @@ pub fn start_decks_from_fight(
     seed_value: i32,
     captured: Option<(Vec<CardInfo>, Vec<CardInfo>)>,
 ) -> (Vec<CardInfo>, Vec<CardInfo>) {
-    start_decks_from(
+    let decks = start_decks_from(
         fight,
         ex_point,
         eureka,
         extra_ai_actions,
         seed_value,
-        captured,
+        captured.map(|(ai, player)| CapturedDeckSeed::Opening { ai, player }),
         |allow_ex_skill| {
             crate::engine::manager::card::pool::player_candidate_pool_from(
                 fight,
@@ -209,7 +209,22 @@ pub fn start_decks_from_fight(
                 |model_id| crate::catalog::configured_device_card_weights(game_data, model_id),
             )
         },
-    )
+    );
+    (decks.ai, decks.player)
+}
+
+pub(crate) enum CapturedDeckSeed {
+    Opening {
+        ai: Vec<CardInfo>,
+        player: Vec<CardInfo>,
+    },
+    NextAi(Vec<CardInfo>),
+}
+
+pub(crate) struct ConfiguredStartDecks {
+    pub ai: Vec<CardInfo>,
+    pub player: Vec<CardInfo>,
+    pub used_capture: bool,
 }
 
 pub(crate) fn configured_start_decks(
@@ -219,8 +234,8 @@ pub(crate) fn configured_start_decks(
     eureka: &crate::engine::manager::eureka::EurekaManager,
     extra_ai_actions: i32,
     seed_value: i32,
-    captured: Option<(Vec<CardInfo>, Vec<CardInfo>)>,
-) -> (Vec<CardInfo>, Vec<CardInfo>) {
+    captured: Option<CapturedDeckSeed>,
+) -> ConfiguredStartDecks {
     start_decks_from(
         fight,
         ex_point,
@@ -247,9 +262,9 @@ fn start_decks_from(
     eureka: &crate::engine::manager::eureka::EurekaManager,
     extra_ai_actions: i32,
     seed_value: i32,
-    captured: Option<(Vec<CardInfo>, Vec<CardInfo>)>,
+    captured: Option<CapturedDeckSeed>,
     mut player_candidates: impl FnMut(bool) -> Vec<CardInfo>,
-) -> (Vec<CardInfo>, Vec<CardInfo>) {
+) -> ConfiguredStartDecks {
     let required_uids = active_player_uids(fight);
     let valid_target_uids = fight
         .attacker
@@ -261,8 +276,14 @@ fn start_decks_from(
         .collect::<std::collections::HashSet<_>>();
     let hand_size = hand_size(fight);
     let mut rng = StdRng::seed_from_u64(seed(fight, seed_value));
-    if let Some((captured_ai, captured_player)) = captured {
+    if let Some(captured) = captured {
+        let (captured_ai, captured_player) = match captured {
+            CapturedDeckSeed::Opening { ai, player } => (ai, Some(player)),
+            CapturedDeckSeed::NextAi(ai) => (ai, None),
+        };
         let captured_candidates = player_candidates(true);
+        let expected_ai_count =
+            generated_ai_action_count(fight, ex_point, eureka, extra_ai_actions);
         let ai_candidates = active_enemy_entities(fight)
             .into_iter()
             .flat_map(|entity| {
@@ -275,41 +296,63 @@ fn start_decks_from(
                     .filter_map(|skill_id| card_for(entity, Some(skill_id)))
             })
             .collect::<Vec<_>>();
-        let ai = captured_ai
-            .iter()
-            .filter_map(|captured| {
-                let mut candidate = ai_candidates
-                    .iter()
-                    .find(|candidate| {
-                        captured.uid == candidate.uid && captured.skill_id == candidate.skill_id
-                    })?
-                    .clone();
-                candidate.target_uid = captured
-                    .target_uid
-                    .filter(|uid| valid_target_uids.contains(uid))
-                    .or(candidate.target_uid);
-                Some(candidate)
-            })
-            .collect();
-        let player = captured_player
-            .iter()
-            .filter_map(|captured| {
-                captured_candidates
-                    .iter()
-                    .find(|candidate| {
-                        captured.uid == candidate.uid && captured.skill_id == candidate.skill_id
-                    })
-                    .cloned()
-            })
-            .collect();
-        return (ai, player);
+        if captured_ai.len() == expected_ai_count
+            && captured_player
+                .as_ref()
+                .is_none_or(|player| player.len() == hand_size)
+        {
+            let ai = captured_ai
+                .iter()
+                .map(|captured| {
+                    let mut candidate = ai_candidates
+                        .iter()
+                        .find(|candidate| {
+                            captured.uid == candidate.uid && captured.skill_id == candidate.skill_id
+                        })?
+                        .clone();
+                    candidate.target_uid = captured
+                        .target_uid
+                        .filter(|uid| valid_target_uids.contains(uid))
+                        .or(candidate.target_uid);
+                    Some(candidate)
+                })
+                .collect::<Option<Vec<_>>>();
+            let player = captured_player
+                .as_ref()
+                .map(|cards| {
+                    cards
+                        .iter()
+                        .map(|captured| {
+                            captured_candidates
+                                .iter()
+                                .find(|candidate| {
+                                    captured.uid == candidate.uid
+                                        && captured.skill_id == candidate.skill_id
+                                })
+                                .cloned()
+                        })
+                        .collect::<Option<Vec<_>>>()
+                })
+                .unwrap_or_else(|| Some(Vec::new()));
+            if let (Some(ai), Some(player)) = (ai, player) {
+                return ConfiguredStartDecks {
+                    ai,
+                    player,
+                    used_capture: true,
+                };
+            }
+        }
     }
 
     let candidates = player_candidates(false);
     let player = draw_guaranteed_by_uid(&candidates, &required_uids, hand_size, &mut rng);
     let ai =
         generate_ai_deck_with_extra_actions(fight, ex_point, eureka, extra_ai_actions, &mut rng);
-    (ai, player)
+    ConfiguredStartDecks {
+        ai,
+        player,
+        used_capture: false,
+    }
 }
 
 fn seed(fight: &Fight, seed_value: i32) -> u64 {
@@ -368,18 +411,20 @@ mod tests {
             7,
             None,
         );
+        let configured = configured_start_decks(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            &fight,
+            &ex_point,
+            &eureka,
+            0,
+            7,
+            None,
+        );
         assert_eq!(
-            configured_start_decks(
-                crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
-                &fight,
-                &ex_point,
-                &eureka,
-                0,
-                7,
-                None,
-            ),
+            (configured.ai, configured.player),
             (ai.clone(), player.clone())
         );
+        assert!(!configured.used_capture);
 
         assert_eq!(player.len(), 5);
         assert!(player.iter().any(|card| card.uid == Some(10)));
@@ -418,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn captured_start_decks_select_only_configured_candidates() {
+    fn captured_start_decks_accept_two_configured_ai_cards_for_one_enemy() {
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![entity(12, 1002, 1, &[202], &[203])],
@@ -429,6 +474,12 @@ mod tests {
                 entitys: vec![entity(-2, 2002, 1, &[302], &[303])],
                 ..Default::default()
             }),
+            ..Default::default()
+        };
+        let captured_player = CardInfo {
+            uid: Some(12),
+            skill_id: Some(202),
+            card_effect: Some(999),
             ..Default::default()
         };
         let captured = (
@@ -446,18 +497,8 @@ mod tests {
                     target_uid: Some(999),
                     ..Default::default()
                 },
-                CardInfo {
-                    uid: Some(-2),
-                    skill_id: Some(999),
-                    ..Default::default()
-                },
             ],
-            vec![CardInfo {
-                uid: Some(12),
-                skill_id: Some(202),
-                card_effect: Some(999),
-                ..Default::default()
-            }],
+            vec![captured_player; hand_size(&fight)],
         );
 
         let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
@@ -469,7 +510,7 @@ mod tests {
             &fight,
             &ex_point,
             &eureka,
-            0,
+            1,
             0,
             Some(captured),
         );
@@ -482,6 +523,137 @@ mod tests {
         assert_eq!(ai.len(), 2);
         assert_eq!(player[0].skill_id, Some(202));
         assert_eq!(player[0].card_effect, None);
+        assert_eq!(player.len(), hand_size(&fight));
+    }
+
+    #[test]
+    fn captured_next_ai_snapshot_validates_without_a_player_hand() {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![entity(12, 1002, 1, &[202], &[203])],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![entity(-2, 2002, 1, &[302], &[303])],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
+        ex_point.seed(&fight);
+        let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
+        eureka.seed(&fight);
+        let configured = configured_start_decks(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            &fight,
+            &ex_point,
+            &eureka,
+            1,
+            0,
+            Some(CapturedDeckSeed::NextAi(vec![
+                CardInfo {
+                    uid: Some(-2),
+                    skill_id: Some(302),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(-2),
+                    skill_id: Some(303),
+                    ..Default::default()
+                },
+            ])),
+        );
+
+        assert_eq!(
+            configured
+                .ai
+                .iter()
+                .filter_map(|card| card.skill_id)
+                .collect::<Vec<_>>(),
+            vec![302, 303]
+        );
+        assert!(configured.player.is_empty());
+        assert!(configured.used_capture);
+    }
+
+    #[test]
+    fn captured_start_decks_reject_count_or_identity_mismatch_as_a_whole() {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![entity(12, 1002, 1, &[202], &[203])],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![entity(-2, 2002, 1, &[302], &[303])],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let ai_card = |skill_id| CardInfo {
+            uid: Some(-2),
+            skill_id: Some(skill_id),
+            ..Default::default()
+        };
+        let player_card = || CardInfo {
+            uid: Some(12),
+            skill_id: Some(202),
+            ..Default::default()
+        };
+        let valid_player = || vec![player_card(); hand_size(&fight)];
+        let normal = {
+            let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
+            ex_point.seed(&fight);
+            let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
+            eureka.seed(&fight);
+            start_decks_from_fight(
+                crate::test_support::game_data(),
+                &fight,
+                &ex_point,
+                &eureka,
+                1,
+                0,
+                None,
+            )
+        };
+
+        for captured in [
+            (vec![ai_card(302)], valid_player()),
+            (
+                vec![ai_card(302), ai_card(303), ai_card(302)],
+                valid_player(),
+            ),
+            (vec![ai_card(302), ai_card(999)], valid_player()),
+            (vec![ai_card(302), ai_card(303)], vec![player_card()]),
+            (
+                vec![ai_card(302), ai_card(303)],
+                vec![
+                    player_card(),
+                    CardInfo {
+                        uid: Some(12),
+                        skill_id: Some(999),
+                        ..Default::default()
+                    },
+                    player_card(),
+                ],
+            ),
+        ] {
+            let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
+            ex_point.seed(&fight);
+            let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
+            eureka.seed(&fight);
+            assert_eq!(
+                start_decks_from_fight(
+                    crate::test_support::game_data(),
+                    &fight,
+                    &ex_point,
+                    &eureka,
+                    1,
+                    0,
+                    Some(captured),
+                ),
+                normal
+            );
+        }
     }
 
     #[test]

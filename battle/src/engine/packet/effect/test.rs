@@ -1,4 +1,4 @@
-use crate::engine::fight::versions::HurtInfoWireLayout;
+use crate::engine::fight::versions::{AbsorbHurtMapLayout, HurtInfoWireLayout};
 use crate::engine::manager::{
     ex_point::{ExPointApplyResult, ExPointKind, ExPointMaxApplyResult, ExPointMaxWire},
     hp::DamageEffectKind,
@@ -60,6 +60,7 @@ fn hp_change_uses_damage_or_heal_effect_type() {
             display_amount: None,
         },
         HurtInfoWireLayout::Version6,
+        AbsorbHurtMapLayout::default(),
     );
     let heal = EffectPacket::hp_with_hurt_info_layout(
         HpChange {
@@ -75,6 +76,7 @@ fn hp_change_uses_damage_or_heal_effect_type() {
             display_amount: None,
         },
         HurtInfoWireLayout::Version6,
+        AbsorbHurtMapLayout::default(),
     );
     let overheal = EffectPacket::hp_with_hurt_info_layout(
         HpChange {
@@ -90,6 +92,7 @@ fn hp_change_uses_damage_or_heal_effect_type() {
             display_amount: Some(2),
         },
         HurtInfoWireLayout::Version6,
+        AbsorbHurtMapLayout::default(),
     );
 
     assert_eq!(damage.effect_type, Some(EffectType::Damage as i32));
@@ -129,6 +132,7 @@ fn crit_is_encoded_by_effect_type() {
             display_amount: None,
         },
         HurtInfoWireLayout::Version6,
+        AbsorbHurtMapLayout::default(),
     );
 
     assert_eq!(damage.effect_type, Some(EffectType::Crit as i32));
@@ -197,6 +201,7 @@ fn version7_damage_projects_committed_toughness_delta() {
             broke: false,
         }),
         HurtInfoWireLayout::Version7,
+        AbsorbHurtMapLayout::default(),
     );
 
     let hurt = effect.hurt_info.unwrap();
@@ -252,6 +257,7 @@ fn fully_absorbed_buff_damage_keeps_its_exact_buff_act_opcode() {
         },
         None,
         HurtInfoWireLayout::Version6,
+        AbsorbHurtMapLayout::default(),
     );
 
     assert_eq!(effect.effect_num, Some(0));
@@ -287,6 +293,7 @@ fn assassinate_is_carried_by_the_damage_change() {
             display_amount: Some(500),
         },
         HurtInfoWireLayout::Version6,
+        AbsorbHurtMapLayout::default(),
     );
 
     assert_eq!(effect.hurt_info.unwrap().assassinate, Some(true));

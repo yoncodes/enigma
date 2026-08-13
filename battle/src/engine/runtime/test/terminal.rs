@@ -7,6 +7,74 @@ use crate::engine::skill::{
     target::TargetRequest,
 };
 
+fn install_round_start_enemy_kill(runtime: &mut BattleRuntime, owner_uid: i64, skill_id: i32) {
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(BehaviorSpec::new(60015, "Kill"), Vec::new(), Vec::new()),
+        TargetRequest {
+            code: 202,
+            raw: Vec::new(),
+        },
+    );
+    slot.conditions = vec![ParsedCondition {
+        opcode: 103,
+        type_name: "None".to_owned(),
+        kind: ParsedConditionKind::None(NoneMode::RoundStart),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    runtime.catalog.insert(ParsedSkillEffect {
+        skill_id,
+        slots: vec![slot],
+    });
+    runtime.managers.battle_rule.extend_owned_skills([
+        crate::engine::fight::rules::OwnedBattleSkill {
+            owner_uid,
+            skill_id,
+        },
+    ]);
+}
+
+fn late_terminal_runtime(skill_id: i32) -> BattleRuntime {
+    let entity = |uid, team_type| FightEntityInfo {
+        uid: Some(uid),
+        position: Some(1),
+        team_type: Some(team_type),
+        current_hp: Some(100),
+        attr: Some(sonettobuf::HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(Fight {
+        battle_id: Some(0),
+        version: Some(7),
+        cur_round: Some(1),
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    runtime.catalog = SkillEffectCatalog::default();
+    install_round_start_enemy_kill(&mut runtime, 10, skill_id);
+    runtime
+}
+
+fn player_card(skill_id: i32) -> sonettobuf::CardInfo {
+    sonettobuf::CardInfo {
+        uid: Some(10),
+        skill_id: Some(skill_id),
+        temp_card: Some(false),
+        energy: Some(0),
+        ..Default::default()
+    }
+}
+
 #[test]
 fn terminal_attacker_settlement_does_not_enter_defender_card_cleanup() {
     crate::test_support::init_config();
@@ -94,6 +162,19 @@ fn version_seven_terminal_round_does_not_advance_to_an_unplayed_round() {
         }),
         ..Default::default()
     });
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Setup(
+            CardSetup {
+                hand: vec![sonettobuf::CardInfo {
+                    skill_id: Some(1),
+                    ..Default::default()
+                }],
+                draw_pile: Vec::new(),
+                deck_num: 1,
+            },
+        ))
+        .unwrap();
     runtime.managers.hp.lose(-1, 100, 10);
 
     let round = runtime
@@ -103,6 +184,163 @@ fn version_seven_terminal_round_does_not_advance_to_an_unplayed_round() {
     assert_eq!(round.is_finish, Some(true));
     assert_eq!(round.cur_round, Some(3));
     assert_eq!(runtime.fight.cur_round, Some(3));
+    assert!(round.before_cards1.is_empty());
+    assert!(round.team_a_cards1.is_empty());
+    assert!(round.before_cards2.is_empty());
+    assert!(round.team_a_cards2.is_empty());
+}
+
+#[test]
+fn terminal_during_next_round_preparation_preserves_phase_two_card_snapshots() {
+    crate::test_support::init_config();
+    let skill_id = 9_900_070;
+    let mut runtime = late_terminal_runtime(skill_id);
+    let remaining = player_card(30230111);
+    let dealt = vec![player_card(30230121), player_card(30230111)];
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Setup(
+            CardSetup {
+                hand: vec![remaining.clone()],
+                draw_pile: dealt.clone(),
+                deck_num: dealt.len() as i32,
+            },
+        ))
+        .unwrap();
+    runtime.determinism.enqueue_card_draws(dealt.clone());
+
+    let round = runtime
+        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .unwrap();
+    let skills = |cards: &[sonettobuf::CardInfo]| {
+        cards
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(runtime.managers.hp.current(-1), 0);
+    assert_eq!(round.is_finish, Some(true));
+    assert_eq!(round.cur_round, Some(2));
+    assert_eq!(runtime.fight.cur_round, Some(2));
+    assert_eq!(skills(&round.before_cards2), skills(&[remaining]));
+    assert_eq!(skills(&round.team_a_cards2), skills(&dealt));
+    assert_eq!(
+        skills(&round.before_cards1),
+        skills(runtime.managers.card.hand())
+    );
+    assert!(!round.before_cards1.is_empty());
+    assert_eq!(
+        skills(&round.team_a_cards1),
+        skills(runtime.managers.card.team_cards())
+    );
+    assert!(round.team_a_cards1.is_empty());
+    assert!(round.next_round_begin_step.iter().any(|step| {
+        step.act_effect.iter().any(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Cardspush as i32)
+        })
+    }));
+}
+
+#[test]
+fn terminal_during_next_round_preparation_does_not_invent_phase_two_refill() {
+    crate::test_support::init_config();
+    let mut runtime = late_terminal_runtime(9_900_070);
+    let hand = (1..=8).map(player_card).collect::<Vec<_>>();
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Setup(
+            CardSetup {
+                hand: hand.clone(),
+                draw_pile: Vec::new(),
+                deck_num: 0,
+            },
+        ))
+        .unwrap();
+
+    let round = runtime
+        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .unwrap();
+
+    assert_eq!(round.is_finish, Some(true));
+    assert_eq!(round.cur_round, Some(2));
+    assert_eq!(round.before_cards1, hand);
+    assert!(round.team_a_cards1.is_empty());
+    assert!(round.before_cards2.is_empty());
+    assert!(round.team_a_cards2.is_empty());
+}
+
+#[test]
+fn terminal_during_wave_preparation_promotes_deferred_card_snapshots() {
+    crate::test_support::init_config();
+    let skill_id = 9_900_070;
+    let (entitys, sub_entitys) =
+        crate::engine::fight::defender::Defender::build_wave_entities(100201, 3, 2, 0).unwrap();
+    let mut runtime = runtime(Fight {
+        battle_id: Some(1002),
+        version: Some(7),
+        cur_round: Some(1),
+        cur_wave: Some(1),
+        max_round: Some(20),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                position: Some(1),
+                team_type: Some(1),
+                current_hp: Some(100),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(100),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys,
+            sub_entitys,
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    runtime.catalog = SkillEffectCatalog::default();
+    install_round_start_enemy_kill(&mut runtime, 10, skill_id);
+    let remaining = player_card(30230111);
+    let dealt = vec![player_card(30230121), player_card(30230111)];
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Setup(
+            CardSetup {
+                hand: vec![remaining.clone()],
+                draw_pile: dealt.clone(),
+                deck_num: dealt.len() as i32,
+            },
+        ))
+        .unwrap();
+    runtime.determinism.enqueue_card_draws(dealt.clone());
+    runtime.managers.hp.lose(-1, i32::MAX, 10);
+    runtime.managers.hp.lose(-2, i32::MAX, 10);
+
+    let round = runtime
+        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .unwrap();
+    let skills = |cards: &[sonettobuf::CardInfo]| {
+        cards
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(runtime.fight.cur_wave, Some(2));
+    assert_eq!(runtime.managers.hp.current(-3), 0);
+    assert_eq!(round.is_finish, Some(true));
+    assert_eq!(round.cur_round, Some(2));
+    assert_eq!(skills(&round.before_cards2), skills(&[remaining]));
+    assert_eq!(skills(&round.team_a_cards2), skills(&dealt));
+    assert_eq!(
+        skills(&round.before_cards1),
+        skills(runtime.managers.card.hand())
+    );
 }
 
 #[test]
@@ -389,20 +627,16 @@ fn wave_entry_round_start_condition_is_not_repeated_on_the_next_request() {
     assert!(runtime.wave_entry_condition_uids.is_empty());
 }
 
-#[test]
-fn wave_clear_defers_card_refill_to_the_next_round_deal() {
+fn wave_clear_runtime(
+    hand: Vec<sonettobuf::CardInfo>,
+) -> (BattleRuntime, Vec<sonettobuf::CardInfo>) {
     crate::test_support::init_config();
-    let (entitys, sub_entitys) =
+    let (mut entitys, sub_entitys) =
         crate::engine::fight::defender::Defender::build_wave_entities(251401, 2, 2, 0).unwrap();
-    let card = |skill_id| sonettobuf::CardInfo {
-        uid: Some(10),
-        skill_id: Some(skill_id),
-        temp_card: Some(false),
-        energy: Some(0),
-        ..Default::default()
-    };
-    let remaining = card(30230111);
-    let dealt = vec![card(30230121), card(30230111)];
+    for entity in &mut entitys {
+        entity.current_hp = Some(1);
+    }
+    let dealt = vec![player_card(30230121), player_card(30230111)];
     let mut runtime = runtime(Fight {
         battle_id: Some(2514),
         version: Some(7),
@@ -418,6 +652,7 @@ fn wave_clear_defers_card_refill_to_the_next_round_deal() {
                 skill_group2: vec![30230121, 30230122, 30230123],
                 attr: Some(sonettobuf::HeroAttribute {
                     hp: Some(100),
+                    attack: Some(1_000),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -435,18 +670,43 @@ fn wave_clear_defers_card_refill_to_the_next_round_deal() {
         .managers
         .execute_card(crate::engine::manager::card::CardCommand::Setup(
             CardSetup {
-                hand: vec![remaining.clone()],
+                hand,
                 draw_pile: dealt.clone(),
                 deck_num: dealt.len() as i32,
             },
         ))
         .unwrap();
     runtime.determinism.enqueue_card_draws(dealt.clone());
-    runtime.managers.hp.lose(-1, i32::MAX, 10);
-    runtime.managers.hp.lose(-2, i32::MAX, 10);
+    (runtime, dealt)
+}
+
+#[test]
+fn wave_clear_defers_card_refill_to_the_next_round_deal() {
+    let remaining = player_card(30230111);
+    let (mut runtime, dealt) = wave_clear_runtime(vec![
+        remaining.clone(),
+        player_card(30230111),
+        player_card(30230121),
+    ]);
 
     let round = runtime
-        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .build_begin_round_from_schedule(&BeginRoundRequest {
+            opers: vec![
+                BeginRoundOper {
+                    oper_type: Some(crate::engine::manager::card::CardOpType::PlayCard.id()),
+                    param1: Some(2),
+                    to_id: Some(-1),
+                    ..Default::default()
+                },
+                BeginRoundOper {
+                    oper_type: Some(crate::engine::manager::card::CardOpType::PlayCard.id()),
+                    param1: Some(2),
+                    to_id: Some(-2),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        })
         .unwrap();
 
     assert_eq!(round.before_cards1, vec![remaining]);
@@ -457,5 +717,75 @@ fn wave_clear_defers_card_refill_to_the_next_round_deal() {
         step.act_effect.iter().all(|effect| {
             effect.effect_type != Some(sonettobuf::effect_type_enum::EffectType::Dealcard2 as i32)
         })
+    }));
+}
+
+#[test]
+fn predepleted_wave_runs_phase_two_refill_before_wave_transition() {
+    let remaining = player_card(30230111);
+    let (mut runtime, dealt) = wave_clear_runtime(vec![remaining.clone()]);
+    let ai_choices = runtime
+        .fight
+        .defender
+        .as_ref()
+        .unwrap()
+        .entitys
+        .iter()
+        .map(
+            |entity| crate::engine::runtime::determinism::AiSkillChoice {
+                source_uid: entity.uid.unwrap(),
+                skill_id: entity.skill_group1[0],
+                target_uid: 10,
+            },
+        )
+        .collect::<Vec<_>>();
+    runtime.determinism.enqueue_ai_skills(ai_choices);
+    runtime.managers.hp.lose(-1, i32::MAX, 10);
+    runtime.managers.hp.lose(-2, i32::MAX, 10);
+
+    let round = runtime
+        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .unwrap();
+
+    assert_eq!(runtime.fight.cur_wave, Some(2));
+    assert_eq!(round.before_cards2, vec![remaining]);
+    assert_eq!(round.team_a_cards2, dealt);
+    let effect_types = round
+        .fight_step
+        .iter()
+        .flat_map(|step| step.act_effect.iter())
+        .filter_map(|effect| effect.effect_type)
+        .collect::<Vec<_>>();
+    let position = |effect_type| {
+        effect_types
+            .iter()
+            .position(|effect| *effect == effect_type)
+            .unwrap()
+    };
+    let deal = position(sonettobuf::effect_type_enum::EffectType::Dealcard2 as i32);
+    let invalidations = effect_types
+        .iter()
+        .enumerate()
+        .filter_map(|(index, effect)| {
+            (*effect == sonettobuf::effect_type_enum::EffectType::Cardinvalid as i32)
+                .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    let defender_settlement = effect_types
+        .iter()
+        .enumerate()
+        .rfind(|(_, effect)| {
+            **effect == sonettobuf::effect_type_enum::EffectType::Smallroundend as i32
+        })
+        .map(|(index, _)| index)
+        .unwrap();
+    let wave = position(sonettobuf::effect_type_enum::EffectType::Newchangewave as i32);
+
+    assert_eq!(invalidations.len(), 2);
+    assert!(deal < invalidations[0]);
+    assert!(invalidations[1] < defender_settlement);
+    assert!(defender_settlement < wave);
+    assert!(effect_types[deal..wave].iter().all(|effect| {
+        *effect != sonettobuf::effect_type_enum::EffectType::Devicepowerclear as i32
     }));
 }

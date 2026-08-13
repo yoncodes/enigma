@@ -253,14 +253,13 @@ impl Defender {
             guard: Some(-1),
             sub_cd: Some(0),
             ex_point_type: Some(0),
-            ex_point_max: Some(skill_template.unique_skill_point),
             destiny_stone: Some(0),
             destiny_rank: Some(0),
             custom_unit_id: Some(0),
             weak_careers: monster_ids(&monster.career_weak),
             toughness_value,
             toughness_point,
-            is_broken: Some(false),
+            is_broken: toughness_value.map(|_| false),
             ..Default::default()
         })
     }
@@ -334,6 +333,21 @@ mod tests {
     }
 
     #[test]
+    fn monster_break_state_exists_only_with_configured_toughness() {
+        crate::test_support::init_config();
+
+        let without_toughness = Defender::build_monster_with_uid(4_030_703, -1, 1, 2).unwrap();
+        assert_eq!(without_toughness.toughness_value, None);
+        assert_eq!(without_toughness.toughness_point, None);
+        assert_eq!(without_toughness.is_broken, None);
+
+        let with_toughness = Defender::build_monster_with_uid(1_163_857_113, -2, 1, 2).unwrap();
+        assert!(with_toughness.toughness_value.is_some());
+        assert!(with_toughness.toughness_point.is_some());
+        assert_eq!(with_toughness.is_broken, Some(false));
+    }
+
+    #[test]
     fn monster_unique_skill_level_is_not_serialized_as_a_hero_ex_rank() {
         crate::test_support::init_config();
 
@@ -344,12 +358,18 @@ mod tests {
     }
 
     #[test]
-    fn monster_uses_its_configured_moxie_maximum() {
+    fn monster_moxie_maximum_is_manager_owned_and_not_serialized() {
         crate::test_support::init_config();
 
-        let monster = Defender::build_monster_with_uid(109_360_002, -1, 1, 2).unwrap();
+        let mut monster = Defender::build_monster_with_uid(109_360_002, -1, 1, 2).unwrap();
 
-        assert_eq!(monster.ex_point_max, Some(2));
+        assert_eq!(monster.ex_point_max, None);
+
+        monster.ex_point = Some(2);
+        let mut manager = crate::engine::manager::ex_point::ExPointManager::default();
+        manager.register(&monster);
+
+        assert!(manager.is_full(-1));
     }
 
     #[test]
