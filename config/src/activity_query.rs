@@ -27,6 +27,13 @@ impl GameDB {
             .max()
     }
 
+    pub fn activity220_first_online_episode_id(&self, activity_id: i32) -> Option<i32> {
+        self.activity220_task
+            .iter()
+            .find(|row| row.activity_id == activity_id && row.is_online != 0)
+            .map(|row| row.episode_id)
+    }
+
     pub fn activity236_charge_score(&self, activity_id: i32, goods_id: i32) -> Option<i32> {
         let control = self.activity236_control.get(activity_id)?;
         let goods = self.store_charge_goods.get(goods_id)?;
@@ -185,6 +192,18 @@ impl GameDB {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn act220_first_online_episode_matches_the_captured_activity() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = crate::init(&data_dir);
+        let tables = crate::configs::get();
+
+        assert_eq!(
+            tables.activity220_first_online_episode_id(13710),
+            Some(1371001)
+        );
+    }
+
     #[test]
     fn act236_reward_rows_load_for_the_configured_activity() {
         let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));

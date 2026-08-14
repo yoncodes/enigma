@@ -597,8 +597,9 @@ mod tests {
     use config::configs;
     use prost::Message;
     use sonettobuf::{
-        Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act236GetAutoGainRewardReply,
-        Act236GetAutoGainRewardRequest, Act236Info, Act236UpdateInfoPush, CurrencyChangePush,
+        Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act220EpisodeRecord,
+        Act236GetAutoGainRewardReply, Act236GetAutoGainRewardRequest, Act236Info,
+        Act236UpdateInfoPush, CurrencyChangePush, GetAct220InfoReply, GetAct220InfoRequest,
         GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
         GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest, ItemChangePush,
         MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush,
@@ -840,6 +841,61 @@ mod tests {
                 score: Some(240),
                 gain_reward_ids: vec![3, 7],
             })
+        );
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act220_info_command_reaches_handler_and_decodes_captured_initial_episode() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let activity_id = 13710;
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(1);
+        let mut ctx = ConnectionContext::new(outbound, state);
+
+        let mut data = Vec::new();
+        GetAct220InfoRequest {
+            activity_id: Some(activity_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::GetAct220InfoCmd as i16,
+            up_tag: 52,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::GetAct220InfoCmd,
+            body,
+            result_code: 0,
+            up_tag: 52,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act220 information request did not reach its handler");
+        };
+        let reply = GetAct220InfoReply::decode(&*body).unwrap();
+        assert_eq!(
+            reply,
+            GetAct220InfoReply {
+                activity_id: Some(activity_id),
+                episodes: vec![Act220EpisodeRecord {
+                    episode_id: Some(1371001),
+                    is_finished: Some(false),
+                    unlock_branch_ids: Vec::new(),
+                    progress: Some(String::new()),
+                }],
+            }
         );
         assert!(packets.try_recv().is_err());
     }

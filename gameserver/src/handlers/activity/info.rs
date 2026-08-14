@@ -490,13 +490,34 @@ info_handler!(
     GetAct215InfoCmd,
     215
 );
-info_handler!(
-    on_get_act220_info,
-    GetAct220InfoRequest,
-    GetAct220InfoReply,
-    GetAct220InfoCmd,
-    220
-);
+pub async fn on_get_act220_info(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = sonettobuf::GetAct220InfoRequest::decode(&req.data[..])?;
+    let activity_id = msg
+        .activity_id
+        .or_else(|| default_activity_id_for_type(220));
+    let episodes = activity_id
+        .and_then(|activity_id| {
+            config::configs::get().activity220_first_online_episode_id(activity_id)
+        })
+        .map(|episode_id| sonettobuf::Act220EpisodeRecord {
+            episode_id: Some(episode_id),
+            is_finished: Some(false),
+            unlock_branch_ids: Vec::new(),
+            progress: Some(String::new()),
+        })
+        .into_iter()
+        .collect();
+    let reply = sonettobuf::GetAct220InfoReply {
+        activity_id,
+        episodes,
+    };
+
+    ctx.send_reply(CmdId::GetAct220InfoCmd, reply, 0, req.up_tag)
+        .await
+}
 info_handler!(
     on_get_act223_info,
     GetAct223InfoRequest,
