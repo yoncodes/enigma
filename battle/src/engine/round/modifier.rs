@@ -31,7 +31,18 @@ pub fn ai_action_bonus(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
 ) -> i32 {
-    action_bonus_for_team(pool, managers, catalog, determinism, context, 2)
+    active_buff_action_bonus(managers, 2)
+        + action_bonus_for_team(pool, managers, catalog, determinism, context, 2)
+}
+
+pub(crate) fn active_buff_action_bonus(managers: &BattleManagers, team_type: i32) -> i32 {
+    managers
+        .buff
+        .active_features(&managers.hp)
+        .iter()
+        .filter(|feature| feature.team_type == team_type)
+        .map(crate::engine::skill::buff_act::add_action_point::bonus)
+        .sum()
 }
 
 fn action_bonus_for_team(
@@ -248,5 +259,63 @@ mod tests {
             ai_action_bonus(&pool, &managers, &catalog, &mut determinism, context),
             1
         );
+    }
+
+    #[test]
+    fn active_buff_action_modifier_applies_to_its_own_living_team() {
+        init_config();
+        let fight = battle_nine_fight();
+        let pool = TargetPool::from_fight(&fight);
+        let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let mut determinism = RoundDeterminism::default();
+        let context = TargetContext {
+            battle_id: fight.battle_id.unwrap(),
+            current_round: fight.cur_round.unwrap(),
+            ..Default::default()
+        };
+        let origin = crate::engine::skill::rule::CommandOrigin {
+            domain: crate::engine::skill::rule::RuleDomain::Behavior,
+            key: crate::engine::skill::rule::DefinitionKey::new(1, "AddBuff"),
+        };
+        managers
+            .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+                crate::engine::manager::buff::BuffGrant {
+                    origin,
+                    source_uid: -1,
+                    target_uid: -1,
+                    buff_id: 2_137_001,
+                    amount: None,
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                },
+            ))
+            .unwrap();
+
+        assert_eq!(active_buff_action_bonus(&managers, 1), 0);
+        assert_eq!(active_buff_action_bonus(&managers, 2), 1);
+        assert_eq!(
+            ai_action_bonus(&pool, &managers, &catalog, &mut determinism, context),
+            1
+        );
+
+        let mut dead_fight = fight;
+        dead_fight.defender.as_mut().unwrap().entitys[0].current_hp = Some(0);
+        let mut dead_managers = BattleManagers::seeded(&dead_fight);
+        dead_managers
+            .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+                crate::engine::manager::buff::BuffGrant {
+                    origin,
+                    source_uid: -1,
+                    target_uid: -1,
+                    buff_id: 2_137_001,
+                    amount: None,
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                },
+            ))
+            .unwrap();
+
+        assert_eq!(active_buff_action_bonus(&dead_managers, 2), 0);
     }
 }
