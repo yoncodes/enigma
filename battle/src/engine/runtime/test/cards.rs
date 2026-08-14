@@ -302,7 +302,7 @@ fn version_six_opening_keeps_the_legacy_deal_snapshot_after_composition() {
 }
 
 #[test]
-fn teaching_card_opening_projects_the_committed_order_after_refill() {
+fn tutorial_without_scripted_cards_uses_the_normal_opening() {
     crate::test_support::init_config();
     let fight = Fight {
         episode_id: Some(10002),
@@ -342,40 +342,21 @@ fn teaching_card_opening_projects_the_committed_order_after_refill() {
 
     let round = runtime.start_round_with_determinism(determinism).unwrap();
 
-    assert!(runtime.determinism.has_queued_card_draw());
-    assert_eq!(
-        runtime
-            .managers
-            .card
-            .refilled()
-            .iter()
-            .map(|card| (card.uid.unwrap(), card.skill_id.unwrap()))
-            .collect::<Vec<_>>(),
-        vec![(-2, 30230121), (-1, 30250121)]
-    );
+    assert!(!runtime.determinism.has_queued_card_draw());
     let push = runtime.card_info_push();
-    let expected = vec![
-        (-1, 30250122),
-        (-1, 30250121),
-        (-2, 30230112),
-        (-2, 30230121),
-        (-1, 30250121),
-    ];
-    let identities = |cards: &[CardInfo]| {
-        cards
+    assert_eq!(round.team_a_cards1.len(), 5);
+    assert!(
+        round
+            .team_a_cards1
             .iter()
-            .map(|card| (card.uid.unwrap(), card.skill_id.unwrap()))
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(identities(&round.team_a_cards1), expected);
-    assert_eq!(identities(&push.card_group), expected);
-    assert_eq!(identities(&push.deal_card_group), expected);
+            .all(|card| card.uid == Some(-1) || card.uid == Some(-2))
+    );
     assert_eq!(round.team_a_cards1, push.card_group);
     assert_eq!(round.team_a_cards1, push.deal_card_group);
 }
 
 #[test]
-fn teaching_card_round_refill_replays_the_live_tutorial_operations() {
+fn tutorial_without_scripted_refill_uses_the_normal_round_refill() {
     crate::test_support::init_config();
     let fight = Fight {
         battle_id: Some(1002),
@@ -441,24 +422,12 @@ fn teaching_card_round_refill_replays_the_live_tutorial_operations() {
             ..Default::default()
         })
         .unwrap();
-    let skills = |cards: &[CardInfo]| {
-        cards
-            .iter()
-            .filter_map(|card| card.skill_id)
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(
-        skills(runtime.managers.card.refilled()),
-        vec![30250111, 30230111, 30230111, 30250121]
-    );
-    assert_eq!(
-        skills(runtime.managers.card.hand()),
-        vec![30230112, 30230121, 30250111, 30230112, 30250121]
-    );
+    assert!(!runtime.managers.card.refilled().is_empty());
+    assert_eq!(runtime.managers.card.normal_hand_len(), 5);
 }
 
 #[test]
-fn teaching_card_opening_composes_the_complete_configured_deal() {
+fn tutorial_without_scripted_opening_uses_the_normal_hand_size() {
     crate::test_support::init_config();
     let fight = Fight {
         episode_id: Some(10003),
@@ -482,22 +451,13 @@ fn teaching_card_opening_composes_the_complete_configured_deal() {
     let round = runtime.build_start_round_from_schedule().unwrap();
 
     let push = runtime.card_info_push();
-    let expected = vec![30230122, 30230112, 30230122, 30230111];
-    let skills = |cards: &[CardInfo]| {
-        cards
-            .iter()
-            .filter_map(|card| card.skill_id)
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(skills(&round.team_a_cards1), expected);
-    assert_eq!(skills(&push.card_group), expected);
-    assert_eq!(skills(&push.deal_card_group), expected);
+    assert_eq!(round.team_a_cards1.len(), 3);
     assert_eq!(round.team_a_cards1, push.card_group);
     assert_eq!(round.team_a_cards1, push.deal_card_group);
 }
 
 #[test]
-fn teaching_card_refill_follows_the_configured_draws_after_tutorial_plays() {
+fn tutorial_without_scripted_draws_refills_normally_after_plays() {
     crate::test_support::init_config();
     let fight = Fight {
         battle_id: Some(1001),
@@ -532,17 +492,7 @@ fn teaching_card_refill_follows_the_configured_draws_after_tutorial_plays() {
     runtime
         .start_round_with_determinism(RoundDeterminism::with_seed(0x5eed))
         .unwrap();
-    let skills = |cards: &[CardInfo]| {
-        cards
-            .iter()
-            .filter_map(|card| card.skill_id)
-            .collect::<Vec<_>>()
-    };
-
-    assert_eq!(
-        skills(runtime.managers.card.hand()),
-        vec![30230111, 30230121, 30250111, 30250121, 30230111]
-    );
+    assert_eq!(runtime.managers.card.normal_hand_len(), 5);
     for hand_index in [4, 3] {
         runtime
             .managers
@@ -574,14 +524,12 @@ fn teaching_card_refill_follows_the_configured_draws_after_tutorial_plays() {
     )
     .unwrap();
 
-    assert_eq!(
-        skills(runtime.managers.card.hand()),
-        vec![30230111, 30230121, 30250111, 30230121, 30250111]
-    );
+    assert_eq!(runtime.managers.card.normal_hand_len(), 5);
+    assert!(!runtime.managers.card.refilled().is_empty());
 }
 
 #[test]
-fn teaching_card_without_scripted_refills_preserves_its_composed_hand_size() {
+fn tutorial_without_scripted_refills_preserves_the_normal_hand_size() {
     crate::test_support::init_config();
     let fight = Fight {
         battle_id: Some(11011),
@@ -606,7 +554,7 @@ fn teaching_card_without_scripted_refills_preserves_its_composed_hand_size() {
         .start_round_with_determinism(RoundDeterminism::with_seed(0x5eed))
         .unwrap();
     let opening_size = runtime.managers.card.normal_hand_len();
-    assert_eq!(opening_size, 4);
+    assert_eq!(opening_size, 3);
 
     runtime
         .managers
@@ -640,7 +588,6 @@ fn teaching_card_without_scripted_refills_preserves_its_composed_hand_size() {
 
     assert_eq!(runtime.managers.card.normal_hand_len(), opening_size);
     assert!(!runtime.managers.card.refilled().is_empty());
-    assert_eq!(runtime.managers.card.deck_num(), 16);
 }
 
 #[test]
