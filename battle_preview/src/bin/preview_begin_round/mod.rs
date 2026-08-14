@@ -178,8 +178,8 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
         validate_captured_round_continuity(&previous_captured_round, &captured)?;
         report_rule_issues(&captured);
         seed_captured_randomness(&mut runtime, &captured);
-        round_reply = runtime.advance_round(request).map_err(io::Error::other)?;
         replay_cloth_input(path, index, &mut runtime)?;
+        round_reply = runtime.advance_round(request).map_err(io::Error::other)?;
         previous_captured_round = captured;
     }
 
