@@ -6,9 +6,23 @@ use crate::{
 };
 use prost::Message;
 use sonettobuf::{
-    BpBuyLevelRequset, BpMarkFirstShowRequest, CmdId, GetBpBonusRequest, GetBpInfoRequest,
-    GetSelfSelectBonusRequest,
+    BpBuyLevelRequset, BpMarkFirstShowRequest, CmdId, GetAct233BpInfoRequest, GetBpBonusRequest,
+    GetBpInfoRequest, GetSelfSelectBonusRequest,
 };
+
+pub async fn on_get_act233_bp_info(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = GetAct233BpInfoRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .battle_pass
+        .act233_info(ctx.state.db, msg.activity_id, msg.get_task.unwrap_or(false))
+        .await?;
+    ctx.send_reply(CmdId::GetAct233BpInfoCmd, reply, 0, req.up_tag)
+        .await
+}
 
 pub async fn on_get_bp_info(
     ctx: &mut ConnectionContext,

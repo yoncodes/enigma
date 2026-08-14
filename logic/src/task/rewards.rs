@@ -152,7 +152,10 @@ fn task_bonus(type_id: i32, task_id: i32) -> Option<String> {
             .hero_story_task
             .get(task_id)
             .map(|task| task.bonus.clone()),
-        Some(task_db::TaskType::BattlePass) | Some(task_db::TaskType::BpOperAct) | None => None,
+        Some(task_db::TaskType::BattlePass)
+        | Some(task_db::TaskType::BpOperAct)
+        | Some(task_db::TaskType::ActBp)
+        | None => None,
     }
 }
 
