@@ -207,6 +207,25 @@ fn cloth_input_discovery_returns_same_round_requests_in_capture_order() {
 
 #[cfg(feature = "private-fixtures")]
 #[test]
+fn captured_same_round_cloth_input_runs_before_round_advance() {
+    let db = init_config().unwrap();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/battles/battle75/BeginRoundReply_1.json");
+    let generated = generate_reply(db, &path).unwrap().0.round.unwrap();
+
+    assert!(nested_steps(&generated).any(|step| step.act_id == Some(31340151)));
+    assert!(nested_steps(&generated).any(|step| {
+        step.act_effect.iter().any(|effect| {
+            effect
+                .fight
+                .as_ref()
+                .is_some_and(|fight| fight.cur_wave == Some(2))
+        })
+    }));
+}
+
+#[cfg(feature = "private-fixtures")]
+#[test]
 fn captured_twins_selection_has_a_committed_runtime_source() {
     let db = init_config().unwrap();
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))

@@ -680,88 +680,28 @@ mod tests {
     }
 
     #[test]
-    fn configured_opening_deals_resolve_every_tracked_model_and_skill_group() {
+    fn current_data_has_no_scripted_teaching_card_deals() {
         crate::test_support::init_config();
         let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
-        let cases = [
-            (
-                10001,
-                vec![
-                    entity(-1, 100102, 1, &[30250111], &[30250121]),
-                    entity(-2, 100101, 2, &[30230111], &[30230121]),
-                ],
-                vec![
-                    (-2, 30230111),
-                    (-2, 30230121),
-                    (-1, 30250111),
-                    (-1, 30250121),
-                    (-2, 30230111),
-                ],
-            ),
-            (
-                10002,
-                vec![
-                    entity(-1, 100102, 1, &[30250111], &[30250121]),
-                    entity(-2, 100101, 2, &[30230111], &[30230121]),
-                ],
-                vec![
-                    (-1, 30250121),
-                    (-1, 30250121),
-                    (-1, 30250121),
-                    (-2, 30230111),
-                    (-2, 30230111),
-                    (-2, 30230121),
-                    (-1, 30250121),
-                ],
-            ),
-            (
-                10003,
-                vec![entity(-1, 100109, 1, &[1091], &[1092])],
-                vec![
-                    (-1, 1092),
-                    (-1, 1092),
-                    (-1, 1091),
-                    (-1, 1091),
-                    (-1, 1092),
-                    (-1, 1092),
-                    (-1, 1091),
-                ],
-            ),
-            (
-                10101,
-                vec![entity(-1, 3028, 1, &[281], &[282])],
-                vec![
-                    (-1, 282),
-                    (-1, 281),
-                    (-1, 281),
-                    (-1, 282),
-                    (-1, 282),
-                    (-1, 281),
-                ],
-            ),
-        ];
-        for (episode_id, entitys, expected) in cases {
+        for episode_id in [10001, 10002, 10003, 10101] {
             let fight = Fight {
                 episode_id: Some(episode_id),
                 version: Some(7),
-                attacker: Some(FightTeam {
-                    entitys,
-                    ..Default::default()
-                }),
                 ..Default::default()
             };
-            let deal = configured_opening_deal(crate::test_support::game_data(), &fight)
-                .unwrap()
-                .unwrap();
 
-            assert_eq!(opening_deal(catalog, &fight).unwrap(), Some(deal.clone()));
-
-            assert_eq!(
-                deal.iter()
-                    .map(|card| (card.uid.unwrap(), card.skill_id.unwrap()))
-                    .collect::<Vec<_>>(),
-                expected
+            assert!(
+                configured_opening_deal(crate::test_support::game_data(), &fight)
+                    .unwrap()
+                    .is_none()
             );
+            assert!(
+                configured_refill_draws(crate::test_support::game_data(), &fight)
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(opening_deal(catalog, &fight).unwrap().is_none());
+            assert!(refill_draws(catalog, &fight).unwrap().is_empty());
         }
     }
 
@@ -794,34 +734,6 @@ mod tests {
         );
         assert!(opening_deal(catalog, &fight).unwrap().is_none());
         assert!(refill_draws(catalog, &fight).unwrap().is_empty());
-    }
-
-    #[test]
-    fn configured_refill_draws_resolve_through_the_same_card_groups() {
-        crate::test_support::init_config();
-        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
-        let fight = Fight {
-            episode_id: Some(10001),
-            version: Some(7),
-            attacker: Some(FightTeam {
-                entitys: vec![
-                    entity(-1, 100102, 1, &[30250111], &[30250121]),
-                    entity(-2, 100101, 2, &[30230111], &[30230121]),
-                ],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        let configured = configured_refill_draws(crate::test_support::game_data(), &fight).unwrap();
-        assert_eq!(refill_draws(catalog, &fight).unwrap(), configured);
-        assert_eq!(
-            configured
-                .iter()
-                .map(|card| (card.uid.unwrap(), card.skill_id.unwrap()))
-                .collect::<Vec<_>>(),
-            vec![(-2, 30230121), (-1, 30250111)]
-        );
     }
 
     #[test]

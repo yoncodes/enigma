@@ -2,6 +2,98 @@ use super::*;
 use crate::engine::runtime::record::SetupSide;
 
 #[test]
+fn stage_102_duration_expires_before_condition_102_actions() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                team_type: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(4030703),
+                current_hp: Some(100),
+                team_type: Some(2),
+                passive_skill: vec![2524],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(25332),
+                    from_uid: Some(-1),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [2524], []);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    let (round, _) = run_round_start_split(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 5,
+            ..Default::default()
+        },
+        2,
+    )
+    .unwrap();
+
+    let expiry = round
+        .outcomes
+        .iter()
+        .position(|outcome| {
+            matches!(
+                outcome,
+                RuleOutcome::BuffBatch(changes)
+                    if changes.iter().any(|change| {
+                        change.origin.key.opcode == 102
+                            && change
+                                .change
+                                .removed
+                                .iter()
+                                .any(|removed| removed.buff.uid == Some(20))
+                    })
+            )
+        })
+        .expect("stage 102 removes the snapshotted one-round buff");
+    let condition = round
+        .outcomes
+        .iter()
+        .position(|outcome| match outcome {
+            RuleOutcome::Buff(change) => change
+                .change
+                .added
+                .iter()
+                .any(|added| added.buff.buff_id == Some(25241)),
+            RuleOutcome::BuffBatch(changes) => changes.iter().any(|change| {
+                change
+                    .change
+                    .added
+                    .iter()
+                    .any(|added| added.buff.buff_id == Some(25241))
+            }),
+            _ => false,
+        })
+        .expect("condition 102 executes its configured passive");
+
+    assert!(expiry < condition);
+    assert!(!managers.buff.has_buff_id(-1, 25332));
+}
+
+#[test]
 fn ulrich_channel_reacts_before_take_stage_104_expires_from_the_round_snapshot() {
     init_config();
     let entity = |uid, team_type, buffs| FightEntityInfo {

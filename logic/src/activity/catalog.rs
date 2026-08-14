@@ -151,10 +151,8 @@ fn activity_info(activity_id: i32) -> ActivityInfo {
 
 fn is_activity_online(activity_id: i32) -> bool {
     let is_scheduled = super::schedule::get(activity_id).is_some();
-    let is_current_bp = database::db::game::tasks::current_battle_pass()
-        .is_some_and(|bp| bp.activity_id == activity_id);
 
-    (is_scheduled || is_current_bp)
+    is_scheduled
         && config::configs::get()
             .activity
             .get(activity_id)
@@ -243,8 +241,17 @@ mod tests {
         let _ = config::init(&data_dir);
 
         assert!(!is_activity_online(ActivityId::V3a6Dungeon.id()));
-        assert!(is_activity_online(138502));
+        assert!(!is_activity_online(138502));
+        assert!(!is_activity_online(138512));
+        assert!(is_activity_online(138508));
         assert!(!is_activity_online(138522));
+        assert_eq!(
+            catalog_infos()
+                .iter()
+                .filter(|info| info.online == Some(true))
+                .count(),
+            130
+        );
     }
 
     #[test]
@@ -259,7 +266,7 @@ mod tests {
 
         assert_eq!(
             version_activity_time_range(),
-            Some((1_782_968_400_000, 1_784_782_799_000))
+            Some((1_786_597_200_000, 1_790_225_999_000))
         );
     }
 
@@ -277,12 +284,12 @@ mod tests {
         let _ = config::init(&data_dir);
 
         assert_eq!(
-            activity_time_range(138502),
-            (1_784_800_800_000, 1_786_528_799_000)
+            activity_time_range(138508),
+            (1_785_664_800_000, 1_789_811_999_000)
         );
         assert_eq!(
-            activity_time_range(138501),
-            (1_784_800_800_000, 1_786_615_199_000)
+            activity_time_range(12801),
+            (1_786_615_200_000, 2_145_934_800_000)
         );
         assert!(!is_unlocked_by_default(12301));
     }
@@ -296,8 +303,8 @@ mod tests {
         apply_act125_activity(&mut infos);
 
         assert!(infos.iter().any(|info| info.id.is_some()));
-        assert_eq!(default_act125_activity_id(), Some(138525));
-        assert!(infos.iter().any(|info| info.id == Some(138525)));
+        assert_eq!(default_act125_activity_id(), Some(13724));
+        assert!(infos.iter().any(|info| info.id == Some(13724)));
         assert!(
             infos
                 .iter()

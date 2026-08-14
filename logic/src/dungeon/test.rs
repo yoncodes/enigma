@@ -120,16 +120,51 @@ async fn completed_episode_unlocks_maps_that_reference_its_chain_alias() {
 }
 
 #[tokio::test]
-async fn chapter_unlock_reports_missing_reward_character() {
+async fn chapter_unlock_grants_reward_character_once() {
     let pool = test_pool(33).await;
-    let error = match DungeonManager::new(33).unlock_chapter(&pool, 113).await {
-        Ok(_) => panic!("chapter 113 contains unavailable hero 3154"),
-        Err(error) => error,
-    };
+    let manager = DungeonManager::new(33);
+    let first = manager.unlock_chapter(&pool, 113).await.unwrap();
 
+    assert!(first.trails.rewards.hero_ids.contains(&3154));
     assert_eq!(
-        error.to_string(),
-        "Custom error: chapter 113 rewards unavailable heroes [3154]"
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM heroes WHERE user_id = 33 AND hero_id = 3154",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>(
+            "SELECT duplicate_count FROM heroes WHERE user_id = 33 AND hero_id = 3154",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        0
+    );
+
+    let repeated = manager.unlock_chapter(&pool, 113).await.unwrap();
+
+    assert!(repeated.trails.rewards.hero_ids.is_empty());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM heroes WHERE user_id = 33 AND hero_id = 3154",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>(
+            "SELECT duplicate_count FROM heroes WHERE user_id = 33 AND hero_id = 3154",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        0
     );
 }
 
