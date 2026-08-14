@@ -1,6 +1,6 @@
 # Enigma
 
-### Current supported version: **3.6.5 (non-Steam)**
+### Current supported version: **3.7.0 (non-Steam)**
 
 [![Build and Release](https://github.com/yoncodes/enigma/actions/workflows/rust.yml/badge.svg)](https://github.com/yoncodes/enigma/actions/workflows/rust.yml)
 
@@ -91,8 +91,6 @@ Login using an email address in the game client (**DO NOT USE THE REGISTER BUTTO
 ## Known limitations
 
 - Battle parity is still being expanded for unsupported skills and mechanics.
-- Battle reconnect does not restore the active fight yet.
-- Assist heroes (trial heroes) dungeon selection is not implemented.
 - Tower support (wip)
 - Some event modes and Tower Compose settlement paths are incomplete.
 
