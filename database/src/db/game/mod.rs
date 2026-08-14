@@ -51,6 +51,7 @@ pub mod store;
 pub mod stories;
 pub mod summon;
 pub mod tasks;
+pub mod teaching;
 pub mod tower;
 pub mod tower_compose;
 pub mod trade;
