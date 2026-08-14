@@ -18,6 +18,7 @@ mod progression;
 mod rewards;
 mod tasks;
 
+pub use act233::Act233BpBonusClaim;
 pub use info::{BpBonusClaim, BpBonusRedDots, BpLevelPurchase, BpSelfSelectClaim};
 pub(crate) use tasks::task_score_from_models;
 use tasks::{bp_time_range, parse_bp_reward, score_bonus_info};
@@ -48,6 +49,16 @@ impl BattlePassManager {
         include_tasks: bool,
     ) -> Result<GetAct233BpInfoReply, AppError> {
         act233::get_info(db, self.player_id, activity_id, include_tasks).await
+    }
+
+    pub async fn claim_act233_bonus(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        level: Option<i32>,
+        pay_bonus: Option<bool>,
+    ) -> Result<Act233BpBonusClaim, AppError> {
+        act233::claim_bonus(db, self.player_id, activity_id, level, pay_bonus).await
     }
 
     pub async fn claim_bonus(

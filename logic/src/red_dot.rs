@@ -1,6 +1,6 @@
 use crate::{bp::BattlePassManager, error::AppError, types::red_dot_id::RedDotId};
 use database::{
-    db::game::{achievements, activity101, mail, red_dots, room_ob, tasks as task_db},
+    db::game::{achievements, act233_bp, activity101, mail, red_dots, room_ob, tasks as task_db},
     models::game::red_dots::RedDotRecord,
 };
 use sonettobuf::{GetRedDotInfosReply, RedDotGroup, RedDotInfo, ShowRedDotReply};
@@ -50,6 +50,14 @@ impl RedDotManager {
 
     pub async fn battle_pass_groups(&self, db: &SqlitePool) -> Result<Vec<RedDotGroup>, AppError> {
         battle_pass_red_dot_groups(db, self.player_id).await
+    }
+
+    pub async fn act233_groups(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+    ) -> Result<Vec<RedDotGroup>, AppError> {
+        act233_red_dot_groups(db, self.player_id, activity_id).await
     }
 
     pub async fn hide_infos(
@@ -145,6 +153,8 @@ async fn apply_dynamic_red_dots(
             RedDotId::AchievementFinish,
             RedDotId::ActivityNoviceTab,
             RedDotId::ActivityJieXiKaPhoto,
+            RedDotId::V3a7Anniversary3ActBpSubTask,
+            RedDotId::V3a7Anniversary3ActBpBonus,
             RedDotId::BattlePassBonus,
             RedDotId::BattlePassSpBonus,
             RedDotId::BattlePassTask,
@@ -178,6 +188,26 @@ async fn apply_dynamic_red_dots(
         }
     }
 
+    if ids.contains(&RedDotId::V3a7Anniversary3ActBpSubTask)
+        || ids.contains(&RedDotId::V3a7Anniversary3ActBpBonus)
+    {
+        let (task_infos, bonus) = act233_red_dot_state(db, player_id, None).await?;
+        if ids.contains(&RedDotId::V3a7Anniversary3ActBpSubTask) {
+            replace_group(
+                reply,
+                RedDotId::V3a7Anniversary3ActBpSubTask.id(),
+                task_infos,
+            );
+        }
+        if ids.contains(&RedDotId::V3a7Anniversary3ActBpBonus) {
+            replace_group(
+                reply,
+                RedDotId::V3a7Anniversary3ActBpBonus.id(),
+                vec![red_dot_info(0, bonus)],
+            );
+        }
+    }
+
     for id in ids {
         match id {
             RedDotId::AchievementFinish => {
@@ -185,6 +215,7 @@ async fn apply_dynamic_red_dots(
             }
             RedDotId::ActivityNoviceTab => apply_activity101_red_dot(reply, db, player_id).await?,
             RedDotId::ActivityJieXiKaPhoto => {}
+            RedDotId::V3a7Anniversary3ActBpSubTask | RedDotId::V3a7Anniversary3ActBpBonus => {}
             RedDotId::BattlePassBonus | RedDotId::BattlePassSpBonus => {}
             RedDotId::BattlePassTask => apply_bp_task_red_dot(reply, db, player_id).await?,
             RedDotId::CommandStationBonus => {}
@@ -435,6 +466,115 @@ async fn apply_bp_task_red_dot(
             .await?,
     );
     Ok(())
+}
+
+async fn act233_red_dot_groups(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: i32,
+) -> Result<Vec<RedDotGroup>, AppError> {
+    let (task_infos, bonus) = act233_red_dot_state(db, player_id, Some(activity_id)).await?;
+
+    Ok(vec![
+        RedDotGroup {
+            define_id: RedDotId::V3a7Anniversary3ActBpSubTask.id(),
+            infos: task_infos,
+            replace_all: Some(true),
+        },
+        RedDotGroup {
+            define_id: RedDotId::V3a7Anniversary3ActBpBonus.id(),
+            infos: vec![red_dot_info(0, bonus)],
+            replace_all: Some(true),
+        },
+    ])
+}
+
+async fn act233_red_dot_state(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: Option<i32>,
+) -> Result<(Vec<RedDotInfo>, i32), AppError> {
+    let tables = config::configs::get();
+    let passes = tables
+        .activity233_bp
+        .iter()
+        .filter(|bp| activity_id.is_none_or(|activity_id| bp.activity_id == activity_id))
+        .filter(|bp| bp.exp_level_up > 0)
+        .map(|bp| (bp.activity_id, bp.bp_id, bp.exp_level_up))
+        .collect::<Vec<_>>();
+    if passes.is_empty() {
+        return Ok((vec![red_dot_info(0, 0)], 0));
+    }
+
+    task_db::ensure_tasks_for_type(db, player_id, task_db::TaskType::ActBp).await?;
+    let mut task_counts = HashMap::<i64, i32>::new();
+    let mut bonus_ready = false;
+
+    for (activity_id, bp_id, exp_level_up) in passes {
+        let state = act233_bp::get_or_create_state(db, player_id, activity_id, bp_id).await?;
+        let unlocked_level = (state.score / exp_level_up).max(0);
+        bonus_ready |= tables
+            .activity233_lv_bonus
+            .iter()
+            .filter(|bonus| bonus.bp_id == bp_id && bonus.level <= unlocked_level)
+            .any(|bonus| {
+                (!bonus.free_bonus.is_empty() && !state.has_get_free_bonus.contains(&bonus.level))
+                    || (state.pay_status > 0
+                        && !bonus.pay_bonus.is_empty()
+                        && !state.has_get_pay_bonus.contains(&bonus.level))
+            });
+
+        let mut task_configs = HashMap::new();
+        for task in tables.activity233_task.iter().filter(|task| {
+            task.activity_id == activity_id && task.bp_id == bp_id && task.is_online != 0
+        }) {
+            let prepose = if task.prepose.trim().is_empty() {
+                None
+            } else {
+                Some(
+                    task.prepose
+                        .trim()
+                        .parse::<i32>()
+                        .map_err(|_| AppError::InvalidRequest)?,
+                )
+            };
+            task_configs.insert(task.id, (task.loop_type, task.max_progress, prepose));
+        }
+        let tasks = task_db::list_act_bp(db, player_id, activity_id).await?;
+        for task in &tasks {
+            let Some((loop_type, max_progress, prepose)) = task_configs.get(&task.task_id) else {
+                continue;
+            };
+            if task.progress < *max_progress || task.finish_count != 0 {
+                continue;
+            }
+            if prepose.is_some_and(|prepose| {
+                !tasks
+                    .iter()
+                    .any(|task| task.task_id == prepose && task.finish_count > 0)
+            }) {
+                continue;
+            }
+            let loop_type = task_db::TaskLoopType::from_id(*loop_type)
+                .unwrap_or(task_db::TaskLoopType::Permanent);
+            let info_id = match loop_type {
+                task_db::TaskLoopType::Appoint => task_db::TaskLoopType::Permanent.id() as i64,
+                other => other.id() as i64,
+            };
+            *task_counts.entry(info_id).or_default() += 1;
+        }
+    }
+
+    let mut task_infos = task_counts
+        .into_iter()
+        .map(|(id, value)| red_dot_info(id, value))
+        .collect::<Vec<_>>();
+    task_infos.sort_unstable_by_key(|info| info.id);
+    if task_infos.is_empty() {
+        task_infos.push(red_dot_info(0, 0));
+    }
+
+    Ok((task_infos, i32::from(bonus_ready)))
 }
 
 async fn battle_pass_red_dot_groups(
@@ -838,6 +978,159 @@ mod tests {
             ),
             (0, 0)
         );
+    }
+
+    #[tokio::test]
+    async fn act233_red_dots_follow_claimable_tasks_and_bonus_state() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (6, 'act233-dots', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let pass = config::configs::get().activity233_bp.iter().next().unwrap();
+
+        let (task_infos, bonus) = super::act233_red_dot_state(&pool, 6, Some(pass.activity_id))
+            .await
+            .unwrap();
+        assert_eq!((task_infos[0].id, bonus), (0, 0));
+
+        sqlx::query(
+            "UPDATE user_act233_bp_state SET score = ?
+             WHERE user_id = 6 AND activity_id = ? AND bp_id = ?",
+        )
+        .bind(pass.exp_level_up * 2)
+        .bind(pass.activity_id)
+        .bind(pass.bp_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let (_, bonus) = super::act233_red_dot_state(&pool, 6, Some(pass.activity_id))
+            .await
+            .unwrap();
+        assert_eq!(bonus, 1);
+
+        sqlx::query(
+            "UPDATE user_act233_bp_state SET has_get_free_bonus = '[1,2]'
+             WHERE user_id = 6 AND activity_id = ? AND bp_id = ?",
+        )
+        .bind(pass.activity_id)
+        .bind(pass.bp_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let (_, bonus) = super::act233_red_dot_state(&pool, 6, Some(pass.activity_id))
+            .await
+            .unwrap();
+        assert_eq!(bonus, 0);
+
+        let task = config::configs::get()
+            .activity233_task
+            .iter()
+            .find(|task| {
+                task.activity_id == pass.activity_id
+                    && task.bp_id == pass.bp_id
+                    && task.is_online != 0
+            })
+            .unwrap();
+        sqlx::query(
+            "UPDATE user_tasks SET progress = 0, finish_count = 0
+             WHERE user_id = 6 AND type_id = ? AND activity_id = ?",
+        )
+        .bind(database::db::game::tasks::TaskType::ActBp.id())
+        .bind(pass.activity_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE user_tasks SET progress = ?
+             WHERE user_id = 6 AND type_id = ? AND task_id = ?",
+        )
+        .bind(task.max_progress)
+        .bind(database::db::game::tasks::TaskType::ActBp.id())
+        .bind(task.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let (task_infos, _) = super::act233_red_dot_state(&pool, 6, Some(pass.activity_id))
+            .await
+            .unwrap();
+        let loop_type = database::db::game::tasks::TaskLoopType::from_id(task.loop_type)
+            .unwrap_or(database::db::game::tasks::TaskLoopType::Permanent);
+        let expected_id = match loop_type {
+            database::db::game::tasks::TaskLoopType::Appoint => {
+                database::db::game::tasks::TaskLoopType::Permanent.id() as i64
+            }
+            other => other.id() as i64,
+        };
+        assert_eq!(task_infos, vec![super::red_dot_info(expected_id, 1)]);
+
+        let successor = config::configs::get()
+            .activity233_task
+            .iter()
+            .find(|task| {
+                task.activity_id == pass.activity_id
+                    && task.bp_id == pass.bp_id
+                    && !task.prepose.is_empty()
+            })
+            .unwrap();
+        let predecessor_id = successor.prepose.parse::<i32>().unwrap();
+        let successor_loop = database::db::game::tasks::TaskLoopType::from_id(successor.loop_type)
+            .unwrap_or(database::db::game::tasks::TaskLoopType::Permanent);
+        let successor_info_id = match successor_loop {
+            database::db::game::tasks::TaskLoopType::Appoint => {
+                database::db::game::tasks::TaskLoopType::Permanent.id() as i64
+            }
+            other => other.id() as i64,
+        };
+        sqlx::query(
+            "UPDATE user_tasks SET progress = 0, finish_count = 0
+             WHERE user_id = 6 AND type_id = ? AND activity_id = ?",
+        )
+        .bind(database::db::game::tasks::TaskType::ActBp.id())
+        .bind(pass.activity_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE user_tasks SET progress = ?
+             WHERE user_id = 6 AND type_id = ? AND task_id = ?",
+        )
+        .bind(successor.max_progress)
+        .bind(database::db::game::tasks::TaskType::ActBp.id())
+        .bind(successor.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let (task_infos, _) = super::act233_red_dot_state(&pool, 6, Some(pass.activity_id))
+            .await
+            .unwrap();
+        assert_eq!(task_infos, vec![super::red_dot_info(0, 0)]);
+
+        sqlx::query(
+            "UPDATE user_tasks SET finish_count = 1
+             WHERE user_id = 6 AND type_id = ? AND task_id = ?",
+        )
+        .bind(database::db::game::tasks::TaskType::ActBp.id())
+        .bind(predecessor_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let (task_infos, _) = super::act233_red_dot_state(&pool, 6, Some(pass.activity_id))
+            .await
+            .unwrap();
+        assert_eq!(task_infos, vec![super::red_dot_info(successor_info_id, 1)]);
     }
 
     #[tokio::test]
