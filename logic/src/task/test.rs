@@ -89,3 +89,62 @@ async fn task_completion_claims_reached_activity_milestone() {
     assert_eq!(claim.rewards.currency_ids, vec![(10, 90)]);
     assert_eq!(claim.rewards.power_item_ids, vec![11]);
 }
+
+#[tokio::test]
+async fn act233_tasks_cannot_be_consumed_before_score_progression_is_supported() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (1, 'act233-claim-guard', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO user_tasks
+         (user_id, type_id, task_id, progress, has_finished, finish_count, activity_id, updated_at)
+         VALUES (1, 79, 790001, 1, 1, 0, 13716, 123),
+                (1, 79, 790002, 2, 1, 0, 13716, 123),
+                (1, 79, 790003, 0, 0, 0, 13716, 123)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let mut tasks = TaskManager::new(1);
+    assert!(matches!(
+        tasks.finish(&pool, 790001).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert!(matches!(
+        tasks
+            .finish_all(&pool, TaskType::ActBp.id(), None, vec![790002], Some(13716))
+            .await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert!(matches!(
+        tasks.finish_read(&pool, Some(790003)).await,
+        Err(AppError::InvalidRequest)
+    ));
+
+    for task_id in [790001, 790002] {
+        let stored = task_db::get_by_id(&pool, 1, task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(stored.has_finished);
+        assert_eq!(stored.finish_count, 0);
+    }
+    let unread = task_db::get_by_id(&pool, 1, 790003).await.unwrap().unwrap();
+    assert_eq!(unread.progress, 0);
+    assert!(!unread.has_finished);
+    assert_eq!(unread.finish_count, 0);
+    assert_eq!(unread.updated_at, 123);
+}

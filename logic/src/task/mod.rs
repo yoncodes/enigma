@@ -102,6 +102,9 @@ impl TaskManager {
         let task = task_db::get_by_id(db, self.player_id, task_id)
             .await?
             .ok_or(AppError::InvalidRequest)?;
+        if task.type_id == task_db::TaskType::ActBp.id() {
+            return Err(AppError::InvalidRequest);
+        }
         let mut tx = db.begin().await?;
         let task = task_db::finish_task_in_transaction(&mut tx, &task)
             .await?
@@ -135,6 +138,9 @@ impl TaskManager {
         task_ids: Vec<i32>,
         activity_id: Option<i32>,
     ) -> Result<TaskClaim<FinishAllTaskReply>, AppError> {
+        if type_id == task_db::TaskType::ActBp.id() {
+            return Err(AppError::InvalidRequest);
+        }
         if type_id == task_db::TaskType::Room.id() {
             RoomManager::new(self.player_id)
                 .sync_room_tasks(db, config::configs::get())
@@ -246,6 +252,12 @@ impl TaskManager {
         task_id: Option<i32>,
     ) -> Result<(FinishReadTaskReply, Option<Task>), AppError> {
         let task_id = task_id.ok_or(AppError::InvalidRequest)?;
+        if task_db::get_by_id(db, self.player_id, task_id)
+            .await?
+            .is_some_and(|task| task.type_id == task_db::TaskType::ActBp.id())
+        {
+            return Err(AppError::InvalidRequest);
+        }
         let task = task_db::read_task(db, self.player_id, task_id).await?;
         if let Some(task) = &task {
             self.cache_task(task.clone());

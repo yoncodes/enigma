@@ -352,6 +352,7 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         CmdId::GetDialogInfoCmd => collection::on_get_dialog_info,
         CmdId::RecordDialogInfoCmd => collection::on_record_dialog_info,
         CmdId::GetBpInfoCmd => bp::on_get_bp_info,
+        CmdId::GetAct233BpInfoCmd => bp::on_get_act233_bp_info,
         CmdId::GetBpBonusCmd => bp::on_get_bp_bonus,
         CmdId::GetSelfSelectBonusCmd => bp::on_get_self_select_bonus,
         CmdId::BpBuyLevelRequsetCmd => bp::on_buy_level,
@@ -558,4 +559,83 @@ async fn handle_command_error(
         ctx.request_disconnect();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        net::{app::AppState, outbound::CommandPacket, packet::ClientPacket},
+        player::{Player, PlayerState},
+    };
+    use config::configs;
+    use prost::Message;
+    use sonettobuf::{GetAct233BpInfoReply, GetAct233BpInfoRequest};
+    use sqlx::SqlitePool;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn act233_info_command_reaches_handler_and_returns_configured_state() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (512, 'act233-route', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let pass = configs::get().activity233_bp.iter().next().unwrap();
+        let expected_tasks = configs::get()
+            .activity233_task
+            .iter()
+            .filter(|task| {
+                task.activity_id == pass.activity_id
+                    && task.bp_id == pass.bp_id
+                    && task.is_online != 0
+            })
+            .count();
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(2);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(512, PlayerState::new(512, 0)));
+
+        let mut data = Vec::new();
+        GetAct233BpInfoRequest {
+            get_task: Some(true),
+            activity_id: Some(pass.activity_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::GetAct233BpInfoCmd as i16,
+            up_tag: 7,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::GetAct233BpInfoCmd,
+            body,
+            up_tag: 7,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act233 information request did not reach its handler");
+        };
+        let reply = GetAct233BpInfoReply::decode(&*body).unwrap();
+        assert_eq!(reply.activity_id, Some(pass.activity_id));
+        assert_eq!(reply.bp_id, Some(pass.bp_id));
+        assert_eq!(reply.task_info.len(), expected_tasks);
+        assert!(packets.try_recv().is_err());
+    }
 }
