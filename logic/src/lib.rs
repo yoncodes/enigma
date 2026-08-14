@@ -35,6 +35,7 @@ pub mod story;
 pub mod summon;
 pub mod survival;
 pub mod task;
+pub mod teaching;
 pub mod time;
 pub mod turnback;
 pub mod types;

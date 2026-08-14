@@ -355,7 +355,9 @@ pub mod task_season;
 pub mod task_type;
 pub mod task_weekly;
 pub mod task_weekwalk;
+pub mod teaching;
 pub mod teaching_card;
+pub mod teaching_episode;
 pub mod teaching_summon;
 pub mod test_server_task;
 pub mod toughnessskill;
@@ -757,7 +759,9 @@ pub struct GameDB {
     pub task_type: task_type::TaskTypeTable,
     pub task_weekly: task_weekly::TaskWeeklyTable,
     pub task_weekwalk: task_weekwalk::TaskWeekwalkTable,
+    pub teaching: teaching::TeachingTable,
     pub teaching_card: teaching_card::TeachingCardTable,
+    pub teaching_episode: teaching_episode::TeachingEpisodeTable,
     pub teaching_summon: teaching_summon::TeachingSummonTable,
     pub test_server_task: test_server_task::TestServerTaskTable,
     pub toughnessskill: toughnessskill::ToughnessskillTable,
@@ -1869,9 +1873,15 @@ impl GameDB {
         let task_weekwalk = task_weekwalk::TaskWeekwalkTable::load(
             &format!("{}/task_weekwalk.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load task_weekwalk.json: {}", e))?;
+        let teaching = teaching::TeachingTable::load(
+            &format!("{}/teaching.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load teaching.json: {}", e))?;
         let teaching_card = teaching_card::TeachingCardTable::load(
             &format!("{}/teaching_card.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load teaching_card.json: {}", e))?;
+        let teaching_episode = teaching_episode::TeachingEpisodeTable::load(
+            &format!("{}/teaching_episode.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load teaching_episode.json: {}", e))?;
         let teaching_summon = teaching_summon::TeachingSummonTable::load(
             &format!("{}/teaching_summon.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load teaching_summon.json: {}", e))?;
@@ -2355,7 +2365,9 @@ impl GameDB {
             task_type,
             task_weekly,
             task_weekwalk,
+            teaching,
             teaching_card,
+            teaching_episode,
             teaching_summon,
             test_server_task,
             toughnessskill,
