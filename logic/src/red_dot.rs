@@ -205,6 +205,7 @@ async fn apply_dynamic_red_dots(
             RedDotId::StoreChargeGoodsRead => {}
             RedDotId::StoreGoodsRead => {}
             RedDotId::StoreTab => {}
+            RedDotId::TeachingSystem => {}
             RedDotId::TradeOrderFulfillable => {
                 apply_trade_order_red_dot(reply, db, player_id).await?
             }
