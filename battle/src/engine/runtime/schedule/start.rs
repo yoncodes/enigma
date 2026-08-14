@@ -1027,6 +1027,24 @@ fn run_round_start_before_duration(
         .collect::<Vec<_>>();
     let mut result = drain::run(managers, pool, catalog, determinism, context, field_ops)?;
     for &(stage, priority) in ROUND_START_BEFORE_DURATION_SETUP {
+        if stage == SetupStage::RoundStartCondition
+            && priority == effect_time::ROUND_START_BEFORE_CONDITION_DURATION
+        {
+            append(
+                &mut result,
+                drain::run(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    duration_advance_rule(
+                        effect_time::ROUND_START_BEFORE_CONDITION_DURATION,
+                        &duration_snapshot,
+                    ),
+                )?,
+            );
+        }
         let pending_owner_uids = if stage == SetupStage::RoundStartCondition && priority == 100 {
             setup_owner_uids
                 .iter()

@@ -4,6 +4,7 @@ use crate::engine::skill::rule::DefinitionKey;
 
 pub const ROUND_END_ENTITY_SETTLEMENT: i32 = 303;
 pub const ROUND_END_AFTER_SETTLEMENT: i32 = 304;
+pub const ROUND_START_BEFORE_CONDITION_DURATION: i32 = 102;
 pub const ROUND_START_DURATION: i32 = 103;
 pub const ROUND_START_AFTER_REACTION_DURATION: i32 = 104;
 pub const ROUND_START_DURATION_STAGES: [i32; 2] =
@@ -124,7 +125,8 @@ pub fn supports_duration_policy(take_stage: i32) -> bool {
     let Some(definition) = find(take_stage) else {
         return false;
     };
-    ROUND_START_DURATION_STAGES.contains(&take_stage)
+    take_stage == ROUND_START_BEFORE_CONDITION_DURATION
+        || ROUND_START_DURATION_STAGES.contains(&take_stage)
         || take_stage == ROUND_END_ENTITY_SETTLEMENT
         || take_stage == ROUND_END_AFTER_SETTLEMENT
         || ROUND_START_CARD_STAGES.contains(&take_stage)
@@ -202,6 +204,9 @@ mod tests {
     #[test]
     fn duration_support_accepts_non_advancing_and_scheduled_policies() {
         assert!(supports_duration_policy(-1));
+        assert!(supports_duration_policy(
+            ROUND_START_BEFORE_CONDITION_DURATION
+        ));
         assert!(supports_duration_policy(ROUND_START_DURATION));
         assert!(supports_duration_policy(
             ROUND_START_AFTER_REACTION_DURATION
@@ -214,5 +219,6 @@ mod tests {
         assert!(supports_duration_policy(ROUND_END_AFTER_SETTLEMENT));
         assert!(!supports_duration_policy(209));
         assert!(!supports_duration_policy(205));
+        assert!(!supports_duration_policy(101));
     }
 }
