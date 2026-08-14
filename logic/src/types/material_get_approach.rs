@@ -34,10 +34,21 @@ pub enum MaterialGetApproach {
     Birthday = 153,
     PartyClothSummon = 158,
     CommandStationPaperReward = 169,
+    ActBp = 173,
 }
 
 impl MaterialGetApproach {
     pub const fn id(self) -> u32 {
         self as u32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn act_bp_uses_its_exact_client_approach() {
+        assert_eq!(MaterialGetApproach::ActBp.id(), 173);
     }
 }

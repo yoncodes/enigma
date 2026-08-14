@@ -6,9 +6,10 @@ use crate::{
 };
 use prost::Message;
 use sonettobuf::{
-    BpBuyLevelRequset, BpMarkFirstShowRequest, CmdId, GetAct233BpInfoRequest, GetBpBonusRequest,
-    GetBpInfoRequest, GetSelfSelectBonusRequest,
+    BpBuyLevelRequset, BpMarkFirstShowRequest, CmdId, GetAct233BpBonusRequest,
+    GetAct233BpInfoRequest, GetBpBonusRequest, GetBpInfoRequest, GetSelfSelectBonusRequest,
 };
+use std::{future::Future, pin::Pin};
 
 pub async fn on_get_act233_bp_info(
     ctx: &mut ConnectionContext,
@@ -22,6 +23,39 @@ pub async fn on_get_act233_bp_info(
         .await?;
     ctx.send_reply(CmdId::GetAct233BpInfoCmd, reply, 0, req.up_tag)
         .await
+}
+
+pub fn on_get_act233_bp_bonus<'a>(
+    ctx: &'a mut ConnectionContext,
+    req: ClientPacket,
+) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + 'a>> {
+    Box::pin(async move {
+        let player_id = ctx.player()?.id;
+        let msg = GetAct233BpBonusRequest::decode(&req.data[..])?;
+        let activity_id = msg.activity_id.ok_or(AppError::InvalidRequest)?;
+        let claim = ctx
+            .player()?
+            .battle_pass
+            .claim_act233_bonus(ctx.state.db, Some(activity_id), msg.level, msg.pay_bonus)
+            .await?;
+
+        push::send_applied_reward_pushes(
+            ctx,
+            player_id,
+            claim.rewards,
+            claim.material_changes,
+            Some(MaterialGetApproach::ActBp),
+        )
+        .await?;
+        let red_dot_groups = ctx
+            .player()?
+            .red_dot
+            .act233_groups(ctx.state.db, activity_id)
+            .await?;
+        push::send_red_dot_groups(ctx, red_dot_groups).await?;
+        ctx.send_reply(CmdId::GetAct233BpBonusCmd, claim.reply, 0, req.up_tag)
+            .await
+    })
 }
 
 pub async fn on_get_bp_info(

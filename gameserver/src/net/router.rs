@@ -39,7 +39,33 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
     tracing::info!("Received Cmd: {:?}", cmd_id);
     let up_tag = req.up_tag;
 
-    let result = dispatch!(cmd_id, ctx, req, {
+    if cmd_id == CmdId::GetAct233BpInfoCmd {
+        return match bp::on_get_act233_bp_info(ctx, req).await {
+            Ok(()) => Ok(()),
+            Err(error) => handle_command_error(ctx, cmd_id, up_tag, error).await,
+        };
+    }
+    if cmd_id == CmdId::GetAct233BpBonusCmd {
+        return match bp::on_get_act233_bp_bonus(ctx, req).await {
+            Ok(()) => Ok(()),
+            Err(error) => handle_command_error(ctx, cmd_id, up_tag, error).await,
+        };
+    }
+
+    let result = Box::pin(dispatch_registered_command(ctx, cmd_id, req)).await;
+
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => handle_command_error(ctx, cmd_id, up_tag, error).await,
+    }
+}
+
+async fn dispatch_registered_command(
+    ctx: &mut ConnectionContext,
+    cmd_id: CmdId,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    dispatch!(cmd_id, ctx, req, {
         CmdId::LoginCmd => system::on_login,
         CmdId::ReconnectCmd => system::on_reconnect,
         CmdId::RenameCmd => system::on_rename,
@@ -354,7 +380,6 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         CmdId::GetDialogInfoCmd => collection::on_get_dialog_info,
         CmdId::RecordDialogInfoCmd => collection::on_record_dialog_info,
         CmdId::GetBpInfoCmd => bp::on_get_bp_info,
-        CmdId::GetAct233BpInfoCmd => bp::on_get_act233_bp_info,
         CmdId::GetBpBonusCmd => bp::on_get_bp_bonus,
         CmdId::GetSelfSelectBonusCmd => bp::on_get_self_select_bonus,
         CmdId::BpBuyLevelRequsetCmd => bp::on_buy_level,
@@ -506,12 +531,7 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         CmdId::UnlockTalentStyleCmd => talent::on_unlock_talent_style,
         CmdId::UseTalentStyleCmd => talent::on_use_talent_style,
         CmdId::UseTalentTemplateCmd => talent::on_use_talent_template,
-    });
-
-    match result {
-        Ok(()) => Ok(()),
-        Err(error) => handle_command_error(ctx, cmd_id, up_tag, error).await,
-    }
+    })
 }
 
 async fn handle_command_error(
@@ -573,9 +593,9 @@ mod tests {
     use config::configs;
     use prost::Message;
     use sonettobuf::{
-        CurrencyChangePush, GetAct233BpInfoReply, GetAct233BpInfoRequest, MaterialChangePush,
-        TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
-        TeachingGetInfoRequest, UpdateRedDotPush,
+        CurrencyChangePush, GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
+        GetAct233BpInfoRequest, ItemChangePush, MaterialChangePush, TeachingGetBonusReply,
+        TeachingGetBonusRequest, TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush,
     };
     use sqlx::SqlitePool;
     use tokio::sync::mpsc;
@@ -665,6 +685,173 @@ mod tests {
         assert_eq!(reply.bp_id, Some(pass.bp_id));
         assert_eq!(reply.task_info.len(), expected_tasks);
         assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act233_bonus_command_routes_after_committed_reward_and_red_dot_pushes() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 516;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act233-bonus-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let pass = configs::get().activity233_bp.iter().next().unwrap();
+        sqlx::query(
+            "INSERT INTO user_act233_bp_state
+             (user_id, activity_id, bp_id, score)
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(player_id)
+        .bind(pass.activity_id)
+        .bind(pass.bp_id)
+        .bind(pass.exp_level_up * 3)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(8);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        GetAct233BpBonusRequest {
+            activity_id: Some(pass.activity_id),
+            level: Some(0),
+            pay_bonus: Some(false),
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::GetAct233BpBonusCmd as i16,
+            up_tag: 12,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act233 bonus did not emit a currency snapshot push");
+        };
+        assert_eq!(cmd_id, CmdId::CurrencyChangePushCmd);
+        assert!(
+            !CurrencyChangePush::decode(&*body)
+                .unwrap()
+                .change_currency
+                .is_empty()
+        );
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act233 bonus did not emit an item snapshot push");
+        };
+        assert_eq!(cmd_id, CmdId::ItemChangePushCmd);
+        assert!(!ItemChangePush::decode(&*body).unwrap().items.is_empty());
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act233 bonus did not emit the trade red-dot projection");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let trade = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(
+            trade.red_dot_infos[0].define_id,
+            crate::types::red_dot_id::RedDotId::TradeOrderFulfillable.id()
+        );
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act233 bonus did not emit a material delta push");
+        };
+        assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+        let material = MaterialChangePush::decode(&*body).unwrap();
+        assert_eq!(
+            material.get_approach,
+            Some(crate::types::material_get_approach::MaterialGetApproach::ActBp.id())
+        );
+        assert!(!material.data_list.is_empty());
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act233 bonus did not emit its red-dot projection");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let red_dots = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(red_dots.red_dot_infos.len(), 2);
+        assert_eq!(
+            red_dots
+                .red_dot_infos
+                .iter()
+                .map(|group| (group.define_id, group.infos[0].value))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    crate::types::red_dot_id::RedDotId::V3a7Anniversary3ActBpSubTask.id(),
+                    0,
+                ),
+                (
+                    crate::types::red_dot_id::RedDotId::V3a7Anniversary3ActBpBonus.id(),
+                    0,
+                ),
+            ]
+        );
+        assert!(
+            red_dots
+                .red_dot_infos
+                .iter()
+                .all(|group| group.replace_all == Some(true))
+        );
+
+        let CommandPacket::Reply {
+            cmd_id,
+            body,
+            result_code,
+            up_tag,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act233 bonus did not emit its reply");
+        };
+        assert_eq!(cmd_id, CmdId::GetAct233BpBonusCmd);
+        assert_eq!(result_code, 0);
+        assert_eq!(up_tag, 12);
+        let reply = GetAct233BpBonusReply::decode(&*body).unwrap();
+        assert_eq!(reply.activity_id, Some(pass.activity_id));
+        assert_eq!(reply.bp_id, Some(pass.bp_id));
+        assert_eq!(reply.score_bonus_info.len(), 3);
+        assert_eq!(
+            reply
+                .score_bonus_info
+                .iter()
+                .map(|info| (info.level, info.has_getfree_bonus, info.has_get_pay_bonus))
+                .collect::<Vec<_>>(),
+            vec![
+                (Some(1), Some(true), None),
+                (Some(2), Some(true), None),
+                (Some(3), Some(true), None),
+            ]
+        );
+        assert!(packets.try_recv().is_err());
+
+        let claimed: String = sqlx::query_scalar(
+            "SELECT has_get_free_bonus FROM user_act233_bp_state
+             WHERE user_id = ? AND activity_id = ? AND bp_id = ?",
+        )
+        .bind(player_id)
+        .bind(pass.activity_id)
+        .bind(pass.bp_id)
+        .fetch_one(state.db)
+        .await
+        .unwrap();
+        assert_eq!(claimed, "[1,2,3]");
     }
 
     #[tokio::test]
