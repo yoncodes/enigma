@@ -4,7 +4,6 @@ use crate::engine::{
     manager::BattleManagers,
     runtime::determinism::RoundDeterminism,
     skill::{
-        buff_act,
         effect::SkillEffectCatalog,
         target::{TargetContext, TargetPool},
     },
@@ -79,13 +78,7 @@ pub fn next_action_points(
                 .count() as i32
         })
         .unwrap_or(3);
-    let buff_bonus = managers
-        .buff
-        .active_features(&managers.hp)
-        .iter()
-        .filter(|feature| feature.team_type == 1)
-        .map(buff_act::add_action_point::bonus)
-        .sum::<i32>();
+    let buff_bonus = super::modifier::active_buff_action_bonus(managers, 1);
     let rule_bonus =
         super::modifier::action_point_bonus(pool, managers, catalog, determinism, context);
 
