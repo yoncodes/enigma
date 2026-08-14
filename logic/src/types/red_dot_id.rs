@@ -8,6 +8,7 @@ pub enum RedDotId {
     BattlePassBonus,
     BattlePassSpBonus,
     BattlePassTask,
+    BossRushRankBonus,
     CommandStationBonus,
     DailyTask,
     MailBtn,
@@ -43,6 +44,7 @@ impl RedDotId {
             Self::BattlePassBonus => 1047,
             Self::BattlePassSpBonus => 2204,
             Self::BattlePassTask => 1027,
+            Self::BossRushRankBonus => 3220,
             Self::CommandStationBonus => 3007,
             Self::DailyTask => 1000,
             Self::MailBtn => 1002,
@@ -77,6 +79,7 @@ impl RedDotId {
             1047 => Some(Self::BattlePassBonus),
             2204 => Some(Self::BattlePassSpBonus),
             1027 => Some(Self::BattlePassTask),
+            3220 => Some(Self::BossRushRankBonus),
             3007 => Some(Self::CommandStationBonus),
             1000 => Some(Self::DailyTask),
             1002 => Some(Self::MailBtn),
@@ -100,5 +103,16 @@ impl RedDotId {
             1001 => Some(Self::WeeklyTask),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn boss_rush_rank_bonus_uses_the_client_red_dot_id() {
+        assert_eq!(RedDotId::BossRushRankBonus.id(), 3220);
+        assert_eq!(RedDotId::from_id(3220), Some(RedDotId::BossRushRankBonus));
     }
 }

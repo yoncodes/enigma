@@ -218,6 +218,7 @@ async fn apply_dynamic_red_dots(
             RedDotId::V3a7Anniversary3ActBpSubTask | RedDotId::V3a7Anniversary3ActBpBonus => {}
             RedDotId::BattlePassBonus | RedDotId::BattlePassSpBonus => {}
             RedDotId::BattlePassTask => apply_bp_task_red_dot(reply, db, player_id).await?,
+            RedDotId::BossRushRankBonus => {}
             RedDotId::CommandStationBonus => {}
             RedDotId::DailyTask => {
                 apply_task_red_dot(reply, db, player_id, task_db::TaskType::Daily).await?

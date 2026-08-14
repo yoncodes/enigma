@@ -29,8 +29,10 @@ pub mod activity123_stage;
 pub mod activity125;
 pub mod activity125_link;
 pub mod activity125_task;
+pub mod activity128_const;
 pub mod activity128_countboss;
 pub mod activity128_episode;
+pub mod activity128_level;
 pub mod activity128_task;
 pub mod activity130_task;
 pub mod activity131_task;
@@ -433,8 +435,10 @@ pub struct GameDB {
     pub activity125: activity125::Activity125Table,
     pub activity125_link: activity125_link::Activity125LinkTable,
     pub activity125_task: activity125_task::Activity125TaskTable,
+    pub activity128_const: activity128_const::Activity128ConstTable,
     pub activity128_countboss: activity128_countboss::Activity128CountbossTable,
     pub activity128_episode: activity128_episode::Activity128EpisodeTable,
+    pub activity128_level: activity128_level::Activity128LevelTable,
     pub activity128_task: activity128_task::Activity128TaskTable,
     pub activity130_task: activity130_task::Activity130TaskTable,
     pub activity131_task: activity131_task::Activity131TaskTable,
@@ -895,12 +899,18 @@ impl GameDB {
         let activity125_task = activity125_task::Activity125TaskTable::load(
             &format!("{}/activity125_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity125_task.json: {}", e))?;
+        let activity128_const = activity128_const::Activity128ConstTable::load(
+            &format!("{}/activity128_const.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity128_const.json: {}", e))?;
         let activity128_countboss = activity128_countboss::Activity128CountbossTable::load(
             &format!("{}/activity128_countboss.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity128_countboss.json: {}", e))?;
         let activity128_episode = activity128_episode::Activity128EpisodeTable::load(
             &format!("{}/activity128_episode.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity128_episode.json: {}", e))?;
+        let activity128_level = activity128_level::Activity128LevelTable::load(
+            &format!("{}/activity128_level.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity128_level.json: {}", e))?;
         let activity128_task = activity128_task::Activity128TaskTable::load(
             &format!("{}/activity128_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity128_task.json: {}", e))?;
@@ -2039,8 +2049,10 @@ impl GameDB {
             activity125,
             activity125_link,
             activity125_task,
+            activity128_const,
             activity128_countboss,
             activity128_episode,
+            activity128_level,
             activity128_task,
             activity130_task,
             activity131_task,

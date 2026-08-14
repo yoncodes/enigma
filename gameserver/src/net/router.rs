@@ -255,6 +255,7 @@ async fn dispatch_registered_command(
         CmdId::GetAct124InfosCmd => activity::on_get_act124_infos,
         CmdId::Get126InfosCmd => activity::on_get_126_infos,
         CmdId::Get128InfosCmd => activity::on_get_128_infos,
+        CmdId::Act128GetMilestoneBonusCmd => activity::on_act128_get_milestone_bonus,
         CmdId::Get129InfosCmd => activity::on_get_129_infos,
         CmdId::Get130InfosCmd => activity::on_get_130_infos,
         CmdId::Get131InfosCmd => activity::on_get_131_infos,
@@ -594,10 +595,11 @@ mod tests {
     use config::configs;
     use prost::Message;
     use sonettobuf::{
-        Act236Info, CurrencyChangePush, GetAct233BpBonusReply, GetAct233BpBonusRequest,
-        GetAct233BpInfoReply, GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest,
-        ItemChangePush, MaterialChangePush, TeachingGetBonusReply, TeachingGetBonusRequest,
-        TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush,
+        Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act236Info,
+        CurrencyChangePush, GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
+        GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest, ItemChangePush,
+        MaterialChangePush, TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
+        TeachingGetInfoRequest, UpdateRedDotPush,
     };
     use sqlx::SqlitePool;
     use tokio::sync::mpsc;
@@ -760,6 +762,147 @@ mod tests {
                 gain_reward_ids: vec![3, 7],
             })
         );
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act128_milestone_command_emits_the_captured_reward_sequence() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 515;
+        let activity_id = configs::get().latest_open_activity_id(128).unwrap();
+        let currency_id = configs::get().activity128_rank_currency_id().unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act128-milestone-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO currencies (user_id, currency_id, quantity)
+             VALUES (?, ?, 700)",
+        )
+        .bind(player_id)
+        .bind(currency_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_activity_state
+             (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+             VALUES (?, ?, ?, 0, 2, 0, '', 0)",
+        )
+        .bind(player_id)
+        .bind(activity_id)
+        .bind(database::db::game::activity_state::ActivityStateKind::Act128Milestone.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(8);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        Act128GetMilestoneBonusRequest {
+            activity_id: Some(activity_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Act128GetMilestoneBonusCmd as i16,
+            up_tag: 10,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act128 milestone did not emit item snapshots first");
+        };
+        assert_eq!(cmd_id, CmdId::ItemChangePushCmd);
+        let items = ItemChangePush::decode(&*body).unwrap().items;
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| (item.item_id, item.quantity))
+                .collect::<Vec<_>>(),
+            vec![(Some(120013), Some(2)), (Some(110404), Some(1))]
+        );
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act128 milestone did not emit the trade-order red dot");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let trade = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(
+            trade.red_dot_infos[0].define_id,
+            crate::types::red_dot_id::RedDotId::TradeOrderFulfillable.id()
+        );
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act128 milestone did not emit material deltas");
+        };
+        assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+        let material = MaterialChangePush::decode(&*body).unwrap();
+        assert_eq!(
+            material.get_approach,
+            Some(
+                crate::types::material_get_approach::MaterialGetApproach::Act128MilestoneBonus.id()
+            )
+        );
+        assert_eq!(
+            material
+                .data_list
+                .iter()
+                .map(|entry| (entry.materil_type, entry.materil_id, entry.quantity))
+                .collect::<Vec<_>>(),
+            vec![
+                (Some(1), Some(120013), Some(2)),
+                (Some(1), Some(110404), Some(1))
+            ]
+        );
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act128 milestone did not clear its rank red dot");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let rank = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(rank.red_dot_infos.len(), 1);
+        assert_eq!(
+            rank.red_dot_infos[0].define_id,
+            crate::types::red_dot_id::RedDotId::BossRushRankBonus.id()
+        );
+        assert_eq!(rank.red_dot_infos[0].replace_all, Some(true));
+        assert_eq!(rank.red_dot_infos[0].infos[0].id, 0);
+        assert_eq!(rank.red_dot_infos[0].infos[0].value, 0);
+
+        let CommandPacket::Reply {
+            cmd_id,
+            body,
+            result_code,
+            up_tag,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act128 milestone did not emit its reply last");
+        };
+        assert_eq!(cmd_id, CmdId::Act128GetMilestoneBonusCmd);
+        assert_eq!(result_code, 0);
+        assert_eq!(up_tag, 10);
+        let reply = Act128GetMilestoneBonusReply::decode(&*body).unwrap();
+        assert_eq!(reply.activity_id, Some(activity_id));
+        assert_eq!(reply.gain_milestone_level, Some(7));
         assert!(packets.try_recv().is_err());
     }
 

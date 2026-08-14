@@ -1,7 +1,7 @@
 use crate::{
     GameDB, activity104_episode::Activity104Episode, activity104_retail::Activity104Retail,
     activity104_special::Activity104Special, activity104_trial::Activity104Trial,
-    activity165_step::Activity165Step,
+    activity128_level::Activity128Level, activity165_step::Activity165Step,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,6 +97,62 @@ impl GameDB {
         })
     }
 
+    pub fn activity128_rank_currency_id(&self) -> Option<i32> {
+        let row = self.activity128_const.get(10)?;
+        let mut fields = row.value2.split('#');
+        match (fields.next(), fields.next(), fields.next()) {
+            (Some("2"), Some(currency_id), None) => currency_id
+                .parse()
+                .ok()
+                .filter(|currency_id| *currency_id > 0),
+            _ => None,
+        }
+    }
+
+    pub fn activity128_rank(&self, exp: i32) -> Option<i32> {
+        if exp < 0 {
+            return None;
+        }
+
+        let mut levels = self.activity128_level.iter().collect::<Vec<_>>();
+        if levels.is_empty() {
+            return None;
+        }
+        levels.sort_unstable_by_key(|row| row.player_level);
+        let mut threshold: i32 = 0;
+        let mut rank = 0;
+
+        for (index, row) in levels.into_iter().enumerate() {
+            if row.player_level != index as i32 + 1 || row.need_exp <= 0 {
+                return None;
+            }
+            threshold = threshold.checked_add(row.need_exp)?;
+            if exp >= threshold {
+                rank = row.player_level;
+            }
+        }
+
+        Some(rank)
+    }
+
+    pub fn activity128_milestone_levels(
+        &self,
+        claimed_level: i32,
+        target_level: i32,
+    ) -> Option<Vec<&Activity128Level>> {
+        if claimed_level < 0 || target_level <= claimed_level {
+            return None;
+        }
+
+        (claimed_level + 1..=target_level)
+            .map(|level| {
+                self.activity128_level
+                    .iter()
+                    .find(|row| row.player_level == level)
+            })
+            .collect()
+    }
+
     pub fn activity165_step(&self, story_id: i32, step_id: i32) -> Option<&Activity165Step> {
         self.activity165_step
             .iter()
@@ -107,5 +163,26 @@ impl GameDB {
         self.activity165_step
             .iter()
             .filter(move |row| row.belong_story_id == story_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn act128_rank_config_maps_currency_thresholds_and_captured_rewards() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = crate::init(&data_dir);
+        let tables = crate::configs::get();
+
+        assert_eq!(tables.activity128_rank_currency_id(), Some(3206));
+        assert_eq!(tables.activity128_rank(700), Some(7));
+
+        let levels = tables.activity128_milestone_levels(2, 7).unwrap();
+        let bonuses = levels
+            .into_iter()
+            .filter(|row| !row.bonus.is_empty())
+            .map(|row| row.bonus.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(bonuses, vec!["1#120013#2", "1#110404#1"]);
     }
 }
