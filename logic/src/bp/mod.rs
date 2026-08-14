@@ -5,13 +5,14 @@ use database::db::game::{
     tasks::{self as task_db, TaskLoopType},
 };
 use sonettobuf::{
-    BpBuyLevelReply, BpMarkFirstShowReply, BpScoreBonusInfo, GetBpBonusReply, GetBpInfoReply,
-    GetSelfSelectBonusReply, RedDotInfo, Task,
+    BpBuyLevelReply, BpMarkFirstShowReply, BpScoreBonusInfo, GetAct233BpInfoReply, GetBpBonusReply,
+    GetBpInfoReply, GetSelfSelectBonusReply, RedDotInfo, Task,
 };
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 
 const BP_BUY_LEVEL_COST_CONFIG_ID: i32 = 111;
+mod act233;
 mod info;
 mod progression;
 mod rewards;
@@ -38,6 +39,15 @@ impl BattlePassManager {
         include_tasks: bool,
     ) -> Result<GetBpInfoReply, AppError> {
         info::get_bp_info(db, self.player_id, include_tasks).await
+    }
+
+    pub async fn act233_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        include_tasks: bool,
+    ) -> Result<GetAct233BpInfoReply, AppError> {
+        act233::get_info(db, self.player_id, activity_id, include_tasks).await
     }
 
     pub async fn claim_bonus(

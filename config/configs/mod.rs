@@ -156,6 +156,9 @@ pub mod activity228;
 pub mod activity229_const;
 pub mod activity229_episode;
 pub mod activity229_task;
+pub mod activity233_bp;
+pub mod activity233_lv_bonus;
+pub mod activity233_task;
 pub mod activity240;
 pub mod activity240_backdate;
 pub mod activity240_task;
@@ -352,7 +355,9 @@ pub mod task_season;
 pub mod task_type;
 pub mod task_weekly;
 pub mod task_weekwalk;
+pub mod teaching;
 pub mod teaching_card;
+pub mod teaching_episode;
 pub mod teaching_summon;
 pub mod test_server_task;
 pub mod toughnessskill;
@@ -555,6 +560,9 @@ pub struct GameDB {
     pub activity229_const: activity229_const::Activity229ConstTable,
     pub activity229_episode: activity229_episode::Activity229EpisodeTable,
     pub activity229_task: activity229_task::Activity229TaskTable,
+    pub activity233_bp: activity233_bp::Activity233BpTable,
+    pub activity233_lv_bonus: activity233_lv_bonus::Activity233LvBonusTable,
+    pub activity233_task: activity233_task::Activity233TaskTable,
     pub activity240: activity240::Activity240Table,
     pub activity240_backdate: activity240_backdate::Activity240BackdateTable,
     pub activity240_task: activity240_task::Activity240TaskTable,
@@ -751,7 +759,9 @@ pub struct GameDB {
     pub task_type: task_type::TaskTypeTable,
     pub task_weekly: task_weekly::TaskWeeklyTable,
     pub task_weekwalk: task_weekwalk::TaskWeekwalkTable,
+    pub teaching: teaching::TeachingTable,
     pub teaching_card: teaching_card::TeachingCardTable,
+    pub teaching_episode: teaching_episode::TeachingEpisodeTable,
     pub teaching_summon: teaching_summon::TeachingSummonTable,
     pub test_server_task: test_server_task::TestServerTaskTable,
     pub toughnessskill: toughnessskill::ToughnessskillTable,
@@ -1266,6 +1276,15 @@ impl GameDB {
         let activity229_task = activity229_task::Activity229TaskTable::load(
             &format!("{}/activity229_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity229_task.json: {}", e))?;
+        let activity233_bp = activity233_bp::Activity233BpTable::load(
+            &format!("{}/activity233_bp.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity233_bp.json: {}", e))?;
+        let activity233_lv_bonus = activity233_lv_bonus::Activity233LvBonusTable::load(
+            &format!("{}/activity233_lv_bonus.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity233_lv_bonus.json: {}", e))?;
+        let activity233_task = activity233_task::Activity233TaskTable::load(
+            &format!("{}/activity233_task.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity233_task.json: {}", e))?;
         let activity240 = activity240::Activity240Table::load(
             &format!("{}/activity240.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity240.json: {}", e))?;
@@ -1854,9 +1873,15 @@ impl GameDB {
         let task_weekwalk = task_weekwalk::TaskWeekwalkTable::load(
             &format!("{}/task_weekwalk.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load task_weekwalk.json: {}", e))?;
+        let teaching = teaching::TeachingTable::load(
+            &format!("{}/teaching.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load teaching.json: {}", e))?;
         let teaching_card = teaching_card::TeachingCardTable::load(
             &format!("{}/teaching_card.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load teaching_card.json: {}", e))?;
+        let teaching_episode = teaching_episode::TeachingEpisodeTable::load(
+            &format!("{}/teaching_episode.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load teaching_episode.json: {}", e))?;
         let teaching_summon = teaching_summon::TeachingSummonTable::load(
             &format!("{}/teaching_summon.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load teaching_summon.json: {}", e))?;
@@ -2141,6 +2166,9 @@ impl GameDB {
             activity229_const,
             activity229_episode,
             activity229_task,
+            activity233_bp,
+            activity233_lv_bonus,
+            activity233_task,
             activity240,
             activity240_backdate,
             activity240_task,
@@ -2337,7 +2365,9 @@ impl GameDB {
             task_type,
             task_weekly,
             task_weekwalk,
+            teaching,
             teaching_card,
+            teaching_episode,
             teaching_summon,
             test_server_task,
             toughnessskill,

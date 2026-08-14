@@ -1,16 +1,39 @@
 use super::*;
+use chrono::{NaiveDateTime, TimeZone, Utc};
+
+pub(super) fn is_item_expired(expire_time: &str, now: i64) -> bool {
+    !expire_time.trim().is_empty()
+        && parse_item_expire_time(expire_time).is_some_and(|expire_time| expire_time <= now)
+}
+
+fn parse_item_expire_time(value: &str) -> Option<i64> {
+    ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %-H:%M:%S"]
+        .into_iter()
+        .find_map(|format| NaiveDateTime::parse_from_str(value.trim(), format).ok())
+        .map(|time| {
+            Utc.from_utc_datetime(&time).timestamp_millis() - ServerTime::server_utc_offset_ms()
+        })
+}
 
 pub(super) async fn item_list(
     db: &SqlitePool,
     player_id: i64,
 ) -> Result<GetItemListReply, AppError> {
     let items = UserItemModel::new(player_id, db.clone());
+    let now = ServerTime::now_ms();
 
     Ok(GetItemListReply {
         items: items
             .get_all_items()
             .await?
             .into_iter()
+            .filter(|item| {
+                item.quantity > 0
+                    && !i32::try_from(item.item_id)
+                        .ok()
+                        .and_then(|item_id| config::configs::get().item.get(item_id))
+                        .is_some_and(|config| is_item_expired(&config.expire_time, now))
+            })
             .map(Into::into)
             .collect(),
         power_items: items

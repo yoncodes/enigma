@@ -36,6 +36,7 @@ pub enum TaskType {
     Odyssey,
     Activity210,
     BpOperAct,
+    ActBp,
     Activity220,
     MiniParty,
     ObserverBox,
@@ -67,6 +68,7 @@ impl TaskType {
             Self::Odyssey => 60,
             Self::Activity210 => 67,
             Self::BpOperAct => 70,
+            Self::ActBp => 79,
             Self::Activity220 => 71,
             Self::MiniParty => 73,
             Self::ObserverBox => 74,
@@ -100,6 +102,7 @@ impl TaskType {
             65 => Some(Self::NecrologistStory),
             67 => Some(Self::Activity210),
             70 => Some(Self::BpOperAct),
+            79 => Some(Self::ActBp),
             71 => Some(Self::Activity220),
             73 => Some(Self::MiniParty),
             74 => Some(Self::ObserverBox),
@@ -130,6 +133,7 @@ impl TaskType {
             Self::Odyssey,
             Self::Activity210,
             Self::BpOperAct,
+            Self::ActBp,
             Self::Activity220,
             Self::MiniParty,
             Self::ObserverBox,
@@ -425,6 +429,24 @@ async fn ensure_tasks_for_type_in_transaction(
             )
             .await?;
         }
+        TaskType::ActBp => {
+            let weekly_expiry = ServerTime::next_weekly_refresh_sec(ServerTime::now_ms());
+            ensure_config_tasks(
+                pool,
+                user_id,
+                task_type.id(),
+                tables.activity233_task.iter().map(|task| {
+                    ConfigTask::act_bp(
+                        task.id,
+                        task.is_online,
+                        task.activity_id,
+                        task.loop_type,
+                        weekly_expiry,
+                    )
+                }),
+            )
+            .await?;
+        }
         TaskType::Activity220 => {
             ensure_config_tasks(
                 pool,
@@ -649,6 +671,25 @@ pub async fn list_battle_pass(
     .await
 }
 
+pub async fn list_act_bp(
+    pool: &SqlitePool,
+    user_id: i64,
+    activity_id: i32,
+) -> sqlx::Result<Vec<UserTask>> {
+    sqlx::query_as::<_, UserTask>(
+        "SELECT user_id, type_id, task_id, progress, has_finished, finish_count,
+                expiry_time, min_type_id, activity_id, created_at, updated_at
+         FROM user_tasks
+         WHERE user_id = ? AND type_id = ? AND activity_id = ?
+         ORDER BY min_type_id, task_id",
+    )
+    .bind(user_id)
+    .bind(TaskType::ActBp.id())
+    .bind(activity_id)
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn list_turnback(
     pool: &SqlitePool,
     user_id: i64,
@@ -712,6 +753,12 @@ pub async fn reset_weekly_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result
         .filter(|task| task.is_online != 0 && task.loop_type == TaskLoopType::Weekly.id())
         .map(|task| task.id)
         .collect::<Vec<_>>();
+    let act_bp_weekly_ids = config::configs::get()
+        .activity233_task
+        .iter()
+        .filter(|task| task.is_online != 0 && task.loop_type == TaskLoopType::Weekly.id())
+        .map(|task| task.id)
+        .collect::<Vec<_>>();
 
     reset_task_ids(
         pool,
@@ -720,6 +767,7 @@ pub async fn reset_weekly_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result
             (TaskType::Weekly.id(), weekly_ids),
             (TaskType::WeekWalk.id(), weekwalk_ids),
             (TaskType::BattlePass.id(), bp_weekly_ids),
+            (TaskType::ActBp.id(), act_bp_weekly_ids),
         ],
     )
     .await
@@ -925,6 +973,15 @@ pub async fn sync_login_tasks(
     set_type_expiry(pool, user_id, TaskType::Daily, daily_expiry).await?;
     set_type_expiry(pool, user_id, TaskType::Weekly, weekly_expiry).await?;
     set_type_expiry(pool, user_id, TaskType::WeekWalk, weekly_expiry).await?;
+    set_task_loop_expiry(
+        pool,
+        user_id,
+        TaskType::ActBp,
+        TaskLoopType::Weekly,
+        weekly_expiry,
+    )
+    .await?;
+    set_task_loop_expiry(pool, user_id, TaskType::ActBp, TaskLoopType::Permanent, 0).await?;
     set_activity_expiry(pool, user_id, TaskType::Daily, daily_expiry).await?;
     set_activity_expiry(pool, user_id, TaskType::Weekly, weekly_expiry).await?;
     set_activity_expiry(pool, user_id, TaskType::WeekWalk, weekly_expiry).await?;
@@ -987,6 +1044,27 @@ async fn set_type_expiry(
         .bind(task_type.id())
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+async fn set_task_loop_expiry(
+    pool: &SqlitePool,
+    user_id: i64,
+    task_type: TaskType,
+    loop_type: TaskLoopType,
+    expiry_time: i32,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "UPDATE user_tasks
+         SET expiry_time = ?
+         WHERE user_id = ? AND type_id = ? AND min_type_id = ?",
+    )
+    .bind(expiry_time)
+    .bind(user_id)
+    .bind(task_type.id())
+    .bind(loop_type.id())
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -1309,6 +1387,7 @@ fn max_finish_count(type_id: i32, task_id: i32) -> i32 {
         Some(TaskType::Odyssey) => 1,
         Some(TaskType::Activity210) => 1,
         Some(TaskType::BpOperAct) => 1,
+        Some(TaskType::ActBp) => 1,
         Some(TaskType::Activity220) => 1,
         Some(TaskType::MiniParty) => 1,
         Some(TaskType::ObserverBox) => 1,
@@ -1386,6 +1465,29 @@ impl ConfigTask {
             expiry_time: 0,
         }
     }
+
+    fn act_bp(
+        task_id: i32,
+        is_online: i32,
+        activity_id: i32,
+        loop_type: i32,
+        weekly_expiry: i32,
+    ) -> Self {
+        let min_type_id = TaskLoopType::from_id(loop_type)
+            .map(TaskLoopType::id)
+            .unwrap_or(loop_type);
+        Self {
+            task_id,
+            is_online: is_online != 0,
+            activity_id,
+            min_type_id,
+            expiry_time: if min_type_id == TaskLoopType::Weekly.id() {
+                weekly_expiry
+            } else {
+                0
+            },
+        }
+    }
 }
 
 async fn ensure_config_tasks(
@@ -1446,4 +1548,100 @@ fn pick_current_battle_pass_id(
 pub fn current_battle_pass() -> Option<&'static config::bp::Bp> {
     let bp_id = current_battle_pass_id()?;
     config::configs::get().battle_pass(bp_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn test_pool() -> SqlitePool {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (1, 'act233-tasks', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn act_bp_tasks_use_loop_order_and_loop_owned_expiry() {
+        let pool = test_pool().await;
+        ensure_tasks_for_type(&pool, 1, TaskType::ActBp)
+            .await
+            .unwrap();
+
+        let tasks = list_act_bp(&pool, 1, 13716).await.unwrap();
+        assert_eq!(tasks.len(), 15);
+        assert!(tasks.windows(2).all(|pair| {
+            (pair[0].min_type_id, pair[0].task_id) <= (pair[1].min_type_id, pair[1].task_id)
+        }));
+        assert_eq!(
+            tasks
+                .iter()
+                .filter(|task| task.min_type_id == TaskLoopType::Weekly.id())
+                .count(),
+            8
+        );
+        assert_eq!(
+            tasks
+                .iter()
+                .filter(|task| task.min_type_id == TaskLoopType::Permanent.id())
+                .count(),
+            7
+        );
+        let weekly_expiry = ServerTime::next_weekly_refresh_sec(ServerTime::now_ms());
+        assert!(
+            tasks
+                .iter()
+                .filter(|task| task.min_type_id == TaskLoopType::Weekly.id())
+                .all(|task| task.expiry_time == weekly_expiry)
+        );
+        assert!(
+            tasks
+                .iter()
+                .filter(|task| task.min_type_id == TaskLoopType::Permanent.id())
+                .all(|task| task.expiry_time == 0)
+        );
+
+        sync_login_tasks(&pool, 1, false).await.unwrap();
+        let refreshed = list_act_bp(&pool, 1, 13716).await.unwrap();
+        assert!(
+            refreshed
+                .iter()
+                .filter(|task| task.min_type_id == 2)
+                .all(|task| task.expiry_time == weekly_expiry)
+        );
+        assert!(
+            refreshed
+                .iter()
+                .filter(|task| task.min_type_id == 3)
+                .all(|task| task.expiry_time == 0)
+        );
+
+        set_progress(&pool, 1, TaskType::ActBp.id(), 790001, 1, true)
+            .await
+            .unwrap();
+        set_progress(&pool, 1, TaskType::ActBp.id(), 790009, 5, false)
+            .await
+            .unwrap();
+        reset_weekly_tasks(&pool, 1).await.unwrap();
+
+        let reset = list_act_bp(&pool, 1, 13716).await.unwrap();
+        let weekly = reset.iter().find(|task| task.task_id == 790001).unwrap();
+        assert_eq!(weekly.progress, 0);
+        assert!(!weekly.has_finished);
+        let permanent = reset.iter().find(|task| task.task_id == 790009).unwrap();
+        assert_eq!(permanent.progress, 5);
+    }
 }
