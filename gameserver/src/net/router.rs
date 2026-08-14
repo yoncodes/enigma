@@ -601,9 +601,12 @@ mod tests {
         Act236GetAutoGainRewardReply, Act236GetAutoGainRewardRequest, Act236Info,
         Act236UpdateInfoPush, CurrencyChangePush, GetAct220InfoReply, GetAct220InfoRequest,
         GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
-        GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest, ItemChangePush,
+        GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest,
+        GetRouge2OutsideInfoReply, GetRouge2OutsideInfoRequest, ItemChangePush,
         MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush,
-        NewOrderRequest, TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
+        NewOrderRequest, Rouge2AlchemyInfo, Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo,
+        Rouge2CareerLevelInfo, Rouge2OutsideInfo, Rouge2RewardInfo, Rouge2TotalRecordInfo,
+        TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
         TeachingGetInfoRequest, UpdateRedDotPush,
     };
     use sqlx::SqlitePool;
@@ -895,6 +898,115 @@ mod tests {
                     unlock_branch_ids: Vec::new(),
                     progress: Some(String::new()),
                 }],
+            }
+        );
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn rouge2_outside_info_command_decodes_captured_initial_boss_state() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 534;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'rouge2-boss-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(1);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        GetRouge2OutsideInfoRequest {}.encode(&mut data).unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::GetRouge2OutsideInfoCmd as i16,
+            up_tag: 54,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::GetRouge2OutsideInfoCmd,
+            body,
+            result_code: 0,
+            up_tag: 54,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Rouge2 outside information request did not reach its handler");
+        };
+        let reply = GetRouge2OutsideInfoReply::decode(&*body).unwrap();
+        let mut expected_career_levels = configs::get()
+            .rouge2_career
+            .iter()
+            .map(|row| Rouge2CareerLevelInfo {
+                career_id: Some(row.id),
+                exp: Some(0),
+            })
+            .collect::<Vec<_>>();
+        expected_career_levels.sort_by_key(|row| row.career_id);
+        let mut expected_rewards = configs::get()
+            .rouge2_reward
+            .iter()
+            .map(|row| Rouge2RewardInfo {
+                id: Some(row.id),
+                buy_count: Some(0),
+            })
+            .collect::<Vec<_>>();
+        expected_rewards.sort_by_key(|row| row.id);
+        let mut expected_materials = configs::get()
+            .rouge2_material
+            .iter()
+            .map(|row| Rouge2AlchemyMaterialInfo {
+                id: Some(row.id),
+                num: Some(0),
+            })
+            .collect::<Vec<_>>();
+        expected_materials.sort_by_key(|row| row.id);
+        assert_eq!(
+            reply,
+            GetRouge2OutsideInfoReply {
+                outside_info: Some(Rouge2OutsideInfo {
+                    genius_point: Some(0),
+                    genius_ids: Vec::new(),
+                    total_record_info: Some(Rouge2TotalRecordInfo {
+                        max_difficulty: Some(0),
+                        pass_layer_id: Vec::new(),
+                        pass_event_id: Vec::new(),
+                        pass_end_id: Vec::new(),
+                        pass_entrust_id: Vec::new(),
+                        last_game_time: Some(0),
+                        pass_collections: Vec::new(),
+                        hotfix_str: Some(String::new()),
+                    }),
+                    career_level_info: expected_career_levels,
+                    reward_info: expected_rewards,
+                    reward_point: Some(0),
+                    alchemy_info: Some(Rouge2AlchemyInfo {
+                        cur_alchemy_info: None,
+                        alchemy_material_info: expected_materials,
+                    }),
+                    review: Vec::new(),
+                    boss_battle_info: Some(Rouge2BossBattleInfo {
+                        boss_info: Vec::new(),
+                        save_info: Vec::new(),
+                        use_save_index: Some(0),
+                    }),
+                }),
             }
         );
         assert!(packets.try_recv().is_err());
