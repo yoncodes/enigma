@@ -61,7 +61,7 @@ fn noncritical_heal_remains_owned_by_its_declaring_skill() {
 }
 
 #[test]
-fn burn_applies_its_unstackable_healing_taken_reduction() {
+fn burn_reduces_ordinary_healing_but_not_full_restores() {
     crate::test_support::init_config();
     let burn_type = crate::catalog::BattleCatalog::new(crate::test_support::game_data())
         .burn_buff_type_id()
@@ -99,10 +99,38 @@ fn burn_applies_its_unstackable_healing_taken_reduction() {
         }),
         ..Default::default()
     };
-    let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    managers.attribute.override_sp(
+        10,
+        &HeroSpAttribute {
+            heal: Some(500),
+            ..Default::default()
+        },
+    );
 
     assert!(managers.buff.has_active_buff_id_or_type(-1, burn_type));
-    assert_eq!(super::heal::modified(1_000, 10, -1, &managers), 850);
+    assert_eq!(super::heal::modified(1_000, 10, -1, &managers), 1_275);
+
+    let full_from_source = ParsedBehavior::new(20001, "Heal", vec![0, AttrId::Hp.id(), 1000]);
+    let full_from_target = ParsedBehavior::new(20001, "Heal", vec![1, AttrId::Hp.id(), 1000]);
+    let partial = ParsedBehavior::new(20001, "Heal", vec![1, AttrId::Hp.id(), 500]);
+
+    assert_eq!(
+        super::heal::amount(10, -1, &managers, false, &full_from_source),
+        Some(1_000)
+    );
+    assert_eq!(
+        super::heal::amount(10, -1, &managers, false, &full_from_target),
+        Some(1_000)
+    );
+    assert_eq!(
+        super::heal::amount(10, -1, &managers, true, &full_from_target),
+        Some(1_000)
+    );
+    assert_eq!(
+        super::heal::amount(10, -1, &managers, false, &partial),
+        Some(637)
+    );
 }
 
 #[test]

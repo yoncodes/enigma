@@ -72,6 +72,7 @@ mod tests {
             skill_id: 1,
             amount: 1,
             shield_absorbed: 0,
+            career_restraint: false,
             damage_from: HurtDamageFromType::Skill,
             assassinate: false,
             ignore_riposte: false,

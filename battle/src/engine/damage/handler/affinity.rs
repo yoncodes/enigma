@@ -46,6 +46,16 @@ pub(crate) fn restrains_target(
     target.weak_careers.contains(&source) || restrains(catalog, source, target.career)
 }
 
+pub(crate) fn restrains_target_either(
+    catalog: crate::catalog::BattleCatalog,
+    source: i32,
+    additional_source: Option<i32>,
+    target: &TargetEntity,
+) -> bool {
+    restrains_target(catalog, source, target)
+        || additional_source.is_some_and(|source| restrains_target(catalog, source, target))
+}
+
 pub(super) fn career_multiplier_against(
     catalog: crate::catalog::BattleCatalog,
     source: i32,
@@ -56,6 +66,18 @@ pub(super) fn career_multiplier_against(
     } else {
         catalog.career_multiplier(source, target.career)
     }
+}
+
+pub(super) fn career_multiplier_against_either(
+    catalog: crate::catalog::BattleCatalog,
+    source: i32,
+    additional_source: Option<i32>,
+    target: &TargetEntity,
+) -> i32 {
+    additional_source
+        .map(|source| career_multiplier_against(catalog, source, target))
+        .unwrap_or_default()
+        .max(career_multiplier_against(catalog, source, target))
 }
 
 #[cfg(test)]
@@ -79,5 +101,26 @@ mod tests {
         assert_eq!(career_multiplier_against(catalog, 1, &target), 1300);
         assert!(!restrains_target(catalog, 3, &target));
         assert_eq!(career_multiplier_against(catalog, 3, &target), 1000);
+    }
+
+    #[test]
+    fn additional_affinity_uses_the_strongest_multiplier_for_each_target() {
+        crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+        let target = TargetEntity::from_fight_entity(&sonettobuf::FightEntityInfo {
+            uid: Some(-1),
+            current_hp: Some(1),
+            career: Some(8),
+            weak_careers: vec![2],
+            ..Default::default()
+        })
+        .unwrap();
+
+        assert!(!restrains_target(catalog, 1, &target));
+        assert!(restrains_target_either(catalog, 1, Some(2), &target));
+        assert_eq!(
+            career_multiplier_against_either(catalog, 1, Some(2), &target),
+            1300
+        );
     }
 }

@@ -207,6 +207,9 @@ impl SkillEffectCatalog {
                                 &values[1..],
                             ),
                         ),
+                        Some(BuffActKind::BuffReplace) => {
+                            buffs.extend(values.get(2).copied().filter(|id| *id > 0))
+                        }
                         Some(BuffActKind::AddPassiveSkills)
                         | Some(BuffActKind::AddSpTempCard)
                         | Some(BuffActKind::CastChannel)

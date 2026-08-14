@@ -24,8 +24,8 @@ mod loss;
 mod origin;
 mod resolve;
 
-pub(crate) use affinity::restrains_target;
 use affinity::{critical_technique_bonus, regular_multiplier};
+pub(crate) use affinity::{restrains_target, restrains_target_either};
 pub(crate) use critical::{
     chance as crit_chance, damage_multiplier as crit_damage_multiplier,
     excess_rate as excess_crit_rate,
@@ -119,12 +119,13 @@ impl BehaviorHandler for Handler {
         };
         match (behavior.spec.key.opcode, behavior.spec.kind) {
             (20001 | 90001, BehaviorKind::Heal) => {
-                let is_crit = context.determinism.roll_hidden_crit(
-                    context.active_skill_id,
-                    source_uid,
-                    target_uid,
-                    crit_chance(source_uid, target_uid, context.pool, context.managers),
-                );
+                let is_crit = !heal::is_full_restore(behavior)
+                    && context.determinism.roll_hidden_crit(
+                        context.active_skill_id,
+                        source_uid,
+                        target_uid,
+                        crit_chance(source_uid, target_uid, context.pool, context.managers),
+                    );
                 return heal::amount(source_uid, target_uid, context.managers, is_crit, behavior)
                     .map(|amount| {
                         heal(
@@ -534,6 +535,8 @@ impl BehaviorHandler for Handler {
                         attack_attributes: &context.modifiers.attack_attributes,
                         career_ratio_bonus: context.modifiers.career_ratio_bonus,
                         attack_career: context.modifiers.attack_career,
+                        additional_attack_career: context.modifiers.additional_attack_career,
+                        critical_multiplier_remainder: 0,
                         is_conduit: context
                             .managers
                             .conduit
@@ -580,9 +583,10 @@ impl BehaviorHandler for Handler {
                                 hurt: HurtInfoData {
                                     from_uid: source_uid,
                                     is_crit,
-                                    career_restraint: restrains_target(
+                                    career_restraint: restrains_target_either(
                                         context.managers.catalog(),
                                         context.modifiers.attack_career.unwrap_or(source.career),
+                                        context.modifiers.additional_attack_career,
                                         target,
                                     ),
                                     reduce_hp: 0,

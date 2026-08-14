@@ -123,6 +123,11 @@ pub enum RoundCue {
     ChangeRound {
         round: i32,
     },
+    ClientConduitSelectionConfirmed {
+        source_uid: i64,
+        team: i32,
+        group: i32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

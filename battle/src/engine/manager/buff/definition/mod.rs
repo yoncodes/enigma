@@ -329,6 +329,31 @@ impl BuffDefinition {
             .collect()
     }
 
+    pub(super) fn state_snapshot_effect_num(
+        &self,
+        effect_type: i32,
+        before_params: Option<&str>,
+        after_params: Option<&str>,
+    ) -> i32 {
+        if effect_type != sonettobuf::effect_type_enum::EffectType::Expointoverflowbank as i32
+            || !self.features.iter().any(|feature| {
+                feature.kind
+                    == Some(
+                        crate::engine::skill::buff_act::registry::BuffActKind::ExPointOverflowBank,
+                    )
+            })
+        {
+            return 0;
+        }
+        let state = |params: Option<&str>| {
+            params
+                .and_then(|raw| raw.rsplit('#').next())
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or_default()
+        };
+        state(after_params) - state(before_params)
+    }
+
     pub(super) fn fanout_wire_markers(
         &self,
         phase: crate::engine::skill::buff_act::wire::WirePhase,

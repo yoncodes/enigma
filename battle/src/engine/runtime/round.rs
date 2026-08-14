@@ -14,8 +14,42 @@ use crate::engine::{
 use super::{
     BattleRuntime,
     determinism::{self, RoundDeterminism},
-    drain, executor, project_result, schedule,
+    drain, executor, project_result,
+    record::{FrameItem, FrameOwner, FrameTrigger, RoundCue, SemanticFrame},
+    schedule,
 };
+
+fn append_client_conduit_selection_confirmations(frames: Vec<SemanticFrame>) -> Vec<SemanticFrame> {
+    let mut confirmed = Vec::with_capacity(frames.len().saturating_mul(2));
+    for frame in frames {
+        let confirmation = match frame.items.as_slice() {
+            [FrameItem::Change(change)] => match change.as_ref() {
+                crate::engine::runtime::change::BattleChange::Conduit(
+                    crate::engine::manager::conduit::ConduitChange::GroupSelected {
+                        source_uid,
+                        team,
+                        group,
+                    },
+                ) => Some(RoundCue::ClientConduitSelectionConfirmed {
+                    source_uid: *source_uid,
+                    team: *team,
+                    group: *group,
+                }),
+                _ => None,
+            },
+            _ => None,
+        };
+        confirmed.push(frame);
+        if let Some(cue) = confirmation {
+            confirmed.push(SemanticFrame {
+                owner: FrameOwner::Command,
+                trigger: FrameTrigger::Active,
+                items: vec![FrameItem::Cue(cue)],
+            });
+        }
+    }
+    confirmed
+}
 
 impl BattleRuntime {
     pub fn build_player_action_steps(
@@ -144,7 +178,7 @@ impl BattleRuntime {
             &mut self.determinism,
             context,
             commands.iter().cloned(),
-            conduit_selection.frames,
+            append_client_conduit_selection_confirmations(conduit_selection.frames),
             1,
             crate::engine::manager::emitter::UID,
         )
@@ -265,6 +299,22 @@ impl BattleRuntime {
         let phase_two_refill_deferred = needs_refill && !runs_phase_two;
         if needs_refill && runs_phase_two {
             self.round_state.before_cards2 = round_field_cards(self.managers.card.hand());
+        }
+        if runs_phase_two {
+            fight_steps.extend(project_result(
+                schedule::run_post_action_refill_settlement(
+                    &mut self.managers,
+                    &pool,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                )
+                .map_err(|error| format!("{error:?}"))?,
+                fight_version,
+                absorb_hurt_map_layout,
+            )?);
+        }
+        if needs_refill && runs_phase_two {
             fight_steps.extend(project_result(
                 schedule::run_round_deal(2),
                 fight_version,

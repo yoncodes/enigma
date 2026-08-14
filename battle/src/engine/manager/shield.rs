@@ -91,11 +91,21 @@ fn plan(
     let carrier_uid = managers
         .buff
         .buff_family_carrier_uid(command.target_uid, command.buff_id);
-    let basis = managers.origin_attribute(command.source_uid, command.amount_attr);
+    let (amount_attr, amount_rate) =
+        if carrier_uid.is_none() && command.scope == ShieldScope::Entity {
+            crate::engine::skill::buff_act::shield::cumulative_attr_rate(
+                command.buff_id,
+                &managers.buff,
+            )
+            .unwrap_or((command.amount_attr, command.amount_rate))
+        } else {
+            (command.amount_attr, command.amount_rate)
+        };
+    let basis = managers.origin_attribute(command.source_uid, amount_attr);
     let multiplier_bonus = command
         .multiplier_bonus
         .map(|(attr, rate)| (managers.origin_attribute(command.source_uid, attr), rate));
-    let amount = shield_amount(basis, command.amount_rate, multiplier_bonus);
+    let amount = shield_amount(basis, amount_rate, multiplier_bonus);
     let max = managers
         .origin_attribute(command.source_uid, command.max_attr)
         .saturating_mul(command.max_rate)
@@ -442,6 +452,96 @@ mod tests {
         assert_eq!(refreshed[0].after.duration, added.buff.duration);
         assert_eq!(second.hp.unwrap().shield_granted.unwrap().added, 1_590);
         assert_eq!(managers.hp.shield(1), 3_180);
+    }
+
+    #[test]
+    fn cumulative_carrier_initializes_from_its_tier_then_refreshes_by_the_increment() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-2),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+        let cumulative = ShieldCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60183, "SupplyShield2"),
+            },
+            source_uid: -2,
+            target_uid: -2,
+            buff_id: 116385674,
+            amount_attr: crate::engine::entity::attr::AttrId::Hp,
+            amount_rate: 200,
+            multiplier_bonus: None,
+            max_attr: crate::engine::entity::attr::AttrId::Hp,
+            max_rate: 1_000,
+            scope: ShieldScope::Entity,
+            carrier_uid: ShieldCarrierUid::Child,
+        };
+
+        let first = execute(&mut managers, cumulative).unwrap();
+        assert_eq!(first.hp.unwrap().shield_granted.unwrap().added, 400);
+        assert_eq!(managers.hp.shield(-2), 400);
+
+        let second = execute(&mut managers, cumulative).unwrap();
+        assert_eq!(second.hp.unwrap().shield_granted.unwrap().added, 200);
+        assert_eq!(managers.hp.shield(-2), 600);
+    }
+
+    #[test]
+    fn fifth_cumulative_carrier_initializes_to_full_max_hp() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-2),
+                    current_hp: Some(191_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(191_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+
+        let changes = execute(
+            &mut managers,
+            ShieldCommand {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60183, "SupplyShield2"),
+                },
+                source_uid: -2,
+                target_uid: -2,
+                buff_id: 116385677,
+                amount_attr: crate::engine::entity::attr::AttrId::Hp,
+                amount_rate: 200,
+                multiplier_bonus: None,
+                max_attr: crate::engine::entity::attr::AttrId::Hp,
+                max_rate: 1_000,
+                scope: ShieldScope::Entity,
+                carrier_uid: ShieldCarrierUid::Child,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(changes.hp.unwrap().shield_granted.unwrap().added, 191_000);
+        assert_eq!(managers.hp.shield(-2), 191_000);
     }
 
     #[test]

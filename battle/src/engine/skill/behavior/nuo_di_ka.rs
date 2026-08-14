@@ -176,6 +176,8 @@ fn emit_ops(
                 attack_attributes: &modifiers.attack_attributes,
                 career_ratio_bonus: modifiers.career_ratio_bonus,
                 attack_career: modifiers.attack_career,
+                additional_attack_career: modifiers.additional_attack_career,
+                critical_multiplier_remainder: 0,
                 is_conduit: context
                     .managers
                     .conduit

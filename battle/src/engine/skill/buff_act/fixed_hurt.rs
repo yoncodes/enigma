@@ -17,17 +17,22 @@ pub fn supports(args: &[i32]) -> bool {
 }
 
 pub fn resolve_command(buffs: &BuffManager, hp: &HpManager, mut command: HpCommand) -> HpCommand {
-    if let HpCommand::Damage(damage) = &mut command
-        && damage.amount > 0
-        && let Some(amount) = amount(buffs, hp, damage.target_uid)
+    let damage = match &mut command {
+        HpCommand::Damage(damage) => Some((damage.target_uid, &mut damage.amount)),
+        HpCommand::Lose(loss) if loss.hurt.is_some() => Some((loss.target_uid, &mut loss.amount)),
+        _ => None,
+    };
+    if let Some((target_uid, damage)) = damage
+        && *damage > 0
+        && let Some(amount) = amount(buffs, hp, target_uid)
     {
         if crate::engine::damage::trace_enabled() {
             eprintln!(
                 "fixed hurt target={} input={} output={amount}",
-                damage.target_uid, damage.amount
+                target_uid, *damage
             );
         }
-        damage.amount = amount;
+        *damage = amount;
     }
     command
 }

@@ -341,6 +341,7 @@ impl HpChanges {
                             .map(|change| change.absorbed)
                             .unwrap_or_default(),
                     ),
+                career_restraint: damage.hurt.career_restraint,
                 damage_from: damage.hurt.damage_from,
                 assassinate: damage.assassinate,
                 ignore_riposte: damage.ignore_riposte,
@@ -785,7 +786,7 @@ impl HpManager {
                 value.origin,
                 value.source_uid,
                 value.target_uid,
-                value.amount > 0,
+                value.amount > 0 || (value.amount == 0 && value.hurt.is_some()),
             ),
             HpCommand::Kill(value) => (
                 value.origin,

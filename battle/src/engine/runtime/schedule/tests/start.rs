@@ -1110,6 +1110,187 @@ fn twins_round_start_passive_adds_the_captured_precast_card() {
 }
 
 #[test]
+fn side_owned_round_start_skill_only_runs_for_the_scheduled_side() {
+    init_config();
+    let entity = |uid, team_type| FightEntityInfo {
+        uid: Some(uid),
+        position: Some(1),
+        team_type: Some(team_type),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.battle_rule.extend_owned_skills([
+        crate::engine::fight::rules::OwnedBattleSkill {
+            owner_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+            skill_id: 40,
+        },
+        crate::engine::fight::rules::OwnedBattleSkill {
+            owner_uid: crate::engine::fight::rules::DEFENDER_SIDE_UID,
+            skill_id: 41,
+        },
+    ]);
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::new(1, "AddBuff", vec![31490001]),
+        TargetRequest {
+            code: 124,
+            raw: Vec::new(),
+        },
+    );
+    slot.conditions = vec![ParsedCondition {
+        opcode: 101,
+        type_name: "None".to_owned(),
+        kind: ParsedConditionKind::None(NoneMode::RoundStart),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    let mut catalog = SkillEffectCatalog::default();
+    for skill_id in [40, 41] {
+        catalog.insert(ParsedSkillEffect {
+            skill_id,
+            slots: vec![slot.clone()],
+        });
+    }
+
+    run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        0,
+    )
+    .unwrap();
+
+    assert!(managers.buff.has_buff_id(10, 31490001));
+    assert!(!managers.buff.has_buff_id(-1, 31490001));
+}
+
+#[test]
+fn twins_battle_rule_unlocks_the_precast_card_after_two_round_starts() {
+    init_config();
+    let fight = Fight {
+        battle_id: Some(116385108),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3149),
+                position: Some(1),
+                team_type: Some(1),
+                current_hp: Some(100),
+                attr: Some(sonettobuf::HeroAttribute {
+                    attack: Some(100),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                position: Some(1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                attr: Some(sonettobuf::HeroAttribute {
+                    attack: Some(200),
+                    ..Default::default()
+                }),
+                buffs: vec![BuffInfo {
+                    uid: Some(1000),
+                    buff_id: Some(116385679),
+                    from_uid: Some(-1),
+                    layer: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    assert!(
+        managers
+            .battle_rule
+            .owned_skills()
+            .any(|owned| owned == (crate::engine::fight::rules::ATTACKER_SIDE_UID, 116385684))
+    );
+
+    run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        0,
+    )
+    .unwrap();
+
+    assert!(managers.buff.has_buff_id(10, 116385669));
+    assert!(
+        !managers
+            .card
+            .hand()
+            .iter()
+            .any(|card| { card.skill_id == Some(31446013) && card.temp_card == Some(true) })
+    );
+
+    managers.begin_round();
+    run_round_start_split(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        1,
+    )
+    .unwrap();
+
+    assert!(managers.buff.has_buff_id(10, 116385670));
+    assert!(managers.card.hand().iter().any(|card| {
+        card.skill_id == Some(31446013) && card.uid == Some(10) && card.temp_card == Some(true)
+    }));
+}
+
+#[test]
 fn opening_round_start_conditions_only_run_for_the_player_side() {
     init_config();
     let entity = |uid, team_type| FightEntityInfo {

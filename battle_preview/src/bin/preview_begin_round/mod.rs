@@ -201,6 +201,7 @@ fn seed_captured_randomness(runtime: &mut BattleRuntime, round: &FightRound) {
     for ((skill_id, source_uid), choices) in captured_hidden_crits(round) {
         runtime.seed_hidden_crits(skill_id, source_uid, choices);
     }
+    runtime.seed_random_skills(captured_random_skill_choices(catalog::global(), round));
 }
 
 fn captured_hidden_crits(round: &FightRound) -> HashMap<(i32, i64), Vec<bool>> {
@@ -235,6 +236,36 @@ fn captured_hidden_crits(round: &FightRound) -> HashMap<(i32, i64), Vec<bool>> {
                     .push(is_critical);
             }
         }
+    }
+    choices
+}
+
+fn captured_random_skill_choices(
+    catalog: &battle::engine::skill::effect::SkillEffectCatalog,
+    round: &FightRound,
+) -> Vec<i32> {
+    fn visit(
+        catalog: &battle::engine::skill::effect::SkillEffectCatalog,
+        parent: &FightStep,
+        choices: &mut Vec<i32>,
+    ) {
+        let references = catalog.random_skill_references(parent.act_id.unwrap_or_default());
+        for effect in &parent.act_effect {
+            let Some(child) = effect.fight_step.as_ref() else {
+                continue;
+            };
+            if let Some(act_id) = child.act_id.filter(|act_id| *act_id > 0)
+                && references.contains(&act_id)
+            {
+                choices.push(act_id);
+            }
+            visit(catalog, child, choices);
+        }
+    }
+
+    let mut choices = Vec::new();
+    for step in &round.fight_step {
+        visit(catalog, step, &mut choices);
     }
     choices
 }

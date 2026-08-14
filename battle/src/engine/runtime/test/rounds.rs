@@ -173,7 +173,7 @@ fn no_conduit_round_clears_card_energy_once() {
 }
 
 #[test]
-fn client_conduit_selection_projects_one_top_level_confirmation_before_actions() {
+fn client_conduit_selection_projects_two_top_level_confirmations_before_actions() {
     crate::test_support::init_config();
     let entity = |uid, model_id| FightEntityInfo {
         uid: Some(uid),
@@ -248,12 +248,24 @@ fn client_conduit_selection_projects_one_top_level_confirmation_before_actions()
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(selection_effects.len(), 1);
+    assert_eq!(selection_effects.len(), 2);
+    assert_eq!(selection_effects[0], selection_effects[1]);
     let effect = selection_effects[0];
     assert_eq!(effect.target_id, Some(10));
     assert_eq!(effect.effect_num, Some(1));
     assert_eq!(effect.team_type, Some(1));
     assert_eq!(effect.config_effect, Some(0));
+    let use_cards = &round.fight_step[0].act_effect[0].card_info_list;
+    assert_eq!(use_cards.len(), 2);
+    assert_eq!(use_cards[0].uid, Some(10));
+    assert_eq!(use_cards[0].skill_id, Some(31446011));
+    assert_eq!(use_cards[1].uid, Some(0));
+    assert_eq!(use_cards[1].skill_id, Some(0));
+    assert_eq!(use_cards[1].hero_id, Some(0));
+    assert_eq!(
+        use_cards[1].card_type,
+        Some(sonettobuf::card_info::CardType::Device as i32)
+    );
     assert_eq!(
         round.fight_step[0]
             .act_effect
@@ -266,14 +278,16 @@ fn client_conduit_selection_projects_one_top_level_confirmation_before_actions()
             sonettobuf::effect_type_enum::EffectType::Carddecknum as i32,
         ]
     );
-    assert_eq!(round.fight_step[1].act_effect.len(), 1);
-    assert_eq!(&round.fight_step[1].act_effect[0], effect);
+    for step in &round.fight_step[1..=2] {
+        assert_eq!(step.act_effect.len(), 1);
+        assert_eq!(&step.act_effect[0], effect);
+    }
     let card_action_index = round
         .fight_step
         .iter()
         .position(|step| step.act_id == Some(31446011))
         .expect("the selected device card is played");
-    assert!(card_action_index > 1);
+    assert!(card_action_index > 2);
     let conduit_stop_index = round
         .fight_step
         .iter()

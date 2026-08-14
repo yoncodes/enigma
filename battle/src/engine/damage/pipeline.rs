@@ -56,6 +56,29 @@ pub fn calculate(input: DamageFormulaInput) -> i32 {
     calculate_with_trace(input).amount
 }
 
+fn greatest_common_divisor(mut left: i128, mut right: i128) -> i128 {
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
+    left
+}
+
+fn multiply_reduced_fraction(
+    (mut numerator, mut denominator): (i128, i128),
+    (mut factor_numerator, mut factor_denominator): (i128, i128),
+) -> (i128, i128) {
+    let divisor = greatest_common_divisor(numerator, factor_denominator);
+    numerator /= divisor;
+    factor_denominator /= divisor;
+    let divisor = greatest_common_divisor(factor_numerator, denominator);
+    factor_numerator /= divisor;
+    denominator /= divisor;
+    (
+        numerator * factor_numerator,
+        denominator * factor_denominator,
+    )
+}
+
 pub fn calculate_with_trace(input: DamageFormulaInput) -> DamageTrace {
     calculate_with_trace_for_version(input, 6)
 }
@@ -63,6 +86,14 @@ pub fn calculate_with_trace(input: DamageFormulaInput) -> DamageTrace {
 pub fn calculate_with_trace_for_version(
     input: DamageFormulaInput,
     fight_version: i32,
+) -> DamageTrace {
+    calculate_with_trace_for_version_and_remainder(input, fight_version, 0)
+}
+
+pub(crate) fn calculate_with_trace_for_version_and_remainder(
+    input: DamageFormulaInput,
+    fight_version: i32,
+    critical_multiplier_remainder: i32,
 ) -> DamageTrace {
     let preserve_effective_defense = fight_version == 7;
     let (defense, post_defense_fraction) = match input.kind {
@@ -147,7 +178,16 @@ pub fn calculate_with_trace_for_version(
     let critical_input = poison_multiplier.map_or(result, |trace| trace.output);
     let pre_critical_fraction =
         poison_multiplier.map_or(chained, |trace| (trace.output as i128, 1_i128));
-    let critical_fraction = if input.is_crit {
+    let critical_fraction = if input.is_crit && critical_multiplier_remainder != 0 {
+        multiply_reduced_fraction(
+            pre_critical_fraction,
+            (
+                input.crit_multiplier.max(0) as i128 * 1000
+                    + critical_multiplier_remainder.clamp(0, 999) as i128,
+                1_000_000,
+            ),
+        )
+    } else if input.is_crit {
         (
             pre_critical_fraction.0 * input.crit_multiplier.max(0) as i128,
             pre_critical_fraction.1 * 1000,

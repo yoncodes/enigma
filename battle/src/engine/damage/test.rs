@@ -110,6 +110,36 @@ fn trace_preserves_fractional_damage_until_final_settlement() {
 }
 
 #[test]
+fn critical_multiplier_preserves_conversion_remainder_until_settlement() {
+    let trace = pipeline::calculate_with_trace_for_version_and_remainder(
+        DamageFormulaInput {
+            kind: DamageKind::Mental,
+            attack: 1_860,
+            defense: 700,
+            defense_multiplier: 1_000,
+            penetration: 0,
+            minimum: 186,
+            base_rate: 11_112,
+            added_rate: 0,
+            career: 1_000,
+            regular: 595,
+            attack_local: 1_000,
+            might: 1_050,
+            action: 1_000,
+            genesis: 1_000,
+            final_rate: 1_000,
+            poison_multiplier: None,
+            crit_multiplier: 1_820,
+            is_crit: true,
+        },
+        7,
+        500,
+    );
+
+    assert_eq!(trace.amount, 14_660);
+}
+
+#[test]
 fn poison_has_its_capture_proven_floor_before_critical() {
     let mut input = DamageFormulaInput::genesis(554, 1_000, 1_150);
     input.poison_multiplier = Some(1_469);

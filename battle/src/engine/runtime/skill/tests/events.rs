@@ -36,6 +36,7 @@ fn hit_context_uses_the_explicit_skill_catalog_rank() {
         skill_id,
         amount: 1,
         shield_absorbed: 0,
+        career_restraint: true,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
         assassinate: false,
         ignore_riposte: false,
@@ -51,6 +52,7 @@ fn hit_context_uses_the_explicit_skill_catalog_rank() {
         context.active_skill_rank,
         db.skill.get(skill_id).unwrap().skill_rank
     );
+    assert_eq!(context.hit_career_restraint, Some(true));
 }
 
 #[test]

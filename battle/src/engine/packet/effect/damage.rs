@@ -160,7 +160,10 @@ impl EffectPacket {
         let common = FightHurtInfo {
             damage: Some(hurt.display_amount.unwrap_or_else(|| change.delta.abs())),
             reduce_hp: Some(hurt.reduce_hp),
-            career_restraint: Some(hurt.career_restraint),
+            career_restraint: match hurt.damage_from {
+                HurtDamageFromType::SkillEffect | HurtDamageFromType::Buff => None,
+                _ => Some(hurt.career_restraint),
+            },
             assassinate: Some(change.assassinate),
             hurt_effect: Some(effect_type),
             damage_from_type: Some(match hurt.damage_from {

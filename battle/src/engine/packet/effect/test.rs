@@ -148,6 +148,48 @@ fn crit_is_encoded_by_effect_type() {
 }
 
 #[test]
+fn career_restraint_projection_follows_damage_origin() {
+    let project = |damage_from, career_restraint| {
+        EffectPacket::hp_with_hurt_info_layout(
+            HpChange {
+                target_uid: 1,
+                before: 10,
+                delta: -3,
+                after: 7,
+                max: 10,
+                config_effect: 0,
+                hurt: Some(HurtInfoData {
+                    from_uid: 2,
+                    is_crit: false,
+                    career_restraint,
+                    reduce_hp: -3,
+                    effect_id: 0,
+                    skill_id: 0,
+                    damage_from,
+                    buff_act_id: 0,
+                    buff_uid: 0,
+                    hurt_effect_type: 0,
+                    display_amount: None,
+                }),
+                assassinate: false,
+                effect_type: 0,
+                display_amount: None,
+            },
+            HurtInfoWireLayout::Version6,
+            AbsorbHurtMapLayout::default(),
+        )
+        .hurt_info
+        .unwrap()
+        .career_restraint
+    };
+
+    assert_eq!(project(HurtDamageFromType::SkillEffect, true), None);
+    assert_eq!(project(HurtDamageFromType::Buff, true), None);
+    assert_eq!(project(HurtDamageFromType::Skill, false), Some(false));
+    assert_eq!(project(HurtDamageFromType::Skill, true), Some(true));
+}
+
+#[test]
 fn version7_damage_projects_committed_toughness_delta() {
     use crate::engine::manager::toughness::{ToughnessChange, ToughnessState};
 

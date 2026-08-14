@@ -354,6 +354,46 @@ fn drain_queue_with_frames(
     )
 }
 
+fn split_active_hit_events(
+    events: Vec<BattleEvent>,
+    batch_events: Vec<Vec<BattleEvent>>,
+) -> (Vec<BattleEvent>, Vec<BattleEvent>) {
+    let expected = batch_events
+        .into_iter()
+        .flat_map(|events| {
+            let defers_hp_loss = events.iter().any(|event| {
+                matches!(
+                    event,
+                    BattleEvent::Hit(hit)
+                        if hit.damage_from
+                            == crate::engine::manager::hp::HurtDamageFromType::Skill
+                )
+            });
+            events.into_iter().map(move |event| {
+                let deferred = matches!(event, BattleEvent::Hit(_))
+                    || defers_hp_loss && matches!(event, BattleEvent::HpLost { .. });
+                (event, deferred)
+            })
+        })
+        .collect::<Vec<_>>();
+    if !expected.iter().map(|(event, _)| event).eq(events.iter()) {
+        return events
+            .into_iter()
+            .partition(|event| !matches!(event, BattleEvent::Hit(_)));
+    }
+
+    let mut immediate = Vec::new();
+    let mut deferred = Vec::new();
+    for (event, (_, is_deferred)) in events.into_iter().zip(expected) {
+        if is_deferred {
+            deferred.push(event);
+        } else {
+            immediate.push(event);
+        }
+    }
+    (immediate, deferred)
+}
+
 /// Drains queued operations and registered reactions into semantic frames using declared phase and lane order.
 /// It follows declared phases; it does not repair ordering or packet shape.
 fn drain_queue_with_deferred(
@@ -649,6 +689,20 @@ fn drain_queue_with_deferred(
                 }
                 prepend(queue, outputs);
             }
+            RuleOp::FreezeActiveSkillRates => {
+                let frame_path = frame_path.ok_or(DrainError::MissingActiveSkillContext)?;
+                let execution = queue
+                    .iter_mut()
+                    .find_map(|queued| {
+                        (matches!(queued.trigger, SkillOpTrigger::Active)
+                            && queued.frame_path.as_ref() == Some(&frame_path)
+                            && matches!(queued.op, RuleOp::Skill(_)))
+                        .then_some(queued.skill_execution.as_mut())
+                        .flatten()
+                    })
+                    .ok_or(DrainError::MissingActiveSkillContext)?;
+                execution.freeze_rate_amounts(&managers.gauge);
+            }
             mut command @ (RuleOp::Command(_)
             | RuleOp::Publish(_)
             | RuleOp::SkillLifecycle(_)
@@ -914,18 +968,20 @@ fn drain_queue_with_deferred(
                     && has_active_continuation;
                 if defer_hits {
                     // Multi-part active hits share one HitPassives boundary. Hold
-                    // only Hit events; unrelated events remain immediately visible.
-                    let mut immediate = Vec::new();
-                    for event in events {
-                        if matches!(event, BattleEvent::Hit(_)) {
-                            pending_hits
-                                .entry(frame_path.clone())
-                                .or_default()
-                                .push(event);
-                        } else {
-                            immediate.push(event);
-                        }
-                    }
+                    // primary hits and their own HP loss; unrelated events remain
+                    // immediately visible.
+                    let RuleOutcome::HpBatch(batch) = &outcome else {
+                        unreachable!("active hit deferral requires an HP batch")
+                    };
+                    let batch_events = batch
+                        .iter()
+                        .map(|execution| execution.changes.events())
+                        .collect();
+                    let (immediate, deferred) = split_active_hit_events(events, batch_events);
+                    pending_hits
+                        .entry(frame_path.clone())
+                        .or_default()
+                        .extend(deferred);
                     events = immediate;
                 }
 

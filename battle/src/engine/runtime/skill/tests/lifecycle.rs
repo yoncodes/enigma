@@ -203,6 +203,115 @@ fn zero_cost_skill_publishes_exact_pre_effect_event_before_its_commands() {
 }
 
 #[test]
+fn paid_skill_publishes_immediate_commands_before_action_start_lifecycle() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::from_spec(
+                BehaviorSpec::new(30006, "LostLife"),
+                vec![1, AttrId::CurrentHp as i32, 100],
+                Vec::new(),
+            ),
+            TargetRequest::self_only(),
+        )],
+    });
+    let invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    let mut execution = SkillExecution::with_action_cost(
+        TargetContext::default(),
+        Some(crate::engine::manager::ex_point::ExPointCommand::Spend(
+            crate::engine::manager::ex_point::ExPointChange {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Skill,
+                    key: DefinitionKey::new(0, "TestPaidAction"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                delta: -5,
+                config_effect: 0,
+                effect_type: 0,
+            },
+        )),
+    );
+    let mut determinism = RoundDeterminism::default();
+
+    let emission = emit_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        &mut execution,
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+
+    let command = emission
+        .ops
+        .iter()
+        .position(|emission| {
+            matches!(
+                &emission.op,
+                RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(HpLoss {
+                    amount: 100,
+                    ..
+                })))
+            )
+        })
+        .unwrap();
+    let lifecycle = emission
+        .ops
+        .iter()
+        .position(|emission| {
+            matches!(
+                &emission.op,
+                RuleOp::BeginSkillAction {
+                    lifecycle: crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action),
+                    cost: crate::engine::manager::ex_point::ExPointCommand::Spend(change),
+                } if action.phase == SkillPhase::Immediate && change.delta == -5
+            )
+        })
+        .unwrap();
+    assert!(command < lifecycle);
+
+    let continuation = emission.continuation.expect("Immediate phase continuation");
+    let continuation_emission = emit_ops(
+        continuation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        &mut execution,
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+    assert!(continuation_emission.ops.iter().any(|emission| matches!(
+        &emission.op,
+        RuleOp::SkillLifecycle(
+            crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action)
+        ) if action.phase == SkillPhase::HitPassives
+    )));
+}
+
+#[test]
 fn exact_active_buff_subscription_keeps_its_required_after_damage_phase() {
     crate::test_support::init_config();
     let fight = Fight {

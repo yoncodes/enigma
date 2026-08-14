@@ -347,6 +347,21 @@ fn run_card_refill(
     Ok(result)
 }
 
+pub fn run_post_action_refill_settlement(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+) -> Result<DrainResult, DrainError> {
+    let replenishment = buff_act::ex_point_overflow_bank::replenishment_rule_ops(managers);
+    if replenishment.is_empty() {
+        Ok(DrainResult::default())
+    } else {
+        drain::run_buff_act_ops(managers, pool, catalog, determinism, context, replenishment)
+    }
+}
+
 /// Emits the semantic round-deal cue without mutating card storage.
 pub fn run_round_deal(team_type: i32) -> DrainResult {
     let mut result = DrainResult::default();

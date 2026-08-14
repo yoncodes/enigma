@@ -1,5 +1,11 @@
 use super::*;
 
+use battle::engine::skill::{
+    behavior::classify::BehaviorSpec,
+    effect::{ParsedBehavior, ParsedSkillEffect, SkillEffectCatalog, SkillEffectSlot},
+    target::TargetRequest,
+};
+
 #[test]
 fn captured_round_continuity_rejects_skips_and_reversals() {
     let previous = FightRound {
@@ -21,6 +27,111 @@ fn captured_round_continuity_rejects_skips_and_reversals() {
     assert!(error.to_string().contains("previous round 1"));
     assert!(error.to_string().contains("next round 3"));
     assert!(validate_captured_round_continuity(&previous, &reversed).is_err());
+}
+
+fn random_skill_catalog(
+    behaviors: impl IntoIterator<Item = (i32, ParsedBehavior)>,
+) -> SkillEffectCatalog {
+    let mut catalog = SkillEffectCatalog::default();
+    for (skill_id, behavior) in behaviors {
+        catalog.insert(ParsedSkillEffect {
+            skill_id,
+            slots: vec![SkillEffectSlot::new(behavior, TargetRequest::self_only())],
+        });
+    }
+    catalog
+}
+
+fn fight_step_with_children(act_id: i32, children: Vec<FightStep>) -> FightStep {
+    FightStep {
+        act_id: Some(act_id),
+        act_effect: children
+            .into_iter()
+            .map(|child| sonettobuf::ActEffect {
+                fight_step: Some(child),
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn captured_random_skill_choices_match_a_registered_child() {
+    let catalog = random_skill_catalog([(
+        31340151,
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(60242, "CrystalReuse"),
+            vec![334, 31340152, 1],
+            Vec::new(),
+        ),
+    )]);
+    let round = FightRound {
+        fight_step: vec![fight_step_with_children(
+            31340151,
+            vec![fight_step_with_children(31340152, Vec::new())],
+        )],
+        ..Default::default()
+    };
+
+    assert_eq!(
+        captured_random_skill_choices(&catalog, &round),
+        vec![31340152]
+    );
+}
+
+#[test]
+fn captured_random_skill_choices_exclude_unrelated_nested_children() {
+    let catalog = random_skill_catalog([(
+        31340151,
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(60242, "CrystalReuse"),
+            vec![334, 31340152, 1],
+            Vec::new(),
+        ),
+    )]);
+    let round = FightRound {
+        fight_step: vec![fight_step_with_children(
+            31340151,
+            vec![fight_step_with_children(
+                999999,
+                vec![fight_step_with_children(31340152, Vec::new())],
+            )],
+        )],
+        ..Default::default()
+    };
+
+    assert!(captured_random_skill_choices(&catalog, &round).is_empty());
+}
+
+#[test]
+fn captured_random_skill_choices_preserve_causal_order() {
+    let catalog = random_skill_catalog([(
+        31340151,
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(60225, "RandomUseSkill"),
+            Vec::new(),
+            vec!["31340152:100&31340153:100".to_owned()],
+        ),
+    )]);
+    let round = FightRound {
+        fight_step: vec![
+            fight_step_with_children(
+                31340151,
+                vec![fight_step_with_children(31340153, Vec::new())],
+            ),
+            fight_step_with_children(
+                31340151,
+                vec![fight_step_with_children(31340152, Vec::new())],
+            ),
+        ],
+        ..Default::default()
+    };
+
+    assert_eq!(
+        captured_random_skill_choices(&catalog, &round),
+        vec![31340153, 31340152]
+    );
 }
 
 #[test]

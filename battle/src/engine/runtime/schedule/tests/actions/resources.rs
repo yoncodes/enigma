@@ -146,6 +146,59 @@ fn player_owned_negative_uid_gains_card_play_moxie() {
 }
 
 #[test]
+fn precast_card_does_not_grant_card_play_moxie() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ex_point: Some(0),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![crate::engine::manager::card::precast_card(10, 100)],
+            draw_pile: Vec::new(),
+            deck_num: 1,
+        }))
+        .unwrap();
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: Vec::new(),
+    });
+
+    run_player_action_queue(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [CardPlay {
+            origin: CARD_PLAY_ORIGIN,
+            hand_index: 0,
+            target_uid: None,
+            chosen_skill_id: None,
+            choice: None,
+            recorded_skill: None,
+        }],
+        1,
+        crate::engine::manager::emitter::UID,
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(10), 0);
+}
+
+#[test]
 fn ultimate_spend_is_recorded_inside_its_skill_frame() {
     init_config();
     let fight = Fight {

@@ -151,6 +151,10 @@ impl BattleRuntime {
             .enqueue_hidden_crits(skill_id, source_uid, choices);
     }
 
+    pub fn seed_random_skills(&mut self, skills: impl IntoIterator<Item = i32>) {
+        self.determinism.enqueue_random_skills(skills);
+    }
+
     pub fn conduit_operations(&self) -> Vec<sonettobuf::FightDeviceOper> {
         self.managers
             .conduit

@@ -396,6 +396,7 @@ mod tests {
             skill_id: 1,
             amount: 20,
             shield_absorbed: 0,
+            career_restraint: false,
             damage_from: HurtDamageFromType::ShareHurt,
             assassinate: false,
             ignore_riposte: false,

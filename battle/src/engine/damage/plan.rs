@@ -25,6 +25,9 @@ pub struct AttackPlan {
     pub attack_attributes: Vec<(AttrId, i32)>,
     pub career_ratio_bonus: i32,
     pub attack_career: Option<i32>,
+    pub additional_attack_career: Option<i32>,
+    /// Thousandths of one critical-damage permille point.
+    pub critical_multiplier_remainder: i32,
     pub is_conduit: bool,
     pub is_crit: bool,
     pub assassinate: bool,

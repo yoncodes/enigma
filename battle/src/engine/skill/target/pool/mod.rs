@@ -110,6 +110,7 @@ pub struct TargetContext {
     pub lost_power_amount: i32,
     pub hit_source_uid: i64,
     pub hit_target_uid: i64,
+    pub hit_career_restraint: Option<bool>,
     pub hit_damage_from: Option<crate::engine::manager::hp::HurtDamageFromType>,
     pub teammate_injury_count: i32,
     pub teammate_injury_count_not_reset: i32,

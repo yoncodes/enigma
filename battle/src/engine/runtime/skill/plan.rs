@@ -1,19 +1,12 @@
 use crate::engine::{
     damage::{AttackPlan, DamageRateTerm, handler as damage},
-    manager::{
-        BattleManagers,
-        buff::{ActiveBuffFeature, BuffCommand, BuffGrant},
-        hp::HpCommand,
-    },
+    manager::{BattleManagers, buff::ActiveBuffFeature, hp::HpCommand},
     runtime::determinism::RoundDeterminism,
     skill::{
         action::{SkillInvocation, SkillModifiers},
         behavior::rate,
         effect::SkillEffectCatalog,
-        rule::{
-            CommandOrigin, DefinitionKey, RuleDomain,
-            output::{BattleCommand, RuleOp},
-        },
+        rule::{CommandOrigin, DefinitionKey, RuleDomain, output::RuleOp},
         target::{TargetContext, TargetPool, TargetRequest, TargetResolver},
     },
 };
@@ -108,6 +101,13 @@ impl SkillExecution {
     pub(in crate::engine::runtime) fn prepare_direct_big(&mut self, additional_moxie: i32) {
         self.context.direct_skill_body = true;
         self.context.additional_moxie = additional_moxie;
+    }
+
+    pub(in crate::engine::runtime) fn freeze_rate_amounts(
+        &mut self,
+        gauges: &crate::engine::manager::gauge::GaugeManager,
+    ) {
+        self.modifiers.freeze_rate_amounts(gauges);
     }
 
     pub(in crate::engine::runtime) fn add_skill_targets(&mut self, count: i32) {
@@ -377,6 +377,11 @@ pub(super) fn additional_damage_activation(
     .collect()
 }
 
+pub(super) fn split_excess_crit_conversion(excess_crit: i32, conversion_rate: i32) -> (i32, i32) {
+    let numerator = i64::from(excess_crit) * i64::from(conversion_rate);
+    ((numerator / 1000) as i32, (numerator % 1000) as i32)
+}
+
 pub(super) fn damage_ops(
     invocation: &SkillInvocation,
     managers: &BattleManagers,
@@ -447,7 +452,6 @@ pub(super) fn damage_ops(
     let mut damage_commands = Vec::new();
     let mut additional_damage_commands = Vec::new();
     let mut avoided = Vec::new();
-    let mut hit_targets = Vec::new();
     let mut crit_count = 0;
     let inherent_assassinate = execution.context.active_skill_assassinate;
     for (index, target_uid) in targets.into_iter().enumerate() {
@@ -586,7 +590,8 @@ pub(super) fn damage_ops(
         }
         let excess_crit =
             damage::excess_crit_rate(source_uid, target_uid, pool, managers, &attack_attributes);
-        let converted = excess_crit * crit_conversion_rate / 1000;
+        let (converted, critical_multiplier_remainder) =
+            split_excess_crit_conversion(excess_crit, crit_conversion_rate);
         if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Damage) {
             let crit_chance = damage::crit_chance(source_uid, target_uid, pool, managers)
                 + target_modifiers
@@ -598,7 +603,7 @@ pub(super) fn damage_ops(
                     })
                     .sum::<i32>();
             eprintln!(
-                "crit chance skill={skill_id} source={source_uid} target={target_uid} chance={crit_chance} excess={excess_crit} conversion_rate={crit_conversion_rate} converted={converted}"
+                "crit chance skill={skill_id} source={source_uid} target={target_uid} chance={crit_chance} excess={excess_crit} conversion_rate={crit_conversion_rate} converted={converted} conversion_remainder={critical_multiplier_remainder}"
             );
         }
         if converted != 0 {
@@ -653,6 +658,8 @@ pub(super) fn damage_ops(
                 attack_attributes: attack_attributes.clone(),
                 career_ratio_bonus: target_modifiers.career_ratio_bonus,
                 attack_career: target_modifiers.attack_career,
+                additional_attack_career: target_modifiers.additional_attack_career,
+                critical_multiplier_remainder,
                 is_conduit: managers.conduit.owns_skill(source_uid, skill_id),
                 is_crit,
                 assassinate: assassination.assassinate,
@@ -677,7 +684,6 @@ pub(super) fn damage_ops(
                 key: DefinitionKey::new(skill_id, "SkillDamage"),
             },
         ) {
-            hit_targets.push(target_uid);
             if let HpCommand::Damage(damage) = &mut command {
                 damage.ignore_riposte = target_modifiers.ignore_riposte;
             }
@@ -741,6 +747,8 @@ pub(super) fn damage_ops(
                     attack_attributes: &additional_attributes,
                     career_ratio_bonus: target_modifiers.career_ratio_bonus,
                     attack_career: target_modifiers.attack_career,
+                    additional_attack_career: target_modifiers.additional_attack_career,
+                    critical_multiplier_remainder,
                     is_conduit: false,
                     is_crit: additional_is_crit,
                     extra_skill_kind: execution.context.extra_skill_kind,
@@ -783,29 +791,10 @@ pub(super) fn damage_ops(
     if execution.planned_crits.is_none() {
         execution.record_crits(crit_count);
     }
-    let mut after_damage = rend
+    let after_damage = rend
         .as_ref()
         .map(|rend| rend.after_damage_rule_ops())
         .unwrap_or_default();
-    after_damage.extend(
-        execution
-            .modifiers
-            .after_damage_buffs
-            .iter()
-            .flat_map(|modifier| {
-                hit_targets.iter().map(|target_uid| {
-                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
-                        origin: modifier.origin,
-                        source_uid,
-                        target_uid: *target_uid,
-                        buff_id: modifier.buff_id,
-                        amount: Some(modifier.amount),
-                        occurrences: 1,
-                        child_uid_reservations: 0,
-                    })))
-                })
-            }),
-    );
     DamageOps {
         buff_act_frame_owner: rend.as_ref().and_then(|rend| rend.frame_owner()),
         before_damage: rend

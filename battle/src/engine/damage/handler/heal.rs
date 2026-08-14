@@ -10,6 +10,13 @@ use crate::engine::{
 
 const BURN_HEALING_TAKEN: i32 = -150;
 
+pub(super) fn is_full_restore(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [0 | 1, raw_attr, 1000] if AttrId::from_raw(*raw_attr) == Some(AttrId::Hp)
+    )
+}
+
 pub(super) fn attribute_amount(
     source_uid: i64,
     target_uid: i64,
@@ -111,17 +118,18 @@ pub(super) fn amount(
 ) -> Option<i32> {
     let amount = if let [mode, attr_id, rate] = behavior.args.as_slice() {
         let basis_uid = if *mode == 0 { source_uid } else { target_uid };
-        let basis = managers.origin_attribute(basis_uid, AttrId::from_raw(*attr_id)?);
-        modified(
-            scale_permille(basis, *rate),
-            source_uid,
-            target_uid,
-            managers,
-        )
+        let attr_id = AttrId::from_raw(*attr_id)?;
+        let basis = managers.origin_attribute(basis_uid, attr_id);
+        let base = scale_permille(basis, *rate);
+        if is_full_restore(behavior) {
+            base
+        } else {
+            modified(base, source_uid, target_uid, managers)
+        }
     } else {
         behavior.args.first().copied()?
     };
-    Some(if is_crit {
+    Some(if is_crit && !is_full_restore(behavior) {
         scale_permille(
             amount,
             managers.attribute.get(source_uid, AttrId::CriticalDmg),

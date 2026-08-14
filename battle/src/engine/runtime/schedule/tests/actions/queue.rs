@@ -53,6 +53,7 @@ fn action_queue_commit_records_cards_in_an_independent_buff_act_frame() {
         TargetContext::default(),
         1,
         99_998,
+        0,
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
@@ -130,6 +131,7 @@ fn action_queue_commit_expires_the_committed_teams_before_ap_buffs() {
         TargetContext::default(),
         1,
         99_998,
+        0,
     )
     .unwrap();
 

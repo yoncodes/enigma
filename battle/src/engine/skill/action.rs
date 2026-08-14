@@ -210,55 +210,57 @@ mod invocation_tests {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillRateAmount {
     Fixed(i32),
-    GaugeRaw {
+    GaugeCurrent {
         key: crate::engine::manager::gauge::GaugeKey,
         limit: i32,
         factor: i32,
         count: i32,
-        divisor: i32,
     },
 }
 
 impl SkillRateAmount {
-    pub const fn gauge_raw(
+    pub const fn gauge_current(
         key: crate::engine::manager::gauge::GaugeKey,
         limit: i32,
         factor: i32,
         count: i32,
-        divisor: i32,
     ) -> Self {
-        Self::GaugeRaw {
+        Self::GaugeCurrent {
             key,
             limit,
             factor,
             count,
-            divisor,
         }
     }
 
     pub const fn fixed_value(self) -> Option<i32> {
         match self {
             Self::Fixed(value) => Some(value),
-            Self::GaugeRaw { .. } => None,
+            Self::GaugeCurrent { .. } => None,
         }
     }
 
     pub fn resolve(self, gauges: &crate::engine::manager::gauge::GaugeManager) -> i32 {
         match self {
             Self::Fixed(value) => value,
-            Self::GaugeRaw {
+            Self::GaugeCurrent {
                 key,
                 limit,
                 factor,
                 count,
-                divisor,
-            } if limit >= 0 && factor >= 0 && count >= 0 && divisor > 0 => {
-                let raw = i64::from(gauges.raw_value(key).unwrap_or_default().clamp(0, limit));
-                (raw * i64::from(factor) * i64::from(count) / i64::from(divisor))
+            } if limit >= 0 && factor >= 0 && count >= 0 => {
+                let current = i64::from(
+                    gauges
+                        .get(key)
+                        .map(|state| state.current)
+                        .unwrap_or_default()
+                        .clamp(0, limit),
+                );
+                (current * i64::from(factor) * i64::from(count))
                     .try_into()
                     .unwrap_or(i32::MAX)
             }
-            Self::GaugeRaw { .. } => 0,
+            Self::GaugeCurrent { .. } => 0,
         }
     }
 }
@@ -319,7 +321,7 @@ pub struct AdditionalDamageModifier {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AfterDamageBuffModifier {
+pub struct PostImmediateTargetBuffModifier {
     pub origin: CommandOrigin,
     pub buff_id: i32,
     pub amount: i32,
@@ -335,8 +337,9 @@ pub struct SkillModifiers {
     pub excess_crit_conversion_rate: i32,
     pub career_ratio_bonus: i32,
     pub attack_career: Option<i32>,
+    pub additional_attack_career: Option<i32>,
     pub additional_damage: Vec<AdditionalDamageModifier>,
-    pub after_damage_buffs: Vec<AfterDamageBuffModifier>,
+    pub post_immediate_target_buffs: Vec<PostImmediateTargetBuffModifier>,
     pub consume_team_injury_count_round: Option<DefinitionKey>,
 }
 
@@ -354,12 +357,84 @@ impl SkillModifiers {
         self.excess_crit_conversion_rate += other.excess_crit_conversion_rate;
         self.career_ratio_bonus += other.career_ratio_bonus;
         self.attack_career = self.attack_career.or(other.attack_career);
+        self.additional_attack_career = self
+            .additional_attack_career
+            .or(other.additional_attack_career);
         self.additional_damage.append(&mut other.additional_damage);
-        self.after_damage_buffs
-            .append(&mut other.after_damage_buffs);
+        self.post_immediate_target_buffs
+            .append(&mut other.post_immediate_target_buffs);
         self.consume_team_injury_count_round = self
             .consume_team_injury_count_round
             .or(other.consume_team_injury_count_round);
+    }
+
+    pub(crate) fn freeze_rate_amounts(
+        &mut self,
+        gauges: &crate::engine::manager::gauge::GaugeManager,
+    ) {
+        for modifier in &mut self.rates {
+            modifier.amount = SkillRateAmount::Fixed(modifier.amount.resolve(gauges));
+        }
+    }
+}
+
+#[cfg(test)]
+mod rate_amount_tests {
+    use super::*;
+    use crate::engine::{
+        manager::gauge::{GaugeCommand, GaugeManager, GaugeOperation},
+        mechanic::lingering_glow,
+        skill::rule::{DefinitionKey, RuleDomain},
+    };
+
+    #[test]
+    fn freezing_dynamic_rates_excludes_later_gauge_changes() {
+        let origin = CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(60243, "CrystalAddSkillRate"),
+        };
+        let key = lingering_glow::key(1);
+        let mut gauges = GaugeManager::default();
+        gauges
+            .execute_command(GaugeCommand::new(
+                origin,
+                key,
+                GaugeOperation::Enable { max: Some(1_000) },
+            ))
+            .unwrap();
+        gauges
+            .execute_command(GaugeCommand::new(
+                origin,
+                key,
+                GaugeOperation::AccumulateRawValue {
+                    amount: 139_000,
+                    stream: 60243,
+                },
+            ))
+            .unwrap();
+        let mut modifiers = SkillModifiers {
+            rates: vec![SkillRateModifier::new(
+                0,
+                60243,
+                SkillRateAmount::gauge_current(key, 1_000, 4, 1),
+                true,
+            )],
+            ..Default::default()
+        };
+
+        modifiers.freeze_rate_amounts(&gauges);
+        gauges
+            .execute_command(GaugeCommand::new(
+                origin,
+                key,
+                GaugeOperation::AccumulateRawValue {
+                    amount: 10_000,
+                    stream: 60243,
+                },
+            ))
+            .unwrap();
+
+        assert_eq!(modifiers.rates[0].fixed_value(), Some(556));
     }
 }
 

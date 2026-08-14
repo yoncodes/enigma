@@ -7,7 +7,7 @@ use crate::engine::{
     },
     runtime::determinism::RoundDeterminism,
     skill::{
-        action::{AfterDamageBuffModifier, SkillModifiers, SkillRateModifier},
+        action::{PostImmediateTargetBuffModifier, SkillModifiers, SkillRateModifier},
         behavior::{
             AttackModifierContext, BehaviorOpContext, classify::BehaviorKind,
             registry::BehaviorHandler,
@@ -80,12 +80,11 @@ impl BehaviorHandler for Handler {
                 context.modifiers.rates.push(SkillRateModifier::new(
                     0,
                     behavior.spec.key.opcode,
-                    crate::engine::skill::action::SkillRateAmount::gauge_raw(
+                    crate::engine::skill::action::SkillRateAmount::gauge_current(
                         gauge_key,
-                        *raw_limit,
+                        *raw_limit / 1000,
                         *all_rate,
                         crystal_count,
-                        1000,
                     ),
                     crystal_rate_career_scaled(behavior.spec.kind, false),
                 ));
@@ -102,27 +101,23 @@ impl BehaviorHandler for Handler {
                 context.modifiers.rates.push(SkillRateModifier::new(
                     target_uid,
                     behavior.spec.key.opcode,
-                    crate::engine::skill::action::SkillRateAmount::gauge_raw(
+                    crate::engine::skill::action::SkillRateAmount::gauge_current(
                         gauge_key,
-                        *raw_limit,
+                        *raw_limit / 1000,
                         *focus_rate,
                         crystal_count,
-                        1000,
                     ),
                     crystal_rate_career_scaled(behavior.spec.kind, true),
                 ));
             }
-            if crystal_count > 0
-                && let Some(origin) = super::command_origin(behavior)
-            {
-                context
-                    .modifiers
-                    .after_damage_buffs
-                    .push(AfterDamageBuffModifier {
-                        origin,
+            if crystal_count > 0 {
+                context.modifiers.post_immediate_target_buffs.push(
+                    PostImmediateTargetBuffModifier {
+                        origin: super::command_origin(behavior)?,
                         buff_id: *buff_id,
                         amount: crystal_count.saturating_mul(*buff_layer),
-                    });
+                    },
+                );
             }
             return Some(Vec::new());
         }
@@ -272,6 +267,8 @@ fn conduit_power_up_ops(
     behavior: &ParsedBehavior,
 ) -> Option<Vec<RuleOp>> {
     let args = conduit_power_up_args(behavior)?;
+    context.modifiers.attack_career = Some(args.power_ids[0]);
+    context.modifiers.additional_attack_career = Some(args.power_ids[1]);
     let spent = args
         .power_ids
         .iter()
@@ -362,7 +359,7 @@ fn conduit_power_up_args(behavior: &ParsedBehavior) -> Option<ConduitPowerUpArgs
         penetration: (AttrId::from_raw(behavior.arg(10)?)?, behavior.arg(11)?),
         excess_crit_conversion: behavior.arg(12)?,
     };
-    (args.power_ids.iter().all(|id| *id > 0)
+    (args.power_ids.iter().all(|id| (1..=8).contains(id))
         && args.rate_per_power >= 0
         && args.thresholds.iter().all(|threshold| *threshold > 0)
         && args.thresholds.windows(2).all(|pair| pair[0] < pair[1])

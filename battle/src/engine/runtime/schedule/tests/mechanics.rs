@@ -483,6 +483,7 @@ fn action_queue_commit_collects_played_card_energy_as_inspiration() {
         TargetContext::default(),
         1,
         99998,
+        0,
     )
     .unwrap();
 

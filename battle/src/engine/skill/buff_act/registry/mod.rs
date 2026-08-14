@@ -890,6 +890,7 @@ buff_act_definitions! {
         supports: |args| args.is_empty(),
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1111, "ToughnessOverflowRecord"), &[EffectType::None as i32]));
     (806, "ExPointOverflowBank") => ExPointOverflowBank,
+        events: [EventKind::ExPointChanged],
         scoped_runtime: |context| super::ex_point_overflow_bank::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(806, "ExPointOverflowBank"), &[EffectType::Expointoverflowbank as i32]));
     (1008, "BanLostLife") => BanLostLife,

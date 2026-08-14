@@ -445,6 +445,7 @@ pub(super) fn run_setup_stage_filtered(
             | RuleOp::BuffActInfoMarker(_)
             | RuleOp::MarkBuffActFired { .. }
             | RuleOp::ModifyActiveSkillTargets { .. }
+            | RuleOp::FreezeActiveSkillRates
             | RuleOp::NuoDiKaHit(_) => (Some(mechanic_path), None),
         };
         queue.push_back(QueuedOp {

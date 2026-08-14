@@ -15,6 +15,7 @@ pub fn run_card_energy_allocation(
     drain::run_command_group(managers, pool, catalog, determinism, context, ops)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_action_queue_committed(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -23,6 +24,7 @@ pub fn run_action_queue_committed(
     context: TargetContext,
     team: i32,
     emitter_uid: i64,
+    device_actions: usize,
 ) -> Result<DrainResult, DrainError> {
     drain::run(
         managers,
@@ -31,7 +33,11 @@ pub fn run_action_queue_committed(
         determinism,
         context,
         [RuleOp::Command(BattleCommand::Card(
-            CardCommand::CommitActionQueue { team, emitter_uid },
+            CardCommand::CommitActionQueue {
+                team,
+                emitter_uid,
+                device_actions,
+            },
         ))],
     )
 }
@@ -404,6 +410,7 @@ fn run_player_card_ops(
     fight: Option<&sonettobuf::Fight>,
     before_actions: Vec<SemanticFrame>,
 ) -> Result<DrainResult, DrainError> {
+    let device_actions = committed_client_conduit_selections(&before_actions);
     let mut result = DrainResult::default();
     let mut skills = Vec::new();
     let mut pending_rewards = Vec::new();
@@ -561,6 +568,7 @@ fn run_player_card_ops(
             let grants_ex_point = managers.entity.team_type(played.caster_uid) == Some(team)
                 && managers.ex_point.kind(played.caster_uid) == 0
                 && catalog.grants_resource_on_card_play(played.skill_id)
+                && played.card.card_type != Some(sonettobuf::card_info::CardType::Skill3 as i32)
                 && !crate::engine::manager::card::deck::has_enchant_type(
                     &played.card,
                     crate::engine::manager::card::EnchantedType::Lorenz,
@@ -646,6 +654,7 @@ fn run_player_card_ops(
         context,
         team,
         emitter_uid,
+        device_actions,
     )?;
     skills.extend(committed.outcomes.iter().filter_map(|outcome| {
         let RuleOutcome::Card(changes) = outcome else {
@@ -858,6 +867,31 @@ fn run_player_card_ops(
         );
     }
     Ok(result)
+}
+
+fn committed_client_conduit_selections(frames: &[SemanticFrame]) -> usize {
+    fn count(frame: &SemanticFrame) -> usize {
+        frame
+            .items
+            .iter()
+            .map(|item| match item {
+                FrameItem::Change(change)
+                    if matches!(
+                        change.as_ref(),
+                        BattleChange::Conduit(
+                            crate::engine::manager::conduit::ConduitChange::GroupSelected { .. }
+                        )
+                    ) =>
+                {
+                    1
+                }
+                FrameItem::Child(child) => count(child),
+                FrameItem::Change(_) | FrameItem::Cue(_) => 0,
+            })
+            .sum()
+    }
+
+    frames.iter().map(count).sum()
 }
 
 fn queue_preparation_ops(

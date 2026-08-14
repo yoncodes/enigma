@@ -1059,20 +1059,22 @@ fn condition_kind_matches(
             let Some(defender) = pool.entity(defender_uid) else {
                 return false;
             };
-            let forces_restraint = managers.is_some_and(|managers| {
-                managers
-                    .buff
-                    .active_features(&managers.hp)
-                    .iter()
-                    .filter(|feature| feature.owner_uid == attacker.uid)
-                    .any(crate::engine::skill::buff_act::forces_career_restraint)
+            let restrained = context.hit_career_restraint.unwrap_or_else(|| {
+                let forces_restraint = managers.is_some_and(|managers| {
+                    managers
+                        .buff
+                        .active_features(&managers.hp)
+                        .iter()
+                        .filter(|feature| feature.owner_uid == attacker.uid)
+                        .any(crate::engine::skill::buff_act::forces_career_restraint)
+                });
+                forces_restraint
+                    || crate::engine::damage::handler::restrains_target(
+                        pool.catalog(),
+                        attacker.career,
+                        defender,
+                    )
             });
-            let restrained = forces_restraint
-                || crate::engine::damage::handler::restrains_target(
-                    pool.catalog(),
-                    attacker.career,
-                    defender,
-                );
             restrained == matches!(condition.kind, ParsedConditionKind::HurtRestrained)
         }
         ParsedConditionKind::EntityCount {

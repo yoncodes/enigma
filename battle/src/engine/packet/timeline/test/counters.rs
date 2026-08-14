@@ -229,9 +229,53 @@ fn positive_cost_reduced_to_zero_suppresses_only_the_begin_marker() {
 }
 
 #[test]
-fn client_conduit_group_selection_projects_one_configless_confirmation() {
+fn client_conduit_group_selection_projects_two_top_level_confirmations() {
+    let frames = [
+        SemanticFrame {
+            owner: FrameOwner::Command,
+            trigger: crate::engine::runtime::record::FrameTrigger::Active,
+            items: vec![FrameItem::Change(Box::new(BattleChange::Conduit(
+                crate::engine::manager::conduit::ConduitChange::GroupSelected {
+                    source_uid: 263_811_366,
+                    team: 1,
+                    group: 3,
+                },
+            )))],
+        },
+        SemanticFrame {
+            owner: FrameOwner::Command,
+            trigger: crate::engine::runtime::record::FrameTrigger::Active,
+            items: vec![FrameItem::Cue(RoundCue::ClientConduitSelectionConfirmed {
+                source_uid: 263_811_366,
+                team: 1,
+                group: 3,
+            })],
+        },
+    ];
+
+    let steps = project(&frames).unwrap();
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0], steps[1]);
+    assert!(steps.iter().all(|step| step.act_effect.len() == 1));
+    let effect = &steps[0].act_effect[0];
+    assert_eq!(effect.target_id, Some(263_811_366));
+    assert_eq!(
+        effect.effect_type,
+        Some(EffectType::Deviceskillindex as i32)
+    );
+    assert_eq!(effect.effect_num, Some(3));
+    assert_eq!(effect.team_type, Some(1));
+    assert_eq!(effect.config_effect, Some(0));
+}
+
+#[test]
+fn behavior_conduit_group_change_projects_one_keyed_confirmation() {
     let effects = project_change_for_test(&BattleChange::Conduit(
-        crate::engine::manager::conduit::ConduitChange::GroupSelected {
+        crate::engine::manager::conduit::ConduitChange::SkillGroupChanged {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60293, "SetDeviceSkillIndex"),
+            },
             source_uid: 263_811_366,
             team: 1,
             group: 1,
@@ -241,7 +285,7 @@ fn client_conduit_group_selection_projects_one_configless_confirmation() {
 
     assert_eq!(effects.len(), 1);
     let [effect] = effects.as_slice() else {
-        panic!("expected one client conduit selection effect");
+        panic!("expected one behavior-owned conduit selection effect");
     };
     assert_eq!(effect.target_id, Some(263_811_366));
     assert_eq!(
@@ -250,5 +294,5 @@ fn client_conduit_group_selection_projects_one_configless_confirmation() {
     );
     assert_eq!(effect.effect_num, Some(1));
     assert_eq!(effect.team_type, Some(1));
-    assert_eq!(effect.config_effect, Some(0));
+    assert_eq!(effect.config_effect, Some(60293));
 }

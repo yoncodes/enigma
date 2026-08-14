@@ -30,6 +30,7 @@ pub struct BuffRefreshWire {
 pub struct BuffStateSnapshotWire {
     pub refresh_index: usize,
     pub effect_type: i32,
+    pub effect_num: i32,
     pub reserve_str: Option<String>,
 }
 
@@ -195,13 +196,20 @@ impl BuffChanges {
                     refresh.after.buff_id.unwrap_or_default(),
                 )
                 .into_iter()
-                .flat_map(|definition| {
-                    definition.state_snapshot_wire(refresh.after.act_common_params.as_deref())
-                })
-                .map(move |(effect_type, reserve_str)| BuffStateSnapshotWire {
-                    refresh_index,
-                    effect_type,
-                    reserve_str,
+                .flat_map(move |definition| {
+                    definition
+                        .state_snapshot_wire(refresh.after.act_common_params.as_deref())
+                        .into_iter()
+                        .map(move |(effect_type, reserve_str)| BuffStateSnapshotWire {
+                            refresh_index,
+                            effect_type,
+                            effect_num: definition.state_snapshot_effect_num(
+                                effect_type,
+                                refresh.before.act_common_params.as_deref(),
+                                refresh.after.act_common_params.as_deref(),
+                            ),
+                            reserve_str,
+                        })
                 })
             })
             .collect();

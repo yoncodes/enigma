@@ -59,6 +59,33 @@ pub fn configured_attr_rate(
     })
 }
 
+pub fn cumulative_attr_rate(buff_id: i32, buffs: &BuffManager) -> Option<(AttrId, i32)> {
+    let catalog = buffs
+        .try_catalog()
+        .or_else(crate::catalog::BattleCatalog::try_global)?;
+    catalog
+        .buff_feature_rows(buff_id)
+        .iter()
+        .find_map(|feature| {
+            let values = feature
+                .split('#')
+                .map(str::trim)
+                .map(str::parse::<i32>)
+                .collect::<Result<Vec<_>, _>>()
+                .ok()?;
+            let [act_id, mode, raw_attr, rate, ..] = values.as_slice() else {
+                return None;
+            };
+            let definition = catalog.buff_act_definition(*act_id)?;
+            if registry::kind(*act_id, definition.key.type_name)? != registry::BuffActKind::Shield
+                || *mode != 1
+            {
+                return None;
+            }
+            Some((AttrId::from_raw(*raw_attr)?, *rate))
+        })
+}
+
 pub fn supports_by_buff_layer(args: &[i32]) -> bool {
     matches!(
         args,
@@ -108,5 +135,20 @@ mod tests {
             configured_attr_rate(30940121, 10, &buffs),
             Some((AttrId::Attack, 1180))
         );
+    }
+
+    #[test]
+    fn cumulative_shield_mode_exposes_the_carrier_tier_rate() {
+        crate::test_support::init_config();
+        let mut buffs = BuffManager::default();
+        buffs.set_catalog(crate::catalog::BattleCatalog::new(
+            crate::test_support::game_data(),
+        ));
+
+        assert_eq!(
+            cumulative_attr_rate(116385674, &buffs),
+            Some((AttrId::Hp, 400))
+        );
+        assert_eq!(cumulative_attr_rate(31270002, &buffs), None);
     }
 }

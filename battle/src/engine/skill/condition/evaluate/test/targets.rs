@@ -111,6 +111,61 @@ fn received_hit_afflatus_conditions_only_match_the_hit_owner() {
 }
 
 #[test]
+fn received_hit_afflatus_conditions_use_the_resolved_result() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                career: Some(3),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                career: Some(8),
+                weak_careers: vec![1],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let matches = |condition: ParsedCondition, hit_career_restraint| {
+        conditions_match(
+            &[condition],
+            -1,
+            &[-1],
+            None,
+            &pool,
+            TargetContext {
+                hit_source_uid: 10,
+                hit_target_uid: -1,
+                hit_career_restraint: Some(hit_career_restraint),
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(exact_condition(33209, "HurtRestraint", &[]), true));
+    assert!(!matches(
+        exact_condition(47209, "HurtNotRestraint", &[]),
+        true
+    ));
+    assert!(!matches(
+        exact_condition(33209, "HurtRestraint", &[]),
+        false
+    ));
+    assert!(matches(
+        exact_condition(47209, "HurtNotRestraint", &[]),
+        false
+    ));
+}
+
+#[test]
 fn target_identity_reads_the_selected_skill_target() {
     init_config();
     let fight = Fight {

@@ -297,7 +297,7 @@ fn hp_batch_preserves_command_death_order() {
 }
 
 #[test]
-fn fixed_hurt_resolves_damage_before_hp_commit_but_not_hp_loss() {
+fn fixed_hurt_resolves_damage_bearing_commands_but_not_plain_hp_loss() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -376,6 +376,48 @@ fn fixed_hurt_resolves_damage_before_hp_commit_but_not_hp_loss() {
     assert_eq!(execution.changes.hp.as_ref().unwrap().delta, -1);
     assert_eq!(managers.hp.current(-3), 99);
 
+    let hurt_loss = RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
+        crate::engine::manager::hp::HpLoss {
+            origin,
+            source_uid: 10,
+            target_uid: -3,
+            amount: 50,
+            config_effect: 0,
+            hurt: Some(HurtInfoData {
+                from_uid: 10,
+                is_crit: false,
+                career_restraint: false,
+                reduce_hp: 0,
+                effect_id: 0,
+                skill_id: 0,
+                damage_from: HurtDamageFromType::Buff,
+                buff_act_id: 726,
+                buff_uid: 1,
+                hurt_effect_type: 0,
+                display_amount: Some(50),
+            }),
+        },
+    )));
+    let mut hurt_events = EventBus::default();
+    let RuleOutcome::Hp(execution) =
+        execute_rule_op(&mut managers, &mut hurt_events, hurt_loss).unwrap()
+    else {
+        panic!("expected HP outcome");
+    };
+    let change = execution.changes.hp.as_ref().unwrap();
+    assert_eq!(change.delta, -1);
+    assert_eq!(change.hurt.unwrap().reduce_hp, -1);
+    assert_eq!(change.hurt.unwrap().display_amount, Some(50));
+    assert_eq!(execution.changes.applied_damage(), 1);
+    assert_eq!(managers.hp.current(-3), 98);
+    assert_eq!(managers.hp.total_damage_dealt(10), 2);
+    assert_eq!(managers.hp.total_damage_taken(-3), 2);
+    assert!(matches!(
+        hurt_events.pop(),
+        Some(crate::engine::event::payload::BattleEvent::HpLost { amount: 1, .. })
+    ));
+    assert!(hurt_events.is_empty());
+
     execute_rule_op(
         &mut managers,
         &mut events,
@@ -391,7 +433,7 @@ fn fixed_hurt_resolves_damage_before_hp_commit_but_not_hp_loss() {
         ))),
     )
     .unwrap();
-    assert_eq!(managers.hp.current(-3), 89);
+    assert_eq!(managers.hp.current(-3), 88);
 
     let zero_damage = RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(HpDamage {
         origin,
@@ -431,6 +473,49 @@ fn fixed_hurt_resolves_damage_before_hp_commit_but_not_hp_loss() {
             if hit.target_uid == -4 && hit.amount == 0
     ));
     assert!(zero_events.is_empty());
+
+    let zero_hurt_loss = || {
+        HpCommand::Lose(crate::engine::manager::hp::HpLoss {
+            origin,
+            source_uid: 10,
+            target_uid: -4,
+            amount: 50,
+            config_effect: 0,
+            hurt: Some(HurtInfoData {
+                from_uid: 10,
+                is_crit: false,
+                career_restraint: false,
+                reduce_hp: 0,
+                effect_id: 0,
+                skill_id: 0,
+                damage_from: HurtDamageFromType::Buff,
+                buff_act_id: 726,
+                buff_uid: 1,
+                hurt_effect_type: 0,
+                display_amount: Some(50),
+            }),
+        })
+    };
+    assert!(matches!(
+        execute_rule_op(
+            &mut managers,
+            &mut zero_events,
+            RuleOp::Command(BattleCommand::Hp(zero_hurt_loss())),
+        ),
+        Ok(RuleOutcome::Hp(_))
+    ));
+    assert!(matches!(
+        execute_rule_op(
+            &mut managers,
+            &mut zero_events,
+            RuleOp::Command(BattleCommand::HpBatch(vec![
+                zero_hurt_loss(),
+                zero_hurt_loss(),
+            ])),
+        ),
+        Ok(RuleOutcome::HpBatch(_))
+    ));
+    assert_eq!(managers.hp.current(-4), 100);
 }
 
 #[test]

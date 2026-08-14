@@ -730,6 +730,7 @@ fn action_queue_snapshot_keeps_unplayed_team_cards() {
         .execute_command(CardCommand::CommitActionQueue {
             team: 1,
             emitter_uid: 0,
+            device_actions: 0,
         })
         .unwrap();
 
@@ -758,10 +759,59 @@ fn action_queue_snapshot_uses_the_selected_skill() {
         .execute_command(CardCommand::CommitActionQueue {
             team: 1,
             emitter_uid: 0,
+            device_actions: 0,
         })
         .unwrap();
 
     assert_eq!(committed.action_queue.unwrap().cards[0].skill_id, Some(900));
+}
+
+#[test]
+fn action_queue_snapshot_appends_neutral_device_actions() {
+    let played = CardInfo {
+        uid: Some(10),
+        skill_id: Some(100),
+        ..Default::default()
+    };
+    let mut manager = CardManager::new(vec![played.clone()]);
+    manager
+        .execute_command(CardCommand::Play(CardPlay {
+            origin: ORIGIN,
+            hand_index: 0,
+            target_uid: Some(-1),
+            chosen_skill_id: None,
+            choice: None,
+            recorded_skill: None,
+        }))
+        .unwrap();
+
+    let committed = manager
+        .execute_command(CardCommand::CommitActionQueue {
+            team: 1,
+            emitter_uid: 0,
+            device_actions: 1,
+        })
+        .unwrap();
+    let cards = committed.action_queue.unwrap().cards;
+
+    assert_eq!(cards[0], played);
+    assert_eq!(
+        cards[1],
+        CardInfo {
+            uid: Some(0),
+            skill_id: Some(0),
+            temp_card: Some(false),
+            card_type: Some(sonettobuf::card_info::CardType::Device as i32),
+            hero_id: Some(0),
+            status: Some(0),
+            target_uid: Some(0),
+            energy: Some(0),
+            area_red_or_blue: Some(0),
+            heat_id: Some(0),
+            ..Default::default()
+        }
+    );
+    assert!(manager.hand().is_empty());
 }
 
 #[test]

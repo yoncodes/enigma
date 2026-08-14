@@ -275,6 +275,16 @@ fn scoped_catalog_follows_configured_reinforced_skill_effects() {
 }
 
 #[test]
+fn scoped_catalog_follows_buff_replacement_passive_links() {
+    init_config();
+
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [116385669]);
+
+    assert!(catalog.reachable_buffs.contains(&116385670));
+    assert!(catalog.get(116385685).is_some());
+}
+
+#[test]
 fn scoped_catalog_follows_configured_hero_upgrade_outcomes() {
     init_config();
     let fight = Fight {

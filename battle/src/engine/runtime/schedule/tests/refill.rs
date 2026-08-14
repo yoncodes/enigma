@@ -168,6 +168,141 @@ fn round_refill_commits_draw_compose_moxie_and_deck_count_in_order() {
 }
 
 #[test]
+fn overflow_bank_replenishes_only_after_actions_in_buff_owned_wire_order() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3127),
+                current_hp: Some(100),
+                ex_point: Some(4),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31270400),
+                    from_uid: Some(10),
+                    act_common_params: Some("806#1".to_owned()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    run_round_start_refill(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        0,
+        1,
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(10), 4);
+    assert_eq!(
+        managers
+            .buff
+            .snapshot(10, 20)
+            .unwrap()
+            .act_common_params
+            .as_deref(),
+        Some("806#1")
+    );
+
+    run_round_refill(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        0,
+        1,
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(10), 4);
+    assert_eq!(
+        managers
+            .buff
+            .snapshot(10, 20)
+            .unwrap()
+            .act_common_params
+            .as_deref(),
+        Some("806#1")
+    );
+
+    let mut result = run_post_action_refill_settlement(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+    )
+    .unwrap();
+    append(&mut result, run_round_deal(1));
+
+    assert_eq!(managers.ex_point.get(10), 5);
+    assert_eq!(
+        managers
+            .buff
+            .snapshot(10, 20)
+            .unwrap()
+            .act_common_params
+            .as_deref(),
+        Some("806#0")
+    );
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let effects = steps
+        .iter()
+        .flat_map(|step| step.act_effect.iter())
+        .collect::<Vec<_>>();
+    let release_index = effects
+        .iter()
+        .position(|effect| {
+            effect
+                .fight_step
+                .as_ref()
+                .is_some_and(|step| step.act_id == Some(31270400))
+        })
+        .unwrap();
+    let release = effects[release_index].fight_step.as_ref().unwrap();
+    assert_eq!(
+        release
+            .act_effect
+            .iter()
+            .map(|effect| (effect.effect_type, effect.effect_num))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32),
+                Some(1)
+            ),
+            (
+                Some(sonettobuf::effect_type_enum::EffectType::Expointoverflowbank as i32),
+                Some(-1)
+            )
+        ]
+    );
+    let marker = &release.act_effect[1];
+    let snapshot = marker.buff.as_ref().expect("bank marker carries state");
+    assert_eq!(snapshot.buff_id, Some(31270400));
+    assert_eq!(snapshot.act_common_params.as_deref(), Some("806#0"));
+    let deal_index = effects
+        .iter()
+        .position(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Dealcard2 as i32)
+        })
+        .unwrap();
+    assert!(release_index < deal_index);
+}
+
+#[test]
 fn round_refill_recycles_an_exhausted_draw_pile_and_finishes_the_hand() {
     init_config();
     let fight = Fight {
