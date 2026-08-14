@@ -356,6 +356,7 @@ async fn dispatch_registered_command(
         CmdId::Act229ResetStageCmd => activity::on_reset_act229_stage,
         CmdId::GetAct231InfoCmd => activity::on_get_act231_info,
         CmdId::GetAct235InfoCmd => activity::on_get_act235_info,
+        CmdId::GetAct236InfoCmd => activity::on_get_act236_info,
         CmdId::Act240GetInfoCmd => activity::on_act240_get_info,
         CmdId::GetCommandPostInfoCmd => command_post::on_get_command_post_info,
         CmdId::CommandPostCharacterReadCmd => command_post::on_command_post_character_read,
@@ -593,9 +594,10 @@ mod tests {
     use config::configs;
     use prost::Message;
     use sonettobuf::{
-        CurrencyChangePush, GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
-        GetAct233BpInfoRequest, ItemChangePush, MaterialChangePush, TeachingGetBonusReply,
-        TeachingGetBonusRequest, TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush,
+        Act236Info, CurrencyChangePush, GetAct233BpBonusReply, GetAct233BpBonusRequest,
+        GetAct233BpInfoReply, GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest,
+        ItemChangePush, MaterialChangePush, TeachingGetBonusReply, TeachingGetBonusRequest,
+        TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush,
     };
     use sqlx::SqlitePool;
     use tokio::sync::mpsc;
@@ -684,6 +686,80 @@ mod tests {
         assert_eq!(reply.activity_id, Some(pass.activity_id));
         assert_eq!(reply.bp_id, Some(pass.bp_id));
         assert_eq!(reply.task_info.len(), expected_tasks);
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act236_info_command_reaches_handler_and_returns_persisted_state() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 514;
+        let activity_id = configs::get().latest_open_activity_id(236).unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act236-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_activity236_state
+             (user_id, activity_id, score, gain_reward_ids)
+             VALUES (?, ?, ?, '[3,7]')",
+        )
+        .bind(player_id)
+        .bind(activity_id)
+        .bind(240)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(2);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        GetAct236InfoRequest {
+            activity_id: Some(activity_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::GetAct236InfoCmd as i16,
+            up_tag: 8,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::GetAct236InfoCmd,
+            body,
+            result_code: 0,
+            up_tag: 8,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act236 information request did not reach its handler");
+        };
+        let reply = GetAct236InfoReply::decode(&*body).unwrap();
+        assert_eq!(
+            reply.info,
+            Some(Act236Info {
+                activity_id: Some(activity_id),
+                score: Some(240),
+                gain_reward_ids: vec![3, 7],
+            })
+        );
         assert!(packets.try_recv().is_err());
     }
 

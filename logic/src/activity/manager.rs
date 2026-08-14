@@ -839,6 +839,14 @@ impl ActivityManager {
         act229_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn act236_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<GetAct236InfoReply, AppError> {
+        act236_info(db, self.player_id, activity_id).await
+    }
+
     pub async fn act128_info(
         &self,
         db: &SqlitePool,

@@ -5,6 +5,7 @@ pub mod activity199;
 pub mod activity217;
 pub mod activity218;
 pub mod activity225;
+pub mod activity236;
 pub mod activity_state;
 pub mod antiques;
 pub mod battle;

@@ -23,7 +23,7 @@ use sonettobuf::{
     GetAct146InfosReply, GetAct172InfoReply, GetAct186InfoReply, GetAct186SpBonusInfoReply,
     GetAct189InfoReply, GetAct189OnceBonusReply, GetAct208InfoReply, GetAct209InfoReply,
     GetAct212InfoReply, GetAct216InfoReply, GetAct225InfoReply, GetAct228InfoReply,
-    GetAct229InfoReply, GetActivityInfosReply, GetActivityInfosWithParamReply,
+    GetAct229InfoReply, GetAct236InfoReply, GetActivityInfosReply, GetActivityInfosWithParamReply,
     MarkActivity104StoryReply, MarkEpisodeAfterStoryReply, MarkPopSummaryReply, StepInfo,
     UnlockPermanentReply,
 };
@@ -67,6 +67,7 @@ mod act221;
 mod act225;
 mod act228;
 mod act229;
+mod act236;
 mod dice_hero;
 
 use act101::{get101_bonus, get101_bonus_list, get101_infos, get101_sp_bonus};
@@ -108,4 +109,5 @@ use act229::{
     act229_battle_episode, act229_heroes_available, act229_info, finish_act229_battle,
     reset_act229_stage,
 };
+use act236::act236_info;
 use catalog::*;

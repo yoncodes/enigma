@@ -553,6 +553,22 @@ pub async fn on_get_act235_info(
         .await
 }
 
+pub async fn on_get_act236_info(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = sonettobuf::GetAct236InfoRequest::decode(&req.data[..])?;
+    let db = ctx.state.db;
+    let reply = ctx
+        .player()?
+        .activity
+        .act236_info(db, msg.activity_id)
+        .await?;
+
+    ctx.send_reply(CmdId::GetAct236InfoCmd, reply, 0, req.up_tag)
+        .await
+}
+
 pub async fn on_get_act172_info(
     ctx: &mut ConnectionContext,
     req: ClientPacket,
