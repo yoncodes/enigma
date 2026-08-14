@@ -38,6 +38,7 @@ pub mod survival;
 pub mod system;
 pub mod talent;
 pub mod tasks;
+pub mod teaching;
 pub mod tower;
 pub mod tower_compose;
 pub mod trade;
