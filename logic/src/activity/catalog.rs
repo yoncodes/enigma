@@ -259,7 +259,7 @@ mod tests {
 
         assert_eq!(
             version_activity_time_range(),
-            Some((1_782_968_400_000, 1_784_782_799_000))
+            Some((1_786_597_200_000, 1_790_225_999_000))
         );
     }
 
