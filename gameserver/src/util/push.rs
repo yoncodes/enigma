@@ -115,6 +115,14 @@ pub async fn send_material_change_push(
     rewards: Vec<(u32, u32, i32)>,
     get_approach: Option<MaterialGetApproach>,
 ) -> Result<(), AppError> {
+    send_material_change_push_raw(ctx, rewards, get_approach.map(MaterialGetApproach::id)).await
+}
+
+pub async fn send_material_change_push_raw(
+    ctx: &mut ConnectionContext,
+    rewards: Vec<(u32, u32, i32)>,
+    get_approach: Option<u32>,
+) -> Result<(), AppError> {
     if rewards.is_empty() {
         return Ok(());
     }
@@ -132,7 +140,7 @@ pub async fn send_material_change_push(
         CmdId::MaterialChangePushCmd,
         MaterialChangePush {
             data_list,
-            get_approach: get_approach.map(MaterialGetApproach::id),
+            get_approach,
         },
     )
     .await
