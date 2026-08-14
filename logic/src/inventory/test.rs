@@ -1,7 +1,8 @@
+use super::power::is_item_expired;
 use super::{
     auto_use_expired_power_items, buy_power, currency_list, exchange_diamond,
-    exchange_same_currency, item_rewards, pop_exchange_same_currency, use_insight_item, use_items,
-    use_power_item,
+    exchange_same_currency, item_list, item_rewards, pop_exchange_same_currency, use_insight_item,
+    use_items, use_power_item,
 };
 use common::time::ServerTime;
 use database::models::game::heros::{InsightUpgrade, UserHeroModel};
@@ -47,6 +48,72 @@ fn raw_hero_selector_uses_target_id_as_hero() {
 
     assert_eq!(rewards.heroes, vec![(3020, 1)]);
     assert!(rewards.items.is_empty());
+}
+
+#[test]
+fn item_expiry_uses_server_local_time_and_preserves_unknown_values() {
+    let expiry = 1_786_615_199_000;
+
+    assert!(!is_item_expired("2026-08-13 04:59:59", expiry - 1));
+    assert!(is_item_expired("2026-08-13 04:59:59", expiry));
+    assert!(is_item_expired("2024-12-12 5:00:00", i64::MAX));
+    assert!(is_item_expired("2024-2-22 05:00:00", i64::MAX));
+    assert!(!is_item_expired("", i64::MAX));
+    assert!(!is_item_expired("not a datetime", i64::MAX));
+}
+
+#[tokio::test]
+async fn item_list_omits_expired_and_zero_quantity_ordinary_rows_without_purging() {
+    init_config();
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (29, 'item-list-expiry', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO items (user_id, item_id, quantity)
+         VALUES
+             (29, 823851, 1),
+             (29, 140141, 1),
+             (29, 622209, 1),
+             (29, 622210, 1),
+             (29, 481020, 0),
+             (29, 481022, 1)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let reply = item_list(&pool, 29).await.unwrap();
+
+    assert_eq!(
+        reply
+            .items
+            .iter()
+            .map(|item| item.item_id)
+            .collect::<Vec<_>>(),
+        vec![Some(481022)]
+    );
+    let rows: Vec<(i64, i32)> =
+        sqlx::query_as("SELECT item_id, quantity FROM items WHERE user_id = 29 ORDER BY item_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            (140141, 1),
+            (481020, 0),
+            (481022, 1),
+            (622209, 1),
+            (622210, 1),
+            (823851, 1),
+        ]
+    );
 }
 
 #[tokio::test]
