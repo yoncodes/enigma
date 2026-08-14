@@ -23,6 +23,7 @@ mod act218;
 mod act221;
 mod act228;
 mod act229;
+mod act236;
 mod catalog;
 mod info;
 
@@ -51,6 +52,7 @@ pub use act218::*;
 pub use act221::*;
 pub use act228::*;
 pub use act229::*;
+pub use act236::*;
 pub use catalog::*;
 pub use info::*;
 

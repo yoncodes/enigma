@@ -35,6 +35,7 @@ pub enum MaterialGetApproach {
     Birthday = 153,
     PartyClothSummon = 158,
     CommandStationPaperReward = 169,
+    Act236Reward = 171,
     ActBp = 173,
 }
 
@@ -56,5 +57,10 @@ mod tests {
     #[test]
     fn act128_milestone_uses_its_captured_approach() {
         assert_eq!(MaterialGetApproach::Act128MilestoneBonus.id(), 152);
+    }
+
+    #[test]
+    fn act236_reward_uses_its_captured_approach() {
+        assert_eq!(MaterialGetApproach::Act236Reward.id(), 171);
     }
 }

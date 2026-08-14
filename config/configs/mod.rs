@@ -161,6 +161,7 @@ pub mod activity229_task;
 pub mod activity233_bp;
 pub mod activity233_lv_bonus;
 pub mod activity233_task;
+pub mod activity236;
 pub mod activity240;
 pub mod activity240_backdate;
 pub mod activity240_task;
@@ -567,6 +568,7 @@ pub struct GameDB {
     pub activity233_bp: activity233_bp::Activity233BpTable,
     pub activity233_lv_bonus: activity233_lv_bonus::Activity233LvBonusTable,
     pub activity233_task: activity233_task::Activity233TaskTable,
+    pub activity236: activity236::Activity236Table,
     pub activity240: activity240::Activity240Table,
     pub activity240_backdate: activity240_backdate::Activity240BackdateTable,
     pub activity240_task: activity240_task::Activity240TaskTable,
@@ -1295,6 +1297,9 @@ impl GameDB {
         let activity233_task = activity233_task::Activity233TaskTable::load(
             &format!("{}/activity233_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity233_task.json: {}", e))?;
+        let activity236 = activity236::Activity236Table::load(
+            &format!("{}/activity236.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity236.json: {}", e))?;
         let activity240 = activity240::Activity240Table::load(
             &format!("{}/activity240.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity240.json: {}", e))?;
@@ -2181,6 +2186,7 @@ impl GameDB {
             activity233_bp,
             activity233_lv_bonus,
             activity233_task,
+            activity236,
             activity240,
             activity240_backdate,
             activity240_task,

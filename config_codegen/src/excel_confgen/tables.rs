@@ -118,6 +118,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "activity233_bp",
     "activity233_lv_bonus",
     "activity233_task",
+    "activity236",
     "task_daily",
     "task_weekly",
     "task_activity_bonus",

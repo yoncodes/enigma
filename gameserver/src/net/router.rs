@@ -358,6 +358,7 @@ async fn dispatch_registered_command(
         CmdId::GetAct231InfoCmd => activity::on_get_act231_info,
         CmdId::GetAct235InfoCmd => activity::on_get_act235_info,
         CmdId::GetAct236InfoCmd => activity::on_get_act236_info,
+        CmdId::Act236GetAutoGainRewardCmd => activity::on_act236_get_auto_gain_reward,
         CmdId::Act240GetInfoCmd => activity::on_act240_get_info,
         CmdId::GetCommandPostInfoCmd => command_post::on_get_command_post_info,
         CmdId::CommandPostCharacterReadCmd => command_post::on_command_post_character_read,
@@ -596,12 +597,12 @@ mod tests {
     use config::configs;
     use prost::Message;
     use sonettobuf::{
-        Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act236Info,
-        CurrencyChangePush, GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
-        GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest, ItemChangePush,
-        MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush,
-        TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
-        TeachingGetInfoRequest, UpdateRedDotPush,
+        Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act236GetAutoGainRewardReply,
+        Act236GetAutoGainRewardRequest, Act236Info, CurrencyChangePush, GetAct233BpBonusReply,
+        GetAct233BpBonusRequest, GetAct233BpInfoReply, GetAct233BpInfoRequest, GetAct236InfoReply,
+        GetAct236InfoRequest, ItemChangePush, MarkPopShallowSettleReply,
+        MarkPopShallowSettleRequest, MaterialChangePush, TeachingGetBonusReply,
+        TeachingGetBonusRequest, TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush,
     };
     use sqlx::SqlitePool;
     use tokio::sync::mpsc;
@@ -839,6 +840,105 @@ mod tests {
                 gain_reward_ids: vec![3, 7],
             })
         );
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act236_reward_command_emits_captured_semantic_sequence() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 528;
+        let activity_id = configs::get().latest_open_activity_id(236).unwrap();
+        let reward_id = configs::get()
+            .activity236
+            .iter()
+            .find(|row| row.activity_id == activity_id && row.cost == 0)
+            .unwrap()
+            .id;
+        let red_dot_id = configs::get().activity.get(activity_id).unwrap().red_dot_id;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act236-reward-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(8);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        Act236GetAutoGainRewardRequest {
+            activity_id: Some(activity_id),
+            reward_ids: vec![reward_id],
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Act236GetAutoGainRewardCmd as i16,
+            up_tag: 28,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act236 reward did not emit its currency snapshot first");
+        };
+        assert_eq!(cmd_id, CmdId::CurrencyChangePushCmd);
+        let currency = CurrencyChangePush::decode(&*body).unwrap();
+        assert_eq!(currency.change_currency.len(), 1);
+        assert_eq!(currency.change_currency[0].currency_id, Some(2));
+        assert_eq!(currency.change_currency[0].quantity, Some(100));
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act236 reward did not emit its material delta");
+        };
+        assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+        let material = MaterialChangePush::decode(&*body).unwrap();
+        assert_eq!(material.get_approach, Some(171));
+        assert_eq!(material.data_list.len(), 1);
+        assert_eq!(material.data_list[0].materil_type, Some(2));
+        assert_eq!(material.data_list[0].materil_id, Some(2));
+        assert_eq!(material.data_list[0].quantity, Some(100));
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act236 reward did not emit its activity red dot");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let red_dot = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(red_dot.red_dot_infos.len(), 1);
+        assert_eq!(red_dot.red_dot_infos[0].define_id, red_dot_id);
+        assert_eq!(red_dot.red_dot_infos[0].replace_all, Some(true));
+        assert_eq!(red_dot.red_dot_infos[0].infos[0].id, 0);
+        assert_eq!(red_dot.red_dot_infos[0].infos[0].value, 0);
+
+        let CommandPacket::Reply {
+            cmd_id,
+            body,
+            result_code,
+            up_tag,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act236 reward did not emit its reply last");
+        };
+        assert_eq!(cmd_id, CmdId::Act236GetAutoGainRewardCmd);
+        assert_eq!(result_code, 0);
+        assert_eq!(up_tag, 28);
+        let reply = Act236GetAutoGainRewardReply::decode(&*body).unwrap();
+        assert_eq!(reply.activity_id, Some(activity_id));
+        assert_eq!(reply.gain_reward_ids, vec![reward_id]);
         assert!(packets.try_recv().is_err());
     }
 

@@ -169,6 +169,23 @@ impl GameDB {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn act236_reward_rows_load_for_the_configured_activity() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = crate::init(&data_dir);
+        let tables = crate::configs::get();
+        let activity_id = tables.latest_open_activity_id(236).unwrap();
+        let rows = tables
+            .activity236
+            .iter()
+            .filter(|row| row.activity_id == activity_id)
+            .collect::<Vec<_>>();
+
+        assert_eq!(rows.len(), 9);
+        assert_eq!((rows[0].cost, rows[0].reward.as_str()), (0, "2#2#100"));
+        assert!(rows.windows(2).all(|rows| rows[0].id < rows[1].id));
+    }
+
+    #[test]
     fn act128_rank_config_maps_currency_thresholds_and_captured_rewards() {
         let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
         let _ = crate::init(&data_dir);

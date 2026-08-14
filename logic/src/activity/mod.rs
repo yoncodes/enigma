@@ -109,5 +109,5 @@ use act229::{
     act229_battle_episode, act229_heroes_available, act229_info, finish_act229_battle,
     reset_act229_stage,
 };
-use act236::act236_info;
+use act236::{act236_get_auto_gain_reward, act236_info};
 use catalog::*;
