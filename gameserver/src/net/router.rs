@@ -427,6 +427,7 @@ async fn dispatch_registered_command(
         CmdId::TowerComposeGetInfoCmd => tower_compose::on_tower_compose_get_info,
         CmdId::TowerComposeSetModsCmd => tower_compose::on_tower_compose_set_mods,
         CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
+        CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
         CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,
         CmdId::GetBlockPackageInfoRequsetCmd => room::on_get_block_package_info,
         CmdId::HideBlockPackageReddotCmd => room::on_hide_block_package_reddot,
@@ -598,7 +599,8 @@ mod tests {
         Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act236Info,
         CurrencyChangePush, GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
         GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest, ItemChangePush,
-        MaterialChangePush, TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
+        MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush,
+        TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
         TeachingGetInfoRequest, UpdateRedDotPush,
     };
     use sqlx::SqlitePool;
@@ -624,6 +626,81 @@ mod tests {
             .await
             .unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn shallow_settlement_ack_reaches_handler_and_only_clears_its_flag() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 526;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'weekwalk-shallow-ack', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_weekwalk_info
+             (user_id, issue_id, is_pop_deep_rule, is_pop_shallow_settle, is_pop_deep_settle)
+             VALUES (?, 59, TRUE, TRUE, TRUE)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(2);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        for (sequence, up_tag) in [(1, 41), (2, 42)] {
+            let mut data = Vec::new();
+            MarkPopShallowSettleRequest {}.encode(&mut data).unwrap();
+            let request = ClientPacket {
+                sequence,
+                cmd_id: CmdId::MarkPopShallowSettleCmd as i16,
+                up_tag,
+                data,
+            }
+            .encode();
+
+            dispatch_command(&mut ctx, request).await.unwrap();
+
+            let CommandPacket::Reply {
+                cmd_id: CmdId::MarkPopShallowSettleCmd,
+                body,
+                up_tag: reply_up_tag,
+                ..
+            } = packets.try_recv().unwrap()
+            else {
+                panic!("shallow-settlement acknowledgement did not reach its handler");
+            };
+            assert_eq!(reply_up_tag, up_tag);
+            MarkPopShallowSettleReply::decode(&*body).unwrap();
+            assert!(packets.try_recv().is_err());
+        }
+
+        let info = ctx
+            .player()
+            .unwrap()
+            .exploration
+            .weekwalk_info(ctx.state.db)
+            .await
+            .unwrap()
+            .info
+            .unwrap();
+        assert_eq!(info.issue_id, Some(59));
+        assert_eq!(info.is_pop_shallow_settle, Some(false));
+        assert_eq!(info.is_pop_deep_rule, Some(true));
+        assert_eq!(info.is_pop_deep_settle, Some(true));
     }
 
     #[tokio::test]

@@ -68,6 +68,18 @@ pub async fn get_weekwalk_info(
     Ok((info, map_infos))
 }
 
+pub async fn mark_pop_shallow_settle(pool: &SqlitePool, user_id: i64) -> Result<()> {
+    sqlx::query(
+        "UPDATE user_weekwalk_info
+         SET is_pop_shallow_settle = FALSE
+         WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn get_map_battles(
     pool: &SqlitePool,
     user_id: i64,
@@ -185,4 +197,74 @@ async fn get_map_stories(pool: &SqlitePool, user_id: i64, map_id: i32) -> Result
     .await?;
 
     Ok(story_ids)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn shallow_settlement_ack_is_idempotent_and_player_scoped() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::run_migrations(&pool).await.unwrap();
+
+        for (user_id, username) in [(1, "marked"), (2, "other"), (3, "missing")] {
+            sqlx::query(
+                "INSERT INTO users (id, username, created_at, updated_at)
+                 VALUES (?, ?, 0, 0)",
+            )
+            .bind(user_id)
+            .bind(username)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        for user_id in [1, 2] {
+            sqlx::query(
+                "INSERT INTO user_weekwalk_info (user_id, is_pop_shallow_settle)
+                 VALUES (?, TRUE)",
+            )
+            .bind(user_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        mark_pop_shallow_settle(&pool, 1).await.unwrap();
+        mark_pop_shallow_settle(&pool, 1).await.unwrap();
+        mark_pop_shallow_settle(&pool, 3).await.unwrap();
+
+        assert!(
+            !get_weekwalk_info(&pool, 1)
+                .await
+                .unwrap()
+                .0
+                .is_pop_shallow_settle
+        );
+        assert!(
+            get_weekwalk_info(&pool, 2)
+                .await
+                .unwrap()
+                .0
+                .is_pop_shallow_settle
+        );
+        assert!(
+            !get_weekwalk_info(&pool, 3)
+                .await
+                .unwrap()
+                .0
+                .is_pop_shallow_settle
+        );
+        let missing_rows: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM user_weekwalk_info WHERE user_id = 3")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(missing_rows, 0);
+    }
 }
