@@ -57,8 +57,9 @@ impl StoreManager {
         goods_id: i32,
         currency: Option<String>,
         selections: &[SelectionInfo],
+        now: i64,
     ) -> Result<NewOrderResult, AppError> {
-        charge::new_order(db, self.player_id, goods_id, currency, selections).await
+        charge::new_order(db, self.player_id, goods_id, currency, selections, now).await
     }
 }
 

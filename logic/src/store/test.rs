@@ -192,3 +192,64 @@ fn store_cost_tiers_follow_existing_buy_count() {
     let later = purchase_cost("2#10#10|2#10#20", 2, 2);
     assert_eq!(later.currencies, vec![(10, 20), (10, 20)]);
 }
+
+#[tokio::test]
+async fn completed_charges_follow_captured_act236_score_progression() {
+    const ACTIVE_TIME_MS: i64 = 1_786_615_201_000;
+
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (236, 'act236-charge', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO user_stats (user_id) VALUES (236)")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let activity_id = config::configs::get().latest_open_activity_id(236).unwrap();
+    sqlx::query(
+        "INSERT INTO user_activity236_state
+         (user_id, activity_id, score, gain_reward_ids)
+         VALUES (236, ?, 0, '[1]')",
+    )
+    .bind(activity_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let store = StoreManager::new(236);
+    for (goods_id, expected_score) in [
+        (837029, 4880),
+        (837022, 8160),
+        (811327, 8220),
+        (837022, 11500),
+        (837008, 13480),
+        (811390, 19460),
+    ] {
+        let update = store
+            .new_order(&pool, goods_id, None, &[], ACTIVE_TIME_MS)
+            .await
+            .unwrap()
+            .act236
+            .unwrap();
+        assert_eq!(update.info.score, Some(expected_score));
+        assert_eq!(update.info.gain_reward_ids, vec![1]);
+    }
+
+    assert_eq!(
+        database::db::game::activity236::get_state(&pool, 236, activity_id)
+            .await
+            .unwrap(),
+        database::db::game::activity236::Activity236State {
+            score: 19460,
+            gain_reward_ids: vec![1],
+        }
+    );
+}

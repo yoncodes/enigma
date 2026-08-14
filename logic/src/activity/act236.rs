@@ -13,6 +13,70 @@ pub struct Act236RewardClaim {
     pub red_dot_value: i32,
 }
 
+pub struct Act236ChargeUpdate {
+    pub info: Act236Info,
+    pub red_dot_id: i32,
+    pub claimable_reward_ids: Vec<i32>,
+}
+
+pub(crate) fn active_act236_activity_id_at(now_ms: i64) -> Option<i32> {
+    let now_ms = u64::try_from(now_ms).ok()?;
+    let tables = config::configs::get();
+
+    tables
+        .activity236_control
+        .iter()
+        .filter_map(|control| {
+            let activity = tables.activity.get(control.id)?;
+            let schedule = super::schedule::get(control.id)?;
+            (activity.type_id == ACTIVITY_TYPE_ID
+                && (activity.open_id == 0
+                    || tables
+                        .open
+                        .get(activity.open_id)
+                        .is_some_and(|open| open.is_online != 0))
+                && (schedule.start_time..=schedule.end_time).contains(&now_ms))
+            .then_some(control.id)
+        })
+        .max()
+}
+
+pub(crate) fn act236_charge_update(
+    activity_id: i32,
+    state: activity236::Activity236State,
+) -> Result<Act236ChargeUpdate, AppError> {
+    let tables = config::configs::get();
+    let activity = tables
+        .activity
+        .get(activity_id)
+        .filter(|activity| activity.type_id == ACTIVITY_TYPE_ID)
+        .ok_or(AppError::InvalidRequest)?;
+    if activity.red_dot_id <= 0 {
+        return Err(AppError::InvalidRequest);
+    }
+
+    let claimable_reward_ids = tables
+        .activity236
+        .iter()
+        .filter(|row| {
+            row.activity_id == activity_id
+                && row.cost <= state.score
+                && !state.gain_reward_ids.contains(&row.id)
+        })
+        .map(|row| row.id)
+        .collect();
+
+    Ok(Act236ChargeUpdate {
+        info: Act236Info {
+            activity_id: Some(activity_id),
+            score: Some(state.score),
+            gain_reward_ids: state.gain_reward_ids,
+        },
+        red_dot_id: activity.red_dot_id,
+        claimable_reward_ids,
+    })
+}
+
 pub async fn act236_info(
     db: &SqlitePool,
     player_id: i64,
@@ -148,6 +212,33 @@ mod tests {
         .await
         .unwrap();
         pool
+    }
+
+    #[test]
+    fn charge_accrual_uses_the_server_schedule_boundaries() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let activity_id = config::configs::get()
+            .latest_open_activity_id(ACTIVITY_TYPE_ID)
+            .unwrap();
+        let schedule = super::super::schedule::get(activity_id).unwrap();
+
+        assert_eq!(
+            active_act236_activity_id_at((schedule.start_time - 1) as i64),
+            None
+        );
+        assert_eq!(
+            active_act236_activity_id_at(schedule.start_time as i64),
+            Some(activity_id)
+        );
+        assert_eq!(
+            active_act236_activity_id_at(schedule.end_time as i64),
+            Some(activity_id)
+        );
+        assert_eq!(
+            active_act236_activity_id_at((schedule.end_time + 1) as i64),
+            None
+        );
     }
 
     #[tokio::test]

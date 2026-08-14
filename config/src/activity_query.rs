@@ -27,6 +27,23 @@ impl GameDB {
             .max()
     }
 
+    pub fn activity236_charge_score(&self, activity_id: i32, goods_id: i32) -> Option<i32> {
+        let control = self.activity236_control.get(activity_id)?;
+        let goods = self.store_charge_goods.get(goods_id)?;
+        let (currency, conversion_rate) = control.conversion_rate.split_once('#')?;
+        if currency != "CNY" {
+            return None;
+        }
+        let conversion_rate = conversion_rate.parse::<f64>().ok()?;
+        let score = f64::from(goods.pricezh) * conversion_rate / 1000.0;
+
+        score
+            .is_finite()
+            .then_some(score)
+            .filter(|score| (0.0..=i32::MAX as f64).contains(score))
+            .map(|score| score as i32)
+    }
+
     pub fn latest_activity104_id(&self) -> Option<i32> {
         self.activity104_episode
             .iter()
@@ -183,6 +200,35 @@ mod tests {
         assert_eq!(rows.len(), 9);
         assert_eq!((rows[0].cost, rows[0].reward.as_str()), (0, "2#2#100"));
         assert!(rows.windows(2).all(|rows| rows[0].id < rows[1].id));
+    }
+
+    #[test]
+    fn act236_charge_score_uses_configured_price_and_conversion_rate() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = crate::init(&data_dir);
+        let tables = crate::configs::get();
+        let activity_id = tables.latest_open_activity_id(236).unwrap();
+
+        assert_eq!(
+            tables
+                .activity236_control
+                .get(activity_id)
+                .unwrap()
+                .conversion_rate,
+            "CNY#10000"
+        );
+        for (goods_id, score) in [
+            (837029, 4880),
+            (837022, 3280),
+            (811327, 60),
+            (837008, 1980),
+            (811390, 5980),
+        ] {
+            assert_eq!(
+                tables.activity236_charge_score(activity_id, goods_id),
+                Some(score)
+            );
+        }
     }
 
     #[test]
