@@ -875,6 +875,23 @@ impl ActivityManager {
         act236_get_auto_gain_reward(db, self.player_id, activity_id, reward_ids).await
     }
 
+    pub async fn act239_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<GetAct239InfoReply, AppError> {
+        act239_info(db, self.player_id, activity_id).await
+    }
+
+    pub async fn act239_bonus(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        id: Option<i32>,
+    ) -> Result<act239::Act239Claim, AppError> {
+        act239_bonus(db, self.player_id, activity_id, id).await
+    }
+
     pub async fn act128_info(
         &self,
         db: &SqlitePool,
