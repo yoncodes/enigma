@@ -531,15 +531,7 @@ pub fn run_start(
     card_setup: CardSetup,
     hand_size: usize,
 ) -> Result<(DrainResult, Vec<sonettobuf::CardInfo>), DrainError> {
-    let opening_ultimate_owner_uids = pool
-        .attacker_main
-        .iter()
-        .filter(|entity| managers.hp.current(entity.uid) > 0)
-        .filter(|entity| {
-            crate::engine::mechanic::card::CardMechanic.ultimate_ready(managers, entity)
-        })
-        .map(|entity| entity.uid)
-        .collect::<Vec<_>>();
+    let mut opening_ultimate_cards: Option<Vec<sonettobuf::CardInfo>> = None;
     let mut result = DrainResult::default();
     let conduit_initializations = managers
         .conduit
@@ -563,6 +555,7 @@ pub fn run_start(
     let mut card_setup = Some(card_setup);
     let mut dealt_cards = None;
     let mut opening_deck_counts = None;
+    let mut opening_hand_limit = None;
     let mut opening_draws = Vec::new();
     let owner_uids = pool
         .attacker_main
@@ -646,25 +639,46 @@ pub fn run_start(
                 .take()
                 .expect("start schedule has one CardSetup stage");
             let card_mechanic = crate::engine::mechanic::card::CardMechanic;
-            let free_deal_count = setup
-                .hand
-                .iter()
-                .filter(|card| card_mechanic.counts_toward_hand_limit(card, managers, pool))
-                .count();
-            let hand_size = card_mechanic.normal_hand_limit(hand_size, managers, pool);
+            let opening_ultimate_cards = opening_ultimate_cards
+                .take()
+                .expect("opening schedule includes BattleStart");
+            let (opening_team_cards, opening_normal_ultimates): (Vec<_>, Vec<_>) =
+                opening_ultimate_cards.into_iter().partition(|card| {
+                    card_mechanic.ultimate_ignores_limit(
+                        managers,
+                        card.uid.unwrap_or_default(),
+                        card.skill_id.unwrap_or_default(),
+                    )
+                });
+            let raw_hand_size = hand_size;
+            let hand_size = card_mechanic.normal_hand_limit(raw_hand_size, managers, pool);
+            opening_hand_limit = Some(hand_size);
+            setup.hand.retain(|card| {
+                pool.entity(card.uid.unwrap_or_default())
+                    .is_none_or(|entity| !card_mechanic.is_ultimate(managers, card, entity))
+            });
+            let seeded_normal_limit = hand_size.saturating_sub(opening_normal_ultimates.len());
             let mut normal_cards = 0;
             setup.hand.retain(|card| {
                 if !card_mechanic.counts_toward_hand_limit(card, managers, pool) {
                     return true;
                 }
                 normal_cards += 1;
-                if normal_cards <= hand_size {
+                if normal_cards <= seeded_normal_limit {
                     true
                 } else {
-                    opening_draws.push(card.clone());
+                    if normal_cards > raw_hand_size {
+                        opening_draws.push(card.clone());
+                    }
                     false
                 }
             });
+            setup.hand.splice(0..0, opening_normal_ultimates);
+            let free_deal_count = setup
+                .hand
+                .iter()
+                .filter(|card| card_mechanic.counts_toward_hand_limit(card, managers, pool))
+                .count();
             let initial_deck_num = setup.deck_num;
             let supplemental =
                 determinism.draw_cards(&setup.draw_pile, hand_size.saturating_sub(free_deal_count));
@@ -703,6 +717,29 @@ pub fn run_start(
                                     },
                                     cards: supplemental,
                                     deck_cost,
+                                },
+                            ),
+                        ))],
+                    )?,
+                );
+            }
+            if !opening_team_cards.is_empty() {
+                append(
+                    &mut result,
+                    drain::run(
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        [RuleOp::Command(BattleCommand::Card(
+                            CardCommand::SetTeamCards(
+                                crate::engine::manager::card::CardSetTeamCards {
+                                    origin: CommandOrigin {
+                                        domain: RuleDomain::Lifecycle,
+                                        key: DefinitionKey::new(0, "OpeningTeamCards"),
+                                    },
+                                    cards: opening_team_cards,
                                 },
                             ),
                         ))],
@@ -771,6 +808,23 @@ pub fn run_start(
             );
         } else {
             append(&mut result, stage_result);
+        }
+        if stage == SetupStage::BattleStart {
+            let card_mechanic = crate::engine::mechanic::card::CardMechanic;
+            let normal = card_mechanic.normal_ultimate_cards(pool, managers);
+            let special = card_mechanic.special_team_cards(pool, managers, &[]);
+            opening_ultimate_cards = Some(
+                pool.attacker_main
+                    .iter()
+                    .filter_map(|entity| {
+                        normal
+                            .iter()
+                            .chain(&special)
+                            .find(|card| card.uid == Some(entity.uid))
+                            .cloned()
+                    })
+                    .collect(),
+            );
         }
         if stage == SetupStage::EnterFight {
             append(
@@ -920,12 +974,12 @@ pub fn run_start(
         catalog,
         determinism,
         context,
-        crate::engine::mechanic::card::CardMechanic.normal_hand_limit(hand_size, managers, pool),
+        opening_hand_limit.expect("start schedule has one CardSetup stage"),
         super::OpeningRefillSeed {
             draws: opening_draws,
-            ultimate_owner_uids: &opening_ultimate_owner_uids,
         },
     )?;
+    determinism.clear_card_draws();
     let (initial_deck_num, setup_deck_num) =
         opening_deck_counts.expect("start schedule has one CardSetup stage");
     let mut setup_deck_counts = DrainResult::default();

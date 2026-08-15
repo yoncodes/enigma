@@ -83,6 +83,7 @@ fn rejected_opening_seed_does_not_retain_captured_draws() {
         vec![ai_card.clone(), ai_card],
         vec![player_card(101), player_card(102), player_card(101)],
         vec![player_card(102), player_card(102), player_card(102)],
+        0,
     );
     let mut replay = runtime(fight);
     let replay_round = replay.start_round_with_determinism(determinism).unwrap();
