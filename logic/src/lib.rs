@@ -19,6 +19,7 @@ pub mod fairyland;
 pub mod guide;
 pub mod hero;
 pub mod inventory;
+pub mod investigate;
 pub mod mail;
 pub mod odyssey;
 pub mod preferences;

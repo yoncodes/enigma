@@ -6,11 +6,12 @@ use logic::{
     activity::ActivityManager, bp::BattlePassManager, charge::ChargeManager,
     collection::CollectionManager, command_post::CommandPostManager, critter::CritterManager,
     exploration::ExplorationManager, fairyland::FairylandManager, guide::GuideManager,
-    hero::HeroManager, inventory::InventoryManager, mail::MailManager, odyssey::OdysseyManager,
-    preferences::PreferenceManager, profile::ProfileManager, red_dot::RedDotManager,
-    room::RoomManager, rouge::RougeManager, sign_in::SignInManager, social::SocialManager,
-    stat::StatManager, store::StoreManager, story::StoryManager, summon::SummonManager,
-    task::TaskManager, turnback::TurnbackManager, udimo::UdimoManager,
+    hero::HeroManager, inventory::InventoryManager, investigate::InvestigateManager,
+    mail::MailManager, odyssey::OdysseyManager, preferences::PreferenceManager,
+    profile::ProfileManager, red_dot::RedDotManager, room::RoomManager, rouge::RougeManager,
+    sign_in::SignInManager, social::SocialManager, stat::StatManager, store::StoreManager,
+    story::StoryManager, summon::SummonManager, task::TaskManager, turnback::TurnbackManager,
+    udimo::UdimoManager,
 };
 pub use state::PlayerState;
 
@@ -30,6 +31,7 @@ pub struct Player {
     pub guide: GuideManager,
     pub hero: HeroManager,
     pub inventory: InventoryManager,
+    pub investigate: InvestigateManager,
     pub mail: MailManager,
     pub odyssey: OdysseyManager,
     pub preferences: PreferenceManager,
@@ -65,6 +67,7 @@ impl Player {
             guide: GuideManager::new(id),
             hero: HeroManager::new(id),
             inventory: InventoryManager::new(id),
+            investigate: InvestigateManager::new(id),
             mail: MailManager::new(id),
             odyssey: OdysseyManager::new(id),
             preferences: PreferenceManager::new(id),

@@ -1,10 +1,10 @@
 use crate::error::{AppError, ClientErrorAction, CmdError};
 use crate::handlers::{
     activity, bgm, bp, charge, chat, collection, command_post, common, critter, dice_hero, dungeon,
-    equipment, exploration, fairyland, friends, guide, hero, hero_group, inventory, mail,
-    manufacture, misc, odyssey, party, player_card, player_info, player_misc, property, red_dot,
-    room, rouge, sign_in, stat, store, story, summon, survival, system, talent, tasks, teaching,
-    tower, tower_compose, trade, turnback, udimo, user,
+    equipment, exploration, fairyland, friends, guide, hero, hero_group, inventory, investigate,
+    mail, manufacture, misc, odyssey, party, player_card, player_info, player_misc, property,
+    red_dot, room, rouge, sign_in, stat, store, story, summon, survival, system, talent, tasks,
+    teaching, tower, tower_compose, trade, turnback, udimo, user,
 };
 use crate::net::context::ConnectionContext;
 use crate::net::packet::ClientPacket;
@@ -414,6 +414,8 @@ async fn dispatch_registered_command(
         CmdId::GetStoryCmd => story::on_get_story,
         CmdId::GetStoryFinishCmd => story::on_get_story_finish,
         CmdId::UpdateStoryCmd => story::on_update_story,
+        CmdId::GetInvestigateCmd => investigate::on_get_info,
+        CmdId::PutClueCmd => investigate::on_put_clue,
         CmdId::GetHeroStoryCmd => story::on_get_hero_story,
         CmdId::GetNecrologistStoryCmd => story::on_get_necrologist_story,
         CmdId::UpdateNecrologistStoryCmd => story::on_update_necrologist_story,
@@ -605,12 +607,13 @@ mod tests {
         FinishTaskReply, FinishTaskRequest, GetAct220InfoReply, GetAct220InfoRequest,
         GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
         GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest, GetAct239InfoReply,
-        GetAct239InfoRequest, GetRouge2OutsideInfoReply, GetRouge2OutsideInfoRequest,
-        ItemChangePush, MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush,
-        NewOrderRequest, Rouge2AlchemyInfo, Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo,
-        Rouge2CareerLevelInfo, Rouge2OutsideInfo, Rouge2RewardInfo, Rouge2TotalRecordInfo,
-        TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
-        TeachingGetInfoRequest, UpdateRedDotPush, UpdateTaskPush,
+        GetAct239InfoRequest, GetInvestigateReply, GetInvestigateRequest,
+        GetRouge2OutsideInfoReply, GetRouge2OutsideInfoRequest, ItemChangePush,
+        MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush,
+        NewOrderRequest, PutClueReply, PutClueRequest, Rouge2AlchemyInfo,
+        Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo, Rouge2CareerLevelInfo, Rouge2OutsideInfo,
+        Rouge2RewardInfo, Rouge2TotalRecordInfo, TeachingGetBonusReply, TeachingGetBonusRequest,
+        TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush, UpdateTaskPush,
     };
     use sqlx::SqlitePool;
     use tokio::sync::mpsc;
@@ -635,6 +638,108 @@ mod tests {
             .await
             .unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn investigate_commands_reach_handlers_and_persist_links() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 5615;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'investigate-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(3);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        GetInvestigateRequest {}.encode(&mut data).unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence: 1,
+                cmd_id: CmdId::GetInvestigateCmd as i16,
+                up_tag: 61,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::GetInvestigateCmd,
+            body,
+            up_tag: 61,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("investigation information request did not reach its handler");
+        };
+        let info = GetInvestigateReply::decode(&*body).unwrap().info.unwrap();
+        assert_eq!(info.clue_ids, vec![11, 41, 51, 61]);
+        assert_eq!(info.intel_box.len(), 6);
+
+        let mut data = Vec::new();
+        PutClueRequest {
+            id: Some(1),
+            clue_id: Some(11),
+        }
+        .encode(&mut data)
+        .unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence: 2,
+                cmd_id: CmdId::PutClueCmd as i16,
+                up_tag: 62,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::PutClueCmd,
+            body,
+            up_tag: 62,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("put-clue request did not reach its handler");
+        };
+        assert_eq!(
+            PutClueReply::decode(&*body).unwrap(),
+            PutClueReply {
+                id: Some(1),
+                clue_id: Some(11),
+            }
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM user_investigate_clues
+                 WHERE user_id = ? AND info_id = 1 AND clue_id = 11",
+            )
+            .bind(player_id)
+            .fetch_one(ctx.state.db)
+            .await
+            .unwrap(),
+            1
+        );
+        assert!(packets.try_recv().is_err());
     }
 
     #[tokio::test]

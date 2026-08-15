@@ -30,6 +30,7 @@ pub mod handbook;
 pub mod hero_group_snapshots;
 pub mod hero_groups;
 pub mod instruction_dungeon;
+pub mod investigate;
 
 pub mod items;
 pub mod mail;
