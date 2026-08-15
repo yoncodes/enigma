@@ -74,6 +74,27 @@ pub(super) fn latest_act101_activity_id() -> i32 {
     )
 }
 
+pub(super) fn active_act101_activity_ids_at(now_ms: u64) -> Vec<i32> {
+    let mut activity_ids = config::configs::get()
+        .activity101
+        .iter()
+        .map(|row| row.activity_id)
+        .filter(|activity_id| {
+            super::schedule::get(*activity_id).is_some_and(|schedule| {
+                schedule.start_time <= now_ms
+                    && now_ms <= schedule.end_time
+                    && config::configs::get()
+                        .activity
+                        .get(*activity_id)
+                        .is_none_or(|activity| is_open(activity.open_id))
+            })
+        })
+        .collect::<Vec<_>>();
+    activity_ids.sort_unstable();
+    activity_ids.dedup();
+    activity_ids
+}
+
 pub(super) fn latest_act160_activity_id() -> i32 {
     latest_config_activity_id(
         config::configs::get()
@@ -252,6 +273,20 @@ mod tests {
                 .count(),
             130
         );
+    }
+
+    #[test]
+    fn activity101_login_progress_uses_each_active_schedule_window() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+
+        let activity_id = 13714;
+        let schedule = crate::activity::schedule::get(activity_id).unwrap();
+        assert!(!active_act101_activity_ids_at(schedule.start_time - 1).contains(&activity_id));
+        assert!(active_act101_activity_ids_at(schedule.start_time).contains(&activity_id));
+        assert!(active_act101_activity_ids_at(schedule.end_time).contains(&activity_id));
+        assert!(!active_act101_activity_ids_at(schedule.end_time + 1).contains(&activity_id));
+        assert!(!active_act101_activity_ids_at(schedule.start_time).contains(&13726));
     }
 
     #[test]

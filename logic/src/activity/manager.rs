@@ -14,6 +14,25 @@ impl ActivityManager {
         }
     }
 
+    pub async fn sync_act101_login_progress(
+        &self,
+        db: &SqlitePool,
+        now_ms: i64,
+    ) -> Result<(), AppError> {
+        let Ok(schedule_time) = u64::try_from(now_ms) else {
+            return Ok(());
+        };
+        let activity_ids = active_act101_activity_ids_at(schedule_time);
+        activity101::record_login_progress(
+            db,
+            self.player_id,
+            &activity_ids,
+            common::time::ServerTime::server_day(now_ms),
+        )
+        .await?;
+        Ok(())
+    }
+
     pub async fn get101_infos(
         &mut self,
         db: &SqlitePool,
