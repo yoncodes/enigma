@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, TimeZone, Utc};
 
 pub struct ServerTime;
 
@@ -114,6 +114,14 @@ impl ServerTime {
         Self::config_date_start_ms(value).map(|time| time - 1_000)
     }
 
+    pub fn config_datetime_sec(value: &str) -> Option<i32> {
+        let local = NaiveDateTime::parse_from_str(value.trim(), "%Y-%m-%d %H:%M:%S")
+            .ok()?
+            .and_utc()
+            .timestamp();
+        i32::try_from(local - SERVER_UTC_OFFSET_MS / 1_000).ok()
+    }
+
     #[inline]
     pub fn now_sec_i32() -> i32 {
         (Self::now_ms() / 1000) as i32
@@ -162,6 +170,15 @@ mod tests {
             ServerTime::config_date_end_ms("2025-10-20"),
             Some(1_760_954_399_000)
         );
+    }
+
+    #[test]
+    fn config_datetimes_use_server_local_time() {
+        assert_eq!(
+            ServerTime::config_datetime_sec("2026-08-13 05:00:00"),
+            Some(1_786_615_200)
+        );
+        assert_eq!(ServerTime::config_datetime_sec(""), None);
     }
 
     #[test]

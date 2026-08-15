@@ -1,9 +1,9 @@
 use super::{
-    bonus_red_dots_for_state, has_task_red_dot, level_purchase_cost, parse_bp_reward,
-    select_reward, should_show_task_red_dot, task_score_from_tasks, task_tab_id,
+    bonus_red_dots_for_state, bp_time_range, has_task_red_dot, level_purchase_cost,
+    parse_bp_reward, select_reward, should_show_task_red_dot, task_score_from_tasks, task_tab_id,
 };
 use database::db::game::battle_pass::BattlePassState;
-use database::db::game::tasks::{self as task_db, TaskLoopType, TaskType};
+use database::db::game::tasks::{TaskLoopType, TaskType};
 use sonettobuf::Task;
 
 #[test]
@@ -53,7 +53,7 @@ fn weekly_score_cap_hides_non_permanent_task_red_dots() {
 fn bp_oper_act_tasks_transfer_bp_score() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
-    let bp_id = task_db::current_battle_pass_id().unwrap();
+    let bp_id = 26;
     let task = config::configs::get()
         .activity214_task
         .iter()
@@ -81,7 +81,7 @@ fn bp_oper_act_tasks_refresh_bp_task_red_dot() {
 fn bp_bonus_red_dots_follow_score_payment_and_claim_state() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
-    let bp = task_db::current_battle_pass().unwrap();
+    let bp = config::configs::get().battle_pass(26).unwrap();
     let first = config::configs::get()
         .bp_lv_bonus
         .iter()
@@ -122,5 +122,16 @@ fn bp_bonus_red_dots_follow_score_payment_and_claim_state() {
         i32::from(config::configs::get().bp_lv_bonus.iter().any(|bonus| {
             bonus.bp_id == bp.bp_id && bonus.level <= first.level && !bonus.pay_bonus.is_empty()
         }))
+    );
+}
+
+#[test]
+fn bp_time_range_ignores_blank_task_windows() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+
+    assert_eq!(
+        bp_time_range(26),
+        (Some(1_786_615_200), Some(1_790_157_599))
     );
 }

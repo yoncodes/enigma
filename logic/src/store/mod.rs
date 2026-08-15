@@ -11,7 +11,7 @@ use sqlx::SqlitePool;
 
 #[cfg(test)]
 use charge::{
-    battle_pass_pay_status, battle_pass_purchase_bonus, charge_goods_attachment,
+    battle_pass_pay_status_for, battle_pass_purchase_bonus_for, charge_goods_attachment,
     charge_goods_diamond_bonus,
 };
 #[cfg(test)]

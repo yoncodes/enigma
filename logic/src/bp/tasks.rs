@@ -8,8 +8,19 @@ pub(super) async fn task_red_dot_infos(
         return Ok(Vec::new());
     };
 
+    task_red_dot_infos_for(db, player_id, bp_id).await
+}
+
+pub(super) async fn task_red_dot_infos_for(
+    db: &SqlitePool,
+    player_id: i64,
+    bp_id: i32,
+) -> Result<Vec<RedDotInfo>, AppError> {
+    let state = battle_pass::get_or_create_state(db, player_id, bp_id).await?;
+    task_db::ensure_battle_pass_tasks(db, player_id, bp_id).await?;
+    task_db::ensure_bp_oper_act_tasks(db, player_id, bp_id).await?;
+
     let tasks = task_db::list_battle_pass(db, player_id, bp_id).await?;
-    let state = battle_pass::get_state(db, player_id, bp_id).await?;
     let week_score_full = is_week_score_full(bp_id, state.weekly_score);
     let mut counts = HashMap::<i64, i32>::new();
 
@@ -177,17 +188,16 @@ pub(super) fn parse_bp_reward(reward_value: &str, owned_skins: &[i32]) -> reward
 pub(super) fn bp_time_range(bp_id: i32) -> (Option<i32>, Option<i32>) {
     config::configs::get()
         .battle_pass_tasks(bp_id)
-        .map(|task| (parse_time(&task.start_time), parse_time(&task.end_time)))
+        .filter_map(|task| {
+            Some((
+                ServerTime::config_datetime_sec(&task.start_time)?,
+                ServerTime::config_datetime_sec(&task.end_time)?,
+            ))
+        })
         .fold((None, None), |(start, end), (task_start, task_end)| {
             (
                 Some(start.map_or(task_start, |value: i32| value.min(task_start))),
                 Some(end.map_or(task_end, |value: i32| value.max(task_end))),
             )
         })
-}
-
-fn parse_time(value: &str) -> i32 {
-    NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
-        .map(|time| Utc.from_utc_datetime(&time).timestamp() as i32)
-        .unwrap_or(0)
 }

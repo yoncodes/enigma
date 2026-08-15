@@ -1,5 +1,5 @@
 use crate::{error::AppError, reward};
-use chrono::{NaiveDateTime, TimeZone, Utc};
+use common::time::ServerTime;
 use database::db::game::{
     battle_pass,
     tasks::{self as task_db, TaskLoopType},
@@ -104,8 +104,24 @@ impl BattlePassManager {
         info::bonus_red_dots(db, self.player_id).await
     }
 
+    pub(crate) async fn bonus_red_dots_for(
+        &self,
+        db: &SqlitePool,
+        bp: &config::bp::Bp,
+    ) -> Result<BpBonusRedDots, AppError> {
+        info::bonus_red_dots_for(db, self.player_id, bp).await
+    }
+
     pub async fn task_red_dot_infos(&self, db: &SqlitePool) -> Result<Vec<RedDotInfo>, AppError> {
         tasks::task_red_dot_infos(db, self.player_id).await
+    }
+
+    pub(crate) async fn task_red_dot_infos_for(
+        &self,
+        db: &SqlitePool,
+        bp_id: i32,
+    ) -> Result<Vec<RedDotInfo>, AppError> {
+        tasks::task_red_dot_infos_for(db, self.player_id, bp_id).await
     }
 }
 
