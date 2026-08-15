@@ -3,15 +3,15 @@ pub mod state;
 
 pub use battle::BattleState;
 use logic::{
-    activity::ActivityManager, bp::BattlePassManager, charge::ChargeManager,
-    collection::CollectionManager, command_post::CommandPostManager, critter::CritterManager,
-    exploration::ExplorationManager, fairyland::FairylandManager, guide::GuideManager,
-    hero::HeroManager, hero_invitation::HeroInvitationManager, inventory::InventoryManager,
-    investigate::InvestigateManager, mail::MailManager, odyssey::OdysseyManager,
-    preferences::PreferenceManager, profile::ProfileManager, red_dot::RedDotManager,
-    room::RoomManager, rouge::RougeManager, sign_in::SignInManager, social::SocialManager,
-    stat::StatManager, store::StoreManager, story::StoryManager, summon::SummonManager,
-    task::TaskManager, turnback::TurnbackManager, udimo::UdimoManager,
+    activity::ActivityManager, arcade::ArcadeOutsideManager, bp::BattlePassManager,
+    charge::ChargeManager, collection::CollectionManager, command_post::CommandPostManager,
+    critter::CritterManager, exploration::ExplorationManager, fairyland::FairylandManager,
+    guide::GuideManager, hero::HeroManager, hero_invitation::HeroInvitationManager,
+    inventory::InventoryManager, investigate::InvestigateManager, mail::MailManager,
+    odyssey::OdysseyManager, preferences::PreferenceManager, profile::ProfileManager,
+    red_dot::RedDotManager, room::RoomManager, rouge::RougeManager, sign_in::SignInManager,
+    social::SocialManager, stat::StatManager, store::StoreManager, story::StoryManager,
+    summon::SummonManager, task::TaskManager, turnback::TurnbackManager, udimo::UdimoManager,
 };
 pub use state::PlayerState;
 
@@ -20,6 +20,7 @@ pub struct Player {
     pub id: i64,
     pub state: PlayerState,
     pub activity: ActivityManager,
+    pub arcade: ArcadeOutsideManager,
     pub battle: BattleState,
     pub battle_pass: BattlePassManager,
     pub charge: ChargeManager,
@@ -57,6 +58,7 @@ impl Player {
             id,
             state,
             activity: ActivityManager::new(id),
+            arcade: ArcadeOutsideManager::new(id),
             battle: BattleState::default(),
             battle_pass: BattlePassManager::new(id),
             charge: ChargeManager::new(id),

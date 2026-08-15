@@ -8,6 +8,7 @@ pub mod activity225;
 pub mod activity236;
 pub mod activity_state;
 pub mod antiques;
+pub mod arcade;
 pub mod battle;
 pub mod battle_pass;
 pub mod bgm;

@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod arcade;
 pub mod bgm;
 pub mod bp;
 pub mod charge;
