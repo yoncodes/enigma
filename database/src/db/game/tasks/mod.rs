@@ -408,26 +408,9 @@ async fn ensure_tasks_for_type_in_transaction(
             .await?;
         }
         TaskType::BpOperAct => {
-            let bp_id = current_battle_pass_id();
-            ensure_config_tasks(
-                pool,
-                user_id,
-                task_type.id(),
-                tables
-                    .activity214_task
-                    .iter()
-                    .filter(|task| Some(task.bp_id) == bp_id)
-                    .map(|task| ConfigTask {
-                        task_id: task.id,
-                        is_online: task.is_online != 0,
-                        activity_id: task.activity_id,
-                        min_type_id: TaskLoopType::from_id(task.loop_type)
-                            .map(TaskLoopType::id)
-                            .unwrap_or(task.loop_type),
-                        expiry_time: parse_time(&task.end_time),
-                    }),
-            )
-            .await?;
+            if let Some(bp_id) = current_battle_pass_id() {
+                ensure_bp_oper_act_tasks_in_transaction(pool, user_id, bp_id).await?;
+            }
         }
         TaskType::ActBp => {
             let weekly_expiry = ServerTime::next_weekly_refresh_sec(ServerTime::now_ms());
@@ -575,6 +558,42 @@ pub async fn ensure_battle_pass_tasks(
     let mut tx = pool.begin().await?;
     ensure_battle_pass_tasks_in_transaction(&mut tx, user_id, bp_id).await?;
     tx.commit().await
+}
+
+pub async fn ensure_bp_oper_act_tasks(
+    pool: &SqlitePool,
+    user_id: i64,
+    bp_id: i32,
+) -> sqlx::Result<()> {
+    let mut tx = pool.begin().await?;
+    ensure_bp_oper_act_tasks_in_transaction(&mut tx, user_id, bp_id).await?;
+    tx.commit().await
+}
+
+async fn ensure_bp_oper_act_tasks_in_transaction(
+    conn: &mut SqliteConnection,
+    user_id: i64,
+    bp_id: i32,
+) -> sqlx::Result<()> {
+    ensure_config_tasks(
+        conn,
+        user_id,
+        TaskType::BpOperAct.id(),
+        config::configs::get()
+            .activity214_task
+            .iter()
+            .filter(|task| task.bp_id == bp_id)
+            .map(|task| ConfigTask {
+                task_id: task.id,
+                is_online: task.is_online != 0,
+                activity_id: task.activity_id,
+                min_type_id: TaskLoopType::from_id(task.loop_type)
+                    .map(TaskLoopType::id)
+                    .unwrap_or(task.loop_type),
+                expiry_time: parse_time(&task.end_time),
+            }),
+    )
+    .await
 }
 
 async fn ensure_battle_pass_tasks_in_transaction(
@@ -1398,13 +1417,7 @@ fn max_finish_count(type_id: i32, task_id: i32) -> i32 {
 }
 
 fn parse_time(value: &str) -> i32 {
-    if value.trim().is_empty() {
-        return 0;
-    }
-
-    chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
-        .map(|time| time.and_utc().timestamp() as i32)
-        .unwrap_or(0)
+    ServerTime::config_datetime_sec(value).unwrap_or(0)
 }
 
 struct NewTask {
@@ -1516,15 +1529,28 @@ async fn ensure_config_tasks(
 }
 
 pub fn current_battle_pass_id() -> Option<i32> {
+    current_battle_pass_id_at(ServerTime::now_sec_i32())
+}
+
+fn current_battle_pass_id_at(now_sec: i32) -> Option<i32> {
     let tables = config::configs::get();
     pick_current_battle_pass_id(tables.bp.iter().map(|bp| {
         (
             bp.bp_id,
             bp.activity_id,
+            tables.battle_pass_bonuses(bp.bp_id).next().is_some(),
             tables
                 .battle_pass_tasks(bp.bp_id)
-                .any(|task| task.is_online != 0),
-            tables.battle_pass_bonuses(bp.bp_id).next().is_some(),
+                .filter(|task| task.is_online != 0)
+                .any(|task| {
+                    let Some(start) = ServerTime::config_datetime_sec(&task.start_time) else {
+                        return false;
+                    };
+                    let Some(end) = ServerTime::config_datetime_sec(&task.end_time) else {
+                        return false;
+                    };
+                    start <= now_sec && now_sec <= end
+                }),
         )
     }))
 }
@@ -1532,17 +1558,11 @@ pub fn current_battle_pass_id() -> Option<i32> {
 fn pick_current_battle_pass_id(
     candidates: impl IntoIterator<Item = (i32, i32, bool, bool)>,
 ) -> Option<i32> {
-    let valid = candidates
+    candidates
         .into_iter()
-        .filter(|(_, _, has_tasks, has_bonus)| *has_tasks && *has_bonus)
-        .collect::<Vec<_>>();
-
-    valid
-        .iter()
-        .filter(|(_, activity_id, _, _)| *activity_id > 0)
-        .max_by_key(|(bp_id, activity_id, _, _)| (*activity_id, *bp_id))
-        .or_else(|| valid.iter().max_by_key(|(bp_id, _, _, _)| *bp_id))
-        .map(|(bp_id, _, _, _)| *bp_id)
+        .filter(|(_, _, has_bonus, is_active)| *has_bonus && *is_active)
+        .max_by_key(|(bp_id, activity_id, _, _)| (*activity_id > 0, *activity_id, *bp_id))
+        .map(|(bp_id, _, _, _)| bp_id)
 }
 
 pub fn current_battle_pass() -> Option<&'static config::bp::Bp> {
@@ -1643,5 +1663,24 @@ mod tests {
         assert!(!weekly.has_finished);
         let permanent = reset.iter().find(|task| task.task_id == 790009).unwrap();
         assert_eq!(permanent.progress, 5);
+    }
+
+    #[test]
+    fn battle_pass_selection_follows_dated_online_task_windows() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+
+        let before_rollover = ServerTime::config_datetime_sec("2026-08-13 04:59:59").unwrap();
+        let at_rollover = ServerTime::config_datetime_sec("2026-08-13 05:00:00").unwrap();
+
+        assert_eq!(current_battle_pass_id_at(before_rollover), Some(28));
+        assert_eq!(current_battle_pass_id_at(at_rollover), Some(26));
+    }
+
+    #[test]
+    fn battle_pass_selection_excludes_blank_only_windows() {
+        let candidates = [(26, 13_736, true, true), (28, 138_512, true, false)];
+
+        assert_eq!(pick_current_battle_pass_id(candidates), Some(26));
     }
 }

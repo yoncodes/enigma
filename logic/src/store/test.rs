@@ -1,6 +1,7 @@
 use super::{
-    StoreManager, battle_pass_pay_status, battle_pass_purchase_bonus, charge_goods_attachment,
-    charge_goods_diamond_bonus, goods_store_id, is_time_active, parse_time_millis, purchase_cost,
+    StoreManager, battle_pass_pay_status_for, battle_pass_purchase_bonus_for,
+    charge_goods_attachment, charge_goods_diamond_bonus, goods_store_id, is_time_active,
+    parse_time_millis, purchase_cost,
 };
 use sqlx::SqlitePool;
 
@@ -112,35 +113,36 @@ async fn configured_container_store_is_returned_without_goods() {
 }
 
 #[test]
-fn maps_current_bp_charge_goods_to_pay_status() {
+fn maps_configured_bp_charge_goods_to_pay_status() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
-    let bp = database::db::game::tasks::current_battle_pass().unwrap();
+    let bp = config::configs::get().battle_pass(26).unwrap();
     let paid_score = bp.pay_status2_add_level * bp.exp_level_up;
 
     assert_eq!(
-        battle_pass_pay_status(bp.charge_id1),
+        battle_pass_pay_status_for(bp, bp.charge_id1),
         Some((bp.bp_id, 1, 0))
     );
     assert_eq!(
-        battle_pass_pay_status(bp.charge_id2),
+        battle_pass_pay_status_for(bp, bp.charge_id2),
         Some((bp.bp_id, 2, paid_score))
     );
     assert_eq!(
-        battle_pass_pay_status(bp.charge_id1to2),
+        battle_pass_pay_status_for(bp, bp.charge_id1to2),
         Some((bp.bp_id, 2, paid_score))
     );
-    assert_eq!(battle_pass_pay_status(-1), None);
+    assert_eq!(battle_pass_pay_status_for(bp, -1), None);
 }
 
 #[test]
-fn maps_current_bp_charge_goods_to_purchase_bonus() {
+fn maps_configured_bp_charge_goods_to_purchase_bonus() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
-    let rewards = battle_pass_purchase_bonus(0, 2);
+    let bp = config::configs::get().battle_pass(26).unwrap();
+    let rewards = battle_pass_purchase_bonus_for(bp, 0, 2);
 
     assert!(!rewards.material_changes().is_empty());
-    assert!(battle_pass_purchase_bonus(2, 2).is_empty());
+    assert!(battle_pass_purchase_bonus_for(bp, 2, 2).is_empty());
 }
 
 #[test]
