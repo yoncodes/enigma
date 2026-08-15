@@ -153,6 +153,7 @@ async fn apply_dynamic_red_dots(
             RedDotId::AchievementFinish,
             RedDotId::ActivityNoviceTab,
             RedDotId::ActivityJieXiKaPhoto,
+            RedDotId::Activity239Bonus,
             RedDotId::V3a7Anniversary3ActBpSubTask,
             RedDotId::V3a7Anniversary3ActBpBonus,
             RedDotId::BattlePassBonus,
@@ -215,6 +216,11 @@ async fn apply_dynamic_red_dots(
             }
             RedDotId::ActivityNoviceTab => apply_activity101_red_dot(reply, db, player_id).await?,
             RedDotId::ActivityJieXiKaPhoto => {}
+            RedDotId::Activity239Bonus => {
+                for group in act239_red_dot_groups(db, player_id).await? {
+                    replace_group(reply, group.define_id, group.infos);
+                }
+            }
             RedDotId::V3a7Anniversary3ActBpSubTask | RedDotId::V3a7Anniversary3ActBpBonus => {}
             RedDotId::BattlePassBonus | RedDotId::BattlePassSpBonus => {}
             RedDotId::BattlePassTask => apply_bp_task_red_dot(reply, db, player_id).await?,
@@ -433,6 +439,28 @@ async fn apply_activity101_red_dot(
     }
 
     Ok(())
+}
+
+async fn act239_red_dot_groups(
+    db: &SqlitePool,
+    player_id: i64,
+) -> Result<Vec<RedDotGroup>, AppError> {
+    Ok(crate::activity::act239_red_dot_entries(db, player_id)
+        .await?
+        .into_iter()
+        .map(|(define_id, info_ids)| RedDotGroup {
+            define_id,
+            infos: if info_ids.is_empty() {
+                vec![red_dot_info(0, 0)]
+            } else {
+                info_ids
+                    .into_iter()
+                    .map(|info_id| red_dot_info(i64::from(info_id), 1))
+                    .collect()
+            },
+            replace_all: Some(true),
+        })
+        .collect())
 }
 
 async fn apply_mail_red_dot(

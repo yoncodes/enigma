@@ -366,6 +366,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "activity206_reward",
     "activity206_reward_direction",
     "activity206_reward_group",
+    "activity239",
     "activity240",
     "activity240_backdate",
     "activity240_task",

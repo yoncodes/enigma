@@ -37,6 +37,7 @@ pub enum MaterialGetApproach {
     CommandStationPaperReward = 169,
     Act236Reward = 171,
     ActBp = 173,
+    Act239Bonus = 177,
 }
 
 impl MaterialGetApproach {
@@ -62,5 +63,10 @@ mod tests {
     #[test]
     fn act236_reward_uses_its_captured_approach() {
         assert_eq!(MaterialGetApproach::Act236Reward.id(), 171);
+    }
+
+    #[test]
+    fn act239_bonus_uses_its_captured_approach() {
+        assert_eq!(MaterialGetApproach::Act239Bonus.id(), 177);
     }
 }

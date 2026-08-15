@@ -359,6 +359,8 @@ async fn dispatch_registered_command(
         CmdId::GetAct235InfoCmd => activity::on_get_act235_info,
         CmdId::GetAct236InfoCmd => activity::on_get_act236_info,
         CmdId::Act236GetAutoGainRewardCmd => activity::on_act236_get_auto_gain_reward,
+        CmdId::GetAct239InfoCmd => activity::on_get_act239_info,
+        CmdId::Act239BonusCmd => activity::on_act239_bonus,
         CmdId::Act240GetInfoCmd => activity::on_act240_get_info,
         CmdId::GetCommandPostInfoCmd => command_post::on_get_command_post_info,
         CmdId::CommandPostCharacterReadCmd => command_post::on_command_post_character_read,
@@ -599,15 +601,15 @@ mod tests {
     use sonettobuf::{
         Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act220EpisodeRecord,
         Act236GetAutoGainRewardReply, Act236GetAutoGainRewardRequest, Act236Info,
-        Act236UpdateInfoPush, CurrencyChangePush, GetAct220InfoReply, GetAct220InfoRequest,
-        GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
-        GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest,
-        GetRouge2OutsideInfoReply, GetRouge2OutsideInfoRequest, ItemChangePush,
-        MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush,
-        NewOrderRequest, Rouge2AlchemyInfo, Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo,
-        Rouge2CareerLevelInfo, Rouge2OutsideInfo, Rouge2RewardInfo, Rouge2TotalRecordInfo,
-        TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
-        TeachingGetInfoRequest, UpdateRedDotPush,
+        Act236UpdateInfoPush, Act239BonusReply, Act239BonusRequest, CurrencyChangePush,
+        GetAct220InfoReply, GetAct220InfoRequest, GetAct233BpBonusReply, GetAct233BpBonusRequest,
+        GetAct233BpInfoReply, GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest,
+        GetAct239InfoReply, GetAct239InfoRequest, GetRouge2OutsideInfoReply,
+        GetRouge2OutsideInfoRequest, ItemChangePush, MarkPopShallowSettleReply,
+        MarkPopShallowSettleRequest, MaterialChangePush, NewOrderRequest, Rouge2AlchemyInfo,
+        Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo, Rouge2CareerLevelInfo, Rouge2OutsideInfo,
+        Rouge2RewardInfo, Rouge2TotalRecordInfo, TeachingGetBonusReply, TeachingGetBonusRequest,
+        TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush,
     };
     use sqlx::SqlitePool;
     use tokio::sync::mpsc;
@@ -845,6 +847,167 @@ mod tests {
                 gain_reward_ids: vec![3, 7],
             })
         );
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act239_commands_route_and_emit_the_captured_claim_sequence() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 541;
+        let row = configs::get()
+            .activity239
+            .iter()
+            .find(|row| row.id == 3)
+            .unwrap();
+        let activity_id = row.activity_id;
+        let reward_id = row.id;
+        let red_dot_id = configs::get().activity.get(activity_id).unwrap().red_dot_id;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act239-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        for entry_id in configs::get()
+            .activity239
+            .iter()
+            .filter(|row| row.activity_id == activity_id && row.id != reward_id)
+            .map(|row| row.id)
+        {
+            database::db::game::activity_state::set(
+                &pool,
+                player_id,
+                activity_id,
+                database::db::game::activity_state::ActivityStateSet {
+                    kind: database::db::game::activity_state::ActivityStateKind::Act239Bonus,
+                    entry_id,
+                    state: 2,
+                    progress: 0,
+                    ext: "",
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(8);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        GetAct239InfoRequest {
+            activity_id: Some(activity_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence: 1,
+                cmd_id: CmdId::GetAct239InfoCmd as i16,
+                up_tag: 31,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::GetAct239InfoCmd,
+            body,
+            result_code: 0,
+            up_tag: 31,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Activity 239 information request did not reach its handler");
+        };
+        let info = GetAct239InfoReply::decode(&*body).unwrap();
+        assert_eq!(info.activity_id, Some(activity_id));
+        assert!(
+            info.bonuss
+                .iter()
+                .any(|bonus| bonus.id == Some(reward_id) && bonus.status == Some(1))
+        );
+
+        let mut data = Vec::new();
+        Act239BonusRequest {
+            activity_id: Some(activity_id),
+            id: Some(reward_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence: 2,
+                cmd_id: CmdId::Act239BonusCmd as i16,
+                up_tag: 32,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Activity 239 claim did not emit its currency snapshot first");
+        };
+        assert_eq!(cmd_id, CmdId::CurrencyChangePushCmd);
+        let currency = CurrencyChangePush::decode(&*body).unwrap();
+        assert_eq!(currency.change_currency[0].currency_id, Some(2));
+        assert_eq!(currency.change_currency[0].quantity, Some(60));
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Activity 239 claim did not emit its material delta");
+        };
+        assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+        let material = MaterialChangePush::decode(&*body).unwrap();
+        assert_eq!(material.get_approach, Some(177));
+        assert_eq!(material.data_list[0].materil_type, Some(2));
+        assert_eq!(material.data_list[0].materil_id, Some(2));
+        assert_eq!(material.data_list[0].quantity, Some(60));
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Activity 239 claim did not emit its red-dot replacement");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let red_dot = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(red_dot.red_dot_infos[0].define_id, red_dot_id);
+        assert_eq!(red_dot.red_dot_infos[0].replace_all, Some(true));
+        assert_eq!(red_dot.red_dot_infos[0].infos.len(), 1);
+        assert_eq!(red_dot.red_dot_infos[0].infos[0].id, 0);
+        assert_eq!(red_dot.red_dot_infos[0].infos[0].value, 0);
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::Act239BonusCmd,
+            body,
+            result_code: 0,
+            up_tag: 32,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Activity 239 claim did not emit its reply last");
+        };
+        let reply = Act239BonusReply::decode(&*body).unwrap();
+        assert_eq!(reply.activity_id, Some(activity_id));
+        assert!(
+            reply
+                .bonuss
+                .iter()
+                .any(|bonus| bonus.id == Some(reward_id) && bonus.status == Some(2))
+        );
+        assert!(reply.bonuss.iter().all(|bonus| bonus.status == Some(2)));
         assert!(packets.try_recv().is_err());
     }
 
