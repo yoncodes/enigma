@@ -777,7 +777,7 @@ pub(crate) async fn send_completed_dungeon(
         )
         .await?;
     }
-    notify_dungeon_pass_tasks(ctx, player_id, chapter_id).await?;
+    notify_dungeon_pass_tasks(ctx, player_id, chapter_id, settlement.kill_count).await?;
     send_dungeon_settlement(ctx, player_id, settlement).await?;
     task_events::notify(ctx, player_id, TaskEvent::EpisodeFinish { episode_id }).await
 }
@@ -786,6 +786,7 @@ async fn notify_dungeon_pass_tasks(
     ctx: &mut ConnectionContext,
     player_id: i64,
     chapter_id: i32,
+    kill_count: i32,
 ) -> Result<(), AppError> {
     for chapter_type in dungeon::dungeon_pass_types(chapter_id) {
         task_events::notify(
@@ -806,7 +807,19 @@ async fn notify_dungeon_pass_tasks(
             count: 1,
         },
     )
-    .await
+    .await?;
+    if kill_count > 0 {
+        task_events::notify(
+            ctx,
+            player_id,
+            TaskEvent::DoneCount {
+                name: "KillEnemy",
+                count: kill_count,
+            },
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 async fn send_refund(
@@ -857,6 +870,7 @@ mod tests {
 
     fn empty_settlement() -> dungeon::DungeonSettlement {
         dungeon::DungeonSettlement {
+            kill_count: 0,
             hero_ids: Vec::new(),
             rewards: logic::reward::AppliedRewards::default(),
             dungeon_update: sonettobuf::DungeonUpdatePush::default(),
@@ -956,5 +970,38 @@ mod tests {
                 assert_ne!(cmd_id, CmdId::TeachingUpdateInfoPushCmd);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn completed_battle_routes_defeated_enemies_to_activity233_tasks() {
+        let player_id = 907;
+        let (mut ctx, _packets) = test_context(player_id).await;
+        let episode = configs::get()
+            .episode
+            .iter()
+            .find(|episode| !logic::teaching::is_teaching_episode(episode.id))
+            .unwrap();
+        let mut settlement = empty_settlement();
+        settlement.kill_count = 7;
+
+        send_completed_dungeon(
+            &mut ctx,
+            player_id,
+            episode.chapter_id,
+            episode.id,
+            settlement,
+        )
+        .await
+        .unwrap();
+
+        let task = database::db::game::tasks::get_by_id(ctx.state.db, player_id, 790006)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.progress, 7);
+        assert_eq!(
+            task.type_id,
+            database::db::game::tasks::TaskType::ActBp.id()
+        );
     }
 }

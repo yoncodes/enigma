@@ -986,6 +986,7 @@ pub async fn sync_login_tasks(
     user_id: i64,
     is_new_day: bool,
 ) -> sqlx::Result<Vec<UserTask>> {
+    ensure_tasks_for_type(pool, user_id, TaskType::ActBp).await?;
     let now = ServerTime::now_ms();
     let daily_expiry = ServerTime::next_daily_refresh_sec(now);
     let weekly_expiry = ServerTime::next_weekly_refresh_sec(now);
@@ -1156,6 +1157,13 @@ fn login_task_targets(bp_id: Option<i32>) -> Vec<LoginTaskTarget> {
             .iter()
             .filter(|task| task.is_online != 0 && task.listener_type == "LoginDays")
             .map(|task| LoginTaskTarget::new(TaskType::Activity125, task.id, task.max_progress)),
+    );
+    targets.extend(
+        tables
+            .activity233_task
+            .iter()
+            .filter(|task| task.is_online != 0 && task.listener_type == "LoginDays")
+            .map(|task| LoginTaskTarget::new(TaskType::ActBp, task.id, task.max_progress)),
     );
 
     targets
@@ -1663,6 +1671,18 @@ mod tests {
         assert!(!weekly.has_finished);
         let permanent = reset.iter().find(|task| task.task_id == 790009).unwrap();
         assert_eq!(permanent.progress, 5);
+    }
+
+    #[tokio::test]
+    async fn act_bp_login_days_progression_uses_online_login_config() {
+        let pool = test_pool().await;
+
+        let updated = sync_login_tasks(&pool, 1, true).await.unwrap();
+        let first = updated.iter().find(|task| task.task_id == 790001).unwrap();
+        assert_eq!(first.type_id, TaskType::ActBp.id());
+        assert_eq!(first.progress, 1);
+        assert!(first.has_finished);
+        assert!(!updated.iter().any(|task| task.task_id == 790005));
     }
 
     #[test]

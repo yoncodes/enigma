@@ -457,6 +457,21 @@ impl EntityManager {
         self.teams.get(&uid).copied()
     }
 
+    pub(crate) fn defeated_combatant_count(&self, team_type: i32, hp: &HpManager) -> usize {
+        self.order
+            .iter()
+            .copied()
+            .filter(|uid| self.teams.get(uid) == Some(&team_type))
+            .filter(|uid| {
+                matches!(
+                    self.roster_lanes.get(uid),
+                    Some(RosterLane::Main | RosterLane::Reserve | RosterLane::Inactive)
+                )
+            })
+            .filter(|uid| hp.current(*uid) <= 0)
+            .count()
+    }
+
     pub(crate) fn first_open_combat_position(
         &self,
         source_uid: i64,
