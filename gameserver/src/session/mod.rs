@@ -114,6 +114,10 @@ pub async fn start_session(
             .record_login_day(db)
             .await?;
     }
+    conn.player()?
+        .activity
+        .sync_act101_login_progress(db, now)
+        .await?;
 
     {
         let state = &mut conn.player_mut()?.state;

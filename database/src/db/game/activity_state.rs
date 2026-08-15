@@ -52,6 +52,7 @@ pub enum ActivityStateKind {
     Act104PopSummary,
     Act128BossScore,
     Act128Milestone,
+    Act101LoginProgress,
 }
 
 impl ActivityStateKind {
@@ -95,6 +96,7 @@ impl ActivityStateKind {
             Self::Act104PopSummary => 36,
             Self::Act128BossScore => 37,
             Self::Act128Milestone => 38,
+            Self::Act101LoginProgress => 39,
         }
     }
 }
