@@ -58,6 +58,7 @@ async fn reconnect_at(
     req: ClientPacket,
     now_ms: i64,
 ) -> Result<(), AppError> {
+    session::reconcile_periodic_resets(ctx, now_ms).await?;
     ctx.player()?
         .activity
         .sync_act101_login_progress(ctx.state.db, now_ms)
@@ -109,12 +110,30 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        let event_start = 1_786_615_200_000;
+        sqlx::query(
+            "INSERT INTO player_state
+             (player_id, created_at, updated_at, last_daily_reset_time,
+              last_weekly_reset_time, last_monthly_reset_time)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(player_id)
+        .bind(event_start)
+        .bind(event_start)
+        .bind(event_start)
+        .bind(event_start)
+        .bind(event_start)
+        .execute(&pool)
+        .await
+        .unwrap();
 
         let state = Box::leak(Box::new(AppState::new(pool, config::configs::get())));
         let (outbound, mut packets) = mpsc::channel(3);
         let mut ctx = ConnectionContext::new(outbound, state);
-        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
-        let event_start = 1_786_615_200_000;
+        ctx.player = Some(Player::new(
+            player_id,
+            PlayerState::new(player_id, event_start),
+        ));
 
         for (sequence, now_ms) in [event_start, event_start + 1_000, event_start + 86_400_000]
             .into_iter()
