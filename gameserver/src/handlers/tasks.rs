@@ -2,9 +2,11 @@ use crate::{
     error::AppError,
     logic::{bp, task as tasks},
     net::{context::ConnectionContext, packet::ClientPacket},
+    session,
     types::material_get_approach::MaterialGetApproach,
     util::{push, task_events},
 };
+use common::time::ServerTime;
 use logic::task::{TaskEvent, TaskType};
 use prost::Message;
 use sonettobuf::{
@@ -17,6 +19,7 @@ pub async fn on_get_task_info(
     req: ClientPacket,
 ) -> Result<(), AppError> {
     let msg = GetTaskInfoRequest::decode(&req.data[..])?;
+    session::reconcile_periodic_resets(ctx, ServerTime::now_ms()).await?;
     let db = ctx.state.db;
     let reply = ctx.player_mut()?.tasks.get_info(db, msg.type_ids).await?;
 
@@ -29,6 +32,7 @@ pub async fn on_finish_task(
     req: ClientPacket,
 ) -> Result<(), AppError> {
     let msg = FinishTaskRequest::decode(&req.data[..])?;
+    session::reconcile_periodic_resets(ctx, ServerTime::now_ms()).await?;
     let db = ctx.state.db;
     let player_id = ctx.player()?.id;
     let claim = ctx.player_mut()?.tasks.finish(db, msg.id).await?;
@@ -64,6 +68,7 @@ pub async fn on_finish_all_task(
 ) -> Result<(), AppError> {
     let msg = FinishAllTaskRequest::decode(&req.data[..])?;
     let type_id = msg.type_id.ok_or(AppError::InvalidRequest)?;
+    session::reconcile_periodic_resets(ctx, ServerTime::now_ms()).await?;
     let db = ctx.state.db;
     let player_id = ctx.player()?.id;
     let claim = ctx
@@ -104,6 +109,7 @@ pub async fn on_get_task_activity_bonus(
     let msg = GetTaskActivityBonusRequest::decode(&req.data[..])?;
     let type_id = msg.type_id.ok_or(AppError::InvalidRequest)?;
     let define_id = msg.define_id.ok_or(AppError::InvalidRequest)?;
+    session::reconcile_periodic_resets(ctx, ServerTime::now_ms()).await?;
     let db = ctx.state.db;
     let player_id = ctx.player()?.id;
     let claim = ctx

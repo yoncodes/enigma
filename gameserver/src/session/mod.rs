@@ -1,6 +1,7 @@
 use crate::{
     error::{AppError, PacketError},
     net::context::ConnectionContext,
+    player::Player,
 };
 use byteorder::{BE, ByteOrder};
 use common::time::ServerTime;
@@ -101,14 +102,8 @@ pub async fn start_session(
     }
     let now = ServerTime::now_ms();
     let today = ServerTime::server_day(now);
-    let state = &conn.player()?.state;
-    let is_new_day = state.is_new_server_day(now);
-    let is_new_week = state.is_new_week(now);
-    let is_new_month = state.is_new_month(now);
-
-    logic::sign_in::SignInManager::new(session.user_id)
-        .reset_counters(db, is_new_day, is_new_week)
-        .await?;
+    let (is_new_day, _) = reconcile_periodic_resets_for_player(conn.player_mut()?, db, now).await?;
+    let is_new_month = conn.player()?.state.is_new_month(now);
     if is_new_day {
         logic::profile::ProfileManager::new(session.user_id)
             .record_login_day(db)
@@ -125,12 +120,8 @@ pub async fn start_session(
         if is_new_day {
             state.initial_login_complete = false;
             state.last_sign_in_day = today;
-            state.last_daily_reset_time = Some(now);
             state.month_card_claimed = false;
             state.last_month_card_claim_timestamp = None;
-        }
-        if is_new_week {
-            state.last_weekly_reset_time = Some(now);
         }
         if is_new_month {
             state.last_monthly_reset_time = Some(now);
@@ -146,6 +137,43 @@ pub async fn start_session(
 
     conn.save_player().await?;
     Ok(updated_tasks)
+}
+
+pub async fn reconcile_periodic_resets(
+    conn: &mut ConnectionContext,
+    now_ms: i64,
+) -> Result<(bool, bool), AppError> {
+    let db = conn.state.db;
+    let periods = reconcile_periodic_resets_for_player(conn.player_mut()?, db, now_ms).await?;
+    if periods.0 || periods.1 {
+        conn.save_player().await?;
+    }
+    Ok(periods)
+}
+
+async fn reconcile_periodic_resets_for_player(
+    player: &mut Player,
+    db: &SqlitePool,
+    now_ms: i64,
+) -> Result<(bool, bool), AppError> {
+    let is_new_day = player.state.is_new_server_day(now_ms);
+    let is_new_week = player.state.is_new_week(now_ms);
+    if !is_new_day && !is_new_week {
+        return Ok((false, false));
+    }
+
+    player
+        .sign_in
+        .reset_counters(db, is_new_day, is_new_week)
+        .await?;
+    if is_new_day {
+        player.state.last_daily_reset_time = Some(now_ms);
+    }
+    if is_new_week {
+        player.state.last_weekly_reset_time = Some(now_ms);
+    }
+    player.state.updated_at = now_ms;
+    Ok((is_new_day, is_new_week))
 }
 
 pub fn login_reply_payload(user_id: i64) -> Vec<u8> {

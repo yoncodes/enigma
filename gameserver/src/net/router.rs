@@ -812,7 +812,10 @@ mod tests {
         let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
         let (outbound, mut packets) = mpsc::channel(16);
         let mut ctx = ConnectionContext::new(outbound, state);
-        ctx.player = Some(Player::new(513, PlayerState::new(513, 0)));
+        ctx.player = Some(Player::new(
+            513,
+            PlayerState::new(513, ::common::time::ServerTime::now_ms()),
+        ));
 
         let mut data = Vec::new();
         FinishTaskRequest { id: 790001 }.encode(&mut data).unwrap();
