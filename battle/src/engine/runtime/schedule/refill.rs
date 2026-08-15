@@ -1,5 +1,4 @@
 use super::*;
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RefillStage {
     Opening,
@@ -7,9 +6,8 @@ enum RefillStage {
     RoundStart,
 }
 
-pub(super) struct OpeningRefillSeed<'a> {
+pub(super) struct OpeningRefillSeed {
     pub(super) draws: Vec<sonettobuf::CardInfo>,
-    pub(super) ultimate_owner_uids: &'a [i64],
 }
 
 /// Refills the normal hand deficit, then resolves composition and replacement rules.
@@ -32,7 +30,6 @@ pub fn run_round_refill(
         team_type,
         RefillStage::AfterActions,
         Vec::new(),
-        &[],
     )
 }
 
@@ -55,7 +52,6 @@ pub(super) fn run_round_start_refill(
         team_type,
         RefillStage::RoundStart,
         Vec::new(),
-        &[],
     )
 }
 
@@ -66,7 +62,7 @@ pub(super) fn run_opening_hand_refill(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     hand_size: usize,
-    seed: OpeningRefillSeed<'_>,
+    seed: OpeningRefillSeed,
 ) -> Result<DrainResult, DrainError> {
     run_card_refill(
         managers,
@@ -78,7 +74,6 @@ pub(super) fn run_opening_hand_refill(
         1,
         RefillStage::Opening,
         seed.draws,
-        seed.ultimate_owner_uids,
     )
 }
 
@@ -93,7 +88,6 @@ fn run_card_refill(
     team_type: i32,
     stage: RefillStage,
     opening_draws: Vec<sonettobuf::CardInfo>,
-    opening_ultimate_owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     let mut opening_draws = opening_draws.into_iter();
     let mut result = begin_round_phase(RoundPhase::CardRefill);
@@ -158,21 +152,10 @@ fn run_card_refill(
                     < hand_size
             }
         };
-        let ready_normal = if stage == RefillStage::Opening || needs_normal_card {
-            let ready =
-                crate::engine::mechanic::card::CardMechanic.normal_ultimate_cards(pool, managers);
-            if stage == RefillStage::Opening {
-                ready
-                    .into_iter()
-                    .filter(|card| {
-                        card.uid.is_some_and(|owner_uid| {
-                            opening_ultimate_owner_uids.contains(&owner_uid)
-                        })
-                    })
-                    .collect()
-            } else {
-                ready
-            }
+        let ready_normal = if stage == RefillStage::Opening {
+            Vec::new()
+        } else if needs_normal_card {
+            crate::engine::mechanic::card::CardMechanic.normal_ultimate_cards(pool, managers)
         } else {
             Vec::new()
         };
@@ -189,11 +172,7 @@ fn run_card_refill(
         } else {
             Vec::new()
         };
-        if !needs_normal_card
-            && ready_normal.is_empty()
-            && ready_special.is_empty()
-            && opening_draws.len() == 0
-        {
+        if !needs_normal_card && ready_normal.is_empty() && ready_special.is_empty() {
             break;
         }
         let ready_ultimates = pool
@@ -243,21 +222,22 @@ fn run_card_refill(
                 candidates.push(ready.clone());
             }
         }
-        let (card, configured_opening) = if let Some(card) = opening_draws.next() {
-            (Some(card), true)
-        } else if !needs_normal_card {
-            (ready_ultimates.first().cloned(), false)
-        } else if determinism.has_queued_card_draw() {
-            (determinism.draw_cards(&candidates, 1).pop(), false)
-        } else {
-            (
-                ready_ultimates
-                    .first()
-                    .cloned()
-                    .or_else(|| determinism.draw_cards(&candidates, 1).pop()),
-                false,
-            )
-        };
+        let (card, configured_opening) =
+            if needs_normal_card && let Some(card) = opening_draws.next() {
+                (Some(card), true)
+            } else if !needs_normal_card {
+                (ready_ultimates.first().cloned(), false)
+            } else if determinism.has_queued_card_draw() {
+                (determinism.draw_cards(&candidates, 1).pop(), false)
+            } else {
+                (
+                    ready_ultimates
+                        .first()
+                        .cloned()
+                        .or_else(|| determinism.draw_cards(&candidates, 1).pop()),
+                    false,
+                )
+            };
         let Some(card) = card else {
             break;
         };

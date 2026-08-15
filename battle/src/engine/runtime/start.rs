@@ -3,7 +3,7 @@ use sonettobuf::{CardInfo, CardInfoPush, Fight, FightRound, FightStep};
 use crate::engine::{
     manager::{
         BattleManagers,
-        card::{CardCommand, CardSetAiQueue, CardSetTeamCards, CardSetup},
+        card::{CardCommand, CardSetAiQueue, CardSetup},
     },
     skill::{
         effect::SkillEffectCatalog,
@@ -125,12 +125,13 @@ impl BattleRuntime {
         let (captured, captured_draws) = self
             .determinism
             .take_start_decks()
-            .map(|(ai, player, draws)| {
+            .map(|(ai, player, draws, reserved_ultimate_slots)| {
                 (
                     Some(
                         crate::engine::manager::card::start::CapturedDeckSeed::Opening {
                             ai,
                             player,
+                            reserved_ultimate_slots,
                         },
                     ),
                     draws,
@@ -182,16 +183,6 @@ impl BattleRuntime {
                 self.managers.catalog(),
                 &self.fight,
             )?);
-        let opening_pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
-            self.catalog_data
-                .expect("battle runtime was not constructed with a catalog"),
-            &self.fight,
-        );
-        let opening_team_cards = crate::engine::mechanic::card::CardMechanic.special_team_cards(
-            &opening_pool,
-            &self.managers,
-            &opening_deal,
-        );
         let draw_pile = crate::engine::manager::card::start::configured_draw_bag(
             self.managers.catalog(),
             &self.fight,
@@ -219,15 +210,6 @@ impl BattleRuntime {
                 .execute_card(CardCommand::PreserveRefillFloor)
                 .map_err(|error| format!("{error:?}"))?;
         }
-        self.managers
-            .execute_card(CardCommand::SetTeamCards(CardSetTeamCards {
-                origin: CommandOrigin {
-                    domain: RuleDomain::Lifecycle,
-                    key: DefinitionKey::new(0, "OpeningTeamCards"),
-                },
-                cards: opening_team_cards.clone(),
-            }))
-            .map_err(|error| format!("{error:?}"))?;
         if crate::engine::fight::versions::round_start_setup_layout(
             self.fight.version.unwrap_or_default(),
         ) == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
@@ -241,7 +223,7 @@ impl BattleRuntime {
                 .cloned()
                 .collect();
         } else {
-            visible_cards.extend(opening_team_cards);
+            visible_cards.extend_from_slice(self.managers.card.team_cards());
         }
         self.round_state.act_point = crate::engine::round::state::next_action_points(
             &self.fight,
