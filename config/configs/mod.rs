@@ -176,6 +176,12 @@ pub mod actvity205_mini_game_reward;
 pub mod actvity205_stage;
 pub mod ai_monster_target;
 pub mod antique;
+pub mod arcade_attribute;
+pub mod arcade_character;
+pub mod arcade_const;
+pub mod arcade_difficulty;
+pub mod arcade_reward;
+pub mod arcade_talent;
 pub mod assassin_task;
 pub mod autochess_task;
 pub mod battle;
@@ -587,6 +593,12 @@ pub struct GameDB {
     pub actvity205_stage: actvity205_stage::Actvity205StageTable,
     pub ai_monster_target: ai_monster_target::AiMonsterTargetTable,
     pub antique: antique::AntiqueTable,
+    pub arcade_attribute: arcade_attribute::ArcadeAttributeTable,
+    pub arcade_character: arcade_character::ArcadeCharacterTable,
+    pub arcade_const: arcade_const::ArcadeConstTable,
+    pub arcade_difficulty: arcade_difficulty::ArcadeDifficultyTable,
+    pub arcade_reward: arcade_reward::ArcadeRewardTable,
+    pub arcade_talent: arcade_talent::ArcadeTalentTable,
     pub assassin_task: assassin_task::AssassinTaskTable,
     pub autochess_task: autochess_task::AutochessTaskTable,
     pub battle: battle::BattleTable,
@@ -1350,6 +1362,24 @@ impl GameDB {
         let antique = antique::AntiqueTable::load(
             &format!("{}/antique.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load antique.json: {}", e))?;
+        let arcade_attribute = arcade_attribute::ArcadeAttributeTable::load(
+            &format!("{}/arcade_attribute.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_attribute.json: {}", e))?;
+        let arcade_character = arcade_character::ArcadeCharacterTable::load(
+            &format!("{}/arcade_character.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_character.json: {}", e))?;
+        let arcade_const = arcade_const::ArcadeConstTable::load(
+            &format!("{}/arcade_const.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_const.json: {}", e))?;
+        let arcade_difficulty = arcade_difficulty::ArcadeDifficultyTable::load(
+            &format!("{}/arcade_difficulty.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_difficulty.json: {}", e))?;
+        let arcade_reward = arcade_reward::ArcadeRewardTable::load(
+            &format!("{}/arcade_reward.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_reward.json: {}", e))?;
+        let arcade_talent = arcade_talent::ArcadeTalentTable::load(
+            &format!("{}/arcade_talent.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_talent.json: {}", e))?;
         let assassin_task = assassin_task::AssassinTaskTable::load(
             &format!("{}/assassin_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load assassin_task.json: {}", e))?;
@@ -2221,6 +2251,12 @@ impl GameDB {
             actvity205_stage,
             ai_monster_target,
             antique,
+            arcade_attribute,
+            arcade_character,
+            arcade_const,
+            arcade_difficulty,
+            arcade_reward,
+            arcade_talent,
             assassin_task,
             autochess_task,
             battle,
