@@ -134,6 +134,10 @@ fn shared_blood_pool_tag_owner_count(team: i32, features: &[ActiveBuffFeature]) 
         }
     }
 
+    if tagged.len() == 1 {
+        return 1;
+    }
+
     tagged
         .iter()
         .enumerate()
@@ -172,6 +176,15 @@ mod tests {
         ];
 
         assert_eq!(bloodtithe.seed_max_from_features(1, &features), 56);
+    }
+
+    #[test]
+    fn seeds_max_from_one_live_blood_pool_tag_owner() {
+        let mut bloodtithe = Bloodtithe::default();
+        let features = vec![feature(10, 1, 6270501, vec![953])];
+
+        assert_eq!(bloodtithe.seed_max_from_features(1, &features), 40);
+        assert_eq!(bloodtithe.max(1), 40);
     }
 
     fn feature(
