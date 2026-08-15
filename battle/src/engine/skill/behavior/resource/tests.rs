@@ -255,6 +255,52 @@ fn add_ex_point_aggregates_fire_count_into_one_command() {
 }
 
 #[test]
+fn add_ex_point_does_not_write_a_special_resource() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1),
+                ex_point_type: Some(ExPointKind::Faith.as_wire()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(20002, "AddExPoint"),
+        vec![5],
+        Vec::new(),
+    );
+
+    let ops = rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 0,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(ops.is_empty());
+}
+
+#[test]
 fn committed_card_ranks_scale_the_configured_power_gain() {
     crate::test_support::init_config();
     let fight = Fight {

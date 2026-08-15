@@ -4,7 +4,7 @@ use crate::engine::{
         card::{CardCommand, CardConsumeForEffect},
         conduit::{ConduitCommand, ConduitPowerChange, ConduitPowerChangeKind},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand, EurekaProgress},
-        ex_point::{ExPointChange, ExPointCommand},
+        ex_point::{ExPointChange, ExPointCommand, ExPointKind},
         gauge::{GaugeCommand, GaugeOperation},
         hp::{CurrentHpSet, HpCommand},
     },
@@ -89,6 +89,12 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
     };
 
     match behavior.spec.kind {
+        BehaviorKind::AddExPoint
+            if ExPointKind::from_wire(context.managers.ex_point.kind(context.target_uid))
+                != ExPointKind::Common =>
+        {
+            Some(Vec::new())
+        }
         BehaviorKind::AddExPoint
         | BehaviorKind::AddAdrenalineExPoint
         | BehaviorKind::AddSynchronization
