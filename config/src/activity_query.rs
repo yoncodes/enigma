@@ -1,7 +1,7 @@
 use crate::{
     GameDB, activity104_episode::Activity104Episode, activity104_retail::Activity104Retail,
     activity104_special::Activity104Special, activity104_trial::Activity104Trial,
-    activity165_step::Activity165Step,
+    activity128_level::Activity128Level, activity165_step::Activity165Step,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +25,30 @@ impl GameDB {
             })
             .map(|activity| activity.id)
             .max()
+    }
+
+    pub fn activity220_first_online_episode_id(&self, activity_id: i32) -> Option<i32> {
+        self.activity220_task
+            .iter()
+            .find(|row| row.activity_id == activity_id && row.is_online != 0)
+            .map(|row| row.episode_id)
+    }
+
+    pub fn activity236_charge_score(&self, activity_id: i32, goods_id: i32) -> Option<i32> {
+        let control = self.activity236_control.get(activity_id)?;
+        let goods = self.store_charge_goods.get(goods_id)?;
+        let (currency, conversion_rate) = control.conversion_rate.split_once('#')?;
+        if currency != "CNY" {
+            return None;
+        }
+        let conversion_rate = conversion_rate.parse::<f64>().ok()?;
+        let score = f64::from(goods.pricezh) * conversion_rate / 1000.0;
+
+        score
+            .is_finite()
+            .then_some(score)
+            .filter(|score| (0.0..=i32::MAX as f64).contains(score))
+            .map(|score| score as i32)
     }
 
     pub fn latest_activity104_id(&self) -> Option<i32> {
@@ -97,6 +121,62 @@ impl GameDB {
         })
     }
 
+    pub fn activity128_rank_currency_id(&self) -> Option<i32> {
+        let row = self.activity128_const.get(10)?;
+        let mut fields = row.value2.split('#');
+        match (fields.next(), fields.next(), fields.next()) {
+            (Some("2"), Some(currency_id), None) => currency_id
+                .parse()
+                .ok()
+                .filter(|currency_id| *currency_id > 0),
+            _ => None,
+        }
+    }
+
+    pub fn activity128_rank(&self, exp: i32) -> Option<i32> {
+        if exp < 0 {
+            return None;
+        }
+
+        let mut levels = self.activity128_level.iter().collect::<Vec<_>>();
+        if levels.is_empty() {
+            return None;
+        }
+        levels.sort_unstable_by_key(|row| row.player_level);
+        let mut threshold: i32 = 0;
+        let mut rank = 0;
+
+        for (index, row) in levels.into_iter().enumerate() {
+            if row.player_level != index as i32 + 1 || row.need_exp <= 0 {
+                return None;
+            }
+            threshold = threshold.checked_add(row.need_exp)?;
+            if exp >= threshold {
+                rank = row.player_level;
+            }
+        }
+
+        Some(rank)
+    }
+
+    pub fn activity128_milestone_levels(
+        &self,
+        claimed_level: i32,
+        target_level: i32,
+    ) -> Option<Vec<&Activity128Level>> {
+        if claimed_level < 0 || target_level <= claimed_level {
+            return None;
+        }
+
+        (claimed_level + 1..=target_level)
+            .map(|level| {
+                self.activity128_level
+                    .iter()
+                    .find(|row| row.player_level == level)
+            })
+            .collect()
+    }
+
     pub fn activity165_step(&self, story_id: i32, step_id: i32) -> Option<&Activity165Step> {
         self.activity165_step
             .iter()
@@ -107,5 +187,84 @@ impl GameDB {
         self.activity165_step
             .iter()
             .filter(move |row| row.belong_story_id == story_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn act220_first_online_episode_matches_the_captured_activity() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = crate::init(&data_dir);
+        let tables = crate::configs::get();
+
+        assert_eq!(
+            tables.activity220_first_online_episode_id(13710),
+            Some(1371001)
+        );
+    }
+
+    #[test]
+    fn act236_reward_rows_load_for_the_configured_activity() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = crate::init(&data_dir);
+        let tables = crate::configs::get();
+        let activity_id = tables.latest_open_activity_id(236).unwrap();
+        let rows = tables
+            .activity236
+            .iter()
+            .filter(|row| row.activity_id == activity_id)
+            .collect::<Vec<_>>();
+
+        assert_eq!(rows.len(), 9);
+        assert_eq!((rows[0].cost, rows[0].reward.as_str()), (0, "2#2#100"));
+        assert!(rows.windows(2).all(|rows| rows[0].id < rows[1].id));
+    }
+
+    #[test]
+    fn act236_charge_score_uses_configured_price_and_conversion_rate() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = crate::init(&data_dir);
+        let tables = crate::configs::get();
+        let activity_id = tables.latest_open_activity_id(236).unwrap();
+
+        assert_eq!(
+            tables
+                .activity236_control
+                .get(activity_id)
+                .unwrap()
+                .conversion_rate,
+            "CNY#10000"
+        );
+        for (goods_id, score) in [
+            (837029, 4880),
+            (837022, 3280),
+            (811327, 60),
+            (837008, 1980),
+            (811390, 5980),
+        ] {
+            assert_eq!(
+                tables.activity236_charge_score(activity_id, goods_id),
+                Some(score)
+            );
+        }
+    }
+
+    #[test]
+    fn act128_rank_config_maps_currency_thresholds_and_captured_rewards() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = crate::init(&data_dir);
+        let tables = crate::configs::get();
+
+        assert_eq!(tables.activity128_rank_currency_id(), Some(3206));
+        assert_eq!(tables.activity128_rank(700), Some(7));
+
+        let levels = tables.activity128_milestone_levels(2, 7).unwrap();
+        let bonuses = levels
+            .into_iter()
+            .filter(|row| !row.bonus.is_empty())
+            .map(|row| row.bonus.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(bonuses, vec!["1#120013#2", "1#110404#1"]);
     }
 }

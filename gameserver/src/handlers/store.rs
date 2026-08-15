@@ -4,11 +4,12 @@ use crate::{
     net::{context::ConnectionContext, packet::ClientPacket},
     types::{material_get_approach::MaterialGetApproach, red_dot_id::RedDotId},
 };
+use common::time::ServerTime;
 use logic::task::TaskEvent;
 use prost::Message;
 use sonettobuf::{
-    BuyGoodsRequest, CmdId, GetStoreInfosRequest, NewOrderRequest, ReadStoreNewReply,
-    ReadStoreNewRequest,
+    Act236UpdateInfoPush, BuyGoodsRequest, CmdId, GetStoreInfosRequest, NewOrderRequest,
+    ReadStoreNewReply, ReadStoreNewRequest, RedDotGroup, RedDotInfo,
 };
 
 pub async fn on_get_store_infos(
@@ -77,6 +78,14 @@ pub async fn on_buy_goods(ctx: &mut ConnectionContext, req: ClientPacket) -> Res
 }
 
 pub async fn on_new_order(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    on_new_order_at(ctx, req, ServerTime::now_ms()).await
+}
+
+pub(crate) async fn on_new_order_at(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+    now: i64,
+) -> Result<(), AppError> {
     let player_id = ctx.player()?.id;
     let msg = NewOrderRequest::decode(&req.data[..])?;
     let result = ctx
@@ -87,6 +96,7 @@ pub async fn on_new_order(ctx: &mut ConnectionContext, req: ClientPacket) -> Res
             msg.id.ok_or(AppError::InvalidRequest)?,
             msg.origin_currency,
             &msg.selection_infos,
+            now,
         )
         .await?;
 
@@ -111,6 +121,39 @@ pub async fn on_new_order(ctx: &mut ConnectionContext, req: ClientPacket) -> Res
     )
     .await?;
     push::send_bp_score_update_pushes(ctx, &result.rewards.bp_scores).await?;
+    push::send_material_change_push(
+        ctx,
+        result.material_changes,
+        Some(MaterialGetApproach::Charge),
+    )
+    .await?;
+    if let Some(update) = result.act236 {
+        ctx.notify(
+            CmdId::Act236UpdateInfoPushCmd,
+            Act236UpdateInfoPush {
+                info: Some(update.info),
+            },
+        )
+        .await?;
+        push::send_red_dot_groups(
+            ctx,
+            vec![RedDotGroup {
+                define_id: update.red_dot_id,
+                infos: update
+                    .claimable_reward_ids
+                    .into_iter()
+                    .map(|id| RedDotInfo {
+                        id: i64::from(id),
+                        value: 1,
+                        time: Some(0),
+                        ext: None,
+                    })
+                    .collect(),
+                replace_all: Some(true),
+            }],
+        )
+        .await?;
+    }
     ctx.notify(CmdId::OrderCompletePushCmd, result.complete)
         .await?;
     if let Some(push) = result.bp_pay {
@@ -120,7 +163,6 @@ pub async fn on_new_order(ctx: &mut ConnectionContext, req: ClientPacket) -> Res
         ctx.notify(CmdId::BpScoreUpdatePushCmd, push).await?;
     }
     ctx.notify(CmdId::StatInfoPushCmd, result.stat).await?;
-    push::send_material_change_push(ctx, result.material_changes, None).await?;
     Ok(())
 }
 

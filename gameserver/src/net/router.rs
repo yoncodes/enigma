@@ -39,7 +39,33 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
     tracing::info!("Received Cmd: {:?}", cmd_id);
     let up_tag = req.up_tag;
 
-    let result = dispatch!(cmd_id, ctx, req, {
+    if cmd_id == CmdId::GetAct233BpInfoCmd {
+        return match bp::on_get_act233_bp_info(ctx, req).await {
+            Ok(()) => Ok(()),
+            Err(error) => handle_command_error(ctx, cmd_id, up_tag, error).await,
+        };
+    }
+    if cmd_id == CmdId::GetAct233BpBonusCmd {
+        return match bp::on_get_act233_bp_bonus(ctx, req).await {
+            Ok(()) => Ok(()),
+            Err(error) => handle_command_error(ctx, cmd_id, up_tag, error).await,
+        };
+    }
+
+    let result = Box::pin(dispatch_registered_command(ctx, cmd_id, req)).await;
+
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => handle_command_error(ctx, cmd_id, up_tag, error).await,
+    }
+}
+
+async fn dispatch_registered_command(
+    ctx: &mut ConnectionContext,
+    cmd_id: CmdId,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    dispatch!(cmd_id, ctx, req, {
         CmdId::LoginCmd => system::on_login,
         CmdId::ReconnectCmd => system::on_reconnect,
         CmdId::RenameCmd => system::on_rename,
@@ -229,6 +255,7 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         CmdId::GetAct124InfosCmd => activity::on_get_act124_infos,
         CmdId::Get126InfosCmd => activity::on_get_126_infos,
         CmdId::Get128InfosCmd => activity::on_get_128_infos,
+        CmdId::Act128GetMilestoneBonusCmd => activity::on_act128_get_milestone_bonus,
         CmdId::Get129InfosCmd => activity::on_get_129_infos,
         CmdId::Get130InfosCmd => activity::on_get_130_infos,
         CmdId::Get131InfosCmd => activity::on_get_131_infos,
@@ -330,6 +357,10 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         CmdId::Act229ResetStageCmd => activity::on_reset_act229_stage,
         CmdId::GetAct231InfoCmd => activity::on_get_act231_info,
         CmdId::GetAct235InfoCmd => activity::on_get_act235_info,
+        CmdId::GetAct236InfoCmd => activity::on_get_act236_info,
+        CmdId::Act236GetAutoGainRewardCmd => activity::on_act236_get_auto_gain_reward,
+        CmdId::GetAct239InfoCmd => activity::on_get_act239_info,
+        CmdId::Act239BonusCmd => activity::on_act239_bonus,
         CmdId::Act240GetInfoCmd => activity::on_act240_get_info,
         CmdId::GetCommandPostInfoCmd => command_post::on_get_command_post_info,
         CmdId::CommandPostCharacterReadCmd => command_post::on_command_post_character_read,
@@ -354,7 +385,6 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         CmdId::GetDialogInfoCmd => collection::on_get_dialog_info,
         CmdId::RecordDialogInfoCmd => collection::on_record_dialog_info,
         CmdId::GetBpInfoCmd => bp::on_get_bp_info,
-        CmdId::GetAct233BpInfoCmd => bp::on_get_act233_bp_info,
         CmdId::GetBpBonusCmd => bp::on_get_bp_bonus,
         CmdId::GetSelfSelectBonusCmd => bp::on_get_self_select_bonus,
         CmdId::BpBuyLevelRequsetCmd => bp::on_buy_level,
@@ -400,6 +430,7 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         CmdId::TowerComposeGetInfoCmd => tower_compose::on_tower_compose_get_info,
         CmdId::TowerComposeSetModsCmd => tower_compose::on_tower_compose_set_mods,
         CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
+        CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
         CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,
         CmdId::GetBlockPackageInfoRequsetCmd => room::on_get_block_package_info,
         CmdId::HideBlockPackageReddotCmd => room::on_hide_block_package_reddot,
@@ -506,12 +537,7 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         CmdId::UnlockTalentStyleCmd => talent::on_unlock_talent_style,
         CmdId::UseTalentStyleCmd => talent::on_use_talent_style,
         CmdId::UseTalentTemplateCmd => talent::on_use_talent_template,
-    });
-
-    match result {
-        Ok(()) => Ok(()),
-        Err(error) => handle_command_error(ctx, cmd_id, up_tag, error).await,
-    }
+    })
 }
 
 async fn handle_command_error(
@@ -573,9 +599,17 @@ mod tests {
     use config::configs;
     use prost::Message;
     use sonettobuf::{
-        CurrencyChangePush, GetAct233BpInfoReply, GetAct233BpInfoRequest, MaterialChangePush,
-        TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
-        TeachingGetInfoRequest, UpdateRedDotPush,
+        Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act220EpisodeRecord,
+        Act236GetAutoGainRewardReply, Act236GetAutoGainRewardRequest, Act236Info,
+        Act236UpdateInfoPush, Act239BonusReply, Act239BonusRequest, CurrencyChangePush,
+        GetAct220InfoReply, GetAct220InfoRequest, GetAct233BpBonusReply, GetAct233BpBonusRequest,
+        GetAct233BpInfoReply, GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest,
+        GetAct239InfoReply, GetAct239InfoRequest, GetRouge2OutsideInfoReply,
+        GetRouge2OutsideInfoRequest, ItemChangePush, MarkPopShallowSettleReply,
+        MarkPopShallowSettleRequest, MaterialChangePush, NewOrderRequest, Rouge2AlchemyInfo,
+        Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo, Rouge2CareerLevelInfo, Rouge2OutsideInfo,
+        Rouge2RewardInfo, Rouge2TotalRecordInfo, TeachingGetBonusReply, TeachingGetBonusRequest,
+        TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush,
     };
     use sqlx::SqlitePool;
     use tokio::sync::mpsc;
@@ -600,6 +634,81 @@ mod tests {
             .await
             .unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn shallow_settlement_ack_reaches_handler_and_only_clears_its_flag() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 526;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'weekwalk-shallow-ack', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_weekwalk_info
+             (user_id, issue_id, is_pop_deep_rule, is_pop_shallow_settle, is_pop_deep_settle)
+             VALUES (?, 59, TRUE, TRUE, TRUE)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(2);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        for (sequence, up_tag) in [(1, 41), (2, 42)] {
+            let mut data = Vec::new();
+            MarkPopShallowSettleRequest {}.encode(&mut data).unwrap();
+            let request = ClientPacket {
+                sequence,
+                cmd_id: CmdId::MarkPopShallowSettleCmd as i16,
+                up_tag,
+                data,
+            }
+            .encode();
+
+            dispatch_command(&mut ctx, request).await.unwrap();
+
+            let CommandPacket::Reply {
+                cmd_id: CmdId::MarkPopShallowSettleCmd,
+                body,
+                up_tag: reply_up_tag,
+                ..
+            } = packets.try_recv().unwrap()
+            else {
+                panic!("shallow-settlement acknowledgement did not reach its handler");
+            };
+            assert_eq!(reply_up_tag, up_tag);
+            MarkPopShallowSettleReply::decode(&*body).unwrap();
+            assert!(packets.try_recv().is_err());
+        }
+
+        let info = ctx
+            .player()
+            .unwrap()
+            .exploration
+            .weekwalk_info(ctx.state.db)
+            .await
+            .unwrap()
+            .info
+            .unwrap();
+        assert_eq!(info.issue_id, Some(59));
+        assert_eq!(info.is_pop_shallow_settle, Some(false));
+        assert_eq!(info.is_pop_deep_rule, Some(true));
+        assert_eq!(info.is_pop_deep_settle, Some(true));
     }
 
     #[tokio::test]
@@ -665,6 +774,812 @@ mod tests {
         assert_eq!(reply.bp_id, Some(pass.bp_id));
         assert_eq!(reply.task_info.len(), expected_tasks);
         assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act236_info_command_reaches_handler_and_returns_persisted_state() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 514;
+        let activity_id = configs::get().latest_open_activity_id(236).unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act236-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_activity236_state
+             (user_id, activity_id, score, gain_reward_ids)
+             VALUES (?, ?, ?, '[3,7]')",
+        )
+        .bind(player_id)
+        .bind(activity_id)
+        .bind(240)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(2);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        GetAct236InfoRequest {
+            activity_id: Some(activity_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::GetAct236InfoCmd as i16,
+            up_tag: 8,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::GetAct236InfoCmd,
+            body,
+            result_code: 0,
+            up_tag: 8,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act236 information request did not reach its handler");
+        };
+        let reply = GetAct236InfoReply::decode(&*body).unwrap();
+        assert_eq!(
+            reply.info,
+            Some(Act236Info {
+                activity_id: Some(activity_id),
+                score: Some(240),
+                gain_reward_ids: vec![3, 7],
+            })
+        );
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act239_commands_route_and_emit_the_captured_claim_sequence() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 541;
+        let row = configs::get()
+            .activity239
+            .iter()
+            .find(|row| row.id == 3)
+            .unwrap();
+        let activity_id = row.activity_id;
+        let reward_id = row.id;
+        let red_dot_id = configs::get().activity.get(activity_id).unwrap().red_dot_id;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act239-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        for entry_id in configs::get()
+            .activity239
+            .iter()
+            .filter(|row| row.activity_id == activity_id && row.id != reward_id)
+            .map(|row| row.id)
+        {
+            database::db::game::activity_state::set(
+                &pool,
+                player_id,
+                activity_id,
+                database::db::game::activity_state::ActivityStateSet {
+                    kind: database::db::game::activity_state::ActivityStateKind::Act239Bonus,
+                    entry_id,
+                    state: 2,
+                    progress: 0,
+                    ext: "",
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(8);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        GetAct239InfoRequest {
+            activity_id: Some(activity_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence: 1,
+                cmd_id: CmdId::GetAct239InfoCmd as i16,
+                up_tag: 31,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::GetAct239InfoCmd,
+            body,
+            result_code: 0,
+            up_tag: 31,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Activity 239 information request did not reach its handler");
+        };
+        let info = GetAct239InfoReply::decode(&*body).unwrap();
+        assert_eq!(info.activity_id, Some(activity_id));
+        assert!(
+            info.bonuss
+                .iter()
+                .any(|bonus| bonus.id == Some(reward_id) && bonus.status == Some(1))
+        );
+
+        let mut data = Vec::new();
+        Act239BonusRequest {
+            activity_id: Some(activity_id),
+            id: Some(reward_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence: 2,
+                cmd_id: CmdId::Act239BonusCmd as i16,
+                up_tag: 32,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Activity 239 claim did not emit its currency snapshot first");
+        };
+        assert_eq!(cmd_id, CmdId::CurrencyChangePushCmd);
+        let currency = CurrencyChangePush::decode(&*body).unwrap();
+        assert_eq!(currency.change_currency[0].currency_id, Some(2));
+        assert_eq!(currency.change_currency[0].quantity, Some(60));
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Activity 239 claim did not emit its material delta");
+        };
+        assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+        let material = MaterialChangePush::decode(&*body).unwrap();
+        assert_eq!(material.get_approach, Some(177));
+        assert_eq!(material.data_list[0].materil_type, Some(2));
+        assert_eq!(material.data_list[0].materil_id, Some(2));
+        assert_eq!(material.data_list[0].quantity, Some(60));
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Activity 239 claim did not emit its red-dot replacement");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let red_dot = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(red_dot.red_dot_infos[0].define_id, red_dot_id);
+        assert_eq!(red_dot.red_dot_infos[0].replace_all, Some(true));
+        assert_eq!(red_dot.red_dot_infos[0].infos.len(), 1);
+        assert_eq!(red_dot.red_dot_infos[0].infos[0].id, 0);
+        assert_eq!(red_dot.red_dot_infos[0].infos[0].value, 0);
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::Act239BonusCmd,
+            body,
+            result_code: 0,
+            up_tag: 32,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Activity 239 claim did not emit its reply last");
+        };
+        let reply = Act239BonusReply::decode(&*body).unwrap();
+        assert_eq!(reply.activity_id, Some(activity_id));
+        assert!(
+            reply
+                .bonuss
+                .iter()
+                .any(|bonus| bonus.id == Some(reward_id) && bonus.status == Some(2))
+        );
+        assert!(reply.bonuss.iter().all(|bonus| bonus.status == Some(2)));
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act220_info_command_reaches_handler_and_decodes_captured_initial_episode() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let activity_id = 13710;
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(1);
+        let mut ctx = ConnectionContext::new(outbound, state);
+
+        let mut data = Vec::new();
+        GetAct220InfoRequest {
+            activity_id: Some(activity_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::GetAct220InfoCmd as i16,
+            up_tag: 52,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::GetAct220InfoCmd,
+            body,
+            result_code: 0,
+            up_tag: 52,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act220 information request did not reach its handler");
+        };
+        let reply = GetAct220InfoReply::decode(&*body).unwrap();
+        assert_eq!(
+            reply,
+            GetAct220InfoReply {
+                activity_id: Some(activity_id),
+                episodes: vec![Act220EpisodeRecord {
+                    episode_id: Some(1371001),
+                    is_finished: Some(false),
+                    unlock_branch_ids: Vec::new(),
+                    progress: Some(String::new()),
+                }],
+            }
+        );
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn rouge2_outside_info_command_decodes_captured_initial_boss_state() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 534;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'rouge2-boss-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(1);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        GetRouge2OutsideInfoRequest {}.encode(&mut data).unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::GetRouge2OutsideInfoCmd as i16,
+            up_tag: 54,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Reply {
+            cmd_id: CmdId::GetRouge2OutsideInfoCmd,
+            body,
+            result_code: 0,
+            up_tag: 54,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Rouge2 outside information request did not reach its handler");
+        };
+        let reply = GetRouge2OutsideInfoReply::decode(&*body).unwrap();
+        let mut expected_career_levels = configs::get()
+            .rouge2_career
+            .iter()
+            .map(|row| Rouge2CareerLevelInfo {
+                career_id: Some(row.id),
+                exp: Some(0),
+            })
+            .collect::<Vec<_>>();
+        expected_career_levels.sort_by_key(|row| row.career_id);
+        let mut expected_rewards = configs::get()
+            .rouge2_reward
+            .iter()
+            .map(|row| Rouge2RewardInfo {
+                id: Some(row.id),
+                buy_count: Some(0),
+            })
+            .collect::<Vec<_>>();
+        expected_rewards.sort_by_key(|row| row.id);
+        let mut expected_materials = configs::get()
+            .rouge2_material
+            .iter()
+            .map(|row| Rouge2AlchemyMaterialInfo {
+                id: Some(row.id),
+                num: Some(0),
+            })
+            .collect::<Vec<_>>();
+        expected_materials.sort_by_key(|row| row.id);
+        assert_eq!(
+            reply,
+            GetRouge2OutsideInfoReply {
+                outside_info: Some(Rouge2OutsideInfo {
+                    genius_point: Some(0),
+                    genius_ids: Vec::new(),
+                    total_record_info: Some(Rouge2TotalRecordInfo {
+                        max_difficulty: Some(0),
+                        pass_layer_id: Vec::new(),
+                        pass_event_id: Vec::new(),
+                        pass_end_id: Vec::new(),
+                        pass_entrust_id: Vec::new(),
+                        last_game_time: Some(0),
+                        pass_collections: Vec::new(),
+                        hotfix_str: Some(String::new()),
+                    }),
+                    career_level_info: expected_career_levels,
+                    reward_info: expected_rewards,
+                    reward_point: Some(0),
+                    alchemy_info: Some(Rouge2AlchemyInfo {
+                        cur_alchemy_info: None,
+                        alchemy_material_info: expected_materials,
+                    }),
+                    review: Vec::new(),
+                    boss_battle_info: Some(Rouge2BossBattleInfo {
+                        boss_info: Vec::new(),
+                        save_info: Vec::new(),
+                        use_save_index: Some(0),
+                    }),
+                }),
+            }
+        );
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act236_reward_command_emits_captured_semantic_sequence() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 528;
+        let activity_id = configs::get().latest_open_activity_id(236).unwrap();
+        let reward_id = configs::get()
+            .activity236
+            .iter()
+            .find(|row| row.activity_id == activity_id && row.cost == 0)
+            .unwrap()
+            .id;
+        let red_dot_id = configs::get().activity.get(activity_id).unwrap().red_dot_id;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act236-reward-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(8);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        Act236GetAutoGainRewardRequest {
+            activity_id: Some(activity_id),
+            reward_ids: vec![reward_id],
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Act236GetAutoGainRewardCmd as i16,
+            up_tag: 28,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act236 reward did not emit its currency snapshot first");
+        };
+        assert_eq!(cmd_id, CmdId::CurrencyChangePushCmd);
+        let currency = CurrencyChangePush::decode(&*body).unwrap();
+        assert_eq!(currency.change_currency.len(), 1);
+        assert_eq!(currency.change_currency[0].currency_id, Some(2));
+        assert_eq!(currency.change_currency[0].quantity, Some(100));
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act236 reward did not emit its material delta");
+        };
+        assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+        let material = MaterialChangePush::decode(&*body).unwrap();
+        assert_eq!(material.get_approach, Some(171));
+        assert_eq!(material.data_list.len(), 1);
+        assert_eq!(material.data_list[0].materil_type, Some(2));
+        assert_eq!(material.data_list[0].materil_id, Some(2));
+        assert_eq!(material.data_list[0].quantity, Some(100));
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act236 reward did not emit its activity red dot");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let red_dot = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(red_dot.red_dot_infos.len(), 1);
+        assert_eq!(red_dot.red_dot_infos[0].define_id, red_dot_id);
+        assert_eq!(red_dot.red_dot_infos[0].replace_all, Some(true));
+        assert_eq!(red_dot.red_dot_infos[0].infos[0].id, 0);
+        assert_eq!(red_dot.red_dot_infos[0].infos[0].value, 0);
+
+        let CommandPacket::Reply {
+            cmd_id,
+            body,
+            result_code,
+            up_tag,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act236 reward did not emit its reply last");
+        };
+        assert_eq!(cmd_id, CmdId::Act236GetAutoGainRewardCmd);
+        assert_eq!(result_code, 0);
+        assert_eq!(up_tag, 28);
+        let reply = Act236GetAutoGainRewardReply::decode(&*body).unwrap();
+        assert_eq!(reply.activity_id, Some(activity_id));
+        assert_eq!(reply.gain_reward_ids, vec![reward_id]);
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act128_milestone_command_emits_the_captured_reward_sequence() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 515;
+        let activity_id = configs::get().latest_open_activity_id(128).unwrap();
+        let currency_id = configs::get().activity128_rank_currency_id().unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act128-milestone-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO currencies (user_id, currency_id, quantity)
+             VALUES (?, ?, 700)",
+        )
+        .bind(player_id)
+        .bind(currency_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_activity_state
+             (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+             VALUES (?, ?, ?, 0, 2, 0, '', 0)",
+        )
+        .bind(player_id)
+        .bind(activity_id)
+        .bind(database::db::game::activity_state::ActivityStateKind::Act128Milestone.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(8);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        Act128GetMilestoneBonusRequest {
+            activity_id: Some(activity_id),
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Act128GetMilestoneBonusCmd as i16,
+            up_tag: 10,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act128 milestone did not emit item snapshots first");
+        };
+        assert_eq!(cmd_id, CmdId::ItemChangePushCmd);
+        let items = ItemChangePush::decode(&*body).unwrap().items;
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| (item.item_id, item.quantity))
+                .collect::<Vec<_>>(),
+            vec![(Some(120013), Some(2)), (Some(110404), Some(1))]
+        );
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act128 milestone did not emit the trade-order red dot");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let trade = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(
+            trade.red_dot_infos[0].define_id,
+            crate::types::red_dot_id::RedDotId::TradeOrderFulfillable.id()
+        );
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act128 milestone did not emit material deltas");
+        };
+        assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+        let material = MaterialChangePush::decode(&*body).unwrap();
+        assert_eq!(
+            material.get_approach,
+            Some(
+                crate::types::material_get_approach::MaterialGetApproach::Act128MilestoneBonus.id()
+            )
+        );
+        assert_eq!(
+            material
+                .data_list
+                .iter()
+                .map(|entry| (entry.materil_type, entry.materil_id, entry.quantity))
+                .collect::<Vec<_>>(),
+            vec![
+                (Some(1), Some(120013), Some(2)),
+                (Some(1), Some(110404), Some(1))
+            ]
+        );
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act128 milestone did not clear its rank red dot");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let rank = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(rank.red_dot_infos.len(), 1);
+        assert_eq!(
+            rank.red_dot_infos[0].define_id,
+            crate::types::red_dot_id::RedDotId::BossRushRankBonus.id()
+        );
+        assert_eq!(rank.red_dot_infos[0].replace_all, Some(true));
+        assert_eq!(rank.red_dot_infos[0].infos[0].id, 0);
+        assert_eq!(rank.red_dot_infos[0].infos[0].value, 0);
+
+        let CommandPacket::Reply {
+            cmd_id,
+            body,
+            result_code,
+            up_tag,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act128 milestone did not emit its reply last");
+        };
+        assert_eq!(cmd_id, CmdId::Act128GetMilestoneBonusCmd);
+        assert_eq!(result_code, 0);
+        assert_eq!(up_tag, 10);
+        let reply = Act128GetMilestoneBonusReply::decode(&*body).unwrap();
+        assert_eq!(reply.activity_id, Some(activity_id));
+        assert_eq!(reply.gain_milestone_level, Some(7));
+        assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act233_bonus_command_routes_after_committed_reward_and_red_dot_pushes() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 516;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act233-bonus-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let pass = configs::get().activity233_bp.iter().next().unwrap();
+        sqlx::query(
+            "INSERT INTO user_act233_bp_state
+             (user_id, activity_id, bp_id, score)
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(player_id)
+        .bind(pass.activity_id)
+        .bind(pass.bp_id)
+        .bind(pass.exp_level_up * 3)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(8);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        GetAct233BpBonusRequest {
+            activity_id: Some(pass.activity_id),
+            level: Some(0),
+            pay_bonus: Some(false),
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::GetAct233BpBonusCmd as i16,
+            up_tag: 12,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act233 bonus did not emit a currency snapshot push");
+        };
+        assert_eq!(cmd_id, CmdId::CurrencyChangePushCmd);
+        assert!(
+            !CurrencyChangePush::decode(&*body)
+                .unwrap()
+                .change_currency
+                .is_empty()
+        );
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act233 bonus did not emit an item snapshot push");
+        };
+        assert_eq!(cmd_id, CmdId::ItemChangePushCmd);
+        assert!(!ItemChangePush::decode(&*body).unwrap().items.is_empty());
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act233 bonus did not emit the trade red-dot projection");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let trade = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(
+            trade.red_dot_infos[0].define_id,
+            crate::types::red_dot_id::RedDotId::TradeOrderFulfillable.id()
+        );
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act233 bonus did not emit a material delta push");
+        };
+        assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+        let material = MaterialChangePush::decode(&*body).unwrap();
+        assert_eq!(
+            material.get_approach,
+            Some(crate::types::material_get_approach::MaterialGetApproach::ActBp.id())
+        );
+        assert!(!material.data_list.is_empty());
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("Act233 bonus did not emit its red-dot projection");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+        let red_dots = UpdateRedDotPush::decode(&*body).unwrap();
+        assert_eq!(red_dots.red_dot_infos.len(), 2);
+        assert_eq!(
+            red_dots
+                .red_dot_infos
+                .iter()
+                .map(|group| (group.define_id, group.infos[0].value))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    crate::types::red_dot_id::RedDotId::V3a7Anniversary3ActBpSubTask.id(),
+                    0,
+                ),
+                (
+                    crate::types::red_dot_id::RedDotId::V3a7Anniversary3ActBpBonus.id(),
+                    0,
+                ),
+            ]
+        );
+        assert!(
+            red_dots
+                .red_dot_infos
+                .iter()
+                .all(|group| group.replace_all == Some(true))
+        );
+
+        let CommandPacket::Reply {
+            cmd_id,
+            body,
+            result_code,
+            up_tag,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("Act233 bonus did not emit its reply");
+        };
+        assert_eq!(cmd_id, CmdId::GetAct233BpBonusCmd);
+        assert_eq!(result_code, 0);
+        assert_eq!(up_tag, 12);
+        let reply = GetAct233BpBonusReply::decode(&*body).unwrap();
+        assert_eq!(reply.activity_id, Some(pass.activity_id));
+        assert_eq!(reply.bp_id, Some(pass.bp_id));
+        assert_eq!(reply.score_bonus_info.len(), 3);
+        assert_eq!(
+            reply
+                .score_bonus_info
+                .iter()
+                .map(|info| (info.level, info.has_getfree_bonus, info.has_get_pay_bonus))
+                .collect::<Vec<_>>(),
+            vec![
+                (Some(1), Some(true), None),
+                (Some(2), Some(true), None),
+                (Some(3), Some(true), None),
+            ]
+        );
+        assert!(packets.try_recv().is_err());
+
+        let claimed: String = sqlx::query_scalar(
+            "SELECT has_get_free_bonus FROM user_act233_bp_state
+             WHERE user_id = ? AND activity_id = ? AND bp_id = ?",
+        )
+        .bind(player_id)
+        .bind(pass.activity_id)
+        .bind(pass.bp_id)
+        .fetch_one(state.db)
+        .await
+        .unwrap();
+        assert_eq!(claimed, "[1,2,3]");
     }
 
     #[tokio::test]
@@ -903,6 +1818,142 @@ mod tests {
                 .await
                 .unwrap(),
             0
+        );
+    }
+
+    #[tokio::test]
+    async fn completed_charge_emits_act236_state_and_claimable_rewards_before_completion() {
+        const ACTIVE_TIME_MS: i64 = 1_786_615_201_000;
+
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 530;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'act236-charge-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO user_stats (user_id) VALUES (?)")
+            .bind(player_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let activity_id = configs::get().latest_open_activity_id(236).unwrap();
+        sqlx::query(
+            "INSERT INTO user_activity236_state
+             (user_id, activity_id, score, gain_reward_ids)
+             VALUES (?, ?, 0, '[1]')",
+        )
+        .bind(player_id)
+        .bind(activity_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut outbound_packets) = mpsc::channel(32);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        NewOrderRequest {
+            id: Some(837029),
+            origin_currency: Some("USD".to_string()),
+            origin_amount: Some(6799),
+            selection_infos: Vec::new(),
+        }
+        .encode(&mut data)
+        .unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::NewOrderCmd as i16,
+            up_tag: 53,
+            data,
+        };
+
+        crate::handlers::store::on_new_order_at(&mut ctx, request, ACTIVE_TIME_MS)
+            .await
+            .unwrap();
+        let packets = std::iter::from_fn(|| outbound_packets.try_recv().ok()).collect::<Vec<_>>();
+        let cmd_ids = packets
+            .iter()
+            .map(|packet| match packet {
+                CommandPacket::Reply { cmd_id, .. } | CommandPacket::Push { cmd_id, .. } => *cmd_id,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(cmd_ids[0], CmdId::NewOrderCmd);
+
+        let update_index = cmd_ids
+            .iter()
+            .position(|cmd_id| *cmd_id == CmdId::Act236UpdateInfoPushCmd)
+            .unwrap();
+        assert_eq!(cmd_ids[update_index - 1], CmdId::MaterialChangePushCmd);
+        assert_eq!(cmd_ids[update_index + 1], CmdId::UpdateRedDotPushCmd);
+        assert_eq!(cmd_ids[update_index + 2], CmdId::OrderCompletePushCmd);
+        assert_eq!(cmd_ids[update_index + 3], CmdId::StatInfoPushCmd);
+
+        let CommandPacket::Push { body, .. } = &packets[update_index - 1] else {
+            panic!("material change was not a push");
+        };
+        assert_eq!(
+            MaterialChangePush::decode(&**body).unwrap().get_approach,
+            Some(crate::types::material_get_approach::MaterialGetApproach::Charge.id())
+        );
+
+        let CommandPacket::Push { body, .. } = &packets[update_index] else {
+            panic!("Act236 update was not a push");
+        };
+        assert_eq!(
+            Act236UpdateInfoPush::decode(&**body).unwrap().info,
+            Some(Act236Info {
+                activity_id: Some(activity_id),
+                score: Some(4880),
+                gain_reward_ids: vec![1],
+            })
+        );
+
+        let CommandPacket::Push { body, .. } = &packets[update_index + 1] else {
+            panic!("Act236 red dots were not a push");
+        };
+        let red_dots = UpdateRedDotPush::decode(&**body).unwrap();
+        assert_eq!(red_dots.red_dot_infos.len(), 1);
+        let group = &red_dots.red_dot_infos[0];
+        assert_eq!(
+            group.define_id,
+            configs::get().activity.get(activity_id).unwrap().red_dot_id
+        );
+        assert_eq!(group.replace_all, Some(true));
+        assert_eq!(
+            group
+                .infos
+                .iter()
+                .map(|info| (info.id, info.value, info.time))
+                .collect::<Vec<_>>(),
+            vec![
+                (2, 1, Some(0)),
+                (3, 1, Some(0)),
+                (4, 1, Some(0)),
+                (5, 1, Some(0)),
+                (6, 1, Some(0)),
+            ]
+        );
+
+        assert_eq!(
+            database::db::game::activity236::get_state(state.db, player_id, activity_id)
+                .await
+                .unwrap(),
+            database::db::game::activity236::Activity236State {
+                score: 4880,
+                gain_reward_ids: vec![1],
+            }
         );
     }
 }

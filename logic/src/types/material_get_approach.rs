@@ -31,13 +31,42 @@ pub enum MaterialGetApproach {
     AutoChessRankReward = 134,
     Activity197View = 138,
     SkinCoupon = 139,
+    Act128MilestoneBonus = 152,
     Birthday = 153,
     PartyClothSummon = 158,
     CommandStationPaperReward = 169,
+    Act236Reward = 171,
+    ActBp = 173,
+    Act239Bonus = 177,
 }
 
 impl MaterialGetApproach {
     pub const fn id(self) -> u32 {
         self as u32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn act_bp_uses_its_exact_client_approach() {
+        assert_eq!(MaterialGetApproach::ActBp.id(), 173);
+    }
+
+    #[test]
+    fn act128_milestone_uses_its_captured_approach() {
+        assert_eq!(MaterialGetApproach::Act128MilestoneBonus.id(), 152);
+    }
+
+    #[test]
+    fn act236_reward_uses_its_captured_approach() {
+        assert_eq!(MaterialGetApproach::Act236Reward.id(), 171);
+    }
+
+    #[test]
+    fn act239_bonus_uses_its_captured_approach() {
+        assert_eq!(MaterialGetApproach::Act239Bonus.id(), 177);
     }
 }

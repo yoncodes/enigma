@@ -1,6 +1,11 @@
-use crate::{error::AppError, reward};
-use common::time::ServerTime;
-use database::db::game::{battle_pass, charges, sign_in, tasks as task_db, user_stats};
+use crate::{
+    activity::{Act236ChargeUpdate, act236_charge_update, active_act236_activity_id_at},
+    error::AppError,
+    reward,
+};
+use database::db::game::{
+    activity236, battle_pass, charges, sign_in, tasks as task_db, user_stats,
+};
 use sonettobuf::{
     BpPayPush, BpScoreUpdatePush, NewOrderReply, OrderCompletePush, SelectionInfo, StatInfoPush,
 };
@@ -14,6 +19,7 @@ pub struct NewOrderResult {
     pub bp_score: Option<BpScoreUpdatePush>,
     pub rewards: reward::AppliedRewards,
     pub material_changes: Vec<(u32, u32, i32)>,
+    pub act236: Option<Act236ChargeUpdate>,
 }
 
 pub(super) async fn new_order(
@@ -22,8 +28,8 @@ pub(super) async fn new_order(
     goods_id: i32,
     currency: Option<String>,
     selections: &[SelectionInfo],
+    now: i64,
 ) -> Result<NewOrderResult, AppError> {
-    let now = ServerTime::now_ms();
     let tables = config::configs::get();
     let goods = tables
         .store_charge_goods
@@ -74,6 +80,23 @@ pub(super) async fn new_order(
     let stats = user_stats::get_user_stats_in_transaction(&mut tx, player_id)
         .await?
         .ok_or(AppError::InvalidRequest)?;
+    let act236 = if let Some((activity_id, score_delta)) = active_act236_activity_id_at(now)
+        .and_then(|activity_id| {
+            tables
+                .activity236_charge_score(activity_id, goods_id)
+                .map(|score| (activity_id, score))
+        }) {
+        let state = activity236::increment_score_in_transaction(
+            &mut tx,
+            player_id,
+            activity_id,
+            score_delta,
+        )
+        .await?;
+        Some(act236_charge_update(activity_id, state)?)
+    } else {
+        None
+    };
     tx.commit().await?;
 
     Ok(NewOrderResult {
@@ -102,6 +125,7 @@ pub(super) async fn new_order(
         bp_score: bp_pushes.score,
         rewards,
         material_changes,
+        act236,
     })
 }
 

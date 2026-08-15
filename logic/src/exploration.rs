@@ -1,7 +1,8 @@
 use crate::error::AppError;
 use database::db::game::{explore, weekwalk, weekwalk_v2};
 use sonettobuf::{
-    GetExploreSimpleInfoReply, GetWeekwalkInfoReply, WeekwalkInfo, WeekwalkVer2GetInfoReply,
+    GetExploreSimpleInfoReply, GetWeekwalkInfoReply, MarkPopShallowSettleReply, WeekwalkInfo,
+    WeekwalkVer2GetInfoReply,
 };
 use sqlx::SqlitePool;
 
@@ -21,6 +22,14 @@ impl ExplorationManager {
 
     pub async fn weekwalk_info(self, db: &SqlitePool) -> Result<GetWeekwalkInfoReply, AppError> {
         weekwalk_info(db, self.player_id).await
+    }
+
+    pub async fn mark_pop_shallow_settle(
+        self,
+        db: &SqlitePool,
+    ) -> Result<MarkPopShallowSettleReply, AppError> {
+        weekwalk::mark_pop_shallow_settle(db, self.player_id).await?;
+        Ok(MarkPopShallowSettleReply {})
     }
 
     pub async fn weekwalk_v2_info(

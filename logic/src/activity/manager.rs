@@ -14,6 +14,25 @@ impl ActivityManager {
         }
     }
 
+    pub async fn sync_act101_login_progress(
+        &self,
+        db: &SqlitePool,
+        now_ms: i64,
+    ) -> Result<(), AppError> {
+        let Ok(schedule_time) = u64::try_from(now_ms) else {
+            return Ok(());
+        };
+        let activity_ids = active_act101_activity_ids_at(schedule_time);
+        activity101::record_login_progress(
+            db,
+            self.player_id,
+            &activity_ids,
+            common::time::ServerTime::server_day(now_ms),
+        )
+        .await?;
+        Ok(())
+    }
+
     pub async fn get101_infos(
         &mut self,
         db: &SqlitePool,
@@ -839,12 +858,54 @@ impl ActivityManager {
         act229_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn act236_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<GetAct236InfoReply, AppError> {
+        act236_info(db, self.player_id, activity_id).await
+    }
+
+    pub async fn act236_get_auto_gain_reward(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        reward_ids: Vec<i32>,
+    ) -> Result<act236::Act236RewardClaim, AppError> {
+        act236_get_auto_gain_reward(db, self.player_id, activity_id, reward_ids).await
+    }
+
+    pub async fn act239_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<GetAct239InfoReply, AppError> {
+        act239_info(db, self.player_id, activity_id).await
+    }
+
+    pub async fn act239_bonus(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        id: Option<i32>,
+    ) -> Result<act239::Act239Claim, AppError> {
+        act239_bonus(db, self.player_id, activity_id, id).await
+    }
+
     pub async fn act128_info(
         &self,
         db: &SqlitePool,
         activity_id: Option<i32>,
     ) -> Result<Get128InfosReply, AppError> {
         act128_info(db, self.player_id, activity_id).await
+    }
+
+    pub async fn get_act128_milestone_bonus(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<act128::Act128MilestoneClaim, AppError> {
+        get_act128_milestone_bonus(db, self.player_id, activity_id).await
     }
 
     pub fn act229_battle_episode(&self, activity_id: i32, stage_id: i32) -> Result<i32, AppError> {

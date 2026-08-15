@@ -3,9 +3,13 @@ pub enum RedDotId {
     AchievementFinish,
     ActivityNoviceTab,
     ActivityJieXiKaPhoto,
+    Activity239Bonus,
+    V3a7Anniversary3ActBpSubTask,
+    V3a7Anniversary3ActBpBonus,
     BattlePassBonus,
     BattlePassSpBonus,
     BattlePassTask,
+    BossRushRankBonus,
     CommandStationBonus,
     DailyTask,
     MailBtn,
@@ -36,9 +40,13 @@ impl RedDotId {
             Self::AchievementFinish => 1108,
             Self::ActivityNoviceTab => 1010,
             Self::ActivityJieXiKaPhoto => 1057,
+            Self::Activity239Bonus => 38507,
+            Self::V3a7Anniversary3ActBpSubTask => 3705,
+            Self::V3a7Anniversary3ActBpBonus => 3708,
             Self::BattlePassBonus => 1047,
             Self::BattlePassSpBonus => 2204,
             Self::BattlePassTask => 1027,
+            Self::BossRushRankBonus => 3220,
             Self::CommandStationBonus => 3007,
             Self::DailyTask => 1000,
             Self::MailBtn => 1002,
@@ -68,9 +76,13 @@ impl RedDotId {
             1108 => Some(Self::AchievementFinish),
             1010 => Some(Self::ActivityNoviceTab),
             1057 => Some(Self::ActivityJieXiKaPhoto),
+            38507 => Some(Self::Activity239Bonus),
+            3705 => Some(Self::V3a7Anniversary3ActBpSubTask),
+            3708 => Some(Self::V3a7Anniversary3ActBpBonus),
             1047 => Some(Self::BattlePassBonus),
             2204 => Some(Self::BattlePassSpBonus),
             1027 => Some(Self::BattlePassTask),
+            3220 => Some(Self::BossRushRankBonus),
             3007 => Some(Self::CommandStationBonus),
             1000 => Some(Self::DailyTask),
             1002 => Some(Self::MailBtn),
@@ -94,5 +106,22 @@ impl RedDotId {
             1001 => Some(Self::WeeklyTask),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn boss_rush_rank_bonus_uses_the_client_red_dot_id() {
+        assert_eq!(RedDotId::BossRushRankBonus.id(), 3220);
+        assert_eq!(RedDotId::from_id(3220), Some(RedDotId::BossRushRankBonus));
+    }
+
+    #[test]
+    fn activity239_bonus_uses_the_captured_red_dot_id() {
+        assert_eq!(RedDotId::Activity239Bonus.id(), 38507);
+        assert_eq!(RedDotId::from_id(38507), Some(RedDotId::Activity239Bonus));
     }
 }

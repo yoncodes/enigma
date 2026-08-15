@@ -1,6 +1,6 @@
 use super::{
     RewardMaterialType, RewardSet, apply, consume, hero_duplicate_rewards, parse,
-    parse_bonus_with_cost,
+    parse_bonus_with_cost, parse_strict,
 };
 
 #[test]
@@ -24,6 +24,19 @@ fn parses_bp_score_rewards() {
         rewards.material_changes(),
         vec![(RewardMaterialType::Bp.id(), 14, 10000)]
     );
+    assert!(parse_strict("1#120013#2|1#110404#1").is_ok());
+    for invalid in [
+        "1#broken#2",
+        "1#120013",
+        "999#1#1",
+        "1#120013#-1",
+        "|",
+        "|1#120013#2",
+        "1#120013#2|",
+        "1#120013#2||1#110404#1",
+    ] {
+        assert!(parse_strict(invalid).is_err(), "{invalid}");
+    }
 }
 
 #[test]

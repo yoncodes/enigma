@@ -2,9 +2,9 @@ use crate::error::AppError;
 use database::db::game::rouge;
 use sonettobuf::{
     GetRouge2InfoReply, GetRouge2OutsideInfoReply, GetRougeOutsideInfoReply, Rouge2AlchemyInfo,
-    Rouge2AlchemyMaterialInfo, Rouge2AttrInfo, Rouge2BagInfo, Rouge2CareerLevelInfo,
-    Rouge2GetUnlockCollectionsReply, Rouge2Info, Rouge2OutsideInfo, Rouge2RewardInfo,
-    Rouge2TotalRecordInfo, RougeOutsideInfo,
+    Rouge2AlchemyMaterialInfo, Rouge2AttrInfo, Rouge2BagInfo, Rouge2BossBattleInfo,
+    Rouge2CareerLevelInfo, Rouge2GetUnlockCollectionsReply, Rouge2Info, Rouge2OutsideInfo,
+    Rouge2RewardInfo, Rouge2TotalRecordInfo, RougeOutsideInfo,
 };
 use sqlx::SqlitePool;
 
@@ -105,7 +105,11 @@ async fn rouge2_outside_info(
                     .collect(),
             }),
             review: Vec::new(),
-            boss_battle_info: None,
+            boss_battle_info: Some(Rouge2BossBattleInfo {
+                boss_info: Vec::new(),
+                save_info: Vec::new(),
+                use_save_index: Some(0),
+            }),
         }),
     })
 }

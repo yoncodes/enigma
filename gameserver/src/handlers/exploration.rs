@@ -2,7 +2,8 @@ use crate::{
     error::AppError,
     net::{context::ConnectionContext, packet::ClientPacket},
 };
-use sonettobuf::CmdId;
+use prost::Message;
+use sonettobuf::{CmdId, MarkPopShallowSettleRequest};
 
 pub async fn on_get_explore_simple_info(
     ctx: &mut ConnectionContext,
@@ -23,6 +24,20 @@ pub async fn on_get_weekwalk_info(
         .weekwalk_info(ctx.state.db)
         .await?;
     ctx.send_reply(CmdId::GetWeekwalkInfoCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_mark_pop_shallow_settle(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    MarkPopShallowSettleRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .exploration
+        .mark_pop_shallow_settle(ctx.state.db)
+        .await?;
+    ctx.send_reply(CmdId::MarkPopShallowSettleCmd, reply, 0, req.up_tag)
         .await
 }
 

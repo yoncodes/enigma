@@ -51,6 +51,51 @@ pub fn parse(value: &str) -> RewardSet {
     rewards
 }
 
+pub fn parse_strict(value: &str) -> Result<RewardSet, AppError> {
+    if value.is_empty() {
+        return Ok(RewardSet::default());
+    }
+
+    for part in value.split('|') {
+        if part.is_empty() {
+            return Err(AppError::InvalidRequest);
+        }
+        let fields = part
+            .split('#')
+            .map(str::parse::<i32>)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| AppError::InvalidRequest)?;
+        if fields.len() != 3
+            || fields[1] < 0
+            || fields[2] < 0
+            || !matches!(
+                RewardMaterialType::from_i32(fields[0]),
+                Some(
+                    RewardMaterialType::Exp
+                        | RewardMaterialType::Item
+                        | RewardMaterialType::Currency
+                        | RewardMaterialType::BlockPackage
+                        | RewardMaterialType::Hero
+                        | RewardMaterialType::HeroSkin
+                        | RewardMaterialType::PlayerCloth
+                        | RewardMaterialType::PlayerClothExp
+                        | RewardMaterialType::Equip
+                        | RewardMaterialType::PowerPotion
+                        | RewardMaterialType::Building
+                        | RewardMaterialType::SpecialBlock
+                        | RewardMaterialType::Antique
+                        | RewardMaterialType::NewInsight
+                        | RewardMaterialType::Bp
+                )
+            )
+        {
+            return Err(AppError::InvalidRequest);
+        }
+    }
+
+    Ok(parse(value))
+}
+
 pub fn parse_reward_id(reward_id: i32) -> RewardSet {
     parse_reward_id_with_cost(reward_id, 0)
 }
