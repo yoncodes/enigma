@@ -357,9 +357,9 @@ pub async fn on_hero_level_up(
     task_events::notify(
         ctx,
         player_id,
-        TaskEvent::DoneCount {
-            name: "HeroLevelUp",
-            count: 1,
+        TaskEvent::HeroLevelReach {
+            hero_id,
+            level: new_level,
         },
     )
     .await?;

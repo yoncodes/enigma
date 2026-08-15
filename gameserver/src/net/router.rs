@@ -600,16 +600,17 @@ mod tests {
     use prost::Message;
     use sonettobuf::{
         Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act220EpisodeRecord,
-        Act236GetAutoGainRewardReply, Act236GetAutoGainRewardRequest, Act236Info,
-        Act236UpdateInfoPush, Act239BonusReply, Act239BonusRequest, CurrencyChangePush,
-        GetAct220InfoReply, GetAct220InfoRequest, GetAct233BpBonusReply, GetAct233BpBonusRequest,
-        GetAct233BpInfoReply, GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest,
-        GetAct239InfoReply, GetAct239InfoRequest, GetRouge2OutsideInfoReply,
-        GetRouge2OutsideInfoRequest, ItemChangePush, MarkPopShallowSettleReply,
-        MarkPopShallowSettleRequest, MaterialChangePush, NewOrderRequest, Rouge2AlchemyInfo,
-        Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo, Rouge2CareerLevelInfo, Rouge2OutsideInfo,
-        Rouge2RewardInfo, Rouge2TotalRecordInfo, TeachingGetBonusReply, TeachingGetBonusRequest,
-        TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush,
+        Act233BpScoreUpdatePush, Act236GetAutoGainRewardReply, Act236GetAutoGainRewardRequest,
+        Act236Info, Act236UpdateInfoPush, Act239BonusReply, Act239BonusRequest, CurrencyChangePush,
+        FinishTaskReply, FinishTaskRequest, GetAct220InfoReply, GetAct220InfoRequest,
+        GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
+        GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest, GetAct239InfoReply,
+        GetAct239InfoRequest, GetRouge2OutsideInfoReply, GetRouge2OutsideInfoRequest,
+        ItemChangePush, MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush,
+        NewOrderRequest, Rouge2AlchemyInfo, Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo,
+        Rouge2CareerLevelInfo, Rouge2OutsideInfo, Rouge2RewardInfo, Rouge2TotalRecordInfo,
+        TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
+        TeachingGetInfoRequest, UpdateRedDotPush, UpdateTaskPush,
     };
     use sqlx::SqlitePool;
     use tokio::sync::mpsc;
@@ -774,6 +775,99 @@ mod tests {
         assert_eq!(reply.bp_id, Some(pass.bp_id));
         assert_eq!(reply.task_info.len(), expected_tasks);
         assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn act233_finish_task_emits_task_and_absolute_score_pushes() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (513, 'act233-finish-route', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_tasks
+             (user_id, type_id, task_id, progress, has_finished, finish_count, activity_id)
+             VALUES (513, 79, 790001, 1, 1, 0, 13716)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_act233_bp_state (user_id, activity_id, bp_id, score)
+             VALUES (513, 13716, 1, 100)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(16);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(513, PlayerState::new(513, 0)));
+
+        let mut data = Vec::new();
+        FinishTaskRequest { id: 790001 }.encode(&mut data).unwrap();
+        let request = ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::FinishTaskCmd as i16,
+            up_tag: 8,
+            data,
+        }
+        .encode();
+
+        dispatch_command(&mut ctx, request).await.unwrap();
+
+        let mut task_update = None;
+        let mut score_update = None;
+        let mut reply = None;
+        while let Ok(packet) = packets.try_recv() {
+            match packet {
+                CommandPacket::Push {
+                    cmd_id: CmdId::UpdateTaskPushCmd,
+                    body,
+                    ..
+                } => {
+                    task_update = Some(UpdateTaskPush::decode(&*body).unwrap());
+                }
+                CommandPacket::Push {
+                    cmd_id: CmdId::Act233BpScoreUpdatePushCmd,
+                    body,
+                    ..
+                } => {
+                    score_update = Some(Act233BpScoreUpdatePush::decode(&*body).unwrap());
+                }
+                CommandPacket::Reply {
+                    cmd_id: CmdId::FinishTaskCmd,
+                    body,
+                    ..
+                } => {
+                    reply = Some(FinishTaskReply::decode(&*body).unwrap());
+                }
+                _ => {}
+            }
+        }
+
+        let task_update = task_update.expect("Act233 task update push");
+        assert_eq!(task_update.task_info[0].id, 790001);
+        assert_eq!(task_update.task_info[0].finish_count, Some(1));
+        assert_eq!(
+            score_update.expect("Act233 score update push"),
+            Act233BpScoreUpdatePush {
+                activity_id: Some(13716),
+                bp_id: Some(1),
+                score: Some(200),
+            }
+        );
+        assert_eq!(reply.unwrap().finish_count, Some(1));
     }
 
     #[tokio::test]

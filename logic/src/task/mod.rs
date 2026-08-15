@@ -1,6 +1,6 @@
 use crate::{bp, error::AppError, reward, room::RoomManager, types::red_dot_id::RedDotId};
-use database::db::game::tasks as task_db;
 pub use database::db::game::tasks::{ProductionLineAction, TaskEvent, TaskType};
+use database::db::game::{act233_bp, tasks as task_db};
 pub use database::models::game::tasks::UserTask;
 use sonettobuf::{
     FinishAllTaskReply, FinishReadTaskReply, FinishTaskReply, GetTaskActivityBonusReply,
@@ -102,13 +102,15 @@ impl TaskManager {
         let task = task_db::get_by_id(db, self.player_id, task_id)
             .await?
             .ok_or(AppError::InvalidRequest)?;
-        if task.type_id == task_db::TaskType::ActBp.id() {
-            return Err(AppError::InvalidRequest);
-        }
         let mut tx = db.begin().await?;
         let task = task_db::finish_task_in_transaction(&mut tx, &task)
             .await?
             .ok_or(AppError::InvalidRequest)?;
+        let act233_bp_scores = if task.type_id == task_db::TaskType::ActBp.id() {
+            vec![settle_act233_score(&mut tx, self.player_id, &task).await?]
+        } else {
+            Vec::new()
+        };
         let (activity, mut reward_set) =
             add_claim_activity_in_transaction(&mut tx, self.player_id, &task).await?;
         reward_set.extend(task_rewards(task.type_id, task.task_id));
@@ -127,6 +129,7 @@ impl TaskManager {
             activity_info: activity.into_iter().map(Into::into).collect(),
             rewards,
             material_changes,
+            act233_bp_scores,
         })
     }
 
@@ -138,9 +141,6 @@ impl TaskManager {
         task_ids: Vec<i32>,
         activity_id: Option<i32>,
     ) -> Result<TaskClaim<FinishAllTaskReply>, AppError> {
-        if type_id == task_db::TaskType::ActBp.id() {
-            return Err(AppError::InvalidRequest);
-        }
         if type_id == task_db::TaskType::Room.id() {
             RoomManager::new(self.player_id)
                 .sync_room_tasks(db, config::configs::get())
@@ -161,8 +161,12 @@ impl TaskManager {
             .ok_or(AppError::InvalidRequest)?;
 
         let mut activity = Vec::new();
+        let mut act233_bp_scores = Vec::new();
         let mut reward_set = reward::RewardSet::default();
         for task in &tasks {
+            if task.type_id == task_db::TaskType::ActBp.id() {
+                act233_bp_scores.push(settle_act233_score(&mut tx, self.player_id, task).await?);
+            }
             let (updated_activity, activity_rewards) =
                 add_claim_activity_in_transaction(&mut tx, self.player_id, task).await?;
             activity.extend(updated_activity);
@@ -187,6 +191,7 @@ impl TaskManager {
             activity_info: activity.into_iter().map(Into::into).collect(),
             rewards,
             material_changes,
+            act233_bp_scores,
         })
     }
 
@@ -228,6 +233,7 @@ impl TaskManager {
                 activity_info,
                 rewards,
                 material_changes,
+                act233_bp_scores: Vec::new(),
             });
         }
 
@@ -243,6 +249,7 @@ impl TaskManager {
             activity_info,
             rewards,
             material_changes,
+            act233_bp_scores: Vec::new(),
         })
     }
 
@@ -327,12 +334,36 @@ fn add_battle_pass_score(rewards: &mut reward::RewardSet, tasks: &[UserTask]) {
     }
 }
 
+async fn settle_act233_score(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    player_id: i64,
+    task: &UserTask,
+) -> Result<act233_bp::Act233BpScoreUpdate, AppError> {
+    let task_config = config::configs::get()
+        .activity233_task
+        .get(task.task_id)
+        .filter(|task_config| {
+            task_config.is_online != 0 && task_config.activity_id == task.activity_id
+        })
+        .ok_or(AppError::InvalidRequest)?;
+
+    Ok(act233_bp::add_score_in_transaction(
+        tx,
+        player_id,
+        task.activity_id,
+        task_config.bp_id,
+        task_config.bonus_score,
+    )
+    .await?)
+}
+
 pub struct TaskClaim<T> {
     pub reply: T,
     pub task_info: Vec<Task>,
     pub activity_info: Vec<TaskActivityInfo>,
     pub rewards: reward::AppliedRewards,
     pub material_changes: Vec<(u32, u32, i32)>,
+    pub act233_bp_scores: Vec<act233_bp::Act233BpScoreUpdate>,
 }
 
 pub struct TaskRedDot {

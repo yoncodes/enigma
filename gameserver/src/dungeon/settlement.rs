@@ -17,6 +17,7 @@ pub struct DungeonCompletion<'a> {
 }
 
 pub struct DungeonSettlement {
+    pub kill_count: i32,
     pub hero_ids: Vec<i32>,
     pub rewards: AppliedRewards,
     pub dungeon_update: DungeonUpdatePush,
@@ -62,6 +63,8 @@ pub async fn settle_active(
         record,
     )
     .await?;
+    settlement.kill_count =
+        i32::try_from(active.runtime.defeated_defender_count()).unwrap_or(i32::MAX);
     logic::activity::settle_act128_score_in_transaction(
         &mut tx,
         player_id,
@@ -157,6 +160,7 @@ async fn settle_completion_in_transaction(
     let open_infos = open_infos::reconcile_progression_in_transaction(tx, player_id).await?;
 
     Ok(DungeonSettlement {
+        kill_count: 0,
         hero_ids,
         rewards,
         dungeon_update: DungeonUpdatePush {
