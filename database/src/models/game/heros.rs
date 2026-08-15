@@ -1242,7 +1242,8 @@ impl HeroModel<HeroData> for UserHeroModel {
         }
 
         sqlx::query(
-            "INSERT INTO hero_birthday_info (user_id, hero_id, birthday_count) VALUES (?, ?, ?)",
+            "INSERT INTO hero_birthday_info (user_id, hero_id, birthday_count) VALUES (?, ?, ?)
+             ON CONFLICT(user_id, hero_id) DO NOTHING",
         )
         .bind(self.user_id)
         .bind(hero_id)

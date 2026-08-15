@@ -708,7 +708,9 @@ fn birthday_reward_uses_the_matching_day_and_next_configured_gift() {
 }
 
 #[tokio::test]
-async fn birthday_claim_state_does_not_require_hero_ownership() {
+async fn birthday_claim_state_survives_new_hero_grant_without_prior_ownership() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     database::run_migrations(&pool).await.unwrap();
     sqlx::query(
@@ -718,6 +720,9 @@ async fn birthday_claim_state_does_not_require_hero_ownership() {
     .execute(&pool)
     .await
     .unwrap();
+
+    let heroes = UserHeroModel::new(23, pool.clone());
+    assert!(!heroes.has_hero(3039).await.unwrap());
 
     let mut tx = pool.begin().await.unwrap();
     assert!(
@@ -729,6 +734,22 @@ async fn birthday_claim_state_does_not_require_hero_ownership() {
     );
     tx.commit().await.unwrap();
 
+    assert_eq!(
+        database::db::game::sign_in::get_hero_birthday_claim(&pool, 23, 3039)
+            .await
+            .unwrap(),
+        Some((1, 2026))
+    );
+
+    let mut tx = pool.begin().await.unwrap();
+    let grant = heroes
+        .grant_hero_in_transaction(&mut tx, 3039)
+        .await
+        .unwrap();
+    assert!(grant.is_new);
+    assert_eq!(grant.duplicate_count, 0);
+    tx.commit().await.unwrap();
+    assert!(heroes.has_hero(3039).await.unwrap());
     assert_eq!(
         database::db::game::sign_in::get_hero_birthday_claim(&pool, 23, 3039)
             .await
