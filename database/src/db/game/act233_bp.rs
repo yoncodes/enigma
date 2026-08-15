@@ -9,6 +9,13 @@ pub struct Act233BpState {
     pub has_get_pay_bonus: Vec<i32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Act233BpScoreUpdate {
+    pub activity_id: i32,
+    pub bp_id: i32,
+    pub score: i32,
+}
+
 pub async fn get_or_create_state(
     pool: &SqlitePool,
     user_id: i64,
@@ -51,6 +58,45 @@ pub async fn get_state(
         pay_status,
         has_get_free_bonus: serde_json::from_str(&free_json)?,
         has_get_pay_bonus: serde_json::from_str(&pay_json)?,
+    })
+}
+
+pub async fn add_score_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    activity_id: i32,
+    bp_id: i32,
+    score_delta: i32,
+) -> Result<Act233BpScoreUpdate> {
+    sqlx::query(
+        "INSERT OR IGNORE INTO user_act233_bp_state
+            (user_id, activity_id, bp_id)
+         VALUES (?, ?, ?)",
+    )
+    .bind(user_id)
+    .bind(activity_id)
+    .bind(bp_id)
+    .execute(&mut **tx)
+    .await?;
+
+    let score = sqlx::query_scalar::<_, i32>(
+        "UPDATE user_act233_bp_state
+         SET score = score + ?, updated_at = ?
+         WHERE user_id = ? AND activity_id = ? AND bp_id = ?
+         RETURNING score",
+    )
+    .bind(score_delta)
+    .bind(common::time::ServerTime::now_ms())
+    .bind(user_id)
+    .bind(activity_id)
+    .bind(bp_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    Ok(Act233BpScoreUpdate {
+        activity_id,
+        bp_id,
+        score,
     })
 }
 
@@ -195,5 +241,41 @@ mod tests {
                 .unwrap();
         assert!(duplicate.is_none());
         second.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn score_update_rolls_back_with_its_transaction() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (1, 'act233-score-tx', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let mut tx = pool.begin().await.unwrap();
+        let update = add_score_in_transaction(&mut tx, 1, 13716, 1, 100)
+            .await
+            .unwrap();
+        assert_eq!(update.score, 100);
+        tx.rollback().await.unwrap();
+        assert_eq!(
+            get_or_create_state(&pool, 1, 13716, 1).await.unwrap().score,
+            0
+        );
+
+        let mut tx = pool.begin().await.unwrap();
+        let update = add_score_in_transaction(&mut tx, 1, 13716, 1, 100)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(update.score, 100);
+        assert_eq!(get_state(&pool, 1, 13716, 1).await.unwrap().score, 100);
     }
 }

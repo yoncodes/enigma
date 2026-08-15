@@ -8,7 +8,7 @@ use crate::{
 use logic::task::{TaskEvent, TaskType};
 use prost::Message;
 use sonettobuf::{
-    CmdId, FinishAllTaskRequest, FinishReadTaskRequest, FinishTaskRequest,
+    Act233BpScoreUpdatePush, CmdId, FinishAllTaskRequest, FinishReadTaskRequest, FinishTaskRequest,
     GetTaskActivityBonusRequest, GetTaskInfoRequest, RefreshOnlineTaskRequest, UpdateTaskPush,
 };
 
@@ -33,6 +33,7 @@ pub async fn on_finish_task(
     let player_id = ctx.player()?.id;
     let claim = ctx.player_mut()?.tasks.finish(db, msg.id).await?;
     let finished_tasks = claim.task_info.clone();
+    let act233_bp_scores = claim.act233_bp_scores.clone();
     let finished_task_ids = claim
         .task_info
         .iter()
@@ -51,6 +52,7 @@ pub async fn on_finish_task(
     send_bp_task_red_dot_update(ctx, &finished_tasks).await?;
     notify_task_finish_events(ctx, player_id, &finished_task_ids).await?;
     send_task_update(ctx, claim.task_info, claim.activity_info).await?;
+    send_act233_bp_score_updates(ctx, &act233_bp_scores).await?;
 
     ctx.send_reply(CmdId::FinishTaskCmd, claim.reply, 0, req.up_tag)
         .await
@@ -70,6 +72,7 @@ pub async fn on_finish_all_task(
         .finish_all(db, type_id, msg.min_type_id, msg.task_ids, msg.activity_id)
         .await?;
     let finished_tasks = claim.task_info.clone();
+    let act233_bp_scores = claim.act233_bp_scores.clone();
     let finished_task_ids = claim
         .task_info
         .iter()
@@ -88,6 +91,7 @@ pub async fn on_finish_all_task(
     send_bp_task_red_dot_update(ctx, &finished_tasks).await?;
     notify_task_finish_events(ctx, player_id, &finished_task_ids).await?;
     send_task_update(ctx, claim.task_info, claim.activity_info).await?;
+    send_act233_bp_score_updates(ctx, &act233_bp_scores).await?;
 
     ctx.send_reply(CmdId::FinishAllTaskCmd, claim.reply, 0, req.up_tag)
         .await
@@ -174,6 +178,25 @@ async fn send_task_update(
     )
     .await?;
     task_events::notify_task_red_dots(ctx, red_dot_types).await
+}
+
+async fn send_act233_bp_score_updates(
+    ctx: &mut ConnectionContext,
+    updates: &[database::db::game::act233_bp::Act233BpScoreUpdate],
+) -> Result<(), AppError> {
+    for update in updates {
+        ctx.notify(
+            CmdId::Act233BpScoreUpdatePushCmd,
+            Act233BpScoreUpdatePush {
+                activity_id: Some(update.activity_id),
+                bp_id: Some(update.bp_id),
+                score: Some(update.score),
+            },
+        )
+        .await?;
+    }
+
+    Ok(())
 }
 
 fn task_reward_approach(tasks: &[sonettobuf::Task]) -> MaterialGetApproach {
