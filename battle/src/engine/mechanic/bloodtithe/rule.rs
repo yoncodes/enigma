@@ -214,4 +214,50 @@ mod tests {
             }))]
         ));
     }
+
+    #[test]
+    fn sole_blood_pool_tag_owner_emits_enable_rule_without_overriding_lingering_glow() {
+        let feature = ActiveBuffFeature {
+            owner_uid: 10,
+            source_uid: 10,
+            buff_uid: 20,
+            buff_id: 6270501,
+            amount: 1,
+            team_type: 1,
+            owner_alive: true,
+            act_type: "BloodPoolTag".to_owned(),
+            effect_time: 0,
+            effect_condition: 0,
+            raw: "953".to_owned(),
+            values: vec![953],
+        };
+        let features = [feature];
+
+        let managers = BattleManagers::default();
+        assert!(matches!(
+            enable_rule_ops(&managers, &features).as_slice(),
+            [RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
+                key: GaugeKey {
+                    kind: GaugeKind::Bloodtithe,
+                    owner: GaugeOwner::Team(1),
+                },
+                operation: GaugeOperation::Enable { .. },
+                ..
+            }))]
+        ));
+
+        let mut managers = BattleManagers::default();
+        managers
+            .gauge
+            .execute_command(GaugeCommand::new(
+                ORIGIN,
+                GaugeKey {
+                    kind: GaugeKind::LingeringGlow,
+                    owner: GaugeOwner::Team(1),
+                },
+                GaugeOperation::Enable { max: Some(1) },
+            ))
+            .unwrap();
+        assert!(enable_rule_ops(&managers, &features).is_empty());
+    }
 }
