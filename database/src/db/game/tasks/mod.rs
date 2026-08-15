@@ -11,7 +11,9 @@ pub use activity::{
     add_activity, add_activity_in_transaction, claim_activity_bonus,
     claim_activity_bonus_in_transaction, list_activity,
 };
-pub use event::{ProductionLineAction, TaskEvent, sync_event_tasks};
+pub use event::{
+    ProductionLineAction, TaskEvent, sync_event_tasks, sync_hero_invitation_claims_in_transaction,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskType {
@@ -184,7 +186,7 @@ pub async fn ensure_tasks_for_type(
     tx.commit().await
 }
 
-async fn ensure_tasks_for_type_in_transaction(
+pub(super) async fn ensure_tasks_for_type_in_transaction(
     pool: &mut SqliteConnection,
     user_id: i64,
     task_type: TaskType,

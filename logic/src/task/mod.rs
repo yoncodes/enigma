@@ -294,6 +294,10 @@ impl TaskManager {
         }))
     }
 
+    pub fn record_updates(&mut self, tasks: &[UserTask]) {
+        self.cache_tasks(tasks);
+    }
+
     fn cache_tasks(&mut self, tasks: &[UserTask]) {
         for task in tasks {
             self.cache_task(task.clone());
