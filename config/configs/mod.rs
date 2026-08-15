@@ -260,6 +260,7 @@ pub mod hero_upgrade_options;
 pub mod insight_item;
 pub mod instruction_level;
 pub mod instruction_topic;
+pub mod investigate_clue;
 pub mod item;
 pub mod language_en;
 pub mod magic_circle;
@@ -669,6 +670,7 @@ pub struct GameDB {
     pub insight_item: insight_item::InsightItemTable,
     pub instruction_level: instruction_level::InstructionLevelTable,
     pub instruction_topic: instruction_topic::InstructionTopicTable,
+    pub investigate_clue: investigate_clue::InvestigateClueTable,
     pub item: item::ItemTable,
     pub language_en: language_en::LanguageEnTable,
     pub magic_circle: magic_circle::MagicCircleTable,
@@ -1598,6 +1600,9 @@ impl GameDB {
         let instruction_topic = instruction_topic::InstructionTopicTable::load(
             &format!("{}/instruction_topic.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load instruction_topic.json: {}", e))?;
+        let investigate_clue = investigate_clue::InvestigateClueTable::load(
+            &format!("{}/investigate_clue.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load investigate_clue.json: {}", e))?;
         let item = item::ItemTable::load(
             &format!("{}/item.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load item.json: {}", e))?;
@@ -2295,6 +2300,7 @@ impl GameDB {
             insight_item,
             instruction_level,
             instruction_topic,
+            investigate_clue,
             item,
             language_en,
             magic_circle,

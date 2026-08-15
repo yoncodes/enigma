@@ -17,6 +17,7 @@ pub mod guide;
 pub mod hero;
 pub mod hero_group;
 pub mod inventory;
+pub mod investigate;
 pub mod mail;
 pub mod manufacture;
 pub mod misc;

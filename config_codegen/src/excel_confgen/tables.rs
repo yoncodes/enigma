@@ -90,6 +90,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "dialog",
     "instruction_level",
     "instruction_topic",
+    "investigate_clue",
     "month_card",
     "month_card_added",
     "sign_in_addup_bonus",
