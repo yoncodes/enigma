@@ -750,7 +750,8 @@ pub async fn reset_daily_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<
             (TaskType::BattlePass.id(), bp_daily_ids),
         ],
     )
-    .await
+    .await?;
+    activity::reset_activity(pool, user_id, TaskType::Daily.id()).await
 }
 
 pub async fn reset_weekly_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<()> {
@@ -789,7 +790,8 @@ pub async fn reset_weekly_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result
             (TaskType::ActBp.id(), act_bp_weekly_ids),
         ],
     )
-    .await
+    .await?;
+    activity::reset_activity(pool, user_id, TaskType::Weekly.id()).await
 }
 
 pub async fn finish_task(
@@ -1671,6 +1673,82 @@ mod tests {
         assert!(!weekly.has_finished);
         let permanent = reset.iter().find(|task| task.task_id == 790009).unwrap();
         assert_eq!(permanent.progress, 5);
+    }
+
+    #[tokio::test]
+    async fn task_resets_clear_only_matching_activity_aggregates() {
+        let pool = test_pool().await;
+        sqlx::query(
+            "INSERT INTO user_task_activity
+             (user_id, type_id, define_id, value, gain_value, expiry_time)
+             VALUES
+                (1, 1, 7, 25, 20, 101),
+                (1, 2, 8, 50, 40, 202),
+                (1, 7, 9, 60, 50, 303),
+                (1, 79, 10, 70, 60, 404)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        reset_daily_tasks(&pool, 1).await.unwrap();
+        let activities = list_activity(&pool, 1, Vec::new()).await.unwrap();
+        let state = |type_id| {
+            let activity = activities
+                .iter()
+                .find(|activity| activity.type_id == type_id)
+                .unwrap();
+            (
+                activity.define_id,
+                activity.value,
+                activity.gain_value,
+                activity.expiry_time,
+            )
+        };
+        assert_eq!(state(1), (0, 0, 0, 101));
+        assert_eq!(state(2), (8, 50, 40, 202));
+        assert_eq!(state(7), (9, 60, 50, 303));
+        assert_eq!(state(79), (10, 70, 60, 404));
+
+        reset_weekly_tasks(&pool, 1).await.unwrap();
+        let activities = list_activity(&pool, 1, Vec::new()).await.unwrap();
+        let state = |type_id| {
+            let activity = activities
+                .iter()
+                .find(|activity| activity.type_id == type_id)
+                .unwrap();
+            (
+                activity.define_id,
+                activity.value,
+                activity.gain_value,
+                activity.expiry_time,
+            )
+        };
+        assert_eq!(state(1), (0, 0, 0, 101));
+        assert_eq!(state(2), (0, 0, 0, 202));
+        assert_eq!(state(7), (9, 60, 50, 303));
+        assert_eq!(state(79), (10, 70, 60, 404));
+
+        let sync_time = ServerTime::now_ms();
+        let daily_expiry = ServerTime::next_daily_refresh_sec(sync_time);
+        let weekly_expiry = ServerTime::next_weekly_refresh_sec(sync_time);
+        sync_login_tasks(&pool, 1, false).await.unwrap();
+        let activities = list_activity(&pool, 1, Vec::new()).await.unwrap();
+        let daily = activities
+            .iter()
+            .find(|activity| activity.type_id == 1)
+            .unwrap();
+        let weekly = activities
+            .iter()
+            .find(|activity| activity.type_id == 2)
+            .unwrap();
+        assert_eq!((daily.define_id, daily.value, daily.gain_value), (0, 0, 0));
+        assert_eq!(
+            (weekly.define_id, weekly.value, weekly.gain_value),
+            (0, 0, 0)
+        );
+        assert_eq!(daily.expiry_time, daily_expiry);
+        assert_eq!(weekly.expiry_time, weekly_expiry);
     }
 
     #[tokio::test]
