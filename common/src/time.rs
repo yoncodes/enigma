@@ -115,7 +115,9 @@ impl ServerTime {
     }
 
     pub fn config_datetime_sec(value: &str) -> Option<i32> {
-        let local = NaiveDateTime::parse_from_str(value.trim(), "%Y-%m-%d %H:%M:%S")
+        let value = value.trim();
+        let local = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
+            .or_else(|_| NaiveDateTime::parse_from_str(value, "%Y/%m/%d %H:%M:%S"))
             .ok()?
             .and_utc()
             .timestamp();
@@ -177,6 +179,10 @@ mod tests {
         assert_eq!(
             ServerTime::config_datetime_sec("2026-08-13 05:00:00"),
             Some(1_786_615_200)
+        );
+        assert_eq!(
+            ServerTime::config_datetime_sec("2024/05/19 05:00:00"),
+            Some(1_716_112_800)
         );
         assert_eq!(ServerTime::config_datetime_sec(""), None);
     }

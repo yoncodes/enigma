@@ -1,9 +1,13 @@
 use crate::models::game::tasks::UserTask;
-use sqlx::SqlitePool;
+use common::time::ServerTime;
+use sqlx::{Sqlite, SqlitePool, Transaction};
 
 use crate::db::game::battle_pass;
 
-use super::{TaskType, add_progress, current_battle_pass_id, ensure_tasks_for_type};
+use super::{
+    TaskType, add_progress, current_battle_pass_id, ensure_tasks_for_type,
+    ensure_tasks_for_type_in_transaction,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskEvent {
@@ -206,6 +210,85 @@ pub async fn sync_event_tasks(
         {
             updated.push(task);
         }
+    }
+
+    Ok(updated)
+}
+
+pub async fn sync_hero_invitation_claims_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+) -> sqlx::Result<Vec<UserTask>> {
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::ActivityDungeon).await?;
+    let claim_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM user_hero_invitation_claims
+         WHERE user_id = ? AND invite_id > 0",
+    )
+    .bind(user_id)
+    .fetch_one(&mut **tx)
+    .await?
+    .min(i64::from(i32::MAX)) as i32;
+    let now = ServerTime::now_ms();
+    let mut updated = Vec::new();
+
+    for target in config::configs::get()
+        .activity113_task
+        .iter()
+        .filter(|task| {
+            task.is_online != 0
+                && task.listener_type == "GainInviteRewardCount"
+                && task.listener_param.is_empty()
+        })
+    {
+        let Some(task) = sqlx::query_as::<_, UserTask>(
+            "SELECT user_id, type_id, task_id, progress, has_finished, finish_count,
+                    expiry_time, min_type_id, activity_id, created_at, updated_at
+             FROM user_tasks
+             WHERE user_id = ? AND type_id = ? AND task_id = ?",
+        )
+        .bind(user_id)
+        .bind(TaskType::ActivityDungeon.id())
+        .bind(target.id)
+        .fetch_optional(&mut **tx)
+        .await?
+        else {
+            continue;
+        };
+
+        let max_progress = target.max_progress.max(1);
+        let progress = task.progress.max(claim_count.min(max_progress));
+        let has_finished = progress >= max_progress && task.finish_count < target.max_finish_count;
+        if progress == task.progress && has_finished == task.has_finished {
+            continue;
+        }
+
+        sqlx::query(
+            "UPDATE user_tasks
+             SET progress = ?, has_finished = ?, updated_at = ?
+             WHERE user_id = ? AND type_id = ? AND task_id = ?",
+        )
+        .bind(progress)
+        .bind(has_finished)
+        .bind(now)
+        .bind(user_id)
+        .bind(TaskType::ActivityDungeon.id())
+        .bind(target.id)
+        .execute(&mut **tx)
+        .await?;
+
+        updated.push(
+            sqlx::query_as::<_, UserTask>(
+                "SELECT user_id, type_id, task_id, progress, has_finished, finish_count,
+                        expiry_time, min_type_id, activity_id, created_at, updated_at
+                 FROM user_tasks
+                 WHERE user_id = ? AND type_id = ? AND task_id = ?",
+            )
+            .bind(user_id)
+            .bind(TaskType::ActivityDungeon.id())
+            .bind(target.id)
+            .fetch_one(&mut **tx)
+            .await?,
+        );
     }
 
     Ok(updated)
@@ -477,6 +560,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn generic_events_do_not_route_activity_dungeon_tasks() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let targets = event_task_targets(
+            TaskEvent::CurrencyDec {
+                currency_id: 3,
+                amount: 1,
+            },
+            None,
+        );
+        assert!(
+            targets
+                .iter()
+                .all(|target| target.type_id != TaskType::ActivityDungeon.id())
+        );
+    }
+
     #[tokio::test]
     async fn activity233_event_progression_updates_type_79_tasks() {
         let pool = test_pool().await;
@@ -508,5 +609,31 @@ mod tests {
         let summon_task = summon.iter().find(|task| task.task_id == 790009).unwrap();
         assert_eq!(summon_task.progress, 1);
         assert_eq!(summon_task.type_id, TaskType::ActBp.id());
+    }
+
+    #[tokio::test]
+    async fn hero_invitation_claim_sync_updates_only_its_activity_dungeon_tasks() {
+        let pool = test_pool().await;
+        let mut tx = pool.begin().await.unwrap();
+        sqlx::query(
+            "INSERT INTO user_hero_invitation_claims (user_id, invite_id, claimed_at)
+             VALUES (1, 1, 0)",
+        )
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+        let updated = sync_hero_invitation_claims_in_transaction(&mut tx, 1)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let mut ids = updated.iter().map(|task| task.task_id).collect::<Vec<_>>();
+        ids.sort_unstable();
+        assert_eq!(ids, vec![110918, 110919, 110920]);
+        assert!(updated.iter().all(|task| {
+            task.type_id == TaskType::ActivityDungeon.id()
+                && task.progress == 1
+                && !task.has_finished
+        }));
     }
 }

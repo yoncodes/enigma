@@ -16,6 +16,7 @@ pub mod friends;
 pub mod guide;
 pub mod hero;
 pub mod hero_group;
+pub mod hero_invitation;
 pub mod inventory;
 pub mod investigate;
 pub mod mail;

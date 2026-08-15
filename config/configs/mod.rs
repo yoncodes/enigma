@@ -249,6 +249,7 @@ pub mod guide;
 pub mod guide_step;
 pub mod handbook_character_age;
 pub mod hero3124_skill_talent;
+pub mod hero_invitation;
 pub mod hero_story;
 pub mod hero_story_plot;
 pub mod hero_story_plot_group;
@@ -659,6 +660,7 @@ pub struct GameDB {
     pub guide_step: guide_step::GuideStepTable,
     pub handbook_character_age: handbook_character_age::HandbookCharacterAgeTable,
     pub hero3124_skill_talent: hero3124_skill_talent::Hero3124SkillTalentTable,
+    pub hero_invitation: hero_invitation::HeroInvitationTable,
     pub hero_story: hero_story::HeroStoryTable,
     pub hero_story_plot: hero_story_plot::HeroStoryPlotTable,
     pub hero_story_plot_group: hero_story_plot_group::HeroStoryPlotGroupTable,
@@ -1567,6 +1569,9 @@ impl GameDB {
         let hero3124_skill_talent = hero3124_skill_talent::Hero3124SkillTalentTable::load(
             &format!("{}/hero3124_skill_talent.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load hero3124_skill_talent.json: {}", e))?;
+        let hero_invitation = hero_invitation::HeroInvitationTable::load(
+            &format!("{}/hero_invitation.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load hero_invitation.json: {}", e))?;
         let hero_story = hero_story::HeroStoryTable::load(
             &format!("{}/hero_story.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load hero_story.json: {}", e))?;
@@ -2289,6 +2294,7 @@ impl GameDB {
             guide_step,
             handbook_character_age,
             hero3124_skill_talent,
+            hero_invitation,
             hero_story,
             hero_story_plot,
             hero_story_plot_group,

@@ -88,6 +88,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "store_charge_goods",
     "store_charge_optional",
     "dialog",
+    "hero_invitation",
     "instruction_level",
     "instruction_topic",
     "investigate_clue",

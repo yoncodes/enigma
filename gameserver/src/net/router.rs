@@ -1,10 +1,10 @@
 use crate::error::{AppError, ClientErrorAction, CmdError};
 use crate::handlers::{
     activity, bgm, bp, charge, chat, collection, command_post, common, critter, dice_hero, dungeon,
-    equipment, exploration, fairyland, friends, guide, hero, hero_group, inventory, investigate,
-    mail, manufacture, misc, odyssey, party, player_card, player_info, player_misc, property,
-    red_dot, room, rouge, sign_in, stat, store, story, summon, survival, system, talent, tasks,
-    teaching, tower, tower_compose, trade, turnback, udimo, user,
+    equipment, exploration, fairyland, friends, guide, hero, hero_group, hero_invitation,
+    inventory, investigate, mail, manufacture, misc, odyssey, party, player_card, player_info,
+    player_misc, property, red_dot, room, rouge, sign_in, stat, store, story, summon, survival,
+    system, talent, tasks, teaching, tower, tower_compose, trade, turnback, udimo, user,
 };
 use crate::net::context::ConnectionContext;
 use crate::net::packet::ClientPacket;
@@ -416,6 +416,9 @@ async fn dispatch_registered_command(
         CmdId::UpdateStoryCmd => story::on_update_story,
         CmdId::GetInvestigateCmd => investigate::on_get_info,
         CmdId::PutClueCmd => investigate::on_put_clue,
+        CmdId::GetHeroInvitationInfoCmd => hero_invitation::on_get_info,
+        CmdId::GainInviteRewardCmd => hero_invitation::on_gain_reward,
+        CmdId::GainFinalInviteRewardCmd => hero_invitation::on_gain_final_reward,
         CmdId::GetHeroStoryCmd => story::on_get_hero_story,
         CmdId::GetNecrologistStoryCmd => story::on_get_necrologist_story,
         CmdId::UpdateNecrologistStoryCmd => story::on_update_necrologist_story,
@@ -604,10 +607,11 @@ mod tests {
         Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act220EpisodeRecord,
         Act233BpScoreUpdatePush, Act236GetAutoGainRewardReply, Act236GetAutoGainRewardRequest,
         Act236Info, Act236UpdateInfoPush, Act239BonusReply, Act239BonusRequest, CurrencyChangePush,
-        FinishTaskReply, FinishTaskRequest, GetAct220InfoReply, GetAct220InfoRequest,
-        GetAct233BpBonusReply, GetAct233BpBonusRequest, GetAct233BpInfoReply,
-        GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest, GetAct239InfoReply,
-        GetAct239InfoRequest, GetInvestigateReply, GetInvestigateRequest,
+        FinishTaskReply, FinishTaskRequest, GainInviteRewardReply, GainInviteRewardRequest,
+        GetAct220InfoReply, GetAct220InfoRequest, GetAct233BpBonusReply, GetAct233BpBonusRequest,
+        GetAct233BpInfoReply, GetAct233BpInfoRequest, GetAct236InfoReply, GetAct236InfoRequest,
+        GetAct239InfoReply, GetAct239InfoRequest, GetHeroInvitationInfoReply,
+        GetHeroInvitationInfoRequest, GetInvestigateReply, GetInvestigateRequest,
         GetRouge2OutsideInfoReply, GetRouge2OutsideInfoRequest, ItemChangePush,
         MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush,
         NewOrderRequest, PutClueReply, PutClueRequest, Rouge2AlchemyInfo,
@@ -740,6 +744,175 @@ mod tests {
             1
         );
         assert!(packets.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn hero_invitation_commands_emit_rewards_tasks_and_reply_in_order() {
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("data/excel2json");
+        let _ = config::init(data_dir.to_str().unwrap());
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        let player_id = 5635;
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (?, 'hero-invitation-route', 0, 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_dungeon_elements
+             (user_id, element_id, is_finished, puzzle_progress, puzzle_updated_at)
+             VALUES (?, 311104, 1, '', 0)",
+        )
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+        let (outbound, mut packets) = mpsc::channel(16);
+        let mut ctx = ConnectionContext::new(outbound, state);
+        ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+        let mut data = Vec::new();
+        GetHeroInvitationInfoRequest::default()
+            .encode(&mut data)
+            .unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence: 1,
+                cmd_id: CmdId::GetHeroInvitationInfoCmd as i16,
+                up_tag: 71,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+
+        let CommandPacket::Reply { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("hero invitation information request did not reach its handler");
+        };
+        assert_eq!(cmd_id, CmdId::GetHeroInvitationInfoCmd);
+        let info = GetHeroInvitationInfoReply::decode(&*body)
+            .unwrap()
+            .info
+            .unwrap();
+        assert_eq!(info.opened_invite, vec![1, 5]);
+        assert!(info.gain_reward.is_empty());
+        assert_eq!(info.final_reward, Some(false));
+
+        let mut data = Vec::new();
+        GainInviteRewardRequest { id: Some(4) }
+            .encode(&mut data)
+            .unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence: 2,
+                cmd_id: CmdId::GainInviteRewardCmd as i16,
+                up_tag: 72,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("hero invitation claim did not emit a currency push");
+        };
+        assert_eq!(cmd_id, CmdId::CurrencyChangePushCmd);
+        assert_eq!(
+            CurrencyChangePush::decode(&*body).unwrap().change_currency[0].quantity,
+            Some(20_000)
+        );
+        let CommandPacket::Push { cmd_id, .. } = packets.try_recv().unwrap() else {
+            panic!("hero invitation claim did not emit a material push");
+        };
+        assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+        let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+            panic!("hero invitation claim did not emit a task update");
+        };
+        assert_eq!(cmd_id, CmdId::UpdateTaskPushCmd);
+        let task_push = UpdateTaskPush::decode(&*body).unwrap();
+        assert_eq!(
+            task_push
+                .task_info
+                .iter()
+                .find(|task| task.id == 110918)
+                .map(|task| task.progress),
+            Some(1)
+        );
+        let CommandPacket::Reply {
+            cmd_id,
+            body,
+            up_tag,
+            ..
+        } = packets.try_recv().unwrap()
+        else {
+            panic!("hero invitation claim did not emit its reply");
+        };
+        assert_eq!(cmd_id, CmdId::GainInviteRewardCmd);
+        assert_eq!(up_tag, 72);
+        assert_eq!(
+            GainInviteRewardReply::decode(&*body)
+                .unwrap()
+                .info
+                .unwrap()
+                .gain_reward,
+            vec![4]
+        );
+        assert!(packets.try_recv().is_err());
+
+        let mut data = Vec::new();
+        GainInviteRewardRequest { id: Some(4) }
+            .encode(&mut data)
+            .unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence: 3,
+                cmd_id: CmdId::GainInviteRewardCmd as i16,
+                up_tag: 73,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+        let CommandPacket::Reply { cmd_id, .. } = packets.try_recv().unwrap() else {
+            panic!("idempotent hero invitation claim did not emit its reply");
+        };
+        assert_eq!(cmd_id, CmdId::GainInviteRewardCmd);
+        assert!(packets.try_recv().is_err());
+        assert_eq!(
+            sqlx::query_scalar::<_, i32>(
+                "SELECT progress FROM user_tasks
+                 WHERE user_id = ? AND type_id = 11 AND task_id = 110918",
+            )
+            .bind(player_id)
+            .fetch_one(state.db)
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i32>(
+                "SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = 3",
+            )
+            .bind(player_id)
+            .fetch_one(state.db)
+            .await
+            .unwrap(),
+            20_000
+        );
     }
 
     #[tokio::test]
