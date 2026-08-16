@@ -152,6 +152,7 @@ pub enum BuffActKind {
     ExtraValueElectricTransform,
     EzioBigSkill,
     EachChangeAttr,
+    EachChangeAttrOneWay,
     ExPointAddByHit,
     ExPointDel,
     ExPointCardMove,
@@ -948,6 +949,12 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::each_change_attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(834, "EachChangeAttr"), &[EffectType::None as i32]));
+    (1131, "EachChangeAttrOneWay") => EachChangeAttrOneWay,
+        transactions: [EventKind::BuffAdded, EventKind::BuffRemoved],
+        publication: BeforePublish, frame: CausingFrame,
+        transaction: super::each_change_attr_one_way::transaction_rule_ops,
+        supports: super::each_change_attr_one_way::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1131, "EachChangeAttrOneWay"), &[]));
     (836, "ContractCastChannel") => ContractCastChannel,
         transactions: [EventKind::BuffAdded],
         publication: BeforePublish, frame: CausingFrame,

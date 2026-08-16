@@ -341,6 +341,8 @@ pub(crate) struct BuffPlan {
     action: BuffPlanAction,
 }
 
+type SourceRelativeAttributeFeatures = (i64, Vec<(i32, i32, i32, i32)>);
+
 impl BuffPlan {
     pub(crate) fn added_buff_uid(&self) -> Option<i64> {
         let plan = match &self.action {
@@ -350,6 +352,47 @@ impl BuffPlan {
         matches!(plan.action, GrantAction::Add | GrantAction::ReplaceExisting)
             .then(|| plan.uid.map(|uid| uid.uid))
             .flatten()
+    }
+
+    pub(crate) fn source_relative_attribute_features(
+        &self,
+    ) -> Option<SourceRelativeAttributeFeatures> {
+        let plan = match &self.action {
+            BuffPlanAction::Grant(plan) => plan.as_ref(),
+            _ => return None,
+        };
+        self.added_buff_uid()?;
+        let features = plan
+            .definition
+            .features()
+            .iter()
+            .filter(|feature| {
+                feature.arguments_supported
+                    && feature.kind
+                    == Some(
+                        crate::engine::skill::buff_act::registry::BuffActKind::EachChangeAttrOneWay,
+                    )
+            })
+            .filter_map(|feature| match feature.values.as_slice() {
+                [act_id, raw_attr, rate, cap] => Some((*act_id, *raw_attr, *rate, *cap)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        (!features.is_empty()).then_some((plan.route.source_uid, features))
+    }
+
+    pub(crate) fn initialize_added_act_info_without_markers(&mut self, values: Vec<BuffActInfo>) {
+        if values.is_empty() {
+            return;
+        }
+        let plan = match &mut self.action {
+            BuffPlanAction::Grant(plan) => plan.as_mut(),
+            _ => return,
+        };
+        plan.initial_act_info
+            .get_or_insert_with(Vec::new)
+            .extend(values);
+        plan.initial_act_info_markers = Some(Vec::new());
     }
 
     pub(crate) fn initialize_added_act_value(
