@@ -100,7 +100,7 @@ pub fn rule_ops(
     let current_hp = managers.hp.current(bound_uid).max(0);
     let loss =
         (i64::from(current_hp) * i64::from(*rate) / 1000).clamp(0, i64::from(i32::MAX)) as i32;
-    let mut ops = Vec::with_capacity(4);
+    let mut ops = Vec::with_capacity(5);
     if loss > 0 {
         ops.push(RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
             HpLoss {
@@ -142,7 +142,37 @@ pub fn rule_ops(
             selector: BuffRemoveSelector::Uid(lock_buff_uid),
         },
     ))));
+    ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(
+        BuffRemove {
+            origin,
+            target_uid: subscriber.owner_uid,
+            selector: BuffRemoveSelector::Uid(subscriber.buff_uid),
+        },
+    ))));
     Some(ops)
+}
+
+pub(crate) fn carrier_removal_rule_ops(
+    managers: &BattleManagers,
+    owner_uid: i64,
+    origin: crate::engine::skill::rule::CommandOrigin,
+) -> Vec<RuleOp> {
+    managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .filter(|feature| {
+            feature.owner_uid == owner_uid
+                && super::is_kind(feature, BuffActKind::ContractCastChannel)
+        })
+        .map(|feature| {
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                origin,
+                target_uid: owner_uid,
+                selector: BuffRemoveSelector::Uid(feature.buff_uid),
+            })))
+        })
+        .collect()
 }
 
 fn invocation(owner_uid: i64, skill_id: i32, catalog: &SkillEffectCatalog) -> SkillInvocation {
@@ -313,7 +343,7 @@ mod tests {
         let subscriber = BuffActSubscriber {
             owner_uid: -1,
             source_uid: -1,
-            buff_uid: 1364,
+            buff_uid: 88,
             buff_id: 31_000_431,
             team_type: 1,
             owner_alive: true,
@@ -347,7 +377,7 @@ mod tests {
                     hurt: Some(HurtInfoData {
                         damage_from: HurtDamageFromType::Buff,
                         buff_act_id: 836,
-                        buff_uid: 1364,
+                        buff_uid: 88,
                         ..
                     }),
                     ..
@@ -371,6 +401,11 @@ mod tests {
                 RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
                     target_uid: 22,
                     selector: BuffRemoveSelector::Uid(77),
+                    ..
+                }))),
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                    target_uid: -1,
+                    selector: BuffRemoveSelector::Uid(88),
                     ..
                 })))
             ]
