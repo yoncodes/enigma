@@ -287,15 +287,26 @@ impl ArcadeOutsideManager {
         if snapshot.len() > 1024 * 1024 {
             return Err(AppError::InvalidRequest);
         }
-        arcade::upsert_inside_save(
+        run_cursor(&info)?;
+        let saved = arcade::get_inside_save(db, self.player_id, activity_id).await?;
+        if let Some(saved) = &saved {
+            let saved_info = ArcadeInSideInfo::decode(saved.snapshot.as_slice())
+                .map_err(|_| AppError::InvalidRequest)?;
+            validate_save_successor(&saved_info, &info)?;
+        }
+        if !arcade::replace_inside_save(
             db,
             self.player_id,
             activity_id,
             difficulty,
             &snapshot,
             common::time::ServerTime::now_ms(),
+            saved.as_ref().map(|saved| saved.snapshot.as_slice()),
         )
-        .await?;
+        .await?
+        {
+            return Err(AppError::InvalidRequest);
+        }
         Ok(ArcadeSaveGameReply {})
     }
 
@@ -659,6 +670,9 @@ fn validate_settlement_successor(
     saved: &ArcadeInSideInfo,
     settlement: &ArcadeInSideInfo,
 ) -> Result<(), AppError> {
+    if run_cursor(settlement)? < run_cursor(saved)? {
+        return Err(AppError::InvalidRequest);
+    }
     let saved_attrs = saved
         .attr_container
         .as_ref()
@@ -714,6 +728,30 @@ fn validate_settlement_successor(
     }
 
     Ok(())
+}
+
+fn validate_save_successor(
+    saved: &ArcadeInSideInfo,
+    next: &ArcadeInSideInfo,
+) -> Result<(), AppError> {
+    if saved == next {
+        return Ok(());
+    }
+    validate_settlement_successor(saved, next)?;
+    if run_cursor(next)? <= run_cursor(saved)? {
+        return Err(AppError::InvalidRequest);
+    }
+    Ok(())
+}
+
+fn run_cursor(info: &ArcadeInSideInfo) -> Result<(i32, i32), AppError> {
+    let prop = info.prop.as_ref().ok_or(AppError::InvalidRequest)?;
+    let area = prop.area_id.ok_or(AppError::InvalidRequest)?;
+    let progress = prop.progress.ok_or(AppError::InvalidRequest)?;
+    if area < 0 || progress < 0 {
+        return Err(AppError::InvalidRequest);
+    }
+    Ok((area, progress))
 }
 
 fn book_entries(info: Option<&ArcadeBookInfo>) -> Result<HashSet<(i32, i32)>, AppError> {
@@ -863,6 +901,9 @@ mod tests {
                 ],
             }),
             prop: Some(ArcadeInSideProp {
+                area_id: Some(0),
+                room_id: Some(10001),
+                progress: Some(0),
                 difficulty: Some(difficulty),
                 ..Default::default()
             }),
@@ -1145,7 +1186,8 @@ mod tests {
         let tables = config::configs::get();
         manager.info(&pool, tables).await.unwrap();
         let stale = inside_run(0, 90, 1500);
-        let current = inside_run(0, 240, 2500);
+        let mut current = inside_run(0, 240, 2500);
+        current.prop.as_mut().unwrap().progress = Some(1);
         manager
             .save_inside(&pool, tables, stale.clone())
             .await
@@ -1154,6 +1196,11 @@ mod tests {
             .save_inside(&pool, tables, current.clone())
             .await
             .unwrap();
+
+        assert!(matches!(
+            manager.save_inside(&pool, tables, stale.clone()).await,
+            Err(AppError::InvalidRequest)
+        ));
 
         assert!(matches!(
             manager.settle_inside(&pool, tables, 2, stale).await,
@@ -1171,6 +1218,57 @@ mod tests {
                 .unwrap()
                 .score,
             0
+        );
+    }
+
+    #[tokio::test]
+    async fn delayed_save_with_equal_totals_cannot_replace_a_later_room() {
+        let pool = test_pool(5676).await;
+        let manager = ArcadeOutsideManager::new(5676);
+        let tables = config::configs::get();
+        let previous = inside_run(0, 90, 1500);
+        let mut current = previous.clone();
+        let current_prop = current.prop.as_mut().unwrap();
+        current_prop.room_id = Some(10002);
+        current_prop.progress = Some(1);
+        current.player.as_mut().unwrap().pos = Some(ArcadePos {
+            x: Some(3),
+            y: Some(4),
+        });
+
+        manager
+            .save_inside(&pool, tables, previous.clone())
+            .await
+            .unwrap();
+        manager
+            .save_inside(&pool, tables, current.clone())
+            .await
+            .unwrap();
+        manager
+            .save_inside(&pool, tables, current.clone())
+            .await
+            .unwrap();
+        assert!(matches!(
+            manager.save_inside(&pool, tables, previous).await,
+            Err(AppError::InvalidRequest)
+        ));
+        assert_eq!(
+            manager.inside_info(&pool, tables).await.unwrap().info,
+            Some(current.clone())
+        );
+
+        let mut next_area = current;
+        let next_prop = next_area.prop.as_mut().unwrap();
+        next_prop.area_id = Some(1);
+        next_prop.room_id = Some(20001);
+        next_prop.progress = Some(0);
+        manager
+            .save_inside(&pool, tables, next_area.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            manager.inside_info(&pool, tables).await.unwrap().info,
+            Some(next_area)
         );
     }
 

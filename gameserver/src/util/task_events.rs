@@ -1,8 +1,5 @@
 use crate::{error::AppError, net::context::ConnectionContext};
-use logic::{
-    task::{TaskEvent, TaskType, UserTask},
-    types::red_dot_id::RedDotId,
-};
+use logic::task::{TaskEvent, TaskType, UserTask};
 use sonettobuf::{CmdId, RedDotGroup, RedDotInfo, UpdateAchievementPush, UpdateTaskPush};
 use std::{collections::BTreeMap, future::Future, pin::Pin};
 
@@ -71,16 +68,24 @@ fn notify_task_family_red_dots<'a>(
                     .act233_groups(ctx.state.db, activity_id)
                     .await?
             }
-            TaskPushFamily::VersionActivity => vec![RedDotGroup {
-                define_id: RedDotId::CommandStationTaskNormal.id(),
-                infos: vec![RedDotInfo {
-                    id: 0,
-                    value: 1,
-                    time: Some(0),
-                    ext: None,
-                }],
-                replace_all: Some(true),
-            }],
+            TaskPushFamily::VersionActivity => {
+                let red_dot = ctx
+                    .player()?
+                    .tasks
+                    .recurring_red_dot(ctx.state.db, TaskType::VersionActivity.id())
+                    .await?
+                    .ok_or(AppError::InvalidRequest)?;
+                vec![RedDotGroup {
+                    define_id: red_dot.define_id,
+                    infos: vec![RedDotInfo {
+                        id: 0,
+                        value: red_dot.value,
+                        time: Some(red_dot.expiry),
+                        ext: None,
+                    }],
+                    replace_all: Some(true),
+                }]
+            }
             TaskPushFamily::BattlePass => {
                 ctx.player()?
                     .red_dot

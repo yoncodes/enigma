@@ -237,6 +237,9 @@ async fn arcade_inside_commands_resume_and_settle_persistent_run() {
             ],
         }),
         prop: Some(ArcadeInSideProp {
+            area_id: Some(0),
+            room_id: Some(10001),
+            progress: Some(0),
             difficulty: Some(0),
             ..Default::default()
         }),

@@ -332,31 +332,45 @@ pub async fn get_inside_save(
     .await
 }
 
-pub async fn upsert_inside_save(
+pub async fn replace_inside_save(
     pool: &SqlitePool,
     user_id: i64,
     activity_id: i32,
     difficulty: i32,
     snapshot: &[u8],
     updated_at: i64,
-) -> sqlx::Result<()> {
-    sqlx::query(
-        "INSERT INTO user_arcade_inside_saves
-         (user_id, activity_id, difficulty, snapshot, updated_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(user_id, activity_id) DO UPDATE SET
-             difficulty = excluded.difficulty,
-             snapshot = excluded.snapshot,
-             updated_at = excluded.updated_at",
-    )
-    .bind(user_id)
-    .bind(activity_id)
-    .bind(difficulty)
-    .bind(snapshot)
-    .bind(updated_at)
-    .execute(pool)
-    .await?;
-    Ok(())
+    expected_snapshot: Option<&[u8]>,
+) -> sqlx::Result<bool> {
+    let changed = if let Some(expected_snapshot) = expected_snapshot {
+        sqlx::query(
+            "UPDATE user_arcade_inside_saves
+             SET difficulty = ?, snapshot = ?, updated_at = ?
+             WHERE user_id = ? AND activity_id = ? AND snapshot = ?",
+        )
+        .bind(difficulty)
+        .bind(snapshot)
+        .bind(updated_at)
+        .bind(user_id)
+        .bind(activity_id)
+        .bind(expected_snapshot)
+        .execute(pool)
+        .await?
+    } else {
+        sqlx::query(
+            "INSERT INTO user_arcade_inside_saves
+             (user_id, activity_id, difficulty, snapshot, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(user_id, activity_id) DO NOTHING",
+        )
+        .bind(user_id)
+        .bind(activity_id)
+        .bind(difficulty)
+        .bind(snapshot)
+        .bind(updated_at)
+        .execute(pool)
+        .await?
+    };
+    Ok(changed.rows_affected() == 1)
 }
 
 pub async fn settle_inside_in_transaction(
