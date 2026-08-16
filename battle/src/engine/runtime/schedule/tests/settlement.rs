@@ -155,6 +155,86 @@ fn entity_settlement_uses_attacker_and_defender_roster_order() {
     assert_eq!(managers.buff.snapshot(-1, -20).unwrap().duration, Some(1));
 }
 
+#[test]
+fn entity_settlement_buff_presence_fires_once_only_for_the_matching_owner() {
+    init_config();
+    let entity = |uid, buffs| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(1),
+        current_hp: Some(100),
+        ex_point: Some(0),
+        passive_skill: vec![100],
+        buffs,
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(
+                    10,
+                    vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(31460001),
+                        from_uid: Some(10),
+                        layer: Some(1),
+                        ..Default::default()
+                    }],
+                ),
+                entity(11, Vec::new()),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = crate::engine::skill::condition::parse::parse_conditions(
+        config::configs::get(),
+        "19303#31460001",
+    );
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![slot],
+    });
+
+    let subscribers = crate::engine::skill::subscriber::for_compiled_owner_events(
+        &pool,
+        &managers,
+        &catalog,
+        [EventKind::RoundEndEntitySettlement],
+        &[10, 11],
+    )
+    .unwrap();
+    assert_eq!(
+        subscribers
+            .skills
+            .iter()
+            .map(|subscriber| subscriber.owner_uid)
+            .collect::<Vec<_>>(),
+        vec![10, 11]
+    );
+
+    run_entity_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[10, 11],
+        SettlementSide::Attacker,
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(10), 1);
+    assert_eq!(managers.ex_point.get(11), 0);
+}
+
 #[cfg(feature = "private-fixtures")]
 #[test]
 fn setup_reserves_summoned_lanes_before_the_next_buff() {
