@@ -143,6 +143,22 @@ fn initial_wire_state_comes_from_the_resolved_exact_feature() {
 }
 
 #[test]
+fn buff_owned_charge_starts_at_zero_on_its_carrier() {
+    crate::test_support::init_config();
+
+    let charge = BuffDefinition::get(31460143).unwrap();
+    let markers = charge.initial_wire_states(10, 1006, 1, 1000);
+
+    assert_eq!(markers.len(), 1);
+    assert_eq!(markers[0].target_uid, 10);
+    assert_eq!(markers[0].buff_uid, 1006);
+    assert_eq!(markers[0].act_id, 1139);
+    assert_eq!(markers[0].params, vec![0]);
+    assert_eq!(markers[0].str_param.as_deref(), Some(""));
+    assert_eq!(markers[0].team_type, 0);
+}
+
+#[test]
 fn conduit_selection_initial_state_advertises_configured_options() {
     crate::test_support::init_config();
 

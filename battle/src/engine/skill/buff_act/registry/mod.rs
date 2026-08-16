@@ -191,6 +191,7 @@ pub enum BuffActKind {
     LostHpCountAddBuff,
     LifeAttackFixRate,
     MonitorContinueChannel,
+    MeiLeiErCharge,
     MoxieReductionImmunity,
     ModifyAttrByBuffLayer,
     ModifyMaxBuffLayers,
@@ -1267,6 +1268,13 @@ buff_act_definitions! {
     (1130, "DeviceCostReduce") => DeviceCostReduce,
         effect_time_subscription: false,
         supports: super::device_cost_reduce::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1130, "DeviceCostReduce"), &[EffectType::None as i32]));
+    (1139, "MeiLeiErCharge") => MeiLeiErCharge,
+        effect_time_subscription: false,
+        supports: |args| matches!(args, [trigger, limit, linked_skill]
+            if *trigger > 0 && *limit >= *trigger && *linked_skill > 0),
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1139, "MeiLeiErCharge"), &[])
+            .with_initial_state(super::wire::InitialStateRule::ZeroInteger));
 }
 
 pub fn definitions() -> impl Iterator<Item = &'static BuffActDefinition> {

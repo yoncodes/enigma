@@ -441,6 +441,7 @@ impl BuffDefinition {
                         format!("{},0,0", feature.values.get(1)?),
                         team_type,
                     ),
+                    InitialStateRule::ZeroInteger => (vec![0], String::new(), 0),
                     InitialStateRule::HeatScale => (vec![0], String::new(), 0),
                     InitialStateRule::CurrentHpPermille => (
                         Vec::new(),
