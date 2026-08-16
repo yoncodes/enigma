@@ -2,13 +2,89 @@ use crate::{
     error::AppError,
     net::{context::ConnectionContext, packet::ClientPacket},
     types::material_get_approach::MaterialGetApproach,
-    util::push,
+    util::{push, task_events},
 };
 use prost::Message;
 use sonettobuf::{
-    ArcadeAttrChangePush, ArcadeGainRewardRequest, ArcadeGetOutSideInfoRequest,
-    ArcadePlayerMoveRequest, ArcadeSwitchCharacterRequest, ArcadeTalentUpgradeRequest, CmdId,
+    ArcadeAttrChangePush, ArcadeGainRewardRequest, ArcadeGetInSideInfoRequest,
+    ArcadeGetOutSideInfoRequest, ArcadePlayerMoveRequest, ArcadeSaveGameRequest,
+    ArcadeSettleGameRequest, ArcadeSwitchCharacterRequest, ArcadeTalentUpgradeRequest, CmdId,
 };
+use std::{future::Future, pin::Pin};
+
+pub fn on_get_inside_info(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + '_>> {
+    Box::pin(get_inside_info(ctx, req))
+}
+
+async fn get_inside_info(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    ArcadeGetInSideInfoRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .arcade
+        .inside_info(ctx.state.db, ctx.state.tables)
+        .await?;
+    ctx.send_reply(CmdId::ArcadeGetInSideInfoCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub fn on_save_game(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + '_>> {
+    Box::pin(save_game(ctx, req))
+}
+
+async fn save_game(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let request = ArcadeSaveGameRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .arcade
+        .save_inside(
+            ctx.state.db,
+            ctx.state.tables,
+            request.info.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.send_reply(CmdId::ArcadeSaveGameCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub fn on_settle_game(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + '_>> {
+    Box::pin(settle_game(ctx, req))
+}
+
+async fn settle_game(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let request = ArcadeSettleGameRequest::decode(&req.data[..])?;
+    let settlement = ctx
+        .player()?
+        .arcade
+        .settle_inside(
+            ctx.state.db,
+            ctx.state.tables,
+            request.r#type.ok_or(AppError::InvalidRequest)?,
+            request.info.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.player_mut()?.tasks.record_updates(&settlement.tasks);
+    task_events::notify_tasks(ctx, settlement.tasks).await?;
+    ctx.push_red_dot_value(settlement.red_dot_id, vec![0], true, 1, 0)
+        .await?;
+    ctx.notify(
+        CmdId::ArcadeAttrChangePushCmd,
+        ArcadeAttrChangePush {
+            attr: vec![settlement.changed_attr],
+        },
+    )
+    .await?;
+    ctx.send_reply(CmdId::ArcadeSettleGameCmd, settlement.reply, 0, req.up_tag)
+        .await
+}
 
 pub async fn on_get_outside_info(
     ctx: &mut ConnectionContext,

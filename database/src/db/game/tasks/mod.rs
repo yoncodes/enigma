@@ -12,7 +12,8 @@ pub use activity::{
     claim_activity_bonus_in_transaction, list_activity,
 };
 pub use event::{
-    ProductionLineAction, TaskEvent, sync_event_tasks, sync_hero_invitation_claims_in_transaction,
+    ProductionLineAction, TaskEvent, sync_event_tasks, sync_event_tasks_in_transaction,
+    sync_hero_invitation_claims_in_transaction,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -36,6 +37,7 @@ pub enum TaskType {
     Activity194,
     AssassinOutside,
     Odyssey,
+    VersionActivity,
     Activity210,
     BpOperAct,
     ActBp,
@@ -68,6 +70,7 @@ impl TaskType {
             Self::Activity194 => 58,
             Self::AssassinOutside => 59,
             Self::Odyssey => 60,
+            Self::VersionActivity => 62,
             Self::Activity210 => 67,
             Self::BpOperAct => 70,
             Self::ActBp => 79,
@@ -101,6 +104,7 @@ impl TaskType {
             58 => Some(Self::Activity194),
             59 => Some(Self::AssassinOutside),
             60 => Some(Self::Odyssey),
+            62 => Some(Self::VersionActivity),
             65 => Some(Self::NecrologistStory),
             67 => Some(Self::Activity210),
             70 => Some(Self::BpOperAct),
@@ -133,6 +137,7 @@ impl TaskType {
             Self::Activity194,
             Self::AssassinOutside,
             Self::Odyssey,
+            Self::VersionActivity,
             Self::Activity210,
             Self::BpOperAct,
             Self::ActBp,
@@ -394,6 +399,41 @@ pub(super) async fn ensure_tasks_for_type_in_transaction(
                     .odyssey_task
                     .iter()
                     .map(|task| ConfigTask::online(task.id, task.is_online, task.activity_id)),
+            )
+            .await?;
+        }
+        TaskType::VersionActivity => {
+            let current_version = tables
+                .copost_version_task
+                .iter()
+                .map(|task| task.version_id)
+                .max();
+            if let Some(current_version) = current_version {
+                sqlx::query(
+                    "DELETE FROM user_tasks
+                     WHERE user_id = ? AND type_id = ? AND activity_id != ?",
+                )
+                .bind(user_id)
+                .bind(task_type.id())
+                .bind(current_version)
+                .execute(&mut *pool)
+                .await?;
+            } else {
+                sqlx::query("DELETE FROM user_tasks WHERE user_id = ? AND type_id = ?")
+                    .bind(user_id)
+                    .bind(task_type.id())
+                    .execute(&mut *pool)
+                    .await?;
+            }
+            ensure_config_tasks(
+                pool,
+                user_id,
+                task_type.id(),
+                tables
+                    .copost_version_task
+                    .iter()
+                    .filter(|task| Some(task.version_id) == current_version)
+                    .map(|task| ConfigTask::online(task.id, 1, task.version_id)),
             )
             .await?;
         }
@@ -1209,15 +1249,26 @@ async fn ensure_task(conn: &mut SqliteConnection, task: NewTask) -> sqlx::Result
     Ok(())
 }
 
-pub(super) async fn add_progress(
-    pool: &SqlitePool,
+pub(super) async fn add_progress_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
     user_id: i64,
     type_id: i32,
     task_id: i32,
     delta: i32,
     max_progress: i32,
 ) -> sqlx::Result<Option<UserTask>> {
-    let Some(task) = get_by_type_and_id(pool, user_id, type_id, task_id).await? else {
+    let Some(task) = sqlx::query_as::<_, UserTask>(
+        "SELECT user_id, type_id, task_id, progress, has_finished, finish_count,
+                expiry_time, min_type_id, activity_id, created_at, updated_at
+         FROM user_tasks
+         WHERE user_id = ? AND type_id = ? AND task_id = ?",
+    )
+    .bind(user_id)
+    .bind(type_id)
+    .bind(task_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    else {
         return Ok(None);
     };
 
@@ -1229,8 +1280,31 @@ pub(super) async fn add_progress(
         return Ok(None);
     }
 
-    set_progress(pool, user_id, type_id, task_id, progress, has_finished).await?;
-    get_by_type_and_id(pool, user_id, type_id, task_id).await
+    let now = ServerTime::now_ms();
+    sqlx::query(
+        "UPDATE user_tasks SET progress = ?, has_finished = ?, updated_at = ?
+         WHERE user_id = ? AND type_id = ? AND task_id = ?",
+    )
+    .bind(progress)
+    .bind(has_finished)
+    .bind(now)
+    .bind(user_id)
+    .bind(type_id)
+    .bind(task_id)
+    .execute(&mut **tx)
+    .await?;
+
+    sqlx::query_as::<_, UserTask>(
+        "SELECT user_id, type_id, task_id, progress, has_finished, finish_count,
+                expiry_time, min_type_id, activity_id, created_at, updated_at
+         FROM user_tasks
+         WHERE user_id = ? AND type_id = ? AND task_id = ?",
+    )
+    .bind(user_id)
+    .bind(type_id)
+    .bind(task_id)
+    .fetch_optional(&mut **tx)
+    .await
 }
 
 pub async fn get_by_id(
@@ -1416,6 +1490,7 @@ fn max_finish_count(type_id: i32, task_id: i32) -> i32 {
             .map(|task| task.max_finish_count)
             .unwrap_or(1),
         Some(TaskType::Odyssey) => 1,
+        Some(TaskType::VersionActivity) => 1,
         Some(TaskType::Activity210) => 1,
         Some(TaskType::BpOperAct) => 1,
         Some(TaskType::ActBp) => 1,
@@ -1675,6 +1750,45 @@ mod tests {
         assert!(!weekly.has_finished);
         let permanent = reset.iter().find(|task| task.task_id == 790009).unwrap();
         assert_eq!(permanent.progress, 5);
+    }
+
+    #[tokio::test]
+    async fn version_activity_tasks_replace_prior_version_rows() {
+        let pool = test_pool().await;
+        let tables = config::configs::get();
+        let current_version = tables
+            .copost_version_task
+            .iter()
+            .map(|task| task.version_id)
+            .max()
+            .unwrap();
+        let old = tables
+            .copost_version_task
+            .iter()
+            .find(|task| task.version_id < current_version)
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO user_tasks
+             (user_id, type_id, task_id, progress, activity_id, created_at, updated_at)
+             VALUES (1, ?, ?, 1, ?, 0, 0)",
+        )
+        .bind(TaskType::VersionActivity.id())
+        .bind(old.id)
+        .bind(old.version_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        ensure_tasks_for_type(&pool, 1, TaskType::VersionActivity)
+            .await
+            .unwrap();
+        let tasks = list_by_types(&pool, 1, vec![TaskType::VersionActivity.id()])
+            .await
+            .unwrap();
+        assert!(!tasks.is_empty());
+        assert!(tasks.iter().all(|task| task.activity_id == current_version));
+        assert!(!tasks.iter().any(|task| task.task_id == old.id));
+        assert!(tasks.iter().any(|task| task.task_id == 912));
     }
 
     #[tokio::test]

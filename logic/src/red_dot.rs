@@ -241,6 +241,7 @@ async fn apply_dynamic_red_dots(
             }
             RedDotId::BossRushRankBonus => {}
             RedDotId::CommandStationBonus => {}
+            RedDotId::CommandStationTaskNormal => {}
             RedDotId::DailyTask => {
                 apply_task_red_dot(reply, db, player_id, task_db::TaskType::Daily).await?
             }

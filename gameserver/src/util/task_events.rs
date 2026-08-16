@@ -1,6 +1,10 @@
 use crate::{error::AppError, net::context::ConnectionContext};
-use logic::task::{TaskEvent, UserTask};
-use sonettobuf::{CmdId, UpdateAchievementPush, UpdateTaskPush};
+use logic::{
+    task::{TaskEvent, TaskType, UserTask},
+    types::red_dot_id::RedDotId,
+};
+use sonettobuf::{CmdId, RedDotGroup, RedDotInfo, UpdateAchievementPush, UpdateTaskPush};
+use std::{collections::BTreeMap, future::Future, pin::Pin};
 
 use super::push;
 
@@ -8,24 +12,88 @@ pub async fn notify_tasks(
     ctx: &mut ConnectionContext,
     tasks: Vec<UserTask>,
 ) -> Result<(), AppError> {
-    if !tasks.is_empty() {
+    if tasks.is_empty() {
+        return Ok(());
+    }
+
+    let activity_info = ctx.player()?.tasks.activity_info(ctx.state.db).await?;
+    for (family, tasks) in task_push_groups(tasks) {
         let red_dot_types = logic::task::recurring_red_dot_types(
             tasks
                 .iter()
                 .map(|task| (task.type_id, task.has_finished, task.finish_count)),
         );
-        let activity_info = ctx.player()?.tasks.activity_info(ctx.state.db).await?;
         ctx.notify(
             CmdId::UpdateTaskPushCmd,
             UpdateTaskPush {
                 task_info: tasks.into_iter().map(Into::into).collect(),
-                activity_info,
+                activity_info: activity_info.clone(),
             },
         )
         .await?;
-        notify_task_red_dots(ctx, red_dot_types).await?;
+        notify_task_family_red_dots(ctx, family, red_dot_types).await?;
     }
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum TaskPushFamily {
+    ActBp(i32),
+    VersionActivity,
+    BattlePass,
+    Other,
+}
+
+fn task_push_groups(tasks: Vec<UserTask>) -> Vec<(TaskPushFamily, Vec<UserTask>)> {
+    let mut groups = BTreeMap::<TaskPushFamily, Vec<UserTask>>::new();
+    for task in tasks {
+        let family = match TaskType::from_id(task.type_id) {
+            Some(TaskType::ActBp) => TaskPushFamily::ActBp(task.activity_id),
+            Some(TaskType::VersionActivity) => TaskPushFamily::VersionActivity,
+            Some(TaskType::BattlePass) => TaskPushFamily::BattlePass,
+            _ => TaskPushFamily::Other,
+        };
+        groups.entry(family).or_default().push(task);
+    }
+    groups.into_iter().collect()
+}
+
+fn notify_task_family_red_dots<'a>(
+    ctx: &'a mut ConnectionContext,
+    family: TaskPushFamily,
+    recurring_types: Vec<i32>,
+) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + 'a>> {
+    Box::pin(async move {
+        let groups = match family {
+            TaskPushFamily::ActBp(activity_id) => {
+                ctx.player()?
+                    .red_dot
+                    .act233_groups(ctx.state.db, activity_id)
+                    .await?
+            }
+            TaskPushFamily::VersionActivity => vec![RedDotGroup {
+                define_id: RedDotId::CommandStationTaskNormal.id(),
+                infos: vec![RedDotInfo {
+                    id: 0,
+                    value: 1,
+                    time: Some(0),
+                    ext: None,
+                }],
+                replace_all: Some(true),
+            }],
+            TaskPushFamily::BattlePass => {
+                ctx.player()?
+                    .red_dot
+                    .battle_pass_groups(ctx.state.db)
+                    .await?
+            }
+            TaskPushFamily::Other => {
+                notify_task_red_dots(ctx, recurring_types).await?;
+                return Ok(());
+            }
+        };
+        push::send_red_dot_groups(ctx, groups).await
+    })
 }
 
 pub async fn notify_task_red_dots(
