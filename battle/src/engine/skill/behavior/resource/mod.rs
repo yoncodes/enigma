@@ -2,7 +2,10 @@ use crate::engine::{
     entity::attr::AttrId,
     manager::{
         card::{CardCommand, CardConsumeForEffect},
-        conduit::{ConduitCommand, ConduitPowerChange, ConduitPowerChangeKind},
+        conduit::{
+            ConduitCommand, ConduitCounterChange, ConduitCounterKind, ConduitPowerChange,
+            ConduitPowerChangeKind,
+        },
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand, EurekaProgress},
         ex_point::{ExPointChange, ExPointCommand, ExPointKind},
         gauge::{GaugeCommand, GaugeOperation},
@@ -32,6 +35,13 @@ pub(super) fn supports_recover_power_and_cast_cards(behavior: &ParsedBehavior) -
         [skill_id, target_rule]
             if *skill_id > 0
                 && crate::engine::skill::target::is_mapped_target_code(*target_rule)
+    )
+}
+
+pub(super) fn supports_conduit_counter(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [kind, delta] if ConduitCounterKind::from_config(*kind).is_some() && *delta > 0
     )
 }
 
@@ -311,6 +321,20 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                     power_id,
                     delta,
                     kind,
+                }),
+            ))])
+        }
+        BehaviorKind::AddConduitCounter => {
+            let [kind, delta] = behavior.args.as_slice() else {
+                return None;
+            };
+            Some(vec![RuleOp::Command(BattleCommand::Conduit(
+                ConduitCommand::ChangeCounter(ConduitCounterChange {
+                    origin,
+                    source_uid: context.source_uid,
+                    team: context.source_team,
+                    kind: ConduitCounterKind::from_config(*kind)?,
+                    delta: *delta,
                 }),
             ))])
         }

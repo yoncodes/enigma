@@ -712,6 +712,18 @@ fn project_change(
             *applied_delta,
             *kind,
         )],
+        BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::CounterChanged {
+            source_uid,
+            team,
+            kind,
+            after,
+            ..
+        }) => vec![EffectPacket::conduit_counter_changed(
+            *source_uid,
+            *team,
+            *kind,
+            *after,
+        )],
         BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::PowersCleared {
             origin,
             source_uid,

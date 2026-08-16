@@ -65,6 +65,7 @@ pub enum BehaviorKind {
     AddTeamEnergy,
     AddRedOrBlueCount,
     AddConduitPower,
+    AddConduitCounter,
     AddConduitExPoint,
     NotifyHeroContract,
     ContractEndClearBuff,
