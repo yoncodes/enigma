@@ -7,6 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use battle::engine::skill::effect::SkillEffectCatalog;
 
+mod battle_report;
 mod coverage;
 mod opening;
 mod options;
@@ -18,6 +19,9 @@ fn main() -> Result<()> {
     init_config()?;
     let db = config::configs::get();
     let battle_catalog = battle::catalog::BattleCatalog::new(db);
+    if options.battle_report.is_some() {
+        return battle_report::generate(&options, db, battle_catalog);
+    }
     if options.coverage_plan || options.include_plan {
         let mut catalog = SkillEffectCatalog::from_game_db(db);
         return coverage::print_coverage_plan(
