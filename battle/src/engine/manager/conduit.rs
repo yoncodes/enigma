@@ -239,18 +239,18 @@ pub struct ConduitManager {
 
 impl ConduitManager {
     pub(crate) fn configured(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
-        Self::from_fight(fight, |model_id| catalog.conduit_device(model_id))
+        Self::from_fight(fight, |entity| catalog.conduit_device(entity))
     }
 
     pub fn seed_with_game_data(game_data: &config::GameDB, fight: &Fight) -> Self {
-        Self::from_fight(fight, |model_id| {
-            crate::catalog::configured_conduit_device(game_data, model_id)
+        Self::from_fight(fight, |entity| {
+            crate::catalog::configured_conduit_device(game_data, entity)
         })
     }
 
     fn from_fight(
         fight: &Fight,
-        configured: impl Fn(i32) -> Result<Option<Vec<Vec<ConduitSkill>>>, ConduitError>,
+        configured: impl Fn(&FightEntityInfo) -> Result<Option<Vec<Vec<ConduitSkill>>>, ConduitError>,
     ) -> Self {
         let mut manager = Self::default();
         for (team, fight_team) in [(1, fight.attacker.as_ref()), (2, fight.defender.as_ref())] {
@@ -772,14 +772,14 @@ impl ConduitManager {
 
     fn seed_entity(
         &mut self,
-        configured: &impl Fn(i32) -> Result<Option<Vec<Vec<ConduitSkill>>>, ConduitError>,
+        configured: &impl Fn(&FightEntityInfo) -> Result<Option<Vec<Vec<ConduitSkill>>>, ConduitError>,
         team: i32,
         entity: &FightEntityInfo,
     ) {
-        let (Some(uid), Some(model_id)) = (entity.uid, entity.model_id) else {
+        let (Some(uid), Some(_model_id)) = (entity.uid, entity.model_id) else {
             return;
         };
-        let skill_groups = match configured(model_id) {
+        let skill_groups = match configured(entity) {
             Ok(Some(skill_groups)) => skill_groups,
             Ok(None) => return,
             Err(error) => {
@@ -859,10 +859,15 @@ mod tests {
     #[test]
     fn parses_configured_skill_group_without_losing_cost_identity() {
         crate::test_support::init_config();
-        let groups =
-            crate::catalog::configured_conduit_device(crate::test_support::game_data(), 3149)
-                .unwrap()
-                .unwrap();
+        let groups = crate::catalog::configured_conduit_device(
+            crate::test_support::game_data(),
+            &FightEntityInfo {
+                model_id: Some(3149),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(
             groups[0],
             vec![
@@ -907,6 +912,44 @@ mod tests {
         assert_eq!(
             configured.initialization_errors,
             legacy.initialization_errors
+        );
+    }
+
+    #[test]
+    fn configured_seed_uses_selected_destiny_device_from_entity_loadout() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3025),
+                    ex_skill_level: Some(2),
+                    destiny_stone: Some(302502),
+                    destiny_rank: Some(4),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let manager = ConduitManager::configured(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            &fight,
+        );
+
+        assert_eq!(
+            manager
+                .selected_skills(10)
+                .unwrap()
+                .into_iter()
+                .map(|skill| skill.skill_id)
+                .collect::<Vec<_>>(),
+            vec![302524112]
+        );
+        assert_eq!(
+            manager.skill_ids().collect::<Vec<_>>(),
+            vec![302524112, 302514212, 302504312]
         );
     }
 

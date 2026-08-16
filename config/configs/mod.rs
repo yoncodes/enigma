@@ -225,6 +225,7 @@ pub mod copost_password_paper;
 pub mod copost_version_task;
 pub mod critter;
 pub mod currency;
+pub mod destiny_facets_ex_level;
 pub mod dialog;
 pub mod dice_card;
 pub mod dice_character;
@@ -645,6 +646,7 @@ pub struct GameDB {
     pub copost_version_task: copost_version_task::CopostVersionTaskTable,
     pub critter: critter::CritterTable,
     pub currency: currency::CurrencyTable,
+    pub destiny_facets_ex_level: destiny_facets_ex_level::DestinyFacetsExLevelTable,
     pub dialog: dialog::DialogTable,
     pub dice_card: dice_card::DiceCardTable,
     pub dice_character: dice_character::DiceCharacterTable,
@@ -1515,6 +1517,9 @@ impl GameDB {
         let currency = currency::CurrencyTable::load(
             &format!("{}/currency.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load currency.json: {}", e))?;
+        let destiny_facets_ex_level = destiny_facets_ex_level::DestinyFacetsExLevelTable::load(
+            &format!("{}/destiny_facets_ex_level.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load destiny_facets_ex_level.json: {}", e))?;
         let dialog = dialog::DialogTable::load(
             &format!("{}/dialog.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load dialog.json: {}", e))?;
@@ -2315,6 +2320,7 @@ impl GameDB {
             copost_version_task,
             critter,
             currency,
+            destiny_facets_ex_level,
             dialog,
             dice_card,
             dice_character,
