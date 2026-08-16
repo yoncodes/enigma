@@ -74,6 +74,24 @@ pub async fn add_activity(
     get_activity(pool, user_id, type_id).await
 }
 
+pub(super) async fn reset_activity(
+    pool: &SqlitePool,
+    user_id: i64,
+    type_id: i32,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "UPDATE user_task_activity
+         SET define_id = 0, value = 0, gain_value = 0, updated_at = ?
+         WHERE user_id = ? AND type_id = ?",
+    )
+    .bind(ServerTime::now_ms())
+    .bind(user_id)
+    .bind(type_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn add_activity_in_transaction(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     user_id: i64,

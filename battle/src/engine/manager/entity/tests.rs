@@ -181,6 +181,42 @@ fn replacing_a_wave_roster_deactivates_the_previous_combatants() {
 }
 
 #[test]
+fn defeated_combatant_count_keeps_prior_waves_and_excludes_special_entities() {
+    let entity = |uid, current_hp, position| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(2),
+        position: Some(position),
+        current_hp: Some(current_hp),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 0, 1)],
+            sub_entitys: vec![entity(-2, 100, -1)],
+            sp_entitys: vec![entity(-9, 0, SPECIAL_POSITION)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = EntityManager::seed(&fight);
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+
+    assert_eq!(manager.defeated_combatant_count(2, &hp), 1);
+
+    let next = entity(-3, 0, 1);
+    hp.register(&next);
+    manager.replace_team_roster(2, std::slice::from_ref(&next), &[]);
+    manager.sync_to_fight(&mut fight);
+
+    assert_eq!(manager.defeated_combatant_count(2, &hp), 2);
+}
+
+#[test]
 fn transform_replaces_identity_without_changing_uid_or_position() {
     crate::test_support::init_config();
     let mut original = Defender::build_monster_with_uid(251417, -7, 1, 2).unwrap();

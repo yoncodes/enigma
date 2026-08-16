@@ -168,7 +168,10 @@ async fn apply_battle_pass_purchase(
     player_id: i64,
     goods_id: i32,
 ) -> Result<BattlePassPurchasePushes, AppError> {
-    let Some((bp_id, pay_status, score_delta)) = battle_pass_pay_status(goods_id) else {
+    let Some(bp) = task_db::current_battle_pass() else {
+        return Ok(BattlePassPurchasePushes::default());
+    };
+    let Some((bp_id, pay_status, score_delta)) = battle_pass_pay_status_for(bp, goods_id) else {
         return Ok(BattlePassPurchasePushes::default());
     };
 
@@ -176,7 +179,7 @@ async fn apply_battle_pass_purchase(
         battle_pass::apply_purchase_in_transaction(tx, player_id, bp_id, pay_status, score_delta)
             .await?;
     let rewards = if update.pay_status_changed {
-        battle_pass_purchase_bonus(update.previous_pay_status, update.pay_status)
+        battle_pass_purchase_bonus_for(bp, update.previous_pay_status, update.pay_status)
     } else {
         reward::RewardSet::default()
     };
@@ -195,9 +198,10 @@ async fn apply_battle_pass_purchase(
     })
 }
 
-pub(crate) fn battle_pass_pay_status(goods_id: i32) -> Option<(i32, i32, i32)> {
-    let bp = task_db::current_battle_pass()?;
-
+pub(super) fn battle_pass_pay_status_for(
+    bp: &config::bp::Bp,
+    goods_id: i32,
+) -> Option<(i32, i32, i32)> {
     match goods_id {
         id if id == bp.charge_id1 => Some((bp.bp_id, 1, 0)),
         id if id == bp.charge_id2 || id == bp.charge_id1to2 => {
@@ -207,14 +211,11 @@ pub(crate) fn battle_pass_pay_status(goods_id: i32) -> Option<(i32, i32, i32)> {
     }
 }
 
-pub(crate) fn battle_pass_purchase_bonus(
+pub(super) fn battle_pass_purchase_bonus_for(
+    bp: &config::bp::Bp,
     previous_pay_status: i32,
     pay_status: i32,
 ) -> reward::RewardSet {
-    let Some(bp) = task_db::current_battle_pass() else {
-        return reward::RewardSet::default();
-    };
-
     let mut rewards = reward::RewardSet::default();
     if previous_pay_status < 1 && pay_status >= 1 {
         rewards.extend(reward::parse(&bp.pay_status1_bonus));

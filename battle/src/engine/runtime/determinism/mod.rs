@@ -4,6 +4,8 @@ use sonettobuf::CardInfo;
 
 use crate::engine::manager::card::CardPlayChoice;
 
+type StartDeckSeed = (Vec<CardInfo>, Vec<CardInfo>, Vec<CardInfo>, usize);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillTargetChoice {
     pub skill_id: i32,
@@ -46,7 +48,7 @@ pub struct HandCardChoice {
 #[derive(Debug, Clone, Default)]
 pub struct RoundDeterminism {
     pub skill_targets: Vec<SkillTargetChoice>,
-    start_decks: VecDeque<(Vec<CardInfo>, Vec<CardInfo>, Vec<CardInfo>)>,
+    start_decks: VecDeque<StartDeckSeed>,
     card_draws: VecDeque<CardInfo>,
     card_energy_snapshots: VecDeque<Vec<CardInfo>>,
     crystal_cards: VecDeque<CardInfo>,
@@ -81,7 +83,7 @@ impl RoundDeterminism {
 
     pub fn enqueue_start_decks(&mut self, ai_deck: Vec<CardInfo>, player_deck: Vec<CardInfo>) {
         self.start_decks
-            .push_back((ai_deck, player_deck, Vec::new()));
+            .push_back((ai_deck, player_deck, Vec::new(), 0));
     }
 
     pub fn enqueue_opening_seed(
@@ -89,12 +91,13 @@ impl RoundDeterminism {
         ai_deck: Vec<CardInfo>,
         player_deck: Vec<CardInfo>,
         card_draws: Vec<CardInfo>,
+        reserved_ultimate_slots: usize,
     ) {
         self.start_decks
-            .push_back((ai_deck, player_deck, card_draws));
+            .push_back((ai_deck, player_deck, card_draws, reserved_ultimate_slots));
     }
 
-    pub fn take_start_decks(&mut self) -> Option<(Vec<CardInfo>, Vec<CardInfo>, Vec<CardInfo>)> {
+    pub fn take_start_decks(&mut self) -> Option<StartDeckSeed> {
         self.start_decks.pop_front()
     }
 
@@ -104,6 +107,10 @@ impl RoundDeterminism {
 
     pub fn has_queued_card_draw(&self) -> bool {
         !self.card_draws.is_empty()
+    }
+
+    pub fn clear_card_draws(&mut self) {
+        self.card_draws.clear();
     }
 
     pub fn draw_cards(&mut self, candidates: &[CardInfo], count: usize) -> Vec<CardInfo> {

@@ -366,6 +366,7 @@ async fn completed_tutorial_sends_tasks_before_room_unlock() {
         episode.chapter_id,
         episode.id,
         DungeonSettlement {
+            kill_count: 0,
             hero_ids: Vec::new(),
             rewards: AppliedRewards {
                 block_packages: vec![BlockPackage {

@@ -90,52 +90,34 @@ fn card_energy_allocation_commits_cards_then_spends_only_allocated_gauge() {
 }
 
 #[test]
-fn compiled_team_tag_setup_enables_impromptu_and_bloodtithe_reactions() {
+fn compiled_team_tag_setup_enables_impromptu_and_single_owner_bloodtithe_reactions() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![
-                FightEntityInfo {
-                    uid: Some(10),
-                    team_type: Some(1),
-                    current_hp: Some(20_000),
-                    attr: Some(HeroAttribute {
-                        hp: Some(20_000),
-                        ..Default::default()
-                    }),
-                    buffs: vec![
-                        BuffInfo {
-                            uid: Some(20),
-                            buff_id: Some(2_240_000),
-                            from_uid: Some(10),
-                            ..Default::default()
-                        },
-                        BuffInfo {
-                            uid: Some(21),
-                            buff_id: Some(6_270_501),
-                            from_uid: Some(10),
-                            ..Default::default()
-                        },
-                    ],
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(20_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(20_000),
                     ..Default::default()
-                },
-                FightEntityInfo {
-                    uid: Some(11),
-                    team_type: Some(1),
-                    current_hp: Some(20_000),
-                    attr: Some(HeroAttribute {
-                        hp: Some(20_000),
+                }),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(2_240_000),
+                        from_uid: Some(10),
                         ..Default::default()
-                    }),
-                    buffs: vec![BuffInfo {
-                        uid: Some(22),
+                    },
+                    BuffInfo {
+                        uid: Some(21),
                         buff_id: Some(6_270_501),
-                        from_uid: Some(11),
+                        from_uid: Some(10),
                         ..Default::default()
-                    }],
-                    ..Default::default()
-                },
-            ],
+                    },
+                ],
+                ..Default::default()
+            }],
             ..Default::default()
         }),
         ..Default::default()

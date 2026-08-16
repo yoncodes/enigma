@@ -128,6 +128,10 @@ fn task_bonus(type_id: i32, task_id: i32) -> Option<String> {
             .odyssey_task
             .get(task_id)
             .map(|task| task.bonus.clone()),
+        Some(task_db::TaskType::VersionActivity) => tables
+            .copost_version_task
+            .get(task_id)
+            .map(|task| task.bonus.clone()),
         Some(task_db::TaskType::Activity210) => tables
             .activity210_task
             .get(task_id)

@@ -2,13 +2,15 @@ use crate::{
     error::AppError,
     logic::{bp, task as tasks},
     net::{context::ConnectionContext, packet::ClientPacket},
+    session,
     types::material_get_approach::MaterialGetApproach,
     util::{push, task_events},
 };
+use common::time::ServerTime;
 use logic::task::{TaskEvent, TaskType};
 use prost::Message;
 use sonettobuf::{
-    CmdId, FinishAllTaskRequest, FinishReadTaskRequest, FinishTaskRequest,
+    Act233BpScoreUpdatePush, CmdId, FinishAllTaskRequest, FinishReadTaskRequest, FinishTaskRequest,
     GetTaskActivityBonusRequest, GetTaskInfoRequest, RefreshOnlineTaskRequest, UpdateTaskPush,
 };
 
@@ -17,6 +19,7 @@ pub async fn on_get_task_info(
     req: ClientPacket,
 ) -> Result<(), AppError> {
     let msg = GetTaskInfoRequest::decode(&req.data[..])?;
+    session::reconcile_periodic_resets(ctx, ServerTime::now_ms()).await?;
     let db = ctx.state.db;
     let reply = ctx.player_mut()?.tasks.get_info(db, msg.type_ids).await?;
 
@@ -29,10 +32,12 @@ pub async fn on_finish_task(
     req: ClientPacket,
 ) -> Result<(), AppError> {
     let msg = FinishTaskRequest::decode(&req.data[..])?;
+    session::reconcile_periodic_resets(ctx, ServerTime::now_ms()).await?;
     let db = ctx.state.db;
     let player_id = ctx.player()?.id;
     let claim = ctx.player_mut()?.tasks.finish(db, msg.id).await?;
     let finished_tasks = claim.task_info.clone();
+    let act233_bp_scores = claim.act233_bp_scores.clone();
     let finished_task_ids = claim
         .task_info
         .iter()
@@ -51,6 +56,7 @@ pub async fn on_finish_task(
     send_bp_task_red_dot_update(ctx, &finished_tasks).await?;
     notify_task_finish_events(ctx, player_id, &finished_task_ids).await?;
     send_task_update(ctx, claim.task_info, claim.activity_info).await?;
+    send_act233_bp_score_updates(ctx, &act233_bp_scores).await?;
 
     ctx.send_reply(CmdId::FinishTaskCmd, claim.reply, 0, req.up_tag)
         .await
@@ -62,6 +68,7 @@ pub async fn on_finish_all_task(
 ) -> Result<(), AppError> {
     let msg = FinishAllTaskRequest::decode(&req.data[..])?;
     let type_id = msg.type_id.ok_or(AppError::InvalidRequest)?;
+    session::reconcile_periodic_resets(ctx, ServerTime::now_ms()).await?;
     let db = ctx.state.db;
     let player_id = ctx.player()?.id;
     let claim = ctx
@@ -70,6 +77,7 @@ pub async fn on_finish_all_task(
         .finish_all(db, type_id, msg.min_type_id, msg.task_ids, msg.activity_id)
         .await?;
     let finished_tasks = claim.task_info.clone();
+    let act233_bp_scores = claim.act233_bp_scores.clone();
     let finished_task_ids = claim
         .task_info
         .iter()
@@ -88,6 +96,7 @@ pub async fn on_finish_all_task(
     send_bp_task_red_dot_update(ctx, &finished_tasks).await?;
     notify_task_finish_events(ctx, player_id, &finished_task_ids).await?;
     send_task_update(ctx, claim.task_info, claim.activity_info).await?;
+    send_act233_bp_score_updates(ctx, &act233_bp_scores).await?;
 
     ctx.send_reply(CmdId::FinishAllTaskCmd, claim.reply, 0, req.up_tag)
         .await
@@ -100,6 +109,7 @@ pub async fn on_get_task_activity_bonus(
     let msg = GetTaskActivityBonusRequest::decode(&req.data[..])?;
     let type_id = msg.type_id.ok_or(AppError::InvalidRequest)?;
     let define_id = msg.define_id.ok_or(AppError::InvalidRequest)?;
+    session::reconcile_periodic_resets(ctx, ServerTime::now_ms()).await?;
     let db = ctx.state.db;
     let player_id = ctx.player()?.id;
     let claim = ctx
@@ -174,6 +184,25 @@ async fn send_task_update(
     )
     .await?;
     task_events::notify_task_red_dots(ctx, red_dot_types).await
+}
+
+async fn send_act233_bp_score_updates(
+    ctx: &mut ConnectionContext,
+    updates: &[database::db::game::act233_bp::Act233BpScoreUpdate],
+) -> Result<(), AppError> {
+    for update in updates {
+        ctx.notify(
+            CmdId::Act233BpScoreUpdatePushCmd,
+            Act233BpScoreUpdatePush {
+                activity_id: Some(update.activity_id),
+                bp_id: Some(update.bp_id),
+                score: Some(update.score),
+            },
+        )
+        .await?;
+    }
+
+    Ok(())
 }
 
 fn task_reward_approach(tasks: &[sonettobuf::Task]) -> MaterialGetApproach {

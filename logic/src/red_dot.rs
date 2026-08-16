@@ -171,8 +171,21 @@ async fn apply_dynamic_red_dots(
             .collect()
     };
 
+    let bp = (ids.contains(&RedDotId::BattlePassBonus)
+        || ids.contains(&RedDotId::BattlePassSpBonus)
+        || ids.contains(&RedDotId::BattlePassTask))
+    .then(task_db::current_battle_pass)
+    .flatten();
+
     if ids.contains(&RedDotId::BattlePassBonus) || ids.contains(&RedDotId::BattlePassSpBonus) {
-        let bonus = BattlePassManager::new(player_id).bonus_red_dots(db).await?;
+        let bonus = match bp {
+            Some(bp) => {
+                BattlePassManager::new(player_id)
+                    .bonus_red_dots_for(db, bp)
+                    .await?
+            }
+            None => Default::default(),
+        };
         if ids.contains(&RedDotId::BattlePassBonus) {
             replace_group(
                 reply,
@@ -223,9 +236,14 @@ async fn apply_dynamic_red_dots(
             }
             RedDotId::V3a7Anniversary3ActBpSubTask | RedDotId::V3a7Anniversary3ActBpBonus => {}
             RedDotId::BattlePassBonus | RedDotId::BattlePassSpBonus => {}
-            RedDotId::BattlePassTask => apply_bp_task_red_dot(reply, db, player_id).await?,
+            RedDotId::BattlePassTask => {
+                apply_bp_task_red_dot(reply, db, player_id, bp.map(|bp| bp.bp_id)).await?
+            }
             RedDotId::BossRushRankBonus => {}
             RedDotId::CommandStationBonus => {}
+            RedDotId::CommandStationTaskNormal => {
+                apply_task_red_dot(reply, db, player_id, task_db::TaskType::VersionActivity).await?
+            }
             RedDotId::DailyTask => {
                 apply_task_red_dot(reply, db, player_id, task_db::TaskType::Daily).await?
             }
@@ -301,6 +319,7 @@ async fn apply_task_red_dot(
     let define_id = match task_type {
         task_db::TaskType::Daily => RedDotId::DailyTask.id(),
         task_db::TaskType::Weekly => RedDotId::WeeklyTask.id(),
+        task_db::TaskType::VersionActivity => RedDotId::CommandStationTaskNormal.id(),
         _ => return Ok(()),
     };
     replace_group(
@@ -486,14 +505,17 @@ async fn apply_bp_task_red_dot(
     reply: &mut GetRedDotInfosReply,
     db: &SqlitePool,
     player_id: i64,
+    bp_id: Option<i32>,
 ) -> Result<(), AppError> {
-    replace_group(
-        reply,
-        RedDotId::BattlePassTask.id(),
-        BattlePassManager::new(player_id)
-            .task_red_dot_infos(db)
-            .await?,
-    );
+    let infos = match bp_id {
+        Some(bp_id) => {
+            BattlePassManager::new(player_id)
+                .task_red_dot_infos_for(db, bp_id)
+                .await?
+        }
+        None => Vec::new(),
+    };
+    replace_group(reply, RedDotId::BattlePassTask.id(), infos);
     Ok(())
 }
 
@@ -611,8 +633,13 @@ async fn battle_pass_red_dot_groups(
     player_id: i64,
 ) -> Result<Vec<RedDotGroup>, AppError> {
     let manager = BattlePassManager::new(player_id);
-    let bonus = manager.bonus_red_dots(db).await?;
-    let task_infos = manager.task_red_dot_infos(db).await?;
+    let (bonus, task_infos) = match task_db::current_battle_pass() {
+        Some(bp) => (
+            manager.bonus_red_dots_for(db, bp).await?,
+            manager.task_red_dot_infos_for(db, bp.bp_id).await?,
+        ),
+        None => (Default::default(), Vec::new()),
+    };
 
     Ok(vec![
         RedDotGroup {
@@ -857,8 +884,14 @@ fn add_missing_leaf_groups(
 #[cfg(test)]
 mod tests {
     use super::{add_missing_leaf_groups, apply_state, build_red_dot_children, loadable_leaf_ids};
-    use crate::types::red_dot_id::RedDotId;
-    use database::models::game::red_dots::RedDotRecord;
+    use crate::{bp::BattlePassManager, types::red_dot_id::RedDotId};
+    use database::{
+        db::game::{
+            battle_pass,
+            tasks::{self as task_db, TaskType},
+        },
+        models::game::red_dots::RedDotRecord,
+    };
     use sonettobuf::{GetRedDotInfosReply, RedDotGroup, RedDotInfo};
     use sqlx::sqlite::SqlitePoolOptions;
 
@@ -955,6 +988,123 @@ mod tests {
         super::replace_group(&mut reply, RedDotId::BattlePassTask.id(), vec![]);
 
         assert!(reply.red_dot_infos.is_empty());
+    }
+
+    #[tokio::test]
+    async fn task_only_bp_red_dot_initializes_the_selected_pass() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at) VALUES (1, 'bp-red-dot', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        battle_pass::get_or_create_state(&pool, 1, 28)
+            .await
+            .unwrap();
+
+        BattlePassManager::new(1)
+            .task_red_dot_infos_for(&pool, 26)
+            .await
+            .unwrap();
+
+        let bp_ids = sqlx::query_scalar::<_, i32>(
+            "SELECT bp_id FROM user_battle_pass_state WHERE user_id = 1",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(bp_ids, vec![26]);
+        for task_type in [TaskType::BattlePass, TaskType::BpOperAct] {
+            let count = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM user_tasks WHERE user_id = 1 AND type_id = ?",
+            )
+            .bind(task_type.id())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert!(count > 0, "missing {task_type:?} tasks");
+        }
+    }
+
+    #[tokio::test]
+    async fn version_activity_red_dot_follows_claimable_task_state() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (4, 'version-task-red-dot', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        task_db::ensure_tasks_for_type(&pool, 4, TaskType::VersionActivity)
+            .await
+            .unwrap();
+        let task_id = sqlx::query_scalar::<_, i32>(
+            "SELECT task_id FROM user_tasks
+             WHERE user_id = 4 AND type_id = ?
+             ORDER BY task_id LIMIT 1",
+        )
+        .bind(TaskType::VersionActivity.id())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE user_tasks SET progress = 1
+             WHERE user_id = 4 AND type_id = ? AND task_id = ?",
+        )
+        .bind(TaskType::VersionActivity.id())
+        .bind(task_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let manager = super::RedDotManager::new(4);
+        let partial = manager
+            .infos(&pool, vec![RedDotId::CommandStationTaskNormal.id()])
+            .await
+            .unwrap();
+        assert_eq!(partial.red_dot_infos[0].infos[0].value, 0);
+
+        sqlx::query(
+            "UPDATE user_tasks SET has_finished = 1
+             WHERE user_id = 4 AND type_id = ? AND task_id = ?",
+        )
+        .bind(TaskType::VersionActivity.id())
+        .bind(task_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let claimable = manager
+            .infos(&pool, vec![RedDotId::CommandStationTaskNormal.id()])
+            .await
+            .unwrap();
+        assert_eq!(claimable.red_dot_infos[0].infos[0].value, 1);
+
+        task_db::finish_task(&pool, 4, task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let claimed = manager
+            .infos(&pool, vec![RedDotId::CommandStationTaskNormal.id()])
+            .await
+            .unwrap();
+        assert_eq!(claimed.red_dot_infos[0].infos[0].value, 0);
     }
 
     #[tokio::test]

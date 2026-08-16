@@ -112,6 +112,12 @@ impl BattleRuntime {
             .count()
     }
 
+    pub fn defeated_defender_count(&self) -> usize {
+        self.managers
+            .entity
+            .defeated_combatant_count(2, &self.managers.hp)
+    }
+
     pub fn battle_seed(&self) -> u64 {
         self.fight.battle_id.unwrap_or_default().max(0) as u64
     }

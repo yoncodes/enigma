@@ -102,15 +102,7 @@ pub async fn on_summon(ctx: &mut ConnectionContext, req: ClientPacket) -> Result
         )
         .await?;
     }
-    task_events::notify(
-        ctx,
-        player_id,
-        TaskEvent::DoneCount {
-            name: "Summon",
-            count,
-        },
-    )
-    .await?;
+    task_events::notify(ctx, player_id, TaskEvent::Summon { pool_id, count }).await?;
     ctx.send_reply(CmdId::SummonCmd, completion.reply, 0, req.up_tag)
         .await
 }

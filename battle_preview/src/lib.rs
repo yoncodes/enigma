@@ -17,7 +17,7 @@ pub use normalize::normalize_live_json;
 /// Replays the captured opening RNG decisions through the engine's validated
 /// card candidates instead of treating the captured hand as authoritative state.
 pub fn captured_opening_determinism(
-    game_data: &config::GameDB,
+    game_data: &'static config::GameDB,
     fight: &Fight,
     round: &FightRound,
 ) -> RoundDeterminism {
@@ -30,8 +30,14 @@ pub fn captured_opening_determinism(
         .cloned()
         .collect::<Vec<_>>();
     let hand_size = battle::engine::manager::card::hand_size(fight);
-    let player_candidates =
-        battle::engine::manager::card::pool::player_candidate_pool(game_data, fight);
+    let normal_player_candidates =
+        battle::engine::manager::card::pool::player_candidate_pool_with(game_data, fight, |_| {
+            false
+        });
+    let mut player_candidates = normal_player_candidates.clone();
+    player_candidates.extend(
+        battle::engine::manager::card::pool::player_candidate_pool_with(game_data, fight, |_| true),
+    );
     let enemies = battle::engine::manager::card::pool::active_enemy_entities(fight);
     let ai_candidates = enemies
         .into_iter()
@@ -52,7 +58,44 @@ pub fn captured_opening_determinism(
             captured.uid == candidate.uid && captured.skill_id == candidate.skill_id
         })
     };
+    let ultimate_identities = fight
+        .attacker
+        .iter()
+        .flat_map(|team| &team.entitys)
+        .filter_map(|entity| Some((entity.uid?, entity.ex_skill?)))
+        .collect::<std::collections::HashSet<_>>();
+    let normal_draws = draws
+        .iter()
+        .filter(|card| {
+            !card
+                .uid
+                .zip(card.skill_id)
+                .is_some_and(|identity| ultimate_identities.contains(&identity))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let managers = battle::engine::manager::BattleManagers::seeded_with_catalog(
+        battle::catalog::BattleCatalog::new(game_data),
+        fight,
+    );
+    let reserved_ultimate_slots = draws
+        .iter()
+        .filter(|card| {
+            card.uid
+                .zip(card.skill_id)
+                .is_some_and(|identity| ultimate_identities.contains(&identity))
+        })
+        .filter(|card| {
+            !battle::engine::mechanic::card::CardMechanic.ultimate_ignores_limit(
+                &managers,
+                card.uid.unwrap_or_default(),
+                card.skill_id.unwrap_or_default(),
+            )
+        })
+        .count();
+    let player_seed_len = hand_size.saturating_sub(reserved_ultimate_slots);
     if draws.len() >= hand_size
+        && normal_draws.len() >= player_seed_len
         && draws
             .iter()
             .all(|card| valid_identity(card, &player_candidates))
@@ -63,8 +106,9 @@ pub fn captured_opening_determinism(
     {
         determinism.enqueue_opening_seed(
             round.ai_use_cards.clone(),
-            draws.iter().take(hand_size).cloned().collect(),
-            draws,
+            normal_draws.iter().take(player_seed_len).cloned().collect(),
+            normal_draws,
+            reserved_ultimate_slots,
         );
     }
     determinism
@@ -465,7 +509,7 @@ mod tests {
 
         assert_eq!(
             determinism.take_start_decks(),
-            Some((ai, normal[..3].to_vec(), normal))
+            Some((ai, normal[..3].to_vec(), normal, 0))
         );
     }
 

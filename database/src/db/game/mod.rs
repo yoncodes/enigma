@@ -8,6 +8,7 @@ pub mod activity225;
 pub mod activity236;
 pub mod activity_state;
 pub mod antiques;
+pub mod arcade;
 pub mod battle;
 pub mod battle_pass;
 pub mod bgm;
@@ -29,7 +30,9 @@ pub mod guides;
 pub mod handbook;
 pub mod hero_group_snapshots;
 pub mod hero_groups;
+pub mod hero_invitation;
 pub mod instruction_dungeon;
+pub mod investigate;
 
 pub mod items;
 pub mod mail;

@@ -176,6 +176,15 @@ pub mod actvity205_mini_game_reward;
 pub mod actvity205_stage;
 pub mod ai_monster_target;
 pub mod antique;
+pub mod arcade_attribute;
+pub mod arcade_character;
+pub mod arcade_collection;
+pub mod arcade_const;
+pub mod arcade_difficulty;
+pub mod arcade_floor;
+pub mod arcade_monster;
+pub mod arcade_reward;
+pub mod arcade_talent;
 pub mod assassin_task;
 pub mod autochess_task;
 pub mod battle;
@@ -249,6 +258,7 @@ pub mod guide;
 pub mod guide_step;
 pub mod handbook_character_age;
 pub mod hero3124_skill_talent;
+pub mod hero_invitation;
 pub mod hero_story;
 pub mod hero_story_plot;
 pub mod hero_story_plot_group;
@@ -260,6 +270,7 @@ pub mod hero_upgrade_options;
 pub mod insight_item;
 pub mod instruction_level;
 pub mod instruction_topic;
+pub mod investigate_clue;
 pub mod item;
 pub mod language_en;
 pub mod magic_circle;
@@ -585,6 +596,15 @@ pub struct GameDB {
     pub actvity205_stage: actvity205_stage::Actvity205StageTable,
     pub ai_monster_target: ai_monster_target::AiMonsterTargetTable,
     pub antique: antique::AntiqueTable,
+    pub arcade_attribute: arcade_attribute::ArcadeAttributeTable,
+    pub arcade_character: arcade_character::ArcadeCharacterTable,
+    pub arcade_collection: arcade_collection::ArcadeCollectionTable,
+    pub arcade_const: arcade_const::ArcadeConstTable,
+    pub arcade_difficulty: arcade_difficulty::ArcadeDifficultyTable,
+    pub arcade_floor: arcade_floor::ArcadeFloorTable,
+    pub arcade_monster: arcade_monster::ArcadeMonsterTable,
+    pub arcade_reward: arcade_reward::ArcadeRewardTable,
+    pub arcade_talent: arcade_talent::ArcadeTalentTable,
     pub assassin_task: assassin_task::AssassinTaskTable,
     pub autochess_task: autochess_task::AutochessTaskTable,
     pub battle: battle::BattleTable,
@@ -658,6 +678,7 @@ pub struct GameDB {
     pub guide_step: guide_step::GuideStepTable,
     pub handbook_character_age: handbook_character_age::HandbookCharacterAgeTable,
     pub hero3124_skill_talent: hero3124_skill_talent::Hero3124SkillTalentTable,
+    pub hero_invitation: hero_invitation::HeroInvitationTable,
     pub hero_story: hero_story::HeroStoryTable,
     pub hero_story_plot: hero_story_plot::HeroStoryPlotTable,
     pub hero_story_plot_group: hero_story_plot_group::HeroStoryPlotGroupTable,
@@ -669,6 +690,7 @@ pub struct GameDB {
     pub insight_item: insight_item::InsightItemTable,
     pub instruction_level: instruction_level::InstructionLevelTable,
     pub instruction_topic: instruction_topic::InstructionTopicTable,
+    pub investigate_clue: investigate_clue::InvestigateClueTable,
     pub item: item::ItemTable,
     pub language_en: language_en::LanguageEnTable,
     pub magic_circle: magic_circle::MagicCircleTable,
@@ -1346,6 +1368,33 @@ impl GameDB {
         let antique = antique::AntiqueTable::load(
             &format!("{}/antique.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load antique.json: {}", e))?;
+        let arcade_attribute = arcade_attribute::ArcadeAttributeTable::load(
+            &format!("{}/arcade_attribute.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_attribute.json: {}", e))?;
+        let arcade_character = arcade_character::ArcadeCharacterTable::load(
+            &format!("{}/arcade_character.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_character.json: {}", e))?;
+        let arcade_collection = arcade_collection::ArcadeCollectionTable::load(
+            &format!("{}/arcade_collection.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_collection.json: {}", e))?;
+        let arcade_const = arcade_const::ArcadeConstTable::load(
+            &format!("{}/arcade_const.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_const.json: {}", e))?;
+        let arcade_difficulty = arcade_difficulty::ArcadeDifficultyTable::load(
+            &format!("{}/arcade_difficulty.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_difficulty.json: {}", e))?;
+        let arcade_floor = arcade_floor::ArcadeFloorTable::load(
+            &format!("{}/arcade_floor.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_floor.json: {}", e))?;
+        let arcade_monster = arcade_monster::ArcadeMonsterTable::load(
+            &format!("{}/arcade_monster.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_monster.json: {}", e))?;
+        let arcade_reward = arcade_reward::ArcadeRewardTable::load(
+            &format!("{}/arcade_reward.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_reward.json: {}", e))?;
+        let arcade_talent = arcade_talent::ArcadeTalentTable::load(
+            &format!("{}/arcade_talent.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load arcade_talent.json: {}", e))?;
         let assassin_task = assassin_task::AssassinTaskTable::load(
             &format!("{}/assassin_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load assassin_task.json: {}", e))?;
@@ -1565,6 +1614,9 @@ impl GameDB {
         let hero3124_skill_talent = hero3124_skill_talent::Hero3124SkillTalentTable::load(
             &format!("{}/hero3124_skill_talent.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load hero3124_skill_talent.json: {}", e))?;
+        let hero_invitation = hero_invitation::HeroInvitationTable::load(
+            &format!("{}/hero_invitation.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load hero_invitation.json: {}", e))?;
         let hero_story = hero_story::HeroStoryTable::load(
             &format!("{}/hero_story.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load hero_story.json: {}", e))?;
@@ -1598,6 +1650,9 @@ impl GameDB {
         let instruction_topic = instruction_topic::InstructionTopicTable::load(
             &format!("{}/instruction_topic.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load instruction_topic.json: {}", e))?;
+        let investigate_clue = investigate_clue::InvestigateClueTable::load(
+            &format!("{}/investigate_clue.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load investigate_clue.json: {}", e))?;
         let item = item::ItemTable::load(
             &format!("{}/item.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load item.json: {}", e))?;
@@ -2211,6 +2266,15 @@ impl GameDB {
             actvity205_stage,
             ai_monster_target,
             antique,
+            arcade_attribute,
+            arcade_character,
+            arcade_collection,
+            arcade_const,
+            arcade_difficulty,
+            arcade_floor,
+            arcade_monster,
+            arcade_reward,
+            arcade_talent,
             assassin_task,
             autochess_task,
             battle,
@@ -2284,6 +2348,7 @@ impl GameDB {
             guide_step,
             handbook_character_age,
             hero3124_skill_talent,
+            hero_invitation,
             hero_story,
             hero_story_plot,
             hero_story_plot_group,
@@ -2295,6 +2360,7 @@ impl GameDB {
             insight_item,
             instruction_level,
             instruction_topic,
+            investigate_clue,
             item,
             language_en,
             magic_circle,

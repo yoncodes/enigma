@@ -6,6 +6,7 @@
 //! `config::GameDB`.
 
 pub mod activity;
+pub mod arcade;
 pub mod battle_setup;
 pub mod bp;
 pub mod charge;
@@ -18,7 +19,9 @@ pub mod exploration;
 pub mod fairyland;
 pub mod guide;
 pub mod hero;
+pub mod hero_invitation;
 pub mod inventory;
+pub mod investigate;
 pub mod mail;
 pub mod odyssey;
 pub mod preferences;

@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod arcade;
 pub mod bgm;
 pub mod bp;
 pub mod charge;
@@ -16,7 +17,9 @@ pub mod friends;
 pub mod guide;
 pub mod hero;
 pub mod hero_group;
+pub mod hero_invitation;
 pub mod inventory;
+pub mod investigate;
 pub mod mail;
 pub mod manufacture;
 pub mod misc;
