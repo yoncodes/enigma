@@ -398,6 +398,19 @@ pub(in crate::engine::runtime) fn emit_ops(
             _ => continue,
         };
         if condition_key.is_some_and(|condition_key| {
+            crate::engine::skill::condition::registry::find_key(
+                condition_key.opcode,
+                condition_key.type_name,
+            )
+            .is_some_and(|definition| {
+                definition
+                    .skill_action_trigger
+                    .rejects_extra_skill(execution.context.extra_skill_kind)
+            })
+        }) {
+            continue;
+        }
+        if condition_key.is_some_and(|condition_key| {
             !managers.can_fire_rule(
                 invocation.plan.source_uid,
                 invocation.plan.skill_id,
@@ -501,6 +514,14 @@ pub(in crate::engine::runtime) fn emit_ops(
             );
         let condition_uses_hit_targets = behavior_target_source
             == crate::engine::skill::condition::registry::BehaviorTargetSource::HitTargets;
+        let child_skill_kind = condition_key
+            .and_then(|condition_key| {
+                crate::engine::skill::condition::registry::find_key(
+                    condition_key.opcode,
+                    condition_key.type_name,
+                )
+            })
+            .and_then(|definition| definition.skill_action_trigger.child_skill_kind());
         let uses_action_targets = uses_action_targets(
             slot,
             condition_uses_active_skill_targets || condition_uses_hit_targets,
@@ -609,6 +630,13 @@ pub(in crate::engine::runtime) fn emit_ops(
                         frame_owner: None,
                     }
                 }));
+            }
+        }
+        if let Some(child_skill_kind) = child_skill_kind {
+            for emission in outputs.iter_mut().skip(outputs_before) {
+                if let RuleOp::Skill(child) = &mut emission.op {
+                    child.extra_skill_kind = Some(child_skill_kind);
+                }
             }
         }
         if outputs.len() > outputs_before
