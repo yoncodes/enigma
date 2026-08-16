@@ -45,6 +45,7 @@ impl Evidence {
             capture_roots
         };
         let mut evidence = Self::default();
+        let mut warned_ambiguous = BTreeSet::new();
         for root in roots {
             for path in response_files(root) {
                 let Some(battle_dir) = path.parent() else {
@@ -54,10 +55,12 @@ impl Evidence {
                     Ok(Some((7, episode_id, battle_id))) => (episode_id, battle_id),
                     Ok(_) => continue,
                     Err(()) => {
-                        eprintln!(
-                            "WARN skipping capture directory with multiple fight identities: {}",
-                            battle_dir.display()
-                        );
+                        if warned_ambiguous.insert(battle_dir.to_owned()) {
+                            eprintln!(
+                                "WARN skipping capture directory with multiple fight identities: {}",
+                                battle_dir.display()
+                            );
+                        }
                         continue;
                     }
                 };
@@ -90,6 +93,12 @@ impl Evidence {
         self.sources
             .get(&MarkerKey::new(opcode, type_name, phase, effect_type))
             .map(|sources| sources.iter().cloned().collect::<Vec<_>>().join(","))
+    }
+
+    pub(crate) fn observed_act(&self, opcode: i32, type_name: &str) -> bool {
+        self.sources
+            .keys()
+            .any(|key| key.opcode == opcode && key.type_name == type_name)
     }
 
     fn inspect(&mut self, value: &Value, db: &GameDB, source: &str) {
@@ -244,6 +253,10 @@ fn fight_identity(battle_dir: &Path) -> Result<Option<(i32, i64, i64)>, ()> {
             name.contains("start") && name.contains("reply") && name.ends_with(".json")
         })
         .filter_map(|entry| {
+            let metadata = fs::symlink_metadata(entry.path()).ok()?;
+            if !metadata.is_file() || is_link_or_reparse(&metadata) {
+                return None;
+            }
             let value: Value =
                 serde_json::from_str(&fs::read_to_string(entry.path()).ok()?).ok()?;
             let fight = find_fight(&value)?;
@@ -290,40 +303,106 @@ fn phase_id(phase: WirePhase) -> u8 {
 }
 
 fn response_files(root: &Path) -> Vec<PathBuf> {
+    bounded_json_files(root)
+        .into_iter()
+        .filter(|path| {
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                return false;
+            };
+            let name = name.to_ascii_lowercase();
+            !name.contains("request")
+                && ((name.contains("start") && name.contains("reply"))
+                    || name.contains("beginroundreply")
+                    || name.starts_with("begin_round_"))
+        })
+        .collect()
+}
+
+pub(crate) fn bounded_json_files(root: &Path) -> Vec<PathBuf> {
+    let Ok(root_metadata) = fs::symlink_metadata(root) else {
+        return Vec::new();
+    };
+    if !root_metadata.is_dir() || is_link_or_reparse(&root_metadata) {
+        return Vec::new();
+    }
+    let Ok(root) = root.canonicalize() else {
+        return Vec::new();
+    };
     let mut files = Vec::new();
-    let mut directories = vec![root.to_owned()];
+    let mut visited = BTreeSet::new();
+    let mut directories = vec![root.clone()];
     while let Some(directory) = directories.pop() {
-        let Ok(entries) = fs::read_dir(directory) else {
+        let Ok(canonical) = directory.canonicalize() else {
+            continue;
+        };
+        if !canonical.starts_with(&root) || !visited.insert(canonical.clone()) {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(&canonical) else {
             continue;
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() {
-                directories.push(path);
-                continue;
-            }
-            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            let Ok(metadata) = fs::symlink_metadata(&path) else {
                 continue;
             };
-            let name = name.to_ascii_lowercase();
-            if path
-                .extension()
-                .is_some_and(|extension| extension == "json")
-                && !name.contains("request")
-                && ((name.contains("start") && name.contains("reply"))
-                    || name.contains("beginroundreply")
-                    || name.starts_with("begin_round_"))
+            if is_link_or_reparse(&metadata) {
+                continue;
+            }
+            if metadata.is_dir() {
+                directories.push(path);
+            } else if metadata.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
             {
                 files.push(path);
             }
         }
     }
+    files.sort();
     files
+}
+
+pub(crate) fn is_link_or_reparse(metadata: &fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 #[cfg(test)]
 mod format_tests {
     use super::*;
+
+    #[cfg(windows)]
+    fn link_directory(source: &Path, destination: &Path) -> std::io::Result<()> {
+        std::os::windows::fs::symlink_dir(source, destination)
+    }
+
+    #[cfg(unix)]
+    fn link_directory(source: &Path, destination: &Path) -> std::io::Result<()> {
+        std::os::unix::fs::symlink(source, destination)
+    }
+
+    #[cfg(windows)]
+    fn link_file(source: &Path, destination: &Path) -> std::io::Result<()> {
+        std::os::windows::fs::symlink_file(source, destination)
+    }
+
+    #[cfg(unix)]
+    fn link_file(source: &Path, destination: &Path) -> std::io::Result<()> {
+        std::os::unix::fs::symlink(source, destination)
+    }
 
     #[test]
     fn nested_wrapper_supplies_the_embedded_fight_identity() {
@@ -340,7 +419,11 @@ mod format_tests {
         assert_eq!(fight_identity(&path), Ok(Some((7, 10, 20))));
         assert_eq!(
             response_files(&root),
-            vec![path.join("StartTowerBattleReply.json")]
+            vec![
+                path.join("StartTowerBattleReply.json")
+                    .canonicalize()
+                    .unwrap()
+            ]
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -365,6 +448,55 @@ mod format_tests {
 
         assert_eq!(fight_identity(&root), Err(()));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn bounded_walk_does_not_follow_directory_links() {
+        let root = std::env::temp_dir().join(format!(
+            "enigma-wire-evidence-link-root-{}",
+            std::process::id()
+        ));
+        let outside = std::env::temp_dir().join(format!(
+            "enigma-wire-evidence-link-outside-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("StartDungeonReply.json"), "{}").unwrap();
+        let link = root.join("escape");
+        if link_directory(&outside, &link).is_ok() {
+            assert!(bounded_json_files(&root).is_empty());
+            fs::remove_dir(&link).unwrap();
+        }
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[test]
+    fn fight_identity_ignores_linked_start_replies() {
+        let root = std::env::temp_dir().join(format!(
+            "enigma-wire-evidence-linked-identity-root-{}",
+            std::process::id()
+        ));
+        let outside = std::env::temp_dir().join(format!(
+            "enigma-wire-evidence-linked-identity-outside-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let source = outside.join("StartDungeonReply.json");
+        fs::write(
+            &source,
+            r#"{"fight":{"version":7,"episodeId":10,"battleId":20}}"#,
+        )
+        .unwrap();
+        let link = root.join("StartDungeonReply.json");
+        if link_file(&source, &link).is_ok() {
+            assert_eq!(fight_identity(&root), Ok(None));
+            fs::remove_file(&link).unwrap();
+        }
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(outside).unwrap();
     }
 
     #[test]

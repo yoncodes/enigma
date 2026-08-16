@@ -34,8 +34,8 @@ use closure::buff_act_capability;
 pub(crate) use closure::scan_closure;
 pub(crate) use report::{CapabilityKey, Report};
 pub(crate) use roots::{
-    Pending, collect_battle_roots, collect_episode_roots, collect_hero_roots,
-    collect_tower_assist_boss_roots,
+    Pending, collect_battle_roots, collect_episode_roots, collect_hero_build_roots,
+    collect_hero_roots, collect_tower_assist_boss_roots,
 };
 
 #[cfg(test)]

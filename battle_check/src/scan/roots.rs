@@ -4,7 +4,7 @@ use super::*;
 #[derive(Debug)]
 pub(crate) struct Pending {
     pub(crate) id: i32,
-    pub(super) path: String,
+    pub(crate) path: String,
 }
 
 pub(crate) fn collect_hero_roots(
@@ -14,32 +14,53 @@ pub(crate) fn collect_hero_roots(
     skills: &mut VecDeque<Pending>,
     report: &mut Report,
 ) -> Result<()> {
+    if let Some((stone, rank)) = options.destiny_stone.zip(options.destiny_rank) {
+        println!("destiny_stone={stone} rank={rank}");
+    }
+    if let Some((psychube_id, level)) = options.psychube_id.zip(options.psychube_level) {
+        println!("psychube={psychube_id} skill_rank={level}");
+    }
+    collect_hero_build_roots(
+        hero_id,
+        options.psychube_id.zip(options.psychube_level),
+        options.destiny_stone.zip(options.destiny_rank),
+        db,
+        skills,
+        report,
+    )
+}
+
+pub(crate) fn collect_hero_build_roots(
+    hero_id: i32,
+    psychube: Option<(i32, i32)>,
+    destiny_selection: Option<(i32, i32)>,
+    db: &config::GameDB,
+    skills: &mut VecDeque<Pending>,
+    report: &mut Report,
+) -> Result<()> {
     let hero = db
         .character
         .get(hero_id)
         .with_context(|| format!("hero {hero_id} is missing from character config"))?;
 
-    let destiny = if let Some(stone) = options.destiny_stone {
+    let destiny = if let Some((stone, rank)) = destiny_selection {
         let choices = Destiny::stones(db, hero_id);
         if !choices.contains(&stone) {
             bail!("destiny stone {stone} is not available to hero {hero_id}; choices={choices:?}");
         }
-        let rank = options.destiny_rank.unwrap();
         let max_rank = Destiny::rank_limit(db, stone);
         if rank <= 0 || rank > max_rank {
             bail!("destiny rank {rank} is invalid for stone {stone}; valid=1..={max_rank}");
         }
-        println!("destiny_stone={stone} rank={rank}");
         Destiny::exchanges(db, stone, rank)
     } else {
         None
     };
 
-    if let Some(psychube_id) = options.psychube_id {
+    if let Some((psychube_id, level)) = psychube {
         if db.equip.get(psychube_id).is_none() {
             bail!("psychube {psychube_id} is missing from equip config");
         }
-        let level = options.psychube_level.unwrap();
         if !db
             .equip_skill
             .iter()
@@ -53,7 +74,6 @@ pub(crate) fn collect_hero_roots(
                 .collect::<Vec<_>>();
             bail!("psychube level {level} is invalid for {psychube_id}; choices={levels:?}");
         }
-        println!("psychube={psychube_id} skill_rank={level}");
     }
 
     let mut group1 = parse_skill_group(&hero.skill, 1);
@@ -91,12 +111,7 @@ pub(crate) fn collect_hero_roots(
     if ex_skill > 0 {
         enqueue(skills, ex_skill, format!("hero {hero_id} > ultimate"));
     }
-    for passive in Passive::configured(
-        db,
-        hero_id,
-        options.psychube_id.zip(options.psychube_level),
-        options.destiny_stone.zip(options.destiny_rank),
-    ) {
+    for passive in Passive::configured(db, hero_id, psychube, destiny_selection) {
         enqueue(
             skills,
             passive.skill_id,
@@ -106,7 +121,7 @@ pub(crate) fn collect_hero_roots(
             ),
         );
     }
-    if options.destiny_stone.is_none() && !Destiny::stones(db, hero_id).is_empty() {
+    if destiny_selection.is_none() && !Destiny::stones(db, hero_id).is_empty() {
         report.warning(format!(
             "DestinyStoneNotSelected path=hero {hero_id} choices={:?}",
             Destiny::stones(db, hero_id)
