@@ -99,6 +99,202 @@ fn exact_red_or_blue_behavior_updates_its_registered_carrier() {
 }
 
 #[test]
+fn exact_buff_owned_charge_adds_caps_and_projects_absolute_state() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(9),
+                    team_type: Some(1),
+                    current_hp: Some(1),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3146),
+                    team_type: Some(1),
+                    current_hp: Some(1),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1006),
+                        buff_id: Some(31460143),
+                        from_uid: Some(10),
+                        act_info: vec![sonettobuf::BuffActInfo {
+                            act_id: Some(1139),
+                            param: vec![70_000],
+                            str_param: Some(String::new()),
+                        }],
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+
+    for (delta, expected) in [(70_000, 140_000), (20_000, 150_000)] {
+        let behavior = ParsedBehavior::new(60298, "AddMeiLeiErCharge", vec![delta]);
+        let definition = super::super::registry::find(&behavior).unwrap();
+        assert_eq!(definition.kind, BehaviorKind::AddBuffOwnedCharge);
+        assert!(
+            definition
+                .supports
+                .is_some_and(|supports| supports(&behavior))
+        );
+
+        let ops = rule_ops(
+            BehaviorOpContext {
+                source_uid: 9,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 31460171,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+        let [
+            RuleOp::Command(BattleCommand::Buff(command)),
+            RuleOp::BuffActInfoMarker(marker),
+        ] = ops.as_slice()
+        else {
+            panic!("expected one state command followed by its absolute marker")
+        };
+        assert_eq!(marker.target_uid, 10);
+        assert_eq!(marker.buff_uid, 1006);
+        assert_eq!(marker.act_id, 1139);
+        assert_eq!(marker.params, vec![expected]);
+        assert_eq!(marker.str_param.as_deref(), Some(""));
+        assert_eq!(marker.team_type, 0);
+
+        managers.execute_buff(command.clone()).unwrap();
+        assert_eq!(
+            managers.buff.snapshot(10, 1006).unwrap().act_info[0].param,
+            vec![expected]
+        );
+    }
+
+    let behavior = ParsedBehavior::new(60298, "AddMeiLeiErCharge", vec![1]);
+    let ops = rule_ops(
+        BehaviorOpContext {
+            source_uid: 9,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 31460171,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+    assert!(ops.is_empty());
+    assert_eq!(
+        managers.buff.snapshot(10, 1006).unwrap().act_info[0].param,
+        vec![150_000]
+    );
+
+    for args in [vec![], vec![0], vec![-1], vec![1, 2]] {
+        let behavior = ParsedBehavior::new(60298, "AddMeiLeiErCharge", args);
+        let definition = super::super::registry::find(&behavior).unwrap();
+        assert!(
+            !definition
+                .supports
+                .is_some_and(|supports| supports(&behavior))
+        );
+    }
+}
+
+#[test]
+fn exact_buff_owned_charge_rejects_missing_or_malformed_carrier_state() {
+    crate::test_support::init_config();
+
+    let emit = |buffs| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    team_type: Some(1),
+                    current_hp: Some(1),
+                    buffs,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+        let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext::default();
+        rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 31460171,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &ParsedBehavior::new(60298, "AddMeiLeiErCharge", vec![70_000]),
+        )
+    };
+    let carrier = |param| BuffInfo {
+        uid: Some(1006),
+        buff_id: Some(31460143),
+        from_uid: Some(10),
+        act_info: vec![sonettobuf::BuffActInfo {
+            act_id: Some(1139),
+            param,
+            str_param: Some(String::new()),
+        }],
+        ..Default::default()
+    };
+
+    assert!(emit(Vec::new()).is_none());
+    assert!(emit(vec![carrier(Vec::new())]).is_none());
+    assert!(emit(vec![carrier(vec![-1])]).is_none());
+    assert!(emit(vec![carrier(vec![150_001])]).is_none());
+    assert!(emit(vec![carrier(vec![150_000, 1])]).is_none());
+
+    let mut duplicate = carrier(vec![150_000]);
+    duplicate.act_info.push(sonettobuf::BuffActInfo {
+        act_id: Some(1139),
+        param: vec![150_000],
+        str_param: Some(String::new()),
+    });
+    assert!(emit(vec![duplicate]).is_none());
+
+    let mut string_state = carrier(vec![150_000]);
+    string_state.act_info[0].str_param = Some("150000".to_owned());
+    assert!(emit(vec![string_state]).is_none());
+}
+
+#[test]
 fn recover_power_and_cast_cards_consumes_only_the_casters_incantations() {
     let fight = Fight {
         attacker: Some(FightTeam {

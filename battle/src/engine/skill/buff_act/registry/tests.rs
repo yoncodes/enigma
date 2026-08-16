@@ -1070,3 +1070,30 @@ fn hero_temp_cards_keep_their_exact_round_start_route() {
     assert!(!has_destination(739, "CreateHeroTempCards", &[1, 2, 2]));
     assert!(find(739, "AddSpTempCard").is_none());
 }
+
+#[test]
+fn buff_owned_charge_keeps_its_exact_state_route() {
+    let definition = find(1139, "MeiLeiErCharge").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::MeiLeiErCharge);
+    assert_eq!(
+        destination(1139, "MeiLeiErCharge", &[100_000, 150_000, 31460183]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(
+        1139,
+        "MeiLeiErCharge",
+        &[0, 150_000, 31460183]
+    ));
+    assert!(!has_destination(
+        1139,
+        "MeiLeiErCharge",
+        &[100_000, 99_999, 31460183]
+    ));
+    assert!(!has_destination(
+        1139,
+        "MeiLeiErCharge",
+        &[100_000, 150_000, 0]
+    ));
+    assert!(find(1139, "HeatScaleUseSkill").is_none());
+}

@@ -64,6 +64,7 @@ pub enum BehaviorKind {
     AddEmitterEnergy,
     AddTeamEnergy,
     AddRedOrBlueCount,
+    AddBuffOwnedCharge,
     AddConduitPower,
     AddConduitCounter,
     AddConduitExPoint,

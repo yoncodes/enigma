@@ -45,6 +45,10 @@ pub(super) fn supports_conduit_counter(behavior: &ParsedBehavior) -> bool {
     )
 }
 
+pub(super) fn supports_buff_owned_charge(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [delta] if *delta > 0)
+}
+
 pub fn supports_average_life(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [0])
 }
@@ -310,6 +314,73 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                     },
                 ),
             ))])
+        }
+        BehaviorKind::AddBuffOwnedCharge => {
+            let [delta] = behavior.args.as_slice() else {
+                return None;
+            };
+            let feature = context
+                .managers
+                .buff
+                .active_features(&context.managers.hp)
+                .into_iter()
+                .find(|feature| {
+                    feature.owner_uid == context.target_uid
+                        && buff_act::is_kind(
+                            feature,
+                            buff_act::registry::BuffActKind::MeiLeiErCharge,
+                        )
+                })?;
+            let act_id = feature.act_id()?;
+            let limit = feature.values.get(2).copied()?;
+            let mut act_info = context
+                .managers
+                .buff
+                .snapshot(context.target_uid, feature.buff_uid)
+                .map(|buff| buff.act_info)?;
+            let mut matching = act_info
+                .iter_mut()
+                .filter(|info| info.act_id == Some(act_id));
+            let info = matching.next()?;
+            if matching.next().is_some() || info.str_param.as_deref() != Some("") {
+                return None;
+            }
+            let [current] = info.param.as_slice() else {
+                return None;
+            };
+            let current = *current;
+            if !(0..=limit).contains(&current) {
+                return None;
+            }
+            let next = current.saturating_add(*delta).min(limit);
+            if next == current {
+                return Some(Vec::new());
+            }
+            info.param = vec![next];
+            info.str_param = Some(String::new());
+
+            Some(vec![
+                RuleOp::Command(BattleCommand::Buff(
+                    crate::engine::manager::buff::BuffCommand::SetInternalState(
+                        crate::engine::manager::buff::BuffSetState {
+                            origin,
+                            target_uid: context.target_uid,
+                            buff_uid: feature.buff_uid,
+                            ex_info: None,
+                            params: None,
+                            act_info: Some(act_info),
+                        },
+                    ),
+                )),
+                RuleOp::BuffActInfoMarker(crate::engine::manager::buff::BuffActInfoMarkerResult {
+                    target_uid: context.target_uid,
+                    buff_uid: feature.buff_uid,
+                    act_id,
+                    params: vec![next],
+                    str_param: Some(String::new()),
+                    team_type: 0,
+                }),
+            ])
         }
         BehaviorKind::AddConduitPower => {
             let (power_id, delta, kind) = conduit_power_args(&behavior.args)?;
