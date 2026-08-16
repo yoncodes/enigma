@@ -74,6 +74,7 @@ pub enum ConduitCommand {
         running: bool,
     },
     ChangePower(ConduitPowerChange),
+    ChangeCounter(ConduitCounterChange),
     ClearPowers {
         origin: CommandOrigin,
         source_uid: i64,
@@ -109,6 +110,38 @@ pub struct ConduitPowerChange {
     pub power_id: i32,
     pub delta: i32,
     pub kind: ConduitPowerChangeKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConduitCounterKind {
+    EnergyAccumulation,
+    Activation,
+}
+
+impl ConduitCounterKind {
+    pub fn from_config(value: i32) -> Option<Self> {
+        match value {
+            1 => Some(Self::EnergyAccumulation),
+            2 => Some(Self::Activation),
+            _ => None,
+        }
+    }
+
+    pub fn wire_id(self) -> i32 {
+        match self {
+            Self::EnergyAccumulation => 62,
+            Self::Activation => 63,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConduitCounterChange {
+    pub origin: CommandOrigin,
+    pub source_uid: i64,
+    pub team: i32,
+    pub kind: ConduitCounterKind,
+    pub delta: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,6 +194,15 @@ pub enum ConduitChange {
         applied_delta: i32,
         after: i32,
         kind: ConduitPowerChangeKind,
+    },
+    CounterChanged {
+        origin: CommandOrigin,
+        source_uid: i64,
+        team: i32,
+        kind: ConduitCounterKind,
+        requested_delta: i32,
+        applied_delta: i32,
+        after: i32,
     },
     PowersCleared {
         origin: CommandOrigin,
@@ -233,6 +275,7 @@ pub struct ConduitManager {
     initialized: Vec<i32>,
     consumed_this_round: BTreeMap<(i32, i32), i32>,
     uses_this_round: BTreeMap<i64, i32>,
+    counters_this_round: BTreeMap<(i32, ConduitCounterKind), i32>,
     pending_activations: BTreeMap<(i64, i32), PendingActivation>,
     running: HashSet<i64>,
 }
@@ -320,6 +363,7 @@ impl ConduitManager {
     pub fn begin_round(&mut self) {
         self.consumed_this_round.clear();
         self.uses_this_round.clear();
+        self.counters_this_round.clear();
         self.pending_activations.clear();
         for skill in self
             .areas
@@ -411,13 +455,20 @@ impl ConduitManager {
     }
 
     pub fn consumed_for_skill(&self, source_uid: i64, skill_id: i32) -> Option<i32> {
-        let (team, skill) = self.configured_skill(source_uid, skill_id)?;
-        Some(self.consumed(team, skill.cost_type))
+        let (team, _) = self.configured_skill(source_uid, skill_id)?;
+        Some(self.counter(team, ConduitCounterKind::EnergyAccumulation))
     }
 
     pub fn uses(&self, source_uid: i64) -> i32 {
         self.uses_this_round
             .get(&source_uid)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    pub fn counter(&self, team: i32, kind: ConduitCounterKind) -> i32 {
+        self.counters_this_round
+            .get(&(team, kind))
             .copied()
             .unwrap_or_default()
     }
@@ -550,6 +601,11 @@ impl ConduitManager {
                     .entry((activation.team, activation.power_id))
                     .or_default();
                 *consumed = consumed.saturating_add(activation.activation_cost);
+                let accumulated = self
+                    .counters_this_round
+                    .entry((activation.team, ConduitCounterKind::EnergyAccumulation))
+                    .or_default();
+                *accumulated = accumulated.saturating_add(activation.activation_cost);
                 self.pending_activations
                     .get_mut(&(source_uid, skill_id))
                     .expect("the checked activation remains pending")
@@ -560,7 +616,7 @@ impl ConduitManager {
                     skill_id,
                     power_id: activation.power_id,
                     activation_cost: activation.activation_cost,
-                    consumed_this_round: *consumed,
+                    consumed_this_round: *accumulated,
                 })
             }
             ConduitCommand::FinishSkill {
@@ -570,7 +626,12 @@ impl ConduitManager {
                 let (team, _) = self
                     .skill(source_uid, skill_id)
                     .ok_or(ConduitError::MissingSkill(skill_id))?;
-                let uses = self.uses_this_round.entry(source_uid).or_default();
+                let device_uses = self.uses_this_round.entry(source_uid).or_default();
+                *device_uses = device_uses.saturating_add(1);
+                let uses = self
+                    .counters_this_round
+                    .entry((team, ConduitCounterKind::Activation))
+                    .or_default();
                 *uses = uses.saturating_add(1);
                 Ok(ConduitChange::SkillFinished {
                     source_uid,
@@ -643,6 +704,34 @@ impl ConduitManager {
                     applied_delta: power.value - before,
                     after: power.value,
                     kind: change.kind,
+                })
+            }
+            ConduitCommand::ChangeCounter(change) => {
+                let area = self
+                    .areas
+                    .get(&change.team)
+                    .ok_or(ConduitError::MissingArea(change.team))?;
+                if !area
+                    .devices
+                    .iter()
+                    .any(|device| device.uid == change.source_uid)
+                {
+                    return Err(ConduitError::MissingDevice(change.source_uid));
+                }
+                let counter = self
+                    .counters_this_round
+                    .entry((change.team, change.kind))
+                    .or_default();
+                let before = *counter;
+                *counter = counter.saturating_add(change.delta).max(0);
+                Ok(ConduitChange::CounterChanged {
+                    origin: change.origin,
+                    source_uid: change.source_uid,
+                    team: change.team,
+                    kind: change.kind,
+                    requested_delta: change.delta,
+                    applied_delta: *counter - before,
+                    after: *counter,
                 })
             }
             ConduitCommand::ClearPowers {
@@ -1060,6 +1149,130 @@ mod tests {
         assert_eq!(manager.power(1, 1), 1);
         assert_eq!(manager.consumed(1, 1), 3);
         assert_eq!(manager.uses(10), 1);
+    }
+
+    #[test]
+    fn explicit_and_normal_changes_share_team_round_counters_across_devices() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![
+                    FightEntityInfo {
+                        uid: Some(10),
+                        model_id: Some(3144),
+                        ..Default::default()
+                    },
+                    FightEntityInfo {
+                        uid: Some(11),
+                        model_id: Some(3025),
+                        ex_skill_level: Some(2),
+                        destiny_stone: Some(302502),
+                        destiny_rank: Some(4),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut manager = ConduitManager::seed(&fight);
+        let origin = CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(60297, "AddDeviceCounter"),
+        };
+
+        let explicit_activation = manager
+            .execute(ConduitCommand::ChangeCounter(ConduitCounterChange {
+                origin,
+                source_uid: 11,
+                team: 1,
+                kind: ConduitCounterKind::Activation,
+                delta: 2,
+            }))
+            .unwrap();
+        assert!(matches!(
+            explicit_activation,
+            ConduitChange::CounterChanged {
+                kind: ConduitCounterKind::Activation,
+                after: 2,
+                ..
+            }
+        ));
+
+        for (source_uid, skill_id, power_id, cost) in [(10, 31440111, 1, 2), (11, 302524112, 2, 1)]
+        {
+            manager
+                .execute(ConduitCommand::ChangePower(ConduitPowerChange {
+                    origin: ORIGIN,
+                    source_uid,
+                    team: 1,
+                    power_id,
+                    delta: cost,
+                    kind: ConduitPowerChangeKind::Standard,
+                }))
+                .unwrap();
+            manager
+                .execute(ConduitCommand::BeginSkill {
+                    source_uid,
+                    skill_id,
+                    cost_reduction: 0,
+                })
+                .unwrap();
+            manager
+                .execute(ConduitCommand::CommitSkillCost {
+                    source_uid,
+                    skill_id,
+                })
+                .unwrap();
+            let finished = manager
+                .execute(ConduitCommand::FinishSkill {
+                    source_uid,
+                    skill_id,
+                })
+                .unwrap();
+            assert!(matches!(
+                finished,
+                ConduitChange::SkillFinished {
+                    uses_this_round,
+                    ..
+                } if uses_this_round == if source_uid == 10 { 3 } else { 4 }
+            ));
+            manager
+                .execute(ConduitCommand::CompleteActivation {
+                    source_uid,
+                    skill_id,
+                })
+                .unwrap();
+        }
+        assert_eq!(manager.uses(10), 1);
+        assert_eq!(manager.uses(11), 1);
+        assert_eq!(manager.counter(1, ConduitCounterKind::Activation), 4);
+
+        let explicit_energy = manager
+            .execute(ConduitCommand::ChangeCounter(ConduitCounterChange {
+                origin,
+                source_uid: 10,
+                team: 1,
+                kind: ConduitCounterKind::EnergyAccumulation,
+                delta: 4,
+            }))
+            .unwrap();
+        assert!(matches!(
+            explicit_energy,
+            ConduitChange::CounterChanged {
+                kind: ConduitCounterKind::EnergyAccumulation,
+                after: 7,
+                ..
+            }
+        ));
+        assert_eq!(manager.consumed_for_skill(10, 31440111), Some(7));
+        assert_eq!(manager.consumed_for_skill(11, 302524112), Some(7));
+
+        manager.begin_round();
+        assert_eq!(manager.uses(10), 0);
+        assert_eq!(manager.consumed_for_skill(10, 31440111), Some(0));
+        assert_eq!(manager.consumed(1, 1), 0);
+        assert_eq!(manager.consumed(1, 2), 0);
     }
 
     #[test]

@@ -512,6 +512,7 @@ behavior_definitions! {
     [60291] "AddDevicePower" => super::resource::Handler, AddConduitPower, Immediate, destination, super::resource::supports_conduit_power;
     [60292] "AddDeviceExPoint" => super::resource::Handler, AddConduitExPoint, Immediate, setup_parent_destination, super::resource::supports_ex_point_gain;
     [60293] "SetDeviceSkillIndex" => super::resource::Handler, SetConduitSkillGroup, Immediate, destination, super::resource::supports_conduit_skill_group;
+    [60297] "AddDeviceCounter" => super::resource::Handler, AddConduitCounter, Immediate, destination, super::resource::supports_conduit_counter;
     [100034] "StopDeviceSkill" => super::resource::Handler, StopConduitSkill, Immediate, destination, arguments::none;
     [60231] "RaspberryAddCount" => super::resource::Handler, RaspberryAddCount, Immediate, destination, super::resource::supports_raspberry_add_count;
     [60233] "RaspberryBigSkill" => super::resource::Handler, RaspberryBigSkill, Immediate, destination, super::resource::supports_raspberry_big_skill;
