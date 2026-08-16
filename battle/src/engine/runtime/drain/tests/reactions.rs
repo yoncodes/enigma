@@ -2271,6 +2271,128 @@ fn active_skill_publishes_hits_between_after_damage_and_after_hit_rows() {
 }
 
 #[test]
+fn rhiannon_ultimate_snapshots_ally_attributes_before_each_buff_grant() {
+    crate::test_support::init_config();
+    let ally = |uid| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(1),
+        current_hp: Some(2_000),
+        attr: Some(HeroAttribute {
+            hp: Some(2_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3146),
+                    team_type: Some(1),
+                    current_hp: Some(12_763),
+                    attr: Some(HeroAttribute {
+                        hp: Some(12_763),
+                        attack: Some(2_140),
+                        ..Default::default()
+                    }),
+                    ex_skill: Some(31460131),
+                    ..Default::default()
+                },
+                ally(11),
+                ally(12),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31460131,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+
+    let result = run(
+        &mut managers,
+        &pool,
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(invocation)],
+    )
+    .unwrap();
+
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let effects = &steps
+        .iter()
+        .find(|step| step.act_id == Some(31460131))
+        .unwrap()
+        .act_effect;
+    for target_uid in [11, 12] {
+        let add = effects
+            .iter()
+            .position(|effect| {
+                effect.target_id == Some(target_uid)
+                    && effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(31460131)
+            })
+            .unwrap();
+        let buff_uid = effects[add].buff.as_ref().unwrap().uid.unwrap();
+        let markers = effects[..add]
+            .iter()
+            .filter(|effect| {
+                effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Buffactinfoupdate as i32)
+                    && effect.reserve_id == Some(buff_uid)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(markers.len(), 2);
+        assert!(markers.iter().all(|effect| {
+            effect.target_id == Some(0)
+                && effect.reserve_id == Some(buff_uid)
+                && effect.buff_act_info.as_ref().and_then(|info| info.act_id) == Some(1131)
+        }));
+        assert_eq!(
+            markers
+                .iter()
+                .filter_map(|effect| effect.buff_act_info.as_ref()?.str_param.as_deref())
+                .collect::<Vec<_>>(),
+            ["102#171", "101#1021"]
+        );
+        assert_eq!(
+            effects[add]
+                .buff
+                .as_ref()
+                .unwrap()
+                .act_info
+                .iter()
+                .filter_map(|info| info.str_param.as_deref())
+                .collect::<Vec<_>>(),
+            ["102#171", "101#1021"]
+        );
+        assert_eq!(managers.origin_attribute(target_uid, AttrId::Attack), 1_171);
+        assert_eq!(managers.hp.max(target_uid), 3_021);
+    }
+}
+
+#[test]
 fn actual_contract_bound_death_clears_buffs_and_cards_through_the_drain() {
     crate::test_support::init_config();
 

@@ -60,6 +60,7 @@ pub mod dodge_spec_skill;
 pub mod dot_no_limit;
 pub mod dudu_bone_continue_channel;
 pub mod each_change_attr;
+pub mod each_change_attr_one_way;
 pub mod effect_time;
 pub mod electric_transform;
 pub mod emitter_card_allocate_change;
