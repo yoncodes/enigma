@@ -14,7 +14,11 @@ use crate::engine::{
     },
     skill::{
         action::{SkillExecutionMode, SkillInvocation, SkillRequest, SkillTarget},
-        behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
+        behavior::{
+            BehaviorOpContext,
+            classify::BehaviorKind,
+            registry::{BehaviorHandler, OutputOwner},
+        },
         buff_act,
         effect::ParsedBehavior,
         rule::{
@@ -201,6 +205,17 @@ impl BehaviorHandler for Handler {
                 ..Default::default()
             }
         }
+    }
+
+    fn output_owner(behavior: &ParsedBehavior, op: &RuleOp, _index: usize) -> Option<OutputOwner> {
+        (behavior.spec.kind == BehaviorKind::ConsumeBuffIntoChargeAndRewards
+            && matches!(
+                op,
+                RuleOp::Command(BattleCommand::Buff(
+                    BuffCommand::Consume(_) | BuffCommand::Grant(_)
+                ))
+            ))
+        .then_some(OutputOwner::CausingEvent)
     }
 }
 

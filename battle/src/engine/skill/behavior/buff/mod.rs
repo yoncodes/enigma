@@ -224,7 +224,7 @@ impl BehaviorHandler for Handler {
         }
     }
 
-    fn output_owner(behavior: &ParsedBehavior, index: usize) -> Option<OutputOwner> {
+    fn output_owner(behavior: &ParsedBehavior, _op: &RuleOp, index: usize) -> Option<OutputOwner> {
         matches!(
             (behavior.spec.kind, index),
             (BehaviorKind::ConsumePowerAddBuff, 0)

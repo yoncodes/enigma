@@ -341,7 +341,10 @@ mod tests {
             })
         );
         let definition = super::super::registry::find(&behavior).unwrap();
-        assert_eq!((definition.output_owner_for)(&behavior, 0), None);
+        assert_eq!(
+            (definition.output_owner_for)(&behavior, &RuleOp::FreezeActiveSkillRates, 0),
+            None
+        );
         assert_eq!(
             definition.output_owner,
             super::super::registry::OutputOwner::Parent

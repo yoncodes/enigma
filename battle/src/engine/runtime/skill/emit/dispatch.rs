@@ -617,7 +617,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                     key: definition.key,
                 })?;
                 outputs.extend(behavior_ops.into_iter().enumerate().map(|(index, op)| {
-                    let owner = (definition.output_owner_for)(&slot.behavior, index)
+                    let owner = (definition.output_owner_for)(&slot.behavior, &op, index)
                         .unwrap_or(definition.output_owner)
                         .resolve(
                             matches!(trigger, SkillOpTrigger::Event(_)),

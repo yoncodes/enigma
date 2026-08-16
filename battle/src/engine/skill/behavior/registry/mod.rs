@@ -90,7 +90,7 @@ pub struct BehaviorDefinition {
     pub target_emission_mode: TargetEmissionMode,
     pub skill_destination_mode: SkillDestinationMode,
     pub output_owner: OutputOwner,
-    pub output_owner_for: fn(&ParsedBehavior, usize) -> Option<OutputOwner>,
+    pub output_owner_for: fn(&ParsedBehavior, &RuleOp, usize) -> Option<OutputOwner>,
     pub references: fn(&ParsedBehavior) -> RuleReferences,
     pub card_play_role: CardPlayRole,
     pub condition_route_override: Option<ConditionRouteOverride>,
@@ -135,7 +135,7 @@ pub trait BehaviorHandler {
         None
     }
 
-    fn output_owner(_: &ParsedBehavior, _: usize) -> Option<OutputOwner> {
+    fn output_owner(_: &ParsedBehavior, _: &RuleOp, _: usize) -> Option<OutputOwner> {
         None
     }
 
