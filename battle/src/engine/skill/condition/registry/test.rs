@@ -1903,6 +1903,33 @@ fn attack_crit_after_damage_route_is_exact() {
         find_key(30210, "AttackCrit").map(|definition| definition.role),
         Some(ConditionRole::Predicate)
     );
+    assert_eq!(
+        find_key(30208, "AttackCrit").map(|definition| definition.skill_action_trigger),
+        Some(SkillActionTriggerPolicy::Default)
+    );
+    assert_eq!(
+        find_key(30402, "AttackCrit").map(|definition| definition.skill_action_trigger),
+        Some(SkillActionTriggerPolicy::InitialCriticalFollowUp)
+    );
+    assert_eq!(
+        find_key(30402, "AttackCrit")
+            .and_then(|definition| definition.skill_action_trigger.child_skill_kind()),
+        Some(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp)
+    );
+    assert!(find_key(30402, "AttackCrit").is_some_and(|definition| {
+        definition.skill_action_trigger.rejects_extra_skill(
+            crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp.id(),
+        )
+    }));
+    assert!(find_key(30208, "AttackCrit").is_some_and(|definition| {
+        !definition.skill_action_trigger.rejects_extra_skill(
+            crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp.id(),
+        )
+    }));
+    assert_eq!(
+        find_key(30210, "AttackCrit").map(|definition| definition.skill_action_trigger),
+        Some(SkillActionTriggerPolicy::Default)
+    );
     assert!(find_key(30209, "AttackCrit").is_none());
 }
 

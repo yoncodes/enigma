@@ -1,5 +1,188 @@
 use super::*;
 
+fn attack_crit_route_catalog(condition_opcode: i32) -> SkillEffectCatalog {
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::new(50008, "DirectUseSkill", vec![100]),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = vec![ParsedCondition {
+        opcode: condition_opcode,
+        type_name: "AttackCrit".to_owned(),
+        kind: crate::engine::skill::condition::registry::parse(condition_opcode, "AttackCrit", &[])
+            .unwrap(),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route =
+        crate::engine::skill::rule::route::ConditionRoute::compile(&slot.conditions);
+
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![slot],
+    });
+    catalog
+}
+
+fn attack_crit_reaction(condition_opcode: i32) -> SkillInvocation {
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.condition_key = Some(DefinitionKey::new(condition_opcode, "AttackCrit"));
+    invocation.phase = Some(SkillPhase::AfterDamage);
+    invocation
+}
+
+fn skill_action_event(extra_skill_kind: i32, crit_count: i32) -> BattleEvent {
+    BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+        source_uid: 10,
+        skill_id: 100,
+        target_uid: 10,
+        target_uids: vec![10],
+        attacked_target_uids: vec![10],
+        phase: SkillPhase::AfterDamage,
+        skill_slot: 1,
+        is_attack: true,
+        rank: 1,
+        skill_type: 1,
+        effect_tag: 1,
+        assassinate: false,
+        ignore_riposte: false,
+        damage_amount: 1,
+        kill_count: 0,
+        crit_count,
+        guard_break_count: 0,
+        additional_moxie: 0,
+        extra_skill_kind,
+        mode: SkillExecutionMode::Active,
+        teammate_injury_count: 0,
+        teammate_injury_count_not_reset: 0,
+        team_injury_count_round: 0,
+        card_enchants: Vec::new(),
+        buff_additions: Vec::new(),
+    })
+}
+
+fn attack_crit_fight() -> Fight {
+    Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+fn child_skills(ops: Vec<RuleOp>) -> Vec<SkillInvocation> {
+    ops.into_iter()
+        .filter_map(|op| match op {
+            RuleOp::Skill(invocation) => Some(invocation),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn initial_attack_crit_emits_one_follow_up_child() {
+    crate::test_support::init_config();
+    let fight = attack_crit_fight();
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = attack_crit_route_catalog(30402);
+
+    let children = child_skills(
+        emit_all_ops(
+            attack_crit_reaction(30402),
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Event(skill_action_event(0, 1)),
+        )
+        .unwrap(),
+    );
+
+    assert_eq!(children.len(), 1);
+    assert_eq!(
+        children[0].extra_skill_kind,
+        Some(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp)
+    );
+}
+
+#[test]
+fn critical_follow_up_does_not_recurse_or_exhaust_the_drain_budget() {
+    crate::test_support::init_config();
+    let fight = attack_crit_fight();
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = attack_crit_route_catalog(30402);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(10);
+
+    let result = crate::engine::runtime::drain::run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            action_crit_count: 1,
+            ..Default::default()
+        },
+        [RuleOp::Skill(invocation)],
+    )
+    .unwrap();
+
+    let completed_actions = result
+        .outcomes
+        .iter()
+        .filter(|outcome| {
+            matches!(
+                outcome,
+                crate::engine::runtime::executor::RuleOutcome::SkillLifecycle(
+                    crate::engine::skill::action::SkillLifecycle::ActionCompleted(_)
+                )
+            )
+        })
+        .count();
+    assert_eq!(completed_actions, 2);
+}
+
+#[test]
+fn nearby_attack_crit_route_still_triggers_for_an_extra_action() {
+    crate::test_support::init_config();
+    let fight = attack_crit_fight();
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = attack_crit_route_catalog(30208);
+
+    let children = child_skills(
+        emit_all_ops(
+            attack_crit_reaction(30208),
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Event(skill_action_event(2, 1)),
+        )
+        .unwrap(),
+    );
+
+    assert_eq!(children.len(), 1);
+    assert_eq!(children[0].extra_skill_kind, None);
+}
+
 #[test]
 fn ally_action_context_preserves_assassination_identity() {
     let mut context = TargetContext::default();

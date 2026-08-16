@@ -97,6 +97,26 @@ pub enum AttackModifierSide {
     IncomingTarget,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SkillActionTriggerPolicy {
+    #[default]
+    Default,
+    InitialCriticalFollowUp,
+}
+
+impl SkillActionTriggerPolicy {
+    pub const fn child_skill_kind(self) -> Option<extra::ExtraSkillKind> {
+        match self {
+            Self::Default => None,
+            Self::InitialCriticalFollowUp => Some(extra::ExtraSkillKind::FollowUp),
+        }
+    }
+
+    pub const fn rejects_extra_skill(self, extra_skill_kind: i32) -> bool {
+        matches!(self, Self::InitialCriticalFollowUp) && extra_skill_kind != 0
+    }
+}
+
 pub struct ConditionDefinition {
     pub key: DefinitionKey,
     pub parse: Parser,
@@ -111,6 +131,7 @@ pub struct ConditionDefinition {
     pub reaction_frame_target: ReactionFrameTarget,
     pub reaction_frame_scope: ReactionFrameScope,
     pub skill_action_observer: SkillActionObserver,
+    pub skill_action_trigger: SkillActionTriggerPolicy,
     pub attack_modifier_side: Option<AttackModifierSide>,
     pub companion_setup: &'static [(SetupStage, i32)],
     pub reactivation_events: &'static [EventKind],
@@ -131,6 +152,7 @@ pub struct ConditionMetadata {
     pub reaction_frame_target: ReactionFrameTarget,
     pub reaction_frame_scope: ReactionFrameScope,
     pub skill_action_observer: SkillActionObserver,
+    pub skill_action_trigger: SkillActionTriggerPolicy,
     pub attack_modifier_side: Option<AttackModifierSide>,
     pub companion_setup: &'static [(SetupStage, i32)],
     pub reactivation_events: &'static [EventKind],
@@ -158,6 +180,7 @@ pub const fn definition(
         reaction_frame_target: metadata.reaction_frame_target,
         reaction_frame_scope: metadata.reaction_frame_scope,
         skill_action_observer: metadata.skill_action_observer,
+        skill_action_trigger: metadata.skill_action_trigger,
         attack_modifier_side: metadata.attack_modifier_side,
         companion_setup: metadata.companion_setup,
         reactivation_events: metadata.reactivation_events,
@@ -179,6 +202,7 @@ pub const fn predicate(dependencies: &'static [EventKind]) -> ConditionMetadata 
         reaction_frame_target: ReactionFrameTarget::Counterparty,
         reaction_frame_scope: ReactionFrameScope::Subscriber,
         skill_action_observer: SkillActionObserver::Actor,
+        skill_action_trigger: SkillActionTriggerPolicy::Default,
         attack_modifier_side: None,
         companion_setup: &[],
         reactivation_events: &[],
@@ -200,6 +224,7 @@ pub const fn event_trigger(event: EventKind, phase: Option<SkillPhase>) -> Condi
         reaction_frame_target: ReactionFrameTarget::Counterparty,
         reaction_frame_scope: ReactionFrameScope::Subscriber,
         skill_action_observer: SkillActionObserver::Actor,
+        skill_action_trigger: SkillActionTriggerPolicy::Default,
         attack_modifier_side: None,
         companion_setup: &[],
         reactivation_events: &[],
@@ -225,6 +250,7 @@ pub const fn setup_route(
         reaction_frame_target: ReactionFrameTarget::Counterparty,
         reaction_frame_scope: ReactionFrameScope::Subscriber,
         skill_action_observer: SkillActionObserver::Actor,
+        skill_action_trigger: SkillActionTriggerPolicy::Default,
         attack_modifier_side: None,
         companion_setup: &[],
         reactivation_events: &[],
@@ -240,6 +266,11 @@ pub const fn before_publish(mut metadata: ConditionMetadata) -> ConditionMetadat
 
 pub const fn after_skill(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_timing = ReactionTiming::AfterSkill;
+    metadata
+}
+
+pub const fn initial_critical_follow_up(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.skill_action_trigger = SkillActionTriggerPolicy::InitialCriticalFollowUp;
     metadata
 }
 
@@ -692,7 +723,7 @@ condition_definitions! {
     [623203] "HpLostRatio" => hp::per_lost_hp, predicate(&[EventKind::HpLost]);
     [623204] "HpLostRatio" => hp::per_lost_hp, incoming_attack_modifier(predicate(&[EventKind::HpLost]));
     [30208] "AttackCrit" => parse::attack_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
-    [30402] "AttackCrit" => parse::attack_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
+    [30402] "AttackCrit" => parse::attack_crit, initial_critical_follow_up(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [30210] "AttackCrit" => parse::attack_crit, predicate(&[]);
     [7203] "BeforeCrit" => parse::before_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::Damage));
     [740203] "BloodPoolMax" => resource::blood_pool_max, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
