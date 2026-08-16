@@ -510,6 +510,7 @@ behavior_definitions! {
     [60153] "AddTeamEnergy" => super::resource::Handler, AddTeamEnergy, Immediate, setup_parent_destination, super::resource::supports_team_energy;
     [60154] "AddRedOrBlueCount" => super::resource::Handler, AddRedOrBlueCount, Immediate, destination, super::resource::supports_red_or_blue_count;
     [60298] "AddMeiLeiErCharge" => super::resource::Handler, AddBuffOwnedCharge, Immediate, destination, super::resource::supports_buff_owned_charge;
+    [60305] "ConsumeBuffMeiLeiEr" => super::resource::Handler, ConsumeBuffIntoChargeAndRewards, Immediate, destination, super::resource::supports_consume_buff_into_charge_and_rewards;
     [60291] "AddDevicePower" => super::resource::Handler, AddConduitPower, Immediate, destination, super::resource::supports_conduit_power;
     [60292] "AddDeviceExPoint" => super::resource::Handler, AddConduitExPoint, Immediate, setup_parent_destination, super::resource::supports_ex_point_gain;
     [60293] "SetDeviceSkillIndex" => super::resource::Handler, SetConduitSkillGroup, Immediate, destination, super::resource::supports_conduit_skill_group;
