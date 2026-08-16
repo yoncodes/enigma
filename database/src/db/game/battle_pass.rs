@@ -559,6 +559,23 @@ pub async fn score_maxed(pool: &SqlitePool, user_id: i64, bp_id: i32) -> sqlx::R
     Ok(max_score(bp_id).is_some_and(|max| score >= max))
 }
 
+pub async fn score_maxed_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    bp_id: i32,
+) -> sqlx::Result<bool> {
+    let score: i32 = sqlx::query_scalar(
+        "SELECT score FROM user_battle_pass_state WHERE user_id = ? AND bp_id = ?",
+    )
+    .bind(user_id)
+    .bind(bp_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .unwrap_or_default();
+
+    Ok(max_score(bp_id).is_some_and(|max| score >= max))
+}
+
 fn capped_score_delta(bp_id: i32, current_score: i32, score_delta: i32) -> i32 {
     let score_delta = score_delta.max(0);
     let Some(max_score) = max_score(bp_id) else {

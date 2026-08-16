@@ -5,12 +5,15 @@ use sqlx::{Sqlite, SqlitePool, Transaction};
 use crate::db::game::battle_pass;
 
 use super::{
-    TaskType, add_progress, current_battle_pass_id, ensure_tasks_for_type,
+    TaskType, add_progress_in_transaction, current_battle_pass_id,
     ensure_tasks_for_type_in_transaction,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskEvent {
+    Act222ArcadeSettle {
+        activity_id: i32,
+    },
     Act205FinishGame {
         activity_id: i32,
         game_type: i32,
@@ -73,7 +76,7 @@ impl TaskEvent {
 
     fn count(self) -> i32 {
         match self {
-            Self::Act205FinishGame { .. } => 1,
+            Self::Act222ArcadeSettle { .. } | Self::Act205FinishGame { .. } => 1,
             Self::CurrencyDec { amount, .. } => amount.max(1),
             Self::Summon { count, .. } => count.max(1),
             Self::DoneCount { count, .. }
@@ -89,6 +92,10 @@ impl TaskEvent {
 
     fn matches(self, listener_type: &str, listener_param: &str) -> bool {
         match self {
+            Self::Act222ArcadeSettle { activity_id } => {
+                listener_type == "Act222ArcadeSettle"
+                    && listener_param.parse::<i32>() == Ok(activity_id)
+            }
             Self::Act205FinishGame {
                 activity_id,
                 game_type,
@@ -184,22 +191,34 @@ pub async fn sync_event_tasks(
     user_id: i64,
     event: TaskEvent,
 ) -> sqlx::Result<Vec<UserTask>> {
-    ensure_tasks_for_type(pool, user_id, TaskType::Daily).await?;
-    ensure_tasks_for_type(pool, user_id, TaskType::Weekly).await?;
-    ensure_tasks_for_type(pool, user_id, TaskType::BattlePass).await?;
-    ensure_tasks_for_type(pool, user_id, TaskType::BpOperAct).await?;
-    ensure_tasks_for_type(pool, user_id, TaskType::ActBp).await?;
-    ensure_tasks_for_type(pool, user_id, TaskType::Activity125).await?;
+    let mut tx = pool.begin().await?;
+    let updated = sync_event_tasks_in_transaction(&mut tx, user_id, event).await?;
+    tx.commit().await?;
+    Ok(updated)
+}
+
+pub async fn sync_event_tasks_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    event: TaskEvent,
+) -> sqlx::Result<Vec<UserTask>> {
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::Daily).await?;
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::Weekly).await?;
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::BattlePass).await?;
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::BpOperAct).await?;
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::ActBp).await?;
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::VersionActivity).await?;
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::Activity125).await?;
 
     let bp_id = current_battle_pass_id();
     let include_bp = match bp_id {
-        Some(bp_id) => !battle_pass::score_maxed(pool, user_id, bp_id).await?,
+        Some(bp_id) => !battle_pass::score_maxed_in_transaction(tx, user_id, bp_id).await?,
         None => false,
     };
     let mut updated = Vec::new();
     for target in event_task_targets(event, bp_id.filter(|_| include_bp)) {
-        if let Some(task) = add_progress(
-            pool,
+        if let Some(task) = add_progress_in_transaction(
+            tx,
             user_id,
             target.type_id,
             target.task_id,
@@ -349,6 +368,22 @@ fn event_task_targets(event: TaskEvent, bp_id: Option<i32>) -> Vec<TaskTarget> {
                 task.is_online != 0 && event.matches(&task.listener_type, &task.listener_param)
             })
             .map(|task| TaskTarget::new(TaskType::Activity125, task.id, task.max_progress)),
+    );
+    targets.extend(
+        tables
+            .copost_version_task
+            .iter()
+            .filter(|task| {
+                task.version_id
+                    == tables
+                        .copost_version_task
+                        .iter()
+                        .map(|row| row.version_id)
+                        .max()
+                        .unwrap_or_default()
+                    && event.matches(&task.listener_type, &task.listener_param)
+            })
+            .map(|task| TaskTarget::new(TaskType::VersionActivity, task.id, task.max_progress)),
     );
     targets.extend(
         tables
@@ -557,6 +592,32 @@ mod tests {
             )
             .iter()
             .any(|target| target.task_id == 790010)
+        );
+    }
+
+    #[test]
+    fn arcade_win_targets_version_activity_and_captured_pass_tasks() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let updated = event_task_targets(
+            TaskEvent::Act222ArcadeSettle { activity_id: 13720 },
+            Some(26),
+        );
+
+        assert!(
+            updated.iter().any(|task| {
+                task.type_id == TaskType::VersionActivity.id() && task.task_id == 912
+            })
+        );
+        assert!(
+            updated
+                .iter()
+                .any(|task| { task.type_id == TaskType::ActBp.id() && task.task_id == 790012 })
+        );
+        assert!(
+            updated.iter().any(|task| {
+                task.type_id == TaskType::BattlePass.id() && task.task_id == 103730
+            })
         );
     }
 

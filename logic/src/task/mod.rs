@@ -324,6 +324,10 @@ fn task_red_dot_route(type_id: i32) -> Option<(task_db::TaskType, i32)> {
     match task_db::TaskType::from_id(type_id)? {
         task_db::TaskType::Daily => Some((task_db::TaskType::Daily, RedDotId::DailyTask.id())),
         task_db::TaskType::Weekly => Some((task_db::TaskType::Weekly, RedDotId::WeeklyTask.id())),
+        task_db::TaskType::VersionActivity => Some((
+            task_db::TaskType::VersionActivity,
+            RedDotId::CommandStationTaskNormal.id(),
+        )),
         _ => None,
     }
 }
