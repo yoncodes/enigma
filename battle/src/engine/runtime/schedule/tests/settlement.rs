@@ -235,6 +235,143 @@ fn entity_settlement_buff_presence_fires_once_only_for_the_matching_owner() {
     assert_eq!(managers.ex_point.get(11), 0);
 }
 
+#[test]
+fn entity_settlement_keeps_event_owned_buff_changes_outside_the_nested_skill() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                model_id: Some(3146),
+                current_hp: Some(100),
+                ex_point: Some(0),
+                passive_skill: vec![100],
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(1006),
+                        buff_id: Some(31460143),
+                        from_uid: Some(10),
+                        act_info: vec![sonettobuf::BuffActInfo {
+                            act_id: Some(1139),
+                            param: vec![70_000],
+                            str_param: Some(String::new()),
+                        }],
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(1150),
+                        buff_id: Some(31460001),
+                        from_uid: Some(10),
+                        layer: Some(2),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let behavior = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60305, "ConsumeBuffMeiLeiEr"),
+        Vec::new(),
+        ["31460001", "1", "8000", "1", "31460111,1"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+    );
+    let mut slot = SkillEffectSlot::new(behavior, TargetRequest::self_only());
+    slot.conditions = crate::engine::skill::condition::parse::parse_conditions(
+        config::configs::get(),
+        "19303#31460001",
+    );
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![slot],
+    });
+
+    let result = run_entity_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[10],
+        SettlementSide::Attacker,
+    )
+    .unwrap();
+
+    assert_eq!(managers.buff.snapshot(10, 1150).unwrap().layer, Some(1));
+    assert!(managers.buff.has_buff_id(10, 31460111));
+    assert_eq!(managers.ex_point.get(10), 1);
+
+    fn find_parent(
+        step: &sonettobuf::FightStep,
+        skill_id: i32,
+    ) -> Option<(&sonettobuf::FightStep, &sonettobuf::FightStep)> {
+        for child in step
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+        {
+            if child.act_id == Some(skill_id) {
+                return Some((step, child));
+            }
+            if let Some(found) = find_parent(child, skill_id) {
+                return Some(found);
+            }
+        }
+        None
+    }
+    let steps = crate::engine::packet::timeline::project(&result.output.frames).unwrap();
+    let (parent, skill) = steps
+        .iter()
+        .find_map(|step| find_parent(step, 100))
+        .expect("entity settlement must contain the passive skill");
+    let buff_index = |buff_id| {
+        parent
+            .act_effect
+            .iter()
+            .position(|effect| effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(buff_id))
+    };
+    let skill_index = parent
+        .act_effect
+        .iter()
+        .position(|effect| {
+            effect
+                .fight_step
+                .as_ref()
+                .is_some_and(|step| step.act_id == Some(100))
+        })
+        .unwrap();
+    let consume_index = buff_index(31460001).expect("parent owns the consumed buff update");
+    let reward_index = buff_index(31460111).expect("parent owns the reward buff grant");
+    assert!(skill_index < consume_index && consume_index < reward_index);
+    assert!(skill.act_effect.iter().all(|effect| {
+        !matches!(
+            effect.buff.as_ref().and_then(|buff| buff.buff_id),
+            Some(31460001 | 31460111)
+        )
+    }));
+    assert!(skill.act_effect.iter().any(|effect| {
+        effect.effect_type
+            == Some(sonettobuf::effect_type_enum::EffectType::Buffactinfoupdate as i32)
+            && effect
+                .buff_act_info
+                .as_ref()
+                .is_some_and(|info| info.act_id == Some(1139))
+    }));
+    assert!(skill.act_effect.iter().any(|effect| {
+        effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
+    }));
+}
+
 #[cfg(feature = "private-fixtures")]
 #[test]
 fn setup_reserves_summoned_lanes_before_the_next_buff() {

@@ -403,6 +403,27 @@ fn exact_consume_buff_charge_rewards_emits_captured_active_sequence() {
     assert_eq!(marker.params, vec![78_000]);
     assert_eq!((first.buff_id, first.amount), (31460002, Some(2)));
     assert_eq!((second.buff_id, second.amount), (31460111, None));
+    assert_eq!(
+        ops.iter()
+            .enumerate()
+            .map(|(index, op)| <Handler as BehaviorHandler>::output_owner(&behavior, op, index))
+            .collect::<Vec<_>>(),
+        vec![
+            Some(OutputOwner::CausingEvent),
+            None,
+            None,
+            Some(OutputOwner::CausingEvent),
+            Some(OutputOwner::CausingEvent),
+        ]
+    );
+    assert_eq!(
+        OutputOwner::CausingEvent.resolve(false, false),
+        OutputOwner::Skill
+    );
+    assert_eq!(
+        OutputOwner::CausingEvent.resolve(true, false),
+        OutputOwner::Parent
+    );
 }
 
 #[test]
@@ -447,6 +468,18 @@ fn exact_consume_buff_charge_rewards_keeps_rewards_at_cap_and_requires_cost() {
     assert_eq!(ex_point.config_effect, 60305);
     assert_eq!(reward.buff_id, 31460004);
     assert_eq!(reward.amount, Some(4));
+    assert_eq!(
+        at_cap
+            .iter()
+            .enumerate()
+            .map(|(index, op)| <Handler as BehaviorHandler>::output_owner(&behavior, op, index))
+            .collect::<Vec<_>>(),
+        vec![
+            Some(OutputOwner::CausingEvent),
+            None,
+            Some(OutputOwner::CausingEvent)
+        ]
+    );
 
     let mut missing_cost = rhiannon_resource_fight(1, 140_000);
     missing_cost.attacker.as_mut().unwrap().entitys[0]
