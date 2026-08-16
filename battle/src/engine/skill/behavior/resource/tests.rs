@@ -294,6 +294,196 @@ fn exact_buff_owned_charge_rejects_missing_or_malformed_carrier_state() {
     assert!(emit(vec![string_state]).is_none());
 }
 
+fn consume_buff_charge_behavior(raw_args: [&str; 5]) -> ParsedBehavior {
+    ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(60305, "ConsumeBuffMeiLeiEr"),
+        Vec::new(),
+        raw_args.into_iter().map(str::to_owned).collect(),
+    )
+}
+
+fn rhiannon_resource_fight(attunement_layer: i32, charge: i32) -> Fight {
+    Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3146),
+                team_type: Some(1),
+                current_hp: Some(1),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(1006),
+                        buff_id: Some(31460143),
+                        from_uid: Some(10),
+                        act_info: vec![sonettobuf::BuffActInfo {
+                            act_id: Some(1139),
+                            param: vec![charge],
+                            str_param: Some(String::new()),
+                        }],
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(1150),
+                        buff_id: Some(31460001),
+                        from_uid: Some(10),
+                        layer: Some(attunement_layer),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn exact_consume_buff_charge_rewards_emits_captured_active_sequence() {
+    crate::test_support::init_config();
+    let fight = rhiannon_resource_fight(2, 70_000);
+    let managers = BattleManagers::seeded(&fight);
+    let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior =
+        consume_buff_charge_behavior(["31460001", "1", "8000", "0", "31460002,2:31460111,1"]);
+
+    let definition = super::super::registry::find(&behavior).unwrap();
+    assert_eq!(
+        definition.kind,
+        BehaviorKind::ConsumeBuffIntoChargeAndRewards
+    );
+    assert!(
+        definition
+            .supports
+            .is_some_and(|supports| supports(&behavior))
+    );
+    assert_eq!(
+        <Handler as BehaviorHandler>::references(&behavior).buffs,
+        vec![31460001, 31460002, 31460111]
+    );
+
+    let ops = rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 31460121,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    let [
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(consume))),
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::SetInternalState(state))),
+        RuleOp::BuffActInfoMarker(marker),
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(first))),
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(second))),
+    ] = ops.as_slice()
+    else {
+        panic!("expected consume, charge state, marker, and ordered rewards")
+    };
+    assert_eq!(consume.target_uid, 10);
+    assert_eq!(consume.selector, BuffSelector::ExactId(31460001));
+    assert_eq!(consume.amount, 1);
+    assert_eq!(consume.depleted, DepletedBuff::Remove);
+    assert_eq!(state.buff_uid, 1006);
+    assert_eq!(state.act_info.as_ref().unwrap()[0].param, vec![78_000]);
+    assert_eq!(marker.params, vec![78_000]);
+    assert_eq!((first.buff_id, first.amount), (31460002, Some(2)));
+    assert_eq!((second.buff_id, second.amount), (31460111, None));
+}
+
+#[test]
+fn exact_consume_buff_charge_rewards_keeps_rewards_at_cap_and_requires_cost() {
+    crate::test_support::init_config();
+    let behavior = consume_buff_charge_behavior(["31460001", "1", "12500", "1", "31460004,4"]);
+    let emit = |fight: &Fight| {
+        let managers = BattleManagers::seeded(fight);
+        let pool = crate::engine::skill::target::TargetPool::from_fight(fight);
+        let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext::default();
+        rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 31460171,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap()
+    };
+
+    let at_cap = emit(&rhiannon_resource_fight(1, 150_000));
+    let [
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(_))),
+        RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(ex_point))),
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(reward))),
+    ] = at_cap.as_slice()
+    else {
+        panic!("expected consume, Moxie, and reward without a redundant charge marker")
+    };
+    assert_eq!(ex_point.delta, 1);
+    assert_eq!(ex_point.config_effect, 60305);
+    assert_eq!(reward.buff_id, 31460004);
+    assert_eq!(reward.amount, Some(4));
+
+    let mut missing_cost = rhiannon_resource_fight(1, 140_000);
+    missing_cost.attacker.as_mut().unwrap().entitys[0]
+        .buffs
+        .pop();
+    assert!(emit(&missing_cost).is_empty());
+}
+
+#[test]
+fn exact_consume_buff_charge_rewards_support_is_strict() {
+    let valid =
+        consume_buff_charge_behavior(["31460001", "1", "10000", "1", "31460003,3:31460131,1"]);
+    assert!(supports_consume_buff_into_charge_and_rewards(&valid));
+
+    for raw_args in [
+        ["31460001", "0", "10000", "1", "31460003,3"],
+        ["31460001", "1", "0", "1", "31460003,3"],
+        ["31460001", "1", "10000", "2", "31460003,3"],
+        ["31460001", "1", "10000", "1", "31460003"],
+        ["31460001", "1", "10000", "1", "31460003,3:"],
+        ["31460001", "1", "10000", "1", "31460003,3,1"],
+    ] {
+        assert!(!supports_consume_buff_into_charge_and_rewards(
+            &consume_buff_charge_behavior(raw_args)
+        ));
+    }
+
+    let wrong_field_count = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(60305, "ConsumeBuffMeiLeiEr"),
+        Vec::new(),
+        vec!["31460001".to_owned(), "1".to_owned()],
+    );
+    assert!(!supports_consume_buff_into_charge_and_rewards(
+        &wrong_field_count
+    ));
+}
+
 #[test]
 fn recover_power_and_cast_cards_consumes_only_the_casters_incantations() {
     let fight = Fight {
