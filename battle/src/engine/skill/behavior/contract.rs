@@ -6,6 +6,7 @@ use crate::engine::{
     },
     skill::{
         behavior::{BehaviorOpContext, registry::BehaviorHandler},
+        buff_act::contract_cast_channel,
         effect::ParsedBehavior,
         rule::{
             RuleReferences,
@@ -84,6 +85,11 @@ impl BehaviorHandler for EndHandler {
                     .map(|buff_id| remove_buff(origin, bound_uid, buff_id)),
             )
             .collect::<Vec<_>>();
+        ops.extend(contract_cast_channel::carrier_removal_rule_ops(
+            context.managers,
+            context.source_uid,
+            origin,
+        ));
         ops.push(RuleOp::Command(BattleCommand::Contract(
             ContractCommand::Clear {
                 owner_uid: context.source_uid,
@@ -140,7 +146,7 @@ mod tests {
             target::{TargetContext, TargetPool},
         },
     };
-    use sonettobuf::{Fight, FightEntityInfo, FightTeam};
+    use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
     #[test]
     fn offer_projects_the_alive_other_allies_from_the_exact_behavior() {
@@ -230,8 +236,26 @@ mod tests {
 
     #[test]
     fn bound_death_removes_both_configured_buff_groups_then_clears_the_pair() {
-        let pool = TargetPool::default();
-        let mut managers = BattleManagers::default();
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(88),
+                        buff_id: Some(31_000_141),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
         let origin = crate::engine::skill::rule::CommandOrigin {
             domain: crate::engine::skill::rule::RuleDomain::Behavior,
             key: crate::engine::skill::rule::DefinitionKey::new(60092, "NotifyHeroContract"),
@@ -289,7 +313,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(ops.len(), 5);
+        assert_eq!(ops.len(), 6);
         for (op, target_uid, buff_id) in [
             (&ops[0], -1, 11),
             (&ops[1], -1, 12),
@@ -307,6 +331,14 @@ mod tests {
         }
         assert!(matches!(
             ops[4],
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                target_uid: -1,
+                selector: BuffRemoveSelector::Uid(88),
+                ..
+            })))
+        ));
+        assert!(matches!(
+            ops[5],
             RuleOp::Command(BattleCommand::Contract(ContractCommand::Clear {
                 owner_uid: -1,
                 bound_uid: 20,
