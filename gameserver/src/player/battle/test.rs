@@ -33,12 +33,10 @@ fn team_level_is_absent_when_no_entity_has_a_level() {
 #[test]
 fn replay_record_keeps_cloth_and_card_operations_in_the_same_round() {
     let mut active = ActiveBattle::default();
-    active
-        .pending_cloth_skill_opers
-        .push(UseClothSkillOperRecord {
-            skill_id: Some(12),
-            ..Default::default()
-        });
+    active.pending_cloth_skill_opers.push(UseClothSkillRequest {
+        skill_id: Some(12),
+        ..Default::default()
+    });
 
     active.record_round(BeginRoundRequest {
         opers: vec![sonettobuf::BeginRoundOper::default()],
@@ -113,7 +111,7 @@ fn begin_round_steps_use_the_clients_compressed_framing() {
 }
 
 #[test]
-fn active_fight_reconnects_from_its_fresh_start_checkpoint() {
+fn active_fight_reconnects_from_its_committed_checkpoint() {
     std::thread::Builder::new()
         .stack_size(32 * 1024 * 1024)
         .spawn(|| {
@@ -145,7 +143,10 @@ fn active_fight_reconnects_from_its_fresh_start_checkpoint() {
                         StartDungeonRequest {
                             chapter_id: Some(301),
                             episode_id: Some(10002),
-                            fight_group: Some(Default::default()),
+                            fight_group: Some(sonettobuf::FightGroup {
+                                cloth_id: Some(7),
+                                ..Default::default()
+                            }),
                             multiplication: Some(1),
                             ..Default::default()
                         },
@@ -156,11 +157,54 @@ fn active_fight_reconnects_from_its_fresh_start_checkpoint() {
                         .activate(&pool, 9, &RewardSet::default())
                         .await
                         .unwrap();
+                    let fight_id = active.fight_id.unwrap();
+                    let mut state = BattleState::default();
+                    state.restore_active(active);
+
+                    let before = format!("{:?}", state.active_snapshot());
+                    let checkpoint_before = battle::load_active_fight(&pool, 9)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .checkpoint;
+                    let mut rejected = state.active_snapshot().unwrap();
+                    rejected.multiplication = Some(2);
+                    rejected.fight_id = Some(fight_id + 1);
+                    assert!(state.commit_active(&pool, 9, rejected).await.is_err());
+                    assert_eq!(format!("{:?}", state.active_snapshot()), before);
+                    assert_eq!(
+                        battle::load_active_fight(&pool, 9)
+                            .await
+                            .unwrap()
+                            .unwrap()
+                            .checkpoint,
+                        checkpoint_before
+                    );
+
+                    let mut candidate = state.active_snapshot().unwrap();
+                    candidate
+                        .use_cloth_skill(UseClothSkillRequest {
+                            skill_id: Some(30010701),
+                            from_id: Some(0),
+                            r#type: Some(0),
+                            ..Default::default()
+                        })
+                        .unwrap();
+                    state.commit_active(&pool, 9, candidate).await.unwrap();
+
+                    let mut candidate = state.active_snapshot().unwrap();
+                    candidate.begin_round(BeginRoundRequest::default()).unwrap();
+                    state.commit_active(&pool, 9, candidate).await.unwrap();
+
+                    let mut candidate = state.active_snapshot().unwrap();
+                    candidate.begin_round(BeginRoundRequest::default()).unwrap();
+                    state.commit_active(&pool, 9, candidate).await.unwrap();
+
+                    let active = state.active_snapshot().unwrap();
                     let expected = active.reconnect_reply();
                     let expected_start = active.start_reply();
                     let expected_cards = active.card_info_push();
-                    active.begin_round(BeginRoundRequest::default()).unwrap();
-                    let fight_id = active.fight_id.unwrap();
+                    let expected_records = active.oper_records();
                     assert!(matches!(
                         BattleState::default().ensure_can_start(&pool, 9).await,
                         Err(AppError::InvalidRequest)
@@ -188,7 +232,7 @@ fn active_fight_reconnects_from_its_fresh_start_checkpoint() {
                     assert_eq!(restored.reconnect_reply(), expected);
                     assert_eq!(restored.start_reply(), expected_start);
                     assert_eq!(restored.card_info_push(), expected_cards);
-                    assert!(restored.oper_records().is_empty());
+                    assert_eq!(restored.oper_records(), expected_records);
                     battle::finish_fight_instance(&pool, 9, fight_id)
                         .await
                         .unwrap();
@@ -206,6 +250,19 @@ fn active_fight_reconnects_from_its_fresh_start_checkpoint() {
 
 #[tokio::test]
 async fn malformed_checkpoint_is_the_only_discardable_restore_error() {
+    let legacy: BattleCheckpoint = serde_json::from_str(
+        r#"{
+            "chapter_id": 301,
+            "start_request": {},
+            "seed": 7,
+            "tower_context": null,
+            "act229_context": null
+        }"#,
+    )
+    .unwrap();
+    assert!(legacy.rounds.is_empty());
+    assert!(legacy.pending_cloth_skill_opers.is_empty());
+
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     let error = ActiveBattle::restore(
         &pool,

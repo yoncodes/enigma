@@ -39,6 +39,19 @@ impl BattleState {
         self.active = Some(active);
     }
 
+    pub async fn commit_active(
+        &mut self,
+        pool: &SqlitePool,
+        player_id: i64,
+        active: ActiveBattle,
+    ) -> Result<(), AppError> {
+        let fight_id = active.fight_id.ok_or(AppError::InvalidRequest)?;
+        let checkpoint = active.checkpoint_json()?;
+        battle::update_fight_checkpoint(pool, player_id, fight_id, &checkpoint).await?;
+        self.active = Some(active);
+        Ok(())
+    }
+
     pub fn start_active(&mut self, active: ActiveBattle) {
         self.pending_record = None;
         self.active = Some(active);
@@ -108,23 +121,6 @@ impl BattleState {
             .unwrap_or_default()
     }
 
-    pub fn use_cloth_skill(
-        &mut self,
-        request: UseClothSkillRequest,
-    ) -> Result<(UseClothSkillReply, Option<RedealCardInfoPush>), AppError> {
-        self.active
-            .as_mut()
-            .ok_or(AppError::InvalidRequest)?
-            .use_cloth_skill(request)
-    }
-
-    pub fn begin_round(&mut self, request: BeginRoundRequest) -> Result<BeginRoundReply, AppError> {
-        self.active
-            .as_mut()
-            .ok_or(AppError::InvalidRequest)?
-            .begin_round(request)
-    }
-
     pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> Result<AutoRoundReply, AppError> {
         Ok(self
             .active
@@ -152,7 +148,7 @@ pub struct PendingDungeonRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct CommittedRound {
     request: BeginRoundRequest,
-    cloth_skill_opers: Vec<UseClothSkillOperRecord>,
+    cloth_skill_opers: Vec<UseClothSkillRequest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,6 +158,10 @@ struct BattleCheckpoint {
     seed: u64,
     tower_context: Option<crate::logic::battle_setup::tower::BattleContext>,
     act229_context: Option<Act229BattleContext>,
+    #[serde(default)]
+    rounds: Vec<CommittedRound>,
+    #[serde(default)]
+    pending_cloth_skill_opers: Vec<UseClothSkillRequest>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -198,7 +198,7 @@ pub struct ActiveBattle {
     pub(crate) tower_context: Option<crate::logic::battle_setup::tower::BattleContext>,
     pub(crate) act229_context: Option<Act229BattleContext>,
     pub(crate) rounds: Vec<CommittedRound>,
-    pub(crate) pending_cloth_skill_opers: Vec<UseClothSkillOperRecord>,
+    pub(crate) pending_cloth_skill_opers: Vec<UseClothSkillRequest>,
 }
 
 impl ActiveBattle {
@@ -222,18 +222,15 @@ impl ActiveBattle {
         &mut self,
         request: UseClothSkillRequest,
     ) -> Result<(UseClothSkillReply, Option<RedealCardInfoPush>), AppError> {
-        let reply = self
+        let mut next = self.clone();
+        let reply = next
             .runtime
             .use_cloth_skill(request)
             .ok_or(AppError::InvalidRequest)?;
-        self.pending_cloth_skill_opers
-            .push(UseClothSkillOperRecord {
-                skill_id: request.skill_id,
-                from_id: request.from_id,
-                to_id: request.to_id,
-                r#type: request.r#type,
-            });
-        Ok((reply, self.runtime.take_redeal_card_push()))
+        next.pending_cloth_skill_opers.push(request);
+        let redeal = next.runtime.take_redeal_card_push();
+        *self = next;
+        Ok((reply, redeal))
     }
 
     pub async fn prepare(
@@ -515,6 +512,8 @@ impl ActiveBattle {
             checkpoint.seed,
         )?;
         active.fight_id = Some(record.id);
+        active
+            .replay_committed_progress(&checkpoint.rounds, &checkpoint.pending_cloth_skill_opers)?;
         Ok(active)
     }
 
@@ -525,6 +524,8 @@ impl ActiveBattle {
             seed: self.seed,
             tower_context: self.tower_context,
             act229_context: self.act229_context,
+            rounds: self.rounds.clone(),
+            pending_cloth_skill_opers: self.pending_cloth_skill_opers.clone(),
         })?)
     }
 
@@ -586,7 +587,11 @@ impl ActiveBattle {
         self.rounds
             .iter()
             .map(|round| FightRoundOperRecord {
-                cloth_skill_opers: round.cloth_skill_opers.clone(),
+                cloth_skill_opers: round
+                    .cloth_skill_opers
+                    .iter()
+                    .map(cloth_skill_oper_record)
+                    .collect(),
                 opers: round.request.opers.clone(),
             })
             .collect()
@@ -605,10 +610,13 @@ impl ActiveBattle {
     }
 
     pub fn begin_round(&mut self, request: BeginRoundRequest) -> Result<BeginRoundReply, AppError> {
-        let reply = ::battle::dungeon::begin_round(&mut self.runtime, request.clone())
+        let mut next = self.clone();
+        let reply = ::battle::dungeon::begin_round(&mut next.runtime, request.clone())
             .map_err(AppError::Custom)?;
-        self.record_round(request);
-        compress_round_steps(reply)
+        next.record_round(request);
+        let reply = compress_round_steps(reply)?;
+        *self = next;
+        Ok(reply)
     }
 
     fn record_round(&mut self, request: BeginRoundRequest) {
@@ -616,6 +624,46 @@ impl ActiveBattle {
             request,
             cloth_skill_opers: std::mem::take(&mut self.pending_cloth_skill_opers),
         });
+    }
+
+    fn replay_committed_progress(
+        &mut self,
+        rounds: &[CommittedRound],
+        pending_cloth_skill_opers: &[UseClothSkillRequest],
+    ) -> Result<(), AppError> {
+        let replay_cloth = |active: &mut Self, request: &UseClothSkillRequest| {
+            active
+                .use_cloth_skill(*request)
+                .map(|_| ())
+                .map_err(|error| {
+                    AppError::InvalidBattleCheckpoint(format!(
+                        "committed cloth-skill replay failed: {error}"
+                    ))
+                })
+        };
+        for round in rounds {
+            for request in &round.cloth_skill_opers {
+                replay_cloth(self, request)?;
+            }
+            self.begin_round(round.request.clone()).map_err(|error| {
+                AppError::InvalidBattleCheckpoint(format!(
+                    "committed begin-round replay failed: {error}"
+                ))
+            })?;
+        }
+        for request in pending_cloth_skill_opers {
+            replay_cloth(self, request)?;
+        }
+        Ok(())
+    }
+}
+
+fn cloth_skill_oper_record(request: &UseClothSkillRequest) -> UseClothSkillOperRecord {
+    UseClothSkillOperRecord {
+        skill_id: request.skill_id,
+        from_id: request.from_id,
+        to_id: request.to_id,
+        r#type: request.r#type,
     }
 }
 
