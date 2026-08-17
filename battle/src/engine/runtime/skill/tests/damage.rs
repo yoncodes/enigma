@@ -210,10 +210,7 @@ fn purple_emanation_applies_configured_halo_before_destined_doom_damage() {
     assert_eq!(freeze, immediate_completed + 1);
     assert_eq!(
         halo,
-        vec![
-            (freeze + 1, -1, Some(2)),
-            (freeze + 2, -2, Some(2)),
-        ]
+        vec![(freeze + 1, -1, Some(2)), (freeze + 2, -2, Some(2)),]
     );
     assert!(!immediate.ops.iter().any(|emission| matches!(
         emission.op,

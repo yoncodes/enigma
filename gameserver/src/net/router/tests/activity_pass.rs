@@ -22,9 +22,7 @@ async fn act233_info_command_reaches_handler_and_returns_configured_state() {
         .activity233_task
         .iter()
         .filter(|task| {
-            task.activity_id == pass.activity_id
-                && task.bp_id == pass.bp_id
-                && task.is_online != 0
+            task.activity_id == pass.activity_id && task.bp_id == pass.bp_id && task.is_online != 0
         })
         .count();
     let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
