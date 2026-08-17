@@ -390,7 +390,13 @@ fn scan_buff(
                     !definition.runtime.events.is_empty()
                         || !definition.transaction.events.is_empty()
                 });
-            let destination = buff_act::registry::destination(act.id, &act.r#type, &values[1..]);
+            let destination = buff_act::registry::destination_with_raw(
+                Some(db),
+                act.id,
+                &act.r#type,
+                &values[1..],
+                Some(raw),
+            );
             let has_destination = destination.is_some();
             let wire = buff_act::wire::find(act.id, &act.r#type);
             if let Some(wire) = wire {
@@ -455,6 +461,14 @@ fn scan_buff(
                 report.error(format!(
                     "MissingDestinationBuffAct path={} > buff {} act={} type={} route={route:?} effectTime={}",
                     pending.path, pending.id, act.id, act.r#type, act.effect_time
+                ));
+            } else if has_destination
+                && let Some(gap) = definition.and_then(|definition| definition.completion_gap)
+            {
+                report.gap(key.clone(), gap);
+                report.error(format!(
+                    "IncompleteBuffAct path={} > buff {} act={} type={} gap={gap} raw={raw:?}",
+                    pending.path, pending.id, act.id, act.r#type
                 ));
             } else if definition.is_some() && capability.is_none() {
                 report.gap(key.clone(), "missing semantic consumer");
@@ -528,6 +542,18 @@ fn scan_buff(
                         );
                     }
                 }
+                Some(BuffActKind::ReplaceEntitySkillGroup) => {
+                    if let Some(replacement_skills) = buff_act::bendith::replacement_skill_ids(raw)
+                    {
+                        for skill_id in replacement_skills {
+                            enqueue(
+                                skills,
+                                skill_id,
+                                format!("{} > buff {}", pending.path, pending.id),
+                            );
+                        }
+                    }
+                }
                 Some(BuffActKind::AddSpTempCard) => {
                     if let Some(&skill_id) = values.get(1) {
                         enqueue(
@@ -577,6 +603,15 @@ fn scan_buff(
                     for skill_id in
                         buff_act::nuo_di_ka_cast_channel::referenced_skills(&values[1..])
                     {
+                        enqueue(
+                            skills,
+                            skill_id,
+                            format!("{} > buff {}", pending.path, pending.id),
+                        );
+                    }
+                }
+                Some(BuffActKind::BuffOwnedCharge) => {
+                    if let Some(&skill_id) = values.get(3) {
                         enqueue(
                             skills,
                             skill_id,

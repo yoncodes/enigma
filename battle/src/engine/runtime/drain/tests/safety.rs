@@ -14,6 +14,78 @@ fn queued(op: RuleOp) -> QueuedOp {
     }
 }
 
+#[test]
+fn repeated_capped_state_commands_commit_cumulative_absolute_markers() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3146),
+                current_hp: Some(1),
+                buffs: vec![BuffInfo {
+                    uid: Some(1006),
+                    buff_id: Some(31460143),
+                    from_uid: Some(10),
+                    act_info: vec![sonettobuf::BuffActInfo {
+                        act_id: Some(1139),
+                        param: vec![70_000],
+                        str_param: Some(String::new()),
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let command = RuleOp::Command(BattleCommand::Buff(BuffCommand::AccumulateCappedActState(
+        crate::engine::manager::buff::BuffAccumulateCappedActState {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60298, "AddMeiLeiErCharge"),
+            },
+            target_uid: 10,
+            buff_uid: 1006,
+            act_id: 1139,
+            delta: 40_000,
+            maximum: 150_000,
+        },
+    )));
+    let mut queue = VecDeque::from([queued(command.clone()), queued(command)]);
+
+    let result = drain_queue_with_frames(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &mut queue,
+        Vec::new(),
+    )
+    .unwrap();
+
+    let markers = result
+        .outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            RuleOutcome::Buff(changes) => changes.act_info_markers.first(),
+            _ => None,
+        })
+        .map(|marker| marker.params[0])
+        .collect::<Vec<_>>();
+    assert_eq!(markers, vec![110_000, 150_000]);
+    assert_eq!(
+        managers.buff.snapshot(10, 1006).unwrap().act_info[0].param,
+        [150_000]
+    );
+}
+
 fn entity(uid: i64, model_id: i32, hp: i32, passive_skill: Vec<i32>) -> FightEntityInfo {
     FightEntityInfo {
         uid: Some(uid),

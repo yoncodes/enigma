@@ -2531,6 +2531,27 @@ fn round_end_buff_id_gate_keeps_its_exact_key() {
 }
 
 #[test]
+fn entity_settlement_buff_id_gate_keeps_owner_scope_and_exact_key() {
+    assert_eq!(
+        parse(19303, "HasBuffId", &["31460001".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Present,
+            buff_ids: vec![31460001],
+        })
+    );
+    let definition = find_key(19303, "HasBuffId").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEndEntitySettlement,
+            phase: None,
+        }
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert!(definition.filters_behavior_targets);
+}
+
+#[test]
 fn accumulated_owner_buff_count_keeps_owner_scope_and_exact_key() {
     assert_eq!(
         parse(

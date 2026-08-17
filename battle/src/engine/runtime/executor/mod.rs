@@ -164,11 +164,26 @@ impl RuleOutcome {
                 BattleChange::SkillLifecycle(lifecycle.clone()),
                 BattleChange::ExPoint(*cost),
             ],
-            Self::Buff(change) => vec![BattleChange::Buff(change.clone())],
+            Self::Buff(change) => std::iter::once(BattleChange::Buff(change.clone()))
+                .chain(
+                    change
+                        .act_info_markers
+                        .iter()
+                        .cloned()
+                        .map(BattleChange::BuffActInfoMarker),
+                )
+                .collect(),
             Self::BuffBatch(changes) => changes
                 .iter()
-                .cloned()
-                .map(|change| BattleChange::Buff(Box::new(change)))
+                .flat_map(|change| {
+                    std::iter::once(BattleChange::Buff(Box::new(change.clone()))).chain(
+                        change
+                            .act_info_markers
+                            .iter()
+                            .cloned()
+                            .map(BattleChange::BuffActInfoMarker),
+                    )
+                })
                 .collect(),
             Self::BuffFeatureMarker(change) => vec![BattleChange::BuffFeatureMarker(*change)],
             Self::EffectMarker(change) => vec![BattleChange::EffectMarker(change.clone())],

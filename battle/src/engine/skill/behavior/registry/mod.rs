@@ -90,7 +90,7 @@ pub struct BehaviorDefinition {
     pub target_emission_mode: TargetEmissionMode,
     pub skill_destination_mode: SkillDestinationMode,
     pub output_owner: OutputOwner,
-    pub output_owner_for: fn(&ParsedBehavior, usize) -> Option<OutputOwner>,
+    pub output_owner_for: fn(&ParsedBehavior, &RuleOp, usize) -> Option<OutputOwner>,
     pub references: fn(&ParsedBehavior) -> RuleReferences,
     pub card_play_role: CardPlayRole,
     pub condition_route_override: Option<ConditionRouteOverride>,
@@ -135,7 +135,7 @@ pub trait BehaviorHandler {
         None
     }
 
-    fn output_owner(_: &ParsedBehavior, _: usize) -> Option<OutputOwner> {
+    fn output_owner(_: &ParsedBehavior, _: &RuleOp, _: usize) -> Option<OutputOwner> {
         None
     }
 
@@ -509,9 +509,12 @@ behavior_definitions! {
     [60152] "AddEmitterEnergy" => super::resource::Handler, AddEmitterEnergy, Immediate, destination, super::resource::supports_emitter_energy;
     [60153] "AddTeamEnergy" => super::resource::Handler, AddTeamEnergy, Immediate, setup_parent_destination, super::resource::supports_team_energy;
     [60154] "AddRedOrBlueCount" => super::resource::Handler, AddRedOrBlueCount, Immediate, destination, super::resource::supports_red_or_blue_count;
+    [60298] "AddMeiLeiErCharge" => super::resource::Handler, AddBuffOwnedCharge, Immediate, destination, super::resource::supports_buff_owned_charge;
+    [60305] "ConsumeBuffMeiLeiEr" => super::resource::Handler, ConsumeBuffIntoChargeAndRewards, Immediate, destination, super::resource::supports_consume_buff_into_charge_and_rewards;
     [60291] "AddDevicePower" => super::resource::Handler, AddConduitPower, Immediate, destination, super::resource::supports_conduit_power;
     [60292] "AddDeviceExPoint" => super::resource::Handler, AddConduitExPoint, Immediate, setup_parent_destination, super::resource::supports_ex_point_gain;
     [60293] "SetDeviceSkillIndex" => super::resource::Handler, SetConduitSkillGroup, Immediate, destination, super::resource::supports_conduit_skill_group;
+    [60297] "AddDeviceCounter" => super::resource::Handler, AddConduitCounter, Immediate, destination, super::resource::supports_conduit_counter;
     [100034] "StopDeviceSkill" => super::resource::Handler, StopConduitSkill, Immediate, destination, arguments::none;
     [60231] "RaspberryAddCount" => super::resource::Handler, RaspberryAddCount, Immediate, destination, super::resource::supports_raspberry_add_count;
     [60233] "RaspberryBigSkill" => super::resource::Handler, RaspberryBigSkill, Immediate, destination, super::resource::supports_raspberry_big_skill;

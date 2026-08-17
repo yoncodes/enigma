@@ -14,6 +14,7 @@ use crate::engine::{
     round::{command::RoundCommand, state::RoundState},
     runtime::{determinism::RoundDeterminism, schedule::card_skill_is_blocked},
     skill::{
+        buff_act::action_point::skill_uses_action_point,
         effect::SkillEffectCatalog,
         target::{TargetContext, TargetPool, TargetRequest, TargetResolver},
     },
@@ -178,7 +179,7 @@ fn apply_prefix(
                 {
                     return false;
                 }
-                let ap_cost = i32::from(!card.temp_card.unwrap_or_default());
+                let ap_cost = action_point_cost(card, source_uid, skill_id, managers, catalog);
                 (
                     CardCommand::Play(CardPlay {
                         origin: CARD_PLAY_ORIGIN,
@@ -226,7 +227,7 @@ fn best_candidate(
         .enumerate()
         .filter_map(|(card_index, card)| {
             let (source_uid, skill_id) = card_identity(card, None)?;
-            let normal_ap_cost = i32::from(!card.temp_card.unwrap_or_default());
+            let normal_ap_cost = action_point_cost(card, source_uid, skill_id, managers, catalog);
             if normal_ap_cost > normal_ap {
                 return None;
             }
@@ -284,6 +285,23 @@ fn card_identity(card: &CardInfo, chosen_skill_id: Option<i32>) -> Option<(i64, 
     let source_uid = card.uid?;
     let skill_id = chosen_skill_id.or(card.skill_id)?;
     (source_uid != 0 && skill_id > 0).then_some((source_uid, skill_id))
+}
+
+fn action_point_cost(
+    card: &CardInfo,
+    source_uid: i64,
+    skill_id: i32,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+) -> i32 {
+    i32::from(
+        !card.temp_card.unwrap_or_default()
+            && skill_uses_action_point(
+                &managers.buff.active_features(&managers.hp),
+                source_uid,
+                catalog.is_big_skill(skill_id),
+            ),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

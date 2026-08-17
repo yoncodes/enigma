@@ -364,10 +364,7 @@ fn real_hurt_fix_uses_only_its_captured_add_and_refresh_markers() {
     let wire = super::super::wire::find(519, "RealHurtFix").unwrap();
     let marker = sonettobuf::effect_type_enum::EffectType::Realhurtfix as i32;
 
-    assert_eq!(
-        wire.markers(super::super::wire::WirePhase::Add),
-        &[marker]
-    );
+    assert_eq!(wire.markers(super::super::wire::WirePhase::Add), &[marker]);
     assert!(
         wire.markers(super::super::wire::WirePhase::Static)
             .is_empty()
@@ -383,10 +380,7 @@ fn dot_uses_only_its_captured_add_and_refresh_markers() {
     let wire = super::super::wire::find(202, "Dot").unwrap();
     let marker = sonettobuf::effect_type_enum::EffectType::Dot as i32;
 
-    assert_eq!(
-        wire.markers(super::super::wire::WirePhase::Add),
-        &[marker]
-    );
+    assert_eq!(wire.markers(super::super::wire::WirePhase::Add), &[marker]);
     assert!(
         wire.markers(super::super::wire::WirePhase::Static)
             .is_empty()
@@ -540,6 +534,34 @@ fn layered_attribute_penalty_is_an_exact_static_consumer() {
         &args[..6]
     ));
     assert!(find(1029, "AddAttrByOtherBuffLayer").is_some());
+}
+
+#[test]
+fn rapport_scaled_critical_defense_is_an_exact_add_only_consumer() {
+    use super::super::wire::WirePhase;
+    use sonettobuf::effect_type_enum::EffectType;
+
+    let args = [204, -150, 31460003, -30, 5, 204, 0];
+    let definition = find(1141, "AddAttrByOtherBuffLayer").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::AddAttrBySourceBuffLayer);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        definition.destination(),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(1141, "AddAttrByOtherBuffLayer", &args));
+    assert!(!has_destination(
+        1141,
+        "AddAttrByOtherBuffLayer",
+        &args[..6]
+    ));
+    let wire = definition.wire.unwrap();
+    assert_eq!(wire.markers(WirePhase::Add), &[EffectType::Attr as i32]);
+    assert!(wire.markers(WirePhase::Static).is_empty());
+    assert!(wire.markers(WirePhase::Refresh).is_empty());
+    assert!(find(1029, "AddAttrByOtherBuffLayer").is_some());
+    assert!(find(1036, "AddAttrByOtherBuffLayer").is_some());
 }
 
 #[test]
@@ -1069,4 +1091,91 @@ fn hero_temp_cards_keep_their_exact_round_start_route() {
     assert!(!has_destination(739, "CreateHeroTempCards", &[0, 2, 1]));
     assert!(!has_destination(739, "CreateHeroTempCards", &[1, 2, 2]));
     assert!(find(739, "AddSpTempCard").is_none());
+}
+
+#[test]
+fn buff_owned_charge_keeps_its_exact_state_route() {
+    crate::test_support::init_config();
+    let definition = find(1139, "MeiLeiErCharge").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::BuffOwnedCharge);
+    assert_eq!(
+        definition.completion_gap,
+        Some("manual activation is not proven")
+    );
+    for (buff_id, raw) in [
+        (115370004, "1139#100000#150000#30110131"),
+        (31460141, "1139#100000#150000#31460181"),
+        (31460142, "1139#100000#150000#31460182"),
+        (31460143, "1139#100000#150000#31460183"),
+    ] {
+        let configured = config::configs::get().skill_buff.get(buff_id).unwrap();
+        assert_eq!(configured.features, raw);
+        let values = crate::engine::entity::skill::split_ids(&configured.features);
+        assert_eq!(
+            destination(1139, "MeiLeiErCharge", &values[1..]),
+            Some(BuffActDestination::StateConsumer)
+        );
+    }
+    assert!(!has_destination(
+        1139,
+        "MeiLeiErCharge",
+        &[0, 150_000, 31460183]
+    ));
+    assert!(!has_destination(
+        1139,
+        "MeiLeiErCharge",
+        &[100_000, 99_999, 31460183]
+    ));
+    assert!(!has_destination(
+        1139,
+        "MeiLeiErCharge",
+        &[100_000, 150_000, 0]
+    ));
+    assert!(!has_destination(
+        1139,
+        "MeiLeiErCharge",
+        &[100_000, 150_000, 31460183, 1]
+    ));
+    assert!(find(1139, "HeatScaleUseSkill").is_none());
+}
+
+#[test]
+fn bendith_rules_keep_distinct_exact_routes_and_structured_support() {
+    crate::test_support::init_config();
+    let replacement = find(1138, "ReplaceEntitySkillGroup").unwrap();
+    assert_eq!(replacement.kind, BuffActKind::ReplaceEntitySkillGroup);
+    assert_eq!(
+        replacement.transaction.events,
+        &[EventKind::BuffAdded, EventKind::BuffRemoved]
+    );
+    assert_eq!(
+        destination_with_raw(
+            config::try_get(),
+            1138,
+            "ReplaceEntitySkillGroup",
+            &[],
+            Some("1138#1:31460211,31460212,31460213#2:31460221,31460222,31460223")
+        ),
+        Some(BuffActDestination::Transaction)
+    );
+    assert_eq!(
+        destination_with_raw(
+            config::try_get(),
+            1138,
+            "ReplaceEntitySkillGroup",
+            &[],
+            Some("1138#1:31460211#2:31460221")
+        ),
+        None
+    );
+
+    let no_cost = find(1140, "SkillNoUseActPoint").unwrap();
+    assert_eq!(no_cost.kind, BuffActKind::SkillNoUseActPoint);
+    assert_eq!(
+        destination(1140, "SkillNoUseActPoint", &[]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert_eq!(destination(1140, "SkillNoUseActPoint", &[1]), None);
+    assert!(find(1140, "BigSkillNoUseActPoint").is_none());
 }

@@ -40,6 +40,7 @@ pub enum InitialStateRule {
     CrystalSelection,
     ConduitCardSelection,
     ButterflyAllowedSkillKinds,
+    ZeroInteger,
     HeatScale,
     CurrentHpPermille,
     SourceAttackThreshold,

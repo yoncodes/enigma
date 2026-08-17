@@ -712,6 +712,18 @@ fn project_change(
             *applied_delta,
             *kind,
         )],
+        BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::CounterChanged {
+            source_uid,
+            team,
+            kind,
+            after,
+            ..
+        }) => vec![EffectPacket::conduit_counter_changed(
+            *source_uid,
+            *team,
+            *kind,
+            *after,
+        )],
         BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::PowersCleared {
             origin,
             source_uid,
@@ -745,7 +757,27 @@ fn project_change(
         BattleChange::Card(changes) if changes.kind == CardChangeKind::AiQueueSet => Vec::new(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::TeamCardsSet => Vec::new(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::OwnerSkillsReplaced => {
-            Vec::new()
+            let Some(entity) = changes.entity.as_ref() else {
+                return Ok(Vec::new());
+            };
+            let owner_uid = entity.uid.unwrap_or_default();
+            let team_type = entity.team_type.unwrap_or_default();
+            let mut effects = changes
+                .before
+                .iter()
+                .zip(&changes.after)
+                .enumerate()
+                .filter(|(_, (before, after))| {
+                    before.uid == Some(owner_uid)
+                        && before.uid == after.uid
+                        && before.skill_id != after.skill_id
+                })
+                .map(|(index, (_, after))| {
+                    CardPacket::convert_owner_skill_card(owner_uid, index, after.clone(), team_type)
+                })
+                .collect::<Vec<_>>();
+            effects.push(EffectPacket::hero_upgrade(owner_uid, 0, entity.clone()));
+            effects
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::AiOwnerRemoved => changes
             .owner_removal

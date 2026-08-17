@@ -1,9 +1,9 @@
 use crate::engine::{
     event::payload::BattleEvent,
     manager::{
+        BattleManagers,
         buff::{BuffChildUidReservation, BuffCommand, BuffGrant},
         emanation::EmanationKind,
-        BattleManagers,
     },
     skill::{
         action::{SkillExecutionMode, SkillPhase},
@@ -27,8 +27,14 @@ pub fn rule_ops(
     {
         return Some(Vec::new());
     }
-    let [buff_id, blue_layer, purple_layer, green_rank_two, green_rank_three, ..] =
-        feature.args.as_slice()
+    let [
+        buff_id,
+        blue_layer,
+        purple_layer,
+        green_rank_two,
+        green_rank_three,
+        ..,
+    ] = feature.args.as_slice()
     else {
         return None;
     };

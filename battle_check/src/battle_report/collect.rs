@@ -557,11 +557,22 @@ fn buff_act(
     let row = db.buff_act.get(opcode)?;
     let definition = buff_act_registry::find(opcode, &row.r#type);
     let args = &values[1..];
-    let destination = buff_act_registry::destination(opcode, &row.r#type, args);
+    let destination =
+        buff_act_registry::destination_with_raw(Some(db), opcode, &row.r#type, args, Some(raw));
     let semantic = match definition {
         None => "route missing",
+        Some(definition)
+            if definition
+                .raw_supports
+                .is_some_and(|supports| !supports(Some(db), raw)) =>
+        {
+            "unsupported arguments"
+        }
         Some(definition) if definition.supports.is_some_and(|supports| !supports(args)) => {
             "unsupported arguments"
+        }
+        Some(definition) if destination.is_some() => {
+            definition.completion_gap.unwrap_or("supported")
         }
         Some(_) if destination.is_none() => "no semantic owner",
         Some(_) => "supported",
@@ -808,5 +819,44 @@ mod text_tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn grouped_skill_replacement_reports_raw_aware_semantic_support() {
+        crate::init_config().unwrap();
+        let db = config::get();
+        let wire_evidence = crate::wire_evidence::Evidence::default();
+
+        let supported = buff_act(
+            db,
+            "1138#1:31460211,31460212,31460213#2:31460221,31460222,31460223",
+            &wire_evidence,
+        )
+        .unwrap();
+        assert_eq!(supported.node.semantic, "supported");
+
+        for raw in [
+            "1138#1:31460211#2:31460221",
+            "1138#1:30120111,30120112,30120113#2:30120121,30120122,30120123",
+        ] {
+            assert_eq!(
+                buff_act(db, raw, &wire_evidence).unwrap().node.semantic,
+                "unsupported arguments",
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn charge_report_preserves_state_owner_but_marks_manual_activation_incomplete() {
+        crate::init_config().unwrap();
+        let db = config::get();
+        let wire_evidence = crate::wire_evidence::Evidence::default();
+
+        let charge = buff_act(db, "1139#100000#150000#31460183", &wire_evidence).unwrap();
+
+        assert_eq!(charge.node.registry, "exact");
+        assert_eq!(charge.node.semantic, "manual activation is not proven");
+        assert_eq!(charge.destination, "StateConsumer");
     }
 }

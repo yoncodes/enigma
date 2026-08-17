@@ -265,6 +265,9 @@ impl BuffManager {
             }
         }
 
+        let fixed_max_hp_delta =
+            super::query::fixed_attribute_value(&active, crate::engine::entity::attr::AttrId::Hp)
+                .unwrap_or_default();
         let mut buff = active.buff;
         if clears_count {
             buff.count = Some(0);
@@ -276,6 +279,7 @@ impl BuffManager {
             config_effect,
             delete_reason: None,
             depleted: false,
+            fixed_max_hp_delta,
         });
         removed
     }

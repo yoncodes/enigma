@@ -268,6 +268,9 @@ impl SkillEffectCatalog {
                         Some(BuffActKind::BloodValueUseSkill) => {
                             skills.extend(values.get(3).copied())
                         }
+                        Some(BuffActKind::BuffOwnedCharge) => {
+                            skills.extend(values.get(3).copied())
+                        }
                         Some(
                             BuffActKind::UseSkillToEnemy
                             | BuffActKind::ConsumeBuffContinueChannel
@@ -510,10 +513,12 @@ impl SkillEffectCatalog {
                         raw,
                         "unregistered buff act in current battle"
                     );
-                } else if crate::engine::skill::buff_act::registry::destination(
+                } else if crate::engine::skill::buff_act::registry::destination_with_raw(
+                    Some(db),
                     act.id,
                     &act.r#type,
                     args,
+                    Some(raw),
                 )
                 .is_none()
                 {

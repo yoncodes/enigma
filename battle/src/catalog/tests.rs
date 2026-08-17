@@ -712,6 +712,104 @@ fn normalizes_device_card_weights() {
 }
 
 #[test]
+fn resolves_selected_destiny_device_before_normal_and_base_devices() {
+    crate::test_support::init_config();
+    let catalog = BattleCatalog::new(crate::test_support::game_data());
+    let entity = sonettobuf::FightEntityInfo {
+        model_id: Some(3025),
+        ex_skill_level: Some(2),
+        destiny_stone: Some(302502),
+        destiny_rank: Some(4),
+        ..Default::default()
+    };
+
+    assert_eq!(
+        catalog.conduit_device(&entity).unwrap().unwrap(),
+        vec![
+            vec![crate::engine::manager::conduit::ConduitSkill {
+                skill_id: 302524112,
+                cost_type: 2,
+                cost_value: 1,
+                is_stopped: false,
+            }],
+            vec![crate::engine::manager::conduit::ConduitSkill {
+                skill_id: 302514212,
+                cost_type: 2,
+                cost_value: 1,
+                is_stopped: false,
+            }],
+            vec![crate::engine::manager::conduit::ConduitSkill {
+                skill_id: 302504312,
+                cost_type: 999,
+                cost_value: 0,
+                is_stopped: false,
+            }],
+        ]
+    );
+}
+
+#[test]
+fn resolves_normal_exact_skill_level_device_before_base_device() {
+    crate::test_support::init_config();
+    let catalog = BattleCatalog::new(crate::test_support::game_data());
+    let entity = sonettobuf::FightEntityInfo {
+        model_id: Some(3144),
+        ex_skill_level: Some(2),
+        ..Default::default()
+    };
+
+    assert_eq!(
+        catalog
+            .conduit_device(&entity)
+            .unwrap()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .map(|skill| skill.skill_id)
+            .collect::<Vec<_>>(),
+        vec![31441111, 31441121, 31441131]
+    );
+}
+
+#[test]
+fn ignores_zero_device_from_exact_destiny_skill_level() {
+    crate::test_support::init_config();
+    let catalog = BattleCatalog::new(crate::test_support::game_data());
+    let entity = sonettobuf::FightEntityInfo {
+        model_id: Some(3081),
+        ex_skill_level: Some(2),
+        destiny_stone: Some(308101),
+        destiny_rank: Some(4),
+        ..Default::default()
+    };
+
+    assert!(catalog.conduit_device(&entity).unwrap().is_none());
+}
+
+#[test]
+fn resolves_base_device_when_no_exact_skill_level_device_exists() {
+    crate::test_support::init_config();
+    let catalog = BattleCatalog::new(crate::test_support::game_data());
+    let entity = sonettobuf::FightEntityInfo {
+        model_id: Some(3149),
+        ex_skill_level: Some(0),
+        ..Default::default()
+    };
+
+    assert_eq!(
+        catalog
+            .conduit_device(&entity)
+            .unwrap()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .map(|skill| skill.skill_id)
+            .collect::<Vec<_>>(),
+        vec![31490111, 31490121, 31490131, 31490141, 31490151]
+    );
+}
+
+#[test]
 fn trial_skill_groups_require_exact_positive_identity() {
     crate::test_support::init_config();
     let catalog = BattleCatalog::new(crate::test_support::game_data());

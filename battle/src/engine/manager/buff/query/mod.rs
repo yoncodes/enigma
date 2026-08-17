@@ -2,6 +2,32 @@ use super::update::special_count_value;
 use super::*;
 use crate::engine::skill::buff_act::registry::BuffActKind;
 
+pub(super) fn fixed_attribute_value(active: &ActiveBuff, attr_id: AttrId) -> Option<i32> {
+    let act_id = active
+        .definition
+        .as_ref()?
+        .features()
+        .iter()
+        .find_map(|feature| {
+            (feature.arguments_supported
+                && feature.kind == Some(BuffActKind::EachChangeAttrOneWay)
+                && feature.values.get(1).copied() == Some(attr_id.id()))
+            .then(|| feature.values.first().copied())
+            .flatten()
+        })?;
+    active
+        .buff
+        .act_info
+        .iter()
+        .filter(|info| info.act_id == Some(act_id))
+        .filter_map(|info| info.str_param.as_deref()?.split_once('#'))
+        .find_map(|(raw_attr, value)| {
+            (raw_attr.parse::<i32>().ok() == Some(attr_id.id()))
+                .then(|| value.parse::<i32>().ok())
+                .flatten()
+        })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecialCountOutput {
     pub source_uid: i64,
@@ -718,6 +744,31 @@ impl BuffManager {
             return parts.into_iter().map(|(_, delta)| delta).sum();
         }
         deltas().map(|(_, delta)| delta).sum()
+    }
+
+    pub fn fixed_attribute_value(&self, buff_uid: i64, attr_id: AttrId) -> Option<i32> {
+        let active = self
+            .buffs
+            .iter()
+            .find(|active| active.buff.uid == Some(buff_uid))?;
+        fixed_attribute_value(active, attr_id)
+    }
+
+    pub fn fixed_attribute_delta(&self, uid: i64, attr_id: AttrId) -> i32 {
+        self.buffs
+            .iter()
+            .filter(|active| active.owner_uid == uid)
+            .filter(|active| {
+                active.definition.as_ref().is_some_and(|definition| {
+                    definition.features().iter().any(|feature| {
+                        feature.arguments_supported
+                            && feature.kind == Some(BuffActKind::EachChangeAttrOneWay)
+                            && feature.values.get(1).copied() == Some(attr_id.id())
+                    })
+                })
+            })
+            .filter_map(|active| self.fixed_attribute_value(active.buff.uid?, attr_id))
+            .sum()
     }
 
     pub fn configured_attribute_deltas(buff_id: i32) -> Vec<(AttrId, i32)> {

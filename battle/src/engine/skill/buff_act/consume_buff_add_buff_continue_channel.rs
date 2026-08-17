@@ -3,11 +3,11 @@ use sonettobuf::BuffActInfo;
 use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
     manager::{
+        BattleManagers,
         buff::{
             BuffActInfoMarkerResult, BuffCommand, BuffConsume, BuffRemove, BuffRemoveSelector,
             BuffSelector, BuffSetState, DepletedBuff,
         },
-        BattleManagers,
     },
     skill::{
         action::SkillInvocation,
@@ -350,12 +350,14 @@ mod tests {
             ]
         );
         assert_eq!(managers.buff.buff_id_or_type_amount(10, 31280113), 110);
-        assert!(managers
-            .buff
-            .snapshot(10, 2)
-            .unwrap()
-            .act_info
-            .iter()
-            .any(|info| info.act_id == Some(1031) && info.str_param.as_deref() == Some("50")));
+        assert!(
+            managers
+                .buff
+                .snapshot(10, 2)
+                .unwrap()
+                .act_info
+                .iter()
+                .any(|info| info.act_id == Some(1031) && info.str_param.as_deref() == Some("50"))
+        );
     }
 }

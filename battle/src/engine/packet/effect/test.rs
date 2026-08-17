@@ -411,6 +411,7 @@ fn buff_update_and_delete_use_snapshot_without_scalar_buff_id() {
         config_effect: 0,
         delete_reason: None,
         depleted: false,
+        fixed_max_hp_delta: 0,
     })];
 
     assert_eq!(update[0].effect_type, Some(EffectType::Buffupdate as i32));
@@ -430,6 +431,7 @@ fn buff_update_and_delete_use_snapshot_without_scalar_buff_id() {
         config_effect: 0,
         delete_reason: None,
         depleted: true,
+        fixed_max_hp_delta: 0,
     });
     assert_eq!(depleted.buff.unwrap().duration, Some(1));
 }

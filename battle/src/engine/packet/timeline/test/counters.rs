@@ -33,6 +33,38 @@ fn team_injury_change_projects_each_committed_counter_value() {
 }
 
 #[test]
+fn explicit_conduit_counter_change_projects_the_committed_absolute_value() {
+    let effects = project_change_for_test(&BattleChange::Conduit(
+        crate::engine::manager::conduit::ConduitChange::CounterChanged {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60297, "AddDeviceCounter"),
+            },
+            source_uid: -2,
+            team: 1,
+            kind: crate::engine::manager::conduit::ConduitCounterKind::Activation,
+            requested_delta: 2,
+            applied_delta: 2,
+            after: 2,
+        },
+    ))
+    .unwrap();
+
+    let [effect] = effects.as_slice() else {
+        panic!("expected one counter-change effect");
+    };
+    assert_eq!(effect.target_id, Some(-2));
+    assert_eq!(effect.effect_type, Some(EffectType::Counterchange as i32));
+    assert_eq!(effect.effect_num, Some(63));
+    assert_eq!(effect.config_effect, Some(0));
+    assert_eq!(effect.buff_act_id, Some(0));
+    assert_eq!(effect.reserve_id, Some(0));
+    assert_eq!(effect.reserve_str.as_deref(), Some("2"));
+    assert_eq!(effect.team_type, Some(1));
+    assert_eq!(effect.effect_num1, Some(0));
+}
+
+#[test]
 fn zero_cost_conduit_activation_projects_zero_markers() {
     let frame = SemanticFrame {
         owner: FrameOwner::ConduitAction {

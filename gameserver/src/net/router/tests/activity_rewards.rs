@@ -253,9 +253,7 @@ async fn act128_milestone_command_emits_the_captured_reward_sequence() {
     let material = MaterialChangePush::decode(&*body).unwrap();
     assert_eq!(
         material.get_approach,
-        Some(
-            crate::types::material_get_approach::MaterialGetApproach::Act128MilestoneBonus.id()
-        )
+        Some(crate::types::material_get_approach::MaterialGetApproach::Act128MilestoneBonus.id())
     );
     assert_eq!(
         material

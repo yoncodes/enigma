@@ -589,6 +589,281 @@ fn moxie_readiness_survives_another_owners_skill_rewrite() {
 }
 
 #[test]
+fn bendith_buff_drain_projects_add_remove_and_recast_in_capture_order() {
+    crate::test_support::init_config();
+    let base_group1 = vec![31460114, 31460115, 31460116];
+    let base_group2 = vec![31460127, 31460128, 31460129];
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3146),
+                team_type: Some(1),
+                current_hp: Some(100),
+                skill_group1: base_group1,
+                skill_group2: base_group2,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![
+                CardInfo {
+                    uid: Some(10),
+                    hero_id: Some(3146),
+                    skill_id: Some(31460114),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(10),
+                    hero_id: Some(3146),
+                    skill_id: Some(31460127),
+                    ..Default::default()
+                },
+            ],
+            draw_pile: Vec::new(),
+            deck_num: 2,
+        }))
+        .unwrap();
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(60001, "AddBuff"),
+    };
+    let grant = || {
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
+            origin,
+            source_uid: 10,
+            target_uid: 10,
+            buff_id: 31460137,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })))
+    };
+    let remove = || {
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+            origin,
+            target_uid: 10,
+            selector: BuffRemoveSelector::ExactId(31460137),
+        })))
+    };
+    let projected_types = |result: &crate::engine::runtime::drain::DrainResult| {
+        fn collect(effect: &sonettobuf::ActEffect, types: &mut Vec<i32>) {
+            let relevant = [
+                sonettobuf::effect_type_enum::EffectType::Cardaconvertcardb as i32,
+                sonettobuf::effect_type_enum::EffectType::Heroupgrade as i32,
+                sonettobuf::effect_type_enum::EffectType::Buffadd as i32,
+                sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+            ];
+            if effect
+                .effect_type
+                .is_some_and(|kind| relevant.contains(&kind))
+            {
+                types.push(effect.effect_type.unwrap());
+            }
+            if let Some(step) = &effect.fight_step {
+                for nested in &step.act_effect {
+                    collect(nested, types);
+                }
+            }
+        }
+
+        let mut types = Vec::new();
+        for effect in crate::engine::packet::timeline::project(&result.frames)
+            .unwrap()
+            .iter()
+            .flat_map(|step| &step.act_effect)
+        {
+            collect(effect, &mut types);
+        }
+        types
+    };
+    let converted = sonettobuf::effect_type_enum::EffectType::Cardaconvertcardb as i32;
+    let upgraded = sonettobuf::effect_type_enum::EffectType::Heroupgrade as i32;
+    let added = sonettobuf::effect_type_enum::EffectType::Buffadd as i32;
+    let deleted = sonettobuf::effect_type_enum::EffectType::Buffdel as i32;
+
+    let add = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [grant()],
+    )
+    .unwrap();
+    assert_eq!(
+        projected_types(&add),
+        vec![converted, converted, upgraded, added]
+    );
+
+    let recast = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [remove(), grant()],
+    )
+    .unwrap();
+    assert_eq!(
+        projected_types(&recast),
+        vec![
+            converted, converted, upgraded, deleted, converted, converted, upgraded, added,
+        ]
+    );
+
+    let remove = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [remove()],
+    )
+    .unwrap();
+    assert_eq!(
+        projected_types(&remove),
+        vec![converted, converted, upgraded, deleted]
+    );
+}
+
+#[test]
+fn rapport_debuff_projects_add_remove_and_recast_in_capture_order() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3146),
+                team_type: Some(1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1),
+                    buff_id: Some(31460003),
+                    layer: Some(3),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(-1),
+                    buff_id: Some(31460003),
+                    layer: Some(8),
+                    from_uid: Some(-1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(1, "AddBuff"),
+    };
+    let grant = || {
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
+            origin,
+            source_uid: 10,
+            target_uid: -1,
+            buff_id: 31460212,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })))
+    };
+    let remove = || {
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+            origin,
+            target_uid: -1,
+            selector: BuffRemoveSelector::ExactId(31460212),
+        })))
+    };
+    let projected_types = |result: &crate::engine::runtime::drain::DrainResult| {
+        fn collect(effect: &sonettobuf::ActEffect, types: &mut Vec<i32>) {
+            let relevant = [
+                sonettobuf::effect_type_enum::EffectType::Buffadd as i32,
+                sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+                sonettobuf::effect_type_enum::EffectType::Attr as i32,
+            ];
+            if effect
+                .effect_type
+                .is_some_and(|kind| relevant.contains(&kind))
+            {
+                types.push(effect.effect_type.unwrap());
+            }
+            if let Some(step) = &effect.fight_step {
+                for nested in &step.act_effect {
+                    collect(nested, types);
+                }
+            }
+        }
+
+        let mut types = Vec::new();
+        for effect in crate::engine::packet::timeline::project(&result.frames)
+            .unwrap()
+            .iter()
+            .flat_map(|step| &step.act_effect)
+        {
+            collect(effect, &mut types);
+        }
+        types
+    };
+    let added = sonettobuf::effect_type_enum::EffectType::Buffadd as i32;
+    let deleted = sonettobuf::effect_type_enum::EffectType::Buffdel as i32;
+    let attr = sonettobuf::effect_type_enum::EffectType::Attr as i32;
+
+    let add = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [grant()],
+    )
+    .unwrap();
+    assert_eq!(projected_types(&add), vec![added, attr]);
+    assert_eq!(
+        managers.persistent_attribute_delta(-1, AttrId::CriticalDef),
+        -240
+    );
+
+    let recast = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [remove(), grant()],
+    )
+    .unwrap();
+    assert_eq!(projected_types(&recast), vec![deleted, added, attr]);
+    assert_eq!(
+        managers.persistent_attribute_delta(-1, AttrId::CriticalDef),
+        -240
+    );
+}
+
+#[test]
 fn moxie_gain_waits_for_the_normal_card_refill() {
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -2268,6 +2543,128 @@ fn active_skill_publishes_hits_between_after_damage_and_after_hit_rows() {
 
     assert!(fear_act_info < fear_delete);
     assert!(fear < attacked && attacked < combustion_cleanup && combustion_cleanup < shock_wave);
+}
+
+#[test]
+fn rhiannon_ultimate_snapshots_ally_attributes_before_each_buff_grant() {
+    crate::test_support::init_config();
+    let ally = |uid| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(1),
+        current_hp: Some(2_000),
+        attr: Some(HeroAttribute {
+            hp: Some(2_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3146),
+                    team_type: Some(1),
+                    current_hp: Some(12_763),
+                    attr: Some(HeroAttribute {
+                        hp: Some(12_763),
+                        attack: Some(2_140),
+                        ..Default::default()
+                    }),
+                    ex_skill: Some(31460131),
+                    ..Default::default()
+                },
+                ally(11),
+                ally(12),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31460131,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+
+    let result = run(
+        &mut managers,
+        &pool,
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(invocation)],
+    )
+    .unwrap();
+
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let effects = &steps
+        .iter()
+        .find(|step| step.act_id == Some(31460131))
+        .unwrap()
+        .act_effect;
+    for target_uid in [11, 12] {
+        let add = effects
+            .iter()
+            .position(|effect| {
+                effect.target_id == Some(target_uid)
+                    && effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(31460131)
+            })
+            .unwrap();
+        let buff_uid = effects[add].buff.as_ref().unwrap().uid.unwrap();
+        let markers = effects[..add]
+            .iter()
+            .filter(|effect| {
+                effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Buffactinfoupdate as i32)
+                    && effect.reserve_id == Some(buff_uid)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(markers.len(), 2);
+        assert!(markers.iter().all(|effect| {
+            effect.target_id == Some(0)
+                && effect.reserve_id == Some(buff_uid)
+                && effect.buff_act_info.as_ref().and_then(|info| info.act_id) == Some(1131)
+        }));
+        assert_eq!(
+            markers
+                .iter()
+                .filter_map(|effect| effect.buff_act_info.as_ref()?.str_param.as_deref())
+                .collect::<Vec<_>>(),
+            ["102#171", "101#1021"]
+        );
+        assert_eq!(
+            effects[add]
+                .buff
+                .as_ref()
+                .unwrap()
+                .act_info
+                .iter()
+                .filter_map(|info| info.str_param.as_deref())
+                .collect::<Vec<_>>(),
+            ["102#171", "101#1021"]
+        );
+        assert_eq!(managers.origin_attribute(target_uid, AttrId::Attack), 1_171);
+        assert_eq!(managers.hp.max(target_uid), 3_021);
+    }
 }
 
 #[test]

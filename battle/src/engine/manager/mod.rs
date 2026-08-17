@@ -100,12 +100,20 @@ pub(crate) fn persistent_attribute_delta(
     buffs.attribute_delta(uid, attr_id)
         + active_features
             .iter()
-            .filter(|feature| {
-                feature.owner_uid == uid
-                    && buff_act::is_kind(feature, BuffActKind::AddAttrByOtherBuffLayer)
-            })
-            .map(|feature| {
-                buff_act::add_attr_by_other_buff_layer::attribute_delta(feature, attr_id, buffs)
+            .filter_map(|feature| {
+                if feature.owner_uid != uid {
+                    return None;
+                }
+                let scope = if buff_act::is_kind(feature, BuffActKind::AddAttrByOtherBuffLayer) {
+                    buff_act::add_attr_by_other_buff_layer::LayerScope::SourceOrOwner
+                } else if buff_act::is_kind(feature, BuffActKind::AddAttrBySourceBuffLayer) {
+                    buff_act::add_attr_by_other_buff_layer::LayerScope::Source
+                } else {
+                    return None;
+                };
+                Some(buff_act::add_attr_by_other_buff_layer::attribute_delta(
+                    feature, attr_id, buffs, scope,
+                ))
             })
             .sum::<i32>()
         + active_features
@@ -178,11 +186,12 @@ impl BattleManagers {
             AttrId::Hp => hp.max,
             AttrId::Attack | AttrId::RealityDef | AttrId::MentalDef | AttrId::CriticalTechnique => {
                 let base = i64::from(self.attribute.base(uid, attr_id));
+                let flat = i64::from(self.buff.fixed_attribute_delta(uid, attr_id));
                 let delta = i64::from(
                     self.attribute.get(uid, attr_id)
                         + self.persistent_attribute_delta(uid, attr_id),
                 );
-                (base + base * delta / 1000).clamp(0, i64::from(i32::MAX)) as i32
+                (base + flat + base * delta / 1000).clamp(0, i64::from(i32::MAX)) as i32
             }
             _ => self.attribute.get(uid, attr_id) + self.persistent_attribute_delta(uid, attr_id),
         }
@@ -273,8 +282,28 @@ impl BattleManagers {
                 + dynamic;
             base * rate.max(0) / 1000 + flat
         });
-        self.buff
-            .plan_with_source_attack(&self.hp, command, source_attack)
+        let mut plan = self
+            .buff
+            .plan_with_source_attack(&self.hp, command, source_attack)?;
+        if let Some((source_uid, features)) = plan.source_relative_attribute_features() {
+            let act_info = features
+                .into_iter()
+                .filter_map(|(act_id, raw_attr, rate, cap)| {
+                    let attr = crate::engine::entity::attr::AttrId::from_raw(raw_attr)?;
+                    let value = (i64::from(self.origin_attribute(source_uid, attr))
+                        * i64::from(rate)
+                        / 1000)
+                        .clamp(0, i64::from(cap)) as i32;
+                    Some(sonettobuf::BuffActInfo {
+                        act_id: Some(act_id),
+                        param: Vec::new(),
+                        str_param: Some(format!("{raw_attr}#{value}")),
+                    })
+                })
+                .collect();
+            plan.initialize_added_act_info_without_markers(act_info);
+        }
+        Ok(plan)
     }
 
     pub(crate) fn commit_buff(&mut self, plan: BuffPlan) -> BuffChanges {
@@ -674,7 +703,35 @@ impl BattleManagers {
         &mut self,
         command: card::CardCommand,
     ) -> Result<card::CardChanges, card::CardCommandError> {
+        let skill_group_replacement = match &command {
+            card::CardCommand::ReplaceOwnerSkills(replace) => self
+                .entity
+                .snapshot(replace.owner_uid)
+                .filter(|entity| {
+                    (!replace.replacement_group1.is_empty()
+                        || !replace.replacement_group2.is_empty())
+                        && (replace.replacement_group1.is_empty()
+                            || entity.skill_group1 == replace.base_group1)
+                        && (replace.replacement_group2.is_empty()
+                            || entity.skill_group2 == replace.base_group2)
+                })
+                .map(|mut entity| {
+                    if !replace.replacement_group1.is_empty() {
+                        entity.skill_group1 = replace.replacement_group1.clone();
+                    }
+                    if !replace.replacement_group2.is_empty() {
+                        entity.skill_group2 = replace.replacement_group2.clone();
+                    }
+                    entity
+                }),
+            _ => None,
+        };
         let mut changes = self.card.execute_command(command)?;
+        if let Some(entity) = skill_group_replacement {
+            let owner_uid = entity.uid.unwrap_or_default();
+            self.entity.update(entity);
+            changes.entity = self.entity_snapshot(owner_uid);
+        }
         if changes.kind == card::CardChangeKind::HandRankChanged
             && let Some(owner_uid) = changes.rank_results.iter().find_map(|result| match result {
                 card::CardRankResult::Changed(change) => Some(change.owner_uid),

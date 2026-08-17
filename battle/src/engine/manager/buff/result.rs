@@ -87,6 +87,7 @@ pub struct BuffRemoveResult {
     pub config_effect: i32,
     pub delete_reason: Option<BuffDeleteReason>,
     pub depleted: bool,
+    pub fixed_max_hp_delta: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,13 +157,17 @@ impl BuffReplaceResult {
                         .first()
                         .and_then(|info| info.act_id)
                         .unwrap_or_default(),
-                    act_value: removed
-                        .buff
-                        .act_info
-                        .first()
-                        .and_then(|info| info.param.first())
-                        .copied()
-                        .unwrap_or_default(),
+                    act_value: if removed.fixed_max_hp_delta != 0 {
+                        removed.fixed_max_hp_delta
+                    } else {
+                        removed
+                            .buff
+                            .act_info
+                            .first()
+                            .and_then(|info| info.param.first())
+                            .copied()
+                            .unwrap_or_default()
+                    },
                 })
             })
             .collect::<Vec<_>>();

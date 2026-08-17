@@ -11,21 +11,8 @@ use crate::engine::{
     },
 };
 
-use super::{is_kind, registry::BuffActKind};
-
 pub fn supports(args: &[i32]) -> bool {
     args.is_empty()
-}
-
-pub fn skill_uses_action_point(
-    features: &[ActiveBuffFeature],
-    owner_uid: i64,
-    is_big_skill: bool,
-) -> bool {
-    !is_big_skill
-        || !features.iter().any(|feature| {
-            feature.owner_uid == owner_uid && is_kind(feature, BuffActKind::BigSkillNoUseActPoint)
-        })
 }
 
 pub fn consume_rule_op(managers: &BattleManagers, feature: &ActiveBuffFeature) -> Option<RuleOp> {
@@ -64,41 +51,9 @@ pub fn rule_ops(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::skill::buff_act::{is_kind, registry::BuffActKind};
     use crate::engine::{event::kind::EventKind, skill::action::ActionEvent};
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
-
-    fn feature(kind: &str) -> ActiveBuffFeature {
-        ActiveBuffFeature {
-            owner_uid: 1,
-            source_uid: 1,
-            buff_uid: 2,
-            buff_id: 3,
-            amount: 1,
-            team_type: 1,
-            owner_alive: true,
-            act_type: kind.to_owned(),
-            effect_time: 0,
-            effect_condition: 0,
-            raw: String::new(),
-            values: vec![946],
-        }
-    }
-
-    #[test]
-    fn only_the_owner_ultimate_waives_the_action_point() {
-        let feature = feature("BigSkillNoUseActPoint");
-        assert!(!skill_uses_action_point(
-            std::slice::from_ref(&feature),
-            1,
-            true
-        ));
-        assert!(skill_uses_action_point(
-            std::slice::from_ref(&feature),
-            1,
-            false
-        ));
-        assert!(skill_uses_action_point(&[feature], 2, true));
-    }
 
     #[test]
     fn completed_owner_ultimate_consumes_the_exact_buff_instance() {

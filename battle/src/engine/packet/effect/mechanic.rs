@@ -110,7 +110,12 @@ impl EffectPacket {
         team: i32,
         consumed_this_round: i32,
     ) -> ActEffect {
-        Self::conduit_counter(source_uid, team, 62, consumed_this_round)
+        Self::conduit_counter_changed(
+            source_uid,
+            team,
+            crate::engine::manager::conduit::ConduitCounterKind::EnergyAccumulation,
+            consumed_this_round,
+        )
     }
 
     pub fn conduit_powers_cleared(source_uid: i64, team: i32, config_effect: i32) -> ActEffect {
@@ -142,7 +147,21 @@ impl EffectPacket {
     }
 
     pub fn conduit_skill_finished(source_uid: i64, team: i32, uses_this_round: i32) -> ActEffect {
-        Self::conduit_counter(source_uid, team, 63, uses_this_round)
+        Self::conduit_counter_changed(
+            source_uid,
+            team,
+            crate::engine::manager::conduit::ConduitCounterKind::Activation,
+            uses_this_round,
+        )
+    }
+
+    pub fn conduit_counter_changed(
+        source_uid: i64,
+        team: i32,
+        kind: crate::engine::manager::conduit::ConduitCounterKind,
+        value: i32,
+    ) -> ActEffect {
+        Self::conduit_counter(source_uid, team, kind.wire_id(), value)
     }
 
     pub fn conduit_running(running: bool) -> ActEffect {

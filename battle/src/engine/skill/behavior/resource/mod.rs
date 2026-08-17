@@ -1,8 +1,12 @@
 use crate::engine::{
     entity::attr::AttrId,
     manager::{
+        buff::{BuffCommand, BuffConsume, BuffGrant, BuffSelector, DepletedBuff},
         card::{CardCommand, CardConsumeForEffect},
-        conduit::{ConduitCommand, ConduitPowerChange, ConduitPowerChangeKind},
+        conduit::{
+            ConduitCommand, ConduitCounterChange, ConduitCounterKind, ConduitPowerChange,
+            ConduitPowerChangeKind,
+        },
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand, EurekaProgress},
         ex_point::{ExPointChange, ExPointCommand, ExPointKind},
         gauge::{GaugeCommand, GaugeOperation},
@@ -10,7 +14,11 @@ use crate::engine::{
     },
     skill::{
         action::{SkillExecutionMode, SkillInvocation, SkillRequest, SkillTarget},
-        behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
+        behavior::{
+            BehaviorOpContext,
+            classify::BehaviorKind,
+            registry::{BehaviorHandler, OutputOwner},
+        },
         buff_act,
         effect::ParsedBehavior,
         rule::{
@@ -35,6 +43,119 @@ pub(super) fn supports_recover_power_and_cast_cards(behavior: &ParsedBehavior) -
     )
 }
 
+pub(super) fn supports_conduit_counter(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [kind, delta] if ConduitCounterKind::from_config(*kind).is_some() && *delta > 0
+    )
+}
+
+pub(super) fn supports_buff_owned_charge(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [delta] if *delta > 0)
+}
+
+pub(super) fn supports_consume_buff_into_charge_and_rewards(behavior: &ParsedBehavior) -> bool {
+    ConsumeBuffIntoChargeAndRewards::from_behavior(behavior).is_some()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConsumeBuffIntoChargeAndRewards {
+    consumed_buff_id: i32,
+    consume_amount: i32,
+    charge_delta: i32,
+    ex_point_delta: i32,
+    rewards: Vec<(i32, i32)>,
+}
+
+impl ConsumeBuffIntoChargeAndRewards {
+    fn from_behavior(behavior: &ParsedBehavior) -> Option<Self> {
+        let [
+            consumed_buff_id,
+            consume_amount,
+            charge_delta,
+            ex_point_delta,
+            rewards,
+        ] = behavior.raw_args.as_slice()
+        else {
+            return None;
+        };
+        let consumed_buff_id = consumed_buff_id.parse().ok()?;
+        let consume_amount = consume_amount.parse().ok()?;
+        let charge_delta = charge_delta.parse().ok()?;
+        let ex_point_delta = ex_point_delta.parse().ok()?;
+        let rewards = rewards
+            .split(':')
+            .map(|reward| {
+                let mut fields = reward.split(',');
+                let buff_id = fields.next()?.parse().ok()?;
+                let amount = fields.next()?.parse().ok()?;
+                (fields.next().is_none() && buff_id > 0 && amount > 0).then_some((buff_id, amount))
+            })
+            .collect::<Option<Vec<_>>>()?;
+
+        (consumed_buff_id > 0
+            && consume_amount > 0
+            && charge_delta > 0
+            && matches!(ex_point_delta, 0 | 1)
+            && !rewards.is_empty())
+        .then_some(Self {
+            consumed_buff_id,
+            consume_amount,
+            charge_delta,
+            ex_point_delta,
+            rewards,
+        })
+    }
+}
+
+fn buff_owned_charge_ops(
+    managers: &crate::engine::manager::BattleManagers,
+    target_uid: i64,
+    origin: crate::engine::skill::rule::CommandOrigin,
+    delta: i32,
+) -> Option<Vec<RuleOp>> {
+    let feature = managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .find(|feature| {
+            feature.owner_uid == target_uid
+                && buff_act::is_kind(feature, buff_act::registry::BuffActKind::BuffOwnedCharge)
+        })?;
+    let act_id = feature.act_id()?;
+    let limit = feature.values.get(2).copied()?;
+    let act_info = managers
+        .buff
+        .snapshot(target_uid, feature.buff_uid)
+        .map(|buff| buff.act_info)?;
+    let mut matching = act_info.iter().filter(|info| info.act_id == Some(act_id));
+    let info = matching.next()?;
+    if matching.next().is_some() || info.str_param.as_deref() != Some("") {
+        return None;
+    }
+    let [current] = info.param.as_slice() else {
+        return None;
+    };
+    if !(0..=limit).contains(current) {
+        return None;
+    }
+    if *current == limit {
+        return Some(Vec::new());
+    }
+    Some(vec![RuleOp::Command(BattleCommand::Buff(
+        BuffCommand::AccumulateCappedActState(
+            crate::engine::manager::buff::BuffAccumulateCappedActState {
+                origin,
+                target_uid,
+                buff_uid: feature.buff_uid,
+                act_id,
+                delta,
+                maximum: limit,
+            },
+        ),
+    ))])
+}
+
 pub fn supports_average_life(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [0])
 }
@@ -45,17 +166,41 @@ impl BehaviorHandler for Handler {
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
-        RuleReferences {
-            skills: matches!(
-                behavior.spec.kind,
-                BehaviorKind::RecoverPowerAndDelCardsUseSkill
-            )
-            .then(|| behavior.arg(0))
-            .flatten()
-            .into_iter()
-            .collect(),
-            ..Default::default()
+        if behavior.spec.kind == BehaviorKind::ConsumeBuffIntoChargeAndRewards {
+            let Some(parsed) = ConsumeBuffIntoChargeAndRewards::from_behavior(behavior) else {
+                return RuleReferences::default();
+            };
+            let mut buffs = Vec::with_capacity(parsed.rewards.len() + 1);
+            buffs.push(parsed.consumed_buff_id);
+            buffs.extend(parsed.rewards.into_iter().map(|(buff_id, _)| buff_id));
+            RuleReferences {
+                buffs,
+                ..Default::default()
+            }
+        } else {
+            RuleReferences {
+                skills: matches!(
+                    behavior.spec.kind,
+                    BehaviorKind::RecoverPowerAndDelCardsUseSkill
+                )
+                .then(|| behavior.arg(0))
+                .flatten()
+                .into_iter()
+                .collect(),
+                ..Default::default()
+            }
         }
+    }
+
+    fn output_owner(behavior: &ParsedBehavior, op: &RuleOp, _index: usize) -> Option<OutputOwner> {
+        (behavior.spec.kind == BehaviorKind::ConsumeBuffIntoChargeAndRewards
+            && matches!(
+                op,
+                RuleOp::Command(BattleCommand::Buff(
+                    BuffCommand::Consume(_) | BuffCommand::Grant(_)
+                ))
+            ))
+        .then_some(OutputOwner::CausingEvent)
     }
 }
 
@@ -301,6 +446,56 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                 ),
             ))])
         }
+        BehaviorKind::AddBuffOwnedCharge => {
+            let [delta] = behavior.args.as_slice() else {
+                return None;
+            };
+            buff_owned_charge_ops(context.managers, context.target_uid, origin, *delta)
+        }
+        BehaviorKind::ConsumeBuffIntoChargeAndRewards => {
+            let parsed = ConsumeBuffIntoChargeAndRewards::from_behavior(behavior)?;
+            if context
+                .managers
+                .buff
+                .buff_id_amount(context.target_uid, parsed.consumed_buff_id)
+                < parsed.consume_amount
+            {
+                return Some(Vec::new());
+            }
+
+            let mut ops = Vec::with_capacity(parsed.rewards.len() + 4);
+            ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(
+                BuffConsume {
+                    origin,
+                    target_uid: context.target_uid,
+                    selector: BuffSelector::ExactId(parsed.consumed_buff_id),
+                    amount: parsed.consume_amount,
+                    depleted: DepletedBuff::Remove,
+                },
+            ))));
+            ops.extend(buff_owned_charge_ops(
+                context.managers,
+                context.target_uid,
+                origin,
+                parsed.charge_delta,
+            )?);
+            if parsed.ex_point_delta > 0 {
+                ops.push(ex_point(context.target_uid, parsed.ex_point_delta));
+            }
+            ops.extend(parsed.rewards.into_iter().map(|(buff_id, amount)| {
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
+                    origin,
+                    source_uid: context.source_uid,
+                    target_uid: context.target_uid,
+                    buff_id,
+                    amount: crate::engine::manager::buff::BuffManager::configured_accepts_explicit_grant_amount(buff_id)
+                        .then_some(amount),
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                })))
+            }));
+            Some(ops)
+        }
         BehaviorKind::AddConduitPower => {
             let (power_id, delta, kind) = conduit_power_args(&behavior.args)?;
             Some(vec![RuleOp::Command(BattleCommand::Conduit(
@@ -311,6 +506,20 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                     power_id,
                     delta,
                     kind,
+                }),
+            ))])
+        }
+        BehaviorKind::AddConduitCounter => {
+            let [kind, delta] = behavior.args.as_slice() else {
+                return None;
+            };
+            Some(vec![RuleOp::Command(BattleCommand::Conduit(
+                ConduitCommand::ChangeCounter(ConduitCounterChange {
+                    origin,
+                    source_uid: context.source_uid,
+                    team: context.source_team,
+                    kind: ConduitCounterKind::from_config(*kind)?,
+                    delta: *delta,
                 }),
             ))])
         }

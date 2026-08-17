@@ -38,6 +38,7 @@ pub struct SetupContext<'a> {
 pub type SetupHandler = for<'a> fn(&SetupContext<'a>) -> Option<Vec<RuleOp>>;
 
 pub type SupportsHandler = fn(&[i32]) -> bool;
+pub type RawSupportsHandler = fn(Option<&config::GameDB>, &str) -> bool;
 pub type AttackReplacementHandler = fn(
     &ActiveBuffFeature,
     &crate::engine::manager::hp::HpManager,
@@ -46,6 +47,7 @@ pub type AttackReplacementHandler = fn(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuffActKind {
     AddAttrByOtherBuffLayer,
+    AddAttrBySourceBuffLayer,
     AddAttrBySpecialCount,
     AddAssassinateY,
     AddBuffByChargingTimes,
@@ -99,6 +101,8 @@ pub enum BuffActKind {
     BloodValueUseSkill,
     ButterflyRecordSkill,
     BigSkillNoUseActPoint,
+    ReplaceEntitySkillGroup,
+    SkillNoUseActPoint,
     BanLostLife,
     Bullet,
     Burn,
@@ -152,6 +156,7 @@ pub enum BuffActKind {
     ExtraValueElectricTransform,
     EzioBigSkill,
     EachChangeAttr,
+    EachChangeAttrOneWay,
     ExPointAddByHit,
     ExPointDel,
     ExPointCardMove,
@@ -191,6 +196,7 @@ pub enum BuffActKind {
     LostHpCountAddBuff,
     LifeAttackFixRate,
     MonitorContinueChannel,
+    BuffOwnedCharge,
     MoxieReductionImmunity,
     ModifyAttrByBuffLayer,
     ModifyMaxBuffLayers,
@@ -390,6 +396,8 @@ pub struct BuffActDefinition {
     pub transaction: BuffActTransactionDefinition,
     pub state: BuffActStateDefinition,
     pub supports: Option<SupportsHandler>,
+    pub raw_supports: Option<RawSupportsHandler>,
+    pub completion_gap: Option<&'static str>,
     pub wire: Option<super::wire::BuffActWireDefinition>,
 }
 
@@ -469,8 +477,10 @@ macro_rules! buff_act_definitions {
             $(, transaction: $transaction:expr)?
             $(, setup_handler: $setup_handler:expr)?
             $(, supports: $supports:expr)?
+            $(, raw_supports: $raw_supports:expr)?
             $(, attack_replacement: $attack_replacement:expr)?
             $(, state_consumer: $state_consumer:expr)?
+            $(, completion_gap: $completion_gap:literal)?
             $(, wire: ($wire:expr))?
         );*
         $(;)?
@@ -516,6 +526,8 @@ macro_rules! buff_act_definitions {
                     consumer: buff_act_definitions!(@state_consumer $($state_consumer)?),
                 },
                 supports: buff_act_definitions!(@supports $($supports)?),
+                raw_supports: buff_act_definitions!(@raw_supports $($raw_supports)?),
+                completion_gap: buff_act_definitions!(@completion_gap $($completion_gap)?),
                 wire: buff_act_definitions!(@wire $($wire)?),
             }),*
         ];
@@ -571,6 +583,10 @@ macro_rules! buff_act_definitions {
     (@setup_handler) => { None };
     (@supports $handler:expr) => { Some($handler) };
     (@supports) => { None };
+    (@raw_supports $handler:expr) => { Some($handler) };
+    (@raw_supports) => { None };
+    (@completion_gap $gap:literal) => { Some($gap) };
+    (@completion_gap) => { None };
     (@attack_replacement $handler:expr) => { Some($handler) };
     (@attack_replacement) => { None };
     (@state_consumer $value:expr) => { $value };
@@ -947,6 +963,12 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::each_change_attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(834, "EachChangeAttr"), &[EffectType::None as i32]));
+    (1131, "EachChangeAttrOneWay") => EachChangeAttrOneWay,
+        transactions: [EventKind::BuffAdded, EventKind::BuffRemoved],
+        publication: BeforePublish, frame: CausingFrame,
+        transaction: super::each_change_attr_one_way::transaction_rule_ops,
+        supports: super::each_change_attr_one_way::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1131, "EachChangeAttrOneWay"), &[]));
     (836, "ContractCastChannel") => ContractCastChannel,
         transactions: [EventKind::BuffAdded],
         publication: BeforePublish, frame: CausingFrame,
@@ -1190,6 +1212,10 @@ buff_act_definitions! {
         effect_time_subscription: false,
         supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1036, "AddAttrByOtherBuffLayer"), &[EffectType::None as i32, EffectType::Attr as i32]));
+    (1141, "AddAttrByOtherBuffLayer") => AddAttrBySourceBuffLayer,
+        effect_time_subscription: false,
+        supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1141, "AddAttrByOtherBuffLayer"), &[EffectType::Attr as i32]));
     (1041, "RaspberryBigSkill") => RaspberryBigSkill,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1041, "RaspberryBigSkill"), &[EffectType::None as i32]));
     (1042, "Raspberry") => Raspberry, events: [EventKind::BuffRemoved],
@@ -1267,6 +1293,24 @@ buff_act_definitions! {
     (1130, "DeviceCostReduce") => DeviceCostReduce,
         effect_time_subscription: false,
         supports: super::device_cost_reduce::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1130, "DeviceCostReduce"), &[EffectType::None as i32]));
+    (1139, "MeiLeiErCharge") => BuffOwnedCharge,
+        effect_time_subscription: false,
+        supports: |args| matches!(args, [trigger, limit, linked_skill]
+            if *trigger > 0 && *limit >= *trigger && *linked_skill > 0),
+        state_consumer: true,
+        completion_gap: "manual activation is not proven",
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1139, "MeiLeiErCharge"), &[])
+            .with_initial_state(super::wire::InitialStateRule::ZeroInteger));
+    (1138, "ReplaceEntitySkillGroup") => ReplaceEntitySkillGroup,
+        transactions: [EventKind::BuffAdded, EventKind::BuffRemoved],
+        publication: BeforePublish, frame: CausingFrame,
+        transaction: super::bendith::replace_entity_skill_group_transaction,
+        raw_supports: super::bendith::supports_replace_entity_skill_group,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1138, "ReplaceEntitySkillGroup"), &[]));
+    (1140, "SkillNoUseActPoint") => SkillNoUseActPoint,
+        effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1140, "SkillNoUseActPoint"), &[]));
 }
 
 pub fn definitions() -> impl Iterator<Item = &'static BuffActDefinition> {
@@ -1386,8 +1430,23 @@ pub fn linked_rule_ops(
 }
 
 pub fn destination(opcode: i32, type_name: &str, args: &[i32]) -> Option<BuffActDestination> {
+    destination_with_raw(None, opcode, type_name, args, None)
+}
+
+pub fn destination_with_raw(
+    game: Option<&config::GameDB>,
+    opcode: i32,
+    type_name: &str,
+    args: &[i32],
+    raw: Option<&str>,
+) -> Option<BuffActDestination> {
     let definition = find(opcode, type_name)?;
-    if definition.supports.is_some_and(|supports| !supports(args)) {
+    if definition
+        .raw_supports
+        .is_some_and(|supports| !raw.is_some_and(|raw| supports(game, raw)))
+        || (definition.raw_supports.is_none()
+            && definition.supports.is_some_and(|supports| !supports(args)))
+    {
         return None;
     }
     definition.destination().or_else(|| {
