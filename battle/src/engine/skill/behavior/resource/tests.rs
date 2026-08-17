@@ -1312,42 +1312,79 @@ fn interval_conduit_skill_stops_the_exact_active_skill() {
         }),
         ..Default::default()
     };
-    let mut managers = BattleManagers::seeded(&fight);
     let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
-    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
-    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
-    let mut target = crate::engine::skill::target::TargetContext::default();
-    let behavior = ParsedBehavior::new(100034, "StopDeviceSkill", Vec::new());
-    let ops = rule_ops(
-        BehaviorOpContext {
-            source_uid: 10,
-            source_team: 1,
-            target_uid: 10,
-            active_skill_id: 31490111,
-            transfer_count: 1,
-            event: None,
-            managers: &managers,
-            pool: &pool,
-            determinism: &mut determinism,
-            modifiers: &mut modifiers,
-            target: &mut target,
-        },
-        &behavior,
-    )
-    .unwrap();
-    let [RuleOp::Command(BattleCommand::Conduit(command))] = ops.as_slice() else {
-        panic!("expected one Conduit command");
-    };
+    for opcode in [100034, 60294] {
+        let mut managers = BattleManagers::seeded(&fight);
+        managers
+            .conduit
+            .execute(ConduitCommand::ChangePower(ConduitPowerChange {
+                origin: crate::engine::skill::rule::CommandOrigin {
+                    domain: crate::engine::skill::rule::RuleDomain::Behavior,
+                    key: crate::engine::skill::rule::DefinitionKey::new(opcode, "StopDeviceSkill"),
+                },
+                source_uid: 10,
+                team: 1,
+                power_id: 1,
+                delta: 3,
+                kind: ConduitPowerChangeKind::Standard,
+            }))
+            .unwrap();
+        let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext::default();
+        let behavior = ParsedBehavior::new(opcode, "StopDeviceSkill", Vec::new());
+        let ops = rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 31490111,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+        let [RuleOp::Command(BattleCommand::Conduit(command))] = ops.as_slice() else {
+            panic!("expected one Conduit command");
+        };
 
-    assert!(matches!(
-        managers.conduit.execute(*command).unwrap(),
-        crate::engine::manager::conduit::ConduitChange::SkillStopped {
-            source_uid: 10,
-            team: 1,
-            skill_id: 31490111,
-            ..
-        }
-    ));
+        assert!(matches!(
+            managers.conduit.execute(*command).unwrap(),
+            crate::engine::manager::conduit::ConduitChange::SkillStopped {
+                origin,
+                source_uid: 10,
+                team: 1,
+                skill_id: 31490111,
+            } if origin.key == crate::engine::skill::rule::DefinitionKey::new(
+                opcode,
+                "StopDeviceSkill",
+            )
+        ));
+        assert!(!managers.conduit.can_begin_skill(10, 31490111, 0));
+        assert!(managers.conduit.can_begin_skill(10, 31490121, 0));
+        assert!(matches!(
+            managers.conduit.execute(ConduitCommand::BeginSkill {
+                source_uid: 10,
+                skill_id: 31490111,
+                cost_reduction: 0,
+            }),
+            Err(crate::engine::manager::conduit::ConduitError::StoppedSkill(
+                31490111
+            ))
+        ));
+
+        managers
+            .conduit
+            .execute(ConduitCommand::RestartDevice { source_uid: 10 })
+            .unwrap();
+        assert!(managers.conduit.can_begin_skill(10, 31490111, 0));
+    }
 }
 
 #[test]
