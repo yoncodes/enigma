@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::manager::conduit::ConduitCounterKind;
 use crate::engine::skill::condition::{
     ConditionCompare, buff::BuffConditionMode, none::NoneMode, parse::BuffAddedScope,
 };
@@ -1111,6 +1112,48 @@ fn use_device_skill_uses_its_exact_activation_subscription() {
     assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
     assert_eq!(definition.reaction_frame_scope, ReactionFrameScope::Causing);
     assert!(find_key(792208, "PerDeviceCurrCost").is_none());
+}
+
+#[test]
+fn conduit_counter_uses_its_exact_predicate_route() {
+    assert_eq!(
+        parse(
+            786203,
+            "PerDeviceCounter",
+            &["1".into(), "1".into(), "20".into()],
+        ),
+        Some(ParsedConditionKind::PerConduitCounter {
+            kind: ConduitCounterKind::EnergyAccumulation,
+            divisor: 1,
+            max_count: 20,
+        })
+    );
+    assert_eq!(
+        parse(
+            786203,
+            "PerDeviceCounter",
+            &["2".into(), "1".into(), "20".into()],
+        ),
+        Some(ParsedConditionKind::PerConduitCounter {
+            kind: ConduitCounterKind::Activation,
+            divisor: 1,
+            max_count: 20,
+        })
+    );
+    for args in [
+        vec![],
+        vec!["1".into(), "1".into()],
+        vec!["3".into(), "1".into(), "20".into()],
+        vec!["1".into(), "0".into(), "20".into()],
+        vec!["1".into(), "1".into(), "0".into()],
+    ] {
+        assert_eq!(parse(786203, "PerDeviceCounter", &args), None);
+    }
+    let definition = find_key(786203, "PerDeviceCounter").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::ConduitActivated]);
+    assert!(find_key(786303, "PerDeviceCounter").is_none());
+    assert!(find_key(786203, "PerDeviceCurrCost").is_none());
 }
 
 #[test]

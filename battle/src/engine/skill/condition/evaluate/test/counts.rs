@@ -1,4 +1,8 @@
 use super::*;
+use crate::engine::{
+    manager::conduit::{ConduitCommand, ConduitCounterChange, ConduitCounterKind},
+    skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
+};
 
 #[test]
 fn burn_overflow_repeats_once_per_rejected_layer() {
@@ -23,6 +27,125 @@ fn burn_overflow_repeats_once_per_rejected_layer() {
             },
         ),
         4
+    );
+}
+
+#[test]
+fn conduit_counter_repeats_are_team_scoped_capped_and_reset() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3144),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(20),
+                model_id: Some(3144),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(60297, "AddDeviceCounter"),
+    };
+    for (source_uid, team, kind, delta) in [
+        (10, 1, ConduitCounterKind::EnergyAccumulation, 25),
+        (10, 1, ConduitCounterKind::Activation, 7),
+        (20, 2, ConduitCounterKind::EnergyAccumulation, 3),
+    ] {
+        managers
+            .conduit
+            .execute(ConduitCommand::ChangeCounter(ConduitCounterChange {
+                origin,
+                source_uid,
+                team,
+                kind,
+                delta,
+            }))
+            .unwrap();
+    }
+    let condition = |kind, divisor, max_count| {
+        let kind_arg = match kind {
+            ConduitCounterKind::EnergyAccumulation => 1,
+            ConduitCounterKind::Activation => 2,
+        };
+        ParsedCondition {
+            opcode: 786203,
+            type_name: "PerDeviceCounter".into(),
+            kind: ParsedConditionKind::PerConduitCounter {
+                kind,
+                divisor,
+                max_count,
+            },
+            raw_args: vec![
+                kind_arg.to_string(),
+                divisor.to_string(),
+                max_count.to_string(),
+            ],
+        }
+    };
+    let fire_count = |source_uid, condition: ParsedCondition, managers: &BattleManagers| {
+        conditions_fire_count(
+            &[condition],
+            source_uid,
+            &[source_uid],
+            Some(managers),
+            &pool,
+            TargetContext::default(),
+        )
+    };
+
+    assert_eq!(
+        fire_count(
+            10,
+            condition(ConduitCounterKind::EnergyAccumulation, 2, 10),
+            &managers,
+        ),
+        10
+    );
+    assert_eq!(
+        fire_count(
+            20,
+            condition(ConduitCounterKind::EnergyAccumulation, 2, 10),
+            &managers,
+        ),
+        1
+    );
+    assert_eq!(
+        fire_count(
+            10,
+            condition(ConduitCounterKind::Activation, 1, 20),
+            &managers,
+        ),
+        7
+    );
+    assert_eq!(
+        fire_count(
+            20,
+            condition(ConduitCounterKind::Activation, 1, 20),
+            &managers,
+        ),
+        0
+    );
+
+    managers.conduit.begin_round();
+    assert_eq!(
+        fire_count(
+            10,
+            condition(ConduitCounterKind::EnergyAccumulation, 1, 20),
+            &managers,
+        ),
+        0
     );
 }
 

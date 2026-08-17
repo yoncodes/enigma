@@ -190,6 +190,11 @@ pub enum ParsedConditionKind {
     PerConduitCurrentCost {
         threshold: i32,
     },
+    PerConduitCounter {
+        kind: crate::engine::manager::conduit::ConduitCounterKind,
+        divisor: i32,
+        max_count: i32,
+    },
     ConduitExPoint {
         compare_code: i32,
         threshold: i32,
