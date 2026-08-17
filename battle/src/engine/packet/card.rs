@@ -136,6 +136,29 @@ impl CardPacket {
         }
     }
 
+    pub fn convert_owner_skill_card(
+        owner_uid: i64,
+        hand_index: usize,
+        card: CardInfo,
+        team_type: i32,
+    ) -> ActEffect {
+        let card = wire_card(card);
+        ActEffect {
+            target_id: Some(owner_uid),
+            effect_type: Some(EffectType::Cardaconvertcardb as i32),
+            effect_num: Some(1),
+            config_effect: card.skill_id,
+            buff_act_id: Some(0),
+            reserve_id: i64::try_from(hand_index)
+                .ok()
+                .and_then(|index| index.checked_add(1)),
+            card_info: Some(card),
+            team_type: Some(team_type),
+            effect_num1: Some(0),
+            ..Default::default()
+        }
+    }
+
     pub fn universal_card(skill_id: i32) -> ActEffect {
         ActEffect {
             target_id: Some(0),

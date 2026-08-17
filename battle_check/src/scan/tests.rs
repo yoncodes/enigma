@@ -116,6 +116,68 @@ fn count_continue_channel_expands_the_checked_skill_closure() {
 }
 
 #[test]
+fn bendith_replacement_expands_every_reachable_skill() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut catalog = SkillEffectCatalog::default();
+    let mut skills = VecDeque::new();
+    let mut buffs = VecDeque::from([Pending {
+        id: 31_460_140,
+        path: "test root".to_owned(),
+    }]);
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut buffs,
+        &mut report,
+    );
+
+    for skill_id in [
+        31_460_241, 31_460_242, 31_460_243, 31_460_233, 31_460_234, 31_460_235,
+    ] {
+        assert!(report.checked_skills.contains(&skill_id), "{skill_id}");
+    }
+}
+
+#[test]
+fn bendith_mapping_without_a_unique_inverse_is_a_capability_gap() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut catalog = SkillEffectCatalog::default();
+    let mut skills = VecDeque::new();
+    let mut buffs = VecDeque::from([Pending {
+        id: 115_370_003,
+        path: "test root".to_owned(),
+    }]);
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut buffs,
+        &mut report,
+    );
+
+    assert!(report.gaps.contains_key(&CapabilityKey::new(
+        "buff-act",
+        1138,
+        "ReplaceEntitySkillGroup"
+    )));
+}
+
+#[test]
 fn tower_assist_boss_forms_accept_the_implemented_group_capacity_policy() {
     crate::init_config().unwrap();
     let db = config::get();

@@ -278,9 +278,14 @@ pub(super) fn resolve_features_from(
                 crate::engine::skill::buff_act::registry::find(act.id, &act.r#type)
             });
             let arguments_supported = registered.is_some_and(|definition| {
-                definition
-                    .supports
-                    .is_none_or(|supports| supports(values.get(1..).unwrap_or_default()))
+                definition.raw_supports.map_or_else(
+                    || {
+                        definition
+                            .supports
+                            .is_none_or(|supports| supports(values.get(1..).unwrap_or_default()))
+                    },
+                    |supports| supports(game, raw),
+                )
             });
             ResolvedBuffFeature {
                 raw: raw.to_owned(),

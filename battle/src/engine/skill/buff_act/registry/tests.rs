@@ -364,10 +364,7 @@ fn real_hurt_fix_uses_only_its_captured_add_and_refresh_markers() {
     let wire = super::super::wire::find(519, "RealHurtFix").unwrap();
     let marker = sonettobuf::effect_type_enum::EffectType::Realhurtfix as i32;
 
-    assert_eq!(
-        wire.markers(super::super::wire::WirePhase::Add),
-        &[marker]
-    );
+    assert_eq!(wire.markers(super::super::wire::WirePhase::Add), &[marker]);
     assert!(
         wire.markers(super::super::wire::WirePhase::Static)
             .is_empty()
@@ -383,10 +380,7 @@ fn dot_uses_only_its_captured_add_and_refresh_markers() {
     let wire = super::super::wire::find(202, "Dot").unwrap();
     let marker = sonettobuf::effect_type_enum::EffectType::Dot as i32;
 
-    assert_eq!(
-        wire.markers(super::super::wire::WirePhase::Add),
-        &[marker]
-    );
+    assert_eq!(wire.markers(super::super::wire::WirePhase::Add), &[marker]);
     assert!(
         wire.markers(super::super::wire::WirePhase::Static)
             .is_empty()
@@ -1096,4 +1090,44 @@ fn buff_owned_charge_keeps_its_exact_state_route() {
         &[100_000, 150_000, 0]
     ));
     assert!(find(1139, "HeatScaleUseSkill").is_none());
+}
+
+#[test]
+fn bendith_rules_keep_distinct_exact_routes_and_structured_support() {
+    crate::test_support::init_config();
+    let replacement = find(1138, "ReplaceEntitySkillGroup").unwrap();
+    assert_eq!(replacement.kind, BuffActKind::ReplaceEntitySkillGroup);
+    assert_eq!(
+        replacement.transaction.events,
+        &[EventKind::BuffAdded, EventKind::BuffRemoved]
+    );
+    assert_eq!(
+        destination_with_raw(
+            config::try_get(),
+            1138,
+            "ReplaceEntitySkillGroup",
+            &[],
+            Some("1138#1:31460211,31460212,31460213#2:31460221,31460222,31460223")
+        ),
+        Some(BuffActDestination::Transaction)
+    );
+    assert_eq!(
+        destination_with_raw(
+            config::try_get(),
+            1138,
+            "ReplaceEntitySkillGroup",
+            &[],
+            Some("1138#1:31460211#2:31460221")
+        ),
+        None
+    );
+
+    let no_cost = find(1140, "SkillNoUseActPoint").unwrap();
+    assert_eq!(no_cost.kind, BuffActKind::SkillNoUseActPoint);
+    assert_eq!(
+        destination(1140, "SkillNoUseActPoint", &[]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert_eq!(destination(1140, "SkillNoUseActPoint", &[1]), None);
+    assert!(find(1140, "BigSkillNoUseActPoint").is_none());
 }

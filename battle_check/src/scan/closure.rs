@@ -390,7 +390,13 @@ fn scan_buff(
                     !definition.runtime.events.is_empty()
                         || !definition.transaction.events.is_empty()
                 });
-            let destination = buff_act::registry::destination(act.id, &act.r#type, &values[1..]);
+            let destination = buff_act::registry::destination_with_raw(
+                Some(db),
+                act.id,
+                &act.r#type,
+                &values[1..],
+                Some(raw),
+            );
             let has_destination = destination.is_some();
             let wire = buff_act::wire::find(act.id, &act.r#type);
             if let Some(wire) = wire {
@@ -526,6 +532,18 @@ fn scan_buff(
                             skill_id,
                             format!("{} > buff {}", pending.path, pending.id),
                         );
+                    }
+                }
+                Some(BuffActKind::ReplaceEntitySkillGroup) => {
+                    if let Some(replacement_skills) = buff_act::bendith::replacement_skill_ids(raw)
+                    {
+                        for skill_id in replacement_skills {
+                            enqueue(
+                                skills,
+                                skill_id,
+                                format!("{} > buff {}", pending.path, pending.id),
+                            );
+                        }
                     }
                 }
                 Some(BuffActKind::AddSpTempCard) => {

@@ -38,6 +38,7 @@ pub struct SetupContext<'a> {
 pub type SetupHandler = for<'a> fn(&SetupContext<'a>) -> Option<Vec<RuleOp>>;
 
 pub type SupportsHandler = fn(&[i32]) -> bool;
+pub type RawSupportsHandler = fn(Option<&config::GameDB>, &str) -> bool;
 pub type AttackReplacementHandler = fn(
     &ActiveBuffFeature,
     &crate::engine::manager::hp::HpManager,
@@ -99,6 +100,8 @@ pub enum BuffActKind {
     BloodValueUseSkill,
     ButterflyRecordSkill,
     BigSkillNoUseActPoint,
+    ReplaceEntitySkillGroup,
+    SkillNoUseActPoint,
     BanLostLife,
     Bullet,
     Burn,
@@ -392,6 +395,7 @@ pub struct BuffActDefinition {
     pub transaction: BuffActTransactionDefinition,
     pub state: BuffActStateDefinition,
     pub supports: Option<SupportsHandler>,
+    pub raw_supports: Option<RawSupportsHandler>,
     pub wire: Option<super::wire::BuffActWireDefinition>,
 }
 
@@ -471,6 +475,7 @@ macro_rules! buff_act_definitions {
             $(, transaction: $transaction:expr)?
             $(, setup_handler: $setup_handler:expr)?
             $(, supports: $supports:expr)?
+            $(, raw_supports: $raw_supports:expr)?
             $(, attack_replacement: $attack_replacement:expr)?
             $(, state_consumer: $state_consumer:expr)?
             $(, wire: ($wire:expr))?
@@ -518,6 +523,7 @@ macro_rules! buff_act_definitions {
                     consumer: buff_act_definitions!(@state_consumer $($state_consumer)?),
                 },
                 supports: buff_act_definitions!(@supports $($supports)?),
+                raw_supports: buff_act_definitions!(@raw_supports $($raw_supports)?),
                 wire: buff_act_definitions!(@wire $($wire)?),
             }),*
         ];
@@ -573,6 +579,8 @@ macro_rules! buff_act_definitions {
     (@setup_handler) => { None };
     (@supports $handler:expr) => { Some($handler) };
     (@supports) => { None };
+    (@raw_supports $handler:expr) => { Some($handler) };
+    (@raw_supports) => { None };
     (@attack_replacement $handler:expr) => { Some($handler) };
     (@attack_replacement) => { None };
     (@state_consumer $value:expr) => { $value };
@@ -1282,6 +1290,16 @@ buff_act_definitions! {
         state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1139, "MeiLeiErCharge"), &[])
             .with_initial_state(super::wire::InitialStateRule::ZeroInteger));
+    (1138, "ReplaceEntitySkillGroup") => ReplaceEntitySkillGroup,
+        transactions: [EventKind::BuffAdded, EventKind::BuffRemoved],
+        publication: BeforePublish, frame: CausingFrame,
+        transaction: super::bendith::replace_entity_skill_group_transaction,
+        raw_supports: super::bendith::supports_replace_entity_skill_group,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1138, "ReplaceEntitySkillGroup"), &[]));
+    (1140, "SkillNoUseActPoint") => SkillNoUseActPoint,
+        effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1140, "SkillNoUseActPoint"), &[]));
 }
 
 pub fn definitions() -> impl Iterator<Item = &'static BuffActDefinition> {
@@ -1401,8 +1419,23 @@ pub fn linked_rule_ops(
 }
 
 pub fn destination(opcode: i32, type_name: &str, args: &[i32]) -> Option<BuffActDestination> {
+    destination_with_raw(None, opcode, type_name, args, None)
+}
+
+pub fn destination_with_raw(
+    game: Option<&config::GameDB>,
+    opcode: i32,
+    type_name: &str,
+    args: &[i32],
+    raw: Option<&str>,
+) -> Option<BuffActDestination> {
     let definition = find(opcode, type_name)?;
-    if definition.supports.is_some_and(|supports| !supports(args)) {
+    if definition
+        .raw_supports
+        .is_some_and(|supports| !raw.is_some_and(|raw| supports(game, raw)))
+        || (definition.raw_supports.is_none()
+            && definition.supports.is_some_and(|supports| !supports(args)))
+    {
         return None;
     }
     definition.destination().or_else(|| {

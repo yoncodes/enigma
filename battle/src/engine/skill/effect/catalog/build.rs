@@ -510,10 +510,12 @@ impl SkillEffectCatalog {
                         raw,
                         "unregistered buff act in current battle"
                     );
-                } else if crate::engine::skill::buff_act::registry::destination(
+                } else if crate::engine::skill::buff_act::registry::destination_with_raw(
+                    Some(db),
                     act.id,
                     &act.r#type,
                     args,
+                    Some(raw),
                 )
                 .is_none()
                 {

@@ -7,7 +7,10 @@ use super::*;
 use crate::engine::{
     entity::attr::AttrId,
     manager::{
-        buff::{BuffCommand, BuffGrant, BuffGrantRelation, CommandOrigin, RelatedBuffGrant},
+        buff::{
+            BuffCommand, BuffGrant, BuffGrantRelation, BuffRemove, BuffRemoveSelector,
+            CommandOrigin, RelatedBuffGrant,
+        },
         card::{CARD_PLAY_ORIGIN, CardChangeKind, CardCommand, CardReplaceOwnerSkills, CardSetup},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
         ex_point::{ExPointChange, ExPointCommand},
