@@ -218,6 +218,13 @@ fn condition_repeat_count(
                 / (*divisor).max(1))
             .clamp(0, *max_count)
         }),
+        ParsedConditionKind::PerConduitCounter {
+            kind,
+            divisor,
+            max_count,
+        } => managers.map(|managers| {
+            conduit_counter_count(source_uid, *kind, *divisor, *max_count, managers, pool)
+        }),
         ParsedConditionKind::PerBuffGroupCount { group_id } => managers.map(|managers| {
             condition_targets
                 .iter()
@@ -610,6 +617,13 @@ fn condition_kind_matches(
                     .buff
                     .team_buff_status_type_count(condition_targets, status_ids)
                     >= *divisor
+        }),
+        ParsedConditionKind::PerConduitCounter {
+            kind,
+            divisor,
+            max_count,
+        } => managers.is_some_and(|managers| {
+            conduit_counter_count(source_uid, *kind, *divisor, *max_count, managers, pool) > 0
         }),
         ParsedConditionKind::BuffAdded(buff_ids) => {
             context.added_buff_amount > 0 && buff_ids.contains(&context.added_buff_id)
@@ -1172,6 +1186,20 @@ fn condition_kind_matches(
         ParsedConditionKind::NoActionRound => !context.owner_played_card,
         ParsedConditionKind::Unsupported(_) => false,
     }
+}
+
+fn conduit_counter_count(
+    source_uid: i64,
+    kind: crate::engine::manager::conduit::ConduitCounterKind,
+    divisor: i32,
+    max_count: i32,
+    managers: &BattleManagers,
+    pool: &TargetPool,
+) -> i32 {
+    let Some(team) = pool.team_type(source_uid) else {
+        return 0;
+    };
+    (managers.conduit.counter(team, kind) / divisor.max(1)).clamp(0, max_count.max(0))
 }
 
 fn current_magic_circle_id(
