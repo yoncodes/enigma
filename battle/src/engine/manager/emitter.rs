@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sonettobuf::CardInfo;
+use sonettobuf::{CardInfo, EnhanceInfoBox, FightEntityInfo, HeroAttribute};
 
 use crate::engine::{
     entity::attr::AttrId,
@@ -13,6 +13,54 @@ use crate::engine::{
 };
 
 pub const UID: i64 = 99998;
+
+pub(crate) fn activation_entity() -> FightEntityInfo {
+    let attr = HeroAttribute {
+        hp: Some(0),
+        attack: Some(0),
+        defense: Some(0),
+        mdefense: Some(0),
+        technic: Some(0),
+        multi_hp_idx: Some(0),
+        multi_hp_num: Some(0),
+    };
+    FightEntityInfo {
+        uid: Some(UID),
+        model_id: Some(0),
+        skin: Some(0),
+        position: Some(0),
+        entity_type: Some(6),
+        user_id: Some(0),
+        ex_point: Some(0),
+        level: Some(0),
+        current_hp: Some(1),
+        attr: Some(attr),
+        ex_skill: Some(0),
+        shield_value: Some(0),
+        expoint_max_add: Some(0),
+        buff_harm_statistic: Some(0),
+        equip_uid: Some(0),
+        trial_equip: Some(Default::default()),
+        ex_skill_level: Some(0),
+        base_attr: Some(attr),
+        ex_skill_point_change: Some(0),
+        team_type: Some(1),
+        enhance_info_box: Some(EnhanceInfoBox {
+            uid: Some(UID),
+            ..Default::default()
+        }),
+        trial_id: Some(0),
+        career: Some(0),
+        status: Some(0),
+        guard: Some(-1),
+        sub_cd: Some(0),
+        ex_point_type: Some(0),
+        destiny_stone: Some(0),
+        destiny_rank: Some(0),
+        custom_unit_id: Some(0),
+        ..Default::default()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EmitterCard {
@@ -285,9 +333,87 @@ mod tests {
     use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
     use super::*;
+    use crate::engine::{
+        manager::hp::{HpCommand, MaxHpAdjust},
+        skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
+    };
 
     fn definition() -> ImpromptuDefinition {
         ImpromptuDefinition::new(11, 22, 150)
+    }
+
+    const ORIGIN: CommandOrigin = CommandOrigin {
+        domain: RuleDomain::BuffAct,
+        key: DefinitionKey::new(875, "EmitterTag"),
+    };
+
+    #[test]
+    fn activation_registers_hp_presence_without_replacing_virtual_stats() {
+        crate::test_support::init_config();
+        let entity = |uid, attack| FightEntityInfo {
+            uid: Some(uid),
+            team_type: Some(1),
+            current_hp: Some(100),
+            attr: Some(HeroAttribute {
+                hp: Some(100),
+                attack: Some(attack),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![entity(10, 100), entity(11, 300)],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
+
+        managers.execute_emitter(EmitterCommand {
+            origin: ORIGIN,
+            operation: EmitterOperation::Enable(definition()),
+        });
+
+        assert_eq!(managers.hp.current(UID), 1);
+        assert_eq!(managers.hp.max(UID), 0);
+        assert!(managers.entity.snapshot(UID).is_none());
+        assert_eq!(
+            pool.runtime_view(&managers).entity(UID).unwrap().attack,
+            200
+        );
+
+        managers
+            .hp
+            .execute_command(HpCommand::AdjustMax(MaxHpAdjust {
+                origin: ORIGIN,
+                source_uid: 10,
+                target_uid: UID,
+                delta: 1,
+            }))
+            .unwrap();
+        managers.execute_emitter(EmitterCommand {
+            origin: ORIGIN,
+            operation: EmitterOperation::Enable(definition()),
+        });
+
+        assert_eq!(managers.hp.current(UID), 1);
+        assert_eq!(managers.hp.max(UID), 1);
+    }
+
+    #[test]
+    fn activation_identity_matches_the_captured_emitter_shell() {
+        let entity = activation_entity();
+
+        assert_eq!(entity.uid, Some(UID));
+        assert_eq!(entity.entity_type, Some(6));
+        assert_eq!(entity.team_type, Some(1));
+        assert_eq!(entity.current_hp, Some(1));
+        assert_eq!(entity.attr.unwrap().hp, Some(0));
+        assert_eq!(entity.base_attr.unwrap().hp, Some(0));
+        assert_eq!(entity.guard, Some(-1));
+        assert_eq!(entity.enhance_info_box.unwrap().uid, Some(UID));
     }
 
     #[test]

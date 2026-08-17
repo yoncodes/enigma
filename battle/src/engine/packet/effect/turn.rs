@@ -2,55 +2,11 @@ use super::*;
 
 impl EffectPacket {
     pub fn emitter_create() -> ActEffect {
-        let attr = HeroAttribute {
-            hp: Some(0),
-            attack: Some(0),
-            defense: Some(0),
-            mdefense: Some(0),
-            technic: Some(0),
-            multi_hp_idx: Some(0),
-            multi_hp_num: Some(0),
-        };
         ActEffect {
             target_id: Some(0),
             effect_type: Some(EffectType::Emittercreate as i32),
             effect_num: Some(1),
-            entity: Some(FightEntityInfo {
-                uid: Some(emitter::UID),
-                model_id: Some(0),
-                skin: Some(0),
-                position: Some(0),
-                entity_type: Some(6),
-                user_id: Some(0),
-                ex_point: Some(0),
-                level: Some(0),
-                current_hp: Some(1),
-                attr: Some(attr),
-                ex_skill: Some(0),
-                shield_value: Some(0),
-                expoint_max_add: Some(0),
-                buff_harm_statistic: Some(0),
-                equip_uid: Some(0),
-                trial_equip: Some(Default::default()),
-                ex_skill_level: Some(0),
-                base_attr: Some(attr),
-                ex_skill_point_change: Some(0),
-                team_type: Some(1),
-                enhance_info_box: Some(EnhanceInfoBox {
-                    uid: Some(emitter::UID),
-                    ..Default::default()
-                }),
-                trial_id: Some(0),
-                career: Some(0),
-                status: Some(0),
-                guard: Some(-1),
-                sub_cd: Some(0),
-                ex_point_type: Some(0),
-                destiny_stone: Some(0),
-                destiny_rank: Some(0),
-                custom_unit_id: Some(0),
-                ..Default::default()
-            }),
+            entity: Some(emitter::activation_entity()),
             config_effect: Some(0),
             buff_act_id: Some(0),
             reserve_id: Some(0),
