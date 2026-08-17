@@ -135,6 +135,7 @@ fn exact_buff_owned_charge_adds_caps_and_projects_absolute_state() {
         ..Default::default()
     };
     let mut managers = BattleManagers::seeded(&fight);
+    let mut repeated_managers = managers.clone();
     let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
     let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
@@ -167,12 +168,12 @@ fn exact_buff_owned_charge_adds_caps_and_projects_absolute_state() {
             &behavior,
         )
         .unwrap();
-        let [
-            RuleOp::Command(BattleCommand::Buff(command)),
-            RuleOp::BuffActInfoMarker(marker),
-        ] = ops.as_slice()
-        else {
-            panic!("expected one state command followed by its absolute marker")
+        let [RuleOp::Command(BattleCommand::Buff(command))] = ops.as_slice() else {
+            panic!("expected one capped state command")
+        };
+        let changes = managers.execute_buff(command.clone()).unwrap();
+        let [marker] = changes.act_info_markers.as_slice() else {
+            panic!("expected one committed absolute marker")
         };
         assert_eq!(marker.target_uid, 10);
         assert_eq!(marker.buff_uid, 1006);
@@ -181,7 +182,6 @@ fn exact_buff_owned_charge_adds_caps_and_projects_absolute_state() {
         assert_eq!(marker.str_param.as_deref(), Some(""));
         assert_eq!(marker.team_type, 0);
 
-        managers.execute_buff(command.clone()).unwrap();
         assert_eq!(
             managers.buff.snapshot(10, 1006).unwrap().act_info[0].param,
             vec![expected]
@@ -207,6 +207,41 @@ fn exact_buff_owned_charge_adds_caps_and_projects_absolute_state() {
     )
     .unwrap();
     assert!(ops.is_empty());
+
+    let repeated_behavior = ParsedBehavior::new(60298, "AddMeiLeiErCharge", vec![40_000]);
+    let first = rule_ops(
+        BehaviorOpContext {
+            source_uid: 9,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 31460171,
+            transfer_count: 1,
+            event: None,
+            managers: &repeated_managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &repeated_behavior,
+    )
+    .unwrap();
+    let second = first.clone();
+    let markers = [first, second]
+        .into_iter()
+        .map(|ops| {
+            let [RuleOp::Command(BattleCommand::Buff(command))] = ops.as_slice() else {
+                panic!("expected one capped state command")
+            };
+            let changes = repeated_managers.execute_buff(command.clone()).unwrap();
+            changes.act_info_markers[0].params[0]
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(markers, vec![110_000, 150_000]);
+    assert_eq!(
+        repeated_managers.buff.snapshot(10, 1006).unwrap().act_info[0].param,
+        vec![150_000]
+    );
     assert_eq!(
         managers.buff.snapshot(10, 1006).unwrap().act_info[0].param,
         vec![150_000]
@@ -386,21 +421,21 @@ fn exact_consume_buff_charge_rewards_emits_captured_active_sequence() {
 
     let [
         RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(consume))),
-        RuleOp::Command(BattleCommand::Buff(BuffCommand::SetInternalState(state))),
-        RuleOp::BuffActInfoMarker(marker),
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::AccumulateCappedActState(charge))),
         RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(first))),
         RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(second))),
     ] = ops.as_slice()
     else {
-        panic!("expected consume, charge state, marker, and ordered rewards")
+        panic!("expected consume, committed charge delta, and ordered rewards")
     };
     assert_eq!(consume.target_uid, 10);
     assert_eq!(consume.selector, BuffSelector::ExactId(31460001));
     assert_eq!(consume.amount, 1);
     assert_eq!(consume.depleted, DepletedBuff::Remove);
-    assert_eq!(state.buff_uid, 1006);
-    assert_eq!(state.act_info.as_ref().unwrap()[0].param, vec![78_000]);
-    assert_eq!(marker.params, vec![78_000]);
+    assert_eq!(charge.buff_uid, 1006);
+    assert_eq!(charge.act_id, 1139);
+    assert_eq!(charge.delta, 8_000);
+    assert_eq!(charge.maximum, 150_000);
     assert_eq!((first.buff_id, first.amount), (31460002, Some(2)));
     assert_eq!((second.buff_id, second.amount), (31460111, None));
     assert_eq!(
@@ -410,7 +445,6 @@ fn exact_consume_buff_charge_rewards_emits_captured_active_sequence() {
             .collect::<Vec<_>>(),
         vec![
             Some(OutputOwner::CausingEvent),
-            None,
             None,
             Some(OutputOwner::CausingEvent),
             Some(OutputOwner::CausingEvent),

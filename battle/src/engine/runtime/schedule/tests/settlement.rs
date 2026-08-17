@@ -308,6 +308,10 @@ fn entity_settlement_keeps_event_owned_buff_changes_outside_the_nested_skill() {
     .unwrap();
 
     assert_eq!(managers.buff.snapshot(10, 1150).unwrap().layer, Some(1));
+    assert_eq!(
+        managers.buff.snapshot(10, 1006).unwrap().act_info[0].param,
+        vec![78_000]
+    );
     assert!(managers.buff.has_buff_id(10, 31460111));
     assert_eq!(managers.ex_point.get(10), 1);
 
@@ -365,7 +369,7 @@ fn entity_settlement_keeps_event_owned_buff_changes_outside_the_nested_skill() {
             && effect
                 .buff_act_info
                 .as_ref()
-                .is_some_and(|info| info.act_id == Some(1139))
+                .is_some_and(|info| info.act_id == Some(1139) && info.param == [78_000])
     }));
     assert!(skill.act_effect.iter().any(|effect| {
         effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)

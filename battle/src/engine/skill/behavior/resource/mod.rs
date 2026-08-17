@@ -120,17 +120,15 @@ fn buff_owned_charge_ops(
         .into_iter()
         .find(|feature| {
             feature.owner_uid == target_uid
-                && buff_act::is_kind(feature, buff_act::registry::BuffActKind::MeiLeiErCharge)
+                && buff_act::is_kind(feature, buff_act::registry::BuffActKind::BuffOwnedCharge)
         })?;
     let act_id = feature.act_id()?;
     let limit = feature.values.get(2).copied()?;
-    let mut act_info = managers
+    let act_info = managers
         .buff
         .snapshot(target_uid, feature.buff_uid)
         .map(|buff| buff.act_info)?;
-    let mut matching = act_info
-        .iter_mut()
-        .filter(|info| info.act_id == Some(act_id));
+    let mut matching = act_info.iter().filter(|info| info.act_id == Some(act_id));
     let info = matching.next()?;
     if matching.next().is_some() || info.str_param.as_deref() != Some("") {
         return None;
@@ -138,37 +136,24 @@ fn buff_owned_charge_ops(
     let [current] = info.param.as_slice() else {
         return None;
     };
-    let current = *current;
-    if !(0..=limit).contains(&current) {
+    if !(0..=limit).contains(current) {
         return None;
     }
-    let next = current.saturating_add(delta).min(limit);
-    if next == current {
+    if *current == limit {
         return Some(Vec::new());
     }
-    info.param = vec![next];
-    info.str_param = Some(String::new());
-
-    Some(vec![
-        RuleOp::Command(BattleCommand::Buff(BuffCommand::SetInternalState(
-            crate::engine::manager::buff::BuffSetState {
+    Some(vec![RuleOp::Command(BattleCommand::Buff(
+        BuffCommand::AccumulateCappedActState(
+            crate::engine::manager::buff::BuffAccumulateCappedActState {
                 origin,
                 target_uid,
                 buff_uid: feature.buff_uid,
-                ex_info: None,
-                params: None,
-                act_info: Some(act_info),
+                act_id,
+                delta,
+                maximum: limit,
             },
-        ))),
-        RuleOp::BuffActInfoMarker(crate::engine::manager::buff::BuffActInfoMarkerResult {
-            target_uid,
-            buff_uid: feature.buff_uid,
-            act_id,
-            params: vec![next],
-            str_param: Some(String::new()),
-            team_type: 0,
-        }),
-    ])
+        ),
+    ))])
 }
 
 pub fn supports_average_life(behavior: &ParsedBehavior) -> bool {
