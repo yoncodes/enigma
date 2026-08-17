@@ -49,9 +49,10 @@ fn scan_skill(
         "Skill id={} effect={} role={} path={}",
         pending.id,
         skill.skill_effect,
-        skill_role(catalog, pending.id),
+        skill_role_at_path(catalog, pending.id, &pending.path),
         pending.path
     ));
+    enqueue_choice_skills(db, &pending, skills);
     for issue in catalog.issues(pending.id) {
         report.error(format!(
             "{:?} path={} > skill {} effect={} slot={} opcode={:?} type={:?} raw={:?}",
@@ -223,6 +224,22 @@ fn enqueue_behavior_references(
         for id in references.models {
             enqueue_monster_skills(db, id, &format!("{path} > model {id}"), skills, report);
         }
+    }
+}
+
+fn enqueue_choice_skills(db: &config::GameDB, pending: &Pending, skills: &mut VecDeque<Pending>) {
+    let Some(choice) = db.fight_card_choice.get(pending.id) else {
+        return;
+    };
+    for choice_skill_id in split_ids(&choice.choice_sk_ills) {
+        enqueue(
+            skills,
+            choice_skill_id,
+            format!(
+                "{} > choice primary {} > alternative {}",
+                pending.path, pending.id, choice_skill_id
+            ),
+        );
     }
 }
 
@@ -714,6 +731,14 @@ fn skill_role(catalog: &SkillEffectCatalog, skill_id: i32) -> &'static str {
     }
 }
 
+fn skill_role_at_path(catalog: &SkillEffectCatalog, skill_id: i32, path: &str) -> &'static str {
+    if path.contains(" > choice primary ") {
+        "choice"
+    } else {
+        skill_role(catalog, skill_id)
+    }
+}
+
 fn slot_route(catalog: &SkillEffectCatalog, skill_id: i32, slot: &SkillEffectSlot) -> String {
     if let Ok(route) = &slot.compiled_route
         && let Some(label) = compiled_route_label(route)
@@ -799,6 +824,10 @@ pub(super) fn configured_skill_ids(raw: &str, db: &config::GameDB) -> Vec<i32> {
         .into_iter()
         .filter(|id| db.skill.get(*id).is_some())
         .collect()
+}
+
+pub(super) fn configured_skill_family_ids(raw: &str, db: &config::GameDB) -> Vec<i32> {
+    configured_skill_ids(raw.split(',').next().unwrap_or_default(), db)
 }
 
 fn localized<'a>(db: &'a config::GameDB, value: &'a str) -> &'a str {

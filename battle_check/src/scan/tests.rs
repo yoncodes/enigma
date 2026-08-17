@@ -141,6 +141,77 @@ fn non_device_max_roots_keep_character_groups_and_ultimate() {
 }
 
 #[test]
+fn choice_families_keep_primary_roots_and_scan_alternatives() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut skills = VecDeque::new();
+    let mut report = Report {
+        quiet: true,
+        explain: true,
+        ..Default::default()
+    };
+
+    collect_hero_build_roots(3120, None, None, db, &mut skills, &mut report).unwrap();
+    let root_ids = skills.iter().map(|pending| pending.id).collect::<Vec<_>>();
+    assert!(root_ids.contains(&312001215));
+    for child_id in [31200164, 31200231] {
+        assert!(
+            !root_ids.contains(&child_id),
+            "choice child became a root: {child_id}"
+        );
+    }
+
+    let mut catalog = SkillEffectCatalog::from_roots(
+        db,
+        skills.iter().map(|pending| pending.id),
+        std::iter::empty(),
+    );
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut VecDeque::new(),
+        &mut report,
+    );
+
+    for child_id in [31200164, 31200231] {
+        assert!(report.checked_skills.contains(&child_id));
+        assert!(catalog.get(child_id).is_some());
+    }
+    assert!(report.explanations.iter().any(|explanation| {
+        explanation.contains("Skill id=31200164")
+            && explanation.contains("role=choice")
+            && explanation.contains("choice primary 312001215 > alternative 31200164")
+    }));
+}
+
+#[test]
+fn paper_heron_choice_roots_keep_only_the_first_family() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut skills = VecDeque::new();
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    collect_hero_build_roots(3135, None, None, db, &mut skills, &mut report).unwrap();
+    let root_ids = skills.iter().map(|pending| pending.id).collect::<Vec<_>>();
+    for root_id in [313501171, 313501181, 313501191] {
+        assert!(root_ids.contains(&root_id));
+    }
+    for child_id in [
+        313501117, 313501127, 313501137, 313501118, 313501128, 313501138,
+    ] {
+        assert!(
+            !root_ids.contains(&child_id),
+            "choice child became a root: {child_id}"
+        );
+    }
+}
+
+#[test]
 fn count_continue_channel_expands_the_checked_skill_closure() {
     crate::init_config().unwrap();
     let db = config::get();
