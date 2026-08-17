@@ -107,6 +107,29 @@ pub async fn finish_fight_instance_in_transaction(
     Ok(())
 }
 
+pub async fn update_fight_checkpoint(
+    pool: &SqlitePool,
+    user_id: i64,
+    fight_id: i64,
+    checkpoint: &str,
+) -> Result<()> {
+    let result = sqlx::query(
+        "UPDATE fight_instances
+         SET checkpoint = ?
+         WHERE id = ? AND user_id = ? AND active = 1",
+    )
+    .bind(checkpoint)
+    .bind(fight_id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    ensure!(
+        result.rows_affected() == 1,
+        "active fight instance is missing"
+    );
+    Ok(())
+}
+
 pub async fn save_round_operations(
     pool: &SqlitePool,
     user_id: i64,
