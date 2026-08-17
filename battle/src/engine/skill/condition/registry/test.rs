@@ -1071,22 +1071,26 @@ fn resource_change_reactions_use_their_exact_publication_phase() {
 
 #[test]
 fn conduit_cost_uses_its_exact_activation_subscription() {
-    assert_eq!(
-        parse(788210, "PerDeviceCurrCost", &["1".into()]),
-        Some(ParsedConditionKind::PerConduitCurrentCost { threshold: 1 })
-    );
-    let definition = find_key(788210, "PerDeviceCurrCost").unwrap();
-    assert_eq!(
-        definition.role,
-        ConditionRole::Trigger {
-            event: EventKind::ConduitActivated,
-            phase: None,
-        }
-    );
-    assert_eq!(definition.publication, PublicationPhase::AfterPublish);
-    assert_eq!(definition.reaction_timing, ReactionTiming::Immediate);
-    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
-    assert_eq!(definition.reaction_frame_scope, ReactionFrameScope::Causing);
+    for opcode in [788210, 788212] {
+        assert_eq!(
+            parse(opcode, "PerDeviceCurrCost", &["1".into()]),
+            Some(ParsedConditionKind::PerConduitCurrentCost { threshold: 1 })
+        );
+        let definition = find_key(opcode, "PerDeviceCurrCost").unwrap();
+        assert_eq!(
+            definition.role,
+            ConditionRole::Trigger {
+                event: EventKind::ConduitActivated,
+                phase: None,
+            }
+        );
+        assert_eq!(definition.publication, PublicationPhase::AfterPublish);
+        assert_eq!(definition.reaction_timing, ReactionTiming::Immediate);
+        assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+        assert_eq!(definition.reaction_frame_scope, ReactionFrameScope::Causing);
+    }
+    assert_eq!(parse(788212, "PerDeviceCurrCost", &[]), None);
+    assert!(find_key(788211, "PerDeviceCurrCost").is_none());
 }
 
 #[test]
