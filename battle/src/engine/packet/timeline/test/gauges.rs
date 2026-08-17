@@ -37,6 +37,51 @@ fn inspiration_gauge_projects_as_emitter_energy() {
 }
 
 #[test]
+fn team_energy_gauge_projects_one_generic_effect_without_power_or_marker_state() {
+    let change = GaugeChange {
+        origin: CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(60264, "PerTypeBuffAddEnergyToTeam"),
+        },
+        key: GaugeKey {
+            kind: crate::engine::manager::gauge::GaugeKind::TeamEnergy,
+            owner: crate::engine::manager::gauge::GaugeOwner::Team(1),
+        },
+        source_uid: 10,
+        source_skill_id: 0,
+        config_effect: 60264,
+        progress_raw_delta: 0,
+        kind: GaugeChangeKind::Value,
+        before: 0,
+        requested_delta: 7,
+        applied_delta: 7,
+        after: 7,
+        overflow: 0,
+        before_max: None,
+        after_max: None,
+        enabled_before: true,
+        enabled_after: true,
+    };
+
+    let effects = project_change_for_test(&BattleChange::Gauge(change)).unwrap();
+    assert_eq!(effects.len(), 1);
+    let effect = &effects[0];
+    assert_eq!(effect.target_id, Some(0));
+    assert_eq!(
+        effect.effect_type,
+        Some(EffectType::Teamenergychange as i32)
+    );
+    assert_eq!(effect.effect_num, Some(1));
+    assert_eq!(effect.effect_num1, Some(7));
+    assert_eq!(effect.power_info, None);
+    assert_eq!(effect.buff, None);
+    assert_eq!(effect.entity, None);
+    assert_eq!(effect.emitter_info, None);
+    assert_eq!(effect.buff_act_info, None);
+    assert_eq!(effect.reserve_str, None);
+}
+
+#[test]
 fn bloodtithe_gauge_projects_creation_and_attributed_value_changes() {
     let origin = CommandOrigin {
         domain: RuleDomain::Behavior,
