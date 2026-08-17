@@ -487,15 +487,28 @@ pub async fn reconcile_map_progression(
             game_data
                 .chapter
                 .get(map.chapter_id)
-                .and_then(|chapter| game_data.episode.get(chapter.episode_id))
-                .is_some_and(|episode| {
-                    episode_is_unlocked(
-                        game_data,
-                        &chain_episodes,
-                        episode,
-                        &completed,
-                        &finished_stories,
-                    )
+                .is_some_and(|chapter| {
+                    if chapter.episode_id == 0 {
+                        predecessor_chapter_is_finished(
+                            game_data,
+                            chapter,
+                            &completed,
+                            &finished_stories,
+                        )
+                    } else {
+                        game_data
+                            .episode
+                            .get(chapter.episode_id)
+                            .is_some_and(|episode| {
+                                episode_is_unlocked(
+                                    game_data,
+                                    &chain_episodes,
+                                    episode,
+                                    &completed,
+                                    &finished_stories,
+                                )
+                            })
+                    }
                 })
         } else {
             false
@@ -724,6 +737,31 @@ fn episode_is_unlocked(
                         story_id == 0 || finished_stories.contains(&story_id)
                     })
         })
+}
+
+fn predecessor_chapter_is_finished(
+    game_data: &config::GameDB,
+    chapter: &config::chapter::Chapter,
+    completed: &HashSet<i32>,
+    finished_stories: &HashSet<i32>,
+) -> bool {
+    if chapter.pre_chapter == 0 {
+        return true;
+    }
+
+    let Some(last_episode) = game_data
+        .episode
+        .iter()
+        .rfind(|episode| episode.chapter_id == chapter.pre_chapter)
+    else {
+        return false;
+    };
+    if !completed.contains(&last_episode.id) {
+        return false;
+    }
+
+    let story_id = effective_after_story(game_data, last_episode);
+    story_id == 0 || finished_stories.contains(&story_id)
 }
 
 pub async fn update_dungeon_progress(
