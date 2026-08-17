@@ -30,6 +30,9 @@ pub fn damage_multiplier(
         })
         .unwrap_or_default();
     let multiplier = managers.attribute.get(source_uid, AttrId::CriticalDmg)
+        + managers
+            .buff
+            .fixed_attribute_delta(source_uid, AttrId::CriticalDmg)
         + technique
         + modifiers::dynamic_attribute_delta(
             &managers.buff,

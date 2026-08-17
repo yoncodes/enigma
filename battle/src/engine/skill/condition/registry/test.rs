@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::manager::conduit::ConduitCounterKind;
 use crate::engine::skill::condition::{
     ConditionCompare, buff::BuffConditionMode, none::NoneMode, parse::BuffAddedScope,
 };
@@ -1071,22 +1072,26 @@ fn resource_change_reactions_use_their_exact_publication_phase() {
 
 #[test]
 fn conduit_cost_uses_its_exact_activation_subscription() {
-    assert_eq!(
-        parse(788210, "PerDeviceCurrCost", &["1".into()]),
-        Some(ParsedConditionKind::PerConduitCurrentCost { threshold: 1 })
-    );
-    let definition = find_key(788210, "PerDeviceCurrCost").unwrap();
-    assert_eq!(
-        definition.role,
-        ConditionRole::Trigger {
-            event: EventKind::ConduitActivated,
-            phase: None,
-        }
-    );
-    assert_eq!(definition.publication, PublicationPhase::AfterPublish);
-    assert_eq!(definition.reaction_timing, ReactionTiming::Immediate);
-    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
-    assert_eq!(definition.reaction_frame_scope, ReactionFrameScope::Causing);
+    for opcode in [788210, 788212] {
+        assert_eq!(
+            parse(opcode, "PerDeviceCurrCost", &["1".into()]),
+            Some(ParsedConditionKind::PerConduitCurrentCost { threshold: 1 })
+        );
+        let definition = find_key(opcode, "PerDeviceCurrCost").unwrap();
+        assert_eq!(
+            definition.role,
+            ConditionRole::Trigger {
+                event: EventKind::ConduitActivated,
+                phase: None,
+            }
+        );
+        assert_eq!(definition.publication, PublicationPhase::AfterPublish);
+        assert_eq!(definition.reaction_timing, ReactionTiming::Immediate);
+        assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+        assert_eq!(definition.reaction_frame_scope, ReactionFrameScope::Causing);
+    }
+    assert_eq!(parse(788212, "PerDeviceCurrCost", &[]), None);
+    assert!(find_key(788211, "PerDeviceCurrCost").is_none());
 }
 
 #[test]
@@ -1107,6 +1112,48 @@ fn use_device_skill_uses_its_exact_activation_subscription() {
     assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
     assert_eq!(definition.reaction_frame_scope, ReactionFrameScope::Causing);
     assert!(find_key(792208, "PerDeviceCurrCost").is_none());
+}
+
+#[test]
+fn conduit_counter_uses_its_exact_predicate_route() {
+    assert_eq!(
+        parse(
+            786203,
+            "PerDeviceCounter",
+            &["1".into(), "1".into(), "20".into()],
+        ),
+        Some(ParsedConditionKind::PerConduitCounter {
+            kind: ConduitCounterKind::EnergyAccumulation,
+            divisor: 1,
+            max_count: 20,
+        })
+    );
+    assert_eq!(
+        parse(
+            786203,
+            "PerDeviceCounter",
+            &["2".into(), "1".into(), "20".into()],
+        ),
+        Some(ParsedConditionKind::PerConduitCounter {
+            kind: ConduitCounterKind::Activation,
+            divisor: 1,
+            max_count: 20,
+        })
+    );
+    for args in [
+        vec![],
+        vec!["1".into(), "1".into()],
+        vec!["3".into(), "1".into(), "20".into()],
+        vec!["1".into(), "0".into(), "20".into()],
+        vec!["1".into(), "1".into(), "0".into()],
+    ] {
+        assert_eq!(parse(786203, "PerDeviceCounter", &args), None);
+    }
+    let definition = find_key(786203, "PerDeviceCounter").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::ConduitActivated]);
+    assert!(find_key(786303, "PerDeviceCounter").is_none());
+    assert!(find_key(786203, "PerDeviceCurrCost").is_none());
 }
 
 #[test]

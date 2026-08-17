@@ -783,11 +783,22 @@ mod tests {
     }
 
     #[test]
-    fn conduit_cost_counts_each_consumed_energy_unit() {
+    fn conduit_cost_counts_each_configured_activation_cost_unit_for_allies() {
         let fight = Fight {
             attacker: Some(FightTeam {
+                entitys: vec![10, 11]
+                    .into_iter()
+                    .map(|uid| FightEntityInfo {
+                        uid: Some(uid),
+                        current_hp: Some(1),
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
-                    uid: Some(10),
+                    uid: Some(-1),
                     current_hp: Some(1),
                     ..Default::default()
                 }],
@@ -798,24 +809,28 @@ mod tests {
         let managers = BattleManagers::seeded(&fight);
         let pool = TargetPool::from_fight(&fight);
         let condition = condition(ParsedConditionKind::PerConduitCurrentCost { threshold: 1 });
+        let event = |target_uid| ResourceEvent::Conduit {
+            target_uid,
+            power_id: 1,
+            activation_cost: 3,
+            spent: 2,
+        };
 
+        for target_uid in [10, 11] {
+            assert_eq!(
+                event_conditions_count(
+                    std::slice::from_ref(&condition),
+                    context(event(target_uid), 10, &[10, 11], &managers, &pool),
+                ),
+                3
+            );
+        }
         assert_eq!(
             event_conditions_count(
-                &[condition],
-                context(
-                    ResourceEvent::Conduit {
-                        target_uid: 10,
-                        power_id: 1,
-                        activation_cost: 3,
-                        spent: 2,
-                    },
-                    10,
-                    &[10],
-                    &managers,
-                    &pool,
-                ),
+                std::slice::from_ref(&condition),
+                context(event(-1), 10, &[10, 11], &managers, &pool),
             ),
-            3
+            0
         );
     }
 }
