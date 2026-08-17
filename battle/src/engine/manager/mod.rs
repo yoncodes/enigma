@@ -701,7 +701,11 @@ impl BattleManagers {
         &mut self,
         command: emitter::EmitterCommand,
     ) -> emitter::EmitterChange {
-        self.emitter.execute_command(command)
+        let change = self.emitter.execute_command(command);
+        if !change.enabled_before && change.enabled_after {
+            self.hp.register(&emitter::activation_entity());
+        }
+        change
     }
 
     pub(crate) fn execute_card(
