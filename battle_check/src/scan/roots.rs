@@ -76,40 +76,72 @@ pub(crate) fn collect_hero_build_roots(
         }
     }
 
-    let mut group1 = parse_skill_group(&hero.skill, 1);
-    let mut group2 = parse_skill_group(&hero.skill, 2);
-    let mut ex_skill = hero.ex_skill;
-    let mut upgrades = db
-        .skill_ex_level
-        .iter()
-        .filter(|row| row.hero_id == hero_id)
-        .collect::<Vec<_>>();
-    upgrades.sort_by_key(|row| row.skill_level);
-    for row in upgrades {
-        if !row.skill_group1.trim().is_empty() {
-            group1 = configured_skill_ids(&row.skill_group1, db);
-        }
-        if !row.skill_group2.trim().is_empty() {
-            group2 = configured_skill_ids(&row.skill_group2, db);
-        }
-        if row.skill_ex != 0 {
-            ex_skill = row.skill_ex;
-        }
-    }
-    apply_destiny(&mut group1, destiny.as_ref());
-    apply_destiny(&mut group2, destiny.as_ref());
-    ex_skill = destiny
-        .as_ref()
-        .and_then(|map| map.get(&ex_skill).copied())
-        .unwrap_or(ex_skill);
+    let destiny_stone = destiny_selection
+        .map(|(stone, _)| stone)
+        .unwrap_or_default();
+    let max_skill_level = if destiny_stone > 0 {
+        db.destiny_facets_ex_level
+            .iter()
+            .filter(|row| row.hero_id == destiny_stone)
+            .map(|row| row.skill_level)
+            .max()
+            .unwrap_or_default()
+    } else {
+        db.skill_ex_level
+            .iter()
+            .filter(|row| row.hero_id == hero_id)
+            .map(|row| row.skill_level)
+            .max()
+            .unwrap_or_default()
+    };
 
-    for (label, skill_ids) in [("skill group 1", group1), ("skill group 2", group2)] {
-        for skill_id in skill_ids {
-            enqueue(skills, skill_id, format!("hero {hero_id} > max {label}"));
+    if let Some(device_skills) =
+        battle::catalog::configured_conduit_skill_ids(db, hero_id, max_skill_level, destiny_stone)
+            .map_err(|error| anyhow::anyhow!("resolve configured device skills: {error:?}"))?
+    {
+        for skill_id in device_skills {
+            enqueue(
+                skills,
+                skill_id,
+                format!("hero {hero_id} > max configured device skill"),
+            );
         }
-    }
-    if ex_skill > 0 {
-        enqueue(skills, ex_skill, format!("hero {hero_id} > ultimate"));
+    } else {
+        let mut group1 = parse_skill_group(&hero.skill, 1);
+        let mut group2 = parse_skill_group(&hero.skill, 2);
+        let mut ex_skill = hero.ex_skill;
+        let mut upgrades = db
+            .skill_ex_level
+            .iter()
+            .filter(|row| row.hero_id == hero_id)
+            .collect::<Vec<_>>();
+        upgrades.sort_by_key(|row| row.skill_level);
+        for row in upgrades {
+            if !row.skill_group1.trim().is_empty() {
+                group1 = configured_skill_ids(&row.skill_group1, db);
+            }
+            if !row.skill_group2.trim().is_empty() {
+                group2 = configured_skill_ids(&row.skill_group2, db);
+            }
+            if row.skill_ex != 0 {
+                ex_skill = row.skill_ex;
+            }
+        }
+        apply_destiny(&mut group1, destiny.as_ref());
+        apply_destiny(&mut group2, destiny.as_ref());
+        ex_skill = destiny
+            .as_ref()
+            .and_then(|map| map.get(&ex_skill).copied())
+            .unwrap_or(ex_skill);
+
+        for (label, skill_ids) in [("skill group 1", group1), ("skill group 2", group2)] {
+            for skill_id in skill_ids {
+                enqueue(skills, skill_id, format!("hero {hero_id} > max {label}"));
+            }
+        }
+        if ex_skill > 0 {
+            enqueue(skills, ex_skill, format!("hero {hero_id} > ultimate"));
+        }
     }
     for passive in Passive::configured(db, hero_id, psychube, destiny_selection) {
         enqueue(
