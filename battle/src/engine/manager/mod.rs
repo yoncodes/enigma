@@ -100,12 +100,20 @@ pub(crate) fn persistent_attribute_delta(
     buffs.attribute_delta(uid, attr_id)
         + active_features
             .iter()
-            .filter(|feature| {
-                feature.owner_uid == uid
-                    && buff_act::is_kind(feature, BuffActKind::AddAttrByOtherBuffLayer)
-            })
-            .map(|feature| {
-                buff_act::add_attr_by_other_buff_layer::attribute_delta(feature, attr_id, buffs)
+            .filter_map(|feature| {
+                if feature.owner_uid != uid {
+                    return None;
+                }
+                let scope = if buff_act::is_kind(feature, BuffActKind::AddAttrByOtherBuffLayer) {
+                    buff_act::add_attr_by_other_buff_layer::LayerScope::SourceOrOwner
+                } else if buff_act::is_kind(feature, BuffActKind::AddAttrBySourceBuffLayer) {
+                    buff_act::add_attr_by_other_buff_layer::LayerScope::Source
+                } else {
+                    return None;
+                };
+                Some(buff_act::add_attr_by_other_buff_layer::attribute_delta(
+                    feature, attr_id, buffs, scope,
+                ))
             })
             .sum::<i32>()
         + active_features
