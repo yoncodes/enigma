@@ -144,7 +144,10 @@ impl Skill {
 }
 
 fn configured_skill_ids(game: &config::GameDB, raw: &str) -> Vec<i32> {
-    raw.split(|character: char| !character.is_ascii_digit() && character != '-')
+    raw.split(',')
+        .next()
+        .unwrap_or_default()
+        .split(|character: char| !character.is_ascii_digit() && character != '-')
         .filter_map(|part| part.parse().ok())
         .filter(|skill_id| game.skill.get(*skill_id).is_some())
         .collect()
@@ -152,6 +155,7 @@ fn configured_skill_ids(game: &config::GameDB, raw: &str) -> Vec<i32> {
 
 pub fn parse_skill_group(skill_str: &str, target_group: i32) -> Vec<i32> {
     for group_str in skill_str.split('|') {
+        let group_str = group_str.split(',').next().unwrap_or(group_str);
         let mut parts = group_str.split('#');
         let Some(first) = parts.next() else { continue };
         let Ok(group_num) = first.parse::<i32>() else {
@@ -192,6 +196,46 @@ mod tests {
     #[test]
     fn parses_requested_skill_group() {
         assert_eq!(parse_skill_group("1#10#11|2#20#21", 2), vec![20, 21]);
+    }
+
+    #[test]
+    fn parses_only_the_first_choice_family() {
+        assert_eq!(
+            parse_skill_group("1#10#11#12,20#21#22|2#30#31", 1),
+            vec![10, 11, 12]
+        );
+    }
+
+    #[test]
+    fn nautika_portrayal_tiers_keep_only_the_primary_choice_family() {
+        init_config();
+        let game = crate::test_support::game_data();
+        for (level, expected) in [
+            (1, vec![312001213, 312001223, 312001233]),
+            (3, vec![312001214, 312001224, 312001234]),
+            (4, vec![312001215, 312001225, 312001235]),
+        ] {
+            let (_, group2, _) = Skill::active_skills(game, 3120, level);
+            assert_eq!(group2, expected, "portrayal level {level}");
+        }
+    }
+
+    #[test]
+    fn paper_heron_initial_loadout_keeps_only_the_primary_choice_family() {
+        init_config();
+        let game = crate::test_support::game_data();
+        assert_eq!(
+            Skill::active_skills(game, 3135, 0),
+            (
+                vec![31350111, 31350112, 31350113],
+                vec![31350121, 31350122, 31350123],
+                31350131,
+            )
+        );
+        assert_eq!(
+            Skill::active_skills(game, 3135, 1).0,
+            vec![31350114, 31350115, 31350116]
+        );
     }
 
     #[test]

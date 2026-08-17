@@ -772,6 +772,21 @@ fn resolves_normal_exact_skill_level_device_before_base_device() {
 }
 
 #[test]
+fn resolves_max_coppelia_device_and_its_actual_skills() {
+    crate::test_support::init_config();
+    let game = crate::test_support::game_data();
+
+    assert_eq!(
+        configured_conduit_device_id(game, 3144, 5, 0),
+        Some(31440051)
+    );
+    assert_eq!(
+        configured_conduit_skill_ids(game, 3144, 5, 0).unwrap(),
+        Some(vec![31444111, 31441121, 31445131])
+    );
+}
+
+#[test]
 fn ignores_zero_device_from_exact_destiny_skill_level() {
     crate::test_support::init_config();
     let catalog = BattleCatalog::new(crate::test_support::game_data());

@@ -82,7 +82,15 @@ impl EntityBuilder {
         let (sg1, sg2, configured_ex_skill) =
             Skill::loadout(game, hero, self.is_sub, destiny.as_ref());
         let ex_point_type = Self::ex_point_spec(game, hero.hero_id).0;
-        let ex_skill = Self::wire_ex_skill(ex_point_type, configured_ex_skill);
+        let device_owned = crate::catalog::configured_conduit_device_id(
+            game,
+            hero.hero_id,
+            hero.ex_skill_level,
+            hero.destiny_stone,
+        )
+        .is_some();
+        let (sg1, sg2, ex_skill) =
+            Self::wire_loadout(device_owned, sg1, sg2, ex_point_type, configured_ex_skill);
         let passives = Passive::for_build(game, hero, &self.equips, destiny.as_ref());
         // Source attribution (Insight/Rank/Destiny/Psychube/Extra) is tracked
         // in `PassiveSkill` for downstream consumers; the wire format only
@@ -217,7 +225,20 @@ impl EntityBuilder {
         let (skill_group1, skill_group2, configured_ex_skill) =
             Skill::active_skills(tables, trial.hero_id, trial.ex_skill_lv);
         let (ex_point_type, ex_point_max) = Self::ex_point_spec(tables, trial.hero_id);
-        let ex_skill = Self::wire_ex_skill(ex_point_type, configured_ex_skill);
+        let device_owned = crate::catalog::configured_conduit_device_id(
+            tables,
+            trial.hero_id,
+            trial.ex_skill_lv,
+            trial.facets_id,
+        )
+        .is_some();
+        let (skill_group1, skill_group2, ex_skill) = Self::wire_loadout(
+            device_owned,
+            skill_group1,
+            skill_group2,
+            ex_point_type,
+            configured_ex_skill,
+        );
         let mut passive_skill = Passive::ranked(
             tables,
             trial.hero_id,
@@ -351,6 +372,24 @@ impl EntityBuilder {
         }
     }
 
+    fn wire_loadout(
+        device_owned: bool,
+        group1: Vec<i32>,
+        group2: Vec<i32>,
+        ex_point_type: i32,
+        configured_ex_skill: i32,
+    ) -> (Vec<i32>, Vec<i32>, i32) {
+        if device_owned {
+            (Vec::new(), Vec::new(), 0)
+        } else {
+            (
+                group1,
+                group2,
+                Self::wire_ex_skill(ex_point_type, configured_ex_skill),
+            )
+        }
+    }
+
     fn ex_point_spec(game: &config::GameDB, hero_id: i32) -> (i32, i32) {
         let spec = game
             .character_rank_replace
@@ -468,5 +507,38 @@ mod tests {
         assert_eq!(entity.ex_point_type, Some(4));
         assert_eq!(entity.ex_point_max, Some(100));
         assert_eq!(entity.ex_skill, Some(0));
+    }
+
+    #[test]
+    fn device_owned_roster_and_trial_omit_character_skill_groups() {
+        crate::test_support::init_config();
+
+        let roster = EntityBuilder::new(
+            HeroBuildInput {
+                uid: 20_000_002,
+                user_id: 1,
+                hero_id: 3144,
+                skin: 314401,
+                level: 180,
+                rank: 5,
+                ex_skill_level: 5,
+                talent: 12,
+                ..Default::default()
+            },
+            1,
+            1,
+            false,
+        )
+        .build();
+        assert_eq!(roster.ex_point_type, Some(4));
+        assert!(roster.skill_group1.is_empty());
+        assert!(roster.skill_group2.is_empty());
+        assert_eq!(roster.ex_skill, Some(0));
+
+        let (trial, _) = EntityBuilder::trial(115380002, 20_000_003, 1, 1).unwrap();
+        assert_eq!(trial.ex_point_type, Some(4));
+        assert!(trial.skill_group1.is_empty());
+        assert!(trial.skill_group2.is_empty());
+        assert_eq!(trial.ex_skill, Some(0));
     }
 }

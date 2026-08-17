@@ -120,6 +120,134 @@ async fn completed_episode_unlocks_maps_that_reference_its_chain_alias() {
 }
 
 #[tokio::test]
+async fn anchorless_chapter_map_opens_after_its_predecessor_chapter() {
+    let pool = test_pool(35).await;
+    let game_data = config::configs::get();
+    let map = game_data.chapter_map.get(31101).unwrap();
+    let chapter = game_data.chapter.get(map.chapter_id).unwrap();
+    let first_element = game_data.chapter_map_element.get(311101).unwrap();
+    let root_map = game_data.chapter_map.get(1110101).unwrap();
+    let root_chapter = game_data.chapter.get(root_map.chapter_id).unwrap();
+    let other_gated_map = game_data.chapter_map.get(31001).unwrap();
+    let other_gated_chapter = game_data.chapter.get(other_gated_map.chapter_id).unwrap();
+
+    assert!(map.unlock_condition.is_empty());
+    assert_eq!(chapter.episode_id, 0);
+    assert!(chapter.pre_chapter > 0);
+    assert_eq!(first_element.map_id, map.id);
+    assert!(first_element.condition.is_empty());
+    assert!(root_map.unlock_condition.is_empty());
+    assert_eq!(root_chapter.episode_id, 0);
+    assert_eq!(root_chapter.pre_chapter, 0);
+    assert_eq!(other_gated_chapter.episode_id, 0);
+    assert!(other_gated_chapter.pre_chapter > 0);
+
+    let (maps, elements) = dungeons::reconcile_map_progression(&pool, 35)
+        .await
+        .unwrap();
+
+    assert!(!maps.contains(&map.id));
+    assert!(!maps.contains(&other_gated_map.id));
+    assert!(!elements.contains(&first_element.id));
+    assert!(maps.contains(&root_map.id));
+
+    let predecessor = game_data
+        .episode
+        .iter()
+        .rfind(|episode| episode.chapter_id == chapter.pre_chapter)
+        .unwrap();
+    let predecessor_before_terminal = game_data
+        .episode
+        .iter()
+        .rev()
+        .filter(|episode| episode.chapter_id == chapter.pre_chapter)
+        .nth(1)
+        .unwrap();
+    let other_predecessor = game_data
+        .episode
+        .iter()
+        .rfind(|episode| episode.chapter_id == other_gated_chapter.pre_chapter)
+        .unwrap();
+    let other_before_terminal = game_data
+        .episode
+        .iter()
+        .rev()
+        .filter(|episode| episode.chapter_id == other_gated_chapter.pre_chapter)
+        .nth(1)
+        .unwrap();
+
+    for episode in [predecessor_before_terminal, other_before_terminal] {
+        sqlx::query(
+            "INSERT INTO user_dungeons
+                (user_id, chapter_id, episode_id, star, created_at, updated_at)
+             VALUES (35, ?, ?, 1, 0, 0)",
+        )
+        .bind(episode.chapter_id)
+        .bind(episode.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let (maps, _) = dungeons::reconcile_map_progression(&pool, 35)
+        .await
+        .unwrap();
+    assert!(!maps.contains(&map.id));
+    assert!(!maps.contains(&other_gated_map.id));
+
+    sqlx::query(
+        "INSERT INTO user_dungeons
+            (user_id, chapter_id, episode_id, star, created_at, updated_at)
+         VALUES (35, ?, ?, 1, 0, 0)",
+    )
+    .bind(predecessor.chapter_id)
+    .bind(predecessor.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (maps, elements) = dungeons::reconcile_map_progression(&pool, 35)
+        .await
+        .unwrap();
+
+    assert!(maps.contains(&map.id));
+    assert!(!maps.contains(&other_gated_map.id));
+    assert!(elements.contains(&first_element.id));
+    assert!(!elements.contains(&311102));
+
+    sqlx::query(
+        "INSERT INTO user_dungeons
+            (user_id, chapter_id, episode_id, star, created_at, updated_at)
+         VALUES (35, ?, ?, 1, 0, 0)",
+    )
+    .bind(other_predecessor.chapter_id)
+    .bind(other_predecessor.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (maps, _) = dungeons::reconcile_map_progression(&pool, 35)
+        .await
+        .unwrap();
+    assert!(maps.contains(&other_gated_map.id));
+
+    sqlx::query(
+        "UPDATE user_dungeon_elements SET is_finished = 1
+         WHERE user_id = 35 AND element_id = ?",
+    )
+    .bind(first_element.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (_, elements) = dungeons::reconcile_map_progression(&pool, 35)
+        .await
+        .unwrap();
+
+    assert!(elements.contains(&311102));
+}
+
+#[tokio::test]
 async fn chapter_unlock_grants_reward_character_once() {
     let pool = test_pool(33).await;
     let manager = DungeonManager::new(33);

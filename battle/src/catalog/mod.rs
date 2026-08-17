@@ -608,6 +608,19 @@ impl BattleCatalog {
         if model_id <= 0 || trial.hero_id != model_id {
             return None;
         }
+        if configured_conduit_device_id(
+            self.game_data,
+            trial.hero_id,
+            trial.ex_skill_lv,
+            trial.facets_id,
+        )
+        .is_some()
+        {
+            return Some(ConfiguredSkillGroups {
+                group1: Vec::new(),
+                group2: Vec::new(),
+            });
+        }
         let (group1, group2, _) = crate::engine::entity::skill::Skill::active_skills(
             self.game_data,
             model_id,
@@ -1301,16 +1314,28 @@ pub(crate) fn configured_conduit_device(
     Option<Vec<Vec<crate::engine::manager::conduit::ConduitSkill>>>,
     crate::engine::manager::conduit::ConduitError,
 > {
-    use crate::engine::manager::conduit::{ConduitError, ConduitSkill, ConduitSkillGroup};
-
     let model_id = entity.model_id.unwrap_or_default();
     let skill_level = entity.ex_skill_level.unwrap_or_default();
     let destiny_stone = entity.destiny_stone.unwrap_or_default();
-    let device_id = game_data
+    let Some(device_id) =
+        configured_conduit_device_id(game_data, model_id, skill_level, destiny_stone)
+    else {
+        return Ok(None);
+    };
+    Ok(Some(parse_configured_conduit_device(game_data, device_id)?))
+}
+
+pub fn configured_conduit_device_id(
+    game_data: &config::GameDB,
+    model_id: i32,
+    skill_level: i32,
+    destiny_stone: i32,
+) -> Option<i32> {
+    game_data
         .destiny_facets_ex_level
         .iter()
         .find(|row| {
-            destiny_stone != 0 && row.hero_id == destiny_stone && row.skill_level == skill_level
+            destiny_stone > 0 && row.hero_id == destiny_stone && row.skill_level == skill_level
         })
         .map(|row| row.device_id)
         .filter(|device_id| *device_id != 0)
@@ -1328,10 +1353,38 @@ pub(crate) fn configured_conduit_device(
                 .get(model_id)
                 .map(|character| character.device_id)
                 .filter(|device_id| *device_id != 0)
-        });
-    let Some(device_id) = device_id else {
+        })
+}
+
+pub fn configured_conduit_skill_ids(
+    game_data: &config::GameDB,
+    model_id: i32,
+    skill_level: i32,
+    destiny_stone: i32,
+) -> Result<Option<Vec<i32>>, crate::engine::manager::conduit::ConduitError> {
+    let Some(device_id) =
+        configured_conduit_device_id(game_data, model_id, skill_level, destiny_stone)
+    else {
         return Ok(None);
     };
+    Ok(Some(
+        parse_configured_conduit_device(game_data, device_id)?
+            .into_iter()
+            .flatten()
+            .map(|skill| skill.skill_id)
+            .collect(),
+    ))
+}
+
+fn parse_configured_conduit_device(
+    game_data: &config::GameDB,
+    device_id: i32,
+) -> Result<
+    Vec<Vec<crate::engine::manager::conduit::ConduitSkill>>,
+    crate::engine::manager::conduit::ConduitError,
+> {
+    use crate::engine::manager::conduit::{ConduitError, ConduitSkill, ConduitSkillGroup};
+
     let Some(definition) = game_data.fight_device.get(device_id) else {
         return Err(ConduitError::MissingDefinition(device_id));
     };
@@ -1374,11 +1427,11 @@ pub(crate) fn configured_conduit_device(
             })
     };
 
-    Ok(Some(vec![
+    Ok(vec![
         parse_group(ConduitSkillGroup::Primary, &definition.skill1)?,
         parse_group(ConduitSkillGroup::Secondary, &definition.skill2)?,
         parse_unique()?,
-    ]))
+    ])
 }
 
 fn mapped_contract_buff(

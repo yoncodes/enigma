@@ -211,8 +211,19 @@ pub async fn on_use_cloth_skill(
     ctx: &mut ConnectionContext,
     req: ClientPacket,
 ) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
     let request = UseClothSkillRequest::decode(&req.data[..])?;
-    let (reply, redeal) = ctx.player_mut()?.battle.use_cloth_skill(request)?;
+    let mut active = ctx
+        .player()?
+        .battle
+        .active_snapshot()
+        .ok_or(AppError::InvalidRequest)?;
+    let (reply, redeal) = active.use_cloth_skill(request)?;
+    let pool = ctx.state.db;
+    ctx.player_mut()?
+        .battle
+        .commit_active(pool, player_id, active)
+        .await?;
     if let Some(redeal) = redeal {
         ctx.notify(CmdId::RedealCardInfoPushCmd, redeal).await?;
     }
@@ -476,8 +487,19 @@ pub async fn on_begin_round(
     ctx: &mut ConnectionContext,
     req: ClientPacket,
 ) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
     let request = BeginRoundRequest::decode(&req.data[..])?;
-    let reply = ctx.player_mut()?.battle.begin_round(request)?;
+    let mut active = ctx
+        .player()?
+        .battle
+        .active_snapshot()
+        .ok_or(AppError::InvalidRequest)?;
+    let reply = active.begin_round(request)?;
+    let pool = ctx.state.db;
+    ctx.player_mut()?
+        .battle
+        .commit_active(pool, player_id, active)
+        .await?;
 
     ctx.send_reply(CmdId::BeginRoundCmd, reply, 0, req.up_tag)
         .await

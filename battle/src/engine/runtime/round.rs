@@ -667,13 +667,18 @@ impl BattleRuntime {
         request: &BeginRoundRequest,
         determinism: RoundDeterminism,
     ) -> Result<FightRound, String> {
-        self.determinism = determinism;
-        self.build_begin_round_from_schedule(request)
+        let mut next = self.clone();
+        next.determinism = determinism;
+        let round = next.build_begin_round_from_schedule(request)?;
+        *self = next;
+        Ok(round)
     }
 
     pub fn advance_round(&mut self, request: BeginRoundRequest) -> Result<FightRound, String> {
-        let round = self.build_begin_round_from_schedule(&request)?;
-        self.round = Some(round.clone());
+        let mut next = self.clone();
+        let round = next.build_begin_round_from_schedule(&request)?;
+        next.round = Some(round.clone());
+        *self = next;
         Ok(round)
     }
 }
