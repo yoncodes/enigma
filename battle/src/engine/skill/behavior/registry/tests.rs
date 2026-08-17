@@ -36,6 +36,39 @@ fn lookup_requires_the_exact_opcode_type_pair() {
 }
 
 #[test]
+fn per_type_buff_team_energy_keeps_exact_shape_and_setup_parent_owner() {
+    let behavior = |raw_args: &[&str]| {
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(60264, "PerTypeBuffAddEnergyToTeam"),
+            Vec::new(),
+            raw_args.iter().map(|raw| (*raw).to_owned()).collect(),
+        )
+    };
+    let valid = behavior(&["303901411", "1", "1"]);
+    let definition = find(&valid).expect("exact team-energy behavior must be registered");
+
+    assert_eq!(definition.kind, BehaviorKind::PerTypeBuffAddEnergyToTeam);
+    assert_eq!(definition.output_owner, OutputOwner::SetupParent);
+    assert!(definition.destination);
+    assert!(definition.supports.unwrap()(&valid));
+    assert_eq!((definition.references)(&valid).buffs, vec![303901411]);
+
+    for raw_args in [
+        vec!["303901411", "1"],
+        vec!["303901411", "1", "1", "0"],
+        vec!["0", "1", "1"],
+        vec!["303901411", "0", "1"],
+        vec!["303901411", "1", "0"],
+        vec!["303901411", "1", "2"],
+    ] {
+        assert!(!definition.supports.unwrap()(&behavior(&raw_args)));
+    }
+
+    assert!(find_key(60264, "AddTeamEnergy").is_none());
+    assert!(find_key(60153, "PerTypeBuffAddEnergyToTeam").is_none());
+}
+
+#[test]
 fn hero_action_point_bonus_keeps_its_exact_registry_key() {
     let definition = find_key(50006, "AddActHero").unwrap();
 
