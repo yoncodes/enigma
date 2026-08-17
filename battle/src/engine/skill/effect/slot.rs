@@ -150,7 +150,7 @@ impl SkillEffectSlot {
             let definition = registry::find_key(condition.opcode, &condition.type_name)?;
             ((definition.role != registry::ConditionRole::Predicate || needs_companion_setup)
                 && definition.companion_setup.contains(&(stage, priority)))
-                .then_some(definition.key)
+            .then_some(definition.key)
         }));
         keys.dedup();
         Ok(keys)
@@ -401,7 +401,10 @@ mod tests {
             driven
                 .compiled_setup_keys(SetupStage::EnterFight, 0)
                 .unwrap(),
-            vec![crate::engine::skill::rule::DefinitionKey::new(5, "EnterFight")]
+            vec![crate::engine::skill::rule::DefinitionKey::new(
+                5,
+                "EnterFight"
+            )]
         );
     }
 

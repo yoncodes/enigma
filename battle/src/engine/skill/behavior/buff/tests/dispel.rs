@@ -135,9 +135,11 @@ fn eagle_exit_dispel_removes_the_configured_buff_type_family() {
 
     let definition = registry::find(&behavior).unwrap();
     assert_eq!(definition.kind, BehaviorKind::DisperseTypeId);
-    assert!(definition
-        .supports
-        .is_some_and(|supports| supports(&behavior)));
+    assert!(
+        definition
+            .supports
+            .is_some_and(|supports| supports(&behavior))
+    );
     let operations = remove_each_buff_family_ops(-1, &behavior).unwrap();
     let [RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(command)))] =
         operations.as_slice()
@@ -149,18 +151,26 @@ fn eagle_exit_dispel_removes_the_configured_buff_type_family() {
     assert!(command.origin.key.matches(90002, "Disperse2"));
 
     for invalid in [Vec::new(), vec![0], vec![-1], vec![8001, 8002]] {
-        assert!(!definition
-            .supports
-            .is_some_and(|supports| supports(&ParsedBehavior::new(90002, "Disperse2", invalid))));
+        assert!(
+            !definition
+                .supports
+                .is_some_and(|supports| supports(&ParsedBehavior::new(
+                    90002,
+                    "Disperse2",
+                    invalid
+                )))
+        );
     }
     let grouped = ParsedBehavior::from_spec(
         crate::engine::skill::behavior::classify::BehaviorSpec::new(90002, "Disperse2"),
         vec![8001],
         vec!["8001,8002".into()],
     );
-    assert!(!definition
-        .supports
-        .is_some_and(|supports| supports(&grouped)));
+    assert!(
+        !definition
+            .supports
+            .is_some_and(|supports| supports(&grouped))
+    );
     assert!(registry::find_key(90002, "Disperse1").is_none());
 }
 
