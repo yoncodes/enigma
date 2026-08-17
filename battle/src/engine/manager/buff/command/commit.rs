@@ -5,7 +5,7 @@ impl BuffManager {
     pub(crate) fn commit(&mut self, hp: &HpManager, plan: BuffPlan) -> BuffChanges {
         let origin = plan.origin;
         let catalog = self.catalog();
-        match plan.action {
+        let changes = match plan.action {
             BuffPlanAction::Grant(plan) => {
                 let change = self.commit_grant_plan(hp, *plan);
                 BuffChanges::new(catalog, origin, change)
@@ -308,7 +308,9 @@ impl BuffManager {
                     ..Default::default()
                 },
             ),
-        }
+        };
+        self.reconcile_transition_progress();
+        changes
     }
 
     pub(in crate::engine::manager::buff) fn commit_grant_plan(
@@ -369,6 +371,10 @@ impl BuffManager {
             layer_refresh_uid,
             &plan.fanout,
         );
+        if let Some(progress) = plan.transition_progress {
+            self.transition_progress
+                .insert((plan.route.target_uid, plan.route.buff_id), progress);
+        }
         change
             .fanout
             .extend(self.commit_fanout_refreshes(&plan.fanout_refreshes));
@@ -427,7 +433,10 @@ impl BuffManager {
         }
         if let Some(transition) = transition {
             let source_uids = transition.removed_uids.clone();
-            let transitioned = self.commit_replace_plan(hp, *transition);
+            let transient_source_uid = plan
+                .transition_progress
+                .and_then(|_| change.added.as_ref()?.buff.uid);
+            let mut transitioned = self.commit_replace_plan(hp, *transition);
             if transitioned.added.is_some() {
                 change.refreshed.retain(|refresh| {
                     refresh
@@ -435,6 +444,11 @@ impl BuffManager {
                         .uid
                         .is_none_or(|uid| !source_uids.contains(&uid))
                 });
+                if let Some(transient_source_uid) = transient_source_uid {
+                    transitioned
+                        .removed
+                        .retain(|removed| removed.buff.uid != Some(transient_source_uid));
+                }
                 change.removed.extend(transitioned.removed);
                 change.refreshed.extend(transitioned.refreshed);
                 change.added = transitioned.added;

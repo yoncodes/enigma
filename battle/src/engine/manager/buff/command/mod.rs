@@ -9,7 +9,7 @@ use crate::engine::{
 use super::{
     ActiveBuff, BuffActInfoMarkerResult, BuffAddArgs, BuffDefinition, BuffDeleteReason,
     BuffManager, BuffMarkerResult, BuffPolicy, BuffReplaceResult, BuffRoute,
-    BuffShieldRemoveResult, BuffStatus, count_or_layer_from,
+    BuffShieldRemoveResult, BuffStatus, BuffStorage, count_or_layer_from,
     grant_plan::{GrantAction, LayerRefreshPlan, PlannedFanout, PlannedFanoutRefresh},
     typed_count_repeat,
     uid_policy::{self, UidAllocationPlan},
@@ -608,6 +608,7 @@ pub(super) struct GrantPlan {
     dot_snapshots: Vec<super::state::DotSnapshotPlan>,
     grant_values: Vec<(i32, i32)>,
     immunity_action: Option<(i64, ConsumeAction)>,
+    transition_progress: Option<i32>,
     transition: Option<Box<ReplacePlan>>,
 }
 
