@@ -121,6 +121,7 @@ impl BuffManager {
         self.act_states.clear();
         self.act_values.clear();
         self.grant_values.clear();
+        self.transition_progress.clear();
         let fight_version = fight.version.unwrap_or_default();
         self.shared_uid_lane = uid::uses_shared_lane(fight_version);
         self.attacker = BuffUidAllocator::new(uid::attacker_start(fight_version));
@@ -132,6 +133,7 @@ impl BuffManager {
         if let Some(team) = &fight.defender {
             self.seed_team(team, 2);
         }
+        self.reconcile_transition_progress();
         self.seed_grant_values();
     }
 
@@ -441,6 +443,7 @@ impl BuffManager {
         self.team_types.remove(&uid);
         self.buffs.retain(|active| active.owner_uid != uid);
         self.seed_entity(entity, fallback_team_type, true);
+        self.reconcile_transition_progress();
     }
 
     pub(crate) fn sync_roster(&mut self, fight: &Fight) {

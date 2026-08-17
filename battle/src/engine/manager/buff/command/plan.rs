@@ -983,6 +983,30 @@ impl BuffManager {
         } else {
             Vec::new()
         };
+        let transition_progress = (policy.storage == BuffStorage::Single
+            && !unconditional
+            && BuffManager::tracks_single_transition(&definition)
+            && matches!(
+                action,
+                GrantAction::Add | GrantAction::ReplaceExisting | GrantAction::RefreshExisting
+            ))
+        .then(|| {
+            let current = self
+                .transition_progress
+                .get(&(route.target_uid, route.buff_id))
+                .copied()
+                .or_else(|| {
+                    self.buffs.iter().find_map(|active| {
+                        (active.owner_uid == route.target_uid
+                            && active.buff.buff_id == Some(route.buff_id))
+                        .then(|| {
+                            count_or_layer_from(&active.buff, active.definition.as_ref()).max(1)
+                        })
+                    })
+                })
+                .unwrap_or_default();
+            current.saturating_add(args.layer.max(args.count).max(1))
+        });
 
         let mut plan = GrantPlan {
             route,
@@ -1007,6 +1031,7 @@ impl BuffManager {
             dot_snapshots,
             grant_values,
             immunity_action: immunity.map(|(_, owner_uid, action)| (owner_uid, action)),
+            transition_progress,
             transition: None,
         };
         if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Buff) {
@@ -1033,17 +1058,22 @@ impl BuffManager {
         {
             let mut projected = self.clone();
             projected.commit_grant_plan(hp, plan.clone());
-            let reached = projected
-                .buffs
-                .iter()
-                .find(|active| {
-                    active.owner_uid == route.target_uid
-                        && active.buff.buff_id == Some(route.buff_id)
-                })
-                .is_some_and(|active| {
-                    super::count_or_layer_from(&active.buff, active.definition.as_ref())
-                        >= threshold
-                });
+            let reached = plan.transition_progress.map_or_else(
+                || {
+                    projected
+                        .buffs
+                        .iter()
+                        .find(|active| {
+                            active.owner_uid == route.target_uid
+                                && active.buff.buff_id == Some(route.buff_id)
+                        })
+                        .is_some_and(|active| {
+                            super::count_or_layer_from(&active.buff, active.definition.as_ref())
+                                >= threshold
+                        })
+                },
+                |progress| progress >= threshold,
+            );
             if reached {
                 plan.transition = Some(Box::new(projected.plan_replace_ids(
                     hp,
