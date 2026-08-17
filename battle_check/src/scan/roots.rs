@@ -1,4 +1,7 @@
-use super::closure::{apply_destiny, configured_skill_ids, enqueue, enqueue_monster_skills};
+use super::closure::{
+    apply_destiny, configured_skill_family_ids, configured_skill_ids, enqueue,
+    enqueue_monster_skills,
+};
 use super::*;
 
 #[derive(Debug)]
@@ -118,10 +121,10 @@ pub(crate) fn collect_hero_build_roots(
         upgrades.sort_by_key(|row| row.skill_level);
         for row in upgrades {
             if !row.skill_group1.trim().is_empty() {
-                group1 = configured_skill_ids(&row.skill_group1, db);
+                group1 = configured_skill_family_ids(&row.skill_group1, db);
             }
             if !row.skill_group2.trim().is_empty() {
-                group2 = configured_skill_ids(&row.skill_group2, db);
+                group2 = configured_skill_family_ids(&row.skill_group2, db);
             }
             if row.skill_ex != 0 {
                 ex_skill = row.skill_ex;
