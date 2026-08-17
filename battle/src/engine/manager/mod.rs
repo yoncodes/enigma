@@ -695,7 +695,35 @@ impl BattleManagers {
         &mut self,
         command: card::CardCommand,
     ) -> Result<card::CardChanges, card::CardCommandError> {
+        let skill_group_replacement = match &command {
+            card::CardCommand::ReplaceOwnerSkills(replace) => self
+                .entity
+                .snapshot(replace.owner_uid)
+                .filter(|entity| {
+                    (!replace.replacement_group1.is_empty()
+                        || !replace.replacement_group2.is_empty())
+                        && (replace.replacement_group1.is_empty()
+                            || entity.skill_group1 == replace.base_group1)
+                        && (replace.replacement_group2.is_empty()
+                            || entity.skill_group2 == replace.base_group2)
+                })
+                .map(|mut entity| {
+                    if !replace.replacement_group1.is_empty() {
+                        entity.skill_group1 = replace.replacement_group1.clone();
+                    }
+                    if !replace.replacement_group2.is_empty() {
+                        entity.skill_group2 = replace.replacement_group2.clone();
+                    }
+                    entity
+                }),
+            _ => None,
+        };
         let mut changes = self.card.execute_command(command)?;
+        if let Some(entity) = skill_group_replacement {
+            let owner_uid = entity.uid.unwrap_or_default();
+            self.entity.update(entity);
+            changes.entity = self.entity_snapshot(owner_uid);
+        }
         if changes.kind == card::CardChangeKind::HandRankChanged
             && let Some(owner_uid) = changes.rank_results.iter().find_map(|result| match result {
                 card::CardRankResult::Changed(change) => Some(change.owner_uid),

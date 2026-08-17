@@ -1,5 +1,11 @@
 use super::*;
-use crate::engine::manager::card::{CardCommand, CardOpType};
+use crate::engine::{
+    manager::{
+        buff::{BuffCommand, BuffGrant},
+        card::{CardCommand, CardOpType},
+    },
+    skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
+};
 use sonettobuf::{AutoRoundRequest, CardInfo};
 
 fn auto_runtime() -> BattleRuntime {
@@ -164,4 +170,108 @@ fn auto_round_skips_an_ultimate_without_its_required_resource() {
             ..Default::default()
         })
         .unwrap();
+}
+
+#[test]
+fn auto_round_spends_no_action_points_for_all_bendith_owner_skills() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        battle_id: Some(77),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3146),
+                    team_type: Some(1),
+                    position: Some(1),
+                    current_hp: Some(1_000),
+                    ex_point: Some(5),
+                    ex_skill: Some(31460131),
+                    skill_group1: vec![31460111],
+                    skill_group2: vec![31460121],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    model_id: Some(3023),
+                    team_type: Some(1),
+                    position: Some(2),
+                    current_hp: Some(1_000),
+                    ex_point: Some(0),
+                    ex_skill: Some(30230131),
+                    skill_group1: vec![30230111],
+                    skill_group2: vec![30230121],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                position: Some(1),
+                current_hp: Some(1_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(fight);
+    runtime
+        .managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![
+                CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(31460131),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(31460111),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(11),
+                    skill_id: Some(30230111),
+                    ..Default::default()
+                },
+            ],
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        }))
+        .unwrap();
+    runtime.round_state.act_point = 1;
+    runtime
+        .managers
+        .execute_buff(BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60001, "AddBuff"),
+            },
+            source_uid: 10,
+            target_uid: 10,
+            buff_id: 31460133,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }))
+        .unwrap();
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers.len(), 3);
+    let mut hand = runtime.card_hand().to_vec();
+    let chosen = reply
+        .opers
+        .iter()
+        .map(|oper| {
+            let index = oper.param1.unwrap() as usize - 1;
+            hand.remove(index).skill_id.unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(chosen, vec![31460131, 31460111, 30230111]);
 }

@@ -1,4 +1,5 @@
 pub mod absorb_hurt;
+pub mod action_point;
 pub mod add_action_point;
 pub mod add_attr_by_other_buff_layer;
 pub mod add_attr_by_special_count;
@@ -28,6 +29,7 @@ pub mod attr_only_cal_damage_attack;
 pub mod attr_only_cal_damage_hp_replace_attack;
 pub mod attr_only_cal_damage_replace_attr_ad_creator;
 pub mod be_attack_by_emitter_damage;
+pub mod bendith;
 pub mod big_skill_no_use_action_point;
 pub mod blood_pool;
 pub mod buff_round_add;
