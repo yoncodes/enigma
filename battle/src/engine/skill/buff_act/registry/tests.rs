@@ -257,6 +257,28 @@ fn registry_requires_exact_id_and_type() {
 }
 
 #[test]
+fn emitter_card_allocation_is_an_exact_state_consumer() {
+    let definition = find(879, "EmitterCardAllocateChange").unwrap();
+    let args = [1, 300, 1, 2];
+
+    assert_eq!(definition.kind, BuffActKind::EmitterCardAllocateChange);
+    assert!(definition.state.consumer);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        destination(879, "EmitterCardAllocateChange", &args),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(879, "EmitterCardAllocateChange", &args));
+    assert_eq!(runtime_event(879, "EmitterCardAllocateChange", 105), None);
+    assert!(!subscribes_to_event(
+        879,
+        "EmitterCardAllocateChange",
+        105,
+        EventKind::RoundStartCard
+    ));
+}
+
+#[test]
 fn damage_cap_is_an_exact_static_consumer_with_its_captured_marker() {
     let definition = find(510, "DamageNotMoreThan").unwrap();
 
