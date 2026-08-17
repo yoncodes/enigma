@@ -193,6 +193,11 @@ impl BattleManagers {
                 );
                 (base + flat + base * delta / 1000).clamp(0, i64::from(i32::MAX)) as i32
             }
+            AttrId::CriticalDmg => {
+                self.attribute.get(uid, attr_id)
+                    + self.persistent_attribute_delta(uid, attr_id)
+                    + self.buff.fixed_attribute_delta(uid, attr_id)
+            }
             _ => self.attribute.get(uid, attr_id) + self.persistent_attribute_delta(uid, attr_id),
         }
     }
