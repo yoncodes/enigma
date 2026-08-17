@@ -149,6 +149,7 @@ pub enum BehaviorKind {
     MonsterChange,
     Assassinate,
     AverageLife,
+    FocusAllEntityBuff,
     ShellAssign,
     ShellRecycle,
     ShellUseSkill,

@@ -2,6 +2,7 @@ pub mod bloodtithe;
 pub mod buff_precast;
 pub mod card;
 pub mod field_transfer;
+pub mod focus_all_entity_buff;
 pub mod heat_scale;
 pub mod impromptu;
 pub mod lingering_glow;
