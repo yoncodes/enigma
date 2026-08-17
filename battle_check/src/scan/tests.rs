@@ -89,6 +89,58 @@ fn transformed_models_expand_the_checked_skill_closure() {
 }
 
 #[test]
+fn device_owned_max_roots_use_configured_device_skills() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut skills = VecDeque::new();
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    collect_hero_build_roots(3144, None, None, db, &mut skills, &mut report).unwrap();
+
+    let ids = skills
+        .into_iter()
+        .map(|pending| pending.id)
+        .collect::<Vec<_>>();
+    assert!(ids.contains(&31444111));
+    assert!(ids.contains(&31441121));
+    assert!(ids.contains(&31445131));
+    for false_id in [31440112, 31440113, 31440122, 31440123] {
+        assert!(
+            !ids.contains(&false_id),
+            "unexpected character skill {false_id}"
+        );
+    }
+}
+
+#[test]
+fn non_device_max_roots_keep_character_groups_and_ultimate() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut skills = VecDeque::new();
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    assert_eq!(
+        battle::catalog::configured_conduit_device_id(db, 3134, 5, 0),
+        None
+    );
+    collect_hero_build_roots(3134, None, None, db, &mut skills, &mut report).unwrap();
+
+    let ids = skills
+        .into_iter()
+        .map(|pending| pending.id)
+        .collect::<Vec<_>>();
+    assert!(ids.contains(&31345111));
+    assert!(ids.contains(&31344121));
+    assert!(ids.contains(&31345131));
+}
+
+#[test]
 fn count_continue_channel_expands_the_checked_skill_closure() {
     crate::init_config().unwrap();
     let db = config::get();
