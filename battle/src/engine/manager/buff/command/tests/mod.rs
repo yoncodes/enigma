@@ -17,6 +17,7 @@ fn grant_plan(plan: &BuffPlan) -> &GrantPlan {
         | BuffPlanAction::SetInternalState(_)
         | BuffPlanAction::SetStateSnapshot(_)
         | BuffPlanAction::AccumulateActValue(_)
+        | BuffPlanAction::AccumulateCappedActState(_)
         | BuffPlanAction::ChangeDuration(_)
         | BuffPlanAction::AddSpecialCount(_)
         | BuffPlanAction::ReserveChildUids(_)

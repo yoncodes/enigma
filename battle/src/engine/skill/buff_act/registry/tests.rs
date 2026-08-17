@@ -1095,13 +1095,28 @@ fn hero_temp_cards_keep_their_exact_round_start_route() {
 
 #[test]
 fn buff_owned_charge_keeps_its_exact_state_route() {
+    crate::test_support::init_config();
     let definition = find(1139, "MeiLeiErCharge").unwrap();
 
-    assert_eq!(definition.kind, BuffActKind::MeiLeiErCharge);
+    assert_eq!(definition.kind, BuffActKind::BuffOwnedCharge);
     assert_eq!(
-        destination(1139, "MeiLeiErCharge", &[100_000, 150_000, 31460183]),
-        Some(BuffActDestination::StateConsumer)
+        definition.completion_gap,
+        Some("manual activation is not proven")
     );
+    for (buff_id, raw) in [
+        (115370004, "1139#100000#150000#30110131"),
+        (31460141, "1139#100000#150000#31460181"),
+        (31460142, "1139#100000#150000#31460182"),
+        (31460143, "1139#100000#150000#31460183"),
+    ] {
+        let configured = config::configs::get().skill_buff.get(buff_id).unwrap();
+        assert_eq!(configured.features, raw);
+        let values = crate::engine::entity::skill::split_ids(&configured.features);
+        assert_eq!(
+            destination(1139, "MeiLeiErCharge", &values[1..]),
+            Some(BuffActDestination::StateConsumer)
+        );
+    }
     assert!(!has_destination(
         1139,
         "MeiLeiErCharge",
@@ -1116,6 +1131,11 @@ fn buff_owned_charge_keeps_its_exact_state_route() {
         1139,
         "MeiLeiErCharge",
         &[100_000, 150_000, 0]
+    ));
+    assert!(!has_destination(
+        1139,
+        "MeiLeiErCharge",
+        &[100_000, 150_000, 31460183, 1]
     ));
     assert!(find(1139, "HeatScaleUseSkill").is_none());
 }

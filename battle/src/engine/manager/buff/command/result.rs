@@ -11,6 +11,7 @@ pub struct BuffChanges {
     pub refresh_wire: Vec<BuffRefreshWire>,
     pub state_snapshot_wire: Vec<BuffStateSnapshotWire>,
     pub shield_removed: Vec<BuffShieldRemoveResult>,
+    pub act_info_markers: Vec<BuffActInfoMarkerResult>,
     wire_visible: bool,
 }
 
@@ -160,6 +161,7 @@ impl BuffChanges {
             refresh_wire,
             state_snapshot_wire: Vec::new(),
             shield_removed: Vec::new(),
+            act_info_markers: Vec::new(),
             wire_visible: true,
         }
     }
@@ -174,6 +176,11 @@ impl BuffChanges {
 
     pub(super) fn internal(mut self) -> Self {
         self.wire_visible = false;
+        self
+    }
+
+    pub(super) fn with_act_info_marker(mut self, marker: BuffActInfoMarkerResult) -> Self {
+        self.act_info_markers.push(marker);
         self
     }
 

@@ -196,6 +196,35 @@ impl BuffManager {
                 self.accumulate_act_value(update.buff_uid, update.act_id, update.delta);
                 BuffChanges::new(catalog, origin, BuffReplaceResult::default())
             }
+            BuffPlanAction::AccumulateCappedActState(plan) => {
+                let changes = BuffChanges::new(
+                    catalog,
+                    origin,
+                    BuffReplaceResult {
+                        refreshed: plan
+                            .marker
+                            .is_some()
+                            .then(|| {
+                                self.set_state(
+                                    plan.state.target_uid,
+                                    plan.state.buff_uid,
+                                    plan.state.ex_info,
+                                    plan.state.params,
+                                    plan.state.act_info,
+                                )
+                            })
+                            .flatten()
+                            .into_iter()
+                            .collect(),
+                        ..Default::default()
+                    },
+                )
+                .internal();
+                match plan.marker {
+                    Some(marker) => changes.with_act_info_marker(marker),
+                    None => changes,
+                }
+            }
             BuffPlanAction::ChangeDuration(plans) => BuffChanges::new(
                 catalog,
                 origin,

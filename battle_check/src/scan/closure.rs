@@ -462,6 +462,14 @@ fn scan_buff(
                     "MissingDestinationBuffAct path={} > buff {} act={} type={} route={route:?} effectTime={}",
                     pending.path, pending.id, act.id, act.r#type, act.effect_time
                 ));
+            } else if has_destination
+                && let Some(gap) = definition.and_then(|definition| definition.completion_gap)
+            {
+                report.gap(key.clone(), gap);
+                report.error(format!(
+                    "IncompleteBuffAct path={} > buff {} act={} type={} gap={gap} raw={raw:?}",
+                    pending.path, pending.id, act.id, act.r#type
+                ));
             } else if definition.is_some() && capability.is_none() {
                 report.gap(key.clone(), "missing semantic consumer");
                 report.error(format!(
@@ -595,6 +603,15 @@ fn scan_buff(
                     for skill_id in
                         buff_act::nuo_di_ka_cast_channel::referenced_skills(&values[1..])
                     {
+                        enqueue(
+                            skills,
+                            skill_id,
+                            format!("{} > buff {}", pending.path, pending.id),
+                        );
+                    }
+                }
+                Some(BuffActKind::BuffOwnedCharge) => {
+                    if let Some(&skill_id) = values.get(3) {
                         enqueue(
                             skills,
                             skill_id,

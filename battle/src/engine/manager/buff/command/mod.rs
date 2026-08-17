@@ -183,6 +183,16 @@ pub struct BuffAccumulateActValue {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuffAccumulateCappedActState {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub buff_uid: i64,
+    pub act_id: i32,
+    pub delta: i32,
+    pub maximum: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuffChangeDuration {
     pub origin: CommandOrigin,
     pub target_uid: i64,
@@ -325,6 +335,7 @@ pub enum BuffCommand {
     SetInternalState(BuffSetState),
     SetStateSnapshot(BuffSetState),
     AccumulateActValue(BuffAccumulateActValue),
+    AccumulateCappedActState(BuffAccumulateCappedActState),
     ChangeDuration(BuffChangeDuration),
     RefreshDuration(BuffRefreshDuration),
     RefreshDurationBySelector(BuffRefreshDurationBySelector),
@@ -460,6 +471,7 @@ enum BuffPlanAction {
     SetInternalState(SetStatePlan),
     SetStateSnapshot(SetStatePlan),
     AccumulateActValue(BuffAccumulateActValue),
+    AccumulateCappedActState(AccumulateCappedActStatePlan),
     ChangeDuration(Vec<DurationChangePlan>),
     AddSpecialCount(SpecialCountPlan),
     ReserveChildUids(UidReservationPlan),
@@ -518,6 +530,12 @@ struct SetStatePlan {
     params: Option<String>,
     act_info: Option<Vec<BuffActInfo>>,
     exists: bool,
+}
+
+#[derive(Debug, Clone)]
+struct AccumulateCappedActStatePlan {
+    state: SetStatePlan,
+    marker: Option<BuffActInfoMarkerResult>,
 }
 
 #[derive(Debug, Clone, Copy)]

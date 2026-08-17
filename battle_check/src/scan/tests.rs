@@ -116,6 +116,41 @@ fn count_continue_channel_expands_the_checked_skill_closure() {
 }
 
 #[test]
+fn buff_owned_charge_reports_manual_activation_gap_and_linked_skill() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut catalog = SkillEffectCatalog::default();
+    let mut skills = VecDeque::new();
+    let mut buffs =
+        VecDeque::from(
+            [115_370_004, 31_460_141, 31_460_142, 31_460_143].map(|id| Pending {
+                id,
+                path: "test root".to_owned(),
+            }),
+        );
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut buffs,
+        &mut report,
+    );
+
+    let key = CapabilityKey::new("buff-act", 1139, "MeiLeiErCharge");
+    assert!(report.capabilities.contains(&key));
+    assert!(report.gaps[&key].contains("manual activation is not proven"));
+    for skill_id in [30_110_131, 31_460_181, 31_460_182, 31_460_183] {
+        assert!(report.checked_skills.contains(&skill_id));
+    }
+}
+
+#[test]
 fn bendith_replacement_expands_every_reachable_skill() {
     crate::init_config().unwrap();
     let db = config::get();

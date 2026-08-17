@@ -285,6 +285,21 @@ fn scoped_catalog_follows_buff_replacement_passive_links() {
 }
 
 #[test]
+fn scoped_catalog_follows_buff_owned_charge_linked_skill() {
+    init_config();
+    for (buff_id, skill_id) in [
+        (115370004, 30110131),
+        (31460141, 31460181),
+        (31460142, 31460182),
+        (31460143, 31460183),
+    ] {
+        let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [buff_id]);
+        assert!(catalog.reachable_buffs.contains(&buff_id));
+        assert!(catalog.get(skill_id).is_some());
+    }
+}
+
+#[test]
 fn scoped_catalog_follows_configured_hero_upgrade_outcomes() {
     init_config();
     let fight = Fight {

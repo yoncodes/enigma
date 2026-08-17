@@ -320,6 +320,12 @@ impl BuffManager {
                 }
                 (update.origin, BuffPlanAction::AccumulateActValue(update))
             }
+            BuffCommand::AccumulateCappedActState(update) => (
+                update.origin,
+                BuffPlanAction::AccumulateCappedActState(
+                    self.plan_accumulate_capped_act_state(update)?,
+                ),
+            ),
             BuffCommand::ChangeDuration(update) => {
                 let selector_valid = match update.selector {
                     BuffSelector::IdOrType(value)
@@ -1290,6 +1296,59 @@ impl BuffManager {
             params: update.params,
             act_info: update.act_info,
             exists,
+        })
+    }
+
+    fn plan_accumulate_capped_act_state(
+        &self,
+        update: BuffAccumulateCappedActState,
+    ) -> Result<AccumulateCappedActStatePlan, BuffCommandError> {
+        if update.target_uid == 0
+            || update.buff_uid <= 0
+            || update.act_id <= 0
+            || update.delta <= 0
+            || update.maximum <= 0
+        {
+            return Err(BuffCommandError::InvalidSetState);
+        }
+        let buff = self
+            .snapshot(update.target_uid, update.buff_uid)
+            .ok_or(BuffCommandError::InvalidSetState)?;
+        let mut act_info = buff.act_info;
+        let mut matching = act_info
+            .iter_mut()
+            .filter(|info| info.act_id == Some(update.act_id));
+        let info = matching.next().ok_or(BuffCommandError::InvalidSetState)?;
+        if matching.next().is_some() || info.str_param.as_deref() != Some("") {
+            return Err(BuffCommandError::InvalidSetState);
+        }
+        let [current] = info.param.as_slice() else {
+            return Err(BuffCommandError::InvalidSetState);
+        };
+        if !(0..=update.maximum).contains(current) {
+            return Err(BuffCommandError::InvalidSetState);
+        }
+        let next = current.saturating_add(update.delta).min(update.maximum);
+        let marker = (next != *current).then(|| BuffActInfoMarkerResult {
+            target_uid: update.target_uid,
+            buff_uid: update.buff_uid,
+            act_id: update.act_id,
+            params: vec![next],
+            str_param: Some(String::new()),
+            team_type: 0,
+        });
+        info.param = vec![next];
+        info.str_param = Some(String::new());
+        Ok(AccumulateCappedActStatePlan {
+            state: SetStatePlan {
+                target_uid: update.target_uid,
+                buff_uid: update.buff_uid,
+                ex_info: None,
+                params: None,
+                act_info: Some(act_info),
+                exists: true,
+            },
+            marker,
         })
     }
 

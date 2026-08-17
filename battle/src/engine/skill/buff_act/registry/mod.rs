@@ -196,7 +196,7 @@ pub enum BuffActKind {
     LostHpCountAddBuff,
     LifeAttackFixRate,
     MonitorContinueChannel,
-    MeiLeiErCharge,
+    BuffOwnedCharge,
     MoxieReductionImmunity,
     ModifyAttrByBuffLayer,
     ModifyMaxBuffLayers,
@@ -397,6 +397,7 @@ pub struct BuffActDefinition {
     pub state: BuffActStateDefinition,
     pub supports: Option<SupportsHandler>,
     pub raw_supports: Option<RawSupportsHandler>,
+    pub completion_gap: Option<&'static str>,
     pub wire: Option<super::wire::BuffActWireDefinition>,
 }
 
@@ -479,6 +480,7 @@ macro_rules! buff_act_definitions {
             $(, raw_supports: $raw_supports:expr)?
             $(, attack_replacement: $attack_replacement:expr)?
             $(, state_consumer: $state_consumer:expr)?
+            $(, completion_gap: $completion_gap:literal)?
             $(, wire: ($wire:expr))?
         );*
         $(;)?
@@ -525,6 +527,7 @@ macro_rules! buff_act_definitions {
                 },
                 supports: buff_act_definitions!(@supports $($supports)?),
                 raw_supports: buff_act_definitions!(@raw_supports $($raw_supports)?),
+                completion_gap: buff_act_definitions!(@completion_gap $($completion_gap)?),
                 wire: buff_act_definitions!(@wire $($wire)?),
             }),*
         ];
@@ -582,6 +585,8 @@ macro_rules! buff_act_definitions {
     (@supports) => { None };
     (@raw_supports $handler:expr) => { Some($handler) };
     (@raw_supports) => { None };
+    (@completion_gap $gap:literal) => { Some($gap) };
+    (@completion_gap) => { None };
     (@attack_replacement $handler:expr) => { Some($handler) };
     (@attack_replacement) => { None };
     (@state_consumer $value:expr) => { $value };
@@ -1288,11 +1293,12 @@ buff_act_definitions! {
     (1130, "DeviceCostReduce") => DeviceCostReduce,
         effect_time_subscription: false,
         supports: super::device_cost_reduce::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1130, "DeviceCostReduce"), &[EffectType::None as i32]));
-    (1139, "MeiLeiErCharge") => MeiLeiErCharge,
+    (1139, "MeiLeiErCharge") => BuffOwnedCharge,
         effect_time_subscription: false,
         supports: |args| matches!(args, [trigger, limit, linked_skill]
             if *trigger > 0 && *limit >= *trigger && *linked_skill > 0),
         state_consumer: true,
+        completion_gap: "manual activation is not proven",
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1139, "MeiLeiErCharge"), &[])
             .with_initial_state(super::wire::InitialStateRule::ZeroInteger));
     (1138, "ReplaceEntitySkillGroup") => ReplaceEntitySkillGroup,
