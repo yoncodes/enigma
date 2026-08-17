@@ -554,12 +554,23 @@ pub(super) fn direct_damage(
                 active_features
                     .iter()
                     .filter(|feature| feature.owner_uid == entity.uid)
-                    .filter(|feature| is_kind(feature, BuffActKind::AddAttrByOtherBuffLayer))
-                    .map(|feature| {
-                        crate::engine::skill::buff_act::add_attr_by_other_buff_layer::attribute_delta(
-                            feature,
-                            attr_id,
-                            entity_buffs,
+                    .filter_map(|feature| {
+                        use crate::engine::skill::buff_act::add_attr_by_other_buff_layer::LayerScope;
+
+                        let scope = if is_kind(feature, BuffActKind::AddAttrByOtherBuffLayer) {
+                            LayerScope::SourceOrOwner
+                        } else if is_kind(feature, BuffActKind::AddAttrBySourceBuffLayer) {
+                            LayerScope::Source
+                        } else {
+                            return None;
+                        };
+                        Some(
+                            crate::engine::skill::buff_act::add_attr_by_other_buff_layer::attribute_delta(
+                                feature,
+                                attr_id,
+                                entity_buffs,
+                                scope,
+                            ),
                         )
                     })
                     .sum::<i32>(),

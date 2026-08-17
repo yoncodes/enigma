@@ -537,6 +537,34 @@ fn layered_attribute_penalty_is_an_exact_static_consumer() {
 }
 
 #[test]
+fn rapport_scaled_critical_defense_is_an_exact_add_only_consumer() {
+    use super::super::wire::WirePhase;
+    use sonettobuf::effect_type_enum::EffectType;
+
+    let args = [204, -150, 31460003, -30, 5, 204, 0];
+    let definition = find(1141, "AddAttrByOtherBuffLayer").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::AddAttrBySourceBuffLayer);
+    assert!(!definition.runtime.effect_time_subscription);
+    assert_eq!(
+        definition.destination(),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(has_destination(1141, "AddAttrByOtherBuffLayer", &args));
+    assert!(!has_destination(
+        1141,
+        "AddAttrByOtherBuffLayer",
+        &args[..6]
+    ));
+    let wire = definition.wire.unwrap();
+    assert_eq!(wire.markers(WirePhase::Add), &[EffectType::Attr as i32]);
+    assert!(wire.markers(WirePhase::Static).is_empty());
+    assert!(wire.markers(WirePhase::Refresh).is_empty());
+    assert!(find(1029, "AddAttrByOtherBuffLayer").is_some());
+    assert!(find(1036, "AddAttrByOtherBuffLayer").is_some());
+}
+
+#[test]
 fn field_upgrade_modifier_is_an_exact_static_consumer() {
     let definition = find(1032, "FixElectricUpgrade").unwrap();
 
