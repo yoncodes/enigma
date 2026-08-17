@@ -125,6 +125,18 @@ pub(crate) fn field_thresholds(
 
 pub(super) struct Handler;
 
+fn supports_magic_circle_attr(behavior: &ParsedBehavior) -> bool {
+    let mut triples = behavior.args.chunks_exact(3);
+    !behavior.args.is_empty()
+        && triples.remainder().is_empty()
+        && triples.all(|triple| {
+            let [scope, raw_attr_id, _] = triple else {
+                return false;
+            };
+            matches!(*scope, 1 | 2) && AttrId::from_raw(*raw_attr_id).is_some()
+        })
+}
+
 impl BehaviorHandler for Handler {
     const VALIDATES_ARGUMENTS: bool = true;
 
@@ -140,6 +152,7 @@ impl BehaviorHandler for Handler {
                     && configured(*circle_id)
             }
             (BehaviorKind::RemoveMagicCircleById, [circle_id]) => configured(*circle_id),
+            (BehaviorKind::MagicCircleAttr, _) => supports_magic_circle_attr(behavior),
             _ => false,
         }
     }
@@ -156,6 +169,7 @@ impl BehaviorHandler for Handler {
             BehaviorKind::RemoveMagicCircleById => {
                 remove_rule_ops(behavior, context.source_team, context.managers)
             }
+            BehaviorKind::MagicCircleAttr => supports_magic_circle_attr(behavior).then(Vec::new),
             _ => None,
         }
     }
@@ -277,6 +291,57 @@ mod tests {
         crate::test_support::init_config();
 
         assert_eq!(self_skills(100051), vec![308801821]);
+    }
+
+    #[test]
+    fn magic_circle_attr_accepts_one_or_more_complete_valid_triples() {
+        let behavior = |args| ParsedBehavior::new(60076, "MagicCircleAttr", args);
+
+        assert!(Handler::supports(&behavior(vec![2, 214, 120])));
+        assert!(Handler::supports(&behavior(vec![1, 301, 80, 2, 214, -120])));
+    }
+
+    #[test]
+    fn magic_circle_attr_rejects_incomplete_scope_or_attribute_triples() {
+        let behavior = |args| ParsedBehavior::new(60076, "MagicCircleAttr", args);
+
+        for args in [vec![2, 214], vec![3, 214, 120], vec![2, 999, 120]] {
+            assert!(!Handler::supports(&behavior(args)));
+        }
+    }
+
+    #[test]
+    fn magic_circle_attr_has_a_registry_owner_but_emits_no_runtime_operation() {
+        let behavior = ParsedBehavior::new(60076, "MagicCircleAttr", vec![2, 214, 120]);
+        let definition = crate::engine::skill::behavior::registry::find(&behavior).unwrap();
+        assert!(definition.destination);
+        assert!(crate::engine::skill::behavior::is_supported(&behavior));
+
+        let managers = BattleManagers::default();
+        let pool = TargetPool::default();
+        let mut determinism = RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = TargetContext::default();
+
+        assert!(matches!(
+            crate::engine::skill::behavior::rule_ops(
+                BehaviorOpContext {
+                    source_uid: 10,
+                    source_team: 1,
+                    target_uid: 10,
+                    active_skill_id: 0,
+                    transfer_count: 1,
+                    event: None,
+                    managers: &managers,
+                    pool: &pool,
+                    determinism: &mut determinism,
+                    modifiers: &mut modifiers,
+                    target: &mut target,
+                },
+                &behavior,
+            ),
+            Some(ops) if ops.is_empty()
+        ));
     }
 
     #[test]
