@@ -192,6 +192,62 @@ fn twins_conduit_activation_consumes_chirp_signal_through_the_captured_passive()
 }
 
 #[test]
+fn allied_conduit_activation_adds_configured_cost_to_passive_buff_layers() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3144),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill: vec![31440141],
+                    buffs: vec![BuffInfo {
+                        uid: Some(100),
+                        buff_id: Some(31440112),
+                        from_uid: Some(10),
+                        layer: Some(10),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::ConduitActivated(crate::engine::event::payload::ConduitActivatedEvent {
+            source_uid: 11,
+            team: 1,
+            skill_id: 31490121,
+            power_id: 1,
+            activation_cost: 3,
+            spent: 2,
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(managers.buff.buff_id_amount(10, 31440112), 13);
+}
+
+#[test]
 fn contract_psychube_buffs_the_owner_then_the_selected_bound_ally() {
     crate::test_support::init_config();
     let fight = Fight {
