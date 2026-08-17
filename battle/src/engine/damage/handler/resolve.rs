@@ -850,7 +850,8 @@ pub(super) fn direct_damage(
     let (might, action) = formula.compose_might_and_action(might, action);
     let final_rate = (1000 + separate_final_delta).max(300);
 
-    let source_crit = attributes.get(source.uid, AttrId::CriticalDmg);
+    let source_crit = attributes.get(source.uid, AttrId::CriticalDmg)
+        + buffs.fixed_attribute_delta(source.uid, AttrId::CriticalDmg);
     let technique_crit = critical_technique_bonus(runtime.pool.catalog(), source, target.level, 12);
     let buff_crit = attribute_delta(source, AttrId::CriticalDmg)
         + attack_attribute_delta(AttrId::CriticalDmg)
