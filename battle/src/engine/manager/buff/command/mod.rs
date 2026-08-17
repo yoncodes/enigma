@@ -355,6 +355,13 @@ pub(crate) struct BuffPlan {
 type SourceRelativeAttributeFeatures = (i64, Vec<(i32, i32, i32, i32)>);
 
 impl BuffPlan {
+    pub(crate) fn planned_reservation_uids(&self) -> Option<Vec<i64>> {
+        let BuffPlanAction::ReserveChildUids(plan) = &self.action else {
+            return None;
+        };
+        Some(plan.uids.iter().map(|uid| uid.uid).collect())
+    }
+
     pub(crate) fn added_buff_uid(&self) -> Option<i64> {
         let plan = match &self.action {
             BuffPlanAction::Grant(plan) => plan.as_ref(),

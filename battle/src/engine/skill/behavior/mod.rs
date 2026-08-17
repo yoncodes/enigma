@@ -12,6 +12,7 @@ pub mod crystal_card;
 pub mod damage_target;
 pub mod detonate;
 pub mod electric;
+pub mod focus_all_entity_buff;
 pub mod gauge;
 pub mod general;
 pub mod injury_bank;

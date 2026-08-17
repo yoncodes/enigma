@@ -686,6 +686,7 @@ behavior_definitions! {
     [20009] "Detonate2" => super::detonate::Handler, Detonate2, AfterDamage, destination;
     [60183] "SupplyShield2" => super::shield::ChildUidHandler, SupplyShield2, Immediate, destination;
     [60259] "SupplyShield2" => super::shield::Handler, SupplyShield2, Immediate, destination;
+    [60263] "FocusAllEntityBuff" => super::focus_all_entity_buff::Handler, FocusAllEntityBuff, Immediate, destination, super::focus_all_entity_buff::supports_arguments;
     [60290] "SupplyTeamShareShield" => super::shield::Handler, SupplyTeamShareShield, Immediate, setup_parent_destination;
     [60133] "ShellAssign" => super::shell::Handler, ShellAssign, AfterDamage, destination, super::shell::supports_assign;
     [60134] "ShellRecycle" => super::shell::Handler, ShellRecycle, AfterDamage, destination, super::shell::supports_recycle;

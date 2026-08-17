@@ -20,6 +20,7 @@ use crate::engine::{
     mechanic::{
         buff_precast::{BuffPrecastChanges, BuffPrecastError},
         field_transfer::{FieldTransferChanges, FieldTransferError},
+        focus_all_entity_buff::{FocusAllEntityBuffChanges, FocusAllEntityBuffError},
         shell::{ShellChanges, ShellError},
     },
     runtime::change::BattleChange,
@@ -66,6 +67,7 @@ pub(crate) enum RuleOutcome {
     Contract(ContractChange),
     Field(FieldChange),
     FieldTransfer(Box<FieldTransferChanges>),
+    FocusAllEntityBuff(Box<FocusAllEntityBuffChanges>),
     Shell(Box<ShellChanges>),
     RaspberryCapacity(Box<CapacityResult>),
     Summon(SummonChanges),
@@ -244,6 +246,15 @@ impl RuleOutcome {
                 .map(|change| BattleChange::Buff(Box::new(change)))
                 .chain(std::iter::once(BattleChange::Field(changes.field)))
                 .collect(),
+            Self::FocusAllEntityBuff(changes) => changes
+                .buffs
+                .iter()
+                .cloned()
+                .map(|change| BattleChange::Buff(Box::new(change)))
+                .chain(std::iter::once(BattleChange::EffectMarker(
+                    changes.marker.clone(),
+                )))
+                .collect(),
             Self::Shell(changes) => changes
                 .buffs
                 .iter()
@@ -289,6 +300,7 @@ pub(crate) enum RuleExecutionError {
     Contract(ContractError),
     Field(FieldCommandError),
     FieldTransfer(FieldTransferError),
+    FocusAllEntityBuff(FocusAllEntityBuffError),
     Shell(ShellError),
     RaspberryCapacity(CapacityError),
     Summon(SummonCommandError),
@@ -378,6 +390,12 @@ impl From<FieldCommandError> for RuleExecutionError {
 impl From<FieldTransferError> for RuleExecutionError {
     fn from(value: FieldTransferError) -> Self {
         Self::FieldTransfer(value)
+    }
+}
+
+impl From<FocusAllEntityBuffError> for RuleExecutionError {
+    fn from(value: FocusAllEntityBuffError) -> Self {
+        Self::FocusAllEntityBuff(value)
     }
 }
 
@@ -641,6 +659,19 @@ pub(crate) fn execute_rule_op(
                 events.push(event);
             }
             Ok(RuleOutcome::FieldTransfer(Box::new(changes)))
+        }
+        RuleOp::Command(BattleCommand::FocusAllEntityBuff(command)) => {
+            let Some(changes) =
+                crate::engine::mechanic::focus_all_entity_buff::execute(managers, command)?
+            else {
+                return Ok(RuleOutcome::StateChanged);
+            };
+            for buff in &changes.buffs {
+                for event in buff.events() {
+                    events.push(event);
+                }
+            }
+            Ok(RuleOutcome::FocusAllEntityBuff(Box::new(changes)))
         }
         RuleOp::Command(BattleCommand::Shell(command)) => {
             let changes = crate::engine::mechanic::shell::execute(managers, command)?;
