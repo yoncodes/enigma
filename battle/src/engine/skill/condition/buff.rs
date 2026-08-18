@@ -77,6 +77,15 @@ pub fn per_buff_group_count(_: i32, _: &str, raw_args: &[String]) -> Option<Pars
     (group_id > 0).then_some(ParsedConditionKind::PerBuffGroupCount { group_id })
 }
 
+pub fn per_bullet(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let [divisor, max_count] = raw_args else {
+        return None;
+    };
+    let divisor = divisor.parse().ok()?;
+    let max_count = max_count.parse().ok()?;
+    (divisor > 0 && max_count > 0).then_some(ParsedConditionKind::PerBullet { divisor, max_count })
+}
+
 pub fn no_buff_group(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::NoBuffGroup(parse_buff_ids(raw_args)?))
 }

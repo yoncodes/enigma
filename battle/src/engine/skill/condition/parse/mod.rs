@@ -71,6 +71,10 @@ pub enum ParsedConditionKind {
     PerBuffGroupCount {
         group_id: i32,
     },
+    PerBullet {
+        divisor: i32,
+        max_count: i32,
+    },
     NoBuffGroup(Vec<i32>),
     FromBuffAndToBuff {
         from_buff_id: i32,
