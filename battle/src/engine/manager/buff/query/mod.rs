@@ -643,6 +643,24 @@ impl BuffManager {
         type_ids.len() as i32
     }
 
+    pub fn buff_act_type_count(&self, uids: &[i64], kind: BuffActKind) -> i32 {
+        let mut type_ids = Vec::new();
+        for active in self.buffs.iter().filter(|active| {
+            uids.contains(&active.owner_uid)
+                && active.definition.as_ref().is_some_and(|definition| {
+                    (!definition.has_effect_count() || active.buff.count.unwrap_or_default() > 0)
+                        && definition.features().iter().any(|feature| {
+                            feature.arguments_supported && feature.kind == Some(kind)
+                        })
+                })
+        }) {
+            if !type_ids.contains(&active.type_id) {
+                type_ids.push(active.type_id);
+            }
+        }
+        type_ids.len() as i32
+    }
+
     pub fn buff_type_layer(&self, uid: i64, type_id: i32) -> i32 {
         self.buffs
             .iter()

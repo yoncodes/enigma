@@ -231,6 +231,13 @@ fn condition_repeat_count(
                 .map(|uid| managers.buff.buff_group_amount(*uid, *group_id))
                 .sum()
         }),
+        ParsedConditionKind::PerBullet { divisor, max_count } => managers.map(|managers| {
+            (managers.buff.buff_act_type_count(
+                condition_targets,
+                crate::engine::skill::buff_act::registry::BuffActKind::Bullet,
+            ) / *divisor)
+                .clamp(0, *max_count)
+        }),
         ParsedConditionKind::PerHp { interval_permille } => managers.map(|managers| {
             condition_targets
                 .iter()
@@ -544,6 +551,12 @@ fn condition_kind_matches(
             condition_targets
                 .iter()
                 .any(|uid| managers.buff.buff_group_amount(*uid, *group_id) > 0)
+        }),
+        ParsedConditionKind::PerBullet { divisor, .. } => managers.is_some_and(|managers| {
+            managers.buff.buff_act_type_count(
+                condition_targets,
+                crate::engine::skill::buff_act::registry::BuffActKind::Bullet,
+            ) >= *divisor
         }),
         ParsedConditionKind::NoBuffGroup(group_ids) => managers.is_some_and(|managers| {
             condition_targets
