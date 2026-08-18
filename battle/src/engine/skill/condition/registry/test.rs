@@ -2971,3 +2971,21 @@ fn ultimate_level_keeps_its_exact_round_start_route() {
     assert!(parse(751104, "ExSkillLevel", &["0".into(), "1".into()]).is_none());
     assert!(find_key(751104, "SkillLevel").is_none());
 }
+
+#[test]
+fn exact_after_hit_ultimate_level_751210_is_a_membership_predicate() {
+    assert_eq!(
+        parse(751210, "ExSkillLevel", &["0,1,2,3,4".into()]),
+        Some(ParsedConditionKind::ExSkillLevels(vec![0, 1, 2, 3, 4]))
+    );
+    assert_eq!(
+        find_key(751210, "ExSkillLevel").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    for raw in ["0,5", "4,3,2,1,0", "0,1,2,3,4,4", " 5 ", "0，1，2，3，4"] {
+        assert!(parse(751210, "ExSkillLevel", &[raw.into()]).is_none());
+    }
+    for opcode in [751209, 751211, 751212] {
+        assert!(find_key(opcode, "ExSkillLevel").is_none());
+    }
+}

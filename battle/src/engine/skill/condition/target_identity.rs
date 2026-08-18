@@ -10,6 +10,17 @@ pub fn ex_skill_level(_: i32, _: &str, args: &[String]) -> Option<ParsedConditio
         .then_some(ParsedConditionKind::ExSkillLevel(level))
 }
 
+pub fn ex_skill_levels(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [raw_levels] = args else {
+        return None;
+    };
+    match raw_levels.as_str() {
+        "0,1,2,3,4" => Some(ParsedConditionKind::ExSkillLevels(vec![0, 1, 2, 3, 4])),
+        "5" => Some(ParsedConditionKind::ExSkillLevels(vec![5])),
+        _ => None,
+    }
+}
+
 pub fn target_is_self(_: i32, _: &str, _: &[String]) -> Option<ParsedConditionKind> {
     identity(TargetIdentityMode::TargetIsSelf, 0)
 }
@@ -88,6 +99,33 @@ mod tests {
                 value: 3091,
             })
         ));
+    }
+
+    #[test]
+    fn ex_skill_level_751210_parses_strict_rank_sets() {
+        assert_eq!(
+            ex_skill_levels(751210, "ExSkillLevel", &["0,1,2,3,4".into()]),
+            Some(ParsedConditionKind::ExSkillLevels(vec![0, 1, 2, 3, 4]))
+        );
+        assert_eq!(
+            ex_skill_levels(751210, "ExSkillLevel", &["5".into()]),
+            Some(ParsedConditionKind::ExSkillLevels(vec![5]))
+        );
+        for args in [
+            vec![],
+            vec!["".into()],
+            vec!["0,,1".into()],
+            vec!["-1".into()],
+            vec!["6".into()],
+            vec!["0,5".into()],
+            vec!["4,3,2,1,0".into()],
+            vec!["0,1,2,3,4,4".into()],
+            vec![" 5 ".into()],
+            vec!["0，1，2，3，4".into()],
+            vec!["0,1".into(), "2".into()],
+        ] {
+            assert!(ex_skill_levels(751210, "ExSkillLevel", &args).is_none());
+        }
     }
 
     #[test]
