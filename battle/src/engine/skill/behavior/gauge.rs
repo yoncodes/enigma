@@ -171,6 +171,12 @@ fn route_shared_pool_change(
     command: GaugeCommand,
 ) -> Vec<RuleOp> {
     match command.key.kind {
+        GaugeKind::Bloodtithe
+            if matches!(command.operation, GaugeOperation::ChangeValue { .. })
+                && managers.gauge.get(command.key).is_none() =>
+        {
+            Vec::new()
+        }
         GaugeKind::Bloodtithe => {
             crate::engine::mechanic::bloodtithe::rule::value_change_rule_ops(command)
         }
@@ -186,7 +192,11 @@ fn route_shared_pool_change(
 #[cfg(test)]
 mod tests {
     use crate::engine::{
-        manager::{BattleManagers, buff::BuffCommand, gauge::GaugeOperation},
+        manager::{
+            BattleManagers,
+            buff::BuffCommand,
+            gauge::{GaugeCommand, GaugeOperation},
+        },
         runtime::determinism::RoundDeterminism,
         skill::{
             action::SkillModifiers,
@@ -196,6 +206,36 @@ mod tests {
             target::{TargetContext, TargetPool},
         },
     };
+
+    fn blood_pool_value_change_ops(managers: &BattleManagers) -> Vec<RuleOp> {
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60191, "BloodPoolValueChange"),
+            vec![4],
+            Vec::new(),
+        );
+        let pool = TargetPool::default();
+        let mut determinism = RoundDeterminism::default();
+        let mut modifiers = SkillModifiers::default();
+        let mut target = TargetContext::default();
+
+        super::super::rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 20,
+                active_skill_id: 108280012,
+                transfer_count: 1,
+                event: None,
+                managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .expect("registered BloodPoolValueChange must emit")
+    }
 
     #[test]
     fn parses_consume_blood_add_buff_rule_behavior() {
@@ -349,5 +389,38 @@ mod tests {
             definition.output_owner,
             super::super::registry::OutputOwner::Parent
         );
+    }
+
+    #[test]
+    fn blood_pool_value_change_without_bloodtithe_gauge_emits_no_operation() {
+        let managers = BattleManagers::default();
+
+        assert!(blood_pool_value_change_ops(&managers).is_empty());
+    }
+
+    #[test]
+    fn blood_pool_value_change_with_bloodtithe_gauge_emits_configured_delta() {
+        let mut managers = BattleManagers::default();
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60191, "BloodPoolValueChange"),
+            vec![4],
+            Vec::new(),
+        );
+        let key = crate::engine::mechanic::bloodtithe::rule::key(1);
+        managers
+            .execute_gauge(GaugeCommand::new(
+                super::super::command_origin(&behavior).unwrap(),
+                key,
+                GaugeOperation::Enable { max: Some(100) },
+            ))
+            .unwrap();
+
+        let ops = blood_pool_value_change_ops(&managers);
+        assert!(matches!(
+            ops.as_slice(),
+            [RuleOp::Command(BattleCommand::Gauge(command))]
+                if command.key == key
+                    && command.operation == GaugeOperation::ChangeValue { delta: 4 }
+        ));
     }
 }
