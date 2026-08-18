@@ -1,6 +1,51 @@
 use super::*;
 
 #[test]
+fn exact_target_include_hero_matches_only_the_configured_model() {
+    let pool = TargetPool::from_fight(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3092),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    model_id: Some(3102),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(12),
+                    model_id: Some(3121),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let condition = exact_condition(595101, "TargetIncludeHero", &["3102"]);
+
+    assert!(condition_matches(
+        &condition,
+        10,
+        &[11],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+    assert!(!condition_matches(
+        &condition,
+        10,
+        &[12],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+}
+
+#[test]
 fn ultimate_level_matches_each_resolved_entity_snapshot() {
     let fight = Fight {
         attacker: Some(FightTeam {

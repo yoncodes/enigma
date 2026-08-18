@@ -583,6 +583,7 @@ condition_definitions! {
     [1011201] "EnemyAliveNum" => entity_count::enemy_alive, event_trigger(EventKind::SkillAction, None);
     [1011208] "EnemyAliveNum" => entity_count::enemy_alive, predicate(&[]);
     [595002] "TargetIncludeHero" => target_identity::target_model, setup_route(SetupStage::EnterFight, 0, &[]);
+    [595101] "TargetIncludeHero" => target_identity::positive_target_model, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [1000212] "TeamContainHero" => target_identity::team_contains_model, predicate(&[]);
     [643004] "HasConditionTarget" => target_identity::team_model_presence, predicate(&[]);
     [585208] "TargetIsSelf" => target_identity::target_is_self, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
