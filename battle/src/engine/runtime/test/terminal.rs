@@ -681,13 +681,29 @@ fn wave_clear_runtime(
 }
 
 #[test]
-fn wave_clear_defers_card_refill_to_the_next_round_deal() {
+fn wave_clear_runs_phase_two_refill_before_wave_transition() {
     let remaining = player_card(30230111);
     let (mut runtime, dealt) = wave_clear_runtime(vec![
         remaining.clone(),
         player_card(30230111),
         player_card(30230121),
     ]);
+    let ai_choices = runtime
+        .fight
+        .defender
+        .as_ref()
+        .unwrap()
+        .entitys
+        .iter()
+        .map(
+            |entity| crate::engine::runtime::determinism::AiSkillChoice {
+                source_uid: entity.uid.unwrap(),
+                skill_id: entity.skill_group1[0],
+                target_uid: 10,
+            },
+        )
+        .collect::<Vec<_>>();
+    runtime.determinism.enqueue_ai_skills(ai_choices);
 
     let round = runtime
         .build_begin_round_from_schedule(&BeginRoundRequest {
@@ -709,15 +725,48 @@ fn wave_clear_defers_card_refill_to_the_next_round_deal() {
         })
         .unwrap();
 
-    assert_eq!(round.before_cards1, vec![remaining]);
-    assert_eq!(round.team_a_cards1, dealt);
-    assert!(round.before_cards2.is_empty());
-    assert!(round.team_a_cards2.is_empty());
-    assert!(round.fight_step.iter().all(|step| {
-        step.act_effect.iter().all(|effect| {
-            effect.effect_type != Some(sonettobuf::effect_type_enum::EffectType::Dealcard2 as i32)
+    assert_eq!(
+        round.before_cards1,
+        vec![remaining.clone(), dealt[0].clone(), dealt[1].clone()]
+    );
+    assert!(round.team_a_cards1.is_empty());
+    assert_eq!(round.before_cards2, vec![remaining]);
+    assert_eq!(round.team_a_cards2, dealt);
+    let effect_types = round
+        .fight_step
+        .iter()
+        .flat_map(|step| step.act_effect.iter())
+        .filter_map(|effect| effect.effect_type)
+        .collect::<Vec<_>>();
+    let position = |effect_type| {
+        effect_types
+            .iter()
+            .position(|effect| *effect == effect_type)
+            .unwrap()
+    };
+    let deal = position(sonettobuf::effect_type_enum::EffectType::Dealcard2 as i32);
+    let invalidations = effect_types
+        .iter()
+        .enumerate()
+        .filter_map(|(index, effect)| {
+            (*effect == sonettobuf::effect_type_enum::EffectType::Cardinvalid as i32)
+                .then_some(index)
         })
-    }));
+        .collect::<Vec<_>>();
+    let defender_settlement = effect_types
+        .iter()
+        .enumerate()
+        .rfind(|(_, effect)| {
+            **effect == sonettobuf::effect_type_enum::EffectType::Smallroundend as i32
+        })
+        .map(|(index, _)| index)
+        .unwrap();
+    let wave = position(sonettobuf::effect_type_enum::EffectType::Newchangewave as i32);
+
+    assert_eq!(invalidations.len(), 2);
+    assert!(deal < invalidations[0]);
+    assert!(invalidations[1] < defender_settlement);
+    assert!(defender_settlement < wave);
 }
 
 #[test]
