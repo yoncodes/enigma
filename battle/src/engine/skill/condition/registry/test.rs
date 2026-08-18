@@ -2345,6 +2345,32 @@ fn enter_fight_team_career_threshold_keeps_its_exact_key() {
 }
 
 #[test]
+fn exact_target_team_career_count_keeps_its_round_start_route() {
+    assert_eq!(
+        parse(
+            516101,
+            "HasTargetCareerNum",
+            &["4".into(), "1".into(), "3".into(), "1".into()],
+        ),
+        Some(ParsedConditionKind::TeamCareerCount {
+            careers: vec![4],
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 3,
+        })
+    );
+    assert_eq!(
+        find_key(516101, "HasTargetCareerNum").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 101,
+        })
+    );
+    for opcode in [516, 516010, 516203, 516208, 516212] {
+        assert!(find_key(opcode, "HasTargetCareerNum").is_none());
+    }
+}
+
+#[test]
 fn only_the_proven_enter_fight_key_reactivates_after_transform() {
     assert_eq!(
         find_key(5, "EnterFight").unwrap().reactivation_events,

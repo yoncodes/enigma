@@ -600,6 +600,7 @@ condition_definitions! {
     [36021] "HeroReal" => parse::hero_reality, setup_route(SetupStage::BattleStart, 0, &[]);
     [37021] "HeroMagic" => parse::hero_mental, setup_route(SetupStage::BattleStart, 0, &[]);
     [508104] "CareerCheck" => career::parse_career_check, setup_route(SetupStage::RoundStart, 1, &[]);
+    [516101] "HasTargetCareerNum" => career::target_team_career_count, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [565104] "EnemyHighestTypeIdBuffCountMoreThan" => buff::enemy_highest_buff_type_at_least, predicate(&[]);
     [508208] "CareerCheck" => career::parse_career_check, predicate(&[]);
     [508212] "CareerCheck" => career::parse_career_check, event_trigger(EventKind::AllyAction, None);
