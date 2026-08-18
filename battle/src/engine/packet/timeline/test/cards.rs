@@ -1,4 +1,8 @@
 use super::*;
+use crate::engine::{
+    manager::card::{CardSetup, HandCardRankUp},
+    runtime::record::FrameTrigger,
+};
 
 #[test]
 fn card_consumption_projects_its_owned_wire_effect() {
@@ -115,6 +119,104 @@ fn hand_rank_change_projects_the_committed_card_and_resource_state() {
             .and_then(|power| power.num),
         Some(0)
     );
+
+    let behavior_origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(50011, "CardLevelChange"),
+    };
+    let behavior_changes = managers
+        .execute_card(CardCommand::RankUpHand(HandCardRankUp {
+            origin: behavior_origin,
+            owner_uid: 10,
+            hand_index: 0,
+        }))
+        .unwrap();
+    let behavior_effects =
+        project_change_for_test(&BattleChange::Card(Box::new(behavior_changes))).unwrap();
+    assert_eq!(behavior_effects[0].config_effect, Some(50011));
+}
+
+#[test]
+fn buff_act_hand_rank_change_projects_marker_then_card_change_with_zero_config() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                skill_group1: vec![30650211, 30650212, 30650213],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let origin = CommandOrigin {
+        domain: RuleDomain::BuffAct,
+        key: DefinitionKey::new(701, "CardLevelAdd"),
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![CardInfo {
+                uid: Some(10),
+                skill_id: Some(30650211),
+                temp_card: Some(false),
+                ..Default::default()
+            }],
+            draw_pile: Vec::new(),
+            deck_num: 1,
+        }))
+        .unwrap();
+    let changes = managers
+        .execute_card(CardCommand::RankUpHand(HandCardRankUp {
+            origin,
+            owner_uid: 10,
+            hand_index: 0,
+        }))
+        .unwrap();
+    let frame = SemanticFrame {
+        owner: FrameOwner::BuffAct {
+            owner_uid: 10,
+            source_uid: 10,
+            buff_uid: 5021,
+            buff_id: 5021,
+            key: DefinitionKey::new(701, "CardLevelAdd"),
+        },
+        trigger: FrameTrigger::Active,
+        items: vec![
+            FrameItem::Change(Box::new(BattleChange::BuffFeatureMarker(
+                BuffMarkerResult {
+                    target_uid: 10,
+                    effect_type: EffectType::Cardleveladd as i32,
+                    effect_num: 5021,
+                    buff_act_id: 701,
+                },
+            ))),
+            FrameItem::Change(Box::new(BattleChange::Card(Box::new(changes)))),
+        ],
+    };
+
+    let steps = project(&[frame]).unwrap();
+    assert_eq!(steps.len(), 1);
+    let effects = &steps[0].act_effect;
+    assert_eq!(effects.len(), 2);
+    assert_eq!(effects[0].target_id, Some(10));
+    assert_eq!(
+        effects[0].effect_type,
+        Some(EffectType::Cardleveladd as i32)
+    );
+    assert_eq!(effects[0].effect_num, Some(5021));
+    assert_eq!(effects[0].buff_act_id, Some(701));
+    assert_eq!(effects[0].config_effect, Some(0));
+    assert_eq!(effects[1].target_id, Some(1));
+    assert_eq!(
+        effects[1].effect_type,
+        Some(EffectType::Cardlevelchange as i32)
+    );
+    assert_eq!(effects[1].effect_num, Some(30650212));
+    assert_eq!(effects[1].config_effect, Some(0));
 }
 
 #[test]
