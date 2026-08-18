@@ -64,6 +64,7 @@ pub enum BehaviorKind {
     AddEmitterEnergy,
     AddTeamEnergy,
     PerTypeBuffAddEnergyToTeam,
+    PerTypeBuffAddEnergyToEmitter,
     AddRedOrBlueCount,
     AddBuffOwnedCharge,
     ConsumeBuffIntoChargeAndRewards,
@@ -261,6 +262,10 @@ mod tests {
         assert_eq!(
             classify(60153, "AddTeamEnergy"),
             BehaviorKind::AddTeamEnergy
+        );
+        assert_eq!(
+            classify(60266, "PerTypeBuffAddEnergyToEmitter"),
+            BehaviorKind::PerTypeBuffAddEnergyToEmitter
         );
         assert_eq!(classify(10001, "SkillRateUp"), BehaviorKind::SkillRateUp);
         assert_eq!(classify(10004, "AttrFix"), BehaviorKind::AttrFix);
