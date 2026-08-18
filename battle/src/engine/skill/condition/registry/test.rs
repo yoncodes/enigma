@@ -1898,6 +1898,31 @@ fn bullet_type_count_keeps_its_exact_active_modifier_route() {
 }
 
 #[test]
+fn bullet_type_count_keeps_its_exact_after_hit_route() {
+    let definition = find_key(651210, "PerBullet").unwrap();
+
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterHit),
+        }
+    );
+    assert_eq!(
+        definition.behavior_target_source,
+        BehaviorTargetSource::ActiveSkillTargets
+    );
+    assert_eq!(
+        parse(651210, "PerBullet", &["1".into(), "99".into()]),
+        Some(ParsedConditionKind::PerBullet {
+            divisor: 1,
+            max_count: 99,
+        })
+    );
+    assert!(find_key(651210, "PerBuffIdCount").is_none());
+}
+
+#[test]
 fn firebud_rank_gate_uses_the_exact_after_damage_lane() {
     for (opcode, type_name) in [(66208, "UseSpecificSkill"), (501208, "UseHurtSkill")] {
         assert_eq!(

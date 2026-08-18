@@ -747,3 +747,62 @@ fn cast_local_modifier_flows_into_later_origin_damage() {
         )
     ));
 }
+
+#[test]
+fn nights_command_grants_war_simulation_per_active_bullet_type_after_hit() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: [30920151, 30920152, 30920153]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, buff_id)| BuffInfo {
+                        uid: Some(index as i64 + 1),
+                        buff_id: Some(buff_id),
+                        from_uid: Some(10),
+                        count: Some(1),
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 30920141,
+    }
+    .into();
+    invocation.phase = Some(SkillPhase::AfterHit);
+
+    let grants = emit_all_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &SkillOpTrigger::Active,
+    )
+    .unwrap()
+    .into_iter()
+    .filter_map(|op| match op {
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))
+            if grant.buff_id == 30920101 =>
+        {
+            Some((grant.target_uid, grant.occurrences))
+        }
+        _ => None,
+    })
+    .collect::<Vec<_>>();
+
+    assert_eq!(grants, vec![(10, 3)]);
+}
