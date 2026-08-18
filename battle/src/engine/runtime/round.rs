@@ -287,7 +287,7 @@ impl BattleRuntime {
             absorb_hurt_map_layout,
         )?);
         let ended_after_attacker_settlement = battle_ended(&self.fight, &pool, &self.managers);
-        let current_wave_defeated =
+        let wave_defeated_after_attacker_settlement =
             crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         let runs_phase_two = !ended_after_attacker_settlement;
         let needs_refill = crate::engine::mechanic::card::CardMechanic
@@ -359,7 +359,7 @@ impl BattleRuntime {
             self.round_state.team_a_cards2 = round_field_cards(self.managers.card.refilled());
         }
         if runs_phase_two {
-            if uses_action_phase_power_clear && !current_wave_defeated {
+            if uses_action_phase_power_clear && !wave_defeated_after_attacker_settlement {
                 fight_steps.extend(project_result(
                     schedule::run_action_phase_start(
                         &mut self.managers,
@@ -426,6 +426,9 @@ impl BattleRuntime {
                 absorb_hurt_map_layout,
             )?);
         }
+        let current_wave_defeated =
+            crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
+        let battle_ended_after_phase_two = battle_ended(&self.fight, &pool, &self.managers);
         let mut wave_entering_uids = Vec::new();
         if current_wave_defeated {
             sync_attacker_team_state(
@@ -435,6 +438,7 @@ impl BattleRuntime {
             );
         }
         if current_wave_defeated
+            && !battle_ended_after_phase_two
             && let Some(change) = self
                 .managers
                 .advance_wave(&mut self.fight)

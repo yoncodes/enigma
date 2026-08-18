@@ -34,6 +34,49 @@ fn install_round_start_enemy_kill(runtime: &mut BattleRuntime, owner_uid: i64, s
     ]);
 }
 
+fn install_be_attacked_enemy_kill(
+    runtime: &mut BattleRuntime,
+    owner_uid: i64,
+    reaction_skill_id: i32,
+    kill_skill_id: i32,
+) {
+    let mut reaction = SkillEffectSlot::new(
+        ParsedBehavior::new(50008, "DirectUseSkill", vec![kill_skill_id]),
+        TargetRequest {
+            code: 203,
+            raw: Vec::new(),
+        },
+    );
+    reaction.conditions = vec![ParsedCondition {
+        opcode: 209,
+        type_name: "None".to_owned(),
+        kind: crate::engine::skill::condition::registry::parse(209, "None", &[]).unwrap(),
+        raw_args: Vec::new(),
+    }];
+    reaction.compiled_route = ConditionRoute::compile(&reaction.conditions);
+
+    runtime.catalog.insert(ParsedSkillEffect {
+        skill_id: reaction_skill_id,
+        slots: vec![reaction],
+    });
+    runtime.catalog.insert(ParsedSkillEffect {
+        skill_id: kill_skill_id,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::from_spec(BehaviorSpec::new(60015, "Kill"), Vec::new(), Vec::new()),
+            TargetRequest {
+                code: 202,
+                raw: Vec::new(),
+            },
+        )],
+    });
+    runtime.managers.battle_rule.extend_owned_skills([
+        crate::engine::fight::rules::OwnedBattleSkill {
+            owner_uid,
+            skill_id: reaction_skill_id,
+        },
+    ]);
+}
+
 fn late_terminal_runtime(skill_id: i32) -> BattleRuntime {
     let entity = |uid, team_type| FightEntityInfo {
         uid: Some(uid),
@@ -836,5 +879,43 @@ fn predepleted_wave_runs_phase_two_refill_before_wave_transition() {
     assert!(defender_settlement < wave);
     assert!(effect_types[deal..wave].iter().all(|effect| {
         *effect != sonettobuf::effect_type_enum::EffectType::Devicepowerclear as i32
+    }));
+}
+
+#[test]
+fn enemy_phase_reaction_clear_advances_the_configured_wave() {
+    let (mut runtime, _) = wave_clear_runtime(Vec::new());
+    runtime.managers.hp.set_max(10, 1_000_000);
+    runtime.managers.hp.heal(10, 999_900, 0);
+    install_be_attacked_enemy_kill(&mut runtime, 10, 9_900_080, 9_900_081);
+    let ai_choices = runtime
+        .fight
+        .defender
+        .as_ref()
+        .unwrap()
+        .entitys
+        .iter()
+        .map(
+            |entity| crate::engine::runtime::determinism::AiSkillChoice {
+                source_uid: entity.uid.unwrap(),
+                skill_id: 30230111,
+                target_uid: 10,
+            },
+        )
+        .collect::<Vec<_>>();
+    runtime.determinism.enqueue_ai_skills(ai_choices);
+
+    let round = runtime
+        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .unwrap();
+
+    assert_eq!(runtime.managers.hp.current(-1), 0);
+    assert_eq!(runtime.managers.hp.current(-2), 0);
+    assert_eq!(runtime.fight.cur_wave, Some(2));
+    assert!(round.fight_step.iter().any(|step| {
+        step.act_effect.iter().any(|effect| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Newchangewave as i32)
+        })
     }));
 }
