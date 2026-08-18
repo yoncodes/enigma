@@ -757,6 +757,43 @@ fn crucible_arsenal_compiles_each_bullet_type_modifier() {
 }
 
 #[test]
+fn nights_command_compiles_each_bullet_type_grant_after_hit() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let key = crate::engine::skill::rule::DefinitionKey::new(651210, "PerBullet");
+
+    for skill_id in 30920141..=30920149 {
+        let slot = &catalog.get(skill_id).unwrap().slots[1];
+        assert_eq!(slot.condition_target.code, 103);
+        assert_eq!(slot.target.code, 103);
+        assert_eq!(slot.behavior.spec.kind, BehaviorKind::AddBuff);
+        assert!(slot.conditions.iter().any(|condition| {
+            condition.opcode == key.opcode
+                && condition.type_name == key.type_name
+                && condition.kind
+                    == ParsedConditionKind::PerBullet {
+                        divisor: 1,
+                        max_count: 99,
+                    }
+        }));
+        assert!(
+            slot.compiled_subscriptions()
+                .unwrap()
+                .iter()
+                .any(|subscription| {
+                    subscription.definition == key
+                        && subscription.event == crate::engine::event::kind::EventKind::SkillAction
+                        && subscription.phase
+                            == Some(crate::engine::skill::action::SkillPhase::AfterHit)
+                })
+        );
+        assert!(catalog.issues(skill_id).iter().all(|issue| {
+            issue.opcode != Some(651210) || issue.type_name.as_deref() != Some("PerBullet")
+        }));
+    }
+}
+
+#[test]
 fn from_the_depths_keeps_its_once_per_battle_limit() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());

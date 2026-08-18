@@ -519,6 +519,7 @@ condition_definitions! {
     [85203] "PerBuffTypeCountGroupByTypeId" => buff::per_distinct_status_type_count, predicate(&[EventKind::BuffChanged]);
     [669203] "PerBuffGroupCount" => buff::per_buff_group_count, uses_active_skill_targets(predicate(&[EventKind::BuffChanged]));
     [651203] "PerBullet" => buff::per_bullet, uses_active_skill_targets(predicate(&[EventKind::BuffChanged]));
+    [651210] "PerBullet" => buff::per_bullet, uses_active_skill_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit)));
     [518203] "PerHasBuffTypeLayer" => buff::per_type_layer, predicate(&[EventKind::BuffChanged]);
     [518210] "PerHasBuffTypeLayer" => buff::per_type_layer, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [77203] "HasBuffGroup" => buff::buff_group, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
