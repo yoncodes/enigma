@@ -170,6 +170,11 @@ impl BehaviorHandler for Handler {
             BehaviorKind::PerTypeBuffAddEnergyToTeam => per_type_buff_energy_args(behavior)
                 .map(|(buff_id, _)| vec![buff_id])
                 .unwrap_or_default(),
+            BehaviorKind::PerTypeBuffAddEnergyToEmitter => {
+                per_type_buff_emitter_energy_args(behavior)
+                    .map(|(buff_id, _)| vec![buff_id])
+                    .unwrap_or_default()
+            }
             BehaviorKind::ConsumeBuffIntoChargeAndRewards => {
                 let Some(parsed) = ConsumeBuffIntoChargeAndRewards::from_behavior(behavior) else {
                     return RuleReferences::default();
@@ -430,6 +435,24 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                 .buff_id_amount(context.target_uid, buff_id);
             team_energy(layers.saturating_mul(per_layer))
         }
+        BehaviorKind::PerTypeBuffAddEnergyToEmitter => {
+            let (buff_id, multiplier) = per_type_buff_emitter_energy_args(behavior)?;
+            let layers = context
+                .managers
+                .buff
+                .buff_id_amount(context.source_uid, buff_id);
+            let delta = layers.saturating_mul(multiplier);
+            let key = crate::engine::mechanic::impromptu::inspiration_key(
+                crate::engine::manager::emitter::UID,
+            );
+            if delta == 0 || context.managers.gauge.get(key).is_none() {
+                return Some(Vec::new());
+            }
+            Some(vec![RuleOp::Command(BattleCommand::Gauge(
+                GaugeCommand::new(origin, key, GaugeOperation::ChangeValue { delta })
+                    .attributed_to(context.source_uid, behavior.config_effect),
+            ))])
+        }
         BehaviorKind::AddRedOrBlueCount => {
             let [color, count] = behavior.args.as_slice() else {
                 return None;
@@ -634,6 +657,10 @@ pub(super) fn supports_per_type_buff_energy(behavior: &ParsedBehavior) -> bool {
     per_type_buff_energy_args(behavior).is_some()
 }
 
+pub(super) fn supports_per_type_buff_emitter_energy(behavior: &ParsedBehavior) -> bool {
+    per_type_buff_emitter_energy_args(behavior).is_some()
+}
+
 fn per_type_buff_energy_args(behavior: &ParsedBehavior) -> Option<(i32, i32)> {
     let [buff_id, per_layer, mode] = behavior.raw_args.as_slice() else {
         return None;
@@ -642,6 +669,15 @@ fn per_type_buff_energy_args(behavior: &ParsedBehavior) -> Option<(i32, i32)> {
     let per_layer = per_layer.parse().ok()?;
     let mode: i32 = mode.parse().ok()?;
     (buff_id > 0 && per_layer == 1 && mode == 1).then_some((buff_id, per_layer))
+}
+
+fn per_type_buff_emitter_energy_args(behavior: &ParsedBehavior) -> Option<(i32, i32)> {
+    let [buff_id, multiplier] = behavior.raw_args.as_slice() else {
+        return None;
+    };
+    let buff_id = buff_id.parse().ok()?;
+    let multiplier = multiplier.parse().ok()?;
+    (buff_id > 0 && multiplier > 0).then_some((buff_id, multiplier))
 }
 
 pub(super) fn supports_red_or_blue_count(behavior: &ParsedBehavior) -> bool {

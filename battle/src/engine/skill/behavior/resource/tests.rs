@@ -1109,6 +1109,182 @@ fn per_type_buff_team_energy_is_a_noop_without_the_exact_buff() {
     assert_eq!(after, 0);
 }
 
+fn per_type_buff_emitter_energy_ops(
+    fight: &Fight,
+    target_uid: i64,
+    enable_gauge: bool,
+) -> (Vec<RuleOp>, i32, i32) {
+    let mut managers = BattleManagers::seeded(fight);
+    let key =
+        crate::engine::mechanic::impromptu::inspiration_key(crate::engine::manager::emitter::UID);
+    if enable_gauge {
+        managers
+            .execute_gauge(GaugeCommand::new(
+                crate::engine::skill::rule::CommandOrigin {
+                    domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                    key: crate::engine::skill::rule::DefinitionKey::new(0, "Test"),
+                },
+                key,
+                GaugeOperation::Enable { max: None },
+            ))
+            .unwrap();
+    }
+    let before = managers.buff.buff_id_amount(10, 303901411);
+    let pool = crate::engine::skill::target::TargetPool::from_fight(fight);
+    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(
+            60266,
+            "PerTypeBuffAddEnergyToEmitter",
+        ),
+        Vec::new(),
+        vec!["303901411".to_owned(), "2".to_owned()],
+    );
+    let ops = super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid,
+            active_skill_id: 0,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .expect("exact per-type emitter-energy behavior must emit");
+    let after = managers.buff.buff_id_amount(10, 303901411);
+    (ops, before, after)
+}
+
+#[test]
+fn per_type_buff_emitter_energy_counts_source_layers_for_any_target_without_consuming_them() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(1),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(2001),
+                        buff_id: Some(303901411),
+                        from_uid: Some(10),
+                        layer: Some(4),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(2002),
+                        buff_id: Some(303901411),
+                        from_uid: Some(10),
+                        layer: Some(3),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(2003),
+                        buff_id: Some(303901412),
+                        from_uid: Some(10),
+                        layer: Some(9),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: None,
+        ..Default::default()
+    };
+
+    for target_uid in [10, crate::engine::manager::emitter::UID] {
+        let (ops, before, after) = per_type_buff_emitter_energy_ops(&fight, target_uid, true);
+        let [RuleOp::Command(BattleCommand::Gauge(command))] = ops.as_slice() else {
+            panic!("expected one aggregate emitter-energy command")
+        };
+
+        assert_eq!(before, 7);
+        assert_eq!(after, 7);
+        assert_eq!(
+            command.key,
+            crate::engine::mechanic::impromptu::inspiration_key(
+                crate::engine::manager::emitter::UID,
+            )
+        );
+        assert_eq!(command.operation, GaugeOperation::ChangeValue { delta: 14 });
+        assert_eq!(command.source_uid, 10);
+        assert_eq!(command.config_effect, 60266);
+    }
+}
+
+#[test]
+fn per_type_buff_emitter_energy_is_a_noop_without_layers_or_gauge() {
+    crate::test_support::init_config();
+    let no_layers = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(1),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(2003),
+                        buff_id: Some(303901412),
+                        from_uid: Some(10),
+                        layer: Some(9),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(2004),
+                        buff_id: Some(303901411),
+                        from_uid: Some(10),
+                        layer: Some(0),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: None,
+        ..Default::default()
+    };
+    let (ops, before, after) = per_type_buff_emitter_energy_ops(&no_layers, 10, true);
+    assert!(ops.is_empty());
+    assert_eq!((before, after), (0, 0));
+
+    let with_layers = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(1),
+                buffs: vec![BuffInfo {
+                    uid: Some(2001),
+                    buff_id: Some(303901411),
+                    from_uid: Some(10),
+                    layer: Some(7),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let (ops, before, after) = per_type_buff_emitter_energy_ops(&with_layers, 10, false);
+    assert!(ops.is_empty());
+    assert_eq!((before, after), (7, 7));
+}
+
 #[test]
 fn emitter_energy_uses_the_enabled_inspiration_gauge() {
     let fight = Fight {
