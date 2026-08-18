@@ -2401,7 +2401,17 @@ fn exact_target_model_round_start_key_keeps_its_own_route() {
         })
     ));
     assert!(find_key(595203, "TargetIncludeHero").is_none());
-    assert!(find_key(595210, "TargetIncludeHero").is_none());
+    assert_eq!(
+        find_key(595210, "TargetIncludeHero").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert!(matches!(
+        parse(595210, "TargetIncludeHero", &["3102".into()]),
+        Some(ParsedConditionKind::TargetIdentity {
+            mode: super::super::parse::TargetIdentityMode::ActiveSkillSourceModelId,
+            value: 3102,
+        })
+    ));
 }
 
 #[test]

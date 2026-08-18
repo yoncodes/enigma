@@ -356,6 +356,7 @@ pub enum TargetIdentityMode {
     TargetIsSelf,
     TargetIsAllyNotSelf,
     TargetModelId,
+    ActiveSkillSourceModelId,
     TargetPosition,
 }
 

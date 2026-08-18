@@ -31,6 +31,19 @@ pub fn positive_target_model(_: i32, _: &str, args: &[String]) -> Option<ParsedC
     identity(TargetIdentityMode::TargetModelId, model_id)
 }
 
+pub fn positive_active_skill_source_model(
+    _: i32,
+    _: &str,
+    args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [model_id] = args else {
+        return None;
+    };
+    let model_id = parse_i32(model_id)?;
+    (model_id > 0).then_some(())?;
+    identity(TargetIdentityMode::ActiveSkillSourceModelId, model_id)
+}
+
 pub fn team_contains_model(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::TeamContainsModels(parse_i32_list(
         args.first()?,
@@ -92,6 +105,30 @@ mod tests {
                 .is_none()
         );
         assert!(positive_target_model(595101, "TargetIncludeHero", &["0".into()]).is_none());
+    }
+
+    #[test]
+    fn target_include_hero_595210_requires_one_positive_active_source_model() {
+        assert!(matches!(
+            positive_active_skill_source_model(595210, "TargetIncludeHero", &["3102".into()]),
+            Some(ParsedConditionKind::TargetIdentity {
+                mode: TargetIdentityMode::ActiveSkillSourceModelId,
+                value: 3102,
+            })
+        ));
+        assert!(positive_active_skill_source_model(595210, "TargetIncludeHero", &[]).is_none());
+        assert!(
+            positive_active_skill_source_model(
+                595210,
+                "TargetIncludeHero",
+                &["3102".into(), "3121".into()]
+            )
+            .is_none()
+        );
+        assert!(
+            positive_active_skill_source_model(595210, "TargetIncludeHero", &["0".into()])
+                .is_none()
+        );
     }
 
     #[test]
