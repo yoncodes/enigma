@@ -809,16 +809,18 @@ pub fn run_start(
         } else {
             append(&mut result, stage_result);
         }
-        if stage == SetupStage::BattleStart {
+        if matches!(stage, SetupStage::BattleStart | SetupStage::EnterFight) {
             let card_mechanic = crate::engine::mechanic::card::CardMechanic;
+            let frozen = opening_ultimate_cards.take().unwrap_or_default();
             let normal = card_mechanic.normal_ultimate_cards(pool, managers);
             let special = card_mechanic.special_team_cards(pool, managers, &[]);
             opening_ultimate_cards = Some(
                 pool.attacker_main
                     .iter()
                     .filter_map(|entity| {
-                        normal
+                        frozen
                             .iter()
+                            .chain(&normal)
                             .chain(&special)
                             .find(|card| card.uid == Some(entity.uid))
                             .cloned()
