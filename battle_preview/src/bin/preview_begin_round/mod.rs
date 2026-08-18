@@ -6,9 +6,10 @@ use std::{
 
 use battle::engine::{runtime::BattleRuntime, skill::effect::catalog};
 use battle_preview::{
-    begin_round_inputs, canonical_comparison, captured_opening_determinism,
-    expand_compressed_fight_steps, first_diff_path, normalize_live_json, preview_attributes,
-    preview_output_text, render_json_with_capture_conventions, tower_plan_id,
+    begin_round_inputs, canonical_comparison, captured_opening_battle_skill_roots,
+    captured_opening_determinism, expand_compressed_fight_steps, first_diff_path,
+    normalize_live_json, preview_attributes, preview_output_text,
+    render_json_with_capture_conventions, tower_plan_id,
 };
 use sonettobuf::{BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep};
 
@@ -137,6 +138,7 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
     let tower_rule_skills = tower_plan_id(path)
         .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
+    let captured_rule_skills = captured_opening_battle_skill_roots(&captured_start_round);
     let opening_determinism = captured_opening_determinism(db, &fight, &captured_start_round);
     let mut runtime = BattleRuntime::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
@@ -147,7 +149,7 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
     runtime
         .inherit_absorb_hurt_map_layout(&captured_start_round)
         .map_err(anyhow::Error::msg)?;
-    runtime.extend_battle_rule_skills(tower_rule_skills);
+    runtime.extend_battle_rule_skills(tower_rule_skills.into_iter().chain(captured_rule_skills));
     let mut round_reply = runtime
         .start_round_with_determinism(opening_determinism)
         .map_err(io::Error::other)?;

@@ -385,6 +385,96 @@ fn per_hp_passive_repeats_exact_attack_attributes_for_the_current_target() {
 }
 
 #[test]
+fn bullet_types_repeat_each_configured_attack_attribute() {
+    crate::test_support::init_config();
+    let effects = SkillEffectCatalog::from_game_db(config::configs::get());
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                buffs: vec![
+                    BuffInfo {
+                        buff_id: Some(722501),
+                        uid: Some(1),
+                        count: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(722502),
+                        uid: Some(2),
+                        count: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31020111),
+                        uid: Some(3),
+                        count: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31020112),
+                        uid: Some(4),
+                        count: Some(1),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+
+    emit_passive_attack_attributes(
+        &mut modifiers,
+        10,
+        310201361,
+        &[310201621],
+        RateRuntime {
+            effects: &effects,
+            managers: &managers,
+            pool: &pool,
+            context: TargetContext {
+                active_skill_source_uid: 10,
+                hit_source_uid: 10,
+                hit_target_uid: -1,
+                runtime_target_uid: -1,
+                ..Default::default()
+            },
+        },
+        &mut RoundDeterminism::default(),
+    );
+
+    for attr in [
+        AttrId::DmgBonus,
+        AttrId::IncantationMight,
+        AttrId::UltimateMight,
+    ] {
+        assert_eq!(
+            modifiers
+                .attack_attributes
+                .iter()
+                .filter(|(actual, _)| *actual == attr)
+                .map(|(_, delta)| delta)
+                .sum::<i32>(),
+            150
+        );
+    }
+}
+
+#[test]
 fn consume_ex_point_uses_only_additional_moxie() {
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     emit(

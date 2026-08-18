@@ -781,6 +781,80 @@ fn target_status_type_count_repeats_once_per_distinct_type() {
 }
 
 #[test]
+fn bullet_count_repeats_per_distinct_effective_type() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                buffs: vec![
+                    BuffInfo {
+                        buff_id: Some(722501),
+                        uid: Some(1),
+                        count: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(722502),
+                        uid: Some(2),
+                        count: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31020111),
+                        uid: Some(3),
+                        count: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31020112),
+                        uid: Some(4),
+                        count: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31020113),
+                        uid: Some(5),
+                        count: Some(0),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(400901),
+                        uid: Some(6),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let repeats = |divisor, max_count| {
+        conditions_fire_count(
+            &[ParsedCondition {
+                opcode: 651203,
+                type_name: "PerBullet".into(),
+                kind: ParsedConditionKind::PerBullet { divisor, max_count },
+                raw_args: vec![divisor.to_string(), max_count.to_string()],
+            }],
+            10,
+            &[10],
+            Some(&managers),
+            &pool,
+            TargetContext::default(),
+        )
+    };
+
+    assert_eq!(repeats(1, 8), 3);
+    assert_eq!(repeats(2, 8), 1);
+    assert_eq!(repeats(4, 8), 0);
+    assert_eq!(repeats(1, 2), 2);
+}
+
+#[test]
 fn buff_group_count_repeats_once_per_layer_across_targets() {
     init_config();
     let poison = |uid, amount| BuffInfo {

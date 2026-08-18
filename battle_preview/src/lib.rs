@@ -3,8 +3,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use battle::engine::runtime::determinism::RoundDeterminism;
-use sonettobuf::{Fight, FightRound, StartDungeonRequest};
+use battle::engine::{
+    fight::rules::{OwnedBattleSkill, is_side_uid},
+    runtime::determinism::RoundDeterminism,
+};
+use sonettobuf::{Fight, FightRound, FightStep, StartDungeonRequest};
 
 mod attributes;
 mod compression;
@@ -13,6 +16,45 @@ mod normalize;
 pub use attributes::preview_attributes;
 pub use compression::expand_compressed_fight_steps;
 pub use normalize::normalize_live_json;
+
+pub fn captured_opening_battle_skill_roots(round: &FightRound) -> Vec<OwnedBattleSkill> {
+    fn visit(
+        step: &FightStep,
+        roots: &mut Vec<OwnedBattleSkill>,
+        seen: &mut std::collections::HashSet<OwnedBattleSkill>,
+    ) {
+        let Some(owner_uid) = step.from_id.filter(|uid| is_side_uid(*uid)) else {
+            return;
+        };
+        if let Some(skill_id) = step.act_id.filter(|skill_id| *skill_id > 0) {
+            let root = OwnedBattleSkill {
+                owner_uid,
+                skill_id,
+            };
+            if seen.insert(root) {
+                roots.push(root);
+            }
+            return;
+        }
+        if step.act_id != Some(0) {
+            return;
+        }
+        for child in step
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+        {
+            visit(child, roots, seen);
+        }
+    }
+
+    let mut roots = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for step in &round.fight_step {
+        visit(step, &mut roots, &mut seen);
+    }
+    roots
+}
 
 /// Replays the captured opening RNG decisions through the engine's validated
 /// card candidates instead of treating the captured hand as authoritative state.
@@ -445,7 +487,100 @@ fn prune_empty_json(value: &mut serde_json::Value) -> bool {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-    use sonettobuf::{CardInfo, Fight, FightEntityInfo, FightRound, FightTeam};
+    use sonettobuf::{CardInfo, Fight, FightEntityInfo, FightRound, FightStep, FightTeam};
+
+    fn side_step(owner_uid: i64, act_id: i32, children: Vec<FightStep>) -> FightStep {
+        FightStep {
+            from_id: Some(owner_uid),
+            act_id: Some(act_id),
+            act_effect: children
+                .into_iter()
+                .map(|fight_step| sonettobuf::ActEffect {
+                    fight_step: Some(fight_step),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn captured_opening_roots_include_direct_skills_for_both_sides_in_capture_order() {
+        let round = FightRound {
+            fight_step: vec![
+                side_step(0, 101, Vec::new()),
+                side_step(10, 999, Vec::new()),
+                side_step(-99_999, 201, Vec::new()),
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            super::captured_opening_battle_skill_roots(&round),
+            vec![
+                battle::engine::fight::rules::OwnedBattleSkill {
+                    owner_uid: 0,
+                    skill_id: 101,
+                },
+                battle::engine::fight::rules::OwnedBattleSkill {
+                    owner_uid: -99_999,
+                    skill_id: 201,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn captured_opening_roots_descend_zero_wrappers_and_deduplicate() {
+        let round = FightRound {
+            fight_step: vec![
+                side_step(
+                    0,
+                    0,
+                    vec![
+                        side_step(0, 101, Vec::new()),
+                        side_step(0, 0, vec![side_step(0, 102, Vec::new())]),
+                    ],
+                ),
+                side_step(0, 101, Vec::new()),
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            super::captured_opening_battle_skill_roots(&round),
+            vec![
+                battle::engine::fight::rules::OwnedBattleSkill {
+                    owner_uid: 0,
+                    skill_id: 101,
+                },
+                battle::engine::fight::rules::OwnedBattleSkill {
+                    owner_uid: 0,
+                    skill_id: 102,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn captured_opening_roots_do_not_promote_nested_emitted_skills() {
+        let round = FightRound {
+            fight_step: vec![side_step(
+                0,
+                0,
+                vec![side_step(0, 101, vec![side_step(0, 102, Vec::new())])],
+            )],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            super::captured_opening_battle_skill_roots(&round),
+            vec![battle::engine::fight::rules::OwnedBattleSkill {
+                owner_uid: 0,
+                skill_id: 101,
+            }]
+        );
+    }
 
     fn card(uid: i64, skill_id: i32, temp_card: bool) -> CardInfo {
         CardInfo {
