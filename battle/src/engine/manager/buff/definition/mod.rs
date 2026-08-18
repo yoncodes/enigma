@@ -888,6 +888,7 @@ fn mutates_max_hp(feature: &super::feature::ResolvedBuffFeature) -> bool {
                 .and_then(|value| AttrId::from_raw(*value))
                 == Some(AttrId::Hp)
         }
+        Some(BuffActKind::Rouge2AttrToRole) => true,
         _ => false,
     }
 }

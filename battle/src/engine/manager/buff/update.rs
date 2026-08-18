@@ -231,6 +231,16 @@ impl BuffManager {
             .as_ref()
             .is_some_and(|definition| definition.uses_typed_count());
         let before_amount = count_or_layer_from(&active.buff, active.definition.as_ref());
+        let recorded_mode_hp_delta = active
+            .buff
+            .uid
+            .map(|buff_uid| {
+                self.act_value(
+                    buff_uid,
+                    crate::engine::skill::buff_act::rouge2_attr_to_role::ACT_ID,
+                )
+            })
+            .unwrap_or_default();
         if let Some(buff_uid) = active.buff.uid {
             self.remove_act_states(buff_uid);
         }
@@ -267,7 +277,8 @@ impl BuffManager {
 
         let fixed_max_hp_delta =
             super::query::fixed_attribute_value(&active, crate::engine::entity::attr::AttrId::Hp)
-                .unwrap_or_default();
+                .filter(|delta| *delta != 0)
+                .unwrap_or(recorded_mode_hp_delta);
         let mut buff = active.buff;
         if clears_count {
             buff.count = Some(0);
