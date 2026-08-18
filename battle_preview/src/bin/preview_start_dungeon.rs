@@ -5,9 +5,9 @@ use std::{
 
 use battle::engine::runtime::BattleRuntime;
 use battle_preview::{
-    battle_inputs, canonical_comparison, captured_opening_determinism, comparable_json,
-    first_diff_path, normalize_live_json, preview_attributes, preview_output_text,
-    render_json_with_capture_conventions, tower_plan_id,
+    battle_inputs, canonical_comparison, captured_opening_battle_skill_roots,
+    captured_opening_determinism, comparable_json, first_diff_path, normalize_live_json,
+    preview_attributes, preview_output_text, render_json_with_capture_conventions, tower_plan_id,
 };
 use sonettobuf::{CardInfoPush, Fight, FightRound, StartDungeonReply};
 
@@ -134,6 +134,7 @@ fn generate_reply(
     let tower_rule_skills = tower_plan_id(path)
         .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
+    let captured_rule_skills = captured_opening_battle_skill_roots(&captured_round);
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, path)?;
     let opening_determinism = captured_opening_determinism(db, &fight, &captured_round);
     let mut runtime = BattleRuntime::new_with_attributes(
@@ -142,7 +143,7 @@ fn generate_reply(
         ex_attributes,
         sp_attributes,
     );
-    runtime.extend_battle_rule_skills(tower_rule_skills);
+    runtime.extend_battle_rule_skills(tower_rule_skills.into_iter().chain(captured_rule_skills));
     runtime
         .start_round_with_determinism(opening_determinism)
         .map_err(io::Error::other)?;

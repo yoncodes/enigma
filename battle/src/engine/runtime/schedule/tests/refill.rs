@@ -791,6 +791,78 @@ fn opening_refill_defers_an_ultimate_made_ready_during_setup() {
 }
 
 #[test]
+fn opening_refill_includes_an_ultimate_made_ready_during_enter_fight() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ex_point: Some(4),
+                ex_skill: Some(900),
+                skill_group1: vec![100],
+                passive_skill: vec![40],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = vec![ParsedCondition {
+        opcode: 5,
+        type_name: "EnterFight".to_owned(),
+        kind: ParsedConditionKind::Lifecycle(
+            crate::engine::skill::condition::lifecycle::LifecycleMode::EnterFight,
+        ),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 40,
+        slots: vec![slot],
+    });
+
+    run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        CardSetup {
+            hand: vec![CardInfo {
+                uid: Some(10),
+                skill_id: Some(100),
+                ..Default::default()
+            }],
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        1,
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(10), 5);
+    assert_eq!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>(),
+        vec![900]
+    );
+}
+
+#[test]
 fn opening_keeps_the_exact_battle_start_ultimate_after_later_resource_loss() {
     init_config();
     let fight = Fight {
