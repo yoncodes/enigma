@@ -257,6 +257,63 @@ fn registry_requires_exact_id_and_type() {
 }
 
 #[test]
+fn card_level_add_keeps_exact_arguments_and_round_start_subscription() {
+    let definition = find(701, "CardLevelAdd").expect("CardLevelAdd must be registered exactly");
+    assert_eq!(definition.kind, BuffActKind::CardLevelAdd);
+    assert_eq!(
+        runtime_event(701, "CardLevelAdd", 102),
+        Some(EventKind::RoundStart)
+    );
+    assert!(subscribes_to_event(
+        701,
+        "CardLevelAdd",
+        102,
+        EventKind::RoundStart
+    ));
+    assert!(!subscribes_to_event(
+        701,
+        "CardLevelAdd",
+        102,
+        EventKind::RoundEnd
+    ));
+    assert!(find(701, "CardLevelChange").is_none());
+    assert!(find(50011, "CardLevelAdd").is_none());
+
+    let supports = definition
+        .supports
+        .expect("CardLevelAdd validates arguments");
+    for args in [[1], [2], [9]] {
+        assert!(supports(&args));
+        assert!(has_destination(701, "CardLevelAdd", &args));
+    }
+    for args in [
+        &[][..],
+        &[0][..],
+        &[3][..],
+        &[1, 1][..],
+        &[2, 0][..],
+        &[9, 1][..],
+    ] {
+        assert!(!supports(args));
+        assert!(!has_destination(701, "CardLevelAdd", args));
+    }
+
+    let wire = definition.wire.expect("CardLevelAdd has an add marker");
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::Cardleveladd as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+}
+
+#[test]
 fn emitter_card_allocation_is_an_exact_state_consumer() {
     let definition = find(879, "EmitterCardAllocateChange").unwrap();
     let args = [1, 300, 1, 2];

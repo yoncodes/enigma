@@ -108,6 +108,7 @@ pub enum BuffActKind {
     Burn,
     BurnRealHurtFix,
     CardLimitAdd,
+    CardLevelAdd,
     CardNotCalSize,
     EntityExSkillNotCalSize,
     CareerRatioFix,
@@ -712,6 +713,10 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         frame: CausingFrame,
         transaction: super::ex_point_max_transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(703, "ExPointMaxAdd"), &[]));
+    (701, "CardLevelAdd") => CardLevelAdd,
+        runtime: super::card_level_add::rule_ops,
+        supports: super::card_level_add::supports,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(701, "CardLevelAdd"), &[EffectType::Cardleveladd as i32]));
     (832, "SpExPointMaxAdd") => SpExPointMaxAdd,
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         frame: CausingFrame,

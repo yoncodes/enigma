@@ -824,7 +824,10 @@ fn project_change(
                 .ok_or(ProjectionError::Card(changes.kind))?;
             let config_effect = changes
                 .origin
-                .map(|origin| origin.key.opcode)
+                .map(|origin| match origin.domain {
+                    crate::engine::skill::rule::RuleDomain::BuffAct => 0,
+                    _ => origin.key.opcode,
+                })
                 .ok_or(ProjectionError::Card(changes.kind))?;
             changes
                 .rank_results

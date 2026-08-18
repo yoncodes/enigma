@@ -145,6 +145,19 @@ impl CardManager {
             .collect()
     }
 
+    pub(crate) fn hand_rank_up_candidates(&self, owner_uid: i64) -> Vec<usize> {
+        self.hand()
+            .iter()
+            .enumerate()
+            .filter(|(_, card)| card.uid == Some(owner_uid) && !card.temp_card.unwrap_or_default())
+            .filter_map(|(hand_index, card)| {
+                let skill_id = card.skill_id?;
+                let next_skill_id = self.rank_up.get(&(owner_uid, skill_id))?;
+                (self.skill_rank(*next_skill_id) > self.skill_rank(skill_id)).then_some(hand_index)
+            })
+            .collect()
+    }
+
     pub fn normal_hand_len(&self) -> usize {
         self.hand()
             .iter()

@@ -36,6 +36,7 @@ pub mod buff_round_add;
 pub mod bullet;
 pub mod burn_real_hurt_fix;
 pub mod butterfly_record_skill;
+pub mod card_level_add;
 pub mod card_record;
 pub mod career_ratio_fix;
 pub mod career_restraint;
