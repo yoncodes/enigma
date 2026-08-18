@@ -89,6 +89,7 @@ pub enum BehaviorKind {
     ConduitPowerUp,
     ConsumePowerUseSkill,
     ConsumePowerDirectUseSkill,
+    PerConsumeExPointDirectUseSkill,
     ConsumeBuffUseSkill,
     ConsumeBuffUseSkill3,
     ConsumeTargetBuffUseSkill,

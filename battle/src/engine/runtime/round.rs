@@ -143,8 +143,6 @@ impl BattleRuntime {
             current_round: self.round_state.cur_round,
             ..Default::default()
         };
-        let defenders_depleted_before_player_actions =
-            crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         let commands = commands_from_opers(&request.opers);
         let fight_version = self.fight.version.unwrap_or_default();
         let absorb_hurt_map_layout = self.absorb_hurt_map_layout;
@@ -291,8 +289,7 @@ impl BattleRuntime {
         let ended_after_attacker_settlement = battle_ended(&self.fight, &pool, &self.managers);
         let current_wave_defeated =
             crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
-        let runs_phase_two = !ended_after_attacker_settlement
-            && (!current_wave_defeated || defenders_depleted_before_player_actions);
+        let runs_phase_two = !ended_after_attacker_settlement;
         let needs_refill = crate::engine::mechanic::card::CardMechanic
             .refill_hand_len(&self.managers, &pool)
             < hand_size;
