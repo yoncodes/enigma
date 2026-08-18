@@ -531,6 +531,17 @@ impl BuffManager {
         let mut definition =
             BuffDefinition::configured(self.catalog().game_data(), request.buff_id)
                 .ok_or(BuffCommandError::MissingDefinition(request.buff_id))?;
+        let semantic_grant_allowed = definition.features().iter().all(|feature| {
+            feature.kind
+                != Some(crate::engine::skill::buff_act::registry::BuffActKind::Rouge2AttrToRole)
+                || (feature.arguments_supported
+                    && crate::engine::skill::buff_act::rouge2_attr_to_role::hp_delta_fits(
+                        &feature.values,
+                        self,
+                        hp,
+                        request.target_uid,
+                    ))
+        });
         let duration_delta = self.grant_duration_delta(hp, request.target_uid, definition.status)
             + self.grant_type_duration_delta(
                 hp,
@@ -608,12 +619,12 @@ impl BuffManager {
         let configured_blocker = (!unconditional)
             .then(|| self.blocking_buff_id(request.target_uid, request.buff_id, &definition))
             .flatten();
-        let immunity = (!unconditional && configured_blocker.is_none())
+        let immunity = (!unconditional && semantic_grant_allowed && configured_blocker.is_none())
             .then(|| self.immunity_blocker(request.target_uid, definition.status))
             .flatten();
         let blocker =
             configured_blocker.or_else(|| immunity.as_ref().map(|(buff_id, _, _)| *buff_id));
-        let blocked = blocker.is_some();
+        let blocked = blocker.is_some() || !semantic_grant_allowed;
         let mut excluded_uids = if blocked || unconditional {
             Vec::new()
         } else {
@@ -654,12 +665,18 @@ impl BuffManager {
         } else {
             0
         };
-        let configured_reserve = i32::try_from(request.child_uid_reservations).map_err(|_| {
-            BuffCommandError::UnsupportedOccurrences(request.child_uid_reservations)
-        })?;
+        let configured_reserve = if semantic_grant_allowed {
+            i32::try_from(request.child_uid_reservations).map_err(|_| {
+                BuffCommandError::UnsupportedOccurrences(request.child_uid_reservations)
+            })?
+        } else {
+            0
+        };
         let mut reserve_before = configured_reserve
             .checked_add(
-                if matches!(request.input, GrantInput::TriggeredChildInstance { .. }) {
+                if semantic_grant_allowed
+                    && matches!(request.input, GrantInput::TriggeredChildInstance { .. })
+                {
                     1
                 } else {
                     stack_reserve_before
@@ -668,7 +685,8 @@ impl BuffManager {
             .ok_or(BuffCommandError::UnsupportedOccurrences(
                 request.child_uid_reservations,
             ))?;
-        if args.layer_specified
+        if semantic_grant_allowed
+            && args.layer_specified
             && stack_layer > 0
             && !repeated_stack
             && policy.uid.reserve_before_explicit_layer_apply
@@ -693,7 +711,9 @@ impl BuffManager {
         } else {
             typed_count_repeat(&definition, args.layer, args.layer_specified, args.count)
         };
-        let action = if unconditional {
+        let action = if !semantic_grant_allowed {
+            GrantAction::KeepExisting
+        } else if unconditional {
             GrantAction::Add
         } else if let Some(blocker) = blocker {
             GrantAction::Reject(blocker)
