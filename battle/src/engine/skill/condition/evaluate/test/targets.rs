@@ -46,6 +46,60 @@ fn exact_target_include_hero_matches_only_the_configured_model() {
 }
 
 #[test]
+fn exact_after_hit_target_include_hero_matches_the_active_source_not_the_target() {
+    let pool = TargetPool::from_fight(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3092),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    model_id: Some(3102),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(12),
+                    model_id: Some(3121),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(1083030051),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let condition = exact_condition(595210, "TargetIncludeHero", &["3102"]);
+    let matches = |active_skill_source_uid| {
+        condition_matches(
+            &condition,
+            10,
+            &[active_skill_source_uid],
+            None,
+            &pool,
+            TargetContext {
+                active_skill_source_uid,
+                runtime_target_uid: -1,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(11));
+    assert!(!matches(12));
+    assert!(!matches(0));
+}
+
+#[test]
 fn ultimate_level_matches_each_resolved_entity_snapshot() {
     let fight = Fight {
         attacker: Some(FightTeam {
