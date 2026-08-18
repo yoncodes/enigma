@@ -215,6 +215,7 @@ pub enum BuffActKind {
     RaspberryBigSkill,
     Raspberry,
     Radiance,
+    Rouge2AttrToRole,
     RedOrBlueCount,
     RealHarmFix,
     RealHarmSkillEffectFix,
@@ -601,6 +602,12 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(100, "Attr"), &[EffectType::Attr as i32]).with_max_hp(2, 0));
+    (10021, "Rouge2AttrToRole") => Rouge2AttrToRole,
+        transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
+        publication: BeforePublish, frame: CausingFrame,
+        transaction: super::rouge2_attr_to_role::transaction_rule_ops,
+        supports: super::rouge2_attr_to_role::supports,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10021, "Rouge2AttrToRole"), &[EffectType::None as i32]).with_max_hp(1, 0));
     (853, "AttrByLostHp") => AttrByLostHp, effect_time_subscription: false,
         supports: super::attr_by_lost_hp::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(853, "AttrByLostHp"), &[EffectType::None as i32]));
     (1056, "AttrByLostHp") => AttrByLostHp, effect_time_subscription: false,

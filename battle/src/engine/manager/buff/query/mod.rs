@@ -708,6 +708,21 @@ impl BuffManager {
                                     attr_id,
                                 )
                             })
+                            .sum::<i32>()
+                        + definition
+                            .features()
+                            .iter()
+                            .filter(|feature| {
+                                feature.arguments_supported
+                                    && feature.kind == Some(BuffActKind::Rouge2AttrToRole)
+                            })
+                            .map(|feature| {
+                                crate::engine::skill::buff_act::rouge2_attr_to_role::attribute_delta(
+                                    &feature.values,
+                                    attr_id,
+                                    self,
+                                )
+                            })
                             .sum::<i32>();
                     (delta != 0).then_some((active.buff.buff_id.unwrap_or_default(), delta))
                 });

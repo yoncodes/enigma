@@ -101,6 +101,7 @@ pub mod red_or_blue_count;
 pub mod registry;
 pub mod revive;
 pub mod riposte;
+pub mod rouge2_attr_to_role;
 pub mod share_hurt;
 pub mod shell;
 pub mod shield;
