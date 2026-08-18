@@ -1,4 +1,4 @@
-use super::parse::{ParsedConditionKind, TargetIdentityMode, first_i32, parse_i32_list};
+use super::parse::{ParsedConditionKind, TargetIdentityMode, first_i32, parse_i32, parse_i32_list};
 
 pub fn ex_skill_level(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [level] = args else {
@@ -20,6 +20,15 @@ pub fn target_is_ally_not_self(_: i32, _: &str, _: &[String]) -> Option<ParsedCo
 
 pub fn target_model(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     identity(TargetIdentityMode::TargetModelId, first_i32(args)?)
+}
+
+pub fn positive_target_model(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [model_id] = args else {
+        return None;
+    };
+    let model_id = parse_i32(model_id)?;
+    (model_id > 0).then_some(())?;
+    identity(TargetIdentityMode::TargetModelId, model_id)
 }
 
 pub fn team_contains_model(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
@@ -66,6 +75,23 @@ mod tests {
                 value: 3091,
             })
         ));
+    }
+
+    #[test]
+    fn target_include_hero_595101_requires_one_positive_model() {
+        assert!(matches!(
+            positive_target_model(595101, "TargetIncludeHero", &["3102".into()]),
+            Some(ParsedConditionKind::TargetIdentity {
+                mode: TargetIdentityMode::TargetModelId,
+                value: 3102,
+            })
+        ));
+        assert!(positive_target_model(595101, "TargetIncludeHero", &[]).is_none());
+        assert!(
+            positive_target_model(595101, "TargetIncludeHero", &["3102".into(), "3121".into()])
+                .is_none()
+        );
+        assert!(positive_target_model(595101, "TargetIncludeHero", &["0".into()]).is_none());
     }
 
     #[test]

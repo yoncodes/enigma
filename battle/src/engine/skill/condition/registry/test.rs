@@ -2359,6 +2359,26 @@ fn only_the_proven_enter_fight_key_reactivates_after_transform() {
 }
 
 #[test]
+fn exact_target_model_round_start_key_keeps_its_own_route() {
+    assert_eq!(
+        find_key(595101, "TargetIncludeHero").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 101,
+        })
+    );
+    assert!(matches!(
+        parse(595101, "TargetIncludeHero", &["3102".into()]),
+        Some(ParsedConditionKind::TargetIdentity {
+            mode: super::super::parse::TargetIdentityMode::TargetModelId,
+            value: 3102,
+        })
+    ));
+    assert!(find_key(595203, "TargetIncludeHero").is_none());
+    assert!(find_key(595210, "TargetIncludeHero").is_none());
+}
+
+#[test]
 fn target_career_selects_matching_behavior_targets() {
     let condition = ParsedCondition {
         opcode: 16210,
