@@ -408,6 +408,57 @@ fn team_career_threshold_counts_the_caster_once() {
 }
 
 #[test]
+fn exact_target_team_career_count_selects_the_captured_three_member_branch() {
+    let pool = TargetPool::from_fight(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    career: Some(4),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    career: Some(4),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(12),
+                    career: Some(4),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(13),
+                    career: Some(1),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let equal_two = exact_condition(516101, "HasTargetCareerNum", &["4", "3", "2", "1"]);
+    let at_least_three = exact_condition(516101, "HasTargetCareerNum", &["4", "1", "3", "1"]);
+
+    assert!(!condition_matches(
+        &equal_two,
+        10,
+        &[10],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+    assert!(condition_matches(
+        &at_least_three,
+        10,
+        &[10],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+}
+
+#[test]
 fn other_ally_damage_type_condition_repeats_up_to_its_cap() {
     init_config();
     let fight = Fight {

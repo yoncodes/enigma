@@ -37,6 +37,28 @@ pub fn team_career_count_at_most(_: i32, _: &str, args: &[String]) -> Option<Par
     })
 }
 
+pub fn target_team_career_count(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    if args.len() != 4 {
+        return None;
+    }
+    let career = args[0].parse().ok()?;
+    let compare = match args[1].as_str() {
+        "1" => ConditionCompare::GreaterThanOrEqual,
+        "3" => ConditionCompare::Equal,
+        _ => return None,
+    };
+    let threshold = args[2].parse().ok()?;
+    let scope = args[3].parse::<i32>().ok()?;
+    if career <= 0 || threshold <= 0 || scope != 1 {
+        return None;
+    }
+    Some(ParsedConditionKind::TeamCareerCount {
+        careers: vec![career],
+        compare,
+        threshold,
+    })
+}
+
 pub fn natural_ally_count(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::PerTargetCareerCount {
         careers: vec![1, 2, 3, 4],
@@ -115,5 +137,54 @@ mod tests {
                 threshold: 2,
             })
         );
+    }
+
+    #[test]
+    fn target_team_career_count_keeps_the_exact_four_field_contract() {
+        assert_eq!(
+            target_team_career_count(
+                516101,
+                "HasTargetCareerNum",
+                &["4".into(), "3".into(), "2".into(), "1".into()],
+            ),
+            Some(ParsedConditionKind::TeamCareerCount {
+                careers: vec![4],
+                compare: ConditionCompare::Equal,
+                threshold: 2,
+            })
+        );
+        assert_eq!(
+            target_team_career_count(
+                516101,
+                "HasTargetCareerNum",
+                &["4".into(), "1".into(), "3".into(), "1".into()],
+            ),
+            Some(ParsedConditionKind::TeamCareerCount {
+                careers: vec![4],
+                compare: ConditionCompare::GreaterThanOrEqual,
+                threshold: 3,
+            })
+        );
+    }
+
+    #[test]
+    fn target_team_career_count_rejects_unobserved_shapes() {
+        let parse = |args: &[&str]| {
+            target_team_career_count(
+                516101,
+                "HasTargetCareerNum",
+                &args
+                    .iter()
+                    .map(|value| (*value).to_owned())
+                    .collect::<Vec<_>>(),
+            )
+        };
+
+        assert_eq!(parse(&["4", "1", "3"]), None);
+        assert_eq!(parse(&["4", "1", "3", "1", "0"]), None);
+        assert_eq!(parse(&["4", "2", "3", "1"]), None);
+        assert_eq!(parse(&["4", "1", "3", "2"]), None);
+        assert_eq!(parse(&["0", "1", "3", "1"]), None);
+        assert_eq!(parse(&["4", "1", "0", "1"]), None);
     }
 }
