@@ -735,6 +735,10 @@ fn condition_kind_matches(
             pool.entity(*uid)
                 .is_some_and(|entity| entity.ex_skill_level == *level)
         }),
+        ParsedConditionKind::ExSkillLevels(levels) => condition_targets.iter().any(|uid| {
+            pool.entity(*uid)
+                .is_some_and(|entity| levels.contains(&entity.ex_skill_level))
+        }),
         ParsedConditionKind::Synchronization { threshold } => {
             let Some(managers) = managers else {
                 return false;
@@ -1394,6 +1398,11 @@ fn target_identity_matches(
     pool: &TargetPool,
     context: TargetContext,
 ) -> bool {
+    if mode == TargetIdentityMode::ActiveSkillSourceModelId {
+        return pool
+            .entity(context.active_skill_source_uid)
+            .is_some_and(|source| source.model_id == value || source.model_id / 10 == value);
+    }
     let targets = identity_targets(condition_targets, pool, context);
     match mode {
         TargetIdentityMode::TargetIsSelf => targets.iter().any(|target| target.uid == source_uid),
@@ -1404,6 +1413,7 @@ fn target_identity_matches(
         TargetIdentityMode::TargetModelId => targets
             .iter()
             .any(|target| target.model_id == value || target.model_id / 10 == value),
+        TargetIdentityMode::ActiveSkillSourceModelId => unreachable!(),
         TargetIdentityMode::TargetPosition => targets.iter().any(|target| target.position == value),
     }
 }

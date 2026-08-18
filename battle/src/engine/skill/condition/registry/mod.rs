@@ -583,6 +583,8 @@ condition_definitions! {
     [1011201] "EnemyAliveNum" => entity_count::enemy_alive, event_trigger(EventKind::SkillAction, None);
     [1011208] "EnemyAliveNum" => entity_count::enemy_alive, predicate(&[]);
     [595002] "TargetIncludeHero" => target_identity::target_model, setup_route(SetupStage::EnterFight, 0, &[]);
+    [595101] "TargetIncludeHero" => target_identity::positive_target_model, setup_route(SetupStage::RoundStartCondition, 101, &[]);
+    [595210] "TargetIncludeHero" => target_identity::positive_active_skill_source_model, predicate(&[]);
     [1000212] "TeamContainHero" => target_identity::team_contains_model, predicate(&[]);
     [643004] "HasConditionTarget" => target_identity::team_model_presence, predicate(&[]);
     [585208] "TargetIsSelf" => target_identity::target_is_self, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
@@ -599,6 +601,7 @@ condition_definitions! {
     [36021] "HeroReal" => parse::hero_reality, setup_route(SetupStage::BattleStart, 0, &[]);
     [37021] "HeroMagic" => parse::hero_mental, setup_route(SetupStage::BattleStart, 0, &[]);
     [508104] "CareerCheck" => career::parse_career_check, setup_route(SetupStage::RoundStart, 1, &[]);
+    [516101] "HasTargetCareerNum" => career::target_team_career_count, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [565104] "EnemyHighestTypeIdBuffCountMoreThan" => buff::enemy_highest_buff_type_at_least, predicate(&[]);
     [508208] "CareerCheck" => career::parse_career_check, predicate(&[]);
     [508212] "CareerCheck" => career::parse_career_check, event_trigger(EventKind::AllyAction, None);
@@ -731,6 +734,7 @@ condition_definitions! {
     [7203] "BeforeCrit" => parse::before_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::Damage));
     [740203] "BloodPoolMax" => resource::blood_pool_max, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [751104] "ExSkillLevel" => target_identity::ex_skill_level, setup_route(SetupStage::RoundStartLate, 0, &[]);
+    [751210] "ExSkillLevel" => target_identity::ex_skill_levels, predicate(&[]);
     [718212] "ActOrderRange" => act_order::range, event_trigger(EventKind::AllyAction, None);
     [35201] "ActOrder" => act_order::order, event_trigger(EventKind::SkillAction, None);
     [35203] "ActOrder" => act_order::order, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));

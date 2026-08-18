@@ -2345,6 +2345,32 @@ fn enter_fight_team_career_threshold_keeps_its_exact_key() {
 }
 
 #[test]
+fn exact_target_team_career_count_keeps_its_round_start_route() {
+    assert_eq!(
+        parse(
+            516101,
+            "HasTargetCareerNum",
+            &["4".into(), "1".into(), "3".into(), "1".into()],
+        ),
+        Some(ParsedConditionKind::TeamCareerCount {
+            careers: vec![4],
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 3,
+        })
+    );
+    assert_eq!(
+        find_key(516101, "HasTargetCareerNum").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 101,
+        })
+    );
+    for opcode in [516, 516010, 516203, 516208, 516212] {
+        assert!(find_key(opcode, "HasTargetCareerNum").is_none());
+    }
+}
+
+#[test]
 fn only_the_proven_enter_fight_key_reactivates_after_transform() {
     assert_eq!(
         find_key(5, "EnterFight").unwrap().reactivation_events,
@@ -2356,6 +2382,36 @@ fn only_the_proven_enter_fight_key_reactivates_after_transform() {
             .reactivation_events
             .is_empty()
     );
+}
+
+#[test]
+fn exact_target_model_round_start_key_keeps_its_own_route() {
+    assert_eq!(
+        find_key(595101, "TargetIncludeHero").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 101,
+        })
+    );
+    assert!(matches!(
+        parse(595101, "TargetIncludeHero", &["3102".into()]),
+        Some(ParsedConditionKind::TargetIdentity {
+            mode: super::super::parse::TargetIdentityMode::TargetModelId,
+            value: 3102,
+        })
+    ));
+    assert!(find_key(595203, "TargetIncludeHero").is_none());
+    assert_eq!(
+        find_key(595210, "TargetIncludeHero").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert!(matches!(
+        parse(595210, "TargetIncludeHero", &["3102".into()]),
+        Some(ParsedConditionKind::TargetIdentity {
+            mode: super::super::parse::TargetIdentityMode::ActiveSkillSourceModelId,
+            value: 3102,
+        })
+    ));
 }
 
 #[test]
@@ -2914,4 +2970,22 @@ fn ultimate_level_keeps_its_exact_round_start_route() {
     assert!(parse(751104, "ExSkillLevel", &["6".into()]).is_none());
     assert!(parse(751104, "ExSkillLevel", &["0".into(), "1".into()]).is_none());
     assert!(find_key(751104, "SkillLevel").is_none());
+}
+
+#[test]
+fn exact_after_hit_ultimate_level_751210_is_a_membership_predicate() {
+    assert_eq!(
+        parse(751210, "ExSkillLevel", &["0,1,2,3,4".into()]),
+        Some(ParsedConditionKind::ExSkillLevels(vec![0, 1, 2, 3, 4]))
+    );
+    assert_eq!(
+        find_key(751210, "ExSkillLevel").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    for raw in ["0,5", "4,3,2,1,0", "0,1,2,3,4,4", " 5 ", "0，1，2，3，4"] {
+        assert!(parse(751210, "ExSkillLevel", &[raw.into()]).is_none());
+    }
+    for opcode in [751209, 751211, 751212] {
+        assert!(find_key(opcode, "ExSkillLevel").is_none());
+    }
 }

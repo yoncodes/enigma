@@ -146,6 +146,7 @@ pub enum ParsedConditionKind {
     },
     ExPointFull,
     ExSkillLevel(i32),
+    ExSkillLevels(Vec<i32>),
     Synchronization {
         threshold: i32,
     },
@@ -356,6 +357,7 @@ pub enum TargetIdentityMode {
     TargetIsSelf,
     TargetIsAllyNotSelf,
     TargetModelId,
+    ActiveSkillSourceModelId,
     TargetPosition,
 }
 
