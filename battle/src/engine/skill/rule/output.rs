@@ -21,7 +21,8 @@ use crate::engine::{
     },
     mechanic::{
         buff_precast::BuffPrecastCommand, field_transfer::FieldTransferCommand,
-        nuo_di_ka::NuoDiKaCommand, shell::ShellCommand,
+        focus_all_entity_buff::FocusAllEntityBuffCommand, nuo_di_ka::NuoDiKaCommand,
+        shell::ShellCommand,
     },
     skill::action::{SkillInvocation, SkillLifecycle},
     skill::buff_act::{
@@ -72,6 +73,7 @@ pub enum BattleCommand {
     Contract(ContractCommand),
     Field(FieldCommand),
     FieldTransfer(FieldTransferCommand),
+    FocusAllEntityBuff(FocusAllEntityBuffCommand),
     Shell(ShellCommand),
     NuoDiKa(NuoDiKaCommand),
     RaspberryCapacity(CapacityCommand),

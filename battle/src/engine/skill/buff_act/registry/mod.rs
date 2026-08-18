@@ -108,6 +108,7 @@ pub enum BuffActKind {
     Burn,
     BurnRealHurtFix,
     CardLimitAdd,
+    CardLevelAdd,
     CardNotCalSize,
     EntityExSkillNotCalSize,
     CareerRatioFix,
@@ -712,6 +713,10 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         frame: CausingFrame,
         transaction: super::ex_point_max_transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(703, "ExPointMaxAdd"), &[]));
+    (701, "CardLevelAdd") => CardLevelAdd,
+        runtime: super::card_level_add::rule_ops,
+        supports: super::card_level_add::supports,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(701, "CardLevelAdd"), &[EffectType::Cardleveladd as i32]));
     (832, "SpExPointMaxAdd") => SpExPointMaxAdd,
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         frame: CausingFrame,
@@ -1026,7 +1031,7 @@ buff_act_definitions! {
     (878, "EmitterNumChange") => EmitterNumChange,
         supports: super::emitter_num_change::supports, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(878, "EmitterNumChange"), &[EffectType::Emitternumchange as i32]));
-    (879, "EmitterCardAllocateChange") => EmitterCardAllocateChange,
+    (879, "EmitterCardAllocateChange") => EmitterCardAllocateChange, effect_time_subscription: false,
         supports: super::emitter_card_allocate_change::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(879, "EmitterCardAllocateChange"), &[EffectType::None as i32]));
     (880, "EmitterDamageUp") => EmitterDamageUp, effect_time_subscription: false, state_consumer: true;
     (897, "RedOrBlueCount") => RedOrBlueCount, source: Owner, actor: Team,

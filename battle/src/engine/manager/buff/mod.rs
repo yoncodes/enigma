@@ -74,6 +74,7 @@ pub struct BuffManager {
     act_states: HashMap<(i64, i32), state::DotState>,
     act_values: HashMap<(i64, i32), i32>,
     grant_values: HashMap<(i64, i32), i32>,
+    transition_progress: HashMap<(i64, i32), i32>,
     reserved_grant_uids: HashMap<(i64, i32), VecDeque<i64>>,
     transaction: BuffTransactionState,
     shared_uid_lane: bool,
@@ -94,6 +95,7 @@ impl Default for BuffManager {
             act_states: HashMap::new(),
             act_values: HashMap::new(),
             grant_values: HashMap::new(),
+            transition_progress: HashMap::new(),
             reserved_grant_uids: HashMap::new(),
             transaction: BuffTransactionState::default(),
             shared_uid_lane: false,
@@ -110,6 +112,32 @@ struct BuffTransactionState {
 }
 
 impl BuffManager {
+    fn tracks_single_transition(definition: &BuffDefinition) -> bool {
+        matches!(definition.stack_transition(), Some((threshold, replacement))
+            if threshold > 0 && replacement > 0)
+            && BuffPolicy::from_definition(definition).storage == BuffStorage::Single
+    }
+
+    fn reconcile_transition_progress(&mut self) {
+        let active = self
+            .buffs
+            .iter()
+            .filter_map(|buff| {
+                let definition = buff.definition.as_ref()?;
+                Self::tracks_single_transition(definition).then_some((
+                    (buff.owner_uid, buff.buff.buff_id?),
+                    count_or_layer_from(&buff.buff, Some(definition)).max(1),
+                ))
+            })
+            .collect::<HashMap<_, _>>();
+
+        self.transition_progress
+            .retain(|key, _| active.contains_key(key));
+        for (key, initial) in active {
+            self.transition_progress.entry(key).or_insert(initial);
+        }
+    }
+
     pub(crate) fn set_catalog(&mut self, catalog: crate::catalog::BattleCatalog) {
         self.catalog_data = Some(catalog);
     }

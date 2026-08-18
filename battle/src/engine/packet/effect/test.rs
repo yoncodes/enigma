@@ -7,6 +7,17 @@ use crate::engine::manager::{
 use super::*;
 
 #[test]
+fn emitter_create_uses_the_canonical_activation_identity() {
+    let effect = EffectPacket::emitter_create();
+
+    assert_eq!(effect.target_id, Some(0));
+    assert_eq!(effect.effect_type, Some(EffectType::Emittercreate as i32));
+    assert_eq!(effect.effect_num, Some(1));
+    assert_eq!(effect.entity, Some(emitter::activation_entity()));
+    assert_eq!(effect.emitter_info, Some(EmitterInfo { energy: Some(0) }));
+}
+
+#[test]
 fn clear_universal_card_is_owned_by_the_player_team() {
     assert_eq!(EffectPacket::clear_universal_card().team_type, Some(1));
 }

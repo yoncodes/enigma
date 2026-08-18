@@ -508,6 +508,8 @@ behavior_definitions! {
     [60115] "TotalSkillRankToPower" => super::resource::Handler, TotalSkillRankToPower, Immediate, destination, super::resource::supports_total_skill_rank_power;
     [60152] "AddEmitterEnergy" => super::resource::Handler, AddEmitterEnergy, Immediate, destination, super::resource::supports_emitter_energy;
     [60153] "AddTeamEnergy" => super::resource::Handler, AddTeamEnergy, Immediate, setup_parent_destination, super::resource::supports_team_energy;
+    [60264] "PerTypeBuffAddEnergyToTeam" => super::resource::Handler, PerTypeBuffAddEnergyToTeam, Immediate, setup_parent_destination, super::resource::supports_per_type_buff_energy;
+    [60266] "PerTypeBuffAddEnergyToEmitter" => super::resource::Handler, PerTypeBuffAddEnergyToEmitter, Immediate, destination, super::resource::supports_per_type_buff_emitter_energy;
     [60154] "AddRedOrBlueCount" => super::resource::Handler, AddRedOrBlueCount, Immediate, destination, super::resource::supports_red_or_blue_count;
     [60298] "AddMeiLeiErCharge" => super::resource::Handler, AddBuffOwnedCharge, Immediate, destination, super::resource::supports_buff_owned_charge;
     [60305] "ConsumeBuffMeiLeiEr" => super::resource::Handler, ConsumeBuffIntoChargeAndRewards, Immediate, destination, super::resource::supports_consume_buff_into_charge_and_rewards;
@@ -599,7 +601,7 @@ behavior_definitions! {
     [60211] "ConsumeBloodAddBuff2" => super::gauge::Handler, ConsumeBloodAddBuff2, Immediate, destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(57104, "NoBuffId"), stage: SetupStage::RoundStart, priority: 3 }), super::gauge::supports_consume_blood_add_buff;
     [50019] "AddMagicCircle" => super::magic_circle::Handler, AddMagicCircle, Immediate, destination;
     [50021] "RemoveMagicCircleById" => super::magic_circle::Handler, RemoveMagicCircleById, Immediate, destination;
-    [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, plain;
+    [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, destination;
     [60195] "ElectricTransform" => super::electric::Handler, ElectricTransform, Immediate, destination, super::electric::supports;
     [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, destination;
     [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterDamage, destination;
@@ -686,6 +688,7 @@ behavior_definitions! {
     [20009] "Detonate2" => super::detonate::Handler, Detonate2, AfterDamage, destination;
     [60183] "SupplyShield2" => super::shield::ChildUidHandler, SupplyShield2, Immediate, destination;
     [60259] "SupplyShield2" => super::shield::Handler, SupplyShield2, Immediate, destination;
+    [60263] "FocusAllEntityBuff" => super::focus_all_entity_buff::Handler, FocusAllEntityBuff, Immediate, destination, super::focus_all_entity_buff::supports_arguments;
     [60290] "SupplyTeamShareShield" => super::shield::Handler, SupplyTeamShareShield, Immediate, setup_parent_destination;
     [60133] "ShellAssign" => super::shell::Handler, ShellAssign, AfterDamage, destination, super::shell::supports_assign;
     [60134] "ShellRecycle" => super::shell::Handler, ShellRecycle, AfterDamage, destination, super::shell::supports_recycle;

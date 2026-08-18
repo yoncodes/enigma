@@ -1,5 +1,20 @@
 use super::*;
 
+fn grant(target_uid: i64, buff_id: i32) -> BuffCommand {
+    BuffCommand::Grant(BuffGrant {
+        origin: CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(1, "AddBuff"),
+        },
+        source_uid: target_uid,
+        target_uid,
+        buff_id,
+        amount: None,
+        occurrences: 1,
+        child_uid_reservations: 0,
+    })
+}
+
 #[test]
 fn remove_id_or_type_resolves_a_configured_type_id() {
     crate::test_support::init_config();
@@ -328,4 +343,195 @@ fn stack_transition_is_part_of_the_grant_plan() {
             .iter()
             .all(|refresh| refresh.after.buff_id != Some(5100))
     );
+}
+
+#[test]
+fn single_instance_transition_counts_reapplications_per_target() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10), entity(20)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    manager.execute(&hp, grant(10, 303941)).unwrap();
+    manager.execute(&hp, grant(20, 303941)).unwrap();
+    let source = manager
+        .active_for(10)
+        .find(|buff| buff.buff_id == Some(303941))
+        .unwrap();
+    assert_eq!(source.count, Some(0));
+    assert_eq!(source.layer, Some(0));
+
+    let changes = manager.execute(&hp, grant(10, 303941)).unwrap();
+
+    assert!(!manager.has_buff_id(10, 303941));
+    assert!(manager.has_buff_id(10, 30395));
+    assert!(manager.has_buff_id(20, 303941));
+    assert!(!manager.has_buff_id(20, 30395));
+    assert_eq!(
+        changes
+            .change
+            .removed
+            .iter()
+            .filter_map(|removed| removed.buff.buff_id)
+            .collect::<Vec<_>>(),
+        vec![303941]
+    );
+    assert_eq!(changes.change.added.unwrap().buff.buff_id, Some(30395));
+}
+
+#[test]
+fn seeded_single_instance_transition_starts_with_one_application() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1_000_001),
+                    buff_id: Some(303941),
+                    from_uid: Some(10),
+                    count: Some(0),
+                    layer: Some(0),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    manager
+        .execute(&HpManager::default(), grant(10, 303941))
+        .unwrap();
+
+    assert!(!manager.has_buff_id(10, 303941));
+    assert!(manager.has_buff_id(10, 30395));
+}
+
+#[test]
+fn single_instance_transition_progress_survives_entity_registration() {
+    crate::test_support::init_config();
+    let entity = FightEntityInfo {
+        uid: Some(10),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity.clone()],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+    manager.execute(&hp, grant(10, 23572)).unwrap();
+    manager.execute(&hp, grant(10, 23572)).unwrap();
+    assert!(manager.has_buff_id(10, 23572));
+
+    let mut registered = entity;
+    registered.buffs = manager
+        .active_for(10)
+        .filter(|buff| buff.buff_id == Some(23572))
+        .cloned()
+        .collect();
+    manager.register_entity(&registered, 1);
+    manager.execute(&hp, grant(10, 23572)).unwrap();
+
+    assert!(!manager.has_buff_id(10, 23572));
+    assert!(manager.has_buff_id(10, 23571));
+}
+
+#[test]
+fn rejected_single_instance_grant_does_not_advance_transition_progress() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(1_000_001),
+                        buff_id: Some(4081),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(1_000_002),
+                        buff_id: Some(32820101),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    let changes = manager
+        .execute(&HpManager::default(), grant(10, 4081))
+        .unwrap();
+
+    assert!(changes.change.rejected.is_some());
+    assert_eq!(manager.transition_progress.get(&(10, 4081)), Some(&1));
+}
+
+#[test]
+fn removing_single_instance_source_resets_transition_progress() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+    manager.execute(&hp, grant(10, 303941)).unwrap();
+    manager
+        .execute(
+            &hp,
+            BuffCommand::Remove(BuffRemove {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60010, "DisperseForce2"),
+                },
+                target_uid: 10,
+                selector: BuffRemoveSelector::ExactId(303941),
+            }),
+        )
+        .unwrap();
+
+    manager.execute(&hp, grant(10, 303941)).unwrap();
+
+    assert!(manager.has_buff_id(10, 303941));
+    assert!(!manager.has_buff_id(10, 30395));
 }
