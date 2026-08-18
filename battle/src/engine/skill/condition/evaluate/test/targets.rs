@@ -134,6 +134,55 @@ fn ultimate_level_matches_each_resolved_entity_snapshot() {
 }
 
 #[test]
+fn after_hit_ultimate_level_751210_matches_the_captured_rank_set() {
+    let pool = TargetPool::from_fight(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    ex_skill_level: Some(0),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    ex_skill_level: Some(5),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let lower_ranks = exact_condition(751210, "ExSkillLevel", &["0,1,2,3,4"]);
+    let max_rank = exact_condition(751210, "ExSkillLevel", &["5"]);
+
+    assert!(condition_matches(
+        &lower_ranks,
+        10,
+        &[10],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+    assert!(!condition_matches(
+        &max_rank,
+        10,
+        &[10],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+    assert!(condition_matches(
+        &max_rank,
+        10,
+        &[11],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+}
+
+#[test]
 fn received_hit_afflatus_conditions_only_match_the_hit_owner() {
     init_config();
     let fight = Fight {

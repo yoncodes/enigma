@@ -735,6 +735,10 @@ fn condition_kind_matches(
             pool.entity(*uid)
                 .is_some_and(|entity| entity.ex_skill_level == *level)
         }),
+        ParsedConditionKind::ExSkillLevels(levels) => condition_targets.iter().any(|uid| {
+            pool.entity(*uid)
+                .is_some_and(|entity| levels.contains(&entity.ex_skill_level))
+        }),
         ParsedConditionKind::Synchronization { threshold } => {
             let Some(managers) = managers else {
                 return false;

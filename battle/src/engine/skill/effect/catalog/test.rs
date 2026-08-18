@@ -571,6 +571,47 @@ fn active_skill_filters_share_the_exact_skill_action_driver() {
 }
 
 #[test]
+fn ultimate_rank_compound_keeps_its_after_hit_driver_and_buff_branches() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let slots = &catalog.get(30920211).unwrap().slots;
+
+    for (slot, levels, buff_id, target_code) in [
+        (&slots[2], vec![0, 1, 2, 3, 4], 31020113, 121),
+        (&slots[3], vec![0, 1, 2, 3, 4], 31020112, 123),
+        (&slots[4], vec![5], 31020119, 121),
+        (&slots[5], vec![5], 31020118, 123),
+    ] {
+        assert_eq!(slot.condition_target.code, 103);
+        assert!(slot.conditions.iter().any(|condition| {
+            condition.kind == ParsedConditionKind::TargetIdentity {
+                mode: crate::engine::skill::condition::TargetIdentityMode::ActiveSkillSourceModelId,
+                value: 3102,
+            }
+        }));
+        assert!(
+            slot.conditions.iter().any(|condition| {
+                condition.opcode == 25210 && condition.type_name == "UseExSkill"
+            })
+        );
+        assert!(slot.conditions.iter().any(|condition| {
+            condition.kind == ParsedConditionKind::ExSkillLevels(levels.clone())
+        }));
+        assert_eq!(
+            slot.compiled_subscriptions().unwrap(),
+            vec![SubscriptionKey::at_phase(
+                crate::engine::event::kind::EventKind::SkillAction,
+                crate::engine::skill::rule::DefinitionKey::new(25210, "UseExSkill"),
+                Some(crate::engine::skill::action::SkillPhase::AfterHit),
+            )]
+        );
+        assert_eq!(slot.behavior.spec.kind, BehaviorKind::AddBuff);
+        assert_eq!(slot.behavior.arg(0), Some(buff_id));
+        assert_eq!(slot.target.code, target_code);
+    }
+}
+
+#[test]
 fn target_count_and_effect_tag_share_the_effect_tag_driver() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
