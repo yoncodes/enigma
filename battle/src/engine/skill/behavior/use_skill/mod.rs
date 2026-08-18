@@ -3,7 +3,7 @@ use crate::engine::{
     manager::{
         buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
-        ex_point::{ExPointChange, ExPointCommand},
+        ex_point::{ExPointChange, ExPointCommand, ExPointKind},
     },
     runtime::determinism::RoundDeterminism,
     skill::{
@@ -26,6 +26,13 @@ pub(super) fn supports_consume_power_direct_skill(behavior: &ParsedBehavior) -> 
 
 pub(super) fn supports_consume_power_skill(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [cost, skill_id] if *cost > 0 && *skill_id > 0)
+}
+
+pub(super) fn supports_per_consume_ex_point_direct_use_skill(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [5, skill_id, 0, 31100201, 1] if *skill_id > 0
+    )
 }
 
 pub(super) fn supports_random_skill(behavior: &ParsedBehavior) -> bool {
@@ -285,6 +292,41 @@ impl BehaviorHandler for Handler {
                         effect_type: sonettobuf::effect_type_enum::EffectType::Powerchange as i32,
                     }))),
                     RuleOp::Skill(invocation),
+                ])
+            }
+            BehaviorKind::PerConsumeExPointDirectUseSkill => {
+                let [5, skill_id, 0, 31100201, 1] = behavior.args.as_slice() else {
+                    return Some(Vec::new());
+                };
+                if *skill_id <= 0
+                    || ExPointKind::from_wire(context.managers.ex_point.kind(context.source_uid))
+                        != ExPointKind::Common
+                    || context.managers.ex_point.get(context.source_uid) < 5
+                {
+                    return Some(Vec::new());
+                }
+                let origin = super::command_origin(behavior)?;
+                let mut invocation: crate::engine::skill::action::SkillInvocation =
+                    crate::engine::skill::action::SkillRequest {
+                        source_uid: context.source_uid,
+                        skill_id: *skill_id,
+                    }
+                    .into();
+                invocation.target =
+                    crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
+                Some(vec![
+                    RuleOp::Skill(invocation),
+                    RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Spend(
+                        ExPointChange {
+                            origin,
+                            source_uid: context.source_uid,
+                            target_uid: context.source_uid,
+                            delta: -5,
+                            config_effect: 0,
+                            effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange
+                                as i32,
+                        },
+                    ))),
                 ])
             }
             BehaviorKind::DirectUseSkill => {
@@ -563,6 +605,11 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         BehaviorKind::ConsumePowerUseSkill | BehaviorKind::ConsumePowerDirectUseSkill => {
             behavior.arg(1).into_iter().collect()
         }
+        BehaviorKind::PerConsumeExPointDirectUseSkill
+            if supports_per_consume_ex_point_direct_use_skill(behavior) =>
+        {
+            behavior.arg(1).into_iter().collect()
+        }
         BehaviorKind::DirectUseSkill
         | BehaviorKind::DirectUseSkill2
         | BehaviorKind::DirectUseSkillCard
@@ -586,6 +633,11 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         | BehaviorKind::ConsumeBuffUseSkill3
         | BehaviorKind::ConsumeTargetBuffUseSkill => behavior.arg(0).into_iter().collect(),
         BehaviorKind::RemoveBuffUseSkill => behavior.arg(0).into_iter().collect(),
+        BehaviorKind::PerConsumeExPointDirectUseSkill
+            if supports_per_consume_ex_point_direct_use_skill(behavior) =>
+        {
+            behavior.arg(3).into_iter().collect()
+        }
         _ => Vec::new(),
     };
     RuleReferences {

@@ -533,6 +533,7 @@ behavior_definitions! {
     [60300] "AddSpTempCard2" => super::card::Handler, AddSpTempCard2, Immediate, destination, super::card::supports_temporary_skill_card;
     [100018] "ConsumeBuffCreateTempCardOrder" => super::precast::Handler, ConsumeBuffCreatePrecast, Immediate, destination, super::precast::supports_arguments;
     [50036] "ConsumePowerDirectUseSkill" => super::use_skill::Handler, ConsumePowerDirectUseSkill, Immediate, destination, super::use_skill::supports_consume_power_direct_skill;
+    [60262] "PerConsumeExPointDirectUseSkill" => super::use_skill::Handler, PerConsumeExPointDirectUseSkill, Immediate, destination, super::use_skill::supports_per_consume_ex_point_direct_use_skill;
     [60188] "ConsumePowerUseSkill" => super::use_skill::Handler, ConsumePowerUseSkill, Immediate, destination, super::use_skill::supports_consume_power_skill;
     [60121] "ConsumeBuffUseSkill" => super::use_skill::Handler, ConsumeBuffUseSkill, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill;
     [60311] "ConsumeBuffUseSkill3" => super::use_skill::Handler, ConsumeBuffUseSkill3, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill3;

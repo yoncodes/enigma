@@ -189,6 +189,48 @@ fn implemented_skill_casts_own_destinations_but_unimplemented_siblings_do_not() 
 }
 
 #[test]
+fn per_consume_ex_point_direct_use_skill_keeps_its_exact_five_argument_shape() {
+    let behavior = |args| ParsedBehavior::new(60262, "PerConsumeExPointDirectUseSkill", args);
+    let valid = behavior(vec![5, 31100521, 0, 31100201, 1]);
+    let definition = find(&valid).expect("exact ExPoint behavior must be registered");
+
+    assert_eq!(
+        definition.kind,
+        BehaviorKind::PerConsumeExPointDirectUseSkill
+    );
+    assert!(definition.destination);
+    assert!(definition.supports.unwrap()(&valid));
+    assert!(crate::engine::skill::behavior::is_supported(&valid));
+    let references = (definition.references)(&valid);
+    assert_eq!(references.skills, vec![31100521]);
+    assert_eq!(references.buffs, vec![31100201]);
+
+    for invalid in [
+        vec![5, 31100521, 0, 31100201],
+        vec![5, 31100521, 1, 31100201, 1],
+        vec![3, 31100521, 0, 31100201, 1],
+        vec![5, 31100521, 0, 31100202, 1],
+        vec![5, 31100521, 0, 31100201, 2],
+        vec![0, 31100521, 0, 31100201, 1],
+        vec![5, 0, 0, 31100201, 1],
+        vec![5, 31100521, 0, 0, 1],
+        vec![5, 31100521, 0, 31100201, 0],
+    ] {
+        let invalid = behavior(invalid);
+        assert!(!definition.supports.unwrap()(&invalid));
+        assert!(!crate::engine::skill::behavior::is_supported(&invalid));
+    }
+
+    let unsupported = behavior(vec![6, 30920156, 1, 30920103]);
+    let references = (definition.references)(&unsupported);
+    assert!(references.skills.is_empty());
+    assert!(references.buffs.is_empty());
+
+    assert!(find_key(60262, "ConsumeExPointDirectUseSkill").is_none());
+    assert!(find_key(50036, "PerConsumeExPointDirectUseSkill").is_none());
+}
+
+#[test]
 fn destination_readiness_belongs_to_the_exact_registry_row() {
     let root_add =
         ParsedBehavior::from_spec(BehaviorSpec::new(1, "AddBuff"), vec![100, 1], Vec::new());

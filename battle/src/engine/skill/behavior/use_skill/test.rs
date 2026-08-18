@@ -1039,6 +1039,150 @@ fn consume_power_direct_skill_spends_once_without_extra_action_or_team_energy() 
 }
 
 #[test]
+fn per_consume_ex_point_direct_use_skill_casts_before_spending_common_moxie() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1),
+                ex_point: Some(5),
+                ex_point_type: Some(
+                    crate::engine::manager::ex_point::ExPointKind::Common.as_wire(),
+                ),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    managers
+        .execute_buff(BuffCommand::Grant(
+            crate::engine::manager::buff::BuffGrant {
+                origin: crate::engine::skill::rule::CommandOrigin {
+                    domain: crate::engine::skill::rule::RuleDomain::BuffAct,
+                    key: crate::engine::skill::rule::DefinitionKey::new(
+                        509,
+                        "ImmunityExpointChange",
+                    ),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 5081,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            },
+        ))
+        .unwrap();
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::new(
+        60262,
+        "PerConsumeExPointDirectUseSkill",
+        vec![5, 31100521, 0, 31100201, 1],
+    );
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: -1,
+            active_skill_id: 31100511,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [
+            RuleOp::Skill(invocation),
+            RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Spend(ExPointChange {
+                source_uid: 10,
+                target_uid: 10,
+                delta: -5,
+                config_effect,
+                effect_type,
+                ..
+            })))
+        ] if invocation.plan.source_uid == 10
+            && invocation.plan.skill_id == 31100521
+            && invocation.target
+                == crate::engine::skill::action::SkillTarget::Explicit(-1)
+            && invocation.extra_skill_kind.is_none()
+            && invocation.mode == crate::engine::skill::action::SkillExecutionMode::Nested
+            && *config_effect == 0
+            && *effect_type == sonettobuf::effect_type_enum::EffectType::Expointchange as i32
+    ));
+
+    let RuleOp::Command(BattleCommand::ExPoint(command)) = &ops[1] else {
+        panic!("second operation must spend Moxie");
+    };
+    managers.execute_ex_point(*command).unwrap();
+    assert_eq!(managers.ex_point.get(10), 0);
+}
+
+#[test]
+fn per_consume_ex_point_direct_use_skill_skips_with_insufficient_moxie() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1),
+                ex_point: Some(4),
+                ex_point_type: Some(
+                    crate::engine::manager::ex_point::ExPointKind::Common.as_wire(),
+                ),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::new(
+        60262,
+        "PerConsumeExPointDirectUseSkill",
+        vec![5, 31100521, 0, 31100201, 1],
+    );
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: -1,
+            active_skill_id: 31100511,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(ops.is_empty());
+}
+
+#[test]
 fn direct_use_skill_owns_its_random_ally_target_code() {
     let entity = |uid| FightEntityInfo {
         uid: Some(uid),
