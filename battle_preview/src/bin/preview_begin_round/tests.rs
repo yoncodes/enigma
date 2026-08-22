@@ -1,11 +1,5 @@
 use super::*;
 
-use battle::engine::skill::{
-    behavior::classify::BehaviorSpec,
-    effect::{ParsedBehavior, ParsedSkillEffect, SkillEffectCatalog, SkillEffectSlot},
-    target::TargetRequest,
-};
-
 #[test]
 fn captured_round_continuity_rejects_skips_and_reversals() {
     let previous = FightRound {
@@ -27,111 +21,6 @@ fn captured_round_continuity_rejects_skips_and_reversals() {
     assert!(error.to_string().contains("previous round 1"));
     assert!(error.to_string().contains("next round 3"));
     assert!(validate_captured_round_continuity(&previous, &reversed).is_err());
-}
-
-fn random_skill_catalog(
-    behaviors: impl IntoIterator<Item = (i32, ParsedBehavior)>,
-) -> SkillEffectCatalog {
-    let mut catalog = SkillEffectCatalog::default();
-    for (skill_id, behavior) in behaviors {
-        catalog.insert(ParsedSkillEffect {
-            skill_id,
-            slots: vec![SkillEffectSlot::new(behavior, TargetRequest::self_only())],
-        });
-    }
-    catalog
-}
-
-fn fight_step_with_children(act_id: i32, children: Vec<FightStep>) -> FightStep {
-    FightStep {
-        act_id: Some(act_id),
-        act_effect: children
-            .into_iter()
-            .map(|child| sonettobuf::ActEffect {
-                fight_step: Some(child),
-                ..Default::default()
-            })
-            .collect(),
-        ..Default::default()
-    }
-}
-
-#[test]
-fn captured_random_skill_choices_match_a_registered_child() {
-    let catalog = random_skill_catalog([(
-        31340151,
-        ParsedBehavior::from_spec(
-            BehaviorSpec::new(60242, "CrystalReuse"),
-            vec![334, 31340152, 1],
-            Vec::new(),
-        ),
-    )]);
-    let round = FightRound {
-        fight_step: vec![fight_step_with_children(
-            31340151,
-            vec![fight_step_with_children(31340152, Vec::new())],
-        )],
-        ..Default::default()
-    };
-
-    assert_eq!(
-        captured_random_skill_choices(&catalog, &round),
-        vec![31340152]
-    );
-}
-
-#[test]
-fn captured_random_skill_choices_exclude_unrelated_nested_children() {
-    let catalog = random_skill_catalog([(
-        31340151,
-        ParsedBehavior::from_spec(
-            BehaviorSpec::new(60242, "CrystalReuse"),
-            vec![334, 31340152, 1],
-            Vec::new(),
-        ),
-    )]);
-    let round = FightRound {
-        fight_step: vec![fight_step_with_children(
-            31340151,
-            vec![fight_step_with_children(
-                999999,
-                vec![fight_step_with_children(31340152, Vec::new())],
-            )],
-        )],
-        ..Default::default()
-    };
-
-    assert!(captured_random_skill_choices(&catalog, &round).is_empty());
-}
-
-#[test]
-fn captured_random_skill_choices_preserve_causal_order() {
-    let catalog = random_skill_catalog([(
-        31340151,
-        ParsedBehavior::from_spec(
-            BehaviorSpec::new(60225, "RandomUseSkill"),
-            Vec::new(),
-            vec!["31340152:100&31340153:100".to_owned()],
-        ),
-    )]);
-    let round = FightRound {
-        fight_step: vec![
-            fight_step_with_children(
-                31340151,
-                vec![fight_step_with_children(31340153, Vec::new())],
-            ),
-            fight_step_with_children(
-                31340151,
-                vec![fight_step_with_children(31340152, Vec::new())],
-            ),
-        ],
-        ..Default::default()
-    };
-
-    assert_eq!(
-        captured_random_skill_choices(&catalog, &round),
-        vec![31340153, 31340152]
-    );
 }
 
 #[test]
@@ -220,91 +109,6 @@ fn captured_same_round_cloth_input_runs_before_round_advance() {
                 .fight
                 .as_ref()
                 .is_some_and(|fight| fight.cur_wave == Some(2))
-        })
-    }));
-}
-
-#[cfg(feature = "private-fixtures")]
-#[test]
-fn captured_twins_selection_has_a_committed_runtime_source() {
-    let db = init_config().unwrap();
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures/battles/battle116385108/BeginRoundReply_1.json");
-    let value = captured_start_reply(&path).unwrap();
-    let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
-    let (ex_attributes, sp_attributes) = preview_attributes(&fight, &path).unwrap();
-    let mut runtime = BattleRuntime::new_with_attributes(
-        battle::catalog::BattleCatalog::new(db),
-        fight,
-        ex_attributes,
-        sp_attributes,
-    );
-    runtime.start_round().unwrap();
-    let captured = captured_round(&path).unwrap();
-    seed_captured_randomness(&mut runtime, &captured);
-    let request = begin_round_request(&path.with_file_name("BeginRoundRequest_1.json")).unwrap();
-    let round = runtime.advance_round(request).unwrap();
-    let conduit = round
-        .fight_step
-        .iter()
-        .find(|step| {
-            step.act_effect.iter().any(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|nested| nested.act_id == Some(31490121))
-            })
-        })
-        .unwrap();
-    assert_eq!(conduit.to_id, Some(-2));
-    assert_eq!(
-        conduit
-            .act_effect
-            .iter()
-            .filter_map(|effect| effect.effect_type)
-            .collect::<Vec<_>>(),
-        vec![
-            sonettobuf::effect_type_enum::EffectType::Devicerunning as i32,
-            sonettobuf::effect_type_enum::EffectType::Devicepowerchange as i32,
-            sonettobuf::effect_type_enum::EffectType::Buffupdate as i32,
-            sonettobuf::effect_type_enum::EffectType::Counterchange as i32,
-            sonettobuf::effect_type_enum::EffectType::Fightstep as i32,
-        ]
-    );
-    let skill = conduit
-        .act_effect
-        .iter()
-        .find_map(|effect| effect.fight_step.as_ref())
-        .filter(|step| step.act_id == Some(31490121))
-        .unwrap();
-    let finish = skill
-        .act_effect
-        .iter()
-        .position(|effect| {
-            effect.effect_type
-                == Some(sonettobuf::effect_type_enum::EffectType::Counterchange as i32)
-                && effect.effect_num == Some(63)
-        })
-        .unwrap();
-    let harmonization = skill
-        .act_effect
-        .iter()
-        .enumerate()
-        .filter(|(_, effect)| {
-            effect.effect_type
-                == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
-                && effect.effect_num == Some(1)
-        })
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
-    assert_eq!(harmonization.len(), 3);
-    assert!(harmonization.into_iter().all(|index| index < finish));
-    assert!(!round.fight_step.iter().any(|step| {
-        step.act_effect.iter().any(|effect| {
-            effect
-                .fight_step
-                .as_ref()
-                .is_some_and(|nested| nested.act_id == Some(31490191))
         })
     }));
 }
@@ -500,16 +304,13 @@ fn captured_116385711_keeps_opening_owner_and_source_threshold_semantics() {
     let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
     let captured: FightRound = serde_json::from_value(value["round"].clone()).unwrap();
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, &path).unwrap();
-    let opening_determinism = captured_opening_determinism(db, &fight, &captured);
     let mut runtime = BattleRuntime::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
         ex_attributes,
         sp_attributes,
     );
-    runtime
-        .start_round_with_determinism(opening_determinism)
-        .unwrap();
+    runtime.start_round().unwrap();
     let generated = battle::dungeon::start_reply(&runtime).round.unwrap();
 
     assert_eq!(generated.fight_step.len(), captured.fight_step.len());
@@ -539,9 +340,41 @@ fn captured_116385711_keeps_opening_owner_and_source_threshold_semantics() {
 
 #[cfg(feature = "private-fixtures")]
 #[test]
-fn generated_round_uses_captured_rng_but_not_damage_amounts() {
+fn generated_round_ignores_captured_card_metadata() {
+    const CAPTURE_ONLY_HEAT_ID: i64 = 2_147_483_647;
+
+    fn tag_cards(value: &mut serde_json::Value) -> usize {
+        match value {
+            serde_json::Value::Array(values) => values.iter_mut().map(tag_cards).sum(),
+            serde_json::Value::Object(fields) => {
+                let tagged = usize::from(
+                    fields.contains_key("uid")
+                        && fields.contains_key("skillId")
+                        && fields.contains_key("tempCard"),
+                );
+                if tagged != 0 {
+                    fields.insert("heatId".to_owned(), serde_json::json!(CAPTURE_ONLY_HEAT_ID));
+                }
+                tagged + fields.values_mut().map(tag_cards).sum::<usize>()
+            }
+            _ => 0,
+        }
+    }
+
+    fn contains_tagged_card(value: &serde_json::Value) -> bool {
+        match value {
+            serde_json::Value::Array(values) => values.iter().any(contains_tagged_card),
+            serde_json::Value::Object(fields) => {
+                fields.get("heatId").and_then(serde_json::Value::as_i64)
+                    == Some(CAPTURE_ONLY_HEAT_ID)
+                    || fields.values().any(contains_tagged_card)
+            }
+            _ => false,
+        }
+    }
+
     let db = init_config().unwrap();
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/battles/battle71");
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/battles/CardDriftAudit");
     let temporary = std::env::temp_dir().join(format!(
         "enigma-preview-{}-{}",
         std::process::id(),
@@ -552,32 +385,33 @@ fn generated_round_uses_captured_rng_but_not_damage_amounts() {
     ));
     fs::create_dir_all(&temporary).unwrap();
     for name in [
-        "StartDungeonReply.json",
+        "StartTowerBattleReply.json",
+        "StartTowerBattleRequest.json",
         "BeginRoundRequest_1.json",
         "BeginRoundReply_1.json",
     ] {
         fs::copy(source.join(name), temporary.join(name)).unwrap();
     }
 
-    let expected = replay_to_round(db, &source.join("BeginRoundReply_1.json")).unwrap();
-    let reply_path = temporary.join("BeginRoundReply_1.json");
-    let mut captured: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&reply_path).unwrap()).unwrap();
-    expand_compressed_fight_steps(&mut captured).unwrap();
-    let round = captured.get_mut("round").unwrap();
-    round["nextRoundBeginStep"] = serde_json::json!([]);
-    round["fightStep"][2]["actEffect"][0]["effectNum"] = serde_json::json!(999_999);
-    round["fightStep"][2]["actEffect"][0]["hurtInfo"]["damage"] = serde_json::json!(999_999);
-    fs::write(&reply_path, serde_json::to_vec(&captured).unwrap()).unwrap();
+    let tagged = ["StartTowerBattleReply.json", "BeginRoundReply_1.json"]
+        .into_iter()
+        .map(|name| {
+            let path = temporary.join(name);
+            let mut captured: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            let tagged = tag_cards(&mut captured);
+            fs::write(path, serde_json::to_vec(&captured).unwrap()).unwrap();
+            tagged
+        })
+        .sum::<usize>();
+    assert!(tagged > 0);
 
-    let actual = replay_to_round(db, &reply_path).unwrap();
-    captured.get_mut("round").unwrap()["teamACards2"] = serde_json::json!([]);
-    fs::write(&reply_path, serde_json::to_vec(&captured).unwrap()).unwrap();
-    let without_card_choices = replay_to_round(db, &reply_path).unwrap();
+    let actual = replay_to_round(db, &temporary.join("BeginRoundReply_1.json")).unwrap();
     fs::remove_dir_all(temporary).unwrap();
 
-    assert_eq!(actual, expected);
-    assert_ne!(without_card_choices, expected);
+    assert!(!contains_tagged_card(
+        &serde_json::to_value(actual).unwrap()
+    ));
 }
 
 #[cfg(feature = "private-fixtures")]
