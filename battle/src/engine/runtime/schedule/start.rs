@@ -178,6 +178,17 @@ pub fn run_round_start_after_ai_split(
             &mut fight_steps,
             run_wave_entry_setup(managers, pool, catalog, determinism, context, entering_uids)?,
         );
+        append(
+            &mut fight_steps,
+            run_wave_entry_master_halo_fanout(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                entering_uids,
+            )?,
+        );
     }
     let (before_duration, settlement_plan) = run_round_start_before_duration(
         managers,

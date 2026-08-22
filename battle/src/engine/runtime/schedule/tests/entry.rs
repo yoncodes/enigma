@@ -363,3 +363,270 @@ fn wave_entry_resolves_configured_identity_before_the_next_action() {
 
     assert_eq!(managers.entity_snapshot(-7).unwrap().model_id, Some(151407));
 }
+
+#[test]
+fn wave_entry_fans_existing_master_halo_to_each_entrant() {
+    init_config();
+    let entity = |uid, team_type| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team_type),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let mut source = entity(10, 1);
+    source.buffs.push(BuffInfo {
+        buff_id: Some(31270412),
+        uid: Some(1015),
+        from_uid: Some(10),
+        ..Default::default()
+    });
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![source],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: [-3, -4, -5].into_iter().map(|uid| entity(uid, 2)).collect(),
+            ..Default::default()
+        }),
+        version: Some(7),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    let result = run_wave_entry_master_halo_fanout(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[-3, -4, -5],
+    )
+    .unwrap();
+
+    let changes = result
+        .outcomes
+        .iter()
+        .find_map(|outcome| match outcome {
+            RuleOutcome::Buff(changes) => Some(changes.as_ref()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        changes
+            .fanout
+            .iter()
+            .map(|fanout| {
+                let added = &fanout.added[0];
+                (
+                    fanout.rule,
+                    fanout.emitter_uid,
+                    fanout.carrier_buff_uid,
+                    added.target_uid,
+                    added.buff.buff_id.unwrap(),
+                    added.buff.uid.unwrap(),
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                DefinitionKey::new(771, "MasterHalo"),
+                10,
+                1015,
+                -3,
+                31270413,
+                1016
+            ),
+            (
+                DefinitionKey::new(771, "MasterHalo"),
+                10,
+                1015,
+                -4,
+                31270413,
+                1017
+            ),
+            (
+                DefinitionKey::new(771, "MasterHalo"),
+                10,
+                1015,
+                -5,
+                31270413,
+                1018
+            ),
+        ]
+    );
+    assert_eq!(
+        result
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                BattleEvent::BuffAdded(change) => Some(change.target_uid),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        vec![-3, -4, -5]
+    );
+
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert_eq!(steps.len(), 1);
+    let children = steps[0]
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .collect::<Vec<_>>();
+    assert_eq!(children.len(), 3);
+    assert_eq!(
+        children
+            .iter()
+            .map(|step| (
+                step.from_id.unwrap(),
+                step.act_effect[0].target_id.unwrap(),
+                step.act_effect[0].effect_num.unwrap(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![(10, -3, 31270413), (10, -4, 31270413), (10, -5, 31270413)]
+    );
+}
+
+fn master_halo_additions(fight: &Fight, target_uids: &[i64]) -> Vec<(i64, i64)> {
+    let pool = TargetPool::from_fight(fight);
+    let mut managers = BattleManagers::seeded(fight);
+    run_wave_entry_master_halo_fanout(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        target_uids,
+    )
+    .unwrap()
+    .outcomes
+    .into_iter()
+    .filter_map(|outcome| match outcome {
+        RuleOutcome::Buff(changes) => Some(changes),
+        _ => None,
+    })
+    .flat_map(|changes| changes.fanout)
+    .flat_map(|fanout| fanout.added)
+    .map(|added| (added.target_uid, added.buff.uid.unwrap()))
+    .collect()
+}
+
+#[test]
+fn pre_v7_wave_entry_master_halo_uses_the_emitter_uid_lane() {
+    init_config();
+    let entity = |uid, team_type| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team_type),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let mut source = entity(10, 1);
+    source.buffs.push(BuffInfo {
+        buff_id: Some(31270412),
+        uid: Some(1015),
+        from_uid: Some(10),
+        ..Default::default()
+    });
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![source],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-3, 2)],
+            ..Default::default()
+        }),
+        version: Some(6),
+        ..Default::default()
+    };
+
+    assert_eq!(master_halo_additions(&fight, &[-3]), vec![(-3, 1016)]);
+}
+
+#[test]
+fn wave_entry_master_halo_filters_inactive_expired_and_duplicate_plans() {
+    init_config();
+    let entity = |uid, team_type, current_hp| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team_type),
+        current_hp: Some(current_hp),
+        ..Default::default()
+    };
+    let carrier = |buff_id, duration| BuffInfo {
+        buff_id: Some(buff_id),
+        uid: Some(1015),
+        from_uid: Some(10),
+        duration: Some(duration),
+        ..Default::default()
+    };
+
+    let mut active_source = entity(10, 1, 100);
+    active_source.buffs.push(carrier(31270412, 0));
+    let duplicate_targets = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![active_source.clone()],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-3, 2, 100)],
+            ..Default::default()
+        }),
+        version: Some(7),
+        ..Default::default()
+    };
+    assert_eq!(
+        master_halo_additions(&duplicate_targets, &[-3, -3]),
+        vec![(-3, 1016)]
+    );
+
+    let inactive_carrier = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(11, 1, 100)],
+            sub_entitys: vec![active_source.clone()],
+            ..Default::default()
+        }),
+        defender: duplicate_targets.defender.clone(),
+        version: Some(7),
+        ..Default::default()
+    };
+    assert!(master_halo_additions(&inactive_carrier, &[-3]).is_empty());
+
+    let mut dead_source = active_source.clone();
+    dead_source.current_hp = Some(0);
+    let dead_carrier = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![dead_source],
+            ..Default::default()
+        }),
+        defender: duplicate_targets.defender.clone(),
+        version: Some(7),
+        ..Default::default()
+    };
+    assert!(master_halo_additions(&dead_carrier, &[-3]).is_empty());
+
+    let inactive_entrant = Fight {
+        attacker: duplicate_targets.attacker.clone(),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-4, 2, 100)],
+            sub_entitys: vec![entity(-3, 2, 100)],
+            ..Default::default()
+        }),
+        version: Some(7),
+        ..Default::default()
+    };
+    assert!(master_halo_additions(&inactive_entrant, &[-3]).is_empty());
+
+    let mut expired_source = entity(10, 1, 100);
+    expired_source.buffs.push(carrier(30860151, 0));
+    let expired_carrier = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![expired_source, entity(12, 1, 100)],
+            ..Default::default()
+        }),
+        version: Some(7),
+        ..Default::default()
+    };
+    assert!(master_halo_additions(&expired_carrier, &[12]).is_empty());
+}
