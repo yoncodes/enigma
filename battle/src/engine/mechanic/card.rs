@@ -96,8 +96,6 @@ impl CardMechanic {
         let required = self.required_ultimate_cost(managers, entity);
         let resource_ready = if kind == ExPointKind::Common || required > 0 {
             managers.ex_point.get(entity.uid) >= required
-        } else if kind == ExPointKind::Faith {
-            managers.ex_point.get(entity.uid) > 0
         } else {
             managers.ex_point.is_full(entity.uid)
         };
@@ -396,34 +394,41 @@ mod tests {
     }
 
     #[test]
-    fn faith_channel_is_ready_with_positive_faith_instead_of_a_full_gauge() {
+    fn faith_channel_requires_a_full_gauge() {
         crate::test_support::init_config();
-        let fight = Fight {
-            attacker: Some(FightTeam {
-                entitys: vec![FightEntityInfo {
-                    uid: Some(10),
-                    model_id: Some(3120),
-                    current_hp: Some(100),
-                    ex_point: Some(1),
-                    ex_point_type: Some(ExPointKind::Faith.as_wire()),
-                    ex_skill: Some(31200133),
+        let ultimate_cards = |ex_skill, ex_point, ex_point_max| {
+            let fight = Fight {
+                attacker: Some(FightTeam {
+                    entitys: vec![FightEntityInfo {
+                        uid: Some(10),
+                        model_id: Some(3120),
+                        current_hp: Some(100),
+                        ex_point: Some(ex_point),
+                        ex_point_type: Some(ExPointKind::Faith.as_wire()),
+                        ex_point_max: Some(ex_point_max),
+                        ex_skill: Some(ex_skill),
+                        ..Default::default()
+                    }],
                     ..Default::default()
-                }],
+                }),
                 ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let pool = TargetPool::from_fight(&fight);
-        let managers = BattleManagers::seeded(&fight);
+            };
+            let pool = TargetPool::from_fight(&fight);
+            let managers = BattleManagers::seeded(&fight);
 
-        assert_eq!(
             CardMechanic
                 .normal_ultimate_cards(&pool, &managers)
                 .iter()
                 .filter_map(|card| card.skill_id)
-                .collect::<Vec<_>>(),
-            vec![31200133]
-        );
+                .collect::<Vec<_>>()
+        };
+
+        assert!(ultimate_cards(31200133, 7, 8).is_empty());
+        assert_eq!(ultimate_cards(31200133, 8, 8), vec![31200133]);
+        assert!(ultimate_cards(31200133, 5, 6).is_empty());
+        assert_eq!(ultimate_cards(31200133, 6, 6), vec![31200133]);
+        assert!(ultimate_cards(31201132, 2, 8).is_empty());
+        assert_eq!(ultimate_cards(31201132, 8, 8), vec![31201132]);
     }
 
     #[test]
