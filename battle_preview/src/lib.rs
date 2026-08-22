@@ -5,7 +5,8 @@ use std::{
 
 use battle::engine::{
     fight::rules::{OwnedBattleSkill, is_side_uid},
-    runtime::determinism::RoundDeterminism,
+    runtime::determinism::{HandRankChoice, RoundDeterminism},
+    skill::effect::catalog::SkillEffectCatalog,
 };
 use sonettobuf::{Fight, FightRound, FightStep, StartDungeonRequest};
 
@@ -65,6 +66,8 @@ pub fn captured_opening_determinism(
 ) -> RoundDeterminism {
     let mut determinism =
         RoundDeterminism::with_seed(fight.battle_id.unwrap_or_default().max(0) as u64);
+    determinism
+        .enqueue_hand_rank_choices(captured_opening_hand_rank_choices(game_data, fight, round));
     let draws = round
         .team_a_cards1
         .iter()
@@ -154,6 +157,87 @@ pub fn captured_opening_determinism(
         );
     }
     determinism
+}
+
+fn captured_opening_hand_rank_choices(
+    game_data: &'static config::GameDB,
+    fight: &Fight,
+    round: &FightRound,
+) -> Vec<HandRankChoice> {
+    const CARD_LEVEL_CHANGE_EFFECT: i32 =
+        sonettobuf::effect_type_enum::EffectType::Cardlevelchange as i32;
+    const CARD_LEVEL_CHANGE_OPCODE: i32 = 50011;
+
+    fn visit(game_data: &SkillEffectCatalog, step: &FightStep, choices: &mut Vec<HandRankChoice>) {
+        let random_card_level_change = step
+            .act_id
+            .and_then(|skill_id| game_data.get(skill_id))
+            .is_some_and(|effect| {
+                let is_mode_one = |slot: &battle::engine::skill::effect::SkillEffectSlot| {
+                    matches!(slot.behavior.args.as_slice(), [1, count, 1] if *count > 0)
+                };
+                let mut card_level_changes = effect.slots.iter().filter(|slot| {
+                    slot.behavior.spec.key.opcode == CARD_LEVEL_CHANGE_OPCODE
+                        && slot.behavior.spec.key.type_name == "CardLevelChange"
+                });
+                // A mixed mode-1/mode-3 skill is ambiguous in the capture, so do not seed it.
+                card_level_changes
+                    .next()
+                    .is_some_and(|slot| is_mode_one(slot) && card_level_changes.all(is_mode_one))
+            });
+        if random_card_level_change {
+            for effect in &step.act_effect {
+                if effect.effect_type != Some(CARD_LEVEL_CHANGE_EFFECT)
+                    || effect.config_effect != Some(CARD_LEVEL_CHANGE_OPCODE)
+                {
+                    continue;
+                }
+                let Some(owner_uid) = effect.entity.as_ref().and_then(|entity| entity.uid) else {
+                    continue;
+                };
+                let Some(hand_index) = effect
+                    .target_id
+                    .and_then(|index| index.checked_sub(1))
+                    .and_then(|index| usize::try_from(index).ok())
+                else {
+                    continue;
+                };
+                choices.push(HandRankChoice {
+                    opcode: CARD_LEVEL_CHANGE_OPCODE,
+                    owner_uid,
+                    hand_index,
+                });
+            }
+        }
+        for effect in &step.act_effect {
+            if let Some(nested) = effect.fight_step.as_ref() {
+                visit(game_data, nested, choices);
+            }
+        }
+    }
+
+    fn collect_skill_ids(step: &FightStep, skill_ids: &mut Vec<i32>) {
+        if let Some(skill_id) = step.act_id {
+            skill_ids.push(skill_id);
+        }
+        for effect in &step.act_effect {
+            if let Some(nested) = effect.fight_step.as_ref() {
+                collect_skill_ids(nested, skill_ids);
+            }
+        }
+    }
+
+    let mut catalog = SkillEffectCatalog::from_fight(game_data, fight);
+    let mut captured_skill_ids = Vec::new();
+    for step in &round.fight_step {
+        collect_skill_ids(step, &mut captured_skill_ids);
+    }
+    catalog.extend_roots(game_data, captured_skill_ids, []);
+    let mut choices = Vec::new();
+    for step in &round.fight_step {
+        visit(&catalog, step, &mut choices);
+    }
+    choices
 }
 
 #[cfg(test)]
@@ -705,6 +789,76 @@ mod tests {
         );
 
         assert_eq!(determinism.take_start_decks(), None);
+    }
+
+    fn captured_card_level_change(skill_id: i32, target_id: i64) -> FightStep {
+        FightStep {
+            act_id: Some(skill_id),
+            act_effect: vec![sonettobuf::ActEffect {
+                target_id: Some(target_id),
+                effect_type: Some(sonettobuf::effect_type_enum::EffectType::Cardlevelchange as i32),
+                effect_num: Some(0),
+                config_effect: Some(50011),
+                entity: Some(FightEntityInfo {
+                    uid: Some(10),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn captured_opening_card_level_change_seeds_zero_based_rank_for_random_mode_one() {
+        super::init_test_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut determinism = super::captured_opening_determinism(
+            config::configs::get(),
+            &fight,
+            &FightRound {
+                fight_step: vec![captured_card_level_change(370002010, 2)],
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(determinism.take_hand_rank_choice(50011, 10, &[1]), Some(1));
+    }
+
+    #[test]
+    fn captured_opening_card_level_change_rejects_rightmost_mode_three_seed() {
+        super::init_test_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut determinism = super::captured_opening_determinism(
+            config::configs::get(),
+            &fight,
+            &FightRound {
+                fight_step: vec![captured_card_level_change(30391, 2)],
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(determinism.take_hand_rank_choice(50011, 10, &[1]), None);
     }
 
     #[test]
