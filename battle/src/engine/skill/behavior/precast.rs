@@ -91,6 +91,7 @@ mod tests {
             attacker: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
                     uid: Some(10),
+                    model_id: Some(3149),
                     team_type: Some(1),
                     current_hp: Some(100),
                     skill_group1: vec![101, 102, 103],
@@ -142,9 +143,26 @@ mod tests {
         let RuleOp::Command(BattleCommand::BuffPrecast(command)) = emit() else {
             panic!("buff-backed precast must emit its owned mechanic command")
         };
-        crate::engine::mechanic::buff_precast::execute(&mut managers, command.clone())
-            .unwrap()
-            .unwrap();
+        let changes =
+            crate::engine::mechanic::buff_precast::execute(&mut managers, command.clone())
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            changes.card.kind,
+            crate::engine::manager::card::CardChangeKind::GeneratedAdded
+        );
+        let card = changes.card.added.as_ref().unwrap();
+        assert_eq!(card.uid, Some(10));
+        assert_eq!(card.hero_id, Some(3149));
+        assert_eq!(card.temp_card, Some(true));
+        assert_eq!(
+            card.card_type,
+            Some(sonettobuf::card_info::CardType::None as i32)
+        );
+        assert!(matches!(
+            changes.card.operation,
+            Some(crate::engine::manager::card::CardChange::AddHand { target_uid: 10, .. })
+        ));
         crate::engine::mechanic::buff_precast::execute(&mut managers, command)
             .unwrap()
             .unwrap();
