@@ -124,6 +124,7 @@ pub enum BuffActKind {
     ConduitCardSelection,
     CreateAdditionalDamage,
     CreateHeroTempCards,
+    CreateTempSkill3Card,
     CreateMaxHpAdditionalDamageAndRemove,
     CritRateAlter2,
     CritRateAlterByOtherBuff,
@@ -657,6 +658,14 @@ buff_act_definitions! {
         scoped_runtime: |context| super::add_sp_temp_card::hero_skill_subscriber_rule_ops(context.pool, context.subscriber, context.event?),
         supports: super::add_sp_temp_card::supports_hero_skill,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(739, "CreateHeroTempCards"), &[EffectType::None as i32]));
+    (10015, "CreateTempSkill3Card") => CreateTempSkill3Card,
+        scoped_runtime: |context| super::add_sp_temp_card::configured_skill3_subscriber_rule_ops(
+            context.subscriber,
+            context.event?,
+            context.pool.entity(context.subscriber.owner_uid)?.model_id,
+        ),
+        supports: super::add_sp_temp_card::supports_configured_skill3,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10015, "CreateTempSkill3Card"), &[EffectType::None as i32]));
     (302, "BeatBack") => BeatBack,
         event: EventKind::SkillAction, phase: HitPassives, frame: CausingFrame, actor: OpposingTeam,
         runtime: |context| super::riposte::holder_rule_ops(context.pool, context.subscriber, context.event?),

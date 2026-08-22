@@ -248,8 +248,21 @@ impl CardDeck {
         owners
     }
 
-    pub fn add_temp_card(&mut self, owner_uid: i64, skill_id: i32) -> CardInfo {
-        let card = precast_card(owner_uid, skill_id);
+    pub fn add_temp_card(
+        &mut self,
+        owner_uid: i64,
+        skill_id: i32,
+        hero_id: Option<i32>,
+    ) -> CardInfo {
+        let card = hero_id.map_or_else(
+            || precast_card(owner_uid, skill_id),
+            |hero_id| CardInfo {
+                uid: Some(owner_uid),
+                hero_id: Some(hero_id),
+                card_type: Some(CardType::Skill3 as i32),
+                ..temp_card(skill_id)
+            },
+        );
         self.push_hand(card.clone());
         self.generated.push(card.clone());
         card
@@ -538,7 +551,7 @@ mod tests {
             vec![Some(11), Some(10)]
         );
 
-        let temp = deck.add_temp_card(10, 999);
+        let temp = deck.add_temp_card(10, 999, None);
         assert_eq!(temp.temp_card, Some(true));
         assert_eq!(deck.generated().len(), 1);
 
@@ -603,7 +616,7 @@ mod tests {
             vec![card(10, 300), card(12, 400)],
         );
         assert!(deck.consume_draw_card(&card(10, 300)));
-        deck.add_temp_card(10, 500);
+        deck.add_temp_card(10, 500, None);
 
         deck.remove_owner_cards(10);
 

@@ -877,17 +877,18 @@ impl CardManager {
     }
 
     pub fn add_temp_card(&mut self, skill_id: i32) -> CardInfo {
-        self.add_temp_card_for(0, skill_id, 0, 1)
+        self.add_temp_card_for(0, skill_id, None, 0, 1)
     }
 
     pub fn add_temp_card_for(
         &mut self,
         target_uid: i64,
         skill_id: i32,
+        hero_id: Option<i32>,
         _reserve_id: i64,
         _team_type: i32,
     ) -> CardInfo {
-        self.deck.add_temp_card(target_uid, skill_id)
+        self.deck.add_temp_card(target_uid, skill_id, hero_id)
     }
 
     pub fn change_to_temp_card(&mut self, index: usize, skill_id: i32) -> Option<CardInfo> {

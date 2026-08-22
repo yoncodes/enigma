@@ -29,6 +29,7 @@ pub fn rule_op(feature: &ActiveBuffFeature, target_uid: i64, reserve_id: i64) ->
             origin: super::feature_command_origin(feature)?,
             target_uid,
             skill_id: skill_id(feature)?,
+            hero_id: None,
             reserve_id,
             team_type: feature.team_type,
             kind: TemporaryCardKind::ConfiguredSkill,
@@ -55,6 +56,7 @@ pub fn subscriber_rule_ops(
     temporary_card_rule_ops(
         subscriber,
         *skill_id,
+        None,
         reserve_id,
         TemporaryCardKind::ConfiguredSkill,
     )
@@ -62,6 +64,30 @@ pub fn subscriber_rule_ops(
 
 pub fn supports_hero_skill(args: &[i32]) -> bool {
     matches!(args, [group, rank, 1] if matches!(group, 1 | 2) && (1..=3).contains(rank))
+}
+
+pub fn supports_configured_skill3(args: &[i32]) -> bool {
+    matches!(args, [skill_id, 1] if *skill_id > 0)
+}
+
+pub fn configured_skill3_subscriber_rule_ops(
+    subscriber: &BuffActSubscriber,
+    event: &BattleEvent,
+    hero_id: i32,
+) -> Option<Vec<super::BuffActRuleOp>> {
+    if !super::subscriber_is_kind(subscriber, BuffActKind::CreateTempSkill3Card)
+        || !matches!(event, BattleEvent::Kind(EventKind::RoundStartCard))
+        || !supports_configured_skill3(&subscriber.args)
+    {
+        return None;
+    }
+    temporary_card_rule_ops(
+        subscriber,
+        subscriber.args[0],
+        Some(hero_id),
+        0,
+        TemporaryCardKind::ConfiguredSkill3,
+    )
 }
 
 pub fn hero_skill_subscriber_rule_ops(
@@ -91,6 +117,7 @@ pub fn hero_skill_subscriber_rule_ops(
     temporary_card_rule_ops(
         subscriber,
         skill_id,
+        None,
         i64::from(owner.model_id),
         TemporaryCardKind::HeroSkill,
     )
@@ -99,6 +126,7 @@ pub fn hero_skill_subscriber_rule_ops(
 fn temporary_card_rule_ops(
     subscriber: &BuffActSubscriber,
     skill_id: i32,
+    hero_id: Option<i32>,
     reserve_id: i64,
     kind: TemporaryCardKind,
 ) -> Option<Vec<super::BuffActRuleOp>> {
@@ -109,6 +137,7 @@ fn temporary_card_rule_ops(
                 origin,
                 target_uid: subscriber.owner_uid,
                 skill_id,
+                hero_id,
                 reserve_id,
                 team_type: subscriber.team_type,
                 kind,
@@ -262,5 +291,54 @@ mod tests {
         ));
         assert!(!supports_hero_skill(&[0, 2, 1]));
         assert!(!supports_hero_skill(&[1, 2, 2]));
+    }
+
+    #[test]
+    fn configured_skill3_card_uses_the_hero_temporary_lane_and_consumes_its_carrier() {
+        let subscriber = BuffActSubscriber {
+            owner_uid: 237352626,
+            source_uid: 237352626,
+            buff_uid: 1622,
+            buff_id: 312451467,
+            team_type: 1,
+            owner_alive: true,
+            amount: 1,
+            key: SubscriptionKey::new(
+                EventKind::RoundStartCard,
+                DefinitionKey::new(10015, "CreateTempSkill3Card"),
+            ),
+            act_type: "CreateTempSkill3Card".to_owned(),
+            effect_time: 105,
+            effect_condition: 0,
+            args: vec![312451036, 1],
+            raw: "10015#312451036#1".to_owned(),
+        };
+
+        let ops = configured_skill3_subscriber_rule_ops(
+            &subscriber,
+            &BattleEvent::Kind(EventKind::RoundStartCard),
+            3124,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            &ops[0].op,
+            RuleOp::Command(BattleCommand::Card(CardCommand::AddTemporary(add)))
+                if add.target_uid == 237352626
+                    && add.skill_id == 312451036
+                    && add.hero_id == Some(3124)
+                    && add.reserve_id == 0
+                    && add.team_type == 1
+                    && add.kind == TemporaryCardKind::ConfiguredSkill3
+        ));
+        assert!(matches!(
+            &ops[1].op,
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::RemoveAfterTrigger(remove)))
+                if remove.target_uid == 237352626
+                    && remove.selector == BuffRemoveSelector::Uid(1622)
+        ));
+        assert!(!supports_configured_skill3(&[312451036, 2]));
+        assert_eq!(ops[0].source, super::super::BuffActFrameSource::Owner);
+        assert!(!ops[1].group_with_siblings);
     }
 }
