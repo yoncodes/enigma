@@ -266,7 +266,7 @@ fn opening_setup_applies_the_configured_fourth_ally_limit_before_dealing() {
     );
     assert_eq!(dealt, opening);
     assert_eq!(managers.card.normal_hand_len(), 11);
-    assert_eq!(managers.card.deck_num(), 45);
+    assert_eq!(managers.card.deck_num(), 48);
     let steps = crate::engine::packet::timeline::project(&start.frames).unwrap();
     assert_eq!(
         steps
@@ -278,7 +278,7 @@ fn opening_setup_applies_the_configured_fourth_ally_limit_before_dealing() {
             })
             .filter_map(|effect| effect.effect_num)
             .collect::<Vec<_>>(),
-        vec![48, 45, 45]
+        vec![48, 48, 48]
     );
 }
 

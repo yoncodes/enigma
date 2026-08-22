@@ -161,7 +161,6 @@ pub struct CardDraw {
 pub struct CardOpeningDraw {
     pub origin: CommandOrigin,
     pub cards: Vec<CardInfo>,
-    pub deck_cost: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -887,7 +886,7 @@ pub(super) fn execute(
             )
         }
         CardCommand::DealOpening(draw) => {
-            if draw.cards.is_empty() || !manager.deal_opening_cards(&draw.cards, draw.deck_cost) {
+            if draw.cards.is_empty() || !manager.deal_opening_cards(&draw.cards) {
                 return Err(CardCommandError::InvalidCommand);
             }
             (

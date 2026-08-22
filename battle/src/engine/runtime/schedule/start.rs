@@ -708,10 +708,6 @@ pub fn run_start(
                 )?,
             );
             if !supplemental.is_empty() {
-                let deck_cost = supplemental
-                    .iter()
-                    .filter(|card| !card_mechanic.is_device_card(managers, card))
-                    .count() as i32;
                 append(
                     &mut result,
                     drain::run(
@@ -728,7 +724,6 @@ pub fn run_start(
                                         key: DefinitionKey::new(0, "OpeningDraw"),
                                     },
                                     cards: supplemental,
-                                    deck_cost,
                                 },
                             ),
                         ))],
