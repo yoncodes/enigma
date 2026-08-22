@@ -713,16 +713,8 @@ impl CardManager {
         self.deck.consume_draw_card(card)
     }
 
-    pub(crate) fn deal_opening_cards(&mut self, cards: &[CardInfo], deck_cost: i32) -> bool {
-        if deck_cost < 0
-            || deck_cost as usize > cards.len()
-            || self.deck_num < deck_cost
-            || !self.deck.deal_from_draw_pile(cards)
-        {
-            return false;
-        }
-        self.deck_num -= deck_cost;
-        true
+    pub(crate) fn deal_opening_cards(&mut self, cards: &[CardInfo]) -> bool {
+        self.deck.deal_from_draw_pile(cards)
     }
 
     pub fn move_card(&mut self, from_index: usize, to_index: usize) -> bool {
