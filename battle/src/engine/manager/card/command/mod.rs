@@ -281,6 +281,14 @@ pub struct HandCardRankUp {
     pub hand_index: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardDeckRankUpRange {
+    pub origin: CommandOrigin,
+    pub from: usize,
+    pub to: usize,
+    pub rank_delta: i32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardQueueUse {
     pub origin: CommandOrigin,
@@ -389,6 +397,7 @@ pub enum CardCommand {
         changes: Vec<QueuedCardRankChange>,
     },
     RankUpHand(HandCardRankUp),
+    RankUpDeckRange(CardDeckRankUpRange),
     CommitActionQueue {
         team: i32,
         emitter_uid: i64,
@@ -454,6 +463,7 @@ pub enum CardChangeKind {
     QueuedRankChanged,
     AroundRanksChanged,
     HandRankChanged,
+    DeckTopRanksChanged,
     ActionQueueCommitted,
     PlayedRanksResolved,
     CastChannelRecorded,
@@ -1219,6 +1229,22 @@ pub(super) fn execute(
             (
                 Some(change.origin),
                 CardChangeKind::HandRankChanged,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::RankUpDeckRange(change) => {
+            rank_results.extend(
+                manager
+                    .rank_up_deck_range(change.from, change.to, change.rank_delta)?
+                    .into_iter()
+                    .map(|change| CardRankResult::Changed(Box::new(change))),
+            );
+            (
+                Some(change.origin),
+                CardChangeKind::DeckTopRanksChanged,
                 None,
                 None,
                 Vec::new(),

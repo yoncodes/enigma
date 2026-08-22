@@ -17,13 +17,14 @@ pub use change::CardChange;
 pub use command::{
     CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardActionQueue, CardAddCrystal, CardAddGenerated,
     CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
-    CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardDraw, CardEnchantHand,
-    CardEnergyAllocation, CardEnergyChange, CardHandLimitChange, CardInvalidatePlayed,
-    CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPlay, CardQueueUse, CardRankChange,
-    CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne,
-    CardRefreshAiQueue, CardRemoveAiOwner, CardRemoveOwner, CardReplaceOwnerSkills, CardSetAiQueue,
-    CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUseUniversal, HandCardRankUp,
-    QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard, TemporaryCardKind,
+    CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardDeckRankUpRange,
+    CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange, CardHandLimitChange,
+    CardInvalidatePlayed, CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPlay,
+    CardQueueUse, CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel,
+    CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveAiOwner, CardRemoveOwner,
+    CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability,
+    CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp,
+    QueuedUseCard, TemporaryCardKind,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;
@@ -64,6 +65,14 @@ pub struct CardManager {
 pub struct CardRefill {
     pub drawn: Vec<CardInfo>,
     pub composed_owners: Vec<i64>,
+}
+
+struct DeckRankUpStep {
+    deck_index: usize,
+    owner_uid: i64,
+    card_index: i32,
+    next_skill_id: i32,
+    rank_delta: i32,
 }
 
 impl CardManager {
@@ -605,6 +614,66 @@ impl CardManager {
             rewritten: false,
             rank_delta,
         })
+    }
+
+    fn rank_up_deck_range_plan(
+        &self,
+        from: usize,
+        to: usize,
+        rank_delta: i32,
+    ) -> Option<Vec<DeckRankUpStep>> {
+        if rank_delta != 1 || from == 0 || from > to {
+            return None;
+        }
+        let selected = self.draw_pile().get(from.checked_sub(1)?..to)?;
+        let mut plan = Vec::with_capacity(selected.len());
+        for (offset, card) in selected.iter().enumerate() {
+            let deck_index = from.checked_sub(1)?.checked_add(offset)?;
+            let owner_uid = card.uid?;
+            let skill_id = card.skill_id?;
+            let next_skill_id = self.rank_up.get(&(owner_uid, skill_id)).copied()?;
+            let applied_delta = self.skill_rank(next_skill_id) - self.skill_rank(skill_id);
+            if applied_delta != rank_delta {
+                return None;
+            }
+            let card_index = i32::try_from(deck_index).ok()?.checked_add(1)?;
+            plan.push(DeckRankUpStep {
+                deck_index,
+                owner_uid,
+                card_index,
+                next_skill_id,
+                rank_delta: applied_delta,
+            });
+        }
+        Some(plan)
+    }
+
+    pub(crate) fn rank_up_deck_range(
+        &mut self,
+        from: usize,
+        to: usize,
+        rank_delta: i32,
+    ) -> Result<Vec<CardRankChange>, CardCommandError> {
+        let plan = self
+            .rank_up_deck_range_plan(from, to, rank_delta)
+            .ok_or(CardCommandError::InvalidCommand)?;
+        let mut changes = Vec::with_capacity(plan.len());
+        for step in plan {
+            let card = self
+                .deck
+                .draw_pile_mut()
+                .get_mut(step.deck_index)
+                .ok_or(CardCommandError::InvalidCommand)?;
+            card.skill_id = Some(step.next_skill_id);
+            changes.push(CardRankChange {
+                owner_uid: step.owner_uid,
+                card_index: step.card_index,
+                card: card.clone(),
+                rewritten: false,
+                rank_delta: step.rank_delta,
+            });
+        }
+        Ok(changes)
     }
 
     pub fn rank_up_played_after(&mut self, card_index: i32, count: i32, levels: i32) {

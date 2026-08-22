@@ -103,6 +103,10 @@ impl CardDeck {
         &self.draw_pile
     }
 
+    pub(super) fn draw_pile_mut(&mut self) -> &mut [CardInfo] {
+        &mut self.draw_pile
+    }
+
     pub fn consume_draw_card(&mut self, card: &CardInfo) -> bool {
         let Some(index) = self
             .draw_pile

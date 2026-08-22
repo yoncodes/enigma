@@ -56,6 +56,7 @@ pub enum BehaviorKind {
     ChangeHandToTemporary,
     AroundChangeRank,
     CardLevelChange,
+    CardDeckTopRankCorrect,
     ConsumePowerUpgradeSkillCard,
     AddUniversalCard,
     RedealCardKeepStar2,

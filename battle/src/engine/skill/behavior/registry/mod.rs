@@ -526,6 +526,7 @@ behavior_definitions! {
     [50023] "ChangeToTempCards" => super::card::Handler, ChangeHandToTemporary, Immediate, once_destination, super::card::supports_mark_hand_temporary;
     [60075] "AroundChangeRank" => super::card::Handler, AroundChangeRank, Immediate, queue_preparation, super::card::supports_around_change_rank;
     [50011] "CardLevelChange" => super::card::Handler, CardLevelChange, Immediate, destination, super::card::supports_card_level_change;
+    [60116] "CardDeckTopRankCorrect" => super::card::Handler, CardDeckTopRankCorrect, Immediate, destination, super::card::supports_deck_top_rank_correct;
     [50034] "ConsumePowerUpgradeSkillCard" => super::card::Handler, ConsumePowerUpgradeSkillCard, Immediate, destination, super::card::supports_power_card_upgrade;
     [60002] "AddUniversalCard" => super::card::Handler, AddUniversalCard, Immediate, destination;
     [60012] "RedealCardKeepStar2" => super::card::Handler, RedealCardKeepStar2, Immediate, destination;

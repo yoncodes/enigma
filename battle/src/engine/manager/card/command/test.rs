@@ -68,6 +68,94 @@ fn hand_rank_change_mutates_one_registered_card_and_records_its_one_based_index(
 }
 
 #[test]
+fn deck_rank_range_uses_absolute_top_positions_and_commits_atomically() {
+    crate::test_support::init_config();
+    let card = |uid, skill_id, temp_card| CardInfo {
+        uid: Some(uid),
+        skill_id: Some(skill_id),
+        temp_card: Some(temp_card),
+        ..Default::default()
+    };
+    let hand = vec![card(10, 30650211, false)];
+    let draw_pile = vec![
+        card(10, 30650211, false),
+        card(20, 30870121, false),
+        card(10, 30650221, false),
+        card(10, 30650211, false),
+    ];
+    let mut manager = CardManager::with_draw_pile(hand.clone(), draw_pile);
+    manager.seed(&sonettobuf::Fight {
+        attacker: Some(sonettobuf::FightTeam {
+            entitys: vec![
+                sonettobuf::FightEntityInfo {
+                    uid: Some(10),
+                    skill_group1: vec![30650211, 30650212, 30650213],
+                    skill_group2: vec![30650221, 30650222, 30650223],
+                    ..Default::default()
+                },
+                sonettobuf::FightEntityInfo {
+                    uid: Some(20),
+                    skill_group1: vec![30870121, 30870122, 30870123],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    let changes = manager
+        .execute_command(CardCommand::RankUpDeckRange(CardDeckRankUpRange {
+            origin: ORIGIN,
+            from: 2,
+            to: 3,
+            rank_delta: 1,
+        }))
+        .unwrap();
+
+    assert_eq!(changes.kind, CardChangeKind::DeckTopRanksChanged);
+    assert_eq!(
+        manager
+            .draw_pile()
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>(),
+        vec![30650211, 30870122, 30650222, 30650211]
+    );
+    assert_eq!(manager.hand(), hand);
+    assert!(matches!(
+        changes.rank_results.as_slice(),
+        [CardRankResult::Changed(first), CardRankResult::Changed(second)]
+            if first.card_index == 2 && second.card_index == 3
+    ));
+
+    let mut capped = CardManager::with_draw_pile(
+        Vec::new(),
+        vec![card(10, 30650211, false), card(10, 30650213, false)],
+    );
+    capped.seed(&sonettobuf::Fight {
+        attacker: Some(sonettobuf::FightTeam {
+            entitys: vec![sonettobuf::FightEntityInfo {
+                uid: Some(10),
+                skill_group1: vec![30650211, 30650212, 30650213],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let before = capped.draw_pile().to_vec();
+    let result = capped.execute_command(CardCommand::RankUpDeckRange(CardDeckRankUpRange {
+        origin: ORIGIN,
+        from: 1,
+        to: 2,
+        rank_delta: 1,
+    }));
+    assert_eq!(result, Err(CardCommandError::InvalidCommand));
+    assert_eq!(capped.draw_pile(), before);
+}
+
+#[test]
 fn move_and_dissolve_commit_through_the_card_owner() {
     let card = |skill_id| CardInfo {
         uid: Some(10),
