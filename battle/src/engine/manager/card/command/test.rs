@@ -196,6 +196,39 @@ fn temporary_card_and_energy_changes_share_one_command_path() {
 }
 
 #[test]
+fn generic_temporary_card_is_unowned_but_retains_operation_metadata() {
+    let mut manager = CardManager::default();
+    let changes = manager
+        .execute_command(CardCommand::AddTemporary(CardAddTemporary {
+            origin: ORIGIN,
+            target_uid: 10,
+            skill_id: 999,
+            hero_id: None,
+            reserve_id: 3149,
+            team_type: 1,
+            kind: TemporaryCardKind::GenericSkill,
+        }))
+        .unwrap();
+    let card = changes.added.as_ref().unwrap();
+
+    assert_eq!(changes.kind, CardChangeKind::GenericTemporaryAdded);
+    assert_eq!(card.uid, Some(0));
+    assert_eq!(card.skill_id, Some(999));
+    assert_eq!(card.hero_id, Some(0));
+    assert_eq!(card.card_type, Some(0));
+    assert_eq!(card.temp_card, Some(true));
+    assert!(matches!(
+        changes.operation,
+        Some(CardChange::SpCardAdd {
+            target_uid: 10,
+            skill_id: 999,
+            reserve_id: 3149,
+            team_type: 1,
+        })
+    ));
+}
+
+#[test]
 fn dissolve_reports_its_own_snapshot_after_an_unrelated_card_operation() {
     let mut manager = CardManager::new(vec![CardInfo {
         uid: Some(10),

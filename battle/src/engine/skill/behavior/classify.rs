@@ -60,6 +60,7 @@ pub enum BehaviorKind {
     AddUniversalCard,
     RedealCardKeepStar2,
     AddQueuedSkillCard,
+    AddSpTempCard,
     AddSpTempCard2,
     AddEmitterEnergy,
     AddTeamEnergy,

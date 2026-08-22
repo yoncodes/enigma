@@ -940,6 +940,33 @@ fn project_change(
                 redeal_layout,
             )]
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::GenericTemporaryAdded => {
+            let operation = changes
+                .operation
+                .clone()
+                .expect("generic temporary-card commits retain their exact operation");
+            let crate::engine::manager::card::CardChange::SpCardAdd {
+                target_uid,
+                team_type,
+                ..
+            } = operation.clone()
+            else {
+                panic!("generic temporary-card commits use SpCardAdd operations")
+            };
+            let config_effect = changes
+                .origin
+                .map(|origin| origin.key.opcode)
+                .expect("generic temporary-card commits retain their command origin");
+            let mut added = CardPacket::from_change(operation);
+            added.config_effect = Some(config_effect);
+            let mut temporary = CardPacket::change_to_temp_card(
+                target_uid,
+                changes.after.len().to_string(),
+                team_type,
+            );
+            temporary.config_effect = Some(config_effect);
+            vec![added, temporary]
+        }
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,

@@ -950,6 +950,34 @@ fn configured_special_temp_card_runs_during_the_opening_round_start_card_event()
 }
 
 #[test]
+fn buff_gated_skill_rule_runs_during_the_opening_round_start_card_event() {
+    init_config();
+    let (fight, catalog) = buff_gated_generic_temp_card_fixture();
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let (start, _) = run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        1,
+    )
+    .unwrap();
+
+    assert_buff_gated_generic_temp_card(&managers, &start);
+}
+
+#[test]
 fn configured_hero_temp_card_uses_the_live_group_rank_and_projection() {
     init_config();
     let fight = Fight {

@@ -2530,6 +2530,23 @@ fn round_start_buff_gates_keep_their_exact_registered_keys() {
 }
 
 #[test]
+fn round_start_card_buff_gate_is_a_pure_exact_predicate() {
+    let definition = find_key(19106, "HasBuffId").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(
+        parse(19106, "HasBuffId", &["30870131".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Present,
+            buff_ids: vec![30870131],
+        })
+    );
+    assert!(parse(19106, "HasBuffId", &[]).is_none());
+    assert!(find_key(19106, "NoBuffId").is_none());
+}
+
+#[test]
 fn mirror_rule_buff_gates_keep_their_exact_phases() {
     assert_eq!(
         parse(57100, "NoBuffId", &["11790011".into()]),

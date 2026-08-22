@@ -744,6 +744,28 @@ fn round_start_excludes_before_ap_resolution_from_its_phase_buckets() {
 }
 
 #[test]
+fn round_start_card_event_runs_buff_gated_skill_rules() {
+    init_config();
+    let (fight, catalog) = buff_gated_generic_temp_card_fixture();
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    let (_, next_round) = run_round_start_split(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        1,
+    )
+    .unwrap();
+    assert_buff_gated_generic_temp_card(&managers, &next_round);
+}
+
+#[test]
 fn round_start_generated_cards_exist_before_card_energy_allocation() {
     init_config();
     let fight = Fight {

@@ -1,6 +1,51 @@
 use super::*;
 
 #[test]
+fn round_start_card_buff_gate_matches_an_active_type_variant_only() {
+    init_config();
+    let matches = |duration| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(1),
+                    buffs: vec![BuffInfo {
+                        buff_id: Some(30870331),
+                        duration: Some(duration),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let condition = ParsedCondition {
+            opcode: 19106,
+            type_name: "HasBuffId".into(),
+            kind: ParsedConditionKind::BuffId {
+                mode: BuffConditionMode::Present,
+                buff_ids: vec![30870131],
+            },
+            raw_args: vec!["30870131".into()],
+        };
+
+        conditions_match(
+            &[condition],
+            10,
+            &[10],
+            Some(&managers),
+            &TargetPool::from_fight(&fight),
+            TargetContext::default(),
+        )
+    };
+
+    assert!(matches(1));
+    assert!(!matches(0));
+}
+
+#[test]
 fn exact_buff_id_condition_does_not_match_a_buff_type() {
     init_config();
     let fight = Fight {
