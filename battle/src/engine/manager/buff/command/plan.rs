@@ -463,6 +463,21 @@ impl BuffManager {
                     }),
                 )
             }
+            BuffCommand::FanoutMasterHalo(fanout) => {
+                if fanout.origin.domain != RuleDomain::Lifecycle
+                    || fanout.origin.key != WAVE_ENTRY_MASTER_HALO_KEY
+                    || fanout.target_uids.is_empty()
+                    || fanout.target_uids.contains(&0)
+                {
+                    return Err(BuffCommandError::InvalidLifecycle);
+                }
+                (
+                    fanout.origin,
+                    BuffPlanAction::FanoutMasterHalo(
+                        self.master_halo_fanout_plans(hp, &fanout.target_uids),
+                    ),
+                )
+            }
             BuffCommand::AdvanceDuration(advance) => {
                 if advance.origin.domain != RuleDomain::EffectTime
                     || advance.origin.key.opcode != advance.take_stage

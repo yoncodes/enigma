@@ -270,6 +270,27 @@ impl BuffManager {
                 self.reserve_grant_uid(plan.target_uid, plan.buff_id, uid);
                 BuffChanges::new(catalog, origin, BuffReplaceResult::default())
             }
+            BuffPlanAction::FanoutMasterHalo(plans) => BuffChanges::new(
+                catalog,
+                origin,
+                BuffReplaceResult {
+                    fanout: plans
+                        .into_iter()
+                        .filter_map(|plan| {
+                            let added = self.commit_fanout(hp, std::slice::from_ref(&plan.fanout));
+                            (!added.is_empty()).then_some(BuffFanoutResult {
+                                rule: plan.fanout.spec.rule,
+                                emitter_uid: plan.emitter_uid,
+                                carrier_buff_uid: plan.carrier_buff_uid,
+                                carrier_buff_id: plan.carrier_buff_id,
+                                added,
+                                refreshed: Vec::new(),
+                            })
+                        })
+                        .collect(),
+                    ..Default::default()
+                },
+            ),
             BuffPlanAction::AdvanceDuration(plans) => {
                 let mut transitions = Vec::new();
                 let change =

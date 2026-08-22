@@ -6,7 +6,7 @@ use crate::engine::{
 use super::{
     BuffAddArgs, BuffDefinition, BuffManager, BuffRoute,
     rules::{BuffPolicy, BuffStorage, DuplicateGrant},
-    uid_policy::UidAllocationPlan,
+    uid_policy::{self, UidAllocationPlan},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +55,14 @@ pub(super) struct PlannedFanout {
 }
 
 #[derive(Debug, Clone)]
+pub(super) struct PlannedMasterHaloFanout {
+    pub(super) emitter_uid: i64,
+    pub(super) carrier_buff_uid: i64,
+    pub(super) carrier_buff_id: i32,
+    pub(super) fanout: PlannedFanout,
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct PlannedFanoutRefresh {
     pub(super) spec: FanoutSpec,
     pub(super) buff_uid: i64,
@@ -63,6 +71,129 @@ pub(super) struct PlannedFanoutRefresh {
 }
 
 impl BuffManager {
+    pub(super) fn master_halo_fanout_plans(
+        &self,
+        hp: &HpManager,
+        target_uids: &[i64],
+    ) -> Vec<PlannedMasterHaloFanout> {
+        let carriers = self
+            .buffs
+            .iter()
+            .filter(|active| {
+                self.entities
+                    .iter()
+                    .any(|entity| entity.uid == active.owner_uid && entity.active)
+                    && hp.current(active.owner_uid) > 0
+                    && active.definition.as_ref().is_none_or(|definition| {
+                        definition.duration <= 0 || active.buff.duration.unwrap_or_default() > 0
+                    })
+            })
+            .flat_map(|active| {
+                let emitter_uid = active.owner_uid;
+                let carrier_buff_id = active.buff.buff_id.unwrap_or_default();
+                let carrier_buff_uid = active.buff.uid.unwrap_or_default();
+                let layer = active.buff.layer.unwrap_or_default();
+                let count = active.buff.count.unwrap_or_default();
+                let duration = active.buff.duration.unwrap_or_default();
+                halo::carriers(self.catalog(), carrier_buff_id)
+                    .into_iter()
+                    .filter(|carrier| carrier.kind == HaloKind::Master)
+                    .map(move |carrier| {
+                        (
+                            emitter_uid,
+                            carrier_buff_uid,
+                            carrier_buff_id,
+                            layer,
+                            count,
+                            duration,
+                            carrier,
+                        )
+                    })
+            })
+            .collect::<Vec<_>>();
+        let mut preceding_by_lane = std::collections::HashMap::<i32, Vec<UidAllocationPlan>>::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut plans = Vec::new();
+
+        for (emitter_uid, carrier_buff_uid, carrier_buff_id, layer, count, duration, carrier) in
+            carriers
+        {
+            let Some(emitter_team) = self.team_type(emitter_uid) else {
+                continue;
+            };
+            let fanout_buff_id = carrier.linked_buff_id.unwrap_or(carrier_buff_id);
+            let Some(definition) =
+                BuffDefinition::configured(self.catalog().game_data(), fanout_buff_id)
+            else {
+                continue;
+            };
+            for &target_uid in target_uids {
+                let Some(target_team) = self
+                    .entities
+                    .iter()
+                    .find(|entity| entity.uid == target_uid && entity.active)
+                    .map(|entity| entity.team_type)
+                else {
+                    continue;
+                };
+                let in_scope = match carrier.scope {
+                    HaloScope::AlliedTeam => target_team == emitter_team,
+                    HaloScope::OtherAllies => {
+                        target_team == emitter_team && target_uid != emitter_uid
+                    }
+                    HaloScope::OpposingTeam => target_team != emitter_team,
+                };
+                if !in_scope
+                    || hp.current(target_uid) <= 0
+                    || self.has_source_buff(target_uid, fanout_buff_id, emitter_uid)
+                {
+                    continue;
+                }
+                let rule = crate::engine::skill::rule::DefinitionKey::new(
+                    carrier.opcode,
+                    carrier.type_name,
+                );
+                if !seen.insert((emitter_uid, rule, target_uid, fanout_buff_id)) {
+                    continue;
+                }
+                let lane = if self.shared_uid_lane {
+                    0
+                } else {
+                    emitter_team
+                };
+                let preceding = preceding_by_lane.entry(lane).or_default();
+                let uid = uid_policy::children_after_sequence(
+                    self,
+                    emitter_uid,
+                    0,
+                    preceding.iter().copied(),
+                    1,
+                )[0];
+                preceding.push(uid);
+                plans.push(PlannedMasterHaloFanout {
+                    emitter_uid,
+                    carrier_buff_uid,
+                    carrier_buff_id,
+                    fanout: PlannedFanout {
+                        spec: FanoutSpec {
+                            route: BuffRoute::new(emitter_uid, target_uid, fanout_buff_id),
+                            definition: definition.clone(),
+                            args: BuffAddArgs {
+                                layer,
+                                count,
+                                layer_specified: true,
+                            },
+                            duration,
+                            rule,
+                        },
+                        uid,
+                    },
+                });
+            }
+        }
+        plans
+    }
+
     pub(super) fn grant_layer(
         &self,
         route: BuffRoute,
