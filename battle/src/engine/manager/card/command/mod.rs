@@ -25,6 +25,7 @@ pub struct CardSetup {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TemporaryCardKind {
     ConfiguredSkill,
+    ConfiguredSkill3,
     HeroSkill,
 }
 
@@ -33,6 +34,7 @@ pub struct CardAddTemporary {
     pub origin: CommandOrigin,
     pub target_uid: i64,
     pub skill_id: i32,
+    pub hero_id: Option<i32>,
     pub reserve_id: i64,
     pub team_type: i32,
     pub kind: TemporaryCardKind,
@@ -422,6 +424,7 @@ pub enum CardChangeKind {
     UniversalAdded,
     RedealtKeepRanks,
     TemporaryAdded,
+    ConfiguredSkill3Added,
     HeroTemporaryAdded,
     CrystalAdded,
     PrecastAdded,
@@ -684,6 +687,7 @@ pub(super) fn execute(
             let card = manager.add_temp_card_for(
                 add.target_uid,
                 add.skill_id,
+                add.hero_id,
                 add.reserve_id,
                 add.team_type,
             );
@@ -697,6 +701,7 @@ pub(super) fn execute(
                 Some(add.origin),
                 match add.kind {
                     TemporaryCardKind::ConfiguredSkill => CardChangeKind::TemporaryAdded,
+                    TemporaryCardKind::ConfiguredSkill3 => CardChangeKind::ConfiguredSkill3Added,
                     TemporaryCardKind::HeroSkill => CardChangeKind::HeroTemporaryAdded,
                 },
                 Some(card),

@@ -12,6 +12,7 @@ fn temporary_card_projection_uses_the_committed_operation() {
             origin,
             target_uid: 10,
             skill_id: 999,
+            hero_id: None,
             reserve_id: 12,
             team_type: 1,
             kind: crate::engine::manager::card::TemporaryCardKind::ConfiguredSkill,

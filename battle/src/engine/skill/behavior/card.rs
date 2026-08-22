@@ -106,6 +106,7 @@ impl BehaviorHandler for Handler {
                     origin: super::command_origin(behavior)?,
                     target_uid: context.target_uid,
                     skill_id: *skill_id,
+                    hero_id: None,
                     reserve_id,
                     team_type: context.source_team,
                     kind: crate::engine::manager::card::TemporaryCardKind::ConfiguredSkill,
