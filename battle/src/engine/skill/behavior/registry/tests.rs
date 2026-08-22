@@ -426,6 +426,14 @@ fn generic_temporary_card_keeps_its_exact_identity_and_arguments() {
     assert_eq!(definition.kind, BehaviorKind::AddSpTempCard);
     assert_eq!(definition.phase, BehaviorPhase::Immediate);
     assert!(definition.destination);
+    assert_eq!(
+        definition.condition_route_override,
+        Some(ConditionRouteOverride::Trigger {
+            key: DefinitionKey::new(19106, "HasBuffId"),
+            event: EventKind::RoundStartCard,
+            phase: None,
+        })
+    );
     assert!(supports(&ParsedBehavior::new(
         50031,
         "AddSpTempCard",
