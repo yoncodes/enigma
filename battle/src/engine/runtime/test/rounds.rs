@@ -360,6 +360,8 @@ fn opening_round_uses_action_point_buffs_applied_during_setup() {
                 model_id: Some(3149),
                 current_hp: Some(100),
                 passive_skill: vec![31490161],
+                skill_group1: vec![31490111],
+                skill_group2: vec![31490121],
                 ex_point_type: Some(4),
                 ex_point_max: Some(100),
                 ..Default::default()
