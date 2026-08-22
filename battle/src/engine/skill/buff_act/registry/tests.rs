@@ -845,13 +845,20 @@ fn layered_holder_dot_keeps_its_exact_round_start_route() {
 }
 
 #[test]
-fn moxie_loss_keeps_its_exact_round_end_route() {
+fn moxie_loss_keeps_its_exact_routes() {
     assert_eq!(
         runtime_event(605, "ExPointDel", 302),
         Some(EventKind::RoundEnd)
     );
     assert!(has_destination(605, "ExPointDel", &[1]));
     assert!(!has_destination(605, "ExPointDel", &[0]));
+
+    assert_eq!(
+        runtime_event(609, "ExPointDel", 2081),
+        Some(EventKind::SkillCast)
+    );
+    assert!(has_destination(609, "ExPointDel", &[1]));
+    assert!(!has_destination(609, "ExPointDel", &[0]));
 }
 
 #[test]
