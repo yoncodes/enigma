@@ -255,7 +255,13 @@ impl CardDeck {
         hero_id: Option<i32>,
     ) -> CardInfo {
         let card = hero_id.map_or_else(
-            || precast_card(owner_uid, skill_id),
+            || {
+                if owner_uid == 0 {
+                    temp_card(skill_id)
+                } else {
+                    precast_card(owner_uid, skill_id)
+                }
+            },
             |hero_id| CardInfo {
                 uid: Some(owner_uid),
                 hero_id: Some(hero_id),

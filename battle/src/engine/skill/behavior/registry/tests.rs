@@ -419,6 +419,32 @@ fn special_temporary_card_keeps_its_exact_identity_and_arguments() {
 }
 
 #[test]
+fn generic_temporary_card_keeps_its_exact_identity_and_arguments() {
+    let definition = find_key(50031, "AddSpTempCard").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::AddSpTempCard);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert!(supports(&ParsedBehavior::new(
+        50031,
+        "AddSpTempCard",
+        vec![31446013]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        50031,
+        "AddSpTempCard",
+        vec![0]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        50031,
+        "AddSpTempCard",
+        vec![31446013, 1],
+    )));
+    assert!(find_key(50031, "AddSpTempCard2").is_none());
+}
+
+#[test]
 fn channel_duration_reduction_keeps_its_exact_identity_and_phase() {
     let definition = find_key(60094, "ReduceCastChannelCount").unwrap();
     let supports = definition.supports.unwrap();
