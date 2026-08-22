@@ -67,6 +67,7 @@ pub fn run_round_start_split(
             .iter()
             .filter(|entity| managers.hp.current(entity.uid) > 0)
             .count(),
+        managers.fight_version(),
     );
     let hand_size = crate::engine::mechanic::card::CardMechanic.normal_hand_limit(
         base_hand_size,

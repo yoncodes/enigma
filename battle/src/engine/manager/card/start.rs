@@ -22,12 +22,21 @@ pub fn deck_size(fight: &Fight) -> i32 {
 }
 
 pub fn hand_size(fight: &Fight) -> usize {
-    hand_size_from_count(active_player_uids(fight).len())
+    hand_size_from_count(
+        active_player_uids(fight).len(),
+        fight.version.unwrap_or_default(),
+    )
 }
 
-pub fn hand_size_from_count(characters: usize) -> usize {
+pub fn hand_size_from_count(characters: usize, fight_version: i32) -> usize {
     match characters {
         0 => 0,
+        characters
+            if crate::engine::fight::versions::round_start_setup_layout(fight_version)
+                == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) =>
+        {
+            (characters * 2 + 1).clamp(4, MAX_NORMAL_HAND_SIZE)
+        }
         characters => (characters * 2 + 1).min(MAX_NORMAL_HAND_SIZE),
     }
 }
@@ -442,8 +451,9 @@ mod tests {
     }
 
     #[test]
-    fn normal_hand_size_is_two_cards_per_character_plus_one_capped_at_eight() {
-        let fight = |characters| Fight {
+    fn version_seven_normal_hand_has_a_four_card_minimum_and_eight_card_cap() {
+        let fight = |characters, version| Fight {
+            version: Some(version),
             attacker: Some(FightTeam {
                 entitys: (0..characters)
                     .map(|index| {
@@ -461,11 +471,12 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(hand_size(&fight(0)), 0);
-        assert_eq!(hand_size(&fight(1)), 3);
-        assert_eq!(hand_size(&fight(2)), 5);
-        assert_eq!(hand_size(&fight(3)), 7);
-        assert_eq!(hand_size(&fight(4)), 8);
+        assert_eq!(hand_size(&fight(0, 7)), 0);
+        assert_eq!(hand_size(&fight(1, 6)), 3);
+        assert_eq!(hand_size(&fight(1, 7)), 4);
+        assert_eq!(hand_size(&fight(2, 7)), 5);
+        assert_eq!(hand_size(&fight(3, 7)), 7);
+        assert_eq!(hand_size(&fight(4, 7)), 8);
     }
 
     #[test]

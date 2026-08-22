@@ -597,6 +597,7 @@ mod tests {
         super::init_test_config();
         let fight = Fight {
             battle_id: Some(77),
+            version: Some(7),
             attacker: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
                     uid: Some(10),
@@ -644,7 +645,7 @@ mod tests {
 
         assert_eq!(
             determinism.take_start_decks(),
-            Some((ai, normal[..3].to_vec(), normal, 0))
+            Some((ai, normal.clone(), normal, 0))
         );
     }
 

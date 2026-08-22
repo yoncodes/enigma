@@ -452,7 +452,7 @@ fn tutorial_without_scripted_opening_uses_the_normal_hand_size() {
     let round = runtime.build_start_round_from_schedule().unwrap();
 
     let push = runtime.card_info_push();
-    assert_eq!(round.team_a_cards1.len(), 3);
+    assert_eq!(round.team_a_cards1.len(), 4);
     assert_eq!(round.team_a_cards1, push.card_group);
     assert_eq!(round.team_a_cards1, push.deal_card_group);
 }
@@ -555,7 +555,7 @@ fn tutorial_without_scripted_refills_preserves_the_normal_hand_size() {
         .start_round_with_determinism(RoundDeterminism::with_seed(0x5eed))
         .unwrap();
     let opening_size = runtime.managers.card.normal_hand_len();
-    assert_eq!(opening_size, 3);
+    assert_eq!(opening_size, 4);
 
     runtime
         .managers
