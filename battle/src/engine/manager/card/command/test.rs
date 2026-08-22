@@ -211,7 +211,7 @@ fn generic_temporary_card_is_unowned_but_retains_operation_metadata() {
         .unwrap();
     let card = changes.added.as_ref().unwrap();
 
-    assert_eq!(changes.kind, CardChangeKind::TemporaryAdded);
+    assert_eq!(changes.kind, CardChangeKind::GenericTemporaryAdded);
     assert_eq!(card.uid, Some(0));
     assert_eq!(card.skill_id, Some(999));
     assert_eq!(card.hero_id, Some(0));

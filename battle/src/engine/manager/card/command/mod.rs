@@ -424,6 +424,7 @@ pub enum CardChangeKind {
     GeneratedAdded,
     UniversalAdded,
     RedealtKeepRanks,
+    GenericTemporaryAdded,
     TemporaryAdded,
     ConfiguredSkill3Added,
     HeroTemporaryAdded,
@@ -706,7 +707,7 @@ pub(super) fn execute(
             (
                 Some(add.origin),
                 match add.kind {
-                    TemporaryCardKind::GenericSkill => CardChangeKind::TemporaryAdded,
+                    TemporaryCardKind::GenericSkill => CardChangeKind::GenericTemporaryAdded,
                     TemporaryCardKind::ConfiguredSkill => CardChangeKind::TemporaryAdded,
                     TemporaryCardKind::ConfiguredSkill3 => CardChangeKind::ConfiguredSkill3Added,
                     TemporaryCardKind::HeroSkill => CardChangeKind::HeroTemporaryAdded,

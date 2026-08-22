@@ -374,6 +374,19 @@ pub fn run_round_start_after_ai_split(
     );
     append(
         &mut next_round_begin_steps,
+        drain::run_group_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundStartCard),
+            drain::ReactionLane::Skills,
+            Some(&owner_uids),
+        )?,
+    );
+    append(
+        &mut next_round_begin_steps,
         run_card_energy_allocation(managers, pool, catalog, determinism, context, 1)?,
     );
     append(
@@ -968,6 +981,19 @@ pub fn run_start(
                     context,
                     BattleEvent::Kind(EventKind::RoundStartCard),
                     drain::ReactionLane::BuffActs,
+                    Some(&owner_uids),
+                )?,
+            );
+            append(
+                &mut result,
+                drain::run_group_event(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    BattleEvent::Kind(EventKind::RoundStartCard),
+                    drain::ReactionLane::Skills,
                     Some(&owner_uids),
                 )?,
             );
