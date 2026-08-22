@@ -339,16 +339,16 @@ fn parses_target_code_and_raw_args() {
 }
 
 #[test]
-fn unsupported_behavior_issue_keeps_exact_config_identity() {
+fn deck_top_rank_behavior_keeps_exact_config_identity() {
     init_config();
 
-    let issue = rule_issue(config::configs::get(), 99, 3, "60116#1#1#1");
+    let behavior = ParsedBehavior::new(60116, "CardDeckTopRankCorrect", vec![1, 1, 1]);
 
-    assert_eq!(issue.effect_id, 99);
-    assert_eq!(issue.slot, 3);
-    assert_eq!(issue.opcode, Some(60116));
-    assert_eq!(issue.type_name.as_deref(), Some("CardDeckTopRankCorrect"));
-    assert_eq!(issue.reason, RuleIssueReason::UnsupportedBehavior);
+    assert!(crate::engine::skill::behavior::is_supported(&behavior));
+    assert!(
+        crate::engine::skill::behavior::registry::find_key(60116, "CardDeckTopRankCorrect")
+            .is_some()
+    );
 }
 
 #[test]

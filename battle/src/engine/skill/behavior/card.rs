@@ -73,6 +73,9 @@ impl BehaviorHandler for Handler {
         if behavior.spec.kind == BehaviorKind::CardLevelChange {
             return card_level_change_ops(context, behavior);
         }
+        if behavior.spec.kind == BehaviorKind::CardDeckTopRankCorrect {
+            return deck_top_rank_correct_ops(context, behavior);
+        }
         if behavior.spec.kind == BehaviorKind::ConsumePowerUpgradeSkillCard {
             return power_card_upgrade_ops(context, behavior);
         }
@@ -454,6 +457,25 @@ fn card_level_change_ops(
     Some(ops)
 }
 
+fn deck_top_rank_correct_ops(
+    _context: BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    let [from, to, rank_delta] = behavior.args.as_slice() else {
+        return None;
+    };
+    let from = usize::try_from(*from).ok()?;
+    let to = usize::try_from(*to).ok()?;
+    Some(vec![RuleOp::Command(BattleCommand::Card(
+        CardCommand::RankUpDeckRange(crate::engine::manager::card::CardDeckRankUpRange {
+            origin: super::command_origin(behavior)?,
+            from,
+            to,
+            rank_delta: *rank_delta,
+        }),
+    ))])
+}
+
 fn power_card_upgrade_ops(
     context: BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
@@ -573,6 +595,10 @@ pub(super) fn supports_card_level_change(behavior: &ParsedBehavior) -> bool {
         [3, 1, 1] => true,
         _ => false,
     }
+}
+
+pub(super) fn supports_deck_top_rank_correct(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [1, 1, 1] | [2, 3, 1] | [4, 4, 1])
 }
 
 pub(super) fn supports_power_card_upgrade(behavior: &ParsedBehavior) -> bool {
@@ -1108,6 +1134,125 @@ mod tests {
         ] {
             let behavior = ParsedBehavior::new(50011, "CardLevelChange", args);
             assert!(!supports_card_level_change(&behavior));
+            assert!(!crate::engine::skill::behavior::is_supported(&behavior));
+        }
+    }
+
+    #[test]
+    fn deck_top_rank_correct_selects_absolute_spellbox_positions() {
+        use sonettobuf::{CardInfo, Fight, FightEntityInfo, FightTeam};
+
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![
+                    FightEntityInfo {
+                        uid: Some(10),
+                        team_type: Some(1),
+                        current_hp: Some(100),
+                        skill_group1: vec![30650211, 30650212, 30650213],
+                        ..Default::default()
+                    },
+                    FightEntityInfo {
+                        uid: Some(20),
+                        team_type: Some(1),
+                        current_hp: Some(100),
+                        skill_group1: vec![30870121, 30870122, 30870123],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
+        managers
+            .execute_card(CardCommand::Setup(
+                crate::engine::manager::card::CardSetup {
+                    hand: Vec::new(),
+                    draw_pile: vec![
+                        CardInfo {
+                            uid: Some(10),
+                            skill_id: Some(30650211),
+                            ..Default::default()
+                        },
+                        CardInfo {
+                            uid: Some(20),
+                            skill_id: Some(30870121),
+                            ..Default::default()
+                        },
+                        CardInfo {
+                            uid: Some(10),
+                            skill_id: Some(30650211),
+                            ..Default::default()
+                        },
+                        CardInfo {
+                            uid: Some(20),
+                            skill_id: Some(30870121),
+                            ..Default::default()
+                        },
+                    ],
+                    deck_num: 4,
+                },
+            ))
+            .unwrap();
+        let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+        let behavior = ParsedBehavior::new(60116, "CardDeckTopRankCorrect", vec![2, 3, 1]);
+        let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext::default();
+
+        let ops = Handler::emit_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 20,
+                active_skill_id: 0,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            ops.as_slice(),
+            [RuleOp::Command(BattleCommand::Card(
+                CardCommand::RankUpDeckRange(crate::engine::manager::card::CardDeckRankUpRange {
+                    from: 2,
+                    to: 3,
+                    rank_delta: 1,
+                    ..
+                })
+            ))]
+        ));
+    }
+
+    #[test]
+    fn deck_top_rank_correct_accepts_only_observed_argument_shape() {
+        for args in [vec![1, 1, 1], vec![2, 3, 1], vec![4, 4, 1]] {
+            let behavior = ParsedBehavior::new(60116, "CardDeckTopRankCorrect", args);
+            assert!(supports_deck_top_rank_correct(&behavior));
+            assert!(crate::engine::skill::behavior::is_supported(&behavior));
+        }
+        for args in [
+            vec![0, 1, 1],
+            vec![1, 2, 1],
+            vec![2, 2, 1],
+            vec![3, 3, 1],
+            vec![3, 2, 1],
+            vec![1, 1, 0],
+            vec![1, 1, 2],
+            vec![1, 1],
+            vec![1, 1, 1, 1],
+        ] {
+            let behavior = ParsedBehavior::new(60116, "CardDeckTopRankCorrect", args);
+            assert!(!supports_deck_top_rank_correct(&behavior));
             assert!(!crate::engine::skill::behavior::is_supported(&behavior));
         }
     }

@@ -401,7 +401,7 @@ pub use parse::{
     configured_is_attack, configured_is_big_skill, configured_skill_type, global,
 };
 #[cfg(test)]
-use parse::{parse_i32_list, parse_target, rule_issue};
+use parse::{parse_i32_list, parse_target};
 
 #[cfg(test)]
 mod test;

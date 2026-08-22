@@ -817,6 +817,9 @@ fn project_change(
         BattleChange::Card(changes) if changes.kind == CardChangeKind::QueuedRankChanged => {
             Vec::new()
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::DeckTopRanksChanged => {
+            Vec::new()
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::HandRankChanged => {
             let entity = changes
                 .entity
