@@ -38,7 +38,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn round_end_loss_targets_the_buff_holder() {
+    fn after_action_loss_targets_the_buff_holder() {
         let subscriber = BuffActSubscriber {
             owner_uid: 20,
             source_uid: -3,
@@ -47,12 +47,12 @@ mod tests {
             team_type: 1,
             owner_alive: true,
             amount: 1,
-            key: SubscriptionKey::new(EventKind::RoundEnd, DefinitionKey::new(605, "ExPointDel")),
+            key: SubscriptionKey::new(EventKind::SkillCast, DefinitionKey::new(609, "ExPointDel")),
             act_type: "ExPointDel".to_owned(),
-            effect_time: 302,
+            effect_time: 2081,
             effect_condition: 0,
             args: vec![1],
-            raw: "605#1".to_owned(),
+            raw: "609#1".to_owned(),
         };
 
         assert!(matches!(

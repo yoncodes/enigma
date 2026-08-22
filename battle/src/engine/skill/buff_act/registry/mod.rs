@@ -750,6 +750,9 @@ buff_act_definitions! {
     (605, "ExPointDel") => ExPointDel,
         runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
         supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(605, "ExPointDel"), &[]));
+    (609, "ExPointDel") => ExPointDel,
+        runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
+        supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(609, "ExPointDel"), &[]));
     (804, "DisperseByTag") => DisperseByTag, actor: Team,
         runtime: |context| super::disperse_by_tag::rule_ops(context.subscriber, context.event?),
         supports: super::disperse_by_tag::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(804, "DisperseByTag"), &[]));
