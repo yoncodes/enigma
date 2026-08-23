@@ -19,7 +19,8 @@ type PreviewAttributes = (Vec<(i64, HeroExAttribute)>, Vec<(i64, HeroSpAttribute
 
 pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<PreviewAttributes> {
     let metadata = battle_build_metadata(battle_path)?;
-    let battle_balance = request_battle_balance(fight, battle_path)?;
+    let request = battle_request_metadata(battle_path)?;
+    let battle_balance = request_battle_balance(fight, request.is_balance)?;
     let mut ex_attributes = Vec::new();
     let mut sp_attributes = Vec::new();
 
@@ -53,11 +54,13 @@ pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<P
             anyhow::anyhow!("attribute preview missing build metadata uid={uid} hero={model_id}")
         })?;
         let build = preview_build_input(entity, hero)?;
-        let equips = validated_equipment_loadout(entity, hero).map_err(|()| {
-            anyhow::anyhow!(
-                "attribute preview has invalid equipment metadata uid={uid} hero={model_id}",
-            )
-        })?;
+        let equips =
+            validated_equipment_loadout(entity, hero, request.selected_equips.get(&uid).copied())
+                .map_err(|()| {
+                anyhow::anyhow!(
+                    "attribute preview has invalid equipment metadata uid={uid} hero={model_id}",
+                )
+            })?;
         let stats = battle_balance.map_or_else(
             || Stats::build_for_loadout(&build, &equips),
             |balance| balance.stats_for(&build, &equips),
@@ -75,18 +78,24 @@ pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<P
     Ok((ex_attributes, sp_attributes))
 }
 
-fn request_battle_balance(
-    fight: &Fight,
-    battle_path: &Path,
-) -> anyhow::Result<Option<BattleBalance>> {
+#[derive(Debug, Default)]
+struct BattleRequestMetadata {
+    is_balance: bool,
+    selected_equips: HashMap<i64, i64>,
+}
+
+fn battle_request_metadata(battle_path: &Path) -> anyhow::Result<BattleRequestMetadata> {
     let Some(parent) = battle_path.parent() else {
-        return Ok(None);
+        return Ok(BattleRequestMetadata::default());
     };
     let request_path = parent.join("StartDungeonRequest.json");
     if !request_path.exists() {
-        return Ok(None);
+        return Ok(BattleRequestMetadata::default());
     }
     let request: serde_json::Value = serde_json::from_str(&fs::read_to_string(request_path)?)?;
+    let request = request
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("invalid dungeon request"))?;
     let is_balance = request
         .get("isBalance")
         .or_else(|| request.get("is_balance"))
@@ -97,6 +106,82 @@ fn request_battle_balance(
         })
         .transpose()?
         .unwrap_or_default();
+    let selections = match request
+        .get("fightGroup")
+        .or_else(|| request.get("fight_group"))
+    {
+        Some(group) => match group
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("invalid fight group"))?
+            .get("equips")
+        {
+            Some(equips) => equips
+                .as_array()
+                .ok_or_else(|| anyhow::anyhow!("invalid equipment selections"))?
+                .as_slice(),
+            None => &[],
+        },
+        None => &[],
+    };
+    let mut selected_equips = HashMap::new();
+    let mut selected_heroes = std::collections::HashSet::new();
+    for selection in selections {
+        let selection = selection
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("invalid equipment selection"))?;
+        let hero_uid = json_i64(
+            selection
+                .get("heroUid")
+                .or_else(|| selection.get("hero_uid"))
+                .ok_or_else(|| anyhow::anyhow!("equipment selection is missing hero uid"))?,
+        )?;
+        if hero_uid <= 0 {
+            anyhow::bail!("equipment selection has invalid hero uid {hero_uid}");
+        }
+        if !selected_heroes.insert(hero_uid) {
+            anyhow::bail!("duplicate equipment selection for hero {hero_uid}");
+        }
+        let equip_uids = selection
+            .get("equipUid")
+            .or_else(|| selection.get("equip_uid"))
+            .map(|uids| {
+                uids.as_array()
+                    .ok_or_else(|| anyhow::anyhow!("invalid equipment uids for hero {hero_uid}"))
+            })
+            .transpose()?
+            .into_iter()
+            .flatten()
+            .map(json_i64)
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        if equip_uids.iter().any(|uid| *uid < 0) {
+            anyhow::bail!("negative equipment uid selected for hero {hero_uid}");
+        }
+        let mut equip_uids = equip_uids.into_iter().filter(|uid| *uid != 0);
+        let Some(equip_uid) = equip_uids.next() else {
+            continue;
+        };
+        if equip_uids.any(|uid| uid != equip_uid) {
+            anyhow::bail!("multiple primary equipment selections for hero {hero_uid}");
+        }
+        selected_equips.insert(hero_uid, equip_uid);
+    }
+    Ok(BattleRequestMetadata {
+        is_balance,
+        selected_equips,
+    })
+}
+
+fn json_i64(value: &serde_json::Value) -> anyhow::Result<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_str().and_then(|raw| raw.parse().ok()))
+        .ok_or_else(|| anyhow::anyhow!("invalid integer value"))
+}
+
+fn request_battle_balance(
+    fight: &Fight,
+    is_balance: bool,
+) -> anyhow::Result<Option<BattleBalance>> {
     if !is_balance {
         return Ok(None);
     }
@@ -142,19 +227,27 @@ fn configured_trial(
 fn validated_equipment_loadout(
     entity: &FightEntityInfo,
     hero: &HeroInfo,
+    requested_equip_uid: Option<i64>,
 ) -> Result<Vec<EquipmentBuildInput>, ()> {
+    if requested_equip_uid.is_some_and(|uid| uid < 0)
+        || hero.default_equip_uid.is_some_and(|uid| uid < 0)
+        || entity.equip_uid.is_some_and(|uid| uid < 0)
+    {
+        return Err(());
+    }
+    let expected_equip_uid =
+        requested_equip_uid.or_else(|| hero.default_equip_uid.filter(|uid| *uid > 0));
     if entity.equips.is_empty() {
-        return match (hero.default_equip_uid, entity.equip_uid) {
-            (None | Some(0), None | Some(0)) => Ok(Vec::new()),
+        return match (expected_equip_uid, entity.equip_uid.filter(|uid| *uid > 0)) {
+            (None, None) => Ok(Vec::new()),
             _ => Err(()),
         };
     }
     if entity.model_id.filter(|model_id| *model_id > 0) != Some(hero.hero_id) {
         return Err(());
     }
-    let default_equip_uid = hero.default_equip_uid.filter(|uid| *uid > 0).ok_or(())?;
     let selected_equip_uid = entity.equip_uid.filter(|uid| *uid > 0).ok_or(())?;
-    if selected_equip_uid != default_equip_uid {
+    if Some(selected_equip_uid) != expected_equip_uid {
         return Err(());
     }
     let primary = entity.equips.first().ok_or(())?;
@@ -412,6 +505,22 @@ mod tests {
         .unwrap();
     }
 
+    fn write_request(directory: &Path, equips: Vec<sonettobuf::FightEquip>, is_balance: bool) {
+        fs::write(
+            directory.join("StartDungeonRequest.json"),
+            serde_json::to_vec(&sonettobuf::StartDungeonRequest {
+                fight_group: Some(sonettobuf::FightGroup {
+                    equips,
+                    ..Default::default()
+                }),
+                is_balance: Some(is_balance),
+                ..Default::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    }
+
     #[test]
     fn captured_derived_attributes_are_not_runtime_inputs() {
         crate::init_test_config();
@@ -422,7 +531,7 @@ mod tests {
         write_roster(&directory, hero.clone());
         let entity = &fight.attacker.as_ref().unwrap().entitys[0];
         let build = preview_build_input(entity, &hero).unwrap();
-        let equips = validated_equipment_loadout(entity, &hero).unwrap();
+        let equips = validated_equipment_loadout(entity, &hero, None).unwrap();
         let expected = Stats::build_for_loadout(&build, &equips);
 
         let (ex, sp) =
@@ -432,6 +541,193 @@ mod tests {
         assert_eq!(sp, vec![(uid, expected.sp())]);
         assert_ne!(expected.cri, i32::MAX);
         assert_ne!(expected.heal, i32::MAX);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn explicit_request_equipment_overrides_the_roster_default() {
+        crate::init_test_config();
+        let uid = 42;
+        let directory = test_directory("requested-equipment");
+        let mut hero = hero(uid);
+        hero.default_equip_uid = Some(999);
+        write_roster(&directory, hero);
+        write_request(
+            &directory,
+            vec![sonettobuf::FightEquip {
+                hero_uid: Some(uid),
+                equip_uid: vec![100],
+                ..Default::default()
+            }],
+            false,
+        );
+
+        assert!(preview_attributes(&fight(uid), &directory.join("BeginRoundReply_1.json")).is_ok());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn request_and_entity_equipment_mismatch_fails_loudly() {
+        crate::init_test_config();
+        let uid = 42;
+        let directory = test_directory("request-mismatch");
+        write_roster(&directory, hero(uid));
+        write_request(
+            &directory,
+            vec![sonettobuf::FightEquip {
+                hero_uid: Some(uid),
+                equip_uid: vec![999],
+                ..Default::default()
+            }],
+            false,
+        );
+
+        assert!(
+            preview_attributes(&fight(uid), &directory.join("BeginRoundReply_1.json"))
+                .unwrap_err()
+                .to_string()
+                .contains("invalid equipment metadata")
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn request_without_equipment_uses_the_roster_default() {
+        crate::init_test_config();
+        let uid = 42;
+        let directory = test_directory("request-default");
+        write_roster(&directory, hero(uid));
+        write_request(&directory, Vec::new(), false);
+
+        assert!(preview_attributes(&fight(uid), &directory.join("BeginRoundReply_1.json")).is_ok());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn negative_equipment_metadata_fails_loudly() {
+        crate::init_test_config();
+        let uid = 42;
+        let mut fight = fight(uid);
+        let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
+        entity.equips.clear();
+        entity.equip_uid = Some(-1);
+        let mut hero = hero(uid);
+        hero.default_equip_uid = Some(-1);
+
+        assert!(validated_equipment_loadout(entity, &hero, None).is_err());
+    }
+
+    #[test]
+    fn string_encoded_request_equipment_is_accepted() {
+        crate::init_test_config();
+        let uid = 42;
+        let directory = test_directory("string-request-equipment");
+        let mut hero = hero(uid);
+        hero.default_equip_uid = Some(999);
+        write_roster(&directory, hero);
+        fs::write(
+            directory.join("StartDungeonRequest.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "fightGroup": {
+                    "equips": [{
+                        "heroUid": uid.to_string(),
+                        "equipUid": ["100"]
+                    }]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(preview_attributes(&fight(uid), &directory.join("BeginRoundReply_1.json")).is_ok());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn snake_case_balance_metadata_is_preserved() {
+        let directory = test_directory("snake-balance");
+        fs::write(
+            directory.join("StartDungeonRequest.json"),
+            serde_json::to_vec(&serde_json::json!({ "is_balance": true })).unwrap(),
+        )
+        .unwrap();
+
+        assert!(
+            battle_request_metadata(&directory.join("BeginRoundReply_1.json"))
+                .unwrap()
+                .is_balance
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn negative_request_equipment_fails_loudly() {
+        let directory = test_directory("negative-request-equipment");
+        fs::write(
+            directory.join("StartDungeonRequest.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "fightGroup": {
+                    "equips": [{ "heroUid": 42, "equipUid": [-1] }]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(
+            battle_request_metadata(&directory.join("BeginRoundReply_1.json"))
+                .unwrap_err()
+                .to_string()
+                .contains("negative equipment uid")
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn duplicate_empty_and_selected_request_rows_fail_loudly() {
+        let directory = test_directory("mixed-duplicate-request");
+        fs::write(
+            directory.join("StartDungeonRequest.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "fightGroup": {
+                    "equips": [
+                        { "heroUid": 42, "equipUid": [] },
+                        { "heroUid": 42, "equipUid": [100] }
+                    ]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(
+            battle_request_metadata(&directory.join("BeginRoundReply_1.json"))
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate equipment selection")
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn duplicate_request_equipment_rows_fail_loudly() {
+        crate::init_test_config();
+        let uid = 42;
+        let directory = test_directory("duplicate-request");
+        write_roster(&directory, hero(uid));
+        let selection = sonettobuf::FightEquip {
+            hero_uid: Some(uid),
+            equip_uid: vec![100],
+            ..Default::default()
+        };
+        write_request(&directory, vec![selection.clone(), selection], false);
+
+        assert!(
+            preview_attributes(&fight(uid), &directory.join("BeginRoundReply_1.json"))
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate equipment selection")
+        );
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -498,11 +794,7 @@ mod tests {
         let directory = test_directory("balanced-loadout");
         let hero = hero(uid);
         write_roster(&directory, hero.clone());
-        fs::write(
-            directory.join("StartDungeonRequest.json"),
-            serde_json::to_vec(&serde_json::json!({ "isBalance": true })).unwrap(),
-        )
-        .unwrap();
+        write_request(&directory, Vec::new(), true);
         let mut fight = fight(uid);
         fight.battle_id = Some(116385108);
         for equip in &mut fight.attacker.as_mut().unwrap().entitys[0].equips {
@@ -510,10 +802,8 @@ mod tests {
         }
         let entity = &fight.attacker.as_ref().unwrap().entitys[0];
         let build = preview_build_input(entity, &hero).unwrap();
-        let equips = validated_equipment_loadout(entity, &hero).unwrap();
-        let balance = request_battle_balance(&fight, &directory.join("BeginRoundReply_1.json"))
-            .unwrap()
-            .unwrap();
+        let equips = validated_equipment_loadout(entity, &hero, None).unwrap();
+        let balance = request_battle_balance(&fight, true).unwrap().unwrap();
         let expected = balance.stats_for(&build, &equips);
         let unbalanced = Stats::build_for_loadout(&build, &equips);
 
