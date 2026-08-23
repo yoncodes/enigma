@@ -314,6 +314,43 @@ fn crystal_reuse_validates_chance_skill_and_lane() {
 }
 
 #[test]
+fn powerful_poison_conversion_keeps_exact_identity_and_positive_shape() {
+    let definition = find_key(60284, "PoisonConvertToPowerfulPoisonBuff").unwrap();
+    let valid = ParsedBehavior::new(
+        60284,
+        "PoisonConvertToPowerfulPoisonBuff",
+        vec![6, 31420003],
+    );
+
+    assert_eq!(
+        definition.kind,
+        BehaviorKind::PoisonConvertToPowerfulPoisonBuff
+    );
+    assert_eq!(definition.phase, BehaviorPhase::AfterDamage);
+    assert!(definition.destination);
+    assert!(definition.supports.is_some_and(|supports| supports(&valid)));
+    assert!(crate::engine::skill::behavior::is_supported(&valid));
+    assert_eq!((definition.references)(&valid).buffs, vec![31420003]);
+    for args in [
+        Vec::new(),
+        vec![6],
+        vec![0, 31420003],
+        vec![6, 0],
+        vec![6, 31420003, 1],
+    ] {
+        let unsupported = ParsedBehavior::new(60284, "PoisonConvertToPowerfulPoisonBuff", args);
+        assert!(
+            !definition
+                .supports
+                .is_some_and(|supports| supports(&unsupported))
+        );
+        assert!(!crate::engine::skill::behavior::is_supported(&unsupported));
+    }
+    assert!(find_key(60284, "PoisonConvertToTargetBuff").is_none());
+    assert!(find_key(60110, "PoisonConvertToPowerfulPoisonBuff").is_none());
+}
+
+#[test]
 fn planet_removal_keeps_its_exact_behavior_identity() {
     let definition = find_key(60252, "DisperseForce3").unwrap();
     let valid = ParsedBehavior::from_spec(

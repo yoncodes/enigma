@@ -179,6 +179,7 @@ pub enum BehaviorKind {
     ClearInjuryBankBuffOriginDamage,
     CatapultBuff,
     PoisonConvertToTargetBuff,
+    PoisonConvertToPowerfulPoisonBuff,
     ConsumePoisonSettleDeadlyPoison,
     Heal,
     HealCantCrit,
