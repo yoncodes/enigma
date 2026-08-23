@@ -594,8 +594,11 @@ impl BattleCatalog {
         configured_teaching_cards(self.game_data, episode_id)
     }
 
-    pub(crate) fn device_card_weights(self, model_id: i32) -> Vec<(i32, usize)> {
-        configured_device_card_weights(self.game_data, model_id)
+    pub(crate) fn device_card_weights(
+        self,
+        entity: &sonettobuf::FightEntityInfo,
+    ) -> Vec<(i32, usize)> {
+        configured_device_card_weights(self.game_data, entity)
     }
 
     pub(crate) fn trial_skill_groups(
@@ -1163,12 +1166,17 @@ pub(crate) fn configured_teaching_cards(
 
 pub(crate) fn configured_device_card_weights(
     game_data: &config::GameDB,
-    model_id: i32,
+    entity: &sonettobuf::FightEntityInfo,
 ) -> Vec<(i32, usize)> {
-    let Some(character) = game_data.character.get(model_id) else {
+    let Some(device_id) = configured_conduit_device_id(
+        game_data,
+        entity.model_id.unwrap_or_default(),
+        entity.ex_skill_level.unwrap_or_default(),
+        entity.destiny_stone.unwrap_or_default(),
+    ) else {
         return Vec::new();
     };
-    let Some(device) = game_data.fight_device.get(character.device_id) else {
+    let Some(device) = game_data.fight_device.get(device_id) else {
         return Vec::new();
     };
     [&device.power_skill, &device.special_power_skill]

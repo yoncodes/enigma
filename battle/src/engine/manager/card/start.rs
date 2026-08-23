@@ -165,8 +165,8 @@ pub(crate) fn configured_draw_bag(
     fight: &Fight,
 ) -> Vec<CardInfo> {
     draw_bag_from(fight, |fight| {
-        crate::engine::manager::card::pool::device_draw_bag_from(fight, |model_id| {
-            catalog.device_card_weights(model_id)
+        crate::engine::manager::card::pool::device_draw_bag_from(fight, |entity| {
+            catalog.device_card_weights(entity)
         })
     })
 }
@@ -217,7 +217,7 @@ pub fn start_decks_from_fight(
             crate::engine::manager::card::pool::player_candidate_pool_from(
                 fight,
                 |_| allow_ex_skill,
-                |model_id| crate::catalog::configured_device_card_weights(game_data, model_id),
+                |entity| crate::catalog::configured_device_card_weights(game_data, entity),
             )
         },
     );
@@ -259,7 +259,7 @@ pub(crate) fn configured_start_decks(
             crate::engine::manager::card::pool::player_candidate_pool_from(
                 fight,
                 |_| allow_ex_skill,
-                |model_id| catalog.device_card_weights(model_id),
+                |entity| catalog.device_card_weights(entity),
             )
         },
     )
