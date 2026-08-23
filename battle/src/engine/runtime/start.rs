@@ -300,6 +300,6 @@ pub(super) fn available_player_cards(
     crate::engine::manager::card::pool::player_candidate_pool_from(
         fight,
         |_| false,
-        |model_id| catalog.device_card_weights(model_id),
+        |entity| catalog.device_card_weights(entity),
     )
 }
