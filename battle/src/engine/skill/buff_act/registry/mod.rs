@@ -217,6 +217,7 @@ pub enum BuffActKind {
     FixTempAttrByBuffLayer,
     MustCritAndFixTempAttr,
     Forbid,
+    Frozen,
     Seal,
     Sleep,
     CantGetExskill,
@@ -753,6 +754,10 @@ buff_act_definitions! {
     (403, "Sleep") => Sleep, event: EventKind::TargetAttacked, frame: CausingFrame,
         runtime: |context| super::sleep::rule_ops(context.subscriber, context.event?),
         supports: |args| args.is_empty(), wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(403, "Sleep"), &[EffectType::Sleep as i32]));
+    (404, "Frozen") => Frozen, event: EventKind::TargetAttacked, frame: CausingFrame,
+        runtime: |context| super::frozen::rule_ops(context.catalog, context.subscriber, context.event?),
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(404, "Frozen"), &[EffectType::Frozen as i32]));
     (501, "Shield") => Shield, effect_time_subscription: false,
         supports: super::shield::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(501, "Shield"), &[EffectType::Shield as i32]));
     (511, "FixedHurt") => FixedHurt, effect_time_subscription: false,
