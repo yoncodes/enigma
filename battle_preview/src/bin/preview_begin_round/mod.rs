@@ -1,13 +1,12 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     env, fs, io,
     path::{Path, PathBuf},
 };
 
 use battle::engine::{runtime::BattleRuntime, skill::effect::catalog};
 use battle_preview::{
-    begin_round_inputs, canonical_comparison, captured_opening_battle_skill_roots,
-    captured_opening_determinism, expand_compressed_fight_steps, first_diff_path,
+    begin_round_inputs, canonical_comparison, expand_compressed_fight_steps, first_diff_path,
     normalize_live_json, preview_attributes, preview_output_text,
     render_json_with_capture_conventions, tower_plan_id,
 };
@@ -138,8 +137,6 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
     let tower_rule_skills = tower_plan_id(path)
         .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
-    let captured_rule_skills = captured_opening_battle_skill_roots(&captured_start_round);
-    let opening_determinism = captured_opening_determinism(db, &fight, &captured_start_round);
     let mut runtime = BattleRuntime::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
@@ -149,10 +146,8 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
     runtime
         .inherit_absorb_hurt_map_layout(&captured_start_round)
         .map_err(anyhow::Error::msg)?;
-    runtime.extend_battle_rule_skills(tower_rule_skills.into_iter().chain(captured_rule_skills));
-    let mut round_reply = runtime
-        .start_round_with_determinism(opening_determinism)
-        .map_err(io::Error::other)?;
+    runtime.extend_battle_rule_skills(tower_rule_skills);
+    let mut round_reply = runtime.start_round().map_err(io::Error::other)?;
     let mut previous_captured_round = captured_start_round;
     replay_cloth_input(path, 0, &mut runtime)?;
     if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage)
@@ -179,97 +174,12 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
         let captured = captured_round(&path.with_file_name(reply_name))?;
         validate_captured_round_continuity(&previous_captured_round, &captured)?;
         report_rule_issues(&captured);
-        seed_captured_randomness(&mut runtime, &captured);
         replay_cloth_input(path, index, &mut runtime)?;
         round_reply = runtime.advance_round(request).map_err(io::Error::other)?;
         previous_captured_round = captured;
     }
 
     Ok(round_reply)
-}
-
-fn seed_captured_randomness(runtime: &mut BattleRuntime, round: &FightRound) {
-    runtime.seed_card_draws(round.team_a_cards2.clone());
-    runtime.seed_crystal_cards(
-        round
-            .before_cards1
-            .iter()
-            .filter(|card| card.temp_card.unwrap_or_default())
-            .cloned(),
-    );
-    if runtime.fight_version() == 7 {
-        runtime.seed_next_ai_cards(round.ai_use_cards.clone());
-    }
-    for ((skill_id, source_uid), choices) in captured_hidden_crits(round) {
-        runtime.seed_hidden_crits(skill_id, source_uid, choices);
-    }
-    runtime.seed_random_skills(captured_random_skill_choices(catalog::global(), round));
-}
-
-fn captured_hidden_crits(round: &FightRound) -> HashMap<(i32, i64), Vec<bool>> {
-    let damage = sonettobuf::effect_type_enum::EffectType::Damage as i32;
-    let critical = sonettobuf::effect_type_enum::EffectType::Crit as i32;
-    let heal = sonettobuf::effect_type_enum::EffectType::Heal as i32;
-    let critical_heal = sonettobuf::effect_type_enum::EffectType::Healcrit as i32;
-    let mut choices = HashMap::<(i32, i64), Vec<bool>>::new();
-    for step in nested_steps(round) {
-        let skill_id = step.act_id.unwrap_or_default();
-        let source_uid = step.from_id.unwrap_or_default();
-        if skill_id == 0 || source_uid == 0 {
-            continue;
-        }
-        let mut seen_targets = HashSet::new();
-        for effect in &step.act_effect {
-            let Some(is_critical) = effect
-                .effect_type
-                .and_then(|effect_type| match effect_type {
-                    value if value == damage || value == heal => Some(false),
-                    value if value == critical || value == critical_heal => Some(true),
-                    _ => None,
-                })
-            else {
-                continue;
-            };
-            let target_uid = effect.target_id.unwrap_or_default();
-            if target_uid != 0 && seen_targets.insert(target_uid) {
-                choices
-                    .entry((skill_id, source_uid))
-                    .or_default()
-                    .push(is_critical);
-            }
-        }
-    }
-    choices
-}
-
-fn captured_random_skill_choices(
-    catalog: &battle::engine::skill::effect::SkillEffectCatalog,
-    round: &FightRound,
-) -> Vec<i32> {
-    fn visit(
-        catalog: &battle::engine::skill::effect::SkillEffectCatalog,
-        parent: &FightStep,
-        choices: &mut Vec<i32>,
-    ) {
-        let references = catalog.random_skill_references(parent.act_id.unwrap_or_default());
-        for effect in &parent.act_effect {
-            let Some(child) = effect.fight_step.as_ref() else {
-                continue;
-            };
-            if let Some(act_id) = child.act_id.filter(|act_id| *act_id > 0)
-                && references.contains(&act_id)
-            {
-                choices.push(act_id);
-            }
-            visit(catalog, child, choices);
-        }
-    }
-
-    let mut choices = Vec::new();
-    for step in &round.fight_step {
-        visit(catalog, step, &mut choices);
-    }
-    choices
 }
 
 fn replay_cloth_input(

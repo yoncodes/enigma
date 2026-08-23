@@ -817,6 +817,9 @@ fn project_change(
         BattleChange::Card(changes) if changes.kind == CardChangeKind::QueuedRankChanged => {
             Vec::new()
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::DeckTopRanksChanged => {
+            Vec::new()
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::HandRankChanged => {
             let entity = changes
                 .entity
@@ -940,6 +943,33 @@ fn project_change(
                 redeal_layout,
             )]
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::GenericTemporaryAdded => {
+            let operation = changes
+                .operation
+                .clone()
+                .expect("generic temporary-card commits retain their exact operation");
+            let crate::engine::manager::card::CardChange::SpCardAdd {
+                target_uid,
+                team_type,
+                ..
+            } = operation.clone()
+            else {
+                panic!("generic temporary-card commits use SpCardAdd operations")
+            };
+            let config_effect = changes
+                .origin
+                .map(|origin| origin.key.opcode)
+                .expect("generic temporary-card commits retain their command origin");
+            let mut added = CardPacket::from_change(operation);
+            added.config_effect = Some(config_effect);
+            let mut temporary = CardPacket::change_to_temp_card(
+                target_uid,
+                changes.after.len().to_string(),
+                team_type,
+            );
+            temporary.config_effect = Some(config_effect);
+            vec![added, temporary]
+        }
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,
@@ -980,6 +1010,21 @@ fn project_change(
                 panic!("hero temporary-card commits use SpCardAdd operations")
             };
             vec![CardPacket::hero_temp_card(card, *team_type)]
+        }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::ConfiguredSkill3Added => {
+            let card = changes
+                .added
+                .clone()
+                .expect("configured Skill 3 commits retain their added card");
+            let operation = changes
+                .operation
+                .as_ref()
+                .expect("configured Skill 3 commits retain their exact operation");
+            let crate::engine::manager::card::CardChange::SpCardAdd { team_type, .. } = operation
+            else {
+                panic!("configured Skill 3 commits use SpCardAdd operations")
+            };
+            vec![CardPacket::configured_skill3_card(card, *team_type)]
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Enchanted => changes
             .operation

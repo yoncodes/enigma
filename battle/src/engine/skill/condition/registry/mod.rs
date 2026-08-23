@@ -443,6 +443,7 @@ condition_definitions! {
     [18302] "HasBuff" => buff::first_status_present, event_trigger(EventKind::RoundEnd, None);
     [19104] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::BuffSync, 0, &[]));
     [19105] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::AfterRoundStart, 0, &[]));
+    [19106] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
     [19021, 19201] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [19204] "HasBuffId" => buff::buff_present, incoming_attack_modifier(filters_behavior_targets(predicate(&[EventKind::BuffChanged])));
     [19205] "HasBuffId" => buff::exact_buff_present, filters_behavior_targets(predicate(&[]));
@@ -494,6 +495,7 @@ condition_definitions! {
     [535215] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::AllyAction, None);
     [535303] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::RoundEndEntitySettlement, None);
     [535304] "TypeIdBuffCountMoreThan" => buff::buff_type_pair_at_least, predicate(&[]);
+    [537103] "HasTypeIdBuffTotalCountMoreThan" => buff::positive_buff_type_at_least, setup_route(SetupStage::RoundStart, 1, &[]);
     [537201] "HasTypeIdBuffTotalCountMoreThan" => buff::positive_buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [537203] "HasTypeIdBuffTotalCountMoreThan" => buff::positive_buff_type_at_least, predicate(&[]);
     [536208] "TypeIdBuffCountLessThan" => buff::buff_type_at_most, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
@@ -594,6 +596,7 @@ condition_definitions! {
     [16002] "TargetCareer" => career::target_career, filters_behavior_targets(setup_route(SetupStage::EnterFight, 0, &[]));
     [16021] "TargetCareer" => career::target_career, setup_route(SetupStage::BattleStart, 0, &[]);
     [16204] "TargetCareer" => career::target_career, predicate(&[]);
+    [762005] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::BattleStart, 0, &[]);
     [762021] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::BattleStart, 0, &[]);
     [762103] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::RoundStart, 1, &[]);
     [760212] "CurUseCardEnchant" => card::current_enchant, event_trigger(EventKind::AllyAction, None);

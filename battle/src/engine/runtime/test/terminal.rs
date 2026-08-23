@@ -239,7 +239,11 @@ fn terminal_during_next_round_preparation_preserves_phase_two_card_snapshots() {
     let skill_id = 9_900_070;
     let mut runtime = late_terminal_runtime(skill_id);
     let remaining = player_card(30230111);
-    let dealt = vec![player_card(30230121), player_card(30230111)];
+    let dealt = vec![
+        player_card(30230121),
+        player_card(30230111),
+        player_card(30230121),
+    ];
     runtime
         .managers
         .execute_card(crate::engine::manager::card::CardCommand::Setup(
@@ -349,7 +353,11 @@ fn terminal_during_wave_preparation_promotes_deferred_card_snapshots() {
     runtime.catalog = SkillEffectCatalog::default();
     install_round_start_enemy_kill(&mut runtime, 10, skill_id);
     let remaining = player_card(30230111);
-    let dealt = vec![player_card(30230121), player_card(30230111)];
+    let dealt = vec![
+        player_card(30230121),
+        player_card(30230111),
+        player_card(30230121),
+    ];
     runtime
         .managers
         .execute_card(crate::engine::manager::card::CardCommand::Setup(
@@ -679,7 +687,11 @@ fn wave_clear_runtime(
     for entity in &mut entitys {
         entity.current_hp = Some(1);
     }
-    let dealt = vec![player_card(30230121), player_card(30230111)];
+    let dealt = vec![
+        player_card(30230121),
+        player_card(30230111),
+        player_card(30230121),
+    ];
     let mut runtime = runtime(Fight {
         battle_id: Some(2514),
         version: Some(7),
@@ -770,7 +782,9 @@ fn wave_clear_runs_phase_two_refill_before_wave_transition() {
 
     assert_eq!(
         round.before_cards1,
-        vec![remaining.clone(), dealt[0].clone(), dealt[1].clone()]
+        std::iter::once(remaining.clone())
+            .chain(dealt.iter().cloned())
+            .collect::<Vec<_>>()
     );
     assert!(round.team_a_cards1.is_empty());
     assert_eq!(round.before_cards2, vec![remaining]);

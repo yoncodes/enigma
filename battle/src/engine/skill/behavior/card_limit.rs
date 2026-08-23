@@ -35,6 +35,7 @@ impl BehaviorHandler for Handler {
                 .iter()
                 .filter(|entity| context.managers.hp.current(entity.uid) > 0)
                 .count(),
+            context.managers.fight_version(),
         );
         let current = crate::engine::mechanic::card::CardMechanic.normal_hand_limit(
             base,

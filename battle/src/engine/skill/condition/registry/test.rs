@@ -388,13 +388,28 @@ fn round_start_field_presence_keeps_its_exact_key_and_route() {
 
 #[test]
 fn static_team_battle_tag_threshold_runs_at_battle_start() {
+    for opcode in [762005, 762021] {
+        assert_eq!(
+            find_key(opcode, "BattleTagNum").map(|definition| definition.role),
+            Some(ConditionRole::Setup {
+                stage: SetupStage::BattleStart,
+                priority: 0,
+            })
+        );
+    }
     assert_eq!(
-        find_key(762021, "BattleTagNum").map(|definition| definition.role),
-        Some(ConditionRole::Setup {
-            stage: SetupStage::BattleStart,
-            priority: 0,
+        parse(
+            762005,
+            "BattleTagNum",
+            &["113".into(), "3".into(), "1".into()]
+        ),
+        Some(ParsedConditionKind::BattleTagCount {
+            tag_id: 113,
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 3,
         })
     );
+    assert!(parse(762005, "Other", &["113".into(), "3".into(), "1".into()]).is_none());
     assert_eq!(
         find_key(762103, "BattleTagNum").map(|definition| definition.role),
         Some(ConditionRole::Setup {
@@ -2530,6 +2545,23 @@ fn round_start_buff_gates_keep_their_exact_registered_keys() {
 }
 
 #[test]
+fn round_start_card_buff_gate_is_a_pure_exact_predicate() {
+    let definition = find_key(19106, "HasBuffId").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert!(definition.dependencies.is_empty());
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(
+        parse(19106, "HasBuffId", &["30870131".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Present,
+            buff_ids: vec![30870131],
+        })
+    );
+    assert!(parse(19106, "HasBuffId", &[]).is_none());
+    assert!(find_key(19106, "NoBuffId").is_none());
+}
+
+#[test]
 fn mirror_rule_buff_gates_keep_their_exact_phases() {
     assert_eq!(
         parse(57100, "NoBuffId", &["11790011".into()]),
@@ -2955,7 +2987,7 @@ fn hand_skill_presence_keeps_exact_card_identity_and_round_timing() {
 }
 
 #[test]
-fn ritual_dance_totals_keep_their_exact_active_skill_routes() {
+fn buff_type_totals_keep_their_exact_routes() {
     let expected = ParsedConditionKind::BuffTypeCount {
         type_ids: vec![31100201],
         compare: ConditionCompare::GreaterThanOrEqual,
@@ -2980,6 +3012,25 @@ fn ritual_dance_totals_keep_their_exact_active_skill_routes() {
         find_key(537203, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
         Some(ConditionRole::Predicate)
     );
+    assert_eq!(
+        parse(
+            537103,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["31210125".into(), "10".into()],
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![31210125],
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 10,
+        })
+    );
+    assert_eq!(
+        find_key(537103, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStart,
+            priority: 1,
+        })
+    );
     assert!(
         parse(
             537201,
@@ -2998,7 +3049,7 @@ fn ritual_dance_totals_keep_their_exact_active_skill_routes() {
     );
     assert!(
         parse(
-            537203,
+            537103,
             "HasTypeIdBuffTotalCountMoreThan",
             &["31100201".into(), "8".into(), "1".into()]
         )

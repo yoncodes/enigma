@@ -4,9 +4,7 @@ use crate::engine::{
         buff::{
             BuffChanges, BuffCommand, BuffCommandError, BuffConsume, BuffSelector, DepletedBuff,
         },
-        card::{
-            CardAddPrecast, CardChanges, CardCommand, CardCommandError, temp::runtime_precast_card,
-        },
+        card::{CardAddPrecast, CardChanges, CardCommand, CardCommandError, selected_precast_card},
     },
     skill::rule::CommandOrigin,
 };
@@ -73,6 +71,10 @@ pub(crate) fn execute(
     let Some(option) = command.options.iter().find(|option| option.cost <= amount) else {
         return Ok(None);
     };
+    let hero_id = managers
+        .entity
+        .model_id(command.source_uid)
+        .ok_or(BuffPrecastError::InvalidCommand)?;
 
     let buff = managers.execute_buff(BuffCommand::Consume(BuffConsume {
         origin: command.origin,
@@ -81,9 +83,9 @@ pub(crate) fn execute(
         amount: option.cost,
         depleted: DepletedBuff::Remove,
     }))?;
-    let card = managers.execute_card(CardCommand::AddPrecast(CardAddPrecast {
+    let card = managers.execute_card(CardCommand::AddSelectedPrecast(CardAddPrecast {
         origin: command.origin,
-        card: runtime_precast_card(managers, command.source_uid, option.skill_id),
+        card: selected_precast_card(command.source_uid, hero_id, option.skill_id),
     }))?;
 
     Ok(Some(BuffPrecastChanges { buff, card }))

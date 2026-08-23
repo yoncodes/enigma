@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use anyhow::{Result, bail};
 use battle::engine::{
-    entity::{destiny::Destiny, skill::split_ids},
+    entity::destiny::Destiny,
     skill::{
         behavior::{self, classify::BehaviorSpec},
         buff_act::{effect_time, registry as buff_act_registry, wire},
@@ -552,25 +552,15 @@ fn buff_act(
     raw: &str,
     wire_evidence: &crate::wire_evidence::Evidence,
 ) -> Option<BuffAct> {
-    let values = split_ids(raw);
-    let opcode = values.first().copied()?;
+    let feature = buff_act_registry::resolve_feature(Some(db), raw)?;
+    let opcode = feature.act_id?;
     let row = db.buff_act.get(opcode)?;
-    let definition = buff_act_registry::find(opcode, &row.r#type);
-    let args = &values[1..];
-    let destination =
-        buff_act_registry::destination_with_raw(Some(db), opcode, &row.r#type, args, Some(raw));
+    let definition = feature.definition;
+    let destination = buff_act_registry::destination_for_feature(Some(db), &feature);
     let semantic = match definition {
         None => "route missing",
-        Some(definition)
-            if definition
-                .raw_supports
-                .is_some_and(|supports| !supports(Some(db), raw)) =>
-        {
-            "unsupported arguments"
-        }
-        Some(definition) if definition.supports.is_some_and(|supports| !supports(args)) => {
-            "unsupported arguments"
-        }
+        Some(_) if feature.is_malformed() => "malformed arguments",
+        Some(_) if !feature.arguments_supported => "unsupported arguments",
         Some(definition) if destination.is_some() => {
             definition.completion_gap.unwrap_or("supported")
         }

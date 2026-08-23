@@ -67,6 +67,7 @@ pub fn run_round_start_split(
             .iter()
             .filter(|entity| managers.hp.current(entity.uid) > 0)
             .count(),
+        managers.fight_version(),
     );
     let hand_size = crate::engine::mechanic::card::CardMechanic.normal_hand_limit(
         base_hand_size,
@@ -177,6 +178,17 @@ pub fn run_round_start_after_ai_split(
         append(
             &mut fight_steps,
             run_wave_entry_setup(managers, pool, catalog, determinism, context, entering_uids)?,
+        );
+        append(
+            &mut fight_steps,
+            run_wave_entry_master_halo_fanout(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                entering_uids,
+            )?,
         );
     }
     let (before_duration, settlement_plan) = run_round_start_before_duration(
@@ -357,6 +369,19 @@ pub fn run_round_start_after_ai_split(
             context,
             BattleEvent::Kind(EventKind::RoundStartCard),
             drain::ReactionLane::BuffActs,
+            Some(&owner_uids),
+        )?,
+    );
+    append(
+        &mut next_round_begin_steps,
+        drain::run_group_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundStartCard),
+            drain::ReactionLane::Skills,
             Some(&owner_uids),
         )?,
     );
@@ -696,10 +721,6 @@ pub fn run_start(
                 )?,
             );
             if !supplemental.is_empty() {
-                let deck_cost = supplemental
-                    .iter()
-                    .filter(|card| !card_mechanic.is_device_card(managers, card))
-                    .count() as i32;
                 append(
                     &mut result,
                     drain::run(
@@ -716,7 +737,6 @@ pub fn run_start(
                                         key: DefinitionKey::new(0, "OpeningDraw"),
                                     },
                                     cards: supplemental,
-                                    deck_cost,
                                 },
                             ),
                         ))],
@@ -961,6 +981,19 @@ pub fn run_start(
                     context,
                     BattleEvent::Kind(EventKind::RoundStartCard),
                     drain::ReactionLane::BuffActs,
+                    Some(&owner_uids),
+                )?,
+            );
+            append(
+                &mut result,
+                drain::run_group_event(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    BattleEvent::Kind(EventKind::RoundStartCard),
+                    drain::ReactionLane::Skills,
                     Some(&owner_uids),
                 )?,
             );

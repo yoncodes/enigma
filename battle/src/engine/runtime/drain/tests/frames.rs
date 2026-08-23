@@ -765,7 +765,7 @@ fn settled_player_death_removes_owned_cards_in_the_same_frame() {
             deck_num: 2,
         }))
         .unwrap();
-    managers.card.add_temp_card_for(10, 300, 0, 1);
+    managers.card.add_temp_card_for(10, 300, None, 0, 1);
     managers
         .execute_card(CardCommand::SetTeamCards(
             crate::engine::manager::card::CardSetTeamCards {

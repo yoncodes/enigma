@@ -570,7 +570,11 @@ impl BuffManager {
         Some(result)
     }
 
-    fn commit_fanout(&mut self, hp: &HpManager, plans: &[PlannedFanout]) -> Vec<BuffApplyResult> {
+    pub(in crate::engine::manager::buff) fn commit_fanout(
+        &mut self,
+        hp: &HpManager,
+        plans: &[PlannedFanout],
+    ) -> Vec<BuffApplyResult> {
         plans
             .iter()
             .filter_map(|plan| self.commit_fanout_one(hp, &plan.spec, plan.uid))

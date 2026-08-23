@@ -24,7 +24,9 @@ pub struct CardSetup {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TemporaryCardKind {
+    GenericSkill,
     ConfiguredSkill,
+    ConfiguredSkill3,
     HeroSkill,
 }
 
@@ -33,6 +35,7 @@ pub struct CardAddTemporary {
     pub origin: CommandOrigin,
     pub target_uid: i64,
     pub skill_id: i32,
+    pub hero_id: Option<i32>,
     pub reserve_id: i64,
     pub team_type: i32,
     pub kind: TemporaryCardKind,
@@ -161,7 +164,6 @@ pub struct CardDraw {
 pub struct CardOpeningDraw {
     pub origin: CommandOrigin,
     pub cards: Vec<CardInfo>,
-    pub deck_cost: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -279,6 +281,14 @@ pub struct HandCardRankUp {
     pub hand_index: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardDeckRankUpRange {
+    pub origin: CommandOrigin,
+    pub from: usize,
+    pub to: usize,
+    pub rank_delta: i32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardQueueUse {
     pub origin: CommandOrigin,
@@ -387,6 +397,7 @@ pub enum CardCommand {
         changes: Vec<QueuedCardRankChange>,
     },
     RankUpHand(HandCardRankUp),
+    RankUpDeckRange(CardDeckRankUpRange),
     CommitActionQueue {
         team: i32,
         emitter_uid: i64,
@@ -422,7 +433,9 @@ pub enum CardChangeKind {
     GeneratedAdded,
     UniversalAdded,
     RedealtKeepRanks,
+    GenericTemporaryAdded,
     TemporaryAdded,
+    ConfiguredSkill3Added,
     HeroTemporaryAdded,
     CrystalAdded,
     PrecastAdded,
@@ -450,6 +463,7 @@ pub enum CardChangeKind {
     QueuedRankChanged,
     AroundRanksChanged,
     HandRankChanged,
+    DeckTopRanksChanged,
     ActionQueueCommitted,
     PlayedRanksResolved,
     CastChannelRecorded,
@@ -682,12 +696,18 @@ pub(super) fn execute(
             if add.skill_id <= 0 || add.team_type == 0 {
                 return Err(CardCommandError::InvalidCommand);
             }
-            let card = manager.add_temp_card_for(
-                add.target_uid,
-                add.skill_id,
-                add.reserve_id,
-                add.team_type,
-            );
+            let card = match add.kind {
+                TemporaryCardKind::GenericSkill => manager.add_temp_card(add.skill_id),
+                TemporaryCardKind::ConfiguredSkill
+                | TemporaryCardKind::ConfiguredSkill3
+                | TemporaryCardKind::HeroSkill => manager.add_temp_card_for(
+                    add.target_uid,
+                    add.skill_id,
+                    add.hero_id,
+                    add.reserve_id,
+                    add.team_type,
+                ),
+            };
             operation = Some(CardChange::SpCardAdd {
                 target_uid: add.target_uid,
                 skill_id: add.skill_id,
@@ -697,7 +717,9 @@ pub(super) fn execute(
             (
                 Some(add.origin),
                 match add.kind {
+                    TemporaryCardKind::GenericSkill => CardChangeKind::GenericTemporaryAdded,
                     TemporaryCardKind::ConfiguredSkill => CardChangeKind::TemporaryAdded,
+                    TemporaryCardKind::ConfiguredSkill3 => CardChangeKind::ConfiguredSkill3Added,
                     TemporaryCardKind::HeroSkill => CardChangeKind::HeroTemporaryAdded,
                 },
                 Some(card),
@@ -887,7 +909,7 @@ pub(super) fn execute(
             )
         }
         CardCommand::DealOpening(draw) => {
-            if draw.cards.is_empty() || !manager.deal_opening_cards(&draw.cards, draw.deck_cost) {
+            if draw.cards.is_empty() || !manager.deal_opening_cards(&draw.cards) {
                 return Err(CardCommandError::InvalidCommand);
             }
             (
@@ -1207,6 +1229,22 @@ pub(super) fn execute(
             (
                 Some(change.origin),
                 CardChangeKind::HandRankChanged,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::RankUpDeckRange(change) => {
+            rank_results.extend(
+                manager
+                    .rank_up_deck_range(change.from, change.to, change.rank_delta)?
+                    .into_iter()
+                    .map(|change| CardRankResult::Changed(Box::new(change))),
+            );
+            (
+                Some(change.origin),
+                CardChangeKind::DeckTopRanksChanged,
                 None,
                 None,
                 Vec::new(),

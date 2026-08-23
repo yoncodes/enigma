@@ -266,7 +266,7 @@ fn opening_setup_applies_the_configured_fourth_ally_limit_before_dealing() {
     );
     assert_eq!(dealt, opening);
     assert_eq!(managers.card.normal_hand_len(), 11);
-    assert_eq!(managers.card.deck_num(), 45);
+    assert_eq!(managers.card.deck_num(), 48);
     let steps = crate::engine::packet::timeline::project(&start.frames).unwrap();
     assert_eq!(
         steps
@@ -278,7 +278,7 @@ fn opening_setup_applies_the_configured_fourth_ally_limit_before_dealing() {
             })
             .filter_map(|effect| effect.effect_num)
             .collect::<Vec<_>>(),
-        vec![48, 45, 45]
+        vec![48, 48, 48]
     );
 }
 
@@ -950,6 +950,34 @@ fn configured_special_temp_card_runs_during_the_opening_round_start_card_event()
 }
 
 #[test]
+fn buff_gated_skill_rule_runs_during_the_opening_round_start_card_event() {
+    init_config();
+    let (fight, catalog) = buff_gated_generic_temp_card_fixture();
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let (start, _) = run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        1,
+    )
+    .unwrap();
+
+    assert_buff_gated_generic_temp_card(&managers, &start);
+}
+
+#[test]
 fn configured_hero_temp_card_uses_the_live_group_rank_and_projection() {
     init_config();
     let fight = Fight {
@@ -1037,6 +1065,115 @@ fn configured_hero_temp_card_uses_the_live_group_rank_and_projection() {
         card.skill_id == Some(307001182)
             && card.temp_card == Some(true)
             && card.hero_id == Some(3070)
+    }));
+}
+
+#[test]
+fn configured_skill3_buff_adds_the_captured_card_and_removes_its_carrier() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3124),
+                team_type: Some(1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1622),
+                    buff_id: Some(312451467),
+                    from_uid: Some(10),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let (start, _) = run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 48,
+        },
+        7,
+    )
+    .unwrap();
+
+    let card = managers
+        .card
+        .hand()
+        .iter()
+        .find(|card| card.skill_id == Some(312451036))
+        .expect("configured Skill 3 card is added to the hand");
+    assert_eq!(card.uid, Some(10));
+    assert_eq!(card.hero_id, Some(3124));
+    assert_eq!(card.temp_card, Some(true));
+    assert_eq!(
+        card.card_type,
+        Some(sonettobuf::card_info::CardType::Skill3 as i32)
+    );
+    assert!(!managers.buff.has_buff_id(10, 312451467));
+
+    fn captured_step(effect: &sonettobuf::ActEffect) -> Option<&sonettobuf::FightStep> {
+        let step = effect.fight_step.as_ref()?;
+        if step.act_id == Some(312451467)
+            && step.from_id == Some(10)
+            && step.to_id == Some(10)
+            && step.act_effect.iter().any(|effect| {
+                effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Addhandcard as i32)
+            })
+        {
+            return Some(step);
+        }
+        step.act_effect.iter().find_map(captured_step)
+    }
+    let steps = crate::engine::packet::timeline::project(&start.frames).unwrap();
+    let nested = steps
+        .iter()
+        .flat_map(|step| &step.act_effect)
+        .find_map(captured_step)
+        .expect("configured Skill 3 uses the carrier-owned nested frame");
+    let card_effect = nested
+        .act_effect
+        .iter()
+        .find(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Addhandcard as i32)
+        })
+        .unwrap();
+    assert_eq!(card_effect.target_id, Some(10));
+    assert_eq!(card_effect.effect_num, Some(0));
+    assert_eq!(card_effect.reserve_id, Some(0));
+    assert_eq!(card_effect.team_type, Some(1));
+    assert!(card_effect.card_info_list.is_empty());
+    assert!(card_effect.card_info.as_ref().is_some_and(|card| {
+        card.uid == Some(10)
+            && card.skill_id == Some(312451036)
+            && card.hero_id == Some(3124)
+            && card.temp_card == Some(true)
+            && card.card_type == Some(sonettobuf::card_info::CardType::Skill3 as i32)
+    }));
+    assert!(steps.iter().any(|step| {
+        step.act_effect.iter().any(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Buffdel as i32)
+                && effect.target_id == Some(10)
+                && effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(312451467)
+                && effect.buff.as_ref().and_then(|buff| buff.uid) == Some(1622)
+        })
     }));
 }
 

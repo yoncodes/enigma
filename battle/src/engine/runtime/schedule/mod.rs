@@ -5,7 +5,7 @@ use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
     manager::{
         BattleManagers,
-        buff::{BuffCommand, BuffDurationAdvance},
+        buff::{BuffCommand, BuffDurationAdvance, BuffMasterHaloFanout},
         card::{
             CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardCommand, CardInvalidatePlayed,
             CardRefillOne, CardRefreshAiQueue, CardSetup,
@@ -592,6 +592,26 @@ pub fn run_wave_entry_setup(
         }
     }
     Ok(result)
+}
+
+fn run_wave_entry_master_halo_fanout(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    entering_uids: &[i64],
+) -> Result<DrainResult, DrainError> {
+    drain::run_command_group(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        [RuleOp::Command(BattleCommand::Buff(
+            BuffCommand::FanoutMasterHalo(BuffMasterHaloFanout::new(entering_uids.to_vec())),
+        ))],
+    )
 }
 
 pub fn run_wave_entry(

@@ -547,7 +547,7 @@ fn removing_a_player_owner_clears_player_cards_without_touching_ai() {
     );
     manager.set_team_cards(vec![card(10, 500), card(13, 600)]);
     manager.set_ai_queue(vec![card(-1, 700)]);
-    manager.add_temp_card_for(10, 800, 0, 1);
+    manager.add_temp_card_for(10, 800, None, 0, 1);
 
     assert_eq!(manager.remove_owner_cards(10, 1), Some(Vec::new()));
     assert!(manager.hand().iter().all(|card| card.uid != Some(10)));

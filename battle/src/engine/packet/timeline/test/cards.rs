@@ -137,6 +137,70 @@ fn hand_rank_change_projects_the_committed_card_and_resource_state() {
 }
 
 #[test]
+fn deck_top_rank_change_is_silent_until_the_generic_card_sync() {
+    use crate::engine::manager::card::CardDeckRankUpRange;
+
+    crate::test_support::init_config();
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(60116, "CardDeckTopRankCorrect"),
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                skill_group1: vec![30650211, 30650212, 30650213],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: Vec::new(),
+            draw_pile: vec![
+                CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(30650211),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(30650211),
+                    ..Default::default()
+                },
+            ],
+            deck_num: 2,
+        }))
+        .unwrap();
+    let changes = managers
+        .execute_card(CardCommand::RankUpDeckRange(CardDeckRankUpRange {
+            origin,
+            from: 1,
+            to: 2,
+            rank_delta: 1,
+        }))
+        .unwrap();
+
+    let effects = project_change_for_test(&BattleChange::Card(Box::new(changes))).unwrap();
+
+    assert!(effects.is_empty());
+    assert_eq!(
+        managers
+            .card
+            .draw_pile()
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>(),
+        vec![30650212, 30650212]
+    );
+}
+
+#[test]
 fn buff_act_hand_rank_change_projects_marker_then_card_change_with_zero_config() {
     crate::test_support::init_config();
     let fight = Fight {

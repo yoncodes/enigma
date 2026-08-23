@@ -2,6 +2,7 @@ use crate::engine::{
     entity::skill::Skill,
     manager::{
         buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
+        emanation::EmanationKind,
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
         ex_point::{ExPointChange, ExPointCommand, ExPointKind},
     },
@@ -79,6 +80,13 @@ pub(super) fn supports_group_and_star_skill(behavior: &ParsedBehavior) -> bool {
         3 => matches!(star, 0 | 1 | 4),
         _ => false,
     })
+}
+
+pub(super) fn supports_crystal_reuse(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [chance, skill_id, crystal_type]
+        if (1..=1000).contains(chance)
+            && *skill_id > 0
+            && EmanationKind::from_id(*crystal_type).is_some())
 }
 
 impl BehaviorHandler for Handler {
@@ -447,17 +455,13 @@ impl BehaviorHandler for Handler {
                 let [chance, skill_id, crystal_type] = behavior.args.as_slice() else {
                     return Some(Vec::new());
                 };
-                let count = usize::try_from(*crystal_type - 1)
-                    .ok()
-                    .and_then(|index| {
-                        context
-                            .managers
-                            .emanation
-                            .counts(context.source_uid)
-                            .get(index)
-                            .copied()
-                    })
-                    .unwrap_or_default()
+                let Some(kind) = EmanationKind::from_id(*crystal_type) else {
+                    return Some(Vec::new());
+                };
+                let count = context
+                    .managers
+                    .emanation
+                    .count(context.source_uid, kind)
                     .max(0);
                 let configured_chance = chance.saturating_mul(count);
                 if *skill_id <= 0 || configured_chance <= 0 {

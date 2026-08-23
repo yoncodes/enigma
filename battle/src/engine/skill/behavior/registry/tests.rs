@@ -287,6 +287,70 @@ fn crystal_skill_rate_validates_its_halo_payload() {
 }
 
 #[test]
+fn crystal_reuse_validates_chance_skill_and_lane() {
+    let definition = find_key(60242, "CrystalReuse").unwrap();
+    let valid = ParsedBehavior::new(60242, "CrystalReuse", vec![334, 31340152, 1]);
+
+    assert!(definition.supports.is_some_and(|supports| supports(&valid)));
+    assert!(crate::engine::skill::behavior::is_supported(&valid));
+    for args in [
+        vec![],
+        vec![334, 31340152],
+        vec![0, 31340152, 1],
+        vec![1001, 31340152, 1],
+        vec![334, 0, 1],
+        vec![334, 31340152, 0],
+        vec![334, 31340152, 4],
+        vec![334, 31340152, 1, 0],
+    ] {
+        let unsupported = ParsedBehavior::new(60242, "CrystalReuse", args);
+        assert!(
+            !definition
+                .supports
+                .is_some_and(|supports| supports(&unsupported))
+        );
+        assert!(!crate::engine::skill::behavior::is_supported(&unsupported));
+    }
+}
+
+#[test]
+fn powerful_poison_conversion_keeps_exact_identity_and_positive_shape() {
+    let definition = find_key(60284, "PoisonConvertToPowerfulPoisonBuff").unwrap();
+    let valid = ParsedBehavior::new(
+        60284,
+        "PoisonConvertToPowerfulPoisonBuff",
+        vec![6, 31420003],
+    );
+
+    assert_eq!(
+        definition.kind,
+        BehaviorKind::PoisonConvertToPowerfulPoisonBuff
+    );
+    assert_eq!(definition.phase, BehaviorPhase::AfterDamage);
+    assert!(definition.destination);
+    assert!(definition.supports.is_some_and(|supports| supports(&valid)));
+    assert!(crate::engine::skill::behavior::is_supported(&valid));
+    assert_eq!((definition.references)(&valid).buffs, vec![31420003]);
+    for args in [
+        Vec::new(),
+        vec![6],
+        vec![0, 31420003],
+        vec![6, 0],
+        vec![6, 31420003, 1],
+    ] {
+        let unsupported = ParsedBehavior::new(60284, "PoisonConvertToPowerfulPoisonBuff", args);
+        assert!(
+            !definition
+                .supports
+                .is_some_and(|supports| supports(&unsupported))
+        );
+        assert!(!crate::engine::skill::behavior::is_supported(&unsupported));
+    }
+    assert!(find_key(60284, "PoisonConvertToTargetBuff").is_none());
+    assert!(find_key(60110, "PoisonConvertToPowerfulPoisonBuff").is_none());
+}
+
+#[test]
 fn planet_removal_keeps_its_exact_behavior_identity() {
     let definition = find_key(60252, "DisperseForce3").unwrap();
     let valid = ParsedBehavior::from_spec(
@@ -416,6 +480,40 @@ fn special_temporary_card_keeps_its_exact_identity_and_arguments() {
         vec![31446013, 1],
     )));
     assert!(find_key(60300, "AddSpTempCard").is_none());
+}
+
+#[test]
+fn generic_temporary_card_keeps_its_exact_identity_and_arguments() {
+    let definition = find_key(50031, "AddSpTempCard").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::AddSpTempCard);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert_eq!(
+        definition.condition_route_override,
+        Some(ConditionRouteOverride::Trigger {
+            key: DefinitionKey::new(19106, "HasBuffId"),
+            event: EventKind::RoundStartCard,
+            phase: None,
+        })
+    );
+    assert!(supports(&ParsedBehavior::new(
+        50031,
+        "AddSpTempCard",
+        vec![31446013]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        50031,
+        "AddSpTempCard",
+        vec![0]
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        50031,
+        "AddSpTempCard",
+        vec![31446013, 1],
+    )));
+    assert!(find_key(50031, "AddSpTempCard2").is_none());
 }
 
 #[test]

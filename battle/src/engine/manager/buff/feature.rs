@@ -1,7 +1,7 @@
 use sonettobuf::BuffInfo;
 
 use super::BuffDefinition;
-use crate::engine::skill::buff_act::registry::BuffActKind;
+use crate::engine::skill::buff_act::registry::{self, BuffActKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ResolvedBuffFeature {
@@ -263,42 +263,40 @@ pub(super) fn resolve_features_from(
 ) -> Vec<ResolvedBuffFeature> {
     raw_features
         .split('|')
-        .map(str::trim)
-        .filter(|raw| !raw.is_empty())
+        .filter(|raw| !raw.trim().is_empty())
         .map(|raw| {
-            let values = raw
-                .split(['#', ','])
-                .map(str::trim)
-                .filter_map(|part| part.parse().ok())
-                .collect::<Vec<_>>();
-            let act = values
-                .first()
-                .and_then(|act_id| game?.buff_act.get(*act_id));
-            let registered = act.and_then(|act| {
-                crate::engine::skill::buff_act::registry::find(act.id, &act.r#type)
-            });
-            let arguments_supported = registered.is_some_and(|definition| {
-                definition.raw_supports.map_or_else(
-                    || {
-                        definition
-                            .supports
-                            .is_none_or(|supports| supports(values.get(1..).unwrap_or_default()))
-                    },
-                    |supports| supports(game, raw),
-                )
-            });
+            let parsed = registry::resolve_feature(game, raw);
             ResolvedBuffFeature {
                 raw: raw.to_owned(),
-                values,
-                act_type: act.map(|act| act.r#type.clone()).unwrap_or_default(),
-                effect_time: act.map(|act| act.effect_time).unwrap_or_default(),
-                effect_condition: act.map(|act| act.effect_condition).unwrap_or_default(),
-                kind: registered.map(|definition| definition.kind),
-                arguments_supported,
-                stat_read_timing: registered
+                values: parsed
+                    .as_ref()
+                    .map(|feature| feature.values.clone())
+                    .unwrap_or_default(),
+                act_type: parsed
+                    .as_ref()
+                    .map(|feature| feature.act_type.clone())
+                    .unwrap_or_default(),
+                effect_time: parsed
+                    .as_ref()
+                    .map(|feature| feature.effect_time)
+                    .unwrap_or_default(),
+                effect_condition: parsed
+                    .as_ref()
+                    .map(|feature| feature.effect_condition)
+                    .unwrap_or_default(),
+                kind: parsed.as_ref().and_then(|feature| feature.kind),
+                arguments_supported: parsed
+                    .as_ref()
+                    .is_some_and(|feature| feature.arguments_supported),
+                stat_read_timing: parsed
+                    .as_ref()
+                    .and_then(|feature| feature.definition)
                     .map(|definition| definition.state.read_timing)
                     .unwrap_or(crate::engine::skill::buff_act::registry::StatReadTiming::None),
-                wire: registered.and_then(|definition| definition.wire.as_ref()),
+                wire: parsed
+                    .as_ref()
+                    .and_then(|feature| feature.definition)
+                    .and_then(|definition| definition.wire.as_ref()),
             }
         })
         .collect()

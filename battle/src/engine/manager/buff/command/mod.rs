@@ -8,9 +8,11 @@ use crate::engine::{
 
 use super::{
     ActiveBuff, BuffActInfoMarkerResult, BuffAddArgs, BuffDefinition, BuffDeleteReason,
-    BuffManager, BuffMarkerResult, BuffPolicy, BuffReplaceResult, BuffRoute,
+    BuffFanoutResult, BuffManager, BuffMarkerResult, BuffPolicy, BuffReplaceResult, BuffRoute,
     BuffShieldRemoveResult, BuffStatus, BuffStorage, count_or_layer_from,
-    grant_plan::{GrantAction, LayerRefreshPlan, PlannedFanout, PlannedFanoutRefresh},
+    grant_plan::{
+        GrantAction, LayerRefreshPlan, PlannedFanout, PlannedFanoutRefresh, PlannedMasterHaloFanout,
+    },
     typed_count_repeat,
     uid_policy::{self, UidAllocationPlan},
 };
@@ -239,6 +241,27 @@ pub struct BuffGrantUidReservation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuffMasterHaloFanout {
+    pub origin: CommandOrigin,
+    pub target_uids: Vec<i64>,
+}
+
+const WAVE_ENTRY_MASTER_HALO_KEY: crate::engine::skill::rule::DefinitionKey =
+    crate::engine::skill::rule::DefinitionKey::new(0, "WaveEntryMasterHalo");
+
+impl BuffMasterHaloFanout {
+    pub fn new(target_uids: Vec<i64>) -> Self {
+        Self {
+            origin: CommandOrigin {
+                domain: RuleDomain::Lifecycle,
+                key: WAVE_ENTRY_MASTER_HALO_KEY,
+            },
+            target_uids,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuffDurationAdvance {
     pub origin: CommandOrigin,
     pub take_stage: i32,
@@ -342,6 +365,7 @@ pub enum BuffCommand {
     AddSpecialCount(BuffSpecialCount),
     ReserveChildUids(BuffChildUidReservation),
     ReserveGrantUid(BuffGrantUidReservation),
+    FanoutMasterHalo(BuffMasterHaloFanout),
     AdvanceDuration(BuffDurationAdvance),
     SyncRoundStartDuration(BuffRoundStartDurationSync),
 }
@@ -483,6 +507,7 @@ enum BuffPlanAction {
     AddSpecialCount(SpecialCountPlan),
     ReserveChildUids(UidReservationPlan),
     ReserveGrantUid(GrantUidReservationPlan),
+    FanoutMasterHalo(Vec<PlannedMasterHaloFanout>),
     AdvanceDuration(Vec<super::lifecycle::BuffDurationPlan>),
     SyncRoundStartDuration(Vec<super::lifecycle::BuffLifecyclePlan>),
 }

@@ -526,10 +526,12 @@ behavior_definitions! {
     [50023] "ChangeToTempCards" => super::card::Handler, ChangeHandToTemporary, Immediate, once_destination, super::card::supports_mark_hand_temporary;
     [60075] "AroundChangeRank" => super::card::Handler, AroundChangeRank, Immediate, queue_preparation, super::card::supports_around_change_rank;
     [50011] "CardLevelChange" => super::card::Handler, CardLevelChange, Immediate, destination, super::card::supports_card_level_change;
+    [60116] "CardDeckTopRankCorrect" => super::card::Handler, CardDeckTopRankCorrect, Immediate, destination, super::card::supports_deck_top_rank_correct;
     [50034] "ConsumePowerUpgradeSkillCard" => super::card::Handler, ConsumePowerUpgradeSkillCard, Immediate, destination, super::card::supports_power_card_upgrade;
     [60002] "AddUniversalCard" => super::card::Handler, AddUniversalCard, Immediate, destination;
     [60012] "RedealCardKeepStar2" => super::card::Handler, RedealCardKeepStar2, Immediate, destination;
     [60070] "AddUseSkillCard" => super::card::Handler, AddQueuedSkillCard, Immediate, destination, super::card::supports_queued_skill_card;
+    [50031] "AddSpTempCard" => super::card::Handler, AddSpTempCard, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(19106, "HasBuffId"), event: EventKind::RoundStartCard, phase: None }), super::card::supports_temporary_skill_card;
     [60300] "AddSpTempCard2" => super::card::Handler, AddSpTempCard2, Immediate, destination, super::card::supports_temporary_skill_card;
     [100018] "ConsumeBuffCreateTempCardOrder" => super::precast::Handler, ConsumeBuffCreatePrecast, Immediate, destination, super::precast::supports_arguments;
     [50036] "ConsumePowerDirectUseSkill" => super::use_skill::Handler, ConsumePowerDirectUseSkill, Immediate, destination, super::use_skill::supports_consume_power_direct_skill;
@@ -551,7 +553,7 @@ behavior_definitions! {
     [60175] "DirectUseBigSkill" => super::use_skill::Handler, DirectUseBigSkill, Immediate, parent_destination;
     [50010] "DirectUseGroupAndStarSkill" => super::use_skill::Handler, DirectUseGroupAndStarSkill, Immediate, destination, super::use_skill::supports_group_and_star_skill;
     [50015] "UseExtraSkill" => super::use_skill::Handler, UseExtraSkill, Immediate, plain;
-    [60242] "CrystalReuse" => super::use_skill::Handler, CrystalReuse, Immediate, destination;
+    [60242] "CrystalReuse" => super::use_skill::Handler, CrystalReuse, Immediate, destination, super::use_skill::supports_crystal_reuse;
     [60222] "ConsumeCardAddBuff" => super::buff::Handler, ConsumeCardAddBuff, Immediate, destination, super::buff::supports_consume_card_add_buff;
     [60112] "AddTargetBuffByPoison" => super::buff::Handler, AddTargetBuffByPoison, AfterDamage, destination;
     [60142] "ConsumePowerAddBuff" => super::buff::Handler, ConsumePowerAddBuff, Immediate, destination, super::buff::supports_consume_power_add_buff;
@@ -622,6 +624,7 @@ behavior_definitions! {
     [40006] "MonsterChange" => super::monster_change::Handler, MonsterChange, Immediate, destination, super::monster_change::supports;
     [60074] "CatapultBuff" => super::poison::Handler, CatapultBuff, AfterDamage, destination;
     [60110] "PoisonConvertToTargetBuff" => super::poison::Handler, PoisonConvertToTargetBuff, AfterDamage, destination;
+    [60284] "PoisonConvertToPowerfulPoisonBuff" => super::poison::Handler, PoisonConvertToPowerfulPoisonBuff, AfterDamage, destination, super::poison::supports_conversion;
     [60111] "ConsumePoisonSettleDeadlyPoison" => super::poison::Handler, ConsumePoisonSettleDeadlyPoison, AfterDamage, destination;
     [100005] "Assassinate" => super::general::AssassinateHandler, Assassinate, Immediate, destination, arguments::none;
     [60037] "NotifyUpgradeHero" => super::general::Handler, NotifyUpgradeHero, Immediate, destination;
