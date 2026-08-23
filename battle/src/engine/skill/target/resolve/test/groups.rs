@@ -34,6 +34,36 @@ fn resolves_relative_ally_and_enemy_groups_from_fight() {
     assert_eq!(
         TargetResolver::resolve(
             &TargetRequest {
+                code: 102,
+                raw: Vec::new(),
+            },
+            1001,
+            10,
+            &pool,
+            &mut determinism,
+        ),
+        vec![11]
+    );
+    assert_eq!(
+        TargetResolver::resolve_with_context(
+            &TargetRequest {
+                code: 102,
+                raw: Vec::new(),
+            },
+            1001,
+            10,
+            &pool,
+            &mut determinism,
+            TargetContext {
+                runtime_target_uid: 12,
+                ..Default::default()
+            },
+        ),
+        vec![11]
+    );
+    assert_eq!(
+        TargetResolver::resolve(
+            &TargetRequest {
                 code: 202,
                 raw: Vec::new(),
             },

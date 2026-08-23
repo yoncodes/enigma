@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
@@ -159,6 +159,7 @@ pub struct TargetPool {
     boss_model_ids: Vec<i32>,
     assist_bosses: HashMap<i32, i64>,
     assist_boss_skills: Vec<(i64, Vec<i32>)>,
+    reserve_uids: HashSet<i64>,
     virtual_entities: Vec<TargetEntity>,
     teams: HashMap<i64, i32>,
 }
@@ -179,6 +180,8 @@ impl TargetPool {
             ..Self::default()
         };
         if let Some(team) = &fight.attacker {
+            pool.reserve_uids
+                .extend(team.sub_entitys.iter().filter_map(|entity| entity.uid));
             pool.teams
                 .extend(team_identities(team).filter_map(|entity| entity.uid.map(|uid| (uid, 1))));
             pool.attacker_main = alive_uids(catalog, &team.entitys);
@@ -205,6 +208,8 @@ impl TargetPool {
             );
         }
         if let Some(team) = &fight.defender {
+            pool.reserve_uids
+                .extend(team.sub_entitys.iter().filter_map(|entity| entity.uid));
             pool.teams
                 .extend(team_identities(team).filter_map(|entity| entity.uid.map(|uid| (uid, 2))));
             pool.defender_main = alive_uids(catalog, &team.entitys);
@@ -355,6 +360,10 @@ impl TargetPool {
             Some(2) => &self.defender_main,
             _ => &[],
         }
+    }
+
+    pub fn is_reserve(&self, uid: i64) -> bool {
+        self.reserve_uids.contains(&uid)
     }
 
     pub fn boss_allies(&self, source_uid: i64) -> Vec<i64> {
