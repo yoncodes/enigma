@@ -388,13 +388,28 @@ fn round_start_field_presence_keeps_its_exact_key_and_route() {
 
 #[test]
 fn static_team_battle_tag_threshold_runs_at_battle_start() {
+    for opcode in [762005, 762021] {
+        assert_eq!(
+            find_key(opcode, "BattleTagNum").map(|definition| definition.role),
+            Some(ConditionRole::Setup {
+                stage: SetupStage::BattleStart,
+                priority: 0,
+            })
+        );
+    }
     assert_eq!(
-        find_key(762021, "BattleTagNum").map(|definition| definition.role),
-        Some(ConditionRole::Setup {
-            stage: SetupStage::BattleStart,
-            priority: 0,
+        parse(
+            762005,
+            "BattleTagNum",
+            &["113".into(), "3".into(), "1".into()]
+        ),
+        Some(ParsedConditionKind::BattleTagCount {
+            tag_id: 113,
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 3,
         })
     );
+    assert!(parse(762005, "Other", &["113".into(), "3".into(), "1".into()]).is_none());
     assert_eq!(
         find_key(762103, "BattleTagNum").map(|definition| definition.role),
         Some(ConditionRole::Setup {
