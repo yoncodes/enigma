@@ -1,9 +1,10 @@
+use crate::engine::skill::rule::RuleReferences;
 use crate::engine::{
     event::payload::BattleEvent,
     manager::card::{CardCommand, CardReplaceOwnerSkills},
     manager::{BattleManagers, buff::ActiveBuffFeature},
     skill::{
-        buff_act::registry::BuffActKind,
+        buff_act::registry::{BuffActKind, ParsedBuffAct},
         rule::output::{BattleCommand, RuleOp},
     },
 };
@@ -16,8 +17,13 @@ pub struct SkillGroupMapping {
 
 pub fn parse_skill_group_mapping(raw: &str) -> Option<SkillGroupMapping> {
     let mut parts = raw.split('#');
-    (parts.next()?.trim() == "1138").then_some(())?;
+    parts.next()?.trim().parse::<i32>().ok()?;
+    parse_skill_group_parts(parts)
+}
 
+fn parse_skill_group_parts<'a>(
+    parts: impl IntoIterator<Item = &'a str>,
+) -> Option<SkillGroupMapping> {
     let mut group1 = None;
     let mut group2 = None;
     for part in parts {
@@ -47,6 +53,36 @@ pub fn parse_skill_group_mapping(raw: &str) -> Option<SkillGroupMapping> {
 pub fn replacement_skill_ids(raw: &str) -> Option<Vec<i32>> {
     let mapping = parse_skill_group_mapping(raw)?;
     Some(mapping.group1.into_iter().chain(mapping.group2).collect())
+}
+
+pub fn parse_feature(raw_args: &[String]) -> Option<Vec<i32>> {
+    let mut group1 = None;
+    let mut group2 = None;
+    for raw in raw_args {
+        let (group, skills) = raw.split_once(':')?;
+        let skills = skills
+            .split(',')
+            .map(str::trim)
+            .map(str::parse::<i32>)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()?;
+        if skills.is_empty() || skills.iter().any(|skill_id| *skill_id <= 0) {
+            return None;
+        }
+        match group.trim() {
+            "1" if group1.is_none() => group1 = Some(skills),
+            "2" if group2.is_none() => group2 = Some(skills),
+            _ => return None,
+        }
+    }
+    Some(group1?.into_iter().chain(group2?).collect())
+}
+
+pub fn references(_: Option<&config::GameDB>, feature: &ParsedBuffAct) -> RuleReferences {
+    RuleReferences {
+        skills: feature.values.get(1..).unwrap_or_default().to_vec(),
+        ..RuleReferences::default()
+    }
 }
 
 pub fn supports_replace_entity_skill_group(game: Option<&config::GameDB>, raw: &str) -> bool {

@@ -14,7 +14,7 @@ use battle::engine::{
         buff_act::{
             self,
             effect_time::{BuffActEvent, classify as classify_effect_time},
-            registry::{self as buff_act_registry, BuffActKind},
+            registry as buff_act_registry,
         },
         condition::{ConditionTiming, ParsedCondition, ParsedConditionKind, registry},
         effect::{ParsedBehavior, SkillEffectCatalog, SkillEffectSlot},
@@ -29,9 +29,9 @@ mod closure;
 mod report;
 mod roots;
 
-#[cfg(test)]
-use closure::buff_act_capability;
 pub(crate) use closure::scan_closure;
+#[cfg(test)]
+use closure::{buff_act_capability, malformed_buff_act_error};
 pub(crate) use report::{CapabilityKey, Report};
 pub(crate) use roots::{
     Pending, collect_battle_roots, collect_episode_roots, collect_hero_build_roots,

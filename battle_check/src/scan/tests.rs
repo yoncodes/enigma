@@ -381,3 +381,21 @@ fn semantic_destination_is_independent_from_wire_metadata() {
         Some("state-consumer")
     );
 }
+
+#[test]
+fn malformed_buff_act_arguments_fail_loudly_without_trailing_references() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let feature = buff_act_registry::resolve_feature(Some(db), "865#bad#31460181").unwrap();
+
+    assert!(feature.is_malformed());
+    assert!(feature.values.is_empty());
+    assert!(feature.references(Some(db)).skills.is_empty());
+    assert_eq!(
+        malformed_buff_act_error("test root", 1, 865, "AddPassiveSkills", &feature),
+        Some(
+            "MalformedBuffActArguments path=test root > buff 1 act=865 type=AddPassiveSkills reason=InvalidInteger { cell: 1, item: 0 } raw=\"865#bad#31460181\""
+                .to_owned()
+        )
+    );
+}
