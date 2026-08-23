@@ -287,6 +287,33 @@ fn crystal_skill_rate_validates_its_halo_payload() {
 }
 
 #[test]
+fn crystal_reuse_validates_chance_skill_and_lane() {
+    let definition = find_key(60242, "CrystalReuse").unwrap();
+    let valid = ParsedBehavior::new(60242, "CrystalReuse", vec![334, 31340152, 1]);
+
+    assert!(definition.supports.is_some_and(|supports| supports(&valid)));
+    assert!(crate::engine::skill::behavior::is_supported(&valid));
+    for args in [
+        vec![],
+        vec![334, 31340152],
+        vec![0, 31340152, 1],
+        vec![1001, 31340152, 1],
+        vec![334, 0, 1],
+        vec![334, 31340152, 0],
+        vec![334, 31340152, 4],
+        vec![334, 31340152, 1, 0],
+    ] {
+        let unsupported = ParsedBehavior::new(60242, "CrystalReuse", args);
+        assert!(
+            !definition
+                .supports
+                .is_some_and(|supports| supports(&unsupported))
+        );
+        assert!(!crate::engine::skill::behavior::is_supported(&unsupported));
+    }
+}
+
+#[test]
 fn planet_removal_keeps_its_exact_behavior_identity() {
     let definition = find_key(60252, "DisperseForce3").unwrap();
     let valid = ParsedBehavior::from_spec(
