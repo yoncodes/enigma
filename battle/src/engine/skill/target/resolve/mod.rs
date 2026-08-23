@@ -699,12 +699,13 @@ fn other_allies(pool: &TargetPool, source_uid: i64, context: TargetContext) -> V
     let mut targets = pool
         .allies(source_uid)
         .iter()
-        .filter(|entity| entity.uid != source_uid)
+        .filter(|entity| entity.uid != source_uid && !pool.is_reserve(entity.uid))
         .map(|entity| entity.uid)
         .collect::<Vec<_>>();
     let runtime_target = context.runtime_target_uid;
     if runtime_target != 0
         && runtime_target != source_uid
+        && pool.entity(runtime_target).is_none()
         && pool
             .team_type(source_uid)
             .is_some_and(|team| pool.team_type(runtime_target) == Some(team))
