@@ -82,6 +82,7 @@ pub mod fix_electric_upgrade;
 pub mod fix_temp_attr_by_buff_layer;
 pub mod fixed_hurt;
 pub mod forbid;
+pub mod frozen;
 pub mod heat_scale_tag;
 pub mod heat_scale_use_skill;
 pub mod injury_bank;

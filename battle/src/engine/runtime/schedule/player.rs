@@ -373,6 +373,9 @@ pub(crate) fn card_skill_is_blocked(
         || managers
             .buff
             .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Petrified)
+        || managers
+            .buff
+            .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Frozen)
         || (managers
             .buff
             .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::Forbid)

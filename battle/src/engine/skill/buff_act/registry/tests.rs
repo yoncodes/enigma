@@ -1137,6 +1137,23 @@ fn incapacitating_control_buffs_keep_distinct_exact_routes() {
             .has_output()
     );
     assert!(find(402, "Dizzy").is_none());
+
+    let frozen = find(404, "Frozen").unwrap();
+    assert_eq!(frozen.kind, BuffActKind::Frozen);
+    assert!(frozen.state.consumer);
+    assert_eq!(
+        runtime_event(404, "Frozen", 0),
+        Some(EventKind::TargetAttacked)
+    );
+    assert!(has_destination(404, "Frozen", &[]));
+    assert!(!has_destination(404, "Frozen", &[1]));
+    assert!(find(404, "Petrified").is_none());
+    assert_eq!(
+        super::super::wire::find(404, "Frozen")
+            .unwrap()
+            .markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::Frozen as i32]
+    );
 }
 
 #[test]

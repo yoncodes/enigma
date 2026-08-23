@@ -204,6 +204,7 @@ fn incapacitating_control_buffs_block_card_actions() {
     for (buff_id, kind) in [
         (4011, buff_act::registry::BuffActKind::Dizzy),
         (4020, buff_act::registry::BuffActKind::Petrified),
+        (4040, buff_act::registry::BuffActKind::Frozen),
     ] {
         let fight = Fight {
             attacker: Some(FightTeam {
