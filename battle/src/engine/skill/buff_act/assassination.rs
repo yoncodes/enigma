@@ -30,6 +30,33 @@ pub fn supports_target_trigger(args: &[i32]) -> bool {
         if *rate > 0 && *consume > 0 && skill_ids.iter().all(|skill_id| *skill_id > 0))
 }
 
+pub fn parse_target_trigger(raw_args: &[String]) -> Option<Vec<i32>> {
+    let rate = raw_args.first()?.trim().parse::<i32>().ok()?;
+    let consume = raw_args.get(1)?.trim().parse::<i32>().ok()?;
+    let mut values = vec![rate, consume];
+    let mut mapped_values = 0;
+    for cell in &raw_args[2..] {
+        for part in cell.split(',') {
+            let mut atoms = part.split(':');
+            let first = atoms.next()?.trim().parse::<i32>().ok()?;
+            if first <= 0 {
+                return None;
+            }
+            values.push(first);
+            mapped_values += 1;
+            if let Some(second) = atoms.next() {
+                let second = second.trim().parse::<i32>().ok()?;
+                if second <= 0 || atoms.next().is_some() {
+                    return None;
+                }
+                values.push(second);
+                mapped_values += 1;
+            }
+        }
+    }
+    (rate > 0 && consume > 0 && mapped_values > 0).then_some(values)
+}
+
 pub fn target_modifier(
     managers: &BattleManagers,
     source_uid: i64,

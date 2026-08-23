@@ -71,24 +71,35 @@ fn raspberry_attribute_rates(
     raw: &str,
     attr_id: AttrId,
 ) -> Option<RaspberryAttributeRates> {
-    let parts = raw.split('#').collect::<Vec<_>>();
-    if parts.len() != 12
-        || !parts[0]
-            .parse()
-            .ok()
-            .is_some_and(|act_id| is_raspberry_act_id(catalog, act_id))
-    {
+    let mut cells = raw.split('#');
+    let act_id = cells.next()?.trim().parse::<i32>().ok()?;
+    let args = cells.map(str::to_owned).collect::<Vec<_>>();
+    let values = std::iter::once(act_id)
+        .chain(parse_feature(&args)?)
+        .collect::<Vec<_>>();
+    if !is_raspberry_act_id(catalog, values[0]) {
         return None;
     }
     [(5, 6, 10), (7, 8, 11)]
         .into_iter()
-        .find(|(attr, _, _)| parts[*attr].parse().ok().and_then(AttrId::from_raw) == Some(attr_id))
-        .and_then(|(_, regular, feast)| {
-            Some(RaspberryAttributeRates {
-                regular: parts[regular].parse().ok()?,
-                feast_tenths: parse_tenths(parts[feast])?,
-            })
+        .find(|(attr, _, _)| AttrId::from_raw(values[*attr]) == Some(attr_id))
+        .map(|(_, regular, feast)| RaspberryAttributeRates {
+            regular: values[regular],
+            feast_tenths: values[feast],
         })
+}
+
+pub fn parse_feature(raw_args: &[String]) -> Option<Vec<i32>> {
+    if raw_args.len() != 11 {
+        return None;
+    }
+    let mut values = Vec::with_capacity(raw_args.len());
+    for part in &raw_args[..9] {
+        values.push(part.trim().parse::<i32>().ok()?);
+    }
+    values.push(parse_tenths(raw_args[9].trim())?);
+    values.push(parse_tenths(raw_args[10].trim())?);
+    Some(values)
 }
 
 fn parse_tenths(raw: &str) -> Option<i32> {

@@ -296,7 +296,10 @@ fn scan_buff(
         pending.id, buff.type_id, pending.path
     ));
     let handler_owns_duration = buff.features.split('|').any(|raw| {
-        let Some(act_id) = split_ids(raw).first().copied() else {
+        let Some(feature) = buff_act_registry::resolve_feature(Some(db), raw) else {
+            return false;
+        };
+        let Some(act_id) = feature.act_id else {
             return false;
         };
         db.buff_act
@@ -387,18 +390,44 @@ fn scan_buff(
         .split('|')
         .filter(|raw| !raw.trim().is_empty())
     {
-        let values = split_ids(raw);
-        let Some(&feature_id) = values.first() else {
+        let Some(feature) = buff_act_registry::resolve_feature(Some(db), raw) else {
             report.error(format!(
                 "MalformedBuffFeature path={} > buff {} raw={raw:?}",
                 pending.path, pending.id
             ));
             continue;
         };
+        let Some(feature_id) = feature.act_id else {
+            report.error(format!(
+                "MalformedBuffFeature path={} > buff {} raw={raw:?}",
+                pending.path, pending.id
+            ));
+            continue;
+        };
+        if feature.is_malformed() && db.buff_act.get(feature_id).is_none() {
+            report.error(format!(
+                "MalformedBuffFeature path={} > buff {} raw={raw:?}",
+                pending.path, pending.id
+            ));
+            continue;
+        }
         if let Some(act) = db.buff_act.get(feature_id) {
             let key = CapabilityKey::new("buff-act", act.id, &act.r#type);
             report.capability(key.clone());
             let definition = buff_act_registry::find(act.id, &act.r#type);
+            if definition.is_some()
+                && let Some(message) = malformed_buff_act_error(
+                    &pending.path,
+                    pending.id,
+                    act.id,
+                    &act.r#type,
+                    &feature,
+                )
+            {
+                report.gap(key, "malformed buff-act arguments");
+                report.error(message);
+                continue;
+            }
             let route = classify_effect_time(act.effect_time);
             let runtime_event =
                 buff_act::registry::runtime_event(act.id, &act.r#type, act.effect_time);
@@ -407,13 +436,7 @@ fn scan_buff(
                     !definition.runtime.events.is_empty()
                         || !definition.transaction.events.is_empty()
                 });
-            let destination = buff_act::registry::destination_with_raw(
-                Some(db),
-                act.id,
-                &act.r#type,
-                &values[1..],
-                Some(raw),
-            );
+            let destination = buff_act::registry::destination_for_feature(Some(db), &feature);
             let has_destination = destination.is_some();
             let wire = buff_act::wire::find(act.id, &act.r#type);
             if let Some(wire) = wire {
@@ -518,178 +541,18 @@ fn scan_buff(
                     pending.path, pending.id, act.id, act.r#type, act.effect_time
                 ));
             }
-            match definition.map(|definition| definition.kind) {
-                Some(BuffActKind::SubBuff) => {
-                    if let Some(&buff_id) = values.get(1) {
-                        enqueue(
-                            buffs,
-                            buff_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
+            if feature.arguments_supported {
+                let reference_path = format!("{} > buff {}", pending.path, pending.id);
+                let references = feature.references(Some(db));
+                for skill_id in references.skills {
+                    enqueue(skills, skill_id, reference_path.clone());
                 }
-                Some(BuffActKind::AddBuffToEnter) => {
-                    if let Some(buff_id) =
-                        buff_act::add_buff_to_enter::referenced_buff(&values[1..])
-                    {
-                        enqueue(
-                            buffs,
-                            buff_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
+                for buff_id in references.buffs {
+                    enqueue(buffs, buff_id, reference_path.clone());
                 }
-                Some(BuffActKind::TransferEnergyBuff) => {
-                    if let Some(buff_id) =
-                        buff_act::transfer_energy_buff::referenced_buff(&values[1..])
-                    {
-                        enqueue(
-                            buffs,
-                            buff_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
+                for model_id in references.models {
+                    enqueue_monster_skills(db, model_id, &reference_path, skills, report);
                 }
-                Some(BuffActKind::AddPassiveSkills) => {
-                    if let Some(&skill_id) = values.get(1) {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                Some(BuffActKind::ReplaceEntitySkillGroup) => {
-                    if let Some(replacement_skills) = buff_act::bendith::replacement_skill_ids(raw)
-                    {
-                        for skill_id in replacement_skills {
-                            enqueue(
-                                skills,
-                                skill_id,
-                                format!("{} > buff {}", pending.path, pending.id),
-                            );
-                        }
-                    }
-                }
-                Some(BuffActKind::AddSpTempCard) => {
-                    if let Some(&skill_id) = values.get(1) {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                Some(BuffActKind::BeatBack) => {
-                    if let Some(skill_id) = buff_act::riposte::holder_skill(&values[1..]) {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                Some(BuffActKind::CardNotCalSize) => {
-                    for &skill_id in values
-                        .iter()
-                        .skip(1)
-                        .filter(|id| db.skill.get(**id).is_some())
-                    {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                Some(BuffActKind::AdrenalineAddCard) => {
-                    if let Some(raw_skills) = raw.split('#').nth(2) {
-                        for skill_id in raw_skills
-                            .split(',')
-                            .filter_map(|value| value.trim().parse::<i32>().ok())
-                        {
-                            enqueue(
-                                skills,
-                                skill_id,
-                                format!("{} > buff {}", pending.path, pending.id),
-                            );
-                        }
-                    }
-                }
-                Some(BuffActKind::NuoDiKaCastChannel) => {
-                    for skill_id in
-                        buff_act::nuo_di_ka_cast_channel::referenced_skills(&values[1..])
-                    {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                Some(BuffActKind::BuffOwnedCharge) => {
-                    if let Some(&skill_id) = values.get(3) {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                Some(BuffActKind::SpecialCountCastChannel) => {
-                    if let Some(&skill_id) = values.get(1) {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                Some(BuffActKind::CountContinueChannel) => {
-                    if let Some(&skill_id) = values.get(1) {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                Some(BuffActKind::CastChannel) => {
-                    if let Some(skill_id) = buff_act::cast_channel::referenced_skill(&values[1..]) {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                Some(BuffActKind::AddCardCastChannel) => {
-                    if let Some(skill_id) =
-                        buff_act::add_card_cast_channel::referenced_skill(&values[1..])
-                    {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                Some(BuffActKind::BeAttackedAssassinate) if raw.split('#').nth(3).is_some() => {
-                    report.warning(format!(
-                        "PartialBuffAct path={} > buff {} act={} type={} unsupported=skill-buff-map raw={raw:?}",
-                        pending.path, pending.id, act.id, act.r#type
-                    ));
-                }
-                Some(BuffActKind::BeatBackDependOnAttackMe) => {
-                    for &skill_id in values.iter().skip(1).take(2) {
-                        enqueue(
-                            skills,
-                            skill_id,
-                            format!("{} > buff {}", pending.path, pending.id),
-                        );
-                    }
-                }
-                _ => {}
             }
         } else if db.skill_buff.get(feature_id).is_some() {
             enqueue(
@@ -704,6 +567,21 @@ fn scan_buff(
             ));
         }
     }
+}
+
+pub(super) fn malformed_buff_act_error(
+    path: &str,
+    buff_id: i32,
+    act_id: i32,
+    act_type: &str,
+    feature: &buff_act_registry::ParsedBuffAct,
+) -> Option<String> {
+    feature.parse_error.map(|reason| {
+        format!(
+            "MalformedBuffActArguments path={path} > buff {buff_id} act={act_id} type={act_type} reason={reason:?} raw={:?}",
+            feature.raw,
+        )
+    })
 }
 
 pub(super) fn buff_act_capability(

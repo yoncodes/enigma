@@ -4,9 +4,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use battle::engine::{
-    entity::skill::split_ids,
-    skill::buff_act::wire::{self, WirePhase},
+use battle::engine::skill::buff_act::{
+    registry as buff_act_registry,
+    wire::{self, WirePhase},
 };
 use config::configs::GameDB;
 use serde_json::Value;
@@ -141,7 +141,9 @@ impl Evidence {
             let expected = buff
                 .features
                 .split('|')
-                .filter_map(|feature| split_ids(feature).first().copied())
+                .filter_map(|raw| buff_act_registry::resolve_feature(Some(db), raw))
+                .filter(|feature| !feature.is_malformed())
+                .filter_map(|feature| feature.act_id)
                 .filter_map(|id| db.buff_act.get(id))
                 .filter_map(|act| {
                     wire::find(act.id, &act.r#type).map(|definition| (act, definition))
@@ -197,7 +199,9 @@ impl Evidence {
         {
             buff.features
                 .split('|')
-                .filter_map(|feature| split_ids(feature).first().copied())
+                .filter_map(|raw| buff_act_registry::resolve_feature(Some(db), raw))
+                .filter(|feature| !feature.is_malformed())
+                .filter_map(|feature| feature.act_id)
                 .filter_map(|id| db.buff_act.get(id))
                 .collect::<Vec<_>>()
         } else {
@@ -219,7 +223,8 @@ impl Evidence {
             if !carrier
                 .features
                 .split('|')
-                .any(|feature| split_ids(feature).first() == Some(&act.id))
+                .filter_map(|raw| buff_act_registry::resolve_feature(Some(db), raw))
+                .any(|feature| !feature.is_malformed() && feature.act_id == Some(act.id))
             {
                 return;
             }
