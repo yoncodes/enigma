@@ -2972,7 +2972,7 @@ fn hand_skill_presence_keeps_exact_card_identity_and_round_timing() {
 }
 
 #[test]
-fn ritual_dance_totals_keep_their_exact_active_skill_routes() {
+fn buff_type_totals_keep_their_exact_routes() {
     let expected = ParsedConditionKind::BuffTypeCount {
         type_ids: vec![31100201],
         compare: ConditionCompare::GreaterThanOrEqual,
@@ -2997,6 +2997,25 @@ fn ritual_dance_totals_keep_their_exact_active_skill_routes() {
         find_key(537203, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
         Some(ConditionRole::Predicate)
     );
+    assert_eq!(
+        parse(
+            537103,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["31210125".into(), "10".into()],
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![31210125],
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 10,
+        })
+    );
+    assert_eq!(
+        find_key(537103, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStart,
+            priority: 1,
+        })
+    );
     assert!(
         parse(
             537201,
@@ -3015,7 +3034,7 @@ fn ritual_dance_totals_keep_their_exact_active_skill_routes() {
     );
     assert!(
         parse(
-            537203,
+            537103,
             "HasTypeIdBuffTotalCountMoreThan",
             &["31100201".into(), "8".into(), "1".into()]
         )
