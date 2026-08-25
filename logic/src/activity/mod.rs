@@ -77,7 +77,7 @@ use act104::{act104_infos, mark_activity104_story, mark_episode_after_story, mar
 use act123::{act123_infos, act153_infos};
 use act125::{act125_infos, finish_act125_episode};
 pub use act128::settle_act128_score_in_transaction;
-use act128::{act128_info, get_act128_milestone_bonus};
+use act128::{act128_info, get_act128_milestone_bonus, get_act128_total_rewards};
 use act136::{act136_info, act136_select};
 use act146::{act146_episode_bonus, act146_infos, finish_act146_episode};
 use act152::{accept_act152_present, act152_info};

@@ -5,7 +5,42 @@ use crate::{
     util::push,
 };
 use prost::Message;
-use sonettobuf::{Act128GetMilestoneBonusRequest, CmdId};
+use sonettobuf::{Act128GetMilestoneBonusRequest, Act128GetTotalRewardsRequest, CmdId};
+
+pub async fn on_act128_get_total_rewards(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
+    let msg = Act128GetTotalRewardsRequest::decode(&req.data[..])?;
+    let db = ctx.state.db;
+    let claim = ctx
+        .player_mut()?
+        .activity
+        .get_act128_total_rewards(db, msg.activity_id, msg.boss_id)
+        .await?;
+
+    push::send_applied_reward_pushes(
+        ctx,
+        player_id,
+        claim.rewards,
+        claim.material_changes,
+        Some(MaterialGetApproach::Act128BossReward),
+    )
+    .await?;
+    push::send_red_dot_value_push(
+        ctx,
+        RedDotId::BossRushBossSchedule.id(),
+        vec![0],
+        true,
+        0,
+        0,
+    )
+    .await?;
+
+    ctx.send_reply(CmdId::Act128GetTotalRewardsCmd, claim.reply, 0, req.up_tag)
+        .await
+}
 
 pub async fn on_act128_get_milestone_bonus(
     ctx: &mut ConnectionContext,

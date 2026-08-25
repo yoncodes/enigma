@@ -255,6 +255,7 @@ async fn dispatch_registered_command(
         CmdId::GetAct124InfosCmd => activity::on_get_act124_infos,
         CmdId::Get126InfosCmd => activity::on_get_126_infos,
         CmdId::Get128InfosCmd => activity::on_get_128_infos,
+        CmdId::Act128GetTotalRewardsCmd => activity::on_act128_get_total_rewards,
         CmdId::Act128GetMilestoneBonusCmd => activity::on_act128_get_milestone_bonus,
         CmdId::Get129InfosCmd => activity::on_get_129_infos,
         CmdId::Get130InfosCmd => activity::on_get_130_infos,

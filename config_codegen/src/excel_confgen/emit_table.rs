@@ -18,7 +18,8 @@ pub fn emit_table_store(
     let id_field = detect_id_field(field_types);
     let group_field = detect_group_field(field_types);
 
-    let has_id_index = id_field.is_some();
+    // Act128 reward ids repeat per activity, so a global id index would be lossy.
+    let has_id_index = id_field.is_some() && table_name != "activity128_rewards";
     let has_group_index =
         group_field.is_some() && !has_vec_group_type(field_types, group_field.as_ref());
 
@@ -205,4 +206,27 @@ pub fn emit_table_store(
     out.push("}".into());
 
     out.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::excel_confgen::schema_infer::analyze_field_types;
+    use serde_json::json;
+
+    #[test]
+    fn act128_rewards_do_not_expose_a_lossy_global_id_lookup() {
+        let records = vec![
+            json!({"activityId": 1, "id": 1}),
+            json!({"activityId": 2, "id": 1}),
+        ];
+        let output = emit_table_store(
+            "activity128_rewards",
+            &analyze_field_types(&records),
+            &records,
+        );
+
+        assert!(!output.contains("by_id"));
+        assert!(!output.contains("pub fn get("));
+    }
 }
