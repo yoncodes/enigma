@@ -1003,7 +1003,7 @@ buff_act_definitions! {
         scoped_runtime: |context| super::ex_point_overflow_bank::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(806, "ExPointOverflowBank"), &[EffectType::Expointoverflowbank as i32]));
     (1008, "BanLostLife") => BanLostLife,
-        supports: |args| matches!(args, [150]),
+        supports: |args| matches!(args, [150] | [160]),
         state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1008, "BanLostLife"), &[EffectType::None as i32]));
     (10001, "AdrenalineAddCard") => AdrenalineAddCard,

@@ -372,7 +372,7 @@ fn hp_loss_floor_is_an_exact_static_consumer() {
     assert!(definition.state.consumer);
     assert!(has_destination(1008, "BanLostLife", &[150]));
     assert!(!has_destination(1008, "BanLostLife", &[]));
-    assert!(!has_destination(1008, "BanLostLife", &[160]));
+    assert!(has_destination(1008, "BanLostLife", &[160]));
     assert!(!has_destination(1008, "BanLostLife", &[500]));
     assert!(find(1008, "DamageNotMoreThan").is_none());
 }
