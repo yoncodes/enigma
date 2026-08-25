@@ -1656,7 +1656,7 @@ async fn incomplete_act128_settlement_persists_score_without_dungeon_completion(
                 deck_num: 0,
             })
             .unwrap();
-        runtime
+        let round = runtime
             .advance_round(BeginRoundRequest {
                 opers: vec![BeginRoundOper {
                     oper_type: Some(CardOpType::PlayCard.id()),
@@ -1667,6 +1667,8 @@ async fn incomplete_act128_settlement_persists_score_without_dungeon_completion(
                 ..Default::default()
             })
             .unwrap();
+        assert_eq!(round.is_finish, Some(true));
+        assert_eq!(runtime.reconnect_state().0.is_finish, Some(true));
         assert_eq!(
             runtime.outcome(),
             ::battle::engine::runtime::BattleOutcome::OutOfRounds

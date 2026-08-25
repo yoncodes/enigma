@@ -4,7 +4,7 @@ use crate::engine::{
     manager::card::CardCommand,
     round::{
         command::{RoundCommand, commands_from_opers},
-        outcome::{battle_ended, finish_if_battle_ended},
+        outcome::{battle_ended, finish_if_battle_ended, round_limit_reached},
         power::ClothPower,
         state::{RoundState, next_action_points, next_round_shell, round_field_cards},
     },
@@ -613,6 +613,7 @@ impl BattleRuntime {
         if uses_action_phase_power_clear
             && self.round_state.is_finish
             && !terminal_during_next_round_preparation
+            && !round_limit_reached(&self.fight, &self.managers)
         {
             self.round_state.cur_round = active_round;
         }
