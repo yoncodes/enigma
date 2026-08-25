@@ -505,30 +505,32 @@ pub async fn save_common_group_snapshot_in_transaction(
     snapshot_id: i32,
     group: &HeroGroupInfo,
 ) -> Result<()> {
-    let group_db_id: i64 =
-        sqlx::query_scalar("SELECT id FROM hero_groups_common WHERE user_id = ? AND group_id = ?")
-            .bind(user_id)
-            .bind(group.group_id)
-            .fetch_one(&mut **tx)
-            .await?;
-
     if !hero_groups::group_assets_owned(tx, user_id, group).await? {
         return Err(anyhow!("hero group contains an unowned asset"));
     }
 
     let now = common::time::ServerTime::now_ms();
-    sqlx::query(
-        "UPDATE hero_groups_common
-         SET name = ?, cloth_id = ?, assist_boss_id = ?, params = ?, updated_at = ?
-         WHERE id = ?",
+    let group_db_id: i64 = sqlx::query_scalar(
+        "INSERT INTO hero_groups_common
+             (user_id, group_id, name, cloth_id, assist_boss_id, params, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, group_id) DO UPDATE SET
+             name = excluded.name,
+             cloth_id = excluded.cloth_id,
+             assist_boss_id = excluded.assist_boss_id,
+             params = excluded.params,
+             updated_at = excluded.updated_at
+         RETURNING id",
     )
+    .bind(user_id)
+    .bind(group.group_id)
     .bind(&group.name)
     .bind(group.cloth_id)
     .bind(group.assist_boss_id)
     .bind(&group.params)
     .bind(now)
-    .bind(group_db_id)
-    .execute(&mut **tx)
+    .bind(now)
+    .fetch_one(&mut **tx)
     .await?;
     replace_group_children(tx, group_db_id, group, false).await?;
 
