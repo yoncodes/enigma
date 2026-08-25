@@ -318,8 +318,9 @@ impl BuffManager {
             .filter_map(|active| active.definition.as_ref())
             .flat_map(BuffDefinition::features)
             .filter(|feature| {
-                feature.kind
-                    == Some(crate::engine::skill::buff_act::registry::BuffActKind::BanLostLife)
+                feature.arguments_supported
+                    && feature.kind
+                        == Some(crate::engine::skill::buff_act::registry::BuffActKind::BanLostLife)
             })
             .filter_map(|feature| feature.values.get(1).copied())
             .max()
