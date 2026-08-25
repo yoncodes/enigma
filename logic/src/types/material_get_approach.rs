@@ -19,6 +19,7 @@ pub enum MaterialGetApproach {
     BattlePass = 49,
     NoviceStageReward = 54,
     AstrologyStarReward = 62,
+    Act128BossReward = 70,
     Act1_6SkillLvDown = 84,
     Act1_6SkillReset = 85,
     V1a8Act157ComponentReward = 96,

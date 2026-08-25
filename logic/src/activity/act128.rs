@@ -4,10 +4,13 @@ use database::db::game::{
     activity_state::{self, ActivityStateKind, ActivityStateSet},
     currencies,
 };
-use sonettobuf::{Act128BossDetail, Act128GetMilestoneBonusReply, Get128InfosReply};
+use sonettobuf::{
+    Act128BossDetail, Act128GetMilestoneBonusReply, Act128GetTotalRewardsReply, Get128InfosReply,
+};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 
 pub type Act128MilestoneClaim = reward::RewardedReply<Act128GetMilestoneBonusReply>;
+pub type Act128TotalRewardsClaim = reward::RewardedReply<Act128GetTotalRewardsReply>;
 
 pub async fn act128_info(
     db: &SqlitePool,
@@ -41,24 +44,27 @@ pub async fn act128_info(
     boss_ids.sort_unstable();
     boss_ids.dedup();
 
+    let boss_detail = boss_ids
+        .into_iter()
+        .map(|boss_id| {
+            let (total, highest, ext) = saved.get(&boss_id).cloned().unwrap_or_default();
+            Ok(Act128BossDetail {
+                boss_id: Some(boss_id),
+                total_point: Some(total),
+                has_get_bonus_ids: claimed_reward_ids(&ext)?,
+                highest_point: Some(highest),
+                double_num: Some(0),
+                layer4_total_point: Some(0),
+                layer4_highest_point: Some(0),
+                sp_highest_point: Some(0),
+                ..Default::default()
+            })
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+
     Ok(Get128InfosReply {
         activity_id: Some(activity_id),
-        boss_detail: boss_ids
-            .into_iter()
-            .map(|boss_id| {
-                let (total, highest, _) = saved.get(&boss_id).cloned().unwrap_or_default();
-                Act128BossDetail {
-                    boss_id: Some(boss_id),
-                    total_point: Some(total),
-                    highest_point: Some(highest),
-                    double_num: Some(0),
-                    layer4_total_point: Some(0),
-                    layer4_highest_point: Some(0),
-                    sp_highest_point: Some(0),
-                    ..Default::default()
-                }
-            })
-            .collect(),
+        boss_detail,
         player_level: Some(player_level),
         player_exp: Some(player_exp),
         gain_milestone_level: Some(
@@ -68,6 +74,106 @@ pub async fn act128_info(
                 .unwrap_or_default(),
         ),
     })
+}
+
+pub async fn get_act128_total_rewards(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: Option<i32>,
+    boss_id: Option<i32>,
+) -> Result<Act128TotalRewardsClaim, AppError> {
+    let activity_id = activity_id.ok_or(AppError::InvalidRequest)?;
+    let boss_id = boss_id.ok_or(AppError::InvalidRequest)?;
+    ensure_act128_activity(activity_id)?;
+    let tables = config::configs::get();
+    if !tables
+        .activity128_episode
+        .iter()
+        .any(|row| row.activity_id == activity_id && row.stage == boss_id)
+    {
+        return Err(AppError::InvalidRequest);
+    }
+
+    let mut tx = db.begin().await?;
+    let (total_point, old_ext) = sqlx::query_as::<_, (i32, String)>(
+        "SELECT state, ext FROM user_activity_state
+         WHERE user_id = ? AND activity_id = ? AND kind = ? AND entry_id = ?",
+    )
+    .bind(player_id)
+    .bind(activity_id)
+    .bind(ActivityStateKind::Act128BossScore.id())
+    .bind(boss_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(AppError::InvalidRequest)?;
+    let mut claimed_ids = claimed_reward_ids(&old_ext)?;
+    let mut rows = tables
+        .activity128_rewards
+        .iter()
+        .filter(|row| {
+            row.activity_id == activity_id
+                && row.stage == boss_id
+                && row.reward_point_num <= total_point
+                && !claimed_ids.contains(&row.id)
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|row| row.id);
+    if rows.is_empty() {
+        return Err(AppError::InvalidRequest);
+    }
+
+    let mut parsed = reward::RewardSet::default();
+    for row in rows {
+        parsed.extend(reward::parse_strict(&row.reward)?);
+        claimed_ids.push(row.id);
+    }
+    claimed_ids.sort_unstable();
+    claimed_ids.dedup();
+    let new_ext = serde_json::to_string(&claimed_ids)?;
+    let updated = sqlx::query(
+        "UPDATE user_activity_state SET ext = ?, updated_at = ?
+         WHERE user_id = ? AND activity_id = ? AND kind = ? AND entry_id = ?
+           AND state = ? AND ext = ?",
+    )
+    .bind(&new_ext)
+    .bind(ServerTime::now_ms())
+    .bind(player_id)
+    .bind(activity_id)
+    .bind(ActivityStateKind::Act128BossScore.id())
+    .bind(boss_id)
+    .bind(total_point)
+    .bind(&old_ext)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() != 1 {
+        return Err(AppError::InvalidRequest);
+    }
+
+    let material_changes = parsed.material_changes();
+    let rewards = reward::RewardManager::new(player_id)
+        .apply_in_transaction(&mut tx, db, parsed)
+        .await?;
+    tx.commit().await?;
+
+    Ok(Act128TotalRewardsClaim {
+        reply: Act128GetTotalRewardsReply {
+            activity_id: Some(activity_id),
+            boss_id: Some(boss_id),
+            has_get_bonus_ids: claimed_ids,
+        },
+        rewards,
+        material_changes,
+    })
+}
+
+fn claimed_reward_ids(ext: &str) -> Result<Vec<i32>, AppError> {
+    if ext.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut ids = serde_json::from_str::<Vec<i32>>(ext)?;
+    ids.sort_unstable();
+    ids.dedup();
+    Ok(ids)
 }
 
 pub async fn get_act128_milestone_bonus(

@@ -1,4 +1,5 @@
 use super::*;
+use sonettobuf::{Act128GetTotalRewardsReply, Act128GetTotalRewardsRequest};
 
 #[tokio::test]
 async fn act239_commands_route_and_emit_the_captured_claim_sequence() {
@@ -159,6 +160,143 @@ async fn act239_commands_route_and_emit_the_captured_claim_sequence() {
     );
     assert!(reply.bonuss.iter().all(|bonus| bonus.status == Some(2)));
     assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn act128_total_rewards_route_pays_and_persists_all_eligible_rewards() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 516;
+    let activity_id = 138520;
+    let boss_id = 1;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'act128-total-reward-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO user_activity_state
+         (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+         VALUES (?, ?, ?, ?, 1250000, 1250000, '', 0)",
+    )
+    .bind(player_id)
+    .bind(activity_id)
+    .bind(database::db::game::activity_state::ActivityStateKind::Act128BossScore.id())
+    .bind(boss_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(8);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+    let mut data = Vec::new();
+    Act128GetTotalRewardsRequest {
+        activity_id: Some(activity_id),
+        boss_id: Some(boss_id),
+    }
+    .encode(&mut data)
+    .unwrap();
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Act128GetTotalRewardsCmd as i16,
+            up_tag: 11,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Act128 total rewards did not emit the currency snapshot first");
+    };
+    assert_eq!(cmd_id, CmdId::CurrencyChangePushCmd);
+    let currency = CurrencyChangePush::decode(&*body).unwrap();
+    assert_eq!(currency.change_currency[0].currency_id, Some(26));
+    assert_eq!(currency.change_currency[0].quantity, Some(550));
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Act128 total rewards did not emit the material delta");
+    };
+    assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+    let material = MaterialChangePush::decode(&*body).unwrap();
+    assert_eq!(material.get_approach, Some(70));
+    assert_eq!(
+        material
+            .data_list
+            .iter()
+            .map(|entry| (entry.materil_type, entry.materil_id, entry.quantity))
+            .collect::<Vec<_>>(),
+        vec![(Some(2), Some(26), Some(550))]
+    );
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Act128 total rewards did not clear the boss-schedule red dot");
+    };
+    assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+    let red_dot = UpdateRedDotPush::decode(&*body).unwrap();
+    assert_eq!(red_dot.red_dot_infos[0].define_id, 1097);
+    assert_eq!(red_dot.red_dot_infos[0].replace_all, Some(true));
+    assert_eq!(red_dot.red_dot_infos[0].infos[0].id, 0);
+    assert_eq!(red_dot.red_dot_infos[0].infos[0].value, 0);
+
+    let CommandPacket::Reply {
+        cmd_id: CmdId::Act128GetTotalRewardsCmd,
+        body,
+        result_code: 0,
+        up_tag: 11,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("Act128 total rewards did not emit its reply last");
+    };
+    let reply = Act128GetTotalRewardsReply::decode(&*body).unwrap();
+    assert_eq!(reply.activity_id, Some(activity_id));
+    assert_eq!(reply.boss_id, Some(boss_id));
+    assert_eq!(reply.has_get_bonus_ids, vec![1, 2, 3, 4, 5, 6]);
+    assert!(packets.try_recv().is_err());
+
+    let db = ctx.state.db;
+    let info = ctx
+        .player_mut()
+        .unwrap()
+        .activity
+        .act128_info(db, Some(activity_id))
+        .await
+        .unwrap();
+    assert_eq!(
+        info.boss_detail[0].has_get_bonus_ids,
+        vec![1, 2, 3, 4, 5, 6]
+    );
+    assert!(
+        ctx.player_mut()
+            .unwrap()
+            .activity
+            .get_act128_total_rewards(db, Some(activity_id), Some(boss_id))
+            .await
+            .is_err()
+    );
+    let quantity: i32 = sqlx::query_scalar(
+        "SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = 26",
+    )
+    .bind(player_id)
+    .fetch_one(db)
+    .await
+    .unwrap();
+    assert_eq!(quantity, 550);
 }
 
 #[tokio::test]
