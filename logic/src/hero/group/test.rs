@@ -126,6 +126,51 @@ async fn common_group_rename_keeps_snapshot_in_sync() {
 }
 
 #[tokio::test]
+async fn common_snapshot_creates_the_next_lineup_group() {
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (20, 'new-group', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    for group_id in 1..=4 {
+        sqlx::query(
+            "INSERT INTO hero_groups_common
+                 (user_id, group_id, created_at, updated_at) VALUES (20, ?, 0, 0)",
+        )
+        .bind(group_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    HeroManager::new(20)
+        .set_group_snapshot(
+            &pool,
+            COMMON_SNAPSHOT_ID,
+            5,
+            FightGroup {
+                hero_list: vec![0; 4],
+                cloth_id: Some(0),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    let group_ids: Vec<i32> = sqlx::query_scalar(
+        "SELECT group_id FROM hero_groups_common WHERE user_id = 20 ORDER BY group_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(group_ids, [1, 2, 3, 4, 5]);
+}
+
+#[tokio::test]
 async fn group_equipment_rejects_invalid_assignments_without_clearing_the_slot() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
