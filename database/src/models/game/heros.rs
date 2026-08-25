@@ -226,6 +226,13 @@ pub struct HeroData {
     pub destiny_stone_unlocks: Vec<i32>,
 }
 
+fn passive_skill_levels(hero: &Hero) -> Vec<i32> {
+    let level = config::configs::get()
+        .character_rank_passive_level(hero.hero_id, hero.rank)
+        .unwrap_or_default();
+    (1..=level).collect()
+}
+
 impl HeroData {
     pub fn into_proto(
         self,
@@ -840,12 +847,7 @@ impl HeroModel<HeroData> for UserHeroModel {
 
         let hero_uid = hero_record.uid;
 
-        let passive_skill_levels: Vec<i32> = sqlx::query_scalar(
-            "SELECT level FROM hero_passive_skill_levels WHERE hero_uid = ? ORDER BY skill_index",
-        )
-        .bind(hero_uid)
-        .fetch_all(&self.pool)
-        .await?;
+        let passive_skill_levels = passive_skill_levels(&hero_record);
 
         let voices: Vec<i32> =
             sqlx::query_scalar("SELECT voice_id FROM hero_voices WHERE hero_uid = ?")
@@ -929,12 +931,7 @@ impl HeroModel<HeroData> for UserHeroModel {
 
         let hero_uid = hero_record.uid;
 
-        let passive_skill_levels: Vec<i32> = sqlx::query_scalar(
-            "SELECT level FROM hero_passive_skill_levels WHERE hero_uid = ? ORDER BY skill_index",
-        )
-        .bind(hero_uid)
-        .fetch_all(&self.pool)
-        .await?;
+        let passive_skill_levels = passive_skill_levels(&hero_record);
 
         let voices: Vec<i32> =
             sqlx::query_scalar("SELECT voice_id FROM hero_voices WHERE hero_uid = ?")
@@ -1020,12 +1017,7 @@ impl HeroModel<HeroData> for UserHeroModel {
         for hero_record in heroes {
             let hero_uid = hero_record.uid;
 
-            let passive_skill_levels: Vec<i32> = sqlx::query_scalar(
-                "SELECT level FROM hero_passive_skill_levels WHERE hero_uid = ?1 ORDER BY skill_index",
-            )
-            .bind(hero_uid)
-            .fetch_all(&self.pool)
-            .await?;
+            let passive_skill_levels = passive_skill_levels(&hero_record);
 
             let voices: Vec<i32> =
                 sqlx::query_scalar("SELECT voice_id FROM hero_voices WHERE hero_uid = ?1")

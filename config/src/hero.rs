@@ -58,6 +58,14 @@ impl GameDB {
             .find_map(|(kind, value)| (kind == "1").then(|| value.parse().ok()).flatten())
     }
 
+    pub fn character_rank_passive_level(&self, hero_id: i32, rank: i32) -> Option<i32> {
+        self.character_rank(hero_id, rank)?
+            .effect
+            .split('|')
+            .filter_map(|entry| entry.split_once('#'))
+            .find_map(|(kind, value)| (kind == "2").then(|| value.parse().ok()).flatten())
+    }
+
     pub fn character_rank(&self, hero_id: i32, rank: i32) -> Option<&CharacterRank> {
         self.character_rank
             .iter()
