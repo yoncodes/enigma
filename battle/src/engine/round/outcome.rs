@@ -87,11 +87,7 @@ pub(crate) fn battle_outcome(
     if attackers_defeated {
         return BattleOutcome::Defeat;
     }
-    let out_of_rounds = managers
-        .catalog()
-        .battle_max_round(fight.battle_id.unwrap_or_default())
-        .is_some_and(|max_round| max_round > 0 && fight.cur_round.unwrap_or_default() >= max_round);
-    if out_of_rounds {
+    if round_limit_reached(fight, managers) {
         BattleOutcome::OutOfRounds
     } else {
         BattleOutcome::Unfinished
@@ -104,11 +100,18 @@ pub(crate) fn finish_if_battle_ended(
     pool: &TargetPool,
     managers: &BattleManagers,
 ) -> bool {
-    if battle_ended(fight, pool, managers) {
+    if battle_ended(fight, pool, managers) || round_limit_reached(fight, managers) {
         state.is_finish = true;
         return true;
     }
     false
+}
+
+pub(crate) fn round_limit_reached(fight: &Fight, managers: &BattleManagers) -> bool {
+    managers
+        .catalog()
+        .battle_max_round(fight.battle_id.unwrap_or_default())
+        .is_some_and(|max_round| max_round > 0 && fight.cur_round.unwrap_or_default() >= max_round)
 }
 
 fn configured_win_target_defeated(battle_id: i32, managers: &BattleManagers) -> Option<bool> {
