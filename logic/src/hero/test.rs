@@ -480,6 +480,7 @@ async fn rank_and_insight_skin_commit_together() {
     }
     let hero = heroes.get(skin.character_id).await.unwrap();
     assert_eq!(hero.record.rank, 3);
+    assert_eq!(hero.passive_skill_levels, vec![1, 2]);
     assert_eq!(hero.record.skin, skin.id);
     assert!(heroes.has_skin(skin.id).await.unwrap());
 }
