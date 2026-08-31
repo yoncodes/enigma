@@ -954,6 +954,13 @@ fn condition_kind_matches(
         }
         ParsedConditionKind::ActiveUseSkill { slot } => {
             context.direct_skill_body
+                && matches!(
+                    context.active_skill_mode,
+                    crate::engine::skill::action::SkillExecutionMode::Active
+                        | crate::engine::skill::action::SkillExecutionMode::DirectBig
+                        | crate::engine::skill::action::SkillExecutionMode::Device
+                        | crate::engine::skill::action::SkillExecutionMode::DeviceCard
+                )
                 && context.extra_skill_kind == 0
                 && active_skill_has_real_source(pool, context)
                 && (*slot == 0 || context.active_skill_slot == *slot)
