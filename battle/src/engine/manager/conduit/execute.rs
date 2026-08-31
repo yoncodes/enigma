@@ -148,7 +148,7 @@ impl ConduitManager {
                 skill_id,
             } => {
                 let (team, _) = self
-                    .skill(source_uid, skill_id)
+                    .configured_skill(source_uid, skill_id)
                     .ok_or(ConduitError::MissingSkill(skill_id))?;
                 let device_uses = self.uses_this_round.entry(source_uid).or_default();
                 *device_uses = device_uses.saturating_add(1);
