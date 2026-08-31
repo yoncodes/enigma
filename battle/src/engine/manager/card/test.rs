@@ -186,6 +186,113 @@ fn enemy_ai_selects_boss_ultimate_from_full_named_power() {
 }
 
 #[test]
+fn generated_ai_targets_follow_configured_skill_side() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    let mut catalog = crate::engine::skill::effect::SkillEffectCatalog::default();
+    for skill_id in [301, 401] {
+        catalog.insert(crate::engine::skill::effect::slot::ParsedSkillEffect {
+            skill_id,
+            slots: Vec::new(),
+        });
+    }
+    catalog.insert_logic_target(301, 101);
+    catalog.insert_logic_target(401, 201);
+    let mut cards = vec![
+        CardInfo {
+            uid: Some(-1),
+            skill_id: Some(301),
+            target_uid: Some(11),
+            ..Default::default()
+        },
+        CardInfo {
+            uid: Some(-2),
+            skill_id: Some(401),
+            target_uid: Some(10),
+            ..Default::default()
+        },
+    ];
+
+    ai::resolve_configured_targets(
+        &fight,
+        &managers,
+        &catalog,
+        &crate::engine::runtime::determinism::RoundDeterminism::default(),
+        &mut cards,
+    )
+    .unwrap();
+
+    assert_eq!(cards[0].target_uid, Some(-1));
+    assert_eq!(cards[1].target_uid, Some(10));
+
+    let error = ai::resolve_configured_targets(
+        &fight,
+        &managers,
+        &catalog,
+        &crate::engine::runtime::determinism::RoundDeterminism::default(),
+        &mut [CardInfo {
+            uid: Some(-1),
+            skill_id: Some(501),
+            target_uid: Some(10),
+            ..Default::default()
+        }],
+    )
+    .unwrap_err();
+    assert!(error.contains("missing from the effect catalog"));
+
+    catalog.insert(crate::engine::skill::effect::slot::ParsedSkillEffect {
+        skill_id: 501,
+        slots: Vec::new(),
+    });
+    let error = ai::resolve_configured_targets(
+        &fight,
+        &managers,
+        &catalog,
+        &crate::engine::runtime::determinism::RoundDeterminism::default(),
+        &mut [CardInfo {
+            uid: Some(-1),
+            skill_id: Some(501),
+            target_uid: Some(10),
+            ..Default::default()
+        }],
+    )
+    .unwrap_err();
+    assert!(error.contains("has no configured target"));
+}
+
+#[test]
 fn moves_cards_before_playing() {
     let mut cards = CardManager::new(vec![card(10, 100), card(11, 200), card(12, 300)]);
 

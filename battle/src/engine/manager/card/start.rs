@@ -2,7 +2,9 @@ use rand::{SeedableRng, rngs::StdRng};
 use sonettobuf::{CardInfo, Fight};
 
 use crate::engine::manager::card::{
-    ai::{generate_ai_deck_with_extra_actions, generated_ai_action_count},
+    ai::{
+        generate_ai_deck_with_extra_actions, generated_ai_action_count, resolve_configured_targets,
+    },
     draw::draw_guaranteed_by_uid,
     pool::{active_enemy_entities, active_player_uids, card_for},
 };
@@ -240,18 +242,18 @@ pub(crate) struct ConfiguredStartDecks {
 }
 
 pub(crate) fn configured_start_decks(
-    catalog: crate::catalog::BattleCatalog,
     fight: &Fight,
-    ex_point: &crate::engine::manager::ex_point::ExPointManager,
-    eureka: &crate::engine::manager::eureka::EurekaManager,
+    managers: &crate::engine::manager::BattleManagers,
+    skill_catalog: &crate::engine::skill::effect::SkillEffectCatalog,
+    determinism: &crate::engine::runtime::determinism::RoundDeterminism,
     extra_ai_actions: i32,
     seed_value: i32,
     captured: Option<CapturedDeckSeed>,
-) -> ConfiguredStartDecks {
-    start_decks_from(
+) -> Result<ConfiguredStartDecks, String> {
+    let mut decks = start_decks_from(
         fight,
-        ex_point,
-        eureka,
+        &managers.ex_point,
+        &managers.eureka,
         extra_ai_actions,
         seed_value,
         captured,
@@ -259,10 +261,14 @@ pub(crate) fn configured_start_decks(
             crate::engine::manager::card::pool::player_candidate_pool_from(
                 fight,
                 |_| allow_ex_skill,
-                |entity| catalog.device_card_weights(entity),
+                |entity| managers.catalog().device_card_weights(entity),
             )
         },
-    )
+    );
+    if !decks.used_capture {
+        resolve_configured_targets(fight, managers, skill_catalog, determinism, &mut decks.ai)?;
+    }
+    Ok(decks)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -426,15 +432,23 @@ mod tests {
             7,
             None,
         );
+        let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+        let mut skill_catalog = crate::engine::skill::effect::SkillEffectCatalog::default();
+        skill_catalog.insert(crate::engine::skill::effect::slot::ParsedSkillEffect {
+            skill_id: 301,
+            slots: Vec::new(),
+        });
+        skill_catalog.insert_logic_target(301, 201);
         let configured = configured_start_decks(
-            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
             &fight,
-            &ex_point,
-            &eureka,
+            &managers,
+            &skill_catalog,
+            &crate::engine::runtime::determinism::RoundDeterminism::default(),
             0,
             7,
             None,
-        );
+        )
+        .unwrap();
         assert_eq!(
             (configured.ai, configured.player),
             (ai.clone(), player.clone())
@@ -558,10 +572,6 @@ mod tests {
             }),
             ..Default::default()
         };
-        let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
-        ex_point.seed(&fight);
-        let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
-        eureka.seed(&fight);
         let player_card = CardInfo {
             uid: Some(12),
             skill_id: Some(202),
@@ -569,10 +579,10 @@ mod tests {
         };
 
         let configured = configured_start_decks(
-            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
             &fight,
-            &ex_point,
-            &eureka,
+            &crate::engine::manager::BattleManagers::seeded(&fight),
+            &crate::engine::skill::effect::SkillEffectCatalog::default(),
+            &crate::engine::runtime::determinism::RoundDeterminism::default(),
             0,
             0,
             Some(CapturedDeckSeed::Opening {
@@ -584,7 +594,8 @@ mod tests {
                 player: vec![player_card; hand_size(&fight) - 1],
                 reserved_ultimate_slots: 1,
             }),
-        );
+        )
+        .unwrap();
 
         assert!(configured.used_capture);
         assert_eq!(configured.player.len(), hand_size(&fight) - 1);
@@ -609,15 +620,11 @@ mod tests {
             }),
             ..Default::default()
         };
-        let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
-        ex_point.seed(&fight);
-        let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
-        eureka.seed(&fight);
         let configured = configured_start_decks(
-            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
             &fight,
-            &ex_point,
-            &eureka,
+            &crate::engine::manager::BattleManagers::seeded(&fight),
+            &crate::engine::skill::effect::SkillEffectCatalog::default(),
+            &crate::engine::runtime::determinism::RoundDeterminism::default(),
             1,
             0,
             Some(CapturedDeckSeed::NextAi(vec![
@@ -632,7 +639,8 @@ mod tests {
                     ..Default::default()
                 },
             ])),
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             configured
