@@ -135,11 +135,8 @@ fn battle_request_metadata(battle_path: &Path) -> anyhow::Result<BattleRequestMe
                 .or_else(|| selection.get("hero_uid"))
                 .ok_or_else(|| anyhow::anyhow!("equipment selection is missing hero uid"))?,
         )?;
-        if hero_uid <= 0 {
+        if hero_uid < 0 {
             anyhow::bail!("equipment selection has invalid hero uid {hero_uid}");
-        }
-        if !selected_heroes.insert(hero_uid) {
-            anyhow::bail!("duplicate equipment selection for hero {hero_uid}");
         }
         let equip_uids = selection
             .get("equipUid")
@@ -155,6 +152,12 @@ fn battle_request_metadata(battle_path: &Path) -> anyhow::Result<BattleRequestMe
             .collect::<anyhow::Result<Vec<_>>>()?;
         if equip_uids.iter().any(|uid| *uid < 0) {
             anyhow::bail!("negative equipment uid selected for hero {hero_uid}");
+        }
+        if hero_uid == 0 {
+            continue;
+        }
+        if !selected_heroes.insert(hero_uid) {
+            anyhow::bail!("duplicate equipment selection for hero {hero_uid}");
         }
         let mut equip_uids = equip_uids.into_iter().filter(|uid| *uid != 0);
         let Some(equip_uid) = equip_uids.next() else {
@@ -681,6 +684,56 @@ mod tests {
                 .contains("negative equipment uid")
         );
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn zero_owner_equipment_rows_are_validated_then_ignored() {
+        let directory = test_directory("zero-owner-request");
+        fs::write(
+            directory.join("StartDungeonRequest.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "fightGroup": {
+                    "equips": [
+                        { "heroUid": 0, "equipUid": [100] },
+                        { "heroUid": 0, "equipUid": [0] },
+                        { "heroUid": 42, "equipUid": [200] }
+                    ]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            battle_request_metadata(&directory.join("BeginRoundReply_1.json"))
+                .unwrap()
+                .selected_equips,
+            HashMap::from([(42, 200)])
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn invalid_zero_owner_equipment_stays_fail_loud() {
+        for (label, equip_uid) in [
+            ("negative", serde_json::json!([-1])),
+            ("malformed", serde_json::json!(["invalid"])),
+        ] {
+            let directory = test_directory(label);
+            fs::write(
+                directory.join("StartDungeonRequest.json"),
+                serde_json::to_vec(&serde_json::json!({
+                    "fightGroup": {
+                        "equips": [{ "heroUid": 0, "equipUid": equip_uid }]
+                    }
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+
+            assert!(battle_request_metadata(&directory.join("BeginRoundReply_1.json")).is_err());
+            fs::remove_dir_all(directory).unwrap();
+        }
     }
 
     #[test]
