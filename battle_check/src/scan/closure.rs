@@ -224,6 +224,25 @@ fn enqueue_behavior_references(
         for id in references.models {
             enqueue_monster_skills(db, id, &format!("{path} > model {id}"), skills, report);
         }
+        for id in references.summons {
+            enqueue_summoned_skills(db, id, &format!("{path} > summon {id}"), skills, report);
+        }
+    }
+}
+
+pub(super) fn enqueue_summoned_skills(
+    db: &config::GameDB,
+    summoned_id: i32,
+    path: &str,
+    skills: &mut VecDeque<Pending>,
+    report: &mut Report,
+) {
+    let Some(summoned) = db.summoned.get(summoned_id) else {
+        report.error(format!("MissingSummoned path={path}"));
+        return;
+    };
+    for skill_id in split_ids(&summoned.unique_skills) {
+        enqueue(skills, skill_id, path.to_owned());
     }
 }
 
@@ -552,6 +571,9 @@ fn scan_buff(
                 }
                 for model_id in references.models {
                     enqueue_monster_skills(db, model_id, &reference_path, skills, report);
+                }
+                for summoned_id in references.summons {
+                    enqueue_summoned_skills(db, summoned_id, &reference_path, skills, report);
                 }
             }
         } else if db.skill_buff.get(feature_id).is_some() {

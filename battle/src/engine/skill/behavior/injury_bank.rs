@@ -159,6 +159,7 @@ impl BehaviorHandler for Handler {
             .into_iter()
             .collect(),
             models: Vec::new(),
+            summons: Vec::new(),
         }
     }
 }

@@ -88,6 +88,16 @@ fn dynamic_current_battle_roots_compile_enigmas_field_condition() {
 }
 
 #[test]
+fn add_summoned_expands_configured_unique_skills() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [307401612], []);
+
+    assert!(catalog.get(307401612).is_some());
+    assert!(catalog.get(307401711).is_some());
+    assert!(catalog.get(307401721).is_some());
+}
+
+#[test]
 fn eagle_exit_cleanup_compiles_its_exact_buff_family_dispel() {
     init_config();
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [30060141], []);
