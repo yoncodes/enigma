@@ -467,21 +467,22 @@ impl BattleRuntime {
                 fight_version,
                 absorb_hurt_map_layout,
             )?);
+            let extra_ai_actions = crate::engine::round::modifier::ai_action_bonus(
+                &pool,
+                &self.managers,
+                catalog,
+                &mut self.determinism,
+                context,
+            );
             let next_ai = crate::engine::manager::card::start::configured_start_decks(
-                self.managers.catalog(),
                 &self.fight,
-                &self.managers.ex_point,
-                &self.managers.eureka,
-                crate::engine::round::modifier::ai_action_bonus(
-                    &pool,
-                    &self.managers,
-                    catalog,
-                    &mut self.determinism,
-                    context,
-                ),
+                &self.managers,
+                catalog,
+                &self.determinism,
+                extra_ai_actions,
                 self.fight.battle_id.unwrap_or_default(),
                 None,
-            )
+            )?
             .ai;
             battle_catalog.extend_skill_roots(
                 catalog,
@@ -569,23 +570,26 @@ impl BattleRuntime {
             absorb_hurt_map_layout,
         )?);
         if !self.round_state.is_finish {
+            let extra_ai_actions = crate::engine::round::modifier::ai_action_bonus(
+                &pool,
+                &self.managers,
+                catalog,
+                &mut self.determinism,
+                context,
+            );
+            let captured = self
+                .determinism
+                .take_next_ai_card_snapshot()
+                .map(crate::engine::manager::card::start::CapturedDeckSeed::NextAi);
             let cards = crate::engine::manager::card::start::configured_start_decks(
-                self.managers.catalog(),
                 &self.fight,
-                &self.managers.ex_point,
-                &self.managers.eureka,
-                crate::engine::round::modifier::ai_action_bonus(
-                    &pool,
-                    &self.managers,
-                    catalog,
-                    &mut self.determinism,
-                    context,
-                ),
+                &self.managers,
+                catalog,
+                &self.determinism,
+                extra_ai_actions,
                 self.round_state.cur_round,
-                self.determinism
-                    .take_next_ai_card_snapshot()
-                    .map(crate::engine::manager::card::start::CapturedDeckSeed::NextAi),
-            )
+                captured,
+            )?
             .ai;
             battle_catalog.extend_skill_roots(
                 catalog,

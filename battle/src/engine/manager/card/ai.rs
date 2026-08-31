@@ -1,9 +1,17 @@
 use rand::Rng;
 use sonettobuf::{CardInfo, Fight};
 
-use crate::engine::manager::{
-    eureka::{EurekaManager, PowerType},
-    ex_point::ExPointManager,
+use crate::engine::{
+    manager::{
+        BattleManagers,
+        eureka::{EurekaManager, PowerType},
+        ex_point::ExPointManager,
+    },
+    runtime::determinism::RoundDeterminism,
+    skill::{
+        effect::SkillEffectCatalog,
+        target::{TargetContext, TargetPool, TargetRequest, TargetResolver},
+    },
 };
 
 use super::pool::{active_enemy_entities, active_player_uids, card_for};
@@ -71,6 +79,74 @@ pub(crate) fn generated_ai_action_count(
         selectable_cards(active_enemy_entities(fight), ex_point, eureka).len(),
         extra_actions,
     )
+}
+
+pub(crate) fn resolve_configured_targets(
+    fight: &Fight,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    determinism: &RoundDeterminism,
+    cards: &mut [CardInfo],
+) -> Result<(), String> {
+    let pool =
+        TargetPool::from_fight_with_catalog(managers.catalog(), fight).runtime_view(managers);
+    for card in cards {
+        let source_uid = card
+            .uid
+            .filter(|uid| *uid != 0)
+            .ok_or_else(|| "generated AI card has no owner".to_owned())?;
+        let skill_id = card
+            .skill_id
+            .filter(|skill_id| *skill_id > 0)
+            .ok_or_else(|| "generated AI card has no skill".to_owned())?;
+        if catalog.get(skill_id).is_none() {
+            return Err(format!(
+                "generated AI skill {skill_id} is missing from the effect catalog"
+            ));
+        }
+        let code = catalog.logic_target(skill_id);
+        if code == 0 {
+            return Err(format!(
+                "generated AI skill {skill_id} has no configured target"
+            ));
+        }
+        let attack = catalog.is_attack(skill_id);
+        let candidates = TargetResolver::resolve_primary_candidates(
+            &TargetRequest {
+                code,
+                raw: Vec::new(),
+            },
+            skill_id,
+            source_uid,
+            &pool,
+            determinism,
+            Some(managers),
+            TargetContext {
+                runtime_target_uid: card.target_uid.unwrap_or_default(),
+                active_skill_id: skill_id,
+                active_skill_source_uid: source_uid,
+                active_skill_is_attack: attack,
+                active_skill_rank: managers.catalog().skill_rank(skill_id),
+                active_skill_type: catalog.skill_type(skill_id),
+                active_skill_effect_tag: catalog.effect_tag(skill_id),
+                damage_target_count_kind: managers.catalog().damage_target_count_kind(code),
+                battle_id: fight.battle_id.unwrap_or_default(),
+                current_round: fight.cur_round.unwrap_or_default(),
+                ..Default::default()
+            },
+        );
+        let target_uid = card
+            .target_uid
+            .filter(|target_uid| candidates.contains(target_uid))
+            .or_else(|| candidates.first().copied())
+            .ok_or_else(|| {
+                format!(
+                    "generated AI skill {skill_id} has no configured target for owner {source_uid}"
+                )
+            })?;
+        card.target_uid = Some(target_uid);
+    }
+    Ok(())
 }
 
 fn selectable_cards(
