@@ -47,9 +47,18 @@ pub(super) fn supports_combatant(behavior: &ParsedBehavior) -> bool {
     )
 }
 
+pub(super) fn supports_add_summoned(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [summoned_id, count, level] if *summoned_id > 0 && *count > 0 && *level > 0)
+}
+
 impl BehaviorHandler for Handler {
     fn references(behavior: &ParsedBehavior) -> crate::engine::skill::rule::RuleReferences {
         crate::engine::skill::rule::RuleReferences {
+            summons: (behavior.spec.kind == BehaviorKind::AddSummoned)
+                .then(|| behavior.arg(0))
+                .flatten()
+                .into_iter()
+                .collect(),
             models: matches!(
                 behavior.spec.kind,
                 BehaviorKind::Summon | BehaviorKind::SummonSp2
@@ -124,6 +133,22 @@ mod tests {
     use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute};
 
     use super::*;
+
+    #[test]
+    fn add_summoned_requires_a_complete_positive_definition() {
+        assert!(supports_add_summoned(&ParsedBehavior::new(
+            40009,
+            "AddSummoned",
+            vec![150011, 1, 1],
+        )));
+        for args in [vec![150011, 1], vec![0, 1, 1], vec![150011, 0, 1]] {
+            assert!(!supports_add_summoned(&ParsedBehavior::new(
+                40009,
+                "AddSummoned",
+                args,
+            )));
+        }
+    }
     use crate::engine::{
         manager::BattleManagers,
         runtime::determinism::RoundDeterminism,

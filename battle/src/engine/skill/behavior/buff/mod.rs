@@ -303,6 +303,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         skills: Vec::new(),
         buffs,
         models: Vec::new(),
+        summons: Vec::new(),
     }
 }
 
