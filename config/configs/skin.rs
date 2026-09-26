@@ -71,6 +71,8 @@ pub struct Skin {
     pub guide_right_portrait_offset: String,
     #[serde(rename = "haloOffset")]
     pub halo_offset: String,
+    #[serde(rename = "handbookRedDot")]
+    pub handbook_red_dot: i32,
     #[serde(rename = "headIcon")]
     pub head_icon: String,
     pub id: i32,
@@ -144,6 +146,8 @@ pub struct Skin {
     pub skin_spine_offset: String,
     #[serde(rename = "skinStoreId")]
     pub skin_store_id: i32,
+    #[serde(rename = "skinStoreViewImgOffset")]
+    pub skin_store_view_img_offset: String,
     #[serde(rename = "skinStory")]
     pub skin_story: String,
     #[serde(rename = "skinSwitchLive2dOffset")]
