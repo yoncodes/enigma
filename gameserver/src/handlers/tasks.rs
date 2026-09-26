@@ -11,7 +11,8 @@ use logic::task::{TaskEvent, TaskType};
 use prost::Message;
 use sonettobuf::{
     Act233BpScoreUpdatePush, CmdId, FinishAllTaskRequest, FinishReadTaskRequest, FinishTaskRequest,
-    GetTaskActivityBonusRequest, GetTaskInfoRequest, RefreshOnlineTaskRequest, UpdateTaskPush,
+    GetTaskActivityBonusRequest, GetTaskInfoRequest, HeroStoryWeekTaskPush,
+    RefreshOnlineTaskRequest, UpdateTaskPush,
 };
 
 pub async fn on_get_task_info(
@@ -54,6 +55,7 @@ pub async fn on_finish_task(
     )
     .await?;
     send_bp_task_red_dot_update(ctx, &finished_tasks).await?;
+    send_hero_story_week_task_update(ctx, &finished_tasks).await?;
     notify_task_finish_events(ctx, player_id, &finished_task_ids).await?;
     send_task_update(ctx, claim.task_info, claim.activity_info).await?;
     send_act233_bp_score_updates(ctx, &act233_bp_scores).await?;
@@ -94,6 +96,7 @@ pub async fn on_finish_all_task(
     )
     .await?;
     send_bp_task_red_dot_update(ctx, &finished_tasks).await?;
+    send_hero_story_week_task_update(ctx, &finished_tasks).await?;
     notify_task_finish_events(ctx, player_id, &finished_task_ids).await?;
     send_task_update(ctx, claim.task_info, claim.activity_info).await?;
     send_act233_bp_score_updates(ctx, &act233_bp_scores).await?;
@@ -268,4 +271,25 @@ async fn send_bp_task_red_dot_update(
         .battle_pass_groups(ctx.state.db)
         .await?;
     push::send_red_dot_groups(ctx, red_dot_groups).await
+}
+
+async fn send_hero_story_week_task_update(
+    ctx: &mut ConnectionContext,
+    tasks: &[sonettobuf::Task],
+) -> Result<(), AppError> {
+    if !tasks
+        .iter()
+        .any(|task| task.r#type == Some(TaskType::Weekly.id()))
+    {
+        return Ok(());
+    }
+
+    ctx.notify(
+        CmdId::HeroStoryWeekTaskPushCmd,
+        HeroStoryWeekTaskPush {
+            week_progress: Some(0),
+            week_has_get: Some(false),
+        },
+    )
+    .await
 }
