@@ -4,7 +4,7 @@ use crate::{
     session,
 };
 use prost::Message;
-use sonettobuf::{CmdId, CritterInfoPush, RenameRequest, UpdateTaskPush};
+use sonettobuf::{Act116InfoUpdatePush, CmdId, CritterInfoPush, RenameRequest, UpdateTaskPush};
 
 pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
     let login = session::parse_login_request(&req.data)?;
@@ -36,6 +36,22 @@ pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<
         .critter_infos;
     ctx.notify(CmdId::CritterInfoPushCmd, CritterInfoPush { critter_infos })
         .await?;
+    let act116 = ctx
+        .player()?
+        .activity
+        .act116_info(ctx.state.db, None, ctx.state.tables)
+        .await?;
+    ctx.notify(
+        CmdId::Act116InfoUpdatePushCmd,
+        Act116InfoUpdatePush {
+            activity_id: act116.activity_id,
+            infos: act116.infos,
+            trap_ids: act116.trap_ids,
+            put_trap: act116.put_trap,
+            sp_status: act116.sp_status,
+        },
+    )
+    .await?;
     if !updated_tasks.is_empty() {
         ctx.notify(
             CmdId::UpdateTaskPushCmd,
