@@ -16999,6 +16999,8 @@ pub struct EquipRecord {
     pub equip_lv: ::core::option::Option<i32>,
     #[prost(int32, optional, tag = "4")]
     pub refine_lv: ::core::option::Option<i32>,
+    #[prost(int32, optional, tag = "5")]
+    pub break_lv: ::core::option::Option<i32>,
 }
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

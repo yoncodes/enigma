@@ -109,6 +109,7 @@ impl EntityBuilder {
                 equip_id: Some(equip.equip_id),
                 equip_lv: Some(equip.level),
                 refine_lv: Some(equip.refine_level),
+                break_lv: None,
             })
             .collect();
 
@@ -289,6 +290,7 @@ impl EntityBuilder {
                     equip_id: Some(trial.equip_id),
                     equip_lv: Some(trial.equip_lv),
                     refine_lv: Some(trial.equip_refine),
+                    break_lv: None,
                 }),
                 ex_skill_level: Some(trial.ex_skill_lv),
                 power_infos: Self::hero_power_infos(tables, trial.hero_id),
@@ -484,6 +486,7 @@ mod tests {
             .build();
 
         assert_eq!(explicit, legacy);
+        assert_eq!(explicit.equips[0].break_lv, None);
     }
 
     #[test]

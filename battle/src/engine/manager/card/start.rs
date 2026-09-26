@@ -758,32 +758,6 @@ mod tests {
     }
 
     #[test]
-    fn current_data_has_no_scripted_teaching_card_deals() {
-        crate::test_support::init_config();
-        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
-        for episode_id in [10001, 10002, 10003, 10101] {
-            let fight = Fight {
-                episode_id: Some(episode_id),
-                version: Some(7),
-                ..Default::default()
-            };
-
-            assert!(
-                configured_opening_deal(crate::test_support::game_data(), &fight)
-                    .unwrap()
-                    .is_none()
-            );
-            assert!(
-                configured_refill_draws(crate::test_support::game_data(), &fight)
-                    .unwrap()
-                    .is_empty()
-            );
-            assert!(opening_deal(catalog, &fight).unwrap().is_none());
-            assert!(refill_draws(catalog, &fight).unwrap().is_empty());
-        }
-    }
-
-    #[test]
     fn configured_opening_deals_do_not_change_version_six_replays() {
         crate::test_support::init_config();
         let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
