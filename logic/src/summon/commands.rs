@@ -35,10 +35,21 @@ pub(super) async fn summon_info(
         }
     }
 
+    let newbie = pool_infos.iter().find_map(|info| {
+        let pool = tables.summon_pool.get(info.pool.pool_id)?;
+        is_newbie_pool(pool).then_some((pool, info.pool.summon_count))
+    });
+    let (is_show_new_summon, new_summon_count) = if let Some((pool, count)) = newbie {
+        let limit = newbie_pull_limit(pool)?;
+        (count < limit, count.min(limit))
+    } else {
+        (stats.is_show_new_summon, stats.new_summon_count)
+    };
+
     Ok(GetSummonInfoReply {
         free_equip_summon: Some(stats.free_equip_summon),
-        is_show_new_summon: Some(stats.is_show_new_summon),
-        new_summon_count: Some(stats.new_summon_count),
+        is_show_new_summon: Some(is_show_new_summon),
+        new_summon_count: Some(new_summon_count),
         pool_infos: pool_infos.into_iter().map(Into::into).collect(),
         total_summon_count: Some(stats.total_summon_count),
     })
@@ -174,11 +185,15 @@ pub(super) async fn summon(
         .find(|pool| pool.id == pool_id)
         .ok_or(AppError::InvalidRequest)?;
     let is_newbie_pool = is_newbie_pool(pool_cfg);
-    if is_newbie_pool
-        && !summon::get_summon_stats(db, player_id)
-            .await?
-            .is_show_new_summon
-    {
+    let newbie_count = if is_newbie_pool {
+        summon::get_summon_count(db, player_id, pool_id).await?
+    } else {
+        0
+    };
+    let newbie_limit = is_newbie_pool
+        .then(|| newbie_pull_limit(pool_cfg))
+        .transpose()?;
+    if newbie_limit.is_some_and(|limit| newbie_count + count > limit) {
         return Err(AppError::InvalidRequest);
     }
     let cost = if count == 10 {
@@ -227,11 +242,7 @@ pub(super) async fn summon(
         };
         (results, None)
     };
-    let completed_newbie_pool = is_newbie_pool
-        && results
-            .0
-            .iter()
-            .any(|result| is_newbie_six_star(pool_id, result.hero_id));
+    let completed_newbie_pool = newbie_limit.is_some_and(|limit| newbie_count + count == limit);
 
     let heroes = UserHeroModel::new(player_id, db.clone());
     let mut reply_results = Vec::new();
@@ -359,13 +370,13 @@ pub(super) fn is_newbie_pool(pool: &config::summon_pool::SummonPool) -> bool {
     SummonType::from(pool.r#type) == SummonType::Newbie
 }
 
-pub(super) fn is_newbie_six_star(pool_id: i32, hero_id: i32) -> bool {
-    config::configs::get()
-        .summon
-        .iter()
-        .filter(|row| row.id == pool_id && row.rare == 5)
-        .flat_map(|row| parse_ids(&row.summon_id))
-        .any(|id| id == hero_id)
+fn newbie_pull_limit(pool: &config::summon_pool::SummonPool) -> Result<i32, AppError> {
+    pool.award_time
+        .split('|')
+        .nth(1)
+        .and_then(|limit| limit.parse().ok())
+        .filter(|limit| *limit > 0)
+        .ok_or(AppError::InvalidRequest)
 }
 
 pub(super) fn validate_summon_count(count: i32) -> Result<(), AppError> {
