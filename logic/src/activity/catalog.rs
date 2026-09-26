@@ -257,21 +257,22 @@ mod tests {
     }
 
     #[test]
-    fn current_schedule_replaces_the_old_version_catalog() {
+    fn current_schedule_replaces_the_expired_catalog() {
         let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
         let _ = config::init(&data_dir);
 
         assert!(!is_activity_online(ActivityId::V3a6Dungeon.id()));
         assert!(!is_activity_online(138502));
         assert!(!is_activity_online(138512));
-        assert!(is_activity_online(138508));
-        assert!(!is_activity_online(138522));
+        assert!(!is_activity_online(138508));
+        assert!(is_activity_online(13801));
+        assert!(is_activity_online(13814));
         assert_eq!(
             catalog_infos()
                 .iter()
                 .filter(|info| info.online == Some(true))
                 .count(),
-            130
+            110
         );
     }
 
@@ -280,13 +281,13 @@ mod tests {
         let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
         let _ = config::init(&data_dir);
 
-        let activity_id = 13714;
+        let activity_id = 13805;
         let schedule = crate::activity::schedule::get(activity_id).unwrap();
         assert!(!active_act101_activity_ids_at(schedule.start_time - 1).contains(&activity_id));
         assert!(active_act101_activity_ids_at(schedule.start_time).contains(&activity_id));
         assert!(active_act101_activity_ids_at(schedule.end_time).contains(&activity_id));
         assert!(!active_act101_activity_ids_at(schedule.end_time + 1).contains(&activity_id));
-        assert!(!active_act101_activity_ids_at(schedule.start_time).contains(&13726));
+        assert!(!active_act101_activity_ids_at(schedule.start_time).contains(&13714));
     }
 
     #[test]
@@ -319,8 +320,8 @@ mod tests {
         let _ = config::init(&data_dir);
 
         assert_eq!(
-            activity_time_range(138508),
-            (1_785_664_800_000, 1_789_811_999_000)
+            activity_time_range(13801),
+            (1_790_244_000_000, 1_793_872_799_000)
         );
         assert_eq!(
             activity_time_range(12801),
@@ -338,8 +339,8 @@ mod tests {
         apply_act125_activity(&mut infos);
 
         assert!(infos.iter().any(|info| info.id.is_some()));
-        assert_eq!(default_act125_activity_id(), Some(13724));
-        assert!(infos.iter().any(|info| info.id == Some(13724)));
+        assert_eq!(default_act125_activity_id(), Some(13814));
+        assert!(infos.iter().any(|info| info.id == Some(13814)));
         assert!(
             infos
                 .iter()

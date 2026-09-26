@@ -432,7 +432,7 @@ mod tests {
     async fn manager_sync_advances_active_events_once_per_server_day() {
         let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
         let _ = config::init(&data_dir);
-        let now = 1_786_615_200_000;
+        let now = super::super::schedule::get(13805).unwrap().start_time;
         let activity_id = active_act101_activity_ids_at(now)
             .into_iter()
             .find(|activity_id| {
