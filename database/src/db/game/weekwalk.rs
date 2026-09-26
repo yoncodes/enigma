@@ -80,6 +80,18 @@ pub async fn mark_pop_shallow_settle(pool: &SqlitePool, user_id: i64) -> Result<
     Ok(())
 }
 
+pub async fn mark_pop_deep_settle(pool: &SqlitePool, user_id: i64) -> Result<()> {
+    sqlx::query(
+        "UPDATE user_weekwalk_info
+         SET is_pop_deep_settle = FALSE
+         WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn get_map_battles(
     pool: &SqlitePool,
     user_id: i64,

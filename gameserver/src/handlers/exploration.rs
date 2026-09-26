@@ -3,7 +3,7 @@ use crate::{
     net::{context::ConnectionContext, packet::ClientPacket},
 };
 use prost::Message;
-use sonettobuf::{CmdId, MarkPopShallowSettleRequest};
+use sonettobuf::{CmdId, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest};
 
 pub async fn on_get_explore_simple_info(
     ctx: &mut ConnectionContext,
@@ -38,6 +38,20 @@ pub async fn on_mark_pop_shallow_settle(
         .mark_pop_shallow_settle(ctx.state.db)
         .await?;
     ctx.send_reply(CmdId::MarkPopShallowSettleCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_mark_pop_deep_settle(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    MarkPopDeepSettleRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .exploration
+        .mark_pop_deep_settle(ctx.state.db)
+        .await?;
+    ctx.send_reply(CmdId::MarkPopDeepSettleCmd, reply, 0, req.up_tag)
         .await
 }
 

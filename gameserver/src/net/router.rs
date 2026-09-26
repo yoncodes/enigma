@@ -445,6 +445,7 @@ async fn dispatch_registered_command(
         CmdId::TowerComposeSetModsCmd => tower_compose::on_tower_compose_set_mods,
         CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
         CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
+        CmdId::MarkPopDeepSettleCmd => exploration::on_mark_pop_deep_settle,
         CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,
         CmdId::GetBlockPackageInfoRequsetCmd => room::on_get_block_package_info,
         CmdId::HideBlockPackageReddotCmd => room::on_hide_block_package_reddot,
