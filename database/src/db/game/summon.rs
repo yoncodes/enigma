@@ -128,6 +128,14 @@ pub async fn get_summon_pool_infos(pool: &SqlitePool, user_id: i64) -> Result<Ve
             .map(|p| (p.pool_id, p))
             .collect();
 
+    let pity_by_pool: HashMap<i32, i32> =
+        sqlx::query_as("SELECT pool_id, pity_6 FROM user_gacha_state WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .collect();
+
     // Batch-load lucky bags
     let lucky_bags = load_all_lucky_bags(pool, user_id).await?;
 
@@ -142,7 +150,7 @@ pub async fn get_summon_pool_infos(pool: &SqlitePool, user_id: i64) -> Result<Ve
     let result = visible_pools
         .into_iter()
         .map(|visible| {
-            let pool_data = user_pools.get(&visible.pool_id).cloned().unwrap_or({
+            let mut pool_data = user_pools.get(&visible.pool_id).cloned().unwrap_or({
                 UserSummonPool {
                     id: 0,
                     user_id,
@@ -162,6 +170,10 @@ pub async fn get_summon_pool_infos(pool: &SqlitePool, user_id: i64) -> Result<Ve
                     updated_at: now,
                 }
             });
+            pool_data.not_ssr_count = pity_by_pool
+                .get(&visible.pool_id)
+                .copied()
+                .unwrap_or_default();
 
             SummonPoolInfo {
                 lucky_bag: lucky_bags.get(&visible.pool_id).cloned(),
@@ -222,12 +234,6 @@ fn visible_pools() -> Vec<VisibleSummonPool> {
 
 fn visible_pools_at(now_sec: i32) -> Vec<VisibleSummonPool> {
     let mut visible = visible_scheduled_pools(now_sec);
-    visible.entry(1).or_insert(VisibleSummonPool {
-        pool_id: 1,
-        online_time: 0,
-        offline_time: i32::MAX,
-        discount_time: 0,
-    });
     visible.entry(2).or_insert(VisibleSummonPool {
         pool_id: 2,
         online_time: 0,
@@ -260,11 +266,9 @@ fn visible_scheduled_pools(now_sec: i32) -> BTreeMap<i32, VisibleSummonPool> {
     active
         .into_iter()
         .filter(|visible| {
-            tables
-                .summon_pool
-                .get(visible.pool_id)
-                .and_then(|pool| summon_version(&pool.prefab_path))
-                == version
+            tables.summon_pool.get(visible.pool_id).is_some_and(|pool| {
+                pool.r#type == 1 || summon_version(&pool.prefab_path) == version
+            })
         })
         .map(|pool| (pool.pool_id, pool))
         .collect()
@@ -284,10 +288,18 @@ fn scheduled_pools() -> Vec<VisibleSummonPool> {
         let Some(pool) = tables.summon_pool.get(pool_id) else {
             continue;
         };
+        let (online_time, offline_time) = match (
+            parse_ts_seconds(&store.online_time),
+            parse_ts_seconds(&store.offline_time),
+        ) {
+            (Some(online), Some(offline)) => (online, offline),
+            (None, None) if pool.r#type == 1 => (0, i32::MAX),
+            _ => continue,
+        };
         let next = VisibleSummonPool {
             pool_id,
-            online_time: parse_ts_seconds(&store.online_time).unwrap_or(0),
-            offline_time: parse_ts_seconds(&store.offline_time).unwrap_or(0),
+            online_time,
+            offline_time,
             discount_time: pool.discount_time10,
         };
         by_pool.entry(pool_id).or_insert(next);
@@ -738,6 +750,17 @@ pub async fn increment_summon_count(
         .await?;
     }
     Ok(())
+}
+
+pub async fn get_summon_count(pool: &SqlitePool, user_id: i64, pool_id: i32) -> Result<i32> {
+    Ok(sqlx::query_scalar(
+        "SELECT summon_count FROM user_summon_pools WHERE user_id = ? AND pool_id = ?",
+    )
+    .bind(user_id)
+    .bind(pool_id)
+    .fetch_optional(pool)
+    .await?
+    .unwrap_or_default())
 }
 
 pub async fn record_summon(
