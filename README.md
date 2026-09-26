@@ -1,6 +1,6 @@
 # Enigma
 
-### Current supported version: **3.7.0 (non-Steam)**
+### Current supported version: **3.8.0 Steam & Global client.**
 
 [![Build and Release](https://github.com/yoncodes/enigma/actions/workflows/rust.yml/badge.svg)](https://github.com/yoncodes/enigma/actions/workflows/rust.yml)
 
