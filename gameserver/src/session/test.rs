@@ -114,7 +114,7 @@ async fn periodic_reconciliation_resets_each_boundary_once_and_blocks_stale_clai
         reconcile_periodic_resets_for_player(&mut player, &pool, NOW_MS)
             .await
             .unwrap(),
-        (true, false)
+        (true, false, vec![daily_id])
     );
     assert_eq!(player.state.last_daily_reset_time, Some(NOW_MS));
     assert_eq!(player.state.last_weekly_reset_time, Some(NOW_MS));
@@ -144,7 +144,7 @@ async fn periodic_reconciliation_resets_each_boundary_once_and_blocks_stale_clai
         reconcile_periodic_resets_for_player(&mut player, &pool, NOW_MS)
             .await
             .unwrap(),
-        (false, false)
+        (false, false, Vec::new())
     );
 
     player.state.last_weekly_reset_time = Some(NOW_MS - 8 * DAY_MS);
@@ -152,7 +152,7 @@ async fn periodic_reconciliation_resets_each_boundary_once_and_blocks_stale_clai
         reconcile_periodic_resets_for_player(&mut player, &pool, NOW_MS)
             .await
             .unwrap(),
-        (false, true)
+        (false, true, vec![weekly_id])
     );
     assert_eq!(player.state.last_weekly_reset_time, Some(NOW_MS));
     assert_eq!(
@@ -180,7 +180,7 @@ async fn periodic_reconciliation_resets_each_boundary_once_and_blocks_stale_clai
         reconcile_periodic_resets_for_player(&mut player, &pool, NOW_MS)
             .await
             .unwrap(),
-        (false, false)
+        (false, false, Vec::new())
     );
 }
 

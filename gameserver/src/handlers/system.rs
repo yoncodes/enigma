@@ -4,7 +4,9 @@ use crate::{
     session,
 };
 use prost::Message;
-use sonettobuf::{Act116InfoUpdatePush, CmdId, CritterInfoPush, RenameRequest, UpdateTaskPush};
+use sonettobuf::{
+    Act116InfoUpdatePush, CmdId, CritterInfoPush, DeleteTaskPush, RenameRequest, UpdateTaskPush,
+};
 
 pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
     let login = session::parse_login_request(&req.data)?;
@@ -21,7 +23,7 @@ pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<
     };
 
     let registration = ctx.state.lock_session(session.user_id).await;
-    let updated_tasks = session::start_session(ctx, session).await?;
+    let (updated_tasks, reset_task_ids) = session::start_session(ctx, session).await?;
     let payload = session::login_reply_payload(session.user_id);
     ctx.send_raw_reply_fixed(CmdId::LoginCmd, payload, 0, req.up_tag)
         .await?;
@@ -62,6 +64,15 @@ pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<
         )
         .await?;
     }
+    if !reset_task_ids.is_empty() {
+        ctx.notify(
+            CmdId::DeleteTaskPushCmd,
+            DeleteTaskPush {
+                task_ids: reset_task_ids,
+            },
+        )
+        .await?;
+    }
     Ok(())
 }
 
@@ -74,7 +85,16 @@ async fn reconnect_at(
     req: ClientPacket,
     now_ms: i64,
 ) -> Result<(), AppError> {
-    session::reconcile_periodic_resets(ctx, now_ms).await?;
+    let reset_task_ids = session::reconcile_periodic_resets(ctx, now_ms).await?;
+    if !reset_task_ids.is_empty() {
+        ctx.notify(
+            CmdId::DeleteTaskPushCmd,
+            DeleteTaskPush {
+                task_ids: reset_task_ids,
+            },
+        )
+        .await?;
+    }
     ctx.player()?
         .activity
         .sync_act101_login_progress(ctx.state.db, now_ms)
