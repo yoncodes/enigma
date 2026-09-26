@@ -5,7 +5,8 @@ use crate::{
 };
 use prost::Message;
 use sonettobuf::{
-    Act116InfoUpdatePush, CmdId, CritterInfoPush, DeleteTaskPush, RenameRequest, UpdateTaskPush,
+    Act116InfoUpdatePush, CmdId, CritterInfoPush, DeleteTaskPush, NewMailPush, RenameRequest,
+    UpdateTaskPush,
 };
 
 pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
@@ -23,7 +24,7 @@ pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<
     };
 
     let registration = ctx.state.lock_session(session.user_id).await;
-    let (updated_tasks, reset_task_ids) = session::start_session(ctx, session).await?;
+    let (updated_tasks, reset_task_ids, new_mails) = session::start_session(ctx, session).await?;
     let payload = session::login_reply_payload(session.user_id);
     ctx.send_raw_reply_fixed(CmdId::LoginCmd, payload, 0, req.up_tag)
         .await?;
@@ -72,6 +73,10 @@ pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<
             },
         )
         .await?;
+    }
+    for mail in new_mails {
+        ctx.notify(CmdId::NewMailPushCmd, NewMailPush { mail: Some(mail) })
+            .await?;
     }
     Ok(())
 }

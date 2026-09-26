@@ -7,6 +7,7 @@ use byteorder::{BE, ByteOrder};
 use common::time::ServerTime;
 use database::db::user::account;
 use logic::task::UserTask;
+use sonettobuf::Mail;
 use sqlx::SqlitePool;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,13 +95,18 @@ pub async fn validate_login(
 pub async fn start_session(
     conn: &mut ConnectionContext,
     session: LoginSession,
-) -> Result<(Vec<UserTask>, Vec<i32>), AppError> {
+) -> Result<(Vec<UserTask>, Vec<i32>, Vec<Mail>), AppError> {
     conn.load_player(session.user_id).await?;
     let db = conn.state.db;
     if common::skip_tutorial() {
         conn.player()?.guide.skip_initial_tutorial(db).await?;
     }
     let now = ServerTime::now_ms();
+    let previous_login = conn
+        .player()?
+        .state
+        .last_login_timestamp
+        .unwrap_or_default();
     let today = ServerTime::server_day(now);
     let (is_new_day, _, reset_task_ids) =
         reconcile_periodic_resets_for_player(conn.player_mut()?, db, now).await?;
@@ -135,9 +141,14 @@ pub async fn start_session(
     logic::turnback::TurnbackManager::new(session.user_id)
         .sync_state(db, conn.state.tables)
         .await?;
+    let new_mails = conn
+        .player()?
+        .mail
+        .created_since(db, previous_login)
+        .await?;
 
     conn.save_player().await?;
-    Ok((updated_tasks, reset_task_ids))
+    Ok((updated_tasks, reset_task_ids, new_mails))
 }
 
 pub async fn reconcile_periodic_resets(
