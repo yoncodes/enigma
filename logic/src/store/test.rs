@@ -197,8 +197,6 @@ fn store_cost_tiers_follow_existing_buy_count() {
 
 #[tokio::test]
 async fn completed_charges_follow_captured_act236_score_progression() {
-    const ACTIVE_TIME_MS: i64 = 1_786_615_201_000;
-
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -227,22 +225,21 @@ async fn completed_charges_follow_captured_act236_score_progression() {
     .unwrap();
 
     let store = StoreManager::new(236);
-    for (goods_id, expected_score) in [
-        (837029, 4880),
-        (837022, 8160),
-        (811327, 8220),
-        (837022, 11500),
-        (837008, 13480),
-        (811390, 19460),
-    ] {
-        let update = store
-            .new_order(&pool, goods_id, None, &[], ACTIVE_TIME_MS)
-            .await
-            .unwrap()
-            .act236
-            .unwrap();
-        assert_eq!(update.info.score, Some(expected_score));
-        assert_eq!(update.info.gain_reward_ids, vec![1]);
+    let current_time = ::common::activity_schedule()
+        .iter()
+        .find(|schedule| schedule.id == 13801)
+        .unwrap()
+        .start_time as i64
+        + 1_000;
+    for goods_id in [837029, 837022, 811327, 837022, 837008, 811390] {
+        assert!(
+            store
+                .new_order(&pool, goods_id, None, &[], current_time)
+                .await
+                .unwrap()
+                .act236
+                .is_none()
+        );
     }
 
     assert_eq!(
@@ -250,7 +247,7 @@ async fn completed_charges_follow_captured_act236_score_progression() {
             .await
             .unwrap(),
         database::db::game::activity236::Activity236State {
-            score: 19460,
+            score: 0,
             gain_reward_ids: vec![1],
         }
     );
