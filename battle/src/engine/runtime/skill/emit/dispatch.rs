@@ -83,10 +83,7 @@ pub(in crate::engine::runtime) fn emit_ops(
     // client session. Broken or missing config remains fatal.
     let blocking_issues = issues
         .iter()
-        .filter(|issue| {
-            issue.reason
-                != crate::engine::skill::effect::catalog::RuleIssueReason::UnsupportedBehavior
-        })
+        .filter(|issue| issue.reason.is_blocking())
         .cloned()
         .collect::<Vec<_>>();
     if !blocking_issues.is_empty() {

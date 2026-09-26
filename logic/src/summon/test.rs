@@ -1,6 +1,7 @@
 use super::{
     GachaRules, SummonManager,
-    commands::{is_newbie_pool, is_newbie_six_star, select_summon_cost, validate_summon_count},
+    commands::{is_newbie_pool, select_summon_cost, validate_summon_count},
+    parse_ids,
 };
 use crate::reward::{self, RewardSet};
 use database::{
@@ -176,6 +177,8 @@ async fn current_catalog_and_special_pool_type_follow_config() {
     );
     assert!(current_pool_ids.contains(&385141));
     assert!(!current_pool_ids.contains(&38151));
+    assert!(current_pool_ids.contains(&11));
+    assert!(!current_pool_ids.contains(&1));
 
     let lower_id_catalog = summon::visible_summon_pool_ids_at(
         chrono::NaiveDateTime::parse_from_str("2025-11-05 12:00:00", "%Y-%m-%d %H:%M:%S")
@@ -199,9 +202,9 @@ async fn current_catalog_and_special_pool_type_follow_config() {
 }
 
 #[tokio::test]
-async fn newbie_banner_is_lifetime_state_completed_by_its_six_star() {
+async fn replacement_newbie_banner_tracks_its_own_thirty_pull_progress() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
-    let _ = config::init(&data_dir);
+    config::init(&data_dir).unwrap();
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     database::run_migrations(&pool).await.unwrap();
     sqlx::query(
@@ -211,34 +214,70 @@ async fn newbie_banner_is_lifetime_state_completed_by_its_six_star() {
     .execute(&pool)
     .await
     .unwrap();
-    database::db::starter_data::load_all_starter_data(&pool, 25)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO user_summon_stats
+             (user_id, is_show_new_summon, new_summon_count, total_summon_count)
+         VALUES (25, 0, 30, 4804)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
-    let pool_config = config::configs::get().summon_pool.get(1).unwrap();
+    let pool_config = config::configs::get().summon_pool.get(11).unwrap();
     assert!(is_newbie_pool(pool_config));
-    assert!(is_newbie_six_star(1, 3056));
-    assert!(!is_newbie_six_star(1, 3005));
+    let mut six_stars = config::configs::get()
+        .summon
+        .iter()
+        .filter(|row| row.id == 11 && row.rare == 5)
+        .flat_map(|row| parse_ids(&row.summon_id))
+        .collect::<Vec<_>>();
+    six_stars.sort_unstable();
+    assert_eq!(six_stars, [3007, 3088, 3095]);
 
-    let mut tx = pool.begin().await.unwrap();
-    summon::record_summon(&mut tx, 25, 10, true, false)
+    sqlx::query(
+        "INSERT INTO user_summon_pools
+             (user_id, pool_id, summon_count, created_at, updated_at)
+         VALUES (25, 11, 20, 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    summon::save_gacha_state(&pool, 25, 11, 4, false)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
-    let active = summon::get_summon_stats(&pool, 25).await.unwrap();
-    assert!(active.is_show_new_summon);
-    assert_eq!(active.new_summon_count, 10);
-    assert_eq!(active.total_summon_count, 10);
 
-    let mut tx = pool.begin().await.unwrap();
-    summon::record_summon(&mut tx, 25, 10, true, true)
+    let active = SummonManager::new(25).info(&pool).await.unwrap();
+    let active_pool = active
+        .pool_infos
+        .iter()
+        .find(|info| info.pool_id == Some(11))
+        .unwrap();
+    assert_eq!(active.is_show_new_summon, Some(true));
+    assert_eq!(active.new_summon_count, Some(20));
+    assert_eq!(active_pool.not_ssr_count, Some(4));
+
+    sqlx::query("INSERT INTO items (user_id, item_id, quantity) VALUES (25, 143801, 10)")
+        .execute(&pool)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
-    let completed = summon::get_summon_stats(&pool, 25).await.unwrap();
-    assert!(!completed.is_show_new_summon);
-    assert_eq!(completed.new_summon_count, 20);
-    assert_eq!(completed.total_summon_count, 20);
+    let final_pull = SummonManager::new(25)
+        .summon(&pool, 11, None, None, 10)
+        .await
+        .unwrap();
+    assert_eq!(final_pull.reply.summon_result.len(), 10);
+    summon::save_gacha_state(&pool, 25, 11, 14, false)
+        .await
+        .unwrap();
+
+    let completed = SummonManager::new(25).info(&pool).await.unwrap();
+    let completed_pool = completed
+        .pool_infos
+        .iter()
+        .find(|info| info.pool_id == Some(11))
+        .unwrap();
+    assert_eq!(completed.is_show_new_summon, Some(false));
+    assert_eq!(completed.new_summon_count, Some(30));
+    assert_eq!(completed_pool.not_ssr_count, Some(14));
 }
 
 #[tokio::test]

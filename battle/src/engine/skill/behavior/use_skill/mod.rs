@@ -648,6 +648,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         skills,
         buffs,
         models: Vec::new(),
+        summons: Vec::new(),
     }
 }
 

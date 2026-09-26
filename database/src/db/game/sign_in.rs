@@ -165,8 +165,8 @@ pub async fn process_manual_sign_in(pool: &SqlitePool, user_id: i64) -> Result<b
 }
 
 /// Reset daily counters (call this for any daily-reset systems)
-pub async fn reset_daily_counters(pool: &SqlitePool, user_id: i64) -> Result<()> {
-    tasks::reset_daily_tasks(pool, user_id).await?;
+pub async fn reset_daily_counters(pool: &SqlitePool, user_id: i64) -> Result<Vec<i32>> {
+    let reset_task_ids = tasks::reset_daily_tasks(pool, user_id).await?;
 
     // Reset dungeon daily attempts
     sqlx::query("UPDATE user_dungeons SET today_pass_num = 0 WHERE user_id = ?")
@@ -204,14 +204,14 @@ pub async fn reset_daily_counters(pool: &SqlitePool, user_id: i64) -> Result<()>
     .await?;
 
     tracing::info!("Reset daily counters for user {}", user_id);
-    Ok(())
+    Ok(reset_task_ids)
 }
 
 /// Reset weekly counters (call this for any weekly-reset systems)
-pub async fn reset_weekly_counters(pool: &SqlitePool, user_id: i64) -> Result<()> {
+pub async fn reset_weekly_counters(pool: &SqlitePool, user_id: i64) -> Result<Vec<i32>> {
     let game_data = config::configs::get();
 
-    tasks::reset_weekly_tasks(pool, user_id).await?;
+    let reset_task_ids = tasks::reset_weekly_tasks(pool, user_id).await?;
 
     let weekly_store_goods: Vec<i32> = game_data
         .store_goods
@@ -282,7 +282,7 @@ pub async fn reset_weekly_counters(pool: &SqlitePool, user_id: i64) -> Result<()
         );
     }
 
-    Ok(())
+    Ok(reset_task_ids)
 }
 
 /// Reset monthly counters

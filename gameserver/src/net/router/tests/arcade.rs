@@ -323,10 +323,7 @@ async fn arcade_inside_commands_resume_and_settle_persistent_run() {
             CommandPacket::Push { cmd_id, .. } | CommandPacket::Reply { cmd_id, .. } => *cmd_id,
         })
         .collect::<Vec<_>>();
-    let mut expected_task_types = vec![79, 62];
-    if database::db::game::tasks::current_battle_pass_id().is_some() {
-        expected_task_types.push(10);
-    }
+    let expected_task_types = vec![79, 62];
     let mut expected_cmd_ids = Vec::new();
     for _ in &expected_task_types {
         expected_cmd_ids.push(CmdId::UpdateTaskPushCmd);
@@ -348,18 +345,11 @@ async fn arcade_inside_commands_resume_and_settle_persistent_run() {
         assert_eq!(update.task_info[0].r#type, Some(*expected_type));
     }
 
-    let mut expected_red_dots = vec![
+    let expected_red_dots = vec![
         vec![(3705, vec![(3, 1)]), (3708, vec![(0, 0)])],
         vec![(3005, vec![(0, 1)])],
+        vec![(3306, vec![(0, 1)])],
     ];
-    if database::db::game::tasks::current_battle_pass_id().is_some() {
-        expected_red_dots.push(vec![
-            (1027, vec![(0, 0)]),
-            (1047, vec![(0, 0)]),
-            (2204, vec![(0, 0)]),
-        ]);
-    }
-    expected_red_dots.push(vec![(3306, vec![(0, 1)])]);
     let red_dot_packet_indexes = (0..expected_task_types.len())
         .map(|index| index * 2 + 1)
         .chain(std::iter::once(expected_task_types.len() * 2));

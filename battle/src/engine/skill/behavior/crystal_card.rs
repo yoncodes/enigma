@@ -76,6 +76,7 @@ impl BehaviorHandler for Handler {
             skills: candidate_groups(behavior).into_iter().flatten().collect(),
             buffs: Vec::new(),
             models: Vec::new(),
+            summons: Vec::new(),
         }
     }
 }

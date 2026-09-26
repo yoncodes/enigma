@@ -5,8 +5,8 @@ use crate::{
 };
 use database::db::game::mail;
 use sonettobuf::{
-    DeleteMailBatchReply, GetAllMailsReply, MailLockReply, MarkMailJumpReply, ReadMailBatchReply,
-    ReadMailReply,
+    DeleteMailBatchReply, GetAllMailsReply, Mail, MailLockReply, MarkMailJumpReply,
+    ReadMailBatchReply, ReadMailReply,
 };
 use sqlx::SqlitePool;
 
@@ -36,6 +36,14 @@ impl MailManager {
                 .map(Into::into)
                 .collect(),
         })
+    }
+
+    pub async fn created_since(&self, db: &SqlitePool, since: i64) -> Result<Vec<Mail>, AppError> {
+        Ok(mail::get_created_since(db, self.player_id, since)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
 
     pub async fn set_lock(

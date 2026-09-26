@@ -89,6 +89,54 @@ fn transformed_models_expand_the_checked_skill_closure() {
 }
 
 #[test]
+fn summoned_definitions_expand_the_checked_skill_closure() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut catalog = SkillEffectCatalog::default();
+    let mut skills = VecDeque::from([Pending {
+        id: 307_401_612,
+        path: "test root".to_owned(),
+    }]);
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut VecDeque::new(),
+        &mut report,
+    );
+
+    assert!(report.checked_skills.contains(&307_401_711));
+    assert!(report.checked_skills.contains(&307_401_721));
+}
+
+#[test]
+fn missing_summoned_definition_fails_loudly() {
+    crate::init_config().unwrap();
+    let mut skills = VecDeque::new();
+    let mut report = Report::default();
+
+    enqueue_summoned_skills(
+        config::get(),
+        i32::MAX,
+        "test root",
+        &mut skills,
+        &mut report,
+    );
+
+    assert!(skills.is_empty());
+    assert_eq!(
+        report.errors,
+        ["MissingSummoned path=test root".to_owned()].into()
+    );
+}
+
+#[test]
 fn device_owned_max_roots_use_configured_device_skills() {
     crate::init_config().unwrap();
     let db = config::get();

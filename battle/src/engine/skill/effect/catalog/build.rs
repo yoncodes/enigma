@@ -133,11 +133,13 @@ impl SkillEffectCatalog {
             .filter(|id| *id > 0)
             .collect::<VecDeque<_>>();
         let mut models = VecDeque::new();
+        let mut summons = VecDeque::new();
         let mut seen_skills = HashSet::new();
         let mut seen_buffs = HashSet::new();
         let mut seen_models = HashSet::new();
+        let mut seen_summons = HashSet::new();
 
-        while !skills.is_empty() || !buffs.is_empty() || !models.is_empty() {
+        while !skills.is_empty() || !buffs.is_empty() || !models.is_empty() || !summons.is_empty() {
             while let Some(skill_id) = skills.pop_front() {
                 if !seen_skills.insert(skill_id) {
                     continue;
@@ -171,6 +173,7 @@ impl SkillEffectCatalog {
                 skills.extend(references.skills);
                 buffs.extend(references.buffs);
                 models.extend(references.models);
+                summons.extend(references.summons);
             }
             while let Some(buff_id) = buffs.pop_front() {
                 if !seen_buffs.insert(buff_id) {
@@ -205,6 +208,7 @@ impl SkillEffectCatalog {
                     skills.extend(references.skills);
                     buffs.extend(references.buffs);
                     models.extend(references.models);
+                    summons.extend(references.summons);
                 }
             }
             while let Some(model_id) = models.pop_front() {
@@ -212,6 +216,12 @@ impl SkillEffectCatalog {
                     continue;
                 }
                 skills.extend(monster_model_skills(db, model_id));
+            }
+            while let Some(summoned_id) = summons.pop_front() {
+                if !seen_summons.insert(summoned_id) {
+                    continue;
+                }
+                skills.extend(crate::catalog::summoned_unique_skills(db, summoned_id));
             }
         }
     }
@@ -258,9 +268,20 @@ impl SkillEffectCatalog {
                     crate::engine::skill::behavior::registry::find(&slot.behavior)
                 {
                     let found = (definition.references)(&slot.behavior);
+                    for &summoned_id in &found.summons {
+                        self.record_missing_summoned(
+                            db,
+                            row.id,
+                            index as u8 + 1,
+                            behavior,
+                            &slot.behavior,
+                            summoned_id,
+                        );
+                    }
                     references.skills.extend(found.skills);
                     references.buffs.extend(found.buffs);
                     references.models.extend(found.models);
+                    references.summons.extend(found.summons);
                 }
                 if slot.behavior.spec.kind == BehaviorKind::NotifyUpgradeHero {
                     let found =
@@ -293,6 +314,28 @@ impl SkillEffectCatalog {
         self.big_skills.insert(row.id, row.is_big_skill != 0);
         self.target_limits.insert(row.id, row.target_limit);
         references
+    }
+
+    fn record_missing_summoned(
+        &mut self,
+        db: &GameDB,
+        effect_id: i32,
+        slot: u8,
+        raw: &str,
+        behavior: &ParsedBehavior,
+        summoned_id: i32,
+    ) {
+        if db.summoned.get(summoned_id).is_some() {
+            return;
+        }
+        self.issues.entry(effect_id).or_default().push(RuleIssue {
+            effect_id,
+            slot,
+            opcode: Some(behavior.spec.key.opcode),
+            type_name: Some(behavior.spec.key.type_name.to_owned()),
+            raw: raw.to_owned(),
+            reason: RuleIssueReason::MissingSummoned,
+        });
     }
 
     fn warn_unsupported(&self, db: &GameDB) {
@@ -524,5 +567,32 @@ fn warn_unsupported_conditions(
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_summoned_reference_is_a_blocking_catalog_issue() {
+        crate::test_support::init_config();
+        let mut catalog = SkillEffectCatalog::default();
+        let behavior = ParsedBehavior::new(40009, "AddSummoned", vec![i32::MAX, 1, 1]);
+
+        catalog.record_missing_summoned(
+            crate::test_support::game_data(),
+            123,
+            2,
+            "40009#2147483647#1#1",
+            &behavior,
+            i32::MAX,
+        );
+
+        let [issue] = catalog.issues(123) else {
+            panic!("expected one missing-summoned issue");
+        };
+        assert_eq!(issue.reason, RuleIssueReason::MissingSummoned);
+        assert!(issue.reason.is_blocking());
     }
 }

@@ -189,6 +189,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
             .collect(),
         buffs: Vec::new(),
         models: Vec::new(),
+        summons: Vec::new(),
     }
 }
 

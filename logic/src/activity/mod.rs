@@ -15,18 +15,18 @@ use sonettobuf::{
     Act208BonusNo, Act208ReceiveBonusReply, Act212BonusNo, Act212InfoNo, Act212ReceiveBonusReply,
     Act218FinishGameReply, Act221SummonReply, Act228FlipGridGridReply, Act228GetFinalBonusReply,
     Act228Info, Act229BattleFinishPush, Act229HeroNo, Act229ResetStageReply, Act239BonusNo,
-    Act239BonusReply, ActivityInfo, ActivityNewStageReadReply, EndingInfo,
+    Act239BonusReply, ActivityInfo, ActivityNewStageReadReply, BuildTrapReply, EndingInfo,
     FinishAct125EpisodeReply, FinishAct146EpisodeReply, Get101BonusListReply, Get101BonusReply,
-    Get101InfosReply, Get101SpBonusReply, Get104InfosReply, Get123InfosReply, Get128InfosReply,
-    Get136InfoReply, Get152InfoReply, Get153InfosReply, Get154InfosReply, Get158InfosReply,
-    Get166InfosReply, Get196InfoReply, Get197InfoReply, Get199InfoReply, Get217InfosReply,
-    Get218InfoReply, Get221InfoReply, GetAct125InfosReply, GetAct146InfosReply, GetAct172InfoReply,
-    GetAct186InfoReply, GetAct186SpBonusInfoReply, GetAct189InfoReply, GetAct189OnceBonusReply,
-    GetAct208InfoReply, GetAct209InfoReply, GetAct212InfoReply, GetAct216InfoReply,
-    GetAct225InfoReply, GetAct228InfoReply, GetAct229InfoReply, GetAct236InfoReply,
-    GetAct239InfoReply, GetActivityInfosReply, GetActivityInfosWithParamReply,
-    MarkActivity104StoryReply, MarkEpisodeAfterStoryReply, MarkPopSummaryReply, StepInfo,
-    UnlockPermanentReply,
+    Get101InfosReply, Get101SpBonusReply, Get104InfosReply, Get116InfosReply, Get123InfosReply,
+    Get128InfosReply, Get136InfoReply, Get152InfoReply, Get153InfosReply, Get154InfosReply,
+    Get158InfosReply, Get166InfosReply, Get196InfoReply, Get197InfoReply, Get199InfoReply,
+    Get217InfosReply, Get218InfoReply, Get221InfoReply, GetAct125InfosReply, GetAct146InfosReply,
+    GetAct172InfoReply, GetAct186InfoReply, GetAct186SpBonusInfoReply, GetAct189InfoReply,
+    GetAct189OnceBonusReply, GetAct208InfoReply, GetAct209InfoReply, GetAct212InfoReply,
+    GetAct216InfoReply, GetAct225InfoReply, GetAct228InfoReply, GetAct229InfoReply,
+    GetAct236InfoReply, GetAct239InfoReply, GetActivityInfosReply, GetActivityInfosWithParamReply,
+    MarkActivity104StoryReply, MarkEpisodeAfterStoryReply, MarkPopSummaryReply, PutTrapReply,
+    StepInfo, UnlockPermanentReply, UpgradeElementReply,
 };
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
@@ -38,6 +38,7 @@ pub use manager::ActivityManager;
 
 mod act101;
 mod act104;
+mod act116;
 mod act123;
 mod act125;
 mod act128;
@@ -74,6 +75,7 @@ mod dice_hero;
 
 use act101::{get101_bonus, get101_bonus_list, get101_infos, get101_sp_bonus};
 use act104::{act104_infos, mark_activity104_story, mark_episode_after_story, mark_pop_summary};
+use act116::{build_trap, info as act116_info, put_trap, upgrade_element};
 use act123::{act123_infos, act153_infos};
 use act125::{act125_infos, finish_act125_episode};
 pub use act128::settle_act128_score_in_transaction;

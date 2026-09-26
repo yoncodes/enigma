@@ -76,7 +76,17 @@ fn rejected_opening_seed_does_not_retain_captured_draws() {
         skill_id: Some(201),
         ..Default::default()
     };
+    let install_ai_skill = |runtime: &mut BattleRuntime| {
+        runtime
+            .catalog
+            .insert(crate::engine::skill::effect::slot::ParsedSkillEffect {
+                skill_id: 201,
+                slots: Vec::new(),
+            });
+        runtime.catalog.insert_logic_target(201, 201);
+    };
     let mut baseline = runtime(fight.clone());
+    install_ai_skill(&mut baseline);
     let baseline_round = baseline.start_round().unwrap();
     let mut determinism = RoundDeterminism::with_seed(17);
     determinism.enqueue_opening_seed(
@@ -86,6 +96,7 @@ fn rejected_opening_seed_does_not_retain_captured_draws() {
         0,
     );
     let mut replay = runtime(fight);
+    install_ai_skill(&mut replay);
     let replay_round = replay.start_round_with_determinism(determinism).unwrap();
 
     assert_eq!(replay_round.ai_use_cards, baseline_round.ai_use_cards);

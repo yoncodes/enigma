@@ -31,7 +31,7 @@ mod roots;
 
 pub(crate) use closure::scan_closure;
 #[cfg(test)]
-use closure::{buff_act_capability, malformed_buff_act_error};
+use closure::{buff_act_capability, enqueue_summoned_skills, malformed_buff_act_error};
 pub(crate) use report::{CapabilityKey, Report};
 pub(crate) use roots::{
     Pending, collect_battle_roots, collect_episode_roots, collect_hero_build_roots,

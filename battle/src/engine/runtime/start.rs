@@ -139,14 +139,14 @@ impl BattleRuntime {
             })
             .unwrap_or_default();
         let decks = crate::engine::manager::card::start::configured_start_decks(
-            self.managers.catalog(),
             &self.fight,
-            &self.managers.ex_point,
-            &self.managers.eureka,
+            &self.managers,
+            &self.catalog,
+            &self.determinism,
             extra_ai_actions,
             battle_id,
             captured,
-        );
+        )?;
         if decks.used_capture {
             self.determinism.enqueue_card_draws(captured_draws);
         }

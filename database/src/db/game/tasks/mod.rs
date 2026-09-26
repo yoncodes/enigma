@@ -770,7 +770,7 @@ pub async fn list_turnback(
     .await
 }
 
-pub async fn reset_daily_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<()> {
+pub async fn reset_daily_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<i32>> {
     let daily_ids = config::configs::get()
         .task_daily
         .iter()
@@ -784,7 +784,7 @@ pub async fn reset_daily_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<
         .map(|task| task.id)
         .collect::<Vec<_>>();
 
-    reset_task_ids(
+    let reset_ids = reset_task_ids(
         pool,
         user_id,
         vec![
@@ -793,10 +793,11 @@ pub async fn reset_daily_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<
         ],
     )
     .await?;
-    activity::reset_activity(pool, user_id, TaskType::Daily.id()).await
+    activity::reset_activity(pool, user_id, TaskType::Daily.id()).await?;
+    Ok(reset_ids)
 }
 
-pub async fn reset_weekly_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<()> {
+pub async fn reset_weekly_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<i32>> {
     let weekly_ids = config::configs::get()
         .task_weekly
         .iter()
@@ -822,7 +823,7 @@ pub async fn reset_weekly_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result
         .map(|task| task.id)
         .collect::<Vec<_>>();
 
-    reset_task_ids(
+    let reset_ids = reset_task_ids(
         pool,
         user_id,
         vec![
@@ -833,7 +834,8 @@ pub async fn reset_weekly_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result
         ],
     )
     .await?;
-    activity::reset_activity(pool, user_id, TaskType::Weekly.id()).await
+    activity::reset_activity(pool, user_id, TaskType::Weekly.id()).await?;
+    Ok(reset_ids)
 }
 
 pub async fn finish_task(
@@ -1399,11 +1401,12 @@ async fn reset_task_ids(
     pool: &SqlitePool,
     user_id: i64,
     groups: Vec<(i32, Vec<i32>)>,
-) -> sqlx::Result<()> {
+) -> sqlx::Result<Vec<i32>> {
     let now = ServerTime::now_ms();
+    let mut reset_ids = Vec::new();
     for (type_id, task_ids) in groups {
         for task_id in task_ids {
-            sqlx::query(
+            let result = sqlx::query(
                 "UPDATE user_tasks
                  SET progress = 0, has_finished = 0, finish_count = 0, updated_at = ?
                  WHERE user_id = ? AND type_id = ? AND task_id = ?",
@@ -1414,10 +1417,15 @@ async fn reset_task_ids(
             .bind(task_id)
             .execute(pool)
             .await?;
+            if result.rows_affected() != 0 {
+                reset_ids.push(task_id);
+            }
         }
     }
 
-    Ok(())
+    reset_ids.sort_unstable();
+    reset_ids.dedup();
+    Ok(reset_ids)
 }
 
 fn max_finish_count(type_id: i32, task_id: i32) -> i32 {

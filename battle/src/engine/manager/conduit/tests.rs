@@ -214,6 +214,60 @@ fn device_skill_spends_its_configured_power_and_updates_round_counters() {
 }
 
 #[test]
+fn finish_skill_uses_configured_ownership_after_group_switch() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3149),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = ConduitManager::seed(&fight);
+
+    manager
+        .execute(ConduitCommand::BeginSkill {
+            source_uid: 10,
+            skill_id: 31490111,
+            cost_reduction: 0,
+        })
+        .unwrap();
+    manager
+        .execute(ConduitCommand::SetSkillGroup {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60293, "SetDeviceSkillIndex"),
+            },
+            source_uid: 10,
+            group: 2,
+        })
+        .unwrap();
+
+    let finished = manager
+        .execute(ConduitCommand::FinishSkill {
+            source_uid: 10,
+            skill_id: 31490111,
+        })
+        .unwrap();
+
+    assert!(matches!(
+        finished,
+        ConduitChange::SkillFinished {
+            source_uid: 10,
+            team: 1,
+            skill_id: 31490111,
+            uses_this_round: 1,
+        }
+    ));
+    assert_eq!(manager.uses(10), 1);
+    assert_eq!(manager.counter(1, ConduitCounterKind::Activation), 1);
+}
+
+#[test]
 fn explicit_and_normal_changes_share_team_round_counters_across_devices() {
     crate::test_support::init_config();
     let fight = Fight {

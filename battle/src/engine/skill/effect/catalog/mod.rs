@@ -56,7 +56,14 @@ pub(crate) enum SkillEffectTag {
 pub enum RuleIssueReason {
     MalformedBehavior,
     MissingBehavior,
+    MissingSummoned,
     UnsupportedBehavior,
+}
+
+impl RuleIssueReason {
+    pub const fn is_blocking(self) -> bool {
+        !matches!(self, Self::UnsupportedBehavior)
+    }
 }
 
 impl SkillEffectCatalog {

@@ -179,56 +179,65 @@ fn completed_active_use_skill_requires_an_active_execution_mode_and_real_source(
             },
         )
     };
-    let completed = exact_condition(502212, "ActiveUseSkill", &["0"]);
+    let ally = exact_condition(502212, "ActiveUseSkill", &["0"]);
 
     assert!(matches(
-        &completed,
+        &ally,
         10,
         0,
         crate::engine::skill::action::SkillExecutionMode::Active,
     ));
     assert!(matches(
-        &completed,
+        &ally,
         10,
         0,
         crate::engine::skill::action::SkillExecutionMode::DirectBig,
     ));
     assert!(matches(
-        &completed,
+        &ally,
         10,
         0,
         crate::engine::skill::action::SkillExecutionMode::Device,
     ));
     assert!(!matches(
-        &completed,
+        &ally,
         10,
         0,
         crate::engine::skill::action::SkillExecutionMode::DeviceCard,
     ));
     assert!(!matches(
-        &completed,
+        &ally,
         10,
         0,
         crate::engine::skill::action::SkillExecutionMode::Nested,
     ));
     assert!(!matches(
-        &completed,
+        &ally,
         10,
         crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp.id(),
         crate::engine::skill::action::SkillExecutionMode::Active,
     ));
     for opcode in [502203, 502208, 502210] {
-        assert!(matches(
-            &exact_condition(opcode, "ActiveUseSkill", &["0"]),
-            10,
-            0,
-            crate::engine::skill::action::SkillExecutionMode::DeviceCard,
-        ));
-        assert!(matches(
-            &exact_condition(opcode, "ActiveUseSkill", &["0"]),
-            10,
-            0,
+        let owner = exact_condition(opcode, "ActiveUseSkill", &["0"]);
+        for mode in [
+            crate::engine::skill::action::SkillExecutionMode::Active,
+            crate::engine::skill::action::SkillExecutionMode::DirectBig,
             crate::engine::skill::action::SkillExecutionMode::Device,
+            crate::engine::skill::action::SkillExecutionMode::DeviceCard,
+        ] {
+            assert!(matches(&owner, 10, 0, mode));
+        }
+        assert!(!matches(
+            &owner,
+            10,
+            0,
+            crate::engine::skill::action::SkillExecutionMode::Nested,
+        ));
+        assert!(!matches(
+            &owner,
+            10,
+            crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp.id(),
+            crate::engine::skill::action::SkillExecutionMode::Active,
         ));
     }
     assert!(matches(
@@ -238,7 +247,7 @@ fn completed_active_use_skill_requires_an_active_execution_mode_and_real_source(
         crate::engine::skill::action::SkillExecutionMode::Device,
     ));
     assert!(!matches(
-        &completed,
+        &ally,
         crate::engine::manager::emitter::UID,
         0,
         crate::engine::skill::action::SkillExecutionMode::Active,

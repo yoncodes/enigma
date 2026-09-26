@@ -78,6 +78,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         .into_iter()
         .collect(),
         models: Vec::new(),
+        summons: Vec::new(),
     }
 }
 

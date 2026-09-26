@@ -20,6 +20,8 @@ pub mod activity109_task;
 pub mod activity112_task;
 pub mod activity113_task;
 pub mod activity114_task;
+pub mod activity116_building;
+pub mod activity116_episode_sp;
 pub mod activity119_task;
 pub mod activity120_task;
 pub mod activity122_task;
@@ -442,6 +444,8 @@ pub struct GameDB {
     pub activity112_task: activity112_task::Activity112TaskTable,
     pub activity113_task: activity113_task::Activity113TaskTable,
     pub activity114_task: activity114_task::Activity114TaskTable,
+    pub activity116_building: activity116_building::Activity116BuildingTable,
+    pub activity116_episode_sp: activity116_episode_sp::Activity116EpisodeSpTable,
     pub activity119_task: activity119_task::Activity119TaskTable,
     pub activity120_task: activity120_task::Activity120TaskTable,
     pub activity122_task: activity122_task::Activity122TaskTable,
@@ -904,6 +908,12 @@ impl GameDB {
         let activity114_task = activity114_task::Activity114TaskTable::load(
             &format!("{}/activity114_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity114_task.json: {}", e))?;
+        let activity116_building = activity116_building::Activity116BuildingTable::load(
+            &format!("{}/activity116_building.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity116_building.json: {}", e))?;
+        let activity116_episode_sp = activity116_episode_sp::Activity116EpisodeSpTable::load(
+            &format!("{}/activity116_episode_sp.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity116_episode_sp.json: {}", e))?;
         let activity119_task = activity119_task::Activity119TaskTable::load(
             &format!("{}/activity119_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity119_task.json: {}", e))?;
@@ -2120,6 +2130,8 @@ impl GameDB {
             activity112_task,
             activity113_task,
             activity114_task,
+            activity116_building,
+            activity116_episode_sp,
             activity119_task,
             activity120_task,
             activity122_task,

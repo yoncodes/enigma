@@ -94,6 +94,7 @@ pub struct RuleReferences {
     pub skills: Vec<i32>,
     pub buffs: Vec<i32>,
     pub models: Vec<i32>,
+    pub summons: Vec<i32>,
 }
 
 #[cfg(test)]

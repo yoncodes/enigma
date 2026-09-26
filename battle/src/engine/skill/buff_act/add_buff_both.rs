@@ -5,6 +5,7 @@ use crate::engine::{
         buff::{BuffCommand, BuffGrant, BuffRemove, BuffRemoveSelector},
     },
     skill::{
+        action::SkillPhase,
         buff_act::{command_origin, registry::BuffActKind, subscriber_is_kind},
         rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
@@ -22,9 +23,15 @@ pub fn rule_ops(
     if !subscriber_is_kind(subscriber, BuffActKind::AddBuffBoth) {
         return None;
     }
-    let BattleEvent::AllyAction(action) = event else {
+    let BattleEvent::SkillAction(action) = event else {
         return None;
     };
+    if action.phase != SkillPhase::HitPassives
+        || !action.is_attack
+        || action.source_uid != subscriber.owner_uid
+    {
+        return Some(Vec::new());
+    }
     let [enemy_buff_id, ally_target_code, ally_buff_id] = subscriber.args.as_slice() else {
         return None;
     };
@@ -52,7 +59,7 @@ pub fn rule_ops(
             Default::default(),
         );
     let grants = action
-        .target_uids
+        .attacked_target_uids
         .iter()
         .copied()
         .filter(|uid| {
@@ -68,7 +75,7 @@ pub fn rule_ops(
                 source_uid,
                 target_uid,
                 buff_id,
-                amount: Some(1),
+                amount: None,
                 occurrences: 1,
                 child_uid_reservations: 0,
             })))
@@ -92,7 +99,10 @@ mod tests {
     use super::*;
     use crate::engine::{
         event::{kind::EventKind, subscription::SubscriptionKey},
-        skill::{action::ActionEvent, rule::DefinitionKey},
+        skill::{
+            action::{SkillActionEvent, SkillExecutionMode},
+            rule::DefinitionKey,
+        },
     };
     use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
@@ -109,7 +119,7 @@ mod tests {
                 ..Default::default()
             }),
             defender: Some(FightTeam {
-                entitys: vec![entity(-1), entity(-2)],
+                entitys: vec![entity(-1), entity(-2), entity(-3)],
                 ..Default::default()
             }),
             ..Default::default()
@@ -131,11 +141,13 @@ mod tests {
             args: vec![300901412, 101, 30091111],
             raw: "850#300901412#101#30091111".to_owned(),
         };
-        let event = BattleEvent::AllyAction(ActionEvent {
+        let event = BattleEvent::SkillAction(SkillActionEvent {
             source_uid: 10,
             skill_id: 1,
             target_uid: -1,
-            target_uids: vec![-1, -2],
+            target_uids: vec![-1, -2, -3],
+            attacked_target_uids: vec![-2, 11, -3],
+            phase: SkillPhase::HitPassives,
             skill_slot: 1,
             is_attack: true,
             rank: 1,
@@ -144,7 +156,17 @@ mod tests {
             additional_moxie: 0,
             extra_skill_kind: 0,
             assassinate: false,
-            ..Default::default()
+            ignore_riposte: false,
+            damage_amount: 0,
+            kill_count: 0,
+            crit_count: 0,
+            guard_break_count: 0,
+            mode: SkillExecutionMode::Active,
+            teammate_injury_count: 0,
+            teammate_injury_count_not_reset: 0,
+            team_injury_count_round: 0,
+            card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         });
 
         let ops = rule_ops(
@@ -159,7 +181,7 @@ mod tests {
             .iter()
             .filter_map(|op| match op {
                 RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant))) => {
-                    Some((grant.target_uid, grant.buff_id))
+                    Some((grant.target_uid, grant.buff_id, grant.amount))
                 }
                 _ => None,
             })
@@ -168,10 +190,10 @@ mod tests {
         assert_eq!(
             grants,
             vec![
-                (-1, 300901412),
-                (-2, 300901412),
-                (10, 30091111),
-                (11, 30091111)
+                (-2, 300901412, None),
+                (-3, 300901412, None),
+                (10, 30091111, None),
+                (11, 30091111, None)
             ]
         );
         assert!(matches!(
@@ -184,5 +206,39 @@ mod tests {
                 }
             ))))
         ));
+
+        let mut non_attack = event.clone();
+        let BattleEvent::SkillAction(action) = &mut non_attack else {
+            unreachable!()
+        };
+        action.is_attack = false;
+        assert!(
+            rule_ops(
+                &managers,
+                &pool,
+                &mut Default::default(),
+                &subscriber,
+                &non_attack,
+            )
+            .unwrap()
+            .is_empty()
+        );
+
+        let mut wrong_phase = event;
+        let BattleEvent::SkillAction(action) = &mut wrong_phase else {
+            unreachable!()
+        };
+        action.phase = SkillPhase::AfterHit;
+        assert!(
+            rule_ops(
+                &managers,
+                &pool,
+                &mut Default::default(),
+                &subscriber,
+                &wrong_phase,
+            )
+            .unwrap()
+            .is_empty()
+        );
     }
 }

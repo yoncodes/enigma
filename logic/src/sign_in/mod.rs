@@ -42,14 +42,17 @@ impl SignInManager {
         db: &SqlitePool,
         daily: bool,
         weekly: bool,
-    ) -> Result<(), AppError> {
+    ) -> Result<Vec<i32>, AppError> {
+        let mut reset_task_ids = Vec::new();
         if weekly {
-            sign_in::reset_weekly_counters(db, self.player_id).await?;
+            reset_task_ids.extend(sign_in::reset_weekly_counters(db, self.player_id).await?);
         }
         if daily {
-            sign_in::reset_daily_counters(db, self.player_id).await?;
+            reset_task_ids.extend(sign_in::reset_daily_counters(db, self.player_id).await?);
         }
-        Ok(())
+        reset_task_ids.sort_unstable();
+        reset_task_ids.dedup();
+        Ok(reset_task_ids)
     }
 
     pub async fn get_info(&self, db: &SqlitePool) -> Result<GetSignInInfoReply, AppError> {

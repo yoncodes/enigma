@@ -343,6 +343,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
             .filter(|buff_id| *buff_id > 0)
             .collect(),
         models: Vec::new(),
+        summons: Vec::new(),
     }
 }
 

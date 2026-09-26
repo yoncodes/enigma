@@ -12,9 +12,6 @@ pub struct Rouge2ActiveSkill {
     #[serde(rename = "battleTag")]
     pub battle_tag: String,
     pub career: String,
-    #[serde(rename = "coolDown")]
-    pub cool_down: i32,
-    pub cost: i32,
     #[serde(rename = "countParam")]
     pub count_param: String,
     #[serde(rename = "countTitle")]
@@ -32,8 +29,6 @@ pub struct Rouge2ActiveSkill {
     #[serde(rename = "keyWord")]
     pub key_word: String,
     pub name: String,
-    #[serde(rename = "narrativeDesc")]
-    pub narrative_desc: String,
     #[serde(rename = "newDesc")]
     pub new_desc: String,
     #[serde(rename = "outUnlock")]
@@ -55,8 +50,6 @@ pub struct Rouge2ActiveSkill {
     pub update_attri: String,
     #[serde(rename = "updateSkill")]
     pub update_skill: i32,
-    #[serde(rename = "useLimit")]
-    pub use_limit: i32,
 }
 use std::collections::HashMap;
 

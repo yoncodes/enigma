@@ -46,6 +46,7 @@ impl BehaviorHandler for Handler {
                 .unwrap_or_default(),
             buffs: Vec::new(),
             models: Vec::new(),
+            summons: Vec::new(),
         }
     }
 }
