@@ -42,6 +42,26 @@ pub async fn get_all(pool: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<UserMa
     .await
 }
 
+pub async fn get_created_since(
+    pool: &SqlitePool,
+    user_id: i64,
+    since: i64,
+) -> sqlx::Result<Vec<UserMail>> {
+    expire(pool, user_id).await?;
+
+    sqlx::query_as::<_, UserMail>(
+        "SELECT incr_id, user_id, mail_id, params, attachment, state, create_time,
+                sender, title, content, copy, expire_time, sender_type, jump_title, jump, is_lock
+         FROM user_mails
+         WHERE user_id = ? AND create_time > ?
+         ORDER BY create_time",
+    )
+    .bind(user_id)
+    .bind(since)
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn unread_count(pool: &SqlitePool, user_id: i64) -> sqlx::Result<i64> {
     expire(pool, user_id).await?;
 

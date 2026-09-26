@@ -18,13 +18,17 @@ async fn mail_red_dot_only_changes_when_last_unread_mail_is_claimed() {
     .unwrap();
     sqlx::query(
         "INSERT INTO user_mails (incr_id, user_id, mail_id, create_time, expire_time)
-             VALUES (1, 1, 1, 0, 0), (2, 1, 2, 0, 0)",
+             VALUES (1, 1, 1, 100, 0), (2, 1, 2, 200, 0)",
     )
     .execute(&pool)
     .await
     .unwrap();
 
     let manager = super::MailManager::new(1);
+    let new_mails = manager.created_since(&pool, 100).await.unwrap();
+    assert_eq!(new_mails.len(), 1);
+    assert_eq!(new_mails[0].incr_id, Some(2));
+
     let (_, first) = manager.claim_one(&pool, 1).await.unwrap();
     assert_eq!(first.mail_red_dot, None);
 

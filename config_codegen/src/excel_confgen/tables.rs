@@ -198,6 +198,8 @@ pub const FILTER_TABLES: &[&str] = &[
     "activity112_task",
     "activity113_task",
     "activity114_task",
+    "activity116_building",
+    "activity116_episode_sp",
     "activity119_task",
     "activity120_task",
     "activity122_task",

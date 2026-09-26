@@ -900,6 +900,51 @@ impl ActivityManager {
         act128_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn act116_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        tables: &config::GameDB,
+    ) -> Result<Get116InfosReply, AppError> {
+        act116_info(
+            db,
+            self.player_id,
+            activity_id,
+            tables,
+            common::time::ServerTime::now_ms(),
+        )
+        .await
+    }
+
+    pub async fn upgrade_act116_element(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        element_id: i32,
+        tables: &config::GameDB,
+    ) -> Result<act116::Activity116Cost<UpgradeElementReply>, AppError> {
+        upgrade_element(db, self.player_id, activity_id, element_id, tables).await
+    }
+
+    pub async fn build_act116_trap(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        trap_id: i32,
+        tables: &config::GameDB,
+    ) -> Result<act116::Activity116Cost<BuildTrapReply>, AppError> {
+        build_trap(db, self.player_id, activity_id, trap_id, tables).await
+    }
+
+    pub async fn put_act116_trap(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        trap_id: i32,
+    ) -> Result<PutTrapReply, AppError> {
+        put_trap(db, self.player_id, activity_id, trap_id).await
+    }
+
     pub async fn get_act128_milestone_bonus(
         &self,
         db: &SqlitePool,

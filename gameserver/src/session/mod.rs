@@ -7,6 +7,7 @@ use byteorder::{BE, ByteOrder};
 use common::time::ServerTime;
 use database::db::user::account;
 use logic::task::UserTask;
+use sonettobuf::Mail;
 use sqlx::SqlitePool;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,15 +95,21 @@ pub async fn validate_login(
 pub async fn start_session(
     conn: &mut ConnectionContext,
     session: LoginSession,
-) -> Result<Vec<UserTask>, AppError> {
+) -> Result<(Vec<UserTask>, Vec<i32>, Vec<Mail>), AppError> {
     conn.load_player(session.user_id).await?;
     let db = conn.state.db;
     if common::skip_tutorial() {
         conn.player()?.guide.skip_initial_tutorial(db).await?;
     }
     let now = ServerTime::now_ms();
+    let previous_login = conn
+        .player()?
+        .state
+        .last_login_timestamp
+        .unwrap_or_default();
     let today = ServerTime::server_day(now);
-    let (is_new_day, _) = reconcile_periodic_resets_for_player(conn.player_mut()?, db, now).await?;
+    let (is_new_day, _, reset_task_ids) =
+        reconcile_periodic_resets_for_player(conn.player_mut()?, db, now).await?;
     let is_new_month = conn.player()?.state.is_new_month(now);
     if is_new_day {
         logic::profile::ProfileManager::new(session.user_id)
@@ -134,35 +141,40 @@ pub async fn start_session(
     logic::turnback::TurnbackManager::new(session.user_id)
         .sync_state(db, conn.state.tables)
         .await?;
+    let new_mails = conn
+        .player()?
+        .mail
+        .created_since(db, previous_login)
+        .await?;
 
     conn.save_player().await?;
-    Ok(updated_tasks)
+    Ok((updated_tasks, reset_task_ids, new_mails))
 }
 
 pub async fn reconcile_periodic_resets(
     conn: &mut ConnectionContext,
     now_ms: i64,
-) -> Result<(bool, bool), AppError> {
+) -> Result<Vec<i32>, AppError> {
     let db = conn.state.db;
     let periods = reconcile_periodic_resets_for_player(conn.player_mut()?, db, now_ms).await?;
     if periods.0 || periods.1 {
         conn.save_player().await?;
     }
-    Ok(periods)
+    Ok(periods.2)
 }
 
 async fn reconcile_periodic_resets_for_player(
     player: &mut Player,
     db: &SqlitePool,
     now_ms: i64,
-) -> Result<(bool, bool), AppError> {
+) -> Result<(bool, bool, Vec<i32>), AppError> {
     let is_new_day = player.state.is_new_server_day(now_ms);
     let is_new_week = player.state.is_new_week(now_ms);
     if !is_new_day && !is_new_week {
-        return Ok((false, false));
+        return Ok((false, false, Vec::new()));
     }
 
-    player
+    let reset_task_ids = player
         .sign_in
         .reset_counters(db, is_new_day, is_new_week)
         .await?;
@@ -173,7 +185,7 @@ async fn reconcile_periodic_resets_for_player(
         player.state.last_weekly_reset_time = Some(now_ms);
     }
     player.state.updated_at = now_ms;
-    Ok((is_new_day, is_new_week))
+    Ok((is_new_day, is_new_week, reset_task_ids))
 }
 
 pub fn login_reply_payload(user_id: i64) -> Vec<u8> {

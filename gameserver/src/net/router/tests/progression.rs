@@ -1,12 +1,12 @@
 use super::*;
 
 #[tokio::test]
-async fn shallow_settlement_ack_reaches_handler_and_only_clears_its_flag() {
+async fn settlement_acknowledgements_reach_handlers_and_clear_their_flags() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .join("data/excel2json");
-    let _ = config::init(data_dir.to_str().unwrap());
+    config::init(data_dir.to_str().unwrap()).unwrap();
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     database::run_migrations(&pool).await.unwrap();
     let player_id = 526;
@@ -73,6 +73,43 @@ async fn shallow_settlement_ack_reaches_handler_and_only_clears_its_flag() {
     assert_eq!(info.is_pop_shallow_settle, Some(false));
     assert_eq!(info.is_pop_deep_rule, Some(true));
     assert_eq!(info.is_pop_deep_settle, Some(true));
+
+    let mut data = Vec::new();
+    MarkPopDeepSettleRequest {}.encode(&mut data).unwrap();
+    let request = ClientPacket {
+        sequence: 3,
+        cmd_id: CmdId::MarkPopDeepSettleCmd as i16,
+        up_tag: 43,
+        data,
+    }
+    .encode();
+
+    dispatch_command(&mut ctx, request).await.unwrap();
+
+    let CommandPacket::Reply {
+        cmd_id: CmdId::MarkPopDeepSettleCmd,
+        body,
+        result_code: 0,
+        up_tag: 43,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("deep-settlement acknowledgement did not reach its handler");
+    };
+    MarkPopDeepSettleReply::decode(&*body).unwrap();
+    assert!(packets.try_recv().is_err());
+
+    let info = ctx
+        .player()
+        .unwrap()
+        .exploration
+        .weekwalk_info(ctx.state.db)
+        .await
+        .unwrap()
+        .info
+        .unwrap();
+    assert_eq!(info.is_pop_shallow_settle, Some(false));
+    assert_eq!(info.is_pop_deep_settle, Some(false));
 }
 
 #[tokio::test]

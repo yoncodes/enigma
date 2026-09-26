@@ -20,11 +20,12 @@ use sonettobuf::{
     GetAct236InfoReply, GetAct236InfoRequest, GetAct239InfoReply, GetAct239InfoRequest,
     GetHeroInvitationInfoReply, GetHeroInvitationInfoRequest, GetInvestigateReply,
     GetInvestigateRequest, GetRouge2OutsideInfoReply, GetRouge2OutsideInfoRequest, ItemChangePush,
-    MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush, NewOrderRequest,
-    PutClueReply, PutClueRequest, Rouge2AlchemyInfo, Rouge2AlchemyMaterialInfo,
-    Rouge2BossBattleInfo, Rouge2CareerLevelInfo, Rouge2OutsideInfo, Rouge2RewardInfo,
-    Rouge2TotalRecordInfo, TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
-    TeachingGetInfoRequest, UpdateRedDotPush, UpdateTaskPush,
+    MarkPopDeepSettleReply, MarkPopDeepSettleRequest, MarkPopShallowSettleReply,
+    MarkPopShallowSettleRequest, MaterialChangePush, NewOrderRequest, PutClueReply, PutClueRequest,
+    Rouge2AlchemyInfo, Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo, Rouge2CareerLevelInfo,
+    Rouge2OutsideInfo, Rouge2RewardInfo, Rouge2TotalRecordInfo, TeachingGetBonusReply,
+    TeachingGetBonusRequest, TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush,
+    UpdateTaskPush,
 };
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
