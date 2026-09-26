@@ -143,6 +143,12 @@ mod tests {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         database::run_migrations(&pool).await.unwrap();
         let player_id = 540;
+        let activity_id = 13805;
+        let event_start = ::common::activity_schedule()
+            .iter()
+            .find(|schedule| schedule.id == activity_id)
+            .unwrap()
+            .start_time as i64;
         sqlx::query(
             "INSERT INTO users (id, username, created_at, updated_at)
              VALUES (?, 'act101-reconnect', 0, 0)",
@@ -151,7 +157,6 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        let event_start = 1_786_615_200_000;
         sqlx::query(
             "INSERT INTO player_state
              (player_id, created_at, updated_at, last_daily_reset_time,
@@ -203,7 +208,7 @@ mod tests {
         }
 
         assert_eq!(
-            activity101::get_activity101_info(ctx.state.db, player_id, 13714)
+            activity101::get_activity101_info(ctx.state.db, player_id, activity_id)
                 .await
                 .unwrap()
                 .1,

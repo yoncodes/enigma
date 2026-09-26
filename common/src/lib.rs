@@ -8,6 +8,7 @@ pub mod time;
 pub mod types;
 
 static CONFIG: OnceLock<config::ServerConfig> = OnceLock::new();
+static TEMPLATE_CONFIG: OnceLock<config::ServerConfig> = OnceLock::new();
 
 pub fn init_config(config: config::ServerConfig) {
     CONFIG.set(config).expect("config already initialized");
@@ -59,6 +60,14 @@ pub fn muip_gm_enabled() -> bool {
 
 pub fn excel_data_directory() -> &'static PathBuf {
     &config().paths.excel_data
+}
+
+pub fn activity_schedule() -> &'static [config::ActivitySchedule] {
+    &CONFIG
+        .get()
+        .unwrap_or_else(|| TEMPLATE_CONFIG.get_or_init(config::ServerConfig::template))
+        .activity
+        .schedule
 }
 
 pub fn init_tracing() {

@@ -12,6 +12,20 @@ pub struct ServerConfig {
     pub muip_gm: MuipGmConfig,
     pub paths: PathConfig,
     pub database: DatabaseConfig,
+    pub activity: ActivityConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivityConfig {
+    pub schedule: Vec<ActivitySchedule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivitySchedule {
+    pub id: i32,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub is_unlock: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,6 +87,10 @@ pub struct DatabaseConfig {
 }
 
 impl ServerConfig {
+    pub fn template() -> Self {
+        toml::from_str(CONFIG_TEMPLATE).expect("embedded config template must be valid")
+    }
+
     pub fn load_or_create(path: &Path) -> anyhow::Result<Self> {
         if !path.exists() {
             if let Some(parent) = path.parent() {
@@ -106,6 +124,23 @@ impl ServerConfig {
             std::fs::create_dir_all(parent)?;
         }
 
+        if self
+            .activity
+            .schedule
+            .windows(2)
+            .any(|rows| rows[0].id >= rows[1].id)
+        {
+            anyhow::bail!("activity schedule IDs must be sorted and unique");
+        }
+        if let Some(row) = self
+            .activity
+            .schedule
+            .iter()
+            .find(|row| row.id <= 0 || row.start_time >= row.end_time)
+        {
+            anyhow::bail!("invalid activity schedule row {}", row.id);
+        }
+
         Ok(())
     }
 }
@@ -132,6 +167,7 @@ mod tests {
         assert!(!cfg.server.skip_tutorial);
         assert_eq!(cfg.muip.port, 21100);
         assert_eq!(cfg.muip_gm.port, 21101);
+        assert!(cfg.activity.schedule.iter().any(|row| row.id == 13801));
 
         std::fs::remove_dir_all(dir).unwrap();
     }

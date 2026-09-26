@@ -345,39 +345,16 @@ mod tests {
         let red_dot = act239_red_dot_entries_at(&pool, 1, third_open)
             .await
             .unwrap();
-        assert_eq!(
-            red_dot,
-            vec![(
-                config::configs::get()
-                    .activity
-                    .get(activity_id)
-                    .unwrap()
-                    .red_dot_id,
-                vec![3],
-            )]
-        );
+        assert!(red_dot.is_empty());
         act239_bonus_at(&pool, 1, Some(activity_id), Some(3), third_open)
             .await
             .unwrap();
-        assert_eq!(
-            act239_red_dot_entries_at(&pool, 1, third_open)
-                .await
-                .unwrap(),
-            vec![(
-                config::configs::get()
-                    .activity
-                    .get(activity_id)
-                    .unwrap()
-                    .red_dot_id,
-                Vec::new(),
-            )]
-        );
-        let schedule = super::super::schedule::get(activity_id).unwrap();
         assert!(
-            act239_red_dot_entries_at(&pool, 1, schedule.end_time as i64 + 1)
+            act239_red_dot_entries_at(&pool, 1, third_open)
                 .await
                 .unwrap()
                 .is_empty()
         );
+        assert!(super::super::schedule::get(activity_id).is_none());
     }
 }

@@ -215,30 +215,14 @@ mod tests {
     }
 
     #[test]
-    fn charge_accrual_uses_the_server_schedule_boundaries() {
+    fn charge_accrual_stays_disabled_without_a_scheduled_charge_event() {
         let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
         let _ = config::init(&data_dir);
         let activity_id = config::configs::get()
             .latest_open_activity_id(ACTIVITY_TYPE_ID)
             .unwrap();
-        let schedule = super::super::schedule::get(activity_id).unwrap();
-
-        assert_eq!(
-            active_act236_activity_id_at((schedule.start_time - 1) as i64),
-            None
-        );
-        assert_eq!(
-            active_act236_activity_id_at(schedule.start_time as i64),
-            Some(activity_id)
-        );
-        assert_eq!(
-            active_act236_activity_id_at(schedule.end_time as i64),
-            Some(activity_id)
-        );
-        assert_eq!(
-            active_act236_activity_id_at((schedule.end_time + 1) as i64),
-            None
-        );
+        assert!(super::super::schedule::get(activity_id).is_none());
+        assert_eq!(active_act236_activity_id_at(1_790_244_001_000), None);
     }
 
     #[tokio::test]

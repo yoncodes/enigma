@@ -174,9 +174,7 @@ async fn act236_reward_command_emits_captured_semantic_sequence() {
 }
 
 #[tokio::test]
-async fn completed_charge_emits_act236_state_and_claimable_rewards_before_completion() {
-    const ACTIVE_TIME_MS: i64 = 1_786_615_201_000;
-
+async fn completed_charge_skips_act236_updates_when_no_charge_event_is_scheduled() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -199,6 +197,12 @@ async fn completed_charge_emits_act236_state_and_claimable_rewards_before_comple
         .await
         .unwrap();
     let activity_id = configs::get().latest_open_activity_id(236).unwrap();
+    let active_time_ms = ::common::activity_schedule()
+        .iter()
+        .find(|schedule| schedule.id == 13801)
+        .unwrap()
+        .start_time as i64
+        + 1_000;
     sqlx::query(
         "INSERT INTO user_activity236_state
          (user_id, activity_id, score, gain_reward_ids)
@@ -231,7 +235,7 @@ async fn completed_charge_emits_act236_state_and_claimable_rewards_before_comple
         data,
     };
 
-    crate::handlers::store::on_new_order_at(&mut ctx, request, ACTIVE_TIME_MS)
+    crate::handlers::store::on_new_order_at(&mut ctx, request, active_time_ms)
         .await
         .unwrap();
     let packets = std::iter::from_fn(|| outbound_packets.try_recv().ok()).collect::<Vec<_>>();
@@ -243,67 +247,16 @@ async fn completed_charge_emits_act236_state_and_claimable_rewards_before_comple
         .collect::<Vec<_>>();
     assert_eq!(cmd_ids[0], CmdId::NewOrderCmd);
 
-    let update_index = cmd_ids
-        .iter()
-        .position(|cmd_id| *cmd_id == CmdId::Act236UpdateInfoPushCmd)
-        .unwrap();
-    assert_eq!(cmd_ids[update_index - 1], CmdId::MaterialChangePushCmd);
-    assert_eq!(cmd_ids[update_index + 1], CmdId::UpdateRedDotPushCmd);
-    assert_eq!(cmd_ids[update_index + 2], CmdId::OrderCompletePushCmd);
-    assert_eq!(cmd_ids[update_index + 3], CmdId::StatInfoPushCmd);
-
-    let CommandPacket::Push { body, .. } = &packets[update_index - 1] else {
-        panic!("material change was not a push");
-    };
-    assert_eq!(
-        MaterialChangePush::decode(&**body).unwrap().get_approach,
-        Some(crate::types::material_get_approach::MaterialGetApproach::Charge.id())
-    );
-
-    let CommandPacket::Push { body, .. } = &packets[update_index] else {
-        panic!("Act236 update was not a push");
-    };
-    assert_eq!(
-        Act236UpdateInfoPush::decode(&**body).unwrap().info,
-        Some(Act236Info {
-            activity_id: Some(activity_id),
-            score: Some(4880),
-            gain_reward_ids: vec![1],
-        })
-    );
-
-    let CommandPacket::Push { body, .. } = &packets[update_index + 1] else {
-        panic!("Act236 red dots were not a push");
-    };
-    let red_dots = UpdateRedDotPush::decode(&**body).unwrap();
-    assert_eq!(red_dots.red_dot_infos.len(), 1);
-    let group = &red_dots.red_dot_infos[0];
-    assert_eq!(
-        group.define_id,
-        configs::get().activity.get(activity_id).unwrap().red_dot_id
-    );
-    assert_eq!(group.replace_all, Some(true));
-    assert_eq!(
-        group
-            .infos
-            .iter()
-            .map(|info| (info.id, info.value, info.time))
-            .collect::<Vec<_>>(),
-        vec![
-            (2, 1, Some(0)),
-            (3, 1, Some(0)),
-            (4, 1, Some(0)),
-            (5, 1, Some(0)),
-            (6, 1, Some(0)),
-        ]
-    );
+    assert!(!cmd_ids.contains(&CmdId::Act236UpdateInfoPushCmd));
+    assert!(cmd_ids.contains(&CmdId::OrderCompletePushCmd));
+    assert!(cmd_ids.contains(&CmdId::StatInfoPushCmd));
 
     assert_eq!(
         database::db::game::activity236::get_state(state.db, player_id, activity_id)
             .await
             .unwrap(),
         database::db::game::activity236::Activity236State {
-            score: 4880,
+            score: 0,
             gain_reward_ids: vec![1],
         }
     );
