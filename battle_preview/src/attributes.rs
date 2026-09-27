@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use battle::engine::entity::{
@@ -306,6 +306,9 @@ fn validated_equipment_loadout(
 }
 
 fn battle_build_metadata(path: &Path) -> anyhow::Result<HashMap<i64, HeroInfo>> {
+    if let Some(captured) = capture_build_metadata(path)? {
+        return Ok(captured);
+    }
     let Some(parent) = path.parent() else {
         return Ok(HashMap::new());
     };
@@ -329,22 +332,170 @@ fn battle_build_metadata(path: &Path) -> anyhow::Result<HashMap<i64, HeroInfo>> 
 
     let mut heroes = HashMap::new();
     for file in roster_files {
-        let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(file)?)?;
-        normalize_live_json(&mut value);
-        let roster: HeroInfoListReply = serde_json::from_value(value)?;
-        for hero in roster.heros {
-            heroes.insert(hero.uid, hero);
-        }
+        apply_hero_roster(&file, &mut heroes)?;
     }
     for file in update_files {
-        let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(file)?)?;
-        normalize_live_json(&mut value);
-        let update: HeroUpdatePush = serde_json::from_value(value)?;
-        for hero in update.hero_updates {
-            heroes.insert(hero.uid, hero);
-        }
+        apply_hero_update(&file, &mut heroes)?;
     }
     Ok(heroes)
+}
+
+fn capture_build_metadata(path: &Path) -> anyhow::Result<Option<HashMap<i64, HeroInfo>>> {
+    let Some(files) = capture_timeline_through(path)? else {
+        return Ok(None);
+    };
+    let mut heroes = HashMap::new();
+    let mut saw_roster = false;
+    for file in files {
+        let Some(name) = file.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if name.ends_with("_HeroInfoListReply.json") {
+            saw_roster = true;
+            heroes.clear();
+            apply_hero_roster(&file, &mut heroes)?;
+        } else if name.ends_with("_HeroUpdatePush.json") {
+            apply_hero_update(&file, &mut heroes)?;
+        }
+    }
+    if !saw_roster {
+        anyhow::bail!("capture timeline has no hero roster before battle");
+    }
+    Ok(Some(heroes))
+}
+
+fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
+    let Some(common) = path
+        .ancestors()
+        .map(|ancestor| ancestor.join("common"))
+        .find(|candidate| candidate.is_dir())
+    else {
+        return Ok(None);
+    };
+    let mut files = fs::read_dir(common)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .collect::<Vec<_>>();
+    files.sort();
+
+    let target = fs::read(path)?;
+    let command = capture_command(path)
+        .ok_or_else(|| anyhow::anyhow!("capture packet has no command name"))?;
+    let matches = matching_packets(&files, &command, &target)?;
+    let target_index = match matches.as_slice() {
+        [] => anyhow::bail!("capture packet not found in common timeline"),
+        [index] => *index,
+        _ => resolve_repeated_packet(path, &files, &matches)?,
+    };
+    files.truncate(target_index + 1);
+    Ok(Some(files))
+}
+
+fn resolve_repeated_packet(
+    path: &Path,
+    timeline: &[PathBuf],
+    matches: &[usize],
+) -> anyhow::Result<usize> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("capture packet has no parent directory"))?;
+    let mut resolved = HashSet::new();
+    for anchor in fs::read_dir(parent)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|candidate| candidate.is_file() && candidate != path)
+    {
+        let Some(command) = capture_command(&anchor) else {
+            continue;
+        };
+        if command == "StartDungeonRequest" {
+            continue;
+        }
+        let bytes = fs::read(&anchor)?;
+        let anchor_matches = matching_packets(timeline, &command, &bytes)?;
+        let [anchor_index] = anchor_matches.as_slice() else {
+            continue;
+        };
+        for target_index in matches.iter().copied() {
+            let next_start = timeline
+                .iter()
+                .enumerate()
+                .skip(target_index + 1)
+                .find(|(_, path)| is_battle_start_packet(path))
+                .map(|(index, _)| index);
+            if target_index <= *anchor_index
+                && next_start.is_none_or(|next_start| *anchor_index < next_start)
+            {
+                resolved.insert(target_index);
+            }
+        }
+    }
+    match resolved.into_iter().collect::<Vec<_>>().as_slice() {
+        [index] => Ok(*index),
+        _ => anyhow::bail!("capture packet matches multiple timeline positions"),
+    }
+}
+
+fn is_battle_start_packet(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            name.ends_with("_StartDungeonReply.json")
+                || name.ends_with("_StartTowerBattleReply.json")
+        })
+}
+
+fn matching_packets(
+    timeline: &[PathBuf],
+    command: &str,
+    expected: &[u8],
+) -> anyhow::Result<Vec<usize>> {
+    let suffix = format!("_{command}.json");
+    timeline
+        .iter()
+        .enumerate()
+        .filter(|(_, path)| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(&suffix))
+        })
+        .filter_map(|(index, path)| match fs::read(path) {
+            Ok(bytes) if bytes == expected => Some(Ok(index)),
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(Into::into)
+}
+
+fn capture_command(path: &Path) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?;
+    Some(if stem.starts_with("begin_round_") {
+        "BeginRoundReply".to_owned()
+    } else {
+        stem.split('_').next()?.to_owned()
+    })
+}
+
+fn apply_hero_roster(path: &Path, heroes: &mut HashMap<i64, HeroInfo>) -> anyhow::Result<()> {
+    let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    normalize_live_json(&mut value);
+    let roster: HeroInfoListReply = serde_json::from_value(value)?;
+    for hero in roster.heros {
+        heroes.insert(hero.uid, hero);
+    }
+    Ok(())
+}
+
+fn apply_hero_update(path: &Path, heroes: &mut HashMap<i64, HeroInfo>) -> anyhow::Result<()> {
+    let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    normalize_live_json(&mut value);
+    let update: HeroUpdatePush = serde_json::from_value(value)?;
+    for hero in update.hero_updates {
+        heroes.insert(hero.uid, hero);
+    }
+    Ok(())
 }
 
 fn preview_build_input(
@@ -920,5 +1071,167 @@ mod tests {
 
         assert_eq!(heroes[&uid].talent, later.talent);
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn capture_timeline_supplies_missing_battle_roster() {
+        let directory = test_directory("capture-timeline");
+        let common = directory.join("decoded/common");
+        let battle = directory.join("decoded/Dungeon/Battle1");
+        fs::create_dir_all(&common).unwrap();
+        fs::create_dir_all(&battle).unwrap();
+        let uid = 42;
+        fs::write(
+            common.join("capture_000001_HeroInfoListReply.json"),
+            serde_json::to_vec(&HeroInfoListReply {
+                heros: vec![hero(uid)],
+                ..Default::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            common.join("capture_000002_StartDungeonReply.json"),
+            b"captured battle",
+        )
+        .unwrap();
+        let battle_path = battle.join("StartDungeonReply.json");
+        fs::write(&battle_path, b"captured battle").unwrap();
+        fs::write(
+            battle.join("HeroUpdatePush.json"),
+            serde_json::to_vec(&HeroUpdatePush {
+                hero_updates: vec![hero(99)],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            battle_build_metadata(&battle_path).unwrap()[&uid].hero_id,
+            3149
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn unique_later_packet_resolves_repeated_battle_start() {
+        for command in ["StartDungeonReply", "StartTowerBattleReply"] {
+            let directory = test_directory(command);
+            let common = directory.join("decoded/common");
+            let battle = directory.join("decoded/Dungeon/Battle2");
+            fs::create_dir_all(&common).unwrap();
+            fs::create_dir_all(&battle).unwrap();
+            let uid = 42;
+            let mut updated = hero(uid);
+            updated.talent = Some(12);
+            fs::write(
+                common.join("capture_000001_HeroInfoListReply.json"),
+                serde_json::to_vec(&HeroInfoListReply {
+                    heros: vec![hero(uid)],
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .unwrap();
+            for sequence in [2, 4] {
+                fs::write(
+                    common.join(format!("capture_{sequence:06}_{command}.json")),
+                    b"repeated battle",
+                )
+                .unwrap();
+            }
+            fs::write(
+                common.join("capture_000003_HeroUpdatePush.json"),
+                serde_json::to_vec(&HeroUpdatePush {
+                    hero_updates: vec![updated.clone()],
+                })
+                .unwrap(),
+            )
+            .unwrap();
+            fs::write(
+                common.join("capture_000005_EndFightPush.json"),
+                b"unique end",
+            )
+            .unwrap();
+            let battle_path = battle.join(format!("{command}.json"));
+            fs::write(&battle_path, b"repeated battle").unwrap();
+            fs::write(battle.join("EndFightPush.json"), b"unique end").unwrap();
+
+            assert_eq!(
+                battle_build_metadata(&battle_path).unwrap()[&uid].talent,
+                updated.talent
+            );
+            fs::remove_dir_all(directory).unwrap();
+        }
+    }
+
+    #[test]
+    fn repeated_battle_start_without_bounded_anchor_fails_loudly() {
+        let directory = test_directory("ambiguous-start");
+        let common = directory.join("decoded/common");
+        let battle = directory.join("decoded/Dungeon/Battle2");
+        fs::create_dir_all(&common).unwrap();
+        fs::create_dir_all(&battle).unwrap();
+        for sequence in [1, 2] {
+            fs::write(
+                common.join(format!("capture_{sequence:06}_StartDungeonReply.json")),
+                b"repeated battle",
+            )
+            .unwrap();
+        }
+        let battle_path = battle.join("StartDungeonReply.json");
+        fs::write(&battle_path, b"repeated battle").unwrap();
+
+        assert!(
+            battle_build_metadata(&battle_path)
+                .unwrap_err()
+                .to_string()
+                .contains("multiple timeline positions")
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn unresolved_common_timeline_does_not_use_local_updates() {
+        let directory = test_directory("unresolved-common");
+        let common = directory.join("decoded/common");
+        let battle = directory.join("decoded/Dungeon/Battle1");
+        fs::create_dir_all(&common).unwrap();
+        fs::create_dir_all(&battle).unwrap();
+        fs::write(
+            common.join("capture_000001_StartDungeonReply.json"),
+            b"another battle",
+        )
+        .unwrap();
+        let battle_path = battle.join("StartDungeonReply.json");
+        fs::write(&battle_path, b"captured battle").unwrap();
+        fs::write(
+            battle.join("HeroUpdatePush.json"),
+            serde_json::to_vec(&HeroUpdatePush {
+                hero_updates: vec![hero(42)],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(
+            battle_build_metadata(&battle_path)
+                .unwrap_err()
+                .to_string()
+                .contains("not found in common timeline")
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn snake_case_round_name_maps_to_capture_command() {
+        assert_eq!(
+            capture_command(Path::new("begin_round_2.json")).as_deref(),
+            Some("BeginRoundReply")
+        );
+        assert_eq!(
+            capture_command(Path::new("BeginRoundReply_2.json")).as_deref(),
+            Some("BeginRoundReply")
+        );
     }
 }

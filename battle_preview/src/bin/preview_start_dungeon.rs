@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     env, fs, io,
     path::{Path, PathBuf},
 };
@@ -27,8 +28,10 @@ fn run() -> anyhow::Result<()> {
     let output_root = root.join("battles_gen");
     let args = env::args().skip(1).collect::<Vec<_>>();
     let inputs = start_inputs(&input_root, args)?;
+    let mut outputs = HashSet::new();
 
     for input in inputs {
+        let output = output_path(&input_root, &output_root, &input, &mut outputs)?;
         let original_text = fs::read_to_string(&input)?;
         let (generated, cards, original) = generate_reply(db, &input)?;
         let generated_value = serde_json::to_value(&generated)?;
@@ -48,7 +51,6 @@ fn run() -> anyhow::Result<()> {
         {
             eprintln!("  first round diff: {path}");
         }
-        let output = output_path(&input_root, &output_root, &input)?;
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -191,6 +193,127 @@ fn compare_card_push(path: &Path, generated: CardInfoPush) -> anyhow::Result<Opt
     Ok(Some(matches))
 }
 
-fn output_path(input_root: &Path, output_root: &Path, input: &Path) -> anyhow::Result<PathBuf> {
-    Ok(output_root.join(input.strip_prefix(input_root)?))
+fn output_path(
+    input_root: &Path,
+    output_root: &Path,
+    input: &Path,
+    outputs: &mut HashSet<String>,
+) -> anyhow::Result<PathBuf> {
+    let canonical_input = fs::canonicalize(input)?;
+    let relative = fs::canonicalize(input_root)
+        .ok()
+        .and_then(|root| canonical_input.strip_prefix(root).ok().map(PathBuf::from));
+    let output = match relative {
+        Some(path) => output_root.join(path),
+        None => output_root
+            .join(
+                canonical_input
+                    .parent()
+                    .and_then(|path| path.file_name())
+                    .unwrap_or_default(),
+            )
+            .join(canonical_input.file_name().unwrap_or_default()),
+    };
+    let collision_key = if cfg!(windows) {
+        output.to_string_lossy().to_lowercase()
+    } else {
+        output.to_string_lossy().into_owned()
+    };
+    if !outputs.insert(collision_key) {
+        anyhow::bail!("multiple inputs map to {}", output.display());
+    }
+    Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn output_test_paths(label: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "enigma-start-preview-{label}-{}",
+            std::process::id()
+        ));
+        let input_root = root.join("fixtures/battles");
+        let output_root = root.join("fixtures/battles_gen");
+        fs::create_dir_all(&input_root).unwrap();
+        (root, input_root, output_root)
+    }
+
+    fn write_input(root: &Path, capture: &str, battle: &str) -> PathBuf {
+        let input = root
+            .join(capture)
+            .join(battle)
+            .join("StartDungeonReply.json");
+        fs::create_dir_all(input.parent().unwrap()).unwrap();
+        fs::write(&input, b"capture").unwrap();
+        input
+    }
+
+    #[test]
+    fn external_output_collisions_fail_loudly() {
+        let (root, input_root, output_root) = output_test_paths("collision");
+        let first = write_input(&root, "capture-a", "Battle1");
+        let second = write_input(&root, "capture-b", "Battle1");
+        let mut outputs = HashSet::new();
+        output_path(&input_root, &output_root, &first, &mut outputs).unwrap();
+
+        assert!(
+            output_path(&input_root, &output_root, &second, &mut outputs)
+                .unwrap_err()
+                .to_string()
+                .contains("multiple inputs map")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn external_output_collision_check_is_case_insensitive_on_windows() {
+        let (root, input_root, output_root) = output_test_paths("case-collision");
+        let first = write_input(&root, "capture-a", "Battle1");
+        let second = write_input(&root, "capture-b", "battle1");
+        let mut outputs = HashSet::new();
+        output_path(&input_root, &output_root, &first, &mut outputs).unwrap();
+
+        assert!(output_path(&input_root, &output_root, &second, &mut outputs).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn parent_traversal_cannot_escape_the_output_root() {
+        let (root, input_root, output_root) = output_test_paths("parent-traversal");
+        let input = write_input(&input_root, "", "Battle1");
+        let traversing = input_root
+            .join("..")
+            .join("battles/Battle1/StartDungeonReply.json");
+        let output =
+            output_path(&input_root, &output_root, &traversing, &mut HashSet::new()).unwrap();
+
+        assert!(output.starts_with(&output_root));
+        assert_ne!(fs::canonicalize(input).unwrap(), output);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn external_input_does_not_require_the_fixture_root() {
+        let root = std::env::temp_dir().join(format!(
+            "enigma-start-preview-missing-root-{}",
+            std::process::id()
+        ));
+        let input = write_input(&root, "capture", "Battle1");
+        let output_root = root.join("generated");
+
+        assert!(
+            output_path(
+                &root.join("missing-fixtures"),
+                &output_root,
+                &input,
+                &mut HashSet::new(),
+            )
+            .unwrap()
+            .starts_with(output_root)
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 }
