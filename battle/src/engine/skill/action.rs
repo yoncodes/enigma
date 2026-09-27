@@ -338,6 +338,7 @@ pub struct SkillModifiers {
     pub career_ratio_bonus: i32,
     pub attack_career: Option<i32>,
     pub additional_attack_career: Option<i32>,
+    pub force_career_restraint: bool,
     pub additional_damage: Vec<AdditionalDamageModifier>,
     pub post_immediate_target_buffs: Vec<PostImmediateTargetBuffModifier>,
     pub consume_team_injury_count_round: Option<DefinitionKey>,
@@ -360,6 +361,7 @@ impl SkillModifiers {
         self.additional_attack_career = self
             .additional_attack_career
             .or(other.additional_attack_career);
+        self.force_career_restraint |= other.force_career_restraint;
         self.additional_damage.append(&mut other.additional_damage);
         self.post_immediate_target_buffs
             .append(&mut other.post_immediate_target_buffs);

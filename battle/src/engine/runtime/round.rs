@@ -91,7 +91,9 @@ impl BattleRuntime {
             .catalog_data
             .expect("battle runtime was not constructed with a catalog");
         let active_round = self.round_state.cur_round;
-        self.round_state.begin_round();
+        if !std::mem::take(&mut self.pending_extra_round) {
+            self.round_state.begin_round();
+        }
         self.fight.cur_round = Some(self.round_state.cur_round);
         if let Some(attacker) = self.fight.attacker.as_mut() {
             for skill in &mut attacker.skill_infos {

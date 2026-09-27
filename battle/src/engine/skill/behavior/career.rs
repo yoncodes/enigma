@@ -18,7 +18,8 @@ impl BehaviorHandler for Handler {
         ) || matches!(
             (behavior.spec.kind, behavior.args.as_slice()),
             (BehaviorKind::ChangeAttackCareer, [career]) if (1..=8).contains(career)
-        )
+        ) || matches!(behavior.spec.kind, BehaviorKind::SetCareerRestraint)
+            && behavior.args.is_empty()
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
@@ -47,6 +48,7 @@ fn apply(
         BehaviorKind::ChangeAttackCareer => {
             modifiers.attack_career = Some(behavior.args[0]);
         }
+        BehaviorKind::SetCareerRestraint => modifiers.force_career_restraint = true,
         _ => return false,
     }
     true

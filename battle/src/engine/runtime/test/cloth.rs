@@ -237,6 +237,141 @@ fn conduit_selection_adds_the_configured_precast_and_commits_the_choice() {
 }
 
 #[test]
+fn mei_lei_er_charge_starts_the_captured_extra_round_flow() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3146),
+                current_hp: Some(100),
+                buffs: vec![sonettobuf::BuffInfo {
+                    uid: Some(1008),
+                    buff_id: Some(31460143),
+                    from_uid: Some(10),
+                    act_info: vec![sonettobuf::BuffActInfo {
+                        act_id: Some(1139),
+                        param: vec![102_000],
+                        str_param: Some(String::new()),
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100_000),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(fight);
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Setup(
+            crate::engine::manager::card::CardSetup {
+                hand: vec![CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(31460131),
+                    ..Default::default()
+                }],
+                draw_pile: Vec::new(),
+                deck_num: 59,
+            },
+        ))
+        .unwrap();
+
+    let round = runtime
+        .use_cloth_skill(UseClothSkillRequest {
+            skill_id: Some(0),
+            from_id: Some(10),
+            to_id: Some(0),
+            r#type: Some(ClothSkillType::MeiLeiErExtraRound as i32),
+        })
+        .unwrap()
+        .round
+        .unwrap();
+
+    let info = runtime
+        .managers
+        .buff
+        .snapshot(10, 1008)
+        .unwrap()
+        .act_info
+        .into_iter()
+        .find(|info| info.act_id == Some(1139))
+        .unwrap();
+    assert_eq!(info.param, [2_000]);
+    assert_eq!(round.fight_step.len(), 2);
+    assert_eq!(round.fight_step[0].from_id, Some(10));
+    assert_eq!(round.fight_step[0].to_id, Some(0));
+    assert_eq!(
+        round.fight_step[0]
+            .act_effect
+            .iter()
+            .map(|effect| effect.effect_type.unwrap_or_default())
+            .collect::<Vec<_>>(),
+        [
+            sonettobuf::effect_type_enum::EffectType::Buffactinfoupdate as i32,
+            sonettobuf::effect_type_enum::EffectType::Fightparamchange as i32,
+        ]
+    );
+    assert!(round.fight_step[0].act_effect.iter().any(|effect| {
+        effect.effect_type
+            == Some(sonettobuf::effect_type_enum::EffectType::Buffactinfoupdate as i32)
+            && effect
+                .buff_act_info
+                .as_ref()
+                .is_some_and(|info| info.act_id == Some(1139) && info.param == [2_000])
+    }));
+    assert!(round.fight_step[0].act_effect.iter().any(|effect| {
+        effect.effect_type
+            == Some(sonettobuf::effect_type_enum::EffectType::Fightparamchange as i32)
+            && effect.reserve_str.as_deref() == Some("18#1")
+    }));
+    assert_eq!(
+        round.fight_step[1]
+            .act_effect
+            .iter()
+            .map(|effect| effect.effect_type.unwrap_or_default())
+            .collect::<Vec<_>>(),
+        [
+            sonettobuf::effect_type_enum::EffectType::Cardspush as i32,
+            sonettobuf::effect_type_enum::EffectType::Carddecknum as i32,
+        ]
+    );
+    assert!(
+        runtime
+            .use_cloth_skill(UseClothSkillRequest {
+                skill_id: Some(0),
+                from_id: Some(10),
+                to_id: Some(0),
+                r#type: Some(ClothSkillType::MeiLeiErExtraRound as i32),
+            })
+            .is_none()
+    );
+    let active_round = runtime.current_round();
+    assert_eq!(
+        runtime
+            .advance_round(sonettobuf::BeginRoundRequest::default())
+            .unwrap()
+            .cur_round,
+        Some(active_round)
+    );
+}
+
+#[test]
 fn contract_selection_uses_the_offered_uid_and_fight_const_buff_pair() {
     crate::test_support::init_config();
     let fight = Fight {

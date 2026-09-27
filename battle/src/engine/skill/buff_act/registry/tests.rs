@@ -1202,10 +1202,7 @@ fn buff_owned_charge_keeps_its_exact_state_route() {
     let definition = find(1139, "MeiLeiErCharge").unwrap();
 
     assert_eq!(definition.kind, BuffActKind::BuffOwnedCharge);
-    assert_eq!(
-        definition.completion_gap,
-        Some("manual activation is not proven")
-    );
+    assert_eq!(definition.completion_gap, None);
     for (buff_id, raw) in [
         (115370004, "1139#100000#150000#30110131"),
         (31460141, "1139#100000#150000#31460181"),

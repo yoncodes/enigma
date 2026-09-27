@@ -1399,7 +1399,6 @@ buff_act_definitions! {
             if *trigger > 0 && *limit >= *trigger && *linked_skill > 0),
         references: references_for_feature,
         state_consumer: true,
-        completion_gap: "manual activation is not proven",
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1139, "MeiLeiErCharge"), &[])
             .with_initial_state(super::wire::InitialStateRule::ZeroInteger));
     (1138, "ReplaceEntitySkillGroup") => ReplaceEntitySkillGroup,
