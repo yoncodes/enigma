@@ -601,6 +601,7 @@ condition_definitions! {
     [16204] "TargetCareer" => career::target_career, predicate(&[]);
     [762005] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::BattleStart, 0, &[]);
     [762021] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::BattleStart, 0, &[]);
+    [1021002] "BattleTagCheck" => battle_tag::present, setup_route(SetupStage::BattleStart, 0, &[]);
     [762103] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::RoundStart, 1, &[]);
     [760212] "CurUseCardEnchant" => card::current_enchant, event_trigger(EventKind::AllyAction, None);
     [760402] "CurUseCardEnchant" => card::current_enchant, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
