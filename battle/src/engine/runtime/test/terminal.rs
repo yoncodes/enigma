@@ -678,6 +678,70 @@ fn wave_entry_round_start_condition_is_not_repeated_on_the_next_request() {
     assert!(runtime.wave_entry_condition_uids.is_empty());
 }
 
+#[test]
+fn twins_full_harmonization_proc_survives_a_wave_transition() {
+    crate::test_support::init_config();
+    let (entitys, sub_entitys) =
+        crate::engine::fight::defender::Defender::build_wave_entities(251401, 2, 2, 0).unwrap();
+    let mut runtime = runtime(Fight {
+        battle_id: Some(2514),
+        version: Some(7),
+        cur_round: Some(1),
+        cur_wave: Some(1),
+        max_round: Some(20),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3149),
+                position: Some(1),
+                team_type: Some(1),
+                current_hp: Some(100),
+                passive_skill: vec![31490161],
+                skill_group1: vec![31490111, 31490112, 31490113],
+                skill_group2: vec![31490121, 31490122, 31490123],
+                ex_skill: Some(31490151),
+                ex_point_type: Some(4),
+                ex_point_max: Some(100),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(100),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys,
+            sub_entitys,
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    runtime.managers.ex_point.set(10, 10, 100, 0);
+    runtime.managers.hp.lose(-1, i32::MAX, 10);
+    runtime.managers.hp.lose(-2, i32::MAX, 10);
+
+    let round = runtime
+        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .unwrap();
+
+    fn has_switch(step: &sonettobuf::FightStep) -> bool {
+        step.act_effect.iter().any(|effect| {
+            (effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Deviceskillindex as i32)
+                && effect.target_id == Some(10)
+                && effect.effect_num == Some(3))
+                || effect.fight_step.as_ref().is_some_and(has_switch)
+        })
+    }
+    assert_eq!(runtime.fight.cur_wave, Some(2));
+    assert_eq!(runtime.managers.conduit.selected_group(10), Some(3));
+    assert!(
+        round.fight_step.iter().any(has_switch)
+            || round.next_round_begin_step.iter().any(has_switch)
+    );
+}
+
 fn wave_clear_runtime(
     hand: Vec<sonettobuf::CardInfo>,
 ) -> (BattleRuntime, Vec<sonettobuf::CardInfo>) {
