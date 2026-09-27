@@ -16,6 +16,11 @@ pub fn parse(_opcode: i32, _type_name: &str, raw_args: &[String]) -> Option<Pars
     })
 }
 
+pub fn present(_opcode: i32, _type_name: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let [tag] = raw_args else { return None };
+    Some(ParsedConditionKind::TargetBattleTag(tag.parse().ok()?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -33,6 +38,18 @@ mod tests {
                 compare: ConditionCompare::GreaterThanOrEqual,
                 threshold: 3,
             })
+        );
+    }
+
+    #[test]
+    fn presence_keeps_the_configured_target_tag() {
+        assert_eq!(
+            present(1021002, "BattleTagCheck", &["102".into()]),
+            Some(ParsedConditionKind::TargetBattleTag(102))
+        );
+        assert_eq!(
+            present(1021002, "BattleTagCheck", &["102".into(), "999".into()]),
+            None
         );
     }
 }

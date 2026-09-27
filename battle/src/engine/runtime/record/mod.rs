@@ -123,6 +123,10 @@ pub enum RoundCue {
     ChangeRound {
         round: i32,
     },
+    FightParamChange {
+        key: i32,
+        delta: i32,
+    },
     ClientConduitSelectionConfirmed {
         source_uid: i64,
         team: i32,

@@ -838,7 +838,7 @@ mod text_tests {
     }
 
     #[test]
-    fn charge_report_preserves_state_owner_but_marks_manual_activation_incomplete() {
+    fn charge_report_preserves_state_owner_and_reports_support() {
         crate::init_config().unwrap();
         let db = config::get();
         let wire_evidence = crate::wire_evidence::Evidence::default();
@@ -846,7 +846,7 @@ mod text_tests {
         let charge = buff_act(db, "1139#100000#150000#31460183", &wire_evidence).unwrap();
 
         assert_eq!(charge.node.registry, "exact");
-        assert_eq!(charge.node.semantic, "manual activation is not proven");
+        assert_eq!(charge.node.semantic, "supported");
         assert_eq!(charge.destination, "StateConsumer");
     }
 }

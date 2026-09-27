@@ -27,6 +27,16 @@ mod buff;
 pub struct EffectPacket;
 
 impl EffectPacket {
+    pub fn fight_param_change(key: i32, delta: i32) -> ActEffect {
+        ActEffect {
+            target_id: Some(0),
+            effect_type: Some(EffectType::Fightparamchange as i32),
+            effect_num: Some(0),
+            reserve_str: Some(format!("{key}#{delta}")),
+            ..Default::default()
+        }
+    }
+
     pub fn effect_marker(marker: crate::engine::skill::rule::output::EffectMarker) -> ActEffect {
         ActEffect {
             target_id: Some(marker.target_uid),

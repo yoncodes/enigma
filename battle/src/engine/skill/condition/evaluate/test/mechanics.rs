@@ -581,3 +581,40 @@ fn battle_tag_count_uses_alive_members_of_the_casters_team() {
         TargetContext::default(),
     ));
 }
+
+#[test]
+fn battle_tag_check_uses_the_condition_target() {
+    init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        entity_type: Some(1),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 3146), entity(11, 3149)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let condition = exact_condition(1021002, "BattleTagCheck", &["102"]);
+
+    assert!(conditions_match(
+        std::slice::from_ref(&condition),
+        10,
+        &[10],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+    assert!(!conditions_match(
+        &[condition],
+        10,
+        &[11],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+}

@@ -1314,6 +1314,9 @@ fn project_cue(cue: &RoundCue, redeal_layout: RedealWireLayout) -> Vec<ActEffect
             vec![EffectPacket::small_round_end(*team_type)]
         }
         RoundCue::ChangeRound { round } => vec![EffectPacket::change_round(*round)],
+        RoundCue::FightParamChange { key, delta } => {
+            vec![EffectPacket::fight_param_change(*key, *delta)]
+        }
         RoundCue::ClientConduitSelectionConfirmed {
             source_uid,
             team,

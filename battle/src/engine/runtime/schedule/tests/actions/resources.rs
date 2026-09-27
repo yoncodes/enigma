@@ -621,6 +621,70 @@ fn conduit_attack_does_not_begin_without_a_living_enemy() {
 }
 
 #[test]
+fn regulus_device_ultimate_selects_the_group_for_the_living_enemy_count() {
+    init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    for (enemy_count, expected_group) in [(1, 1), (2, 2)] {
+        let mut regulus = entity(10, 3025);
+        regulus.ex_skill_level = Some(3);
+        regulus.destiny_stone = Some(302502);
+        regulus.destiny_rank = Some(4);
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![regulus],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: (0..enemy_count)
+                    .map(|index| entity(-1 - i64::from(index), 1001))
+                    .collect(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        managers
+            .conduit
+            .execute(
+                crate::engine::manager::conduit::ConduitCommand::SelectGroup {
+                    source_uid: 10,
+                    group: 3,
+                },
+            )
+            .unwrap();
+        let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+        run_conduit_phase(
+            managers.catalog(),
+            &fight,
+            &mut managers,
+            &pool,
+            &mut catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(3),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(managers.conduit.selected_group(10), Some(expected_group));
+    }
+}
+
+#[test]
 fn conduit_source_target_uses_the_first_living_main_ally_as_its_frame_anchor() {
     init_config();
     let entity = |uid, model_id| FightEntityInfo {

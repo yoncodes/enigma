@@ -407,6 +407,57 @@ fn opening_round_uses_action_point_buffs_applied_during_setup() {
 }
 
 #[test]
+fn twins_full_harmonization_switches_to_the_special_conduit_group() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3149),
+                current_hp: Some(100),
+                passive_skill: vec![31490161],
+                skill_group1: vec![31490111, 31490112, 31490113],
+                skill_group2: vec![31490121, 31490122, 31490123],
+                ex_skill: Some(31490151),
+                ex_point_type: Some(4),
+                ex_point_max: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(fight);
+    runtime.managers.ex_point.set(10, 10, 100, 0);
+
+    let round = runtime.start_round().unwrap();
+
+    assert_eq!(runtime.managers.conduit.selected_group(10), Some(3));
+    fn has_switch(step: &sonettobuf::FightStep) -> bool {
+        step.act_effect.iter().any(|effect| {
+            (effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Deviceskillindex as i32)
+                && effect.target_id == Some(10)
+                && effect.effect_num == Some(3))
+                || effect.fight_step.as_ref().is_some_and(has_switch)
+        })
+    }
+    assert!(
+        round.fight_step.iter().any(has_switch)
+            || round.next_round_begin_step.iter().any(has_switch)
+    );
+}
+
+#[test]
 fn opening_round_collects_static_ap_rules_without_runtime_dispatch() {
     crate::test_support::init_config();
     let fight = Fight {

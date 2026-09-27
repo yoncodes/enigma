@@ -333,6 +333,46 @@ fn battle_start_tag_threshold_applies_the_configured_team_buff() {
 }
 
 #[test]
+fn battle_start_tag_check_applies_the_support_role_buff() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3146),
+                entity_type: Some(1),
+                current_hp: Some(100),
+                passive_skill: vec![103_335_200],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    run_setup_stage(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        SetupStage::BattleStart,
+        0,
+    )
+    .unwrap();
+
+    assert!(
+        managers
+            .buff
+            .active_for(10)
+            .any(|buff| buff.buff_id == Some(103_335_120))
+    );
+}
+
+#[test]
 fn grant_time_buff_acts_stay_in_the_granting_skill_frame() {
     crate::test_support::init_config();
     let fight = Fight {

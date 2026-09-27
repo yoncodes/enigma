@@ -34,6 +34,7 @@ pub struct DamageRequest<'a> {
     pub career_ratio_bonus: i32,
     pub attack_career: Option<i32>,
     pub additional_attack_career: Option<i32>,
+    pub force_career_restraint: bool,
     /// Thousandths of one critical-damage permille point.
     pub critical_multiplier_remainder: i32,
     pub is_conduit: bool,
@@ -70,6 +71,7 @@ pub fn resolve_attack_command(
             career_ratio_bonus: plan.career_ratio_bonus,
             attack_career: plan.attack_career,
             additional_attack_career: plan.additional_attack_career,
+            force_career_restraint: plan.force_career_restraint,
             critical_multiplier_remainder: plan.critical_multiplier_remainder,
             is_conduit: plan.is_conduit,
             is_crit: plan.is_crit,
@@ -173,12 +175,13 @@ pub fn resolve_configured_replacement_damage_command(
         hurt: HurtInfoData {
             from_uid: request.source_uid,
             is_crit: request.is_crit,
-            career_restraint: restrains_target_either(
-                runtime.pool.catalog(),
-                request.attack_career.unwrap_or(source.career),
-                request.additional_attack_career,
-                target,
-            ),
+            career_restraint: request.force_career_restraint
+                || restrains_target_either(
+                    runtime.pool.catalog(),
+                    request.attack_career.unwrap_or(source.career),
+                    request.additional_attack_career,
+                    target,
+                ),
             reduce_hp: 0,
             effect_id: request.skill_id,
             skill_id: request.skill_id,
@@ -248,11 +251,12 @@ fn resolve_row_damage_result(
             attack_replacement,
         },
     );
-    let career_restraint = buffs
-        .active_features(hp)
-        .iter()
-        .filter(|feature| feature.owner_uid == source_uid)
-        .any(crate::engine::skill::buff_act::forces_career_restraint)
+    let career_restraint = request.force_career_restraint
+        || buffs
+            .active_features(hp)
+            .iter()
+            .filter(|feature| feature.owner_uid == source_uid)
+            .any(crate::engine::skill::buff_act::forces_career_restraint)
         || restrains_target_either(
             runtime.pool.catalog(),
             request.attack_career.unwrap_or(source.career),
@@ -719,10 +723,11 @@ pub(super) fn direct_damage(
             .filter_map(|(attr_id, delta)| (*attr_id == AttrId::Penetration).then_some(*delta))
             .sum::<i32>())
     .clamp(0, 1000);
-    let forced_career = source_active_features
-        .iter()
-        .filter(|feature| feature.owner_uid == source.uid)
-        .any(crate::engine::skill::buff_act::forces_career_restraint);
+    let forced_career = request.force_career_restraint
+        || source_active_features
+            .iter()
+            .filter(|feature| feature.owner_uid == source.uid)
+            .any(crate::engine::skill::buff_act::forces_career_restraint);
     let source_career = if let Some(career) = request.attack_career {
         career
     } else if source.uid == crate::engine::manager::emitter::UID {
