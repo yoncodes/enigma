@@ -643,6 +643,24 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
     }
     if active_phase == Some(SkillPhase::Immediate) {
+        outputs.extend(
+            crate::engine::skill::buff_act::assassination::mapped_stack_rule_ops(
+                catalog,
+                managers,
+                invocation.plan.source_uid,
+                invocation.plan.skill_id,
+                &execution.affected_targets,
+            )
+            .into_iter()
+            .map(|op| SkillEmissionOp {
+                op,
+                owner: behavior::registry::OutputOwner::Skill,
+                consequence: ConsequencePolicy::Default,
+                frame_owner: None,
+            }),
+        );
+    }
+    if active_phase == Some(SkillPhase::Immediate) {
         let mut phase_completed = phase_completed_op(
             &invocation,
             managers,

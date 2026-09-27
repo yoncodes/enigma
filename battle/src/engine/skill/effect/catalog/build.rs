@@ -6,6 +6,7 @@ use super::*;
 impl SkillEffectCatalog {
     pub fn from_game_db(db: &GameDB) -> Self {
         let mut catalog = Self::default();
+        catalog.index_assassination_stack_grants(db);
 
         for row in db.skill_effect.all() {
             catalog.insert_configured_effect(db, row);
@@ -124,6 +125,9 @@ impl SkillEffectCatalog {
         skills: impl IntoIterator<Item = i32>,
         buffs: impl IntoIterator<Item = i32>,
     ) {
+        if self.assassination_stack_grants.is_empty() {
+            self.index_assassination_stack_grants(db);
+        }
         let mut skills = skills
             .into_iter()
             .filter(|id| *id > 0)
@@ -222,6 +226,37 @@ impl SkillEffectCatalog {
                     continue;
                 }
                 skills.extend(crate::catalog::summoned_unique_skills(db, summoned_id));
+            }
+        }
+    }
+
+    fn index_assassination_stack_grants(&mut self, db: &GameDB) {
+        for buff in db.skill_buff.iter() {
+            for raw in buff.features.split('|') {
+                let Some(feature) =
+                    crate::engine::skill::buff_act::registry::resolve_feature(Some(db), raw)
+                else {
+                    continue;
+                };
+                let Some(definition) = feature.definition.filter(|definition| {
+                    definition.kind
+                        == crate::engine::skill::buff_act::registry::BuffActKind::BeAttackedAssassinate
+                }) else {
+                    continue;
+                };
+                let [_, _, _, mappings @ ..] = feature.values.as_slice() else {
+                    continue;
+                };
+                for pair in mappings.chunks_exact(2) {
+                    let grant = (buff.id, definition.key);
+                    let grants = self
+                        .assassination_stack_grants
+                        .entry((pair[0], pair[1]))
+                        .or_default();
+                    if !grants.contains(&grant) {
+                        grants.push(grant);
+                    }
+                }
             }
         }
     }
