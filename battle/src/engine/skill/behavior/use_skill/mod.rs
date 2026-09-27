@@ -32,7 +32,7 @@ pub(super) fn supports_consume_power_skill(behavior: &ParsedBehavior) -> bool {
 pub(super) fn supports_per_consume_ex_point_direct_use_skill(behavior: &ParsedBehavior) -> bool {
     matches!(
         behavior.args.as_slice(),
-        [5, skill_id, 0, 31100201, 1] if *skill_id > 0
+        [5, skill_id, 0, buff_id, 1] if *skill_id > 0 && *buff_id > 0
     )
 }
 
@@ -301,10 +301,11 @@ impl BehaviorHandler for Handler {
                 ])
             }
             BehaviorKind::PerConsumeExPointDirectUseSkill => {
-                let [5, skill_id, 0, 31100201, 1] = behavior.args.as_slice() else {
+                let [5, skill_id, 0, buff_id, 1] = behavior.args.as_slice() else {
                     return Some(Vec::new());
                 };
                 if *skill_id <= 0
+                    || *buff_id <= 0
                     || ExPointKind::from_wire(context.managers.ex_point.kind(context.source_uid))
                         != ExPointKind::Common
                     || context.managers.ex_point.get(context.source_uid) < 5
