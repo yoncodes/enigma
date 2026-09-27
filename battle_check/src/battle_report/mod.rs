@@ -135,6 +135,13 @@ fn absolute_output(output: &Path) -> Result<PathBuf> {
     {
         bail!("report output must name a dedicated directory");
     }
+    if !output.is_absolute()
+        && output
+            .components()
+            .any(|component| matches!(component, Component::Prefix(_) | Component::RootDir))
+    {
+        bail!("report output must be fully absolute or relative to the current directory");
+    }
     let current = env::current_dir()
         .context("resolve current directory")?
         .canonicalize()
@@ -287,6 +294,9 @@ fn ensure_normal_directory(path: &Path) -> Result<()> {
     let mut current = PathBuf::new();
     for component in path.components() {
         current.push(component.as_os_str());
+        if !matches!(component, Component::Normal(_)) {
+            continue;
+        }
         if !current.exists() {
             fs::create_dir(&current)
                 .with_context(|| format!("create report path component {}", current.display()))?;
@@ -418,5 +428,24 @@ mod tests {
         assert!(absolute_output(Path::new("reports/..")).is_err());
         assert!(absolute_output(Path::new("../battle-report-prototype")).is_err());
         assert!(absolute_output(&env::current_dir().unwrap()).is_err());
+    }
+
+    #[test]
+    fn report_output_accepts_a_new_directory_below_an_existing_parent() {
+        let parent = temporary("new-output-parent");
+        fs::create_dir_all(&parent).unwrap();
+        let output = parent.join("nested").join("report");
+
+        assert_eq!(absolute_output(&output).unwrap(), output);
+        assert!(output.parent().unwrap().is_dir());
+
+        cleanup_owned_directory(&parent).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn report_output_rejects_drive_relative_and_rooted_paths() {
+        assert!(absolute_output(Path::new(r"C:report")).is_err());
+        assert!(absolute_output(Path::new(r"\report")).is_err());
     }
 }

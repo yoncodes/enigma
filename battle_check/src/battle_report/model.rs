@@ -70,6 +70,7 @@ pub(crate) struct Node {
     pub(crate) opcode: Option<i32>,
     pub(crate) type_name: String,
     pub(crate) raw: String,
+    pub(crate) exact_raw: String,
     pub(crate) registry: &'static str,
     pub(crate) semantic: &'static str,
     pub(crate) detail: String,

@@ -7,7 +7,91 @@ use std::{
 
 use anyhow::{Context, Result};
 
-use super::model::{Buff, Skill, Subject};
+use super::model::{Buff, Node, Skill, Subject, Variant};
+
+const PRIORITIES: &str = "battle-support-priorities.json";
+const QUEUE_LIMIT: usize = 25;
+const SUBJECT_LIMIT: usize = 10;
+
+#[derive(Debug, Default)]
+struct Priorities(BTreeMap<String, Priority>);
+
+#[derive(Debug)]
+struct Priority {
+    value: u8,
+    note: String,
+}
+
+impl Priorities {
+    fn load(output: &Path) -> Result<Self> {
+        let path = output.join(PRIORITIES);
+        if !path.is_file() {
+            return Ok(Self::default());
+        }
+        Self::parse(&fs::read_to_string(&path).context("read battle-support-priorities.json")?)
+    }
+
+    fn parse(contents: &str) -> Result<Self> {
+        let root: serde_json::Value =
+            serde_json::from_str(contents).context("parse battle-support-priorities.json")?;
+        let root = root
+            .as_object()
+            .context("battle-support-priorities.json must contain an object")?;
+        let mut priorities = BTreeMap::new();
+        for (key, value) in root {
+            if !valid_priority_key(key) {
+                anyhow::bail!("invalid battle-support priority key: {key}");
+            }
+            let fields = value
+                .as_object()
+                .with_context(|| format!("priority {key} must contain an object"))?;
+            if fields
+                .keys()
+                .any(|field| !matches!(field.as_str(), "value" | "note"))
+            {
+                anyhow::bail!("priority {key} contains an unknown field");
+            }
+            let value = fields
+                .get("value")
+                .and_then(serde_json::Value::as_u64)
+                .with_context(|| format!("priority {key} requires an integer value"))?;
+            let value = u8::try_from(value)
+                .ok()
+                .filter(|value| *value <= 5)
+                .with_context(|| format!("priority {key} value must be between 0 and 5"))?;
+            let note = fields
+                .get("note")
+                .map(|note| {
+                    note.as_str()
+                        .with_context(|| format!("priority {key} note must be text"))
+                })
+                .transpose()?
+                .unwrap_or_default()
+                .to_owned();
+            priorities.insert(key.clone(), Priority { value, note });
+        }
+        Ok(Self(priorities))
+    }
+
+    fn get(&self, key: &str) -> Option<&Priority> {
+        self.0.get(key)
+    }
+}
+
+fn valid_priority_key(key: &str) -> bool {
+    let parts = key.split(':').collect::<Vec<_>>();
+    match parts.as_slice() {
+        ["hero" | "psychube" | "stage", id] => canonical_id(id),
+        ["hero", id, "euphoria", facet] => canonical_id(id) && canonical_id(facet),
+        _ => false,
+    }
+}
+
+fn canonical_id(value: &str) -> bool {
+    value
+        .parse::<i32>()
+        .is_ok_and(|id| id > 0 && id.to_string() == value)
+}
 
 pub(crate) fn overview(output: &Path, heroes: bool, psychubes: bool, stages: bool) -> Result<()> {
     let mut text = String::from(
@@ -27,19 +111,19 @@ pub(crate) fn overview(output: &Path, heroes: bool, psychubes: bool, stages: boo
 
 pub(crate) fn heroes(output: &Path, subjects: &[Subject]) -> Result<()> {
     let links = Links::load(output)?;
+    let priorities = Priorities::load(output)?;
     fs::create_dir_all(output.join("hero-support")).context("create hero report directory")?;
     let mut index = String::from(
-        "# Hero support\n\nEach Base or Euphoria row has an independently scanned closure. `Unexercised` means configuration was scanned without an authoritative retained capture; it does not mean unsupported.\n\n| Hero | Variant | Registry/semantic state | Capture | Issue / PR | Detail |\n|---|---|---|---|---|---|\n",
+        "# Hero support\n\nEach Base or Euphoria row has an independently scanned closure. `Unexercised` means configuration was scanned without an authoritative retained capture; it does not mean unsupported. Value is manually assigned in `battle-support-priorities.json` from 0–5 and is never inferred from game data.\n\n",
     );
+    render_triage(&mut index, "Hero", subjects, &priorities);
+    index.push_str("## Full inventory\n\n| Hero | Variant | State | Skills | Errors | Warnings | Gaps | Value | Capture | Issue / PR | Detail |\n|---|---|---|---:|---:|---:|---:|---:|---|---|---|\n");
     for subject in subjects {
         let detail = format!("hero-support/{}-{}.md", subject.id, subject.slug);
         for variant in &subject.variants {
-            let key = variant.source_id.map_or_else(
-                || format!("hero:{}", subject.id),
-                |facet| format!("hero:{}:euphoria:{facet}", subject.id),
-            );
+            let key = subject_key("Hero", subject, variant);
             index.push_str(&format!(
-                "| {} {} | {}{} | {} | {} | {} | [open]({}) |\n",
+                "| {} {} | {}{} | {} | {} | {} | {} | {} | {} | {} | {} | [open]({}) |\n",
                 subject.id,
                 escape(&subject.name),
                 escape(&variant.label),
@@ -48,6 +132,11 @@ pub(crate) fn heroes(output: &Path, subjects: &[Subject]) -> Result<()> {
                     variant.source_rank.unwrap_or_default()
                 )),
                 variant.scan.status(),
+                variant.scan.skills.len(),
+                variant.scan.errors.len(),
+                variant.scan.warnings.len(),
+                variant.scan.gaps,
+                priority_value(&priorities, &key),
                 variant.observation,
                 links.render(&key),
                 detail,
@@ -60,20 +149,30 @@ pub(crate) fn heroes(output: &Path, subjects: &[Subject]) -> Result<()> {
 
 pub(crate) fn psychubes(output: &Path, subjects: &[Subject]) -> Result<()> {
     let links = Links::load(output)?;
+    let priorities = Priorities::load(output)?;
     fs::create_dir_all(output.join("psychube-support"))
         .context("create psychube report directory")?;
     let mut index = String::from(
-        "# Psychube support\n\nThe highest configured amplification is scanned. Capture observation remains a separate claim.\n\n| Psychube | Scan | Capture | Issue / PR | Detail |\n|---|---|---|---|---|\n",
+        "# Psychube support\n\nThe highest configured amplification is scanned. Capture observation remains a separate claim. Value is manually assigned in `battle-support-priorities.json` from 0–5.\n\n",
     );
+    render_triage(&mut index, "Psychube", subjects, &priorities);
+    index.push_str("## Full inventory\n\n| Psychube | State | Skills | Errors | Warnings | Gaps | Value | Capture | Issue / PR | Detail |\n|---|---|---:|---:|---:|---:|---:|---|---|---|\n");
     for subject in subjects {
         let detail = format!("psychube-support/{}-{}.md", subject.id, subject.slug);
+        let variant = &subject.variants[0];
+        let key = subject_key("Psychube", subject, variant);
         index.push_str(&format!(
-            "| {} {} | {} | {} | {} | [open]({}) |\n",
+            "| {} {} | {} | {} | {} | {} | {} | {} | {} | {} | [open]({}) |\n",
             subject.id,
             escape(&subject.name),
-            subject.variants[0].scan.status(),
-            subject.variants[0].observation,
-            links.render(&format!("psychube:{}", subject.id)),
+            variant.scan.status(),
+            variant.scan.skills.len(),
+            variant.scan.errors.len(),
+            variant.scan.warnings.len(),
+            variant.scan.gaps,
+            priority_value(&priorities, &key),
+            variant.observation,
+            links.render(&key),
             detail,
         ));
         write(
@@ -86,6 +185,7 @@ pub(crate) fn psychubes(output: &Path, subjects: &[Subject]) -> Result<()> {
 
 pub(crate) fn stages(output: &Path, subjects: &[Subject]) -> Result<()> {
     let links = Links::load(output)?;
+    let priorities = Priorities::load(output)?;
     fs::create_dir_all(output.join("stage-support")).context("create stage report directory")?;
     let mut chapters = BTreeMap::<i32, Vec<&Subject>>::new();
     for subject in subjects {
@@ -96,7 +196,11 @@ pub(crate) fn stages(output: &Path, subjects: &[Subject]) -> Result<()> {
     }
     let mut chapters = chapters.into_iter().collect::<Vec<_>>();
     chapters.sort_by_key(|(chapter, _)| chapter_order(*chapter));
-    let mut index = String::from("# Stage support\n\n## Chapters\n\n### Main story\n\n");
+    let mut index = String::from(
+        "# Stage support\n\nStage rules use the same semantic closure scan as heroes and psychubes. Value is manually assigned in `battle-support-priorities.json` from 0–5.\n\n",
+    );
+    render_triage(&mut index, "Stage", subjects, &priorities);
+    index.push_str("## Chapters\n\n### Main story\n\n");
     for (chapter, _) in chapters
         .iter()
         .filter(|(chapter, _)| (101..=113).contains(chapter))
@@ -132,20 +236,26 @@ pub(crate) fn stages(output: &Path, subjects: &[Subject]) -> Result<()> {
     index.push_str("\n</details>\n");
     for (chapter, stages) in chapters {
         index.push_str(&format!(
-            "\n## {}\n\n| Stage | Config battle | Scan | Capture | Issue / PR | Detail |\n|---|---|---|---|---|---|\n",
+            "\n## {}\n\n| Stage | Config battle | State | Skills | Errors | Warnings | Gaps | Value | Capture | Issue / PR | Detail |\n|---|---|---|---:|---:|---:|---:|---:|---|---|---|\n",
             chapter_label(chapter),
         ));
         for subject in stages {
             let detail = format!("stage-support/{}-{}.md", subject.id, subject.slug);
             let variant = &subject.variants[0];
+            let key = subject_key("Stage", subject, variant);
             index.push_str(&format!(
-                "| {} {} | {} | {} | {} | {} | [open]({}) |\n",
+                "| {} {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | [open]({}) |\n",
                 subject.id,
                 escape(&subject.name),
                 variant.source_id.unwrap_or_default(),
                 variant.scan.status(),
+                variant.scan.skills.len(),
+                variant.scan.errors.len(),
+                variant.scan.warnings.len(),
+                variant.scan.gaps,
+                priority_value(&priorities, &key),
                 variant.observation,
-                links.render(&format!("stage:{}", subject.id)),
+                links.render(&key),
                 detail,
             ));
             write(output.join(&detail), &detail_page("Stage", subject, &links))?;
@@ -154,18 +264,210 @@ pub(crate) fn stages(output: &Path, subjects: &[Subject]) -> Result<()> {
     write(output.join("stage-support.md"), &index)
 }
 
+fn render_triage(text: &mut String, kind: &str, subjects: &[Subject], priorities: &Priorities) {
+    let mut variants = subjects
+        .iter()
+        .flat_map(|subject| {
+            subject
+                .variants
+                .iter()
+                .map(move |variant| (subject, variant))
+        })
+        .filter(|(_, variant)| variant.scan.status() == "incomplete")
+        .collect::<Vec<_>>();
+    variants.sort_by_key(|(subject, variant)| repair_order(subject, variant));
+
+    text.push_str("## Quick wins\n\nOrdered by the smallest incomplete semantic closure (gaps, errors, warnings), then stable IDs. This is a triage hint, not an effort estimate or capture-parity claim.\n\n");
+    render_queue(
+        text,
+        kind,
+        variants.iter().copied().take(QUEUE_LIMIT),
+        priorities,
+    );
+
+    let mut valued = variants
+        .iter()
+        .copied()
+        .filter(|(subject, variant)| {
+            priorities
+                .get(&subject_key(kind, subject, variant))
+                .is_some_and(|priority| priority.value > 0)
+        })
+        .collect::<Vec<_>>();
+    valued.sort_by_key(|(subject, variant)| {
+        let priority = priorities
+            .get(&subject_key(kind, subject, variant))
+            .expect("filtered priority");
+        (
+            std::cmp::Reverse(priority.value),
+            repair_order(subject, variant),
+        )
+    });
+    text.push_str("## Value priorities\n\n");
+    render_queue(text, kind, valued.into_iter().take(QUEUE_LIMIT), priorities);
+
+    let mut rules =
+        BTreeMap::<(String, Option<i32>, String, String), BTreeMap<String, String>>::new();
+    for (subject, variant) in variants {
+        let label = variant_name(subject, variant);
+        let detail = detail_link(kind, subject);
+        for (domain, node) in unsupported_nodes(variant) {
+            rules
+                .entry(rule_key(domain, node))
+                .or_default()
+                .insert(label.clone(), detail.clone());
+        }
+    }
+    let mut rules = rules
+        .into_iter()
+        .filter(|(_, subjects)| subjects.len() > 1)
+        .collect::<Vec<_>>();
+    rules.sort_by(|(left, left_subjects), (right, right_subjects)| {
+        right_subjects
+            .len()
+            .cmp(&left_subjects.len())
+            .then_with(|| left.cmp(right))
+    });
+    text.push_str("## Shared unsupported rules\n\nExact unsupported keys affecting more than one incomplete subject.\n\n");
+    if rules.is_empty() {
+        text.push_str("No shared unsupported rules.\n\n");
+    } else {
+        text.push_str("| Domain | Exact key | Raw arguments | Affected | Subjects |\n|---|---|---|---:|---|\n");
+        for ((domain, opcode, type_name, raw), subjects) in rules.into_iter().take(QUEUE_LIMIT) {
+            let affected = subjects.len();
+            let mut subject_links = subjects
+                .into_iter()
+                .take(SUBJECT_LIMIT)
+                .map(|(label, detail)| format!("[{}]({detail})", escape(&label)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            if affected > SUBJECT_LIMIT {
+                subject_links.push_str(&format!(", … +{} more", affected - SUBJECT_LIMIT));
+            }
+            text.push_str(&format!(
+                "| {domain} | {} `{}` | `{}` | {} | {subject_links} |\n",
+                opcode.map_or_else(|| "—".to_owned(), |opcode| opcode.to_string()),
+                escape(&type_name),
+                inline(&raw),
+                affected,
+            ));
+        }
+        text.push('\n');
+    }
+}
+
+fn render_queue<'a>(
+    text: &mut String,
+    kind: &str,
+    variants: impl Iterator<Item = (&'a Subject, &'a Variant)>,
+    priorities: &Priorities,
+) {
+    let variants = variants.collect::<Vec<_>>();
+    if variants.is_empty() {
+        text.push_str("No matching incomplete subjects.\n\n");
+        return;
+    }
+    text.push_str("| Subject | Variant | Skills | Errors | Warnings | Gaps | Value | Note | Detail |\n|---|---|---:|---:|---:|---:|---:|---|---|\n");
+    for (subject, variant) in variants {
+        let key = subject_key(kind, subject, variant);
+        let priority = priorities.get(&key);
+        text.push_str(&format!(
+            "| {} {} | {} | {} | {} | {} | {} | {} | {} | [open]({}) |\n",
+            subject.id,
+            escape(&subject.name),
+            escape(&variant.label),
+            variant.scan.skills.len(),
+            variant.scan.errors.len(),
+            variant.scan.warnings.len(),
+            variant.scan.gaps,
+            priority.map_or_else(|| "—".to_owned(), |priority| priority.value.to_string()),
+            priority.map_or("—".to_owned(), |priority| prose(&priority.note)),
+            detail_link(kind, subject),
+        ));
+    }
+    text.push('\n');
+}
+
+fn repair_order(subject: &Subject, variant: &Variant) -> (usize, usize, usize, i32, i32) {
+    (
+        variant.scan.gaps,
+        variant.scan.errors.len(),
+        variant.scan.warnings.len(),
+        subject.id,
+        variant.source_id.unwrap_or_default(),
+    )
+}
+
+fn unsupported_nodes(variant: &Variant) -> Vec<(&'static str, &Node)> {
+    let mut nodes = Vec::new();
+    for skill in &variant.scan.skills {
+        for slot in &skill.slots {
+            if slot.behavior.semantic != "supported" {
+                nodes.push(("Behavior", &slot.behavior));
+            }
+            nodes.extend(
+                slot.conditions
+                    .iter()
+                    .filter(|node| node.semantic != "supported")
+                    .map(|node| ("Condition", node)),
+            );
+        }
+    }
+    for buff in &variant.scan.buffs {
+        nodes.extend(
+            buff.acts
+                .iter()
+                .filter(|act| act.node.semantic != "supported")
+                .map(|act| ("Buff act", &act.node)),
+        );
+    }
+    nodes
+}
+
+fn rule_key(domain: &str, node: &Node) -> (String, Option<i32>, String, String) {
+    (
+        domain.to_owned(),
+        node.opcode,
+        node.type_name.clone(),
+        node.exact_raw.clone(),
+    )
+}
+
+fn subject_key(kind: &str, subject: &Subject, variant: &Variant) -> String {
+    match (kind, variant.source_id) {
+        ("Hero", Some(facet)) => format!("hero:{}:euphoria:{facet}", subject.id),
+        ("Hero", None) => format!("hero:{}", subject.id),
+        ("Psychube", _) => format!("psychube:{}", subject.id),
+        _ => format!("stage:{}", subject.id),
+    }
+}
+
+fn priority_value(priorities: &Priorities, key: &str) -> String {
+    priorities
+        .get(key)
+        .map_or_else(|| "—".to_owned(), |priority| priority.value.to_string())
+}
+
+fn variant_name(subject: &Subject, variant: &Variant) -> String {
+    format!("{} {} ({})", subject.id, subject.name, variant.label)
+}
+
+fn detail_link(kind: &str, subject: &Subject) -> String {
+    format!(
+        "{}-support/{}-{}.md",
+        kind.to_ascii_lowercase(),
+        subject.id,
+        subject.slug
+    )
+}
+
 fn detail_page(kind: &str, subject: &Subject, links: &Links) -> String {
     let mut text = format!(
         "# {kind} {} — {}\n\nGenerated configuration closure. Capture references are evidence that an ID appeared on retained wire data; they are not by themselves proof of full packet parity.\n\n",
         subject.id, subject.name
     );
     for variant in &subject.variants {
-        let key = match (kind, variant.source_id) {
-            ("Hero", Some(facet)) => format!("hero:{}:euphoria:{facet}", subject.id),
-            ("Hero", None) => format!("hero:{}", subject.id),
-            ("Psychube", _) => format!("psychube:{}", subject.id),
-            _ => format!("stage:{}", subject.id),
-        };
+        let key = subject_key(kind, subject, variant);
         text.push_str(&format!(
             "## {}\n\n- Source ID: {}\n- Configured rank: {}\n- Semantic closure: **{}**\n- Capture observation: **{}**\n- Issue / PR: {}\n- Skills: {}\n- Buffs: {}\n- Exact gaps: {}\n\n",
             variant.label,
@@ -439,5 +741,59 @@ mod tests {
         ] {
             assert!(!valid_github_link(url));
         }
+    }
+
+    #[test]
+    fn priority_metadata_is_strict_and_supports_every_report_kind() {
+        let priorities = Priorities::parse(
+            r#"{
+                "hero:3145": {"value": 5, "note": "High value"},
+                "hero:3145:euphoria:312401": {"value": 4},
+                "psychube:123": {"value": 2},
+                "stage:456": {"value": 0}
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(priorities.get("hero:3145").unwrap().value, 5);
+        assert_eq!(priorities.get("hero:3145").unwrap().note, "High value");
+        assert_eq!(priorities.get("psychube:123").unwrap().value, 2);
+        assert_eq!(priorities.get("stage:456").unwrap().value, 0);
+
+        for invalid in [
+            r#"{"hero:3145":{"value":6}}"#,
+            r#"{"hero:3145":{"value":1,"extra":true}}"#,
+            r#"{"hero:not-an-id":{"value":1}}"#,
+            r#"{"hero:03145":{"value":1}}"#,
+            r#"{"hero:+3145":{"value":1}}"#,
+            r#"{"hero:0":{"value":1}}"#,
+            r#"{"hero:-1":{"value":1}}"#,
+            r#"{"enemy:1":{"value":1}}"#,
+            r#"[]"#,
+        ] {
+            assert!(Priorities::parse(invalid).is_err(), "accepted {invalid}");
+        }
+    }
+
+    #[test]
+    fn shared_rule_identity_includes_raw_arguments() {
+        let left = Node {
+            opcode: Some(1),
+            type_name: "AddBuff".to_owned(),
+            raw: "1#100".to_owned(),
+            exact_raw: "1#100".to_owned(),
+            registry: "missing",
+            semantic: "route missing",
+            detail: String::new(),
+            observation: "Unexercised",
+        };
+        let left_key = rule_key("Behavior", &left);
+        let right = Node {
+            raw: "1#200".to_owned(),
+            exact_raw: "1#200".to_owned(),
+            ..left
+        };
+
+        assert_ne!(left_key, rule_key("Behavior", &right));
     }
 }
