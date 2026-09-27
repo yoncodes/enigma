@@ -569,6 +569,71 @@ impl BattleRuntime {
             fight_version,
             absorb_hurt_map_layout,
         )?);
+        if crate::engine::round::outcome::defenders_defeated(&pool, &self.managers)
+            && !battle_ended(&self.fight, &pool, &self.managers)
+        {
+            sync_attacker_team_state(
+                &mut self.fight,
+                self.managers.card.deck_num(),
+                self.round_state.power,
+            );
+            if let Some(change) = self
+                .managers
+                .advance_wave(&mut self.fight)
+                .map_err(|error| error.to_string())?
+            {
+                let entering_uids = change.entering_uids.clone();
+                battle_catalog.extend_skill_entities(
+                    catalog,
+                    crate::engine::manager::wave::entering_entities(&change),
+                );
+                pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+                    self.catalog_data
+                        .expect("battle runtime was not constructed with a catalog"),
+                    &self.fight,
+                );
+                fight_steps.extend(project_result(
+                    schedule::run_wave_entry(
+                        &mut self.managers,
+                        &pool,
+                        catalog,
+                        &mut self.determinism,
+                        context,
+                        change,
+                    )
+                    .map_err(|error| format!("{error:?}"))?,
+                    fight_version,
+                    absorb_hurt_map_layout,
+                )?);
+                fight_steps.extend(project_result(
+                    schedule::run_wave_entry_setup(
+                        &mut self.managers,
+                        &pool,
+                        catalog,
+                        &mut self.determinism,
+                        context,
+                        &entering_uids,
+                    )
+                    .map_err(|error| format!("{error:?}"))?,
+                    fight_version,
+                    absorb_hurt_map_layout,
+                )?);
+                fight_steps.extend(project_result(
+                    schedule::run_wave_entry_master_halo_fanout(
+                        &mut self.managers,
+                        &pool,
+                        catalog,
+                        &mut self.determinism,
+                        context,
+                        &entering_uids,
+                    )
+                    .map_err(|error| format!("{error:?}"))?,
+                    fight_version,
+                    absorb_hurt_map_layout,
+                )?);
+                self.wave_entry_condition_uids = entering_uids;
+            }
+        }
         if !self.round_state.is_finish {
             let extra_ai_actions = crate::engine::round::modifier::ai_action_bonus(
                 &pool,

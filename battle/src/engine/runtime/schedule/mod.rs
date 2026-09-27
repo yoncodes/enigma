@@ -594,7 +594,7 @@ pub fn run_wave_entry_setup(
     Ok(result)
 }
 
-fn run_wave_entry_master_halo_fanout(
+pub(super) fn run_wave_entry_master_halo_fanout(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
