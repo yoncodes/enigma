@@ -933,3 +933,37 @@ fn enemy_phase_reaction_clear_advances_the_configured_wave() {
         })
     }));
 }
+
+#[test]
+fn round_start_clear_advances_the_configured_wave() {
+    let (mut runtime, _) = wave_clear_runtime(Vec::new());
+    runtime.managers.hp.set_max(10, 1_000_000);
+    runtime.managers.hp.heal(10, 999_900, 0);
+    install_round_start_enemy_kill(&mut runtime, 10, 9_900_090);
+
+    let round = runtime
+        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .unwrap();
+
+    assert_eq!(runtime.managers.hp.current(-1), 0);
+    assert_eq!(runtime.managers.hp.current(-2), 0);
+    assert_eq!(runtime.fight.cur_wave, Some(2));
+    assert_eq!(
+        runtime
+            .fight
+            .defender
+            .as_ref()
+            .unwrap()
+            .entitys
+            .iter()
+            .filter_map(|entity| entity.uid)
+            .collect::<Vec<_>>(),
+        vec![-3, -4]
+    );
+    assert!(round.fight_step.iter().any(|step| {
+        step.act_effect.iter().any(|effect| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Newchangewave as i32)
+        })
+    }));
+}
