@@ -242,8 +242,6 @@ impl BehaviorHandler for Handler {
                         skill_id,
                     }
                     .into();
-                invocation.target =
-                    crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
                 invocation.extra_skill_kind = skill_kind_from_is_extra(
                     crate::engine::skill::effect::catalog::configured_extra_kind(skill_id),
                 );

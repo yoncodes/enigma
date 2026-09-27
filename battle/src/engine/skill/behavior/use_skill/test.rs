@@ -243,7 +243,7 @@ fn remove_buff_use_skill_replays_captured_weighted_follow_up() {
         BehaviorOpContext {
             source_uid: 10,
             source_team: 1,
-            target_uid: -1,
+            target_uid: 10,
             active_skill_id: 308301412,
             transfer_count: 1,
             event: None,
@@ -269,7 +269,7 @@ fn remove_buff_use_skill_replays_captured_weighted_follow_up() {
             RuleOp::Skill(invocation),
         ] if invocation.plan.skill_id == 30830172
             && invocation.target
-                == crate::engine::skill::action::SkillTarget::Explicit(-1)
+                == crate::engine::skill::action::SkillTarget::Configured
             && invocation.extra_skill_kind == Some(ExtraSkillKind::FollowUp)
             && invocation.mode
                 == crate::engine::skill::action::SkillExecutionMode::Active
