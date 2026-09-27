@@ -455,6 +455,33 @@ fn real_hurt_fix_uses_only_its_captured_add_and_refresh_markers() {
 }
 
 #[test]
+fn mane_damage_modifiers_use_only_captured_add_and_refresh_markers() {
+    for (act_id, type_name, marker) in [
+        (
+            520,
+            "RealHarmFix",
+            sonettobuf::effect_type_enum::EffectType::Realharmfix as i32,
+        ),
+        (
+            740,
+            "AttrOnlyCalDamageInExtra",
+            sonettobuf::effect_type_enum::EffectType::None as i32,
+        ),
+    ] {
+        let wire = super::super::wire::find(act_id, type_name).unwrap();
+        assert_eq!(wire.markers(super::super::wire::WirePhase::Add), &[marker]);
+        assert!(
+            wire.markers(super::super::wire::WirePhase::Static)
+                .is_empty()
+        );
+        assert_eq!(
+            wire.markers(super::super::wire::WirePhase::Refresh),
+            &[marker]
+        );
+    }
+}
+
+#[test]
 fn dot_uses_only_its_captured_add_and_refresh_markers() {
     let wire = super::super::wire::find(202, "Dot").unwrap();
     let marker = sonettobuf::effect_type_enum::EffectType::Dot as i32;

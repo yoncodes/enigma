@@ -185,6 +185,10 @@ impl BattleRuntime {
         self.managers.indicator.total(indicator_id)
     }
 
+    pub fn activity_score(&self) -> i32 {
+        self.managers.indicator.activity_score()
+    }
+
     pub fn attack_statistics(&self) -> Vec<FightStatistics> {
         self.fight
             .attacker

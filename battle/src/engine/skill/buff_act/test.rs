@@ -51,6 +51,7 @@ fn transaction_event(buff_id: i32, before_amount: i32, after_amount: i32) -> Bat
         after_amount,
         act_id: 0,
         act_value: 0,
+        duration_expired: false,
     };
     if after_amount == 0 {
         BattleEvent::BuffRemoved(change)

@@ -1,6 +1,78 @@
 use super::*;
 
 #[test]
+fn buff_expire_only_rejects_non_duration_removals() {
+    init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let condition = exact_condition(515005, "BuffIdExpireOnly", &["4004"]);
+    let pool = TargetPool::from_fight(&fight);
+    let matches = |duration_expired| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[-1],
+            None,
+            &pool,
+            TargetContext {
+                removed_buff_id: 4004,
+                removed_buff_target_uid: -1,
+                removed_buff_duration_expired: duration_expired,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(true));
+    assert!(!matches(false));
+}
+
+#[test]
+fn buff_type_add_matches_only_the_added_status_category() {
+    init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let condition = exact_condition(88, "BuffTypeAdd", &["4"]);
+    let pool = TargetPool::from_fight(&fight);
+    let matches = |status_id| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[-1],
+            None,
+            &pool,
+            TargetContext {
+                added_buff_amount: 1,
+                added_buff_target_uid: -1,
+                added_buff_status_id: status_id,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(4));
+    assert!(!matches(6));
+}
+
+#[test]
 fn round_start_card_buff_gate_matches_an_active_type_variant_only() {
     init_config();
     let matches = |duration| {

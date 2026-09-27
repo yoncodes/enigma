@@ -105,7 +105,9 @@ pub enum ParsedConditionKind {
         max_count: i32,
     },
     BuffAdded(Vec<i32>),
+    BuffTypeAdded(Vec<i32>),
     BuffRemoved(Vec<i32>),
+    BuffExpired(Vec<i32>),
     RejectedBuffIdOrType(i32),
     AccBuffAddedCount {
         buff_ids: Vec<i32>,
@@ -267,6 +269,7 @@ pub enum ParsedConditionKind {
     },
     UseSkillRank(Vec<i32>),
     UseHurtSkill,
+    UseDeviceSkill,
     SpecificSkill {
         group: i32,
         rank: i32,

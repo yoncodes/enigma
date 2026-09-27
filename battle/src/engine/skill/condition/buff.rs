@@ -125,6 +125,16 @@ pub fn buff_removed(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCondit
     Some(ParsedConditionKind::BuffRemoved(parse_buff_ids(raw_args)?))
 }
 
+pub fn buff_type_added(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::BuffTypeAdded(parse_buff_ids(
+        raw_args,
+    )?))
+}
+
+pub fn buff_expired(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::BuffExpired(parse_buff_ids(raw_args)?))
+}
+
 pub fn any_status_present(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     status_count(parse_buff_ids(raw_args)?, 1)
 }

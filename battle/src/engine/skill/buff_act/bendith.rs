@@ -230,6 +230,7 @@ mod tests {
             after_amount: 1,
             act_id: 0,
             act_value: 0,
+            duration_expired: false,
         };
         let command = |event| {
             let operations = replace_entity_skill_group_transaction(&managers, &event);

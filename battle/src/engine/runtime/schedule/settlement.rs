@@ -484,8 +484,8 @@ pub fn run_round_end_final_settlement(
     context: TargetContext,
     settled_buffs: Vec<crate::engine::event::payload::BuffChangeEvent>,
 ) -> Result<DrainResult, DrainError> {
-    let event = BattleEvent::BuffsSettled(settled_buffs);
     let owner_uids = final_settlement_owner_order(pool, managers);
+    let event = BattleEvent::BuffsSettled(settled_buffs);
     let mut result = drain::run_grouped_owner_event(
         managers,
         pool,
@@ -510,6 +510,18 @@ pub fn run_round_end_final_settlement(
         skills.events.remove(0);
     }
     append(&mut result, skills);
+    append(
+        &mut result,
+        run_duration_advances_for_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            EventKind::RoundEndFinalSettlement,
+            &owner_uids,
+        )?,
+    );
     Ok(result)
 }
 

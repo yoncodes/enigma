@@ -641,8 +641,18 @@ fn condition_kind_matches(
         ParsedConditionKind::BuffAdded(buff_ids) => {
             context.added_buff_amount > 0 && buff_ids.contains(&context.added_buff_id)
         }
+        ParsedConditionKind::BuffTypeAdded(type_ids) => {
+            context.added_buff_amount > 0
+                && condition_targets.contains(&context.added_buff_target_uid)
+                && type_ids.contains(&context.added_buff_status_id)
+        }
         ParsedConditionKind::BuffRemoved(buff_ids) => {
             context.removed_buff_target_uid != 0
+                && condition_targets.contains(&context.removed_buff_target_uid)
+                && buff_ids.contains(&context.removed_buff_id)
+        }
+        ParsedConditionKind::BuffExpired(buff_ids) => {
+            context.removed_buff_duration_expired
                 && condition_targets.contains(&context.removed_buff_target_uid)
                 && buff_ids.contains(&context.removed_buff_id)
         }
@@ -984,6 +994,15 @@ fn condition_kind_matches(
         }
         ParsedConditionKind::UseHurtSkill => {
             context.active_skill_is_attack && active_skill_has_real_source(pool, context)
+        }
+        ParsedConditionKind::UseDeviceSkill => {
+            context.active_skill_is_attack
+                && matches!(
+                    context.active_skill_mode,
+                    crate::engine::skill::action::SkillExecutionMode::Device
+                        | crate::engine::skill::action::SkillExecutionMode::DeviceCard
+                )
+                && active_skill_has_real_source(pool, context)
         }
         ParsedConditionKind::SpecificSkill { group, rank } => {
             specific_skill_matches(source_uid, *group, *rank, pool, context)
