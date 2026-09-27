@@ -164,6 +164,7 @@ pub enum BehaviorKind {
     ChangeScene,
     CareerRatioFix,
     ChangeAttackCareer,
+    SetCareerRestraint,
     AddAct,
     AddActHero,
     AddActAndCardLimit,

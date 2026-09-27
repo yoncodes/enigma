@@ -484,16 +484,18 @@ fn run_player_card_ops(
             });
             continue;
         }
-        if let PlayerCardOp::Play(play) = &op
-            && let Some((owner_uid, skill_id)) =
-                play.planned_skill(managers.card.visible_card(play.hand_index))
-            && card_skill_is_blocked(managers, catalog, owner_uid, skill_id)
-        {
-            return Err(DrainError::ForbiddenCardSkill {
-                owner_uid,
-                skill_id,
-            });
-        }
+        let blocked_card_index = match &op {
+            PlayerCardOp::Play(play)
+                if play
+                    .planned_skill(managers.card.visible_card(play.hand_index))
+                    .is_some_and(|(owner_uid, skill_id)| {
+                        card_skill_is_blocked(managers, catalog, owner_uid, skill_id)
+                    }) =>
+            {
+                Some(play.hand_index)
+            }
+            _ => None,
+        };
         let moved_ex_point = match &op {
             PlayerCardOp::Move { from_index, .. } => managers
                 .card
@@ -510,29 +512,36 @@ fn run_player_card_ops(
                 }),
             _ => None,
         };
-        let command = match op {
-            PlayerCardOp::Move {
-                from_index,
-                to_index,
-            } => CardCommand::Move {
-                origin: CARD_PLAY_ORIGIN,
-                from_index,
-                to_index,
-            },
-            PlayerCardOp::UseUniversal {
-                universal_index,
-                target_index,
-            } => CardCommand::UseUniversal(crate::engine::manager::card::CardUseUniversal {
-                origin: CARD_PLAY_ORIGIN,
-                universal_index,
-                target_index,
-            }),
-            PlayerCardOp::Dissolve { card_index } => CardCommand::Dissolve {
+        let command = if let Some(card_index) = blocked_card_index {
+            CardCommand::Dissolve {
                 origin: CARD_PLAY_ORIGIN,
                 card_index,
-            },
-            PlayerCardOp::AssistBoss { .. } => unreachable!("handled before card commands"),
-            PlayerCardOp::Play(play) => CardCommand::Play(play),
+            }
+        } else {
+            match op {
+                PlayerCardOp::Move {
+                    from_index,
+                    to_index,
+                } => CardCommand::Move {
+                    origin: CARD_PLAY_ORIGIN,
+                    from_index,
+                    to_index,
+                },
+                PlayerCardOp::UseUniversal {
+                    universal_index,
+                    target_index,
+                } => CardCommand::UseUniversal(crate::engine::manager::card::CardUseUniversal {
+                    origin: CARD_PLAY_ORIGIN,
+                    universal_index,
+                    target_index,
+                }),
+                PlayerCardOp::Dissolve { card_index } => CardCommand::Dissolve {
+                    origin: CARD_PLAY_ORIGIN,
+                    card_index,
+                },
+                PlayerCardOp::AssistBoss { .. } => unreachable!("handled before card commands"),
+                PlayerCardOp::Play(play) => CardCommand::Play(play),
+            }
         };
 
         let played = drain::run(
@@ -586,6 +595,9 @@ fn run_player_card_ops(
             })
         }));
         append(&mut result, played);
+        if blocked_card_index.is_some() {
+            continue;
+        }
         if let Some((owner_uid, delta)) = moved_ex_point {
             pending_rewards.push((owner_uid, delta));
         }

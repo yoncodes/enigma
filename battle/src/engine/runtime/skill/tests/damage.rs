@@ -1476,6 +1476,68 @@ fn target_triggered_assassination_converts_main_and_linked_damage() {
 }
 
 #[test]
+fn mapped_passive_adds_one_lethal_injury_stack_per_target() {
+    crate::test_support::init_config();
+    let applied = |skill_id: i32, passive_skill: Vec<i32>| {
+        let catalog = SkillEffectCatalog::from_roots(
+            config::configs::get(),
+            std::iter::once(skill_id).chain(passive_skill.iter().copied()),
+            [],
+        );
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(10_000),
+                    passive_skill,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(10_000),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(-1);
+        emit_all_ops(
+            invocation,
+            &BattleManagers::seeded(&fight),
+            &TargetPool::from_fight(&fight),
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Active,
+        )
+        .unwrap()
+        .into_iter()
+        .filter_map(|op| match op {
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))
+                if grant.buff_id == 31240121 =>
+            {
+                Some(grant.amount.unwrap_or(1) * i32::try_from(grant.occurrences).unwrap())
+            }
+            _ => None,
+        })
+        .sum::<i32>()
+    };
+
+    assert_eq!(applied(312431212, Vec::new()), 2);
+    assert_eq!(applied(312431212, vec![312401451]), 3);
+    assert_eq!(applied(31240103, vec![312401453]), 1);
+}
+
+#[test]
 fn inherent_assassination_keeps_its_bonus_out_of_linked_damage() {
     let baseline = assassination_damage_pair(true, false, false);
     let source_bonus = assassination_damage_pair(true, true, false);
@@ -1702,6 +1764,70 @@ fn bloodlust_applies_leech_efficacy_modifiers_to_committed_damage() {
                 hp.effect_type == sonettobuf::effect_type_enum::EffectType::Bloodlust as i32
             })
     )));
+}
+
+#[test]
+fn mei_lei_er_extra_round_attack_forces_afflatus_advantage() {
+    crate::test_support::init_config();
+    let entity = |uid, team_type| FightEntityInfo {
+        uid: Some(uid),
+        model_id: (uid == 10).then_some(3146),
+        team_type: Some(team_type),
+        career: Some(1),
+        current_hp: Some(100_000),
+        attr: Some(sonettobuf::HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31460183,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    let result = crate::engine::runtime::drain::run(
+        &mut managers,
+        &pool,
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(invocation)],
+    )
+    .unwrap();
+
+    assert!(result.outcomes.iter().any(|outcome| {
+        match outcome {
+            crate::engine::runtime::executor::RuleOutcome::Hp(execution) => execution
+                .changes
+                .damage
+                .is_some_and(|damage| damage.hurt.career_restraint),
+            crate::engine::runtime::executor::RuleOutcome::HpBatch(batch) => {
+                batch.iter().any(|execution| {
+                    execution
+                        .changes
+                        .damage
+                        .is_some_and(|damage| damage.hurt.career_restraint)
+                })
+            }
+            _ => false,
+        }
+    }));
 }
 
 #[test]

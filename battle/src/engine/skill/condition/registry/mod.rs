@@ -457,6 +457,7 @@ condition_definitions! {
     [19103] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::BuffGate, 0, &[]));
     [19212] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [19302] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEnd, None));
+    [19307] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEndFinalSettlement, None));
     [19303] "HasBuffId" => buff::buff_present, reaction_targets_owner(filters_behavior_targets(event_trigger(EventKind::RoundEndEntitySettlement, None)));
     [19304] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEnd, None));
     [19301] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
@@ -581,7 +582,9 @@ condition_definitions! {
     [522203, 522210] "GroupSummonedNumMoreThan" => entity_count::group_summoned_at_least, predicate(&[EventKind::SummonChanged]);
     [5462032] "EnemyNumIncludeSpMoreThan" => entity_count::enemies_with_special_at_least, predicate(&[]);
     [546208] "EnemyNumIncludeSpMoreThan" => entity_count::enemies_with_special_at_least, predicate(&[]);
+    [546210] "EnemyNumIncludeSpMoreThan" => entity_count::enemies_with_special_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [548201] "EnemyNumIncludeSpEqual" => entity_count::enemies_with_special_equal, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [548210] "EnemyNumIncludeSpEqual" => entity_count::enemies_with_special_equal, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [717210] "TargetCount" => entity_count::target_count, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [5472032] "EnemyNumIncludeSpLessThan" => entity_count::enemies_with_special_at_most, predicate(&[]);
     [1011201] "EnemyAliveNum" => entity_count::enemy_alive, event_trigger(EventKind::SkillAction, None);
@@ -598,6 +601,7 @@ condition_definitions! {
     [16204] "TargetCareer" => career::target_career, predicate(&[]);
     [762005] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::BattleStart, 0, &[]);
     [762021] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::BattleStart, 0, &[]);
+    [1021002] "BattleTagCheck" => battle_tag::present, setup_route(SetupStage::BattleStart, 0, &[]);
     [762103] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::RoundStart, 1, &[]);
     [760212] "CurUseCardEnchant" => card::current_enchant, event_trigger(EventKind::AllyAction, None);
     [760402] "CurUseCardEnchant" => card::current_enchant, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));

@@ -1760,6 +1760,34 @@ fn active_skill_enemy_count_includes_special_entities() {
 }
 
 #[test]
+fn conduit_switch_enemy_counts_run_after_the_skill_hits() {
+    for (opcode, type_name, compare) in [
+        (
+            546210,
+            "EnemyNumIncludeSpMoreThan",
+            ConditionCompare::GreaterThanOrEqual,
+        ),
+        (548210, "EnemyNumIncludeSpEqual", ConditionCompare::Equal),
+    ] {
+        assert_eq!(
+            parse(opcode, type_name, &["1".into()]),
+            Some(ParsedConditionKind::EntityCount {
+                scope: super::super::parse::EntityCountScope::AliveEnemiesIncludeSp,
+                compare,
+                count: 1,
+            })
+        );
+        assert_eq!(
+            find_key(opcode, type_name).map(|definition| definition.role),
+            Some(ConditionRole::Trigger {
+                event: EventKind::SkillAction,
+                phase: Some(SkillPhase::AfterHit),
+            })
+        );
+    }
+}
+
+#[test]
 fn after_damage_status_threshold_checks_the_actor() {
     let definition = find_key(42208, "HasTypeBuffMoreThan").unwrap();
     assert_eq!(
@@ -2714,6 +2742,24 @@ fn round_end_buff_id_gate_keeps_its_exact_key() {
         find_key(19304, "HasBuffId").map(|definition| definition.role),
         Some(ConditionRole::Trigger {
             event: EventKind::RoundEnd,
+            phase: None,
+        })
+    );
+}
+
+#[test]
+fn conduit_round_end_buff_id_gate_keeps_its_exact_key() {
+    assert_eq!(
+        parse(19307, "HasBuffId", &["8011".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Present,
+            buff_ids: vec![8011],
+        })
+    );
+    assert_eq!(
+        find_key(19307, "HasBuffId").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::RoundEndFinalSettlement,
             phase: None,
         })
     );

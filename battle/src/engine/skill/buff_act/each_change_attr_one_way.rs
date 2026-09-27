@@ -354,6 +354,7 @@ mod tests {
                         career_ratio_bonus: 0,
                         attack_career: None,
                         additional_attack_career: None,
+                        force_career_restraint: false,
                         critical_multiplier_remainder: 0,
                         is_conduit: false,
                         is_crit: true,

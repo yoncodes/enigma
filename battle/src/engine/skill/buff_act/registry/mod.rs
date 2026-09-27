@@ -868,7 +868,7 @@ buff_act_definitions! {
         supports: |_| true;
     (731, "CastChannel") => CastChannel,
         event: EventKind::RoundStart,
-        runtime: |context| super::cast_channel::rule_ops(context.subscriber, context.event?),
+        scoped_runtime: |context| super::cast_channel::scoped_rule_ops(context.subscriber, context.event?),
         supports: super::cast_channel::supports, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(731, "CastChannel"), &[]));
     (726, "Burn") => Burn, stat_read: OnTrigger,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
@@ -1036,7 +1036,6 @@ buff_act_definitions! {
         runtime: |context| super::assassination::rule_ops(context.catalog, context.subscriber, context.event?),
         supports: super::assassination::supports_target_trigger,
         parser: super::assassination::parse_target_trigger,
-        completion_gap: "skill-buff map application is not proven",
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10004, "BeAttackedAssassinate"), &[EffectType::None as i32]));
     (10006, "BeatBackDependOnAttackMe") => BeatBackDependOnAttackMe,
         event: EventKind::SkillAction, phase: HitPassives, frame: CausingFrame, actor: OpposingTeam,
@@ -1400,7 +1399,6 @@ buff_act_definitions! {
             if *trigger > 0 && *limit >= *trigger && *linked_skill > 0),
         references: references_for_feature,
         state_consumer: true,
-        completion_gap: "manual activation is not proven",
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1139, "MeiLeiErCharge"), &[])
             .with_initial_state(super::wire::InitialStateRule::ZeroInteger));
     (1138, "ReplaceEntitySkillGroup") => ReplaceEntitySkillGroup,

@@ -315,6 +315,7 @@ pub enum ParsedConditionKind {
         compare: ConditionCompare,
         threshold: i32,
     },
+    TargetBattleTag(i32),
     TargetIdentity {
         mode: TargetIdentityMode,
         value: i32,

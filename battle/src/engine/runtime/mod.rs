@@ -47,6 +47,7 @@ pub struct BattleRuntime {
     round_state: RoundState,
     determinism: RoundDeterminism,
     pending_redeal: Option<RedealCardInfoPush>,
+    pending_extra_round: bool,
     // These owners already ran RoundStartCondition/100 while entering the wave.
     wave_entry_condition_uids: Vec<i64>,
     cloth_skill_uses: HashMap<i32, usize>,
@@ -290,6 +291,7 @@ impl BattleRuntime {
             round_state,
             determinism,
             pending_redeal: None,
+            pending_extra_round: false,
             wave_entry_condition_uids: Vec::new(),
             cloth_skill_uses: HashMap::new(),
             objectives: Default::default(),

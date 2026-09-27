@@ -159,6 +159,7 @@ fn damage_rule_ops(
             career_ratio_bonus: context.modifiers.career_ratio_bonus,
             attack_career: context.modifiers.attack_career,
             additional_attack_career: context.modifiers.additional_attack_career,
+            force_career_restraint: context.modifiers.force_career_restraint,
             critical_multiplier_remainder: 0,
             is_conduit: context
                 .managers

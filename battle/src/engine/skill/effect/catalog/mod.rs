@@ -9,6 +9,7 @@ use crate::engine::{
         behavior::classify::{BehaviorKind, BehaviorSpec},
         condition::{ParsedConditionKind, parse_conditions, query},
         effect::slot::{ParsedBehavior, ParsedSkillEffect, SkillEffectSlot},
+        rule::DefinitionKey,
         target::TargetRequest,
     },
 };
@@ -28,6 +29,7 @@ pub struct SkillEffectCatalog {
     target_limits: HashMap<i32, i32>,
     reinforced_skills: HashMap<i32, i32>,
     reachable_buffs: HashSet<i32>,
+    assassination_stack_grants: HashMap<(i32, i32), Vec<(i32, DefinitionKey)>>,
     issues: HashMap<i32, Vec<RuleIssue>>,
 }
 
@@ -207,6 +209,17 @@ impl SkillEffectCatalog {
                     .is_some_and(|definition| definition.kind == BehaviorKind::Assassinate)
             })
         })
+    }
+
+    pub(crate) fn assassination_stack_grants(
+        &self,
+        passive_skill_id: i32,
+        active_skill_id: i32,
+    ) -> &[(i32, DefinitionKey)] {
+        self.assassination_stack_grants
+            .get(&(passive_skill_id, active_skill_id))
+            .map(Vec::as_slice)
+            .unwrap_or_default()
     }
 
     pub fn logic_target(&self, skill_id: i32) -> i32 {

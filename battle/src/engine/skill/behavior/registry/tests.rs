@@ -204,12 +204,14 @@ fn per_consume_ex_point_direct_use_skill_keeps_its_exact_five_argument_shape() {
     let references = (definition.references)(&valid);
     assert_eq!(references.skills, vec![31100521]);
     assert_eq!(references.buffs, vec![31100201]);
+    assert!(definition.supports.unwrap()(&behavior(vec![
+        5, 31100521, 0, 31100202, 1
+    ])));
 
     for invalid in [
         vec![5, 31100521, 0, 31100201],
         vec![5, 31100521, 1, 31100201, 1],
         vec![3, 31100521, 0, 31100201, 1],
-        vec![5, 31100521, 0, 31100202, 1],
         vec![5, 31100521, 0, 31100201, 2],
         vec![0, 31100521, 0, 31100201, 1],
         vec![5, 0, 0, 31100201, 1],

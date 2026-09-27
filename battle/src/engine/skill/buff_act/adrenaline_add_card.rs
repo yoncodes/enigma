@@ -2,7 +2,8 @@ use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
     manager::{
         BattleManagers,
-        card::{CardAddGenerated, CardCommand},
+        buff::{BuffAccumulateActValue, BuffCommand},
+        card::{CardAddGenerated, CardAddTemporary, CardCommand, TemporaryCardKind},
         ex_point::{ExPointCommand, ExPointSet},
     },
     skill::{
@@ -22,39 +23,76 @@ pub fn rule_ops(
     {
         return None;
     }
-    let (threshold, skill_id) = parse(&subscriber.args)?;
+    let (thresholds, skill_ids) = parse(&subscriber.args)?;
+    let progress = usize::try_from(
+        managers
+            .buff
+            .act_value(subscriber.buff_uid, subscriber.key.definition.opcode),
+    )
+    .ok()?;
+    let (&threshold, &skill_id) = thresholds.get(progress).zip(skill_ids.get(progress))?;
     if managers.ex_point.get(subscriber.owner_uid) < threshold {
         return Some(Vec::new());
     }
     let origin = super::command_origin(subscriber)?;
-    Some(vec![
-        RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Set(ExPointSet {
-            origin,
-            source_uid: subscriber.owner_uid,
-            target_uid: subscriber.owner_uid,
-            value: 0,
-            config_effect: 0,
-            effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-        }))),
-        RuleOp::Command(BattleCommand::Card(CardCommand::AddGenerated(
-            CardAddGenerated {
+    let terminal = progress + 1 == thresholds.len();
+    let mut ops = Vec::with_capacity(3);
+    if terminal {
+        ops.push(RuleOp::Command(BattleCommand::ExPoint(
+            ExPointCommand::Set(ExPointSet {
+                origin,
+                source_uid: subscriber.owner_uid,
+                target_uid: subscriber.owner_uid,
+                value: 0,
+                config_effect: 0,
+                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+            }),
+        )));
+    }
+    if progress > 0 || !terminal {
+        ops.push(RuleOp::Command(BattleCommand::Buff(
+            BuffCommand::AccumulateActValue(BuffAccumulateActValue {
                 origin,
                 target_uid: subscriber.owner_uid,
-                skill_id,
-            },
-        ))),
-    ])
+                buff_uid: subscriber.buff_uid,
+                act_id: subscriber.key.definition.opcode,
+                delta: if terminal { -(progress as i32) } else { 1 },
+            }),
+        )));
+    }
+    ops.push(RuleOp::Command(BattleCommand::Card(if terminal {
+        CardCommand::AddGenerated(CardAddGenerated {
+            origin,
+            target_uid: subscriber.owner_uid,
+            skill_id,
+        })
+    } else {
+        CardCommand::AddTemporary(CardAddTemporary {
+            origin,
+            target_uid: subscriber.owner_uid,
+            skill_id,
+            hero_id: Some(managers.entity.model_id(subscriber.owner_uid)?),
+            reserve_id: 0,
+            team_type: subscriber.team_type,
+            kind: TemporaryCardKind::ConfiguredSkill3,
+        })
+    })));
+    Some(ops)
 }
 
 pub fn supports(args: &[i32]) -> bool {
     parse(args).is_some()
 }
 
-fn parse(args: &[i32]) -> Option<(i32, i32)> {
-    let [threshold, skill_id] = args else {
+fn parse(args: &[i32]) -> Option<(&[i32], &[i32])> {
+    if args.len() < 2 || !args.len().is_multiple_of(2) {
         return None;
-    };
-    (*threshold > 0 && *skill_id > 0).then_some((*threshold, *skill_id))
+    }
+    let (thresholds, skill_ids) = args.split_at(args.len() / 2);
+    (thresholds.iter().all(|threshold| *threshold > 0)
+        && thresholds.windows(2).all(|pair| pair[0] < pair[1])
+        && skill_ids.iter().all(|skill_id| *skill_id > 0))
+    .then_some((thresholds, skill_ids))
 }
 
 #[cfg(test)]
@@ -71,8 +109,9 @@ mod tests {
             attacker: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
                     uid: Some(10),
+                    model_id: Some(3124),
                     current_hp: Some(100),
-                    ex_point: Some(9),
+                    ex_point: Some(1),
                     ex_point_type: Some(3),
                     buffs: vec![BuffInfo {
                         uid: Some(20),
@@ -101,8 +140,8 @@ mod tests {
             act_type: "AdrenalineAddCard".to_owned(),
             effect_time: 105,
             effect_condition: 0,
-            args: vec![10, 31242103],
-            raw: "10001#10#31242103".to_owned(),
+            args: vec![2, 6, 10, 312451011, 312451023, 312451031],
+            raw: "10001#2,6,10#312451011,312451023,312451031".to_owned(),
         };
 
         let ops = rule_ops(
@@ -114,19 +153,21 @@ mod tests {
 
         assert!(ops.is_empty());
         assert!(supports(&[10, 31242103]));
+        assert!(supports(&[2, 6, 10, 312451011, 312451023, 312451031]));
         assert!(!supports(&[10]));
-        assert!(!supports(&[10, 31242103, 6, 31242102]));
+        assert!(!supports(&[6, 2, 312451023, 312451011]));
     }
 
     #[test]
-    fn terminal_threshold_resets_adrenaline_before_adding_the_card() {
+    fn grouped_thresholds_advance_temporary_cards_then_reset_with_the_terminal_card() {
         crate::test_support::init_config();
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
                     uid: Some(10),
+                    model_id: Some(3124),
                     current_hp: Some(100),
-                    ex_point: Some(10),
+                    ex_point: Some(2),
                     ex_point_type: Some(3),
                     buffs: vec![BuffInfo {
                         uid: Some(20),
@@ -155,33 +196,103 @@ mod tests {
             act_type: "AdrenalineAddCard".to_owned(),
             effect_time: 105,
             effect_condition: 0,
-            args: vec![10, 31242103],
-            raw: "10001#10#31242103".to_owned(),
+            args: vec![2, 6, 10, 312451011, 312451023, 312451031],
+            raw: "10001#2,6,10#312451011,312451023,312451031".to_owned(),
         };
+        let event = BattleEvent::Kind(EventKind::RoundStartCard);
+        let mut managers = BattleManagers::seeded(&fight);
+        let origin = super::super::command_origin(&subscriber).unwrap();
 
-        let ops = rule_ops(
-            &BattleManagers::seeded(&fight),
-            &subscriber,
-            &BattleEvent::Kind(EventKind::RoundStartCard),
-        )
-        .unwrap();
+        let first = rule_ops(&managers, &subscriber, &event).unwrap();
+        assert!(matches!(
+            first.as_slice(),
+            [
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::AccumulateActValue(
+                    BuffAccumulateActValue { delta: 1, .. }
+                ))),
+                RuleOp::Command(BattleCommand::Card(CardCommand::AddTemporary(
+                    CardAddTemporary {
+                        skill_id: 312451011,
+                        hero_id: Some(3124),
+                        kind: TemporaryCardKind::ConfiguredSkill3,
+                        ..
+                    }
+                )))
+            ]
+        ));
+        let RuleOp::Command(BattleCommand::Buff(command)) = &first[0] else {
+            unreachable!()
+        };
+        managers.execute_buff(command.clone()).unwrap();
+        assert!(rule_ops(&managers, &subscriber, &event).unwrap().is_empty());
+        managers
+            .execute_ex_point(ExPointCommand::Set(ExPointSet {
+                origin,
+                source_uid: 10,
+                target_uid: 10,
+                value: 6,
+                config_effect: 0,
+                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+            }))
+            .unwrap();
+
+        let second = rule_ops(&managers, &subscriber, &event).unwrap();
+        assert!(matches!(
+            second.last(),
+            Some(RuleOp::Command(BattleCommand::Card(
+                CardCommand::AddTemporary(CardAddTemporary {
+                    skill_id: 312451023,
+                    ..
+                })
+            )))
+        ));
+        let RuleOp::Command(BattleCommand::Buff(command)) = &second[0] else {
+            unreachable!()
+        };
+        managers.execute_buff(command.clone()).unwrap();
+        assert!(rule_ops(&managers, &subscriber, &event).unwrap().is_empty());
+        managers
+            .execute_ex_point(ExPointCommand::Set(ExPointSet {
+                origin,
+                source_uid: 10,
+                target_uid: 10,
+                value: 10,
+                config_effect: 0,
+                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+            }))
+            .unwrap();
+
+        let terminal = rule_ops(&managers, &subscriber, &event).unwrap();
 
         assert!(matches!(
-            ops.as_slice(),
+            terminal.as_slice(),
             [
                 RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Set(ExPointSet {
                     target_uid: 10,
                     value: 0,
                     ..
                 }))),
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::AccumulateActValue(
+                    BuffAccumulateActValue { delta: -2, .. }
+                ))),
                 RuleOp::Command(BattleCommand::Card(CardCommand::AddGenerated(
                     CardAddGenerated {
                         target_uid: 10,
-                        skill_id: 31242103,
+                        skill_id: 312451031,
                         ..
                     }
                 )))
             ]
         ));
+        let RuleOp::Command(BattleCommand::ExPoint(command)) = &terminal[0] else {
+            unreachable!()
+        };
+        managers.execute_ex_point(*command).unwrap();
+        let RuleOp::Command(BattleCommand::Buff(command)) = &terminal[1] else {
+            unreachable!()
+        };
+        managers.execute_buff(command.clone()).unwrap();
+        assert_eq!(managers.ex_point.get(10), 0);
+        assert_eq!(managers.buff.act_value(20, 10001), 0);
     }
 }

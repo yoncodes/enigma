@@ -305,6 +305,7 @@ fn direct_damage_uses_manager_combat_stats_instead_of_stale_pool_values() {
             career_ratio_bonus: 0,
             attack_career: None,
             additional_attack_career: None,
+            force_career_restraint: false,
             critical_multiplier_remainder: 0,
             is_conduit: false,
             is_crit: false,

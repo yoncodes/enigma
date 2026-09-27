@@ -448,6 +448,7 @@ fn slot_node(db: &config::GameDB, raw: RawSlot, skill_observed: bool) -> Option<
         behavior: Node {
             opcode,
             type_name,
+            exact_raw: raw.behavior.clone(),
             raw: raw.behavior,
             registry,
             semantic,
@@ -483,6 +484,10 @@ fn condition_node(condition: &ParsedCondition, raw: &str, skill_observed: bool) 
         opcode: Some(condition.opcode),
         type_name: condition.type_name.clone(),
         raw: raw.to_owned(),
+        exact_raw: std::iter::once(condition.opcode.to_string())
+            .chain(condition.raw_args.iter().cloned())
+            .collect::<Vec<_>>()
+            .join("#"),
         registry: if definition.is_some() {
             "exact"
         } else {
@@ -572,6 +577,7 @@ fn buff_act(
             opcode: Some(opcode),
             type_name: row.r#type.clone(),
             raw: raw.to_owned(),
+            exact_raw: raw.to_owned(),
             registry: if definition.is_some() {
                 "exact"
             } else {
@@ -751,7 +757,7 @@ mod text_tests {
     }
 
     #[test]
-    fn synthetic_any_is_omitted_and_raw_expression_is_preserved() {
+    fn condition_nodes_preserve_expression_and_exact_arguments() {
         let child = ParsedCondition {
             opcode: 999_999,
             type_name: "MissingExactCondition".to_owned(),
@@ -770,6 +776,7 @@ mod text_tests {
         assert_eq!(flattened, vec![&child]);
         let node = condition_node(flattened[0], "999999#1!|5", false);
         assert_eq!(node.raw, "999999#1!|5");
+        assert_eq!(node.exact_raw, "999999#1");
     }
 
     #[test]
@@ -838,7 +845,7 @@ mod text_tests {
     }
 
     #[test]
-    fn charge_report_preserves_state_owner_but_marks_manual_activation_incomplete() {
+    fn charge_report_preserves_state_owner_and_reports_support() {
         crate::init_config().unwrap();
         let db = config::get();
         let wire_evidence = crate::wire_evidence::Evidence::default();
@@ -846,7 +853,7 @@ mod text_tests {
         let charge = buff_act(db, "1139#100000#150000#31460183", &wire_evidence).unwrap();
 
         assert_eq!(charge.node.registry, "exact");
-        assert_eq!(charge.node.semantic, "manual activation is not proven");
+        assert_eq!(charge.node.semantic, "supported");
         assert_eq!(charge.destination, "StateConsumer");
     }
 }

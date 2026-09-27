@@ -1160,6 +1160,10 @@ fn condition_kind_matches(
             *compare,
             *threshold,
         ),
+        ParsedConditionKind::TargetBattleTag(tag_id) => condition_targets
+            .iter()
+            .filter_map(|uid| pool.entity(*uid))
+            .any(|entity| entity.battle_tags.contains(tag_id)),
         ParsedConditionKind::TargetIdentity { mode, value } => {
             target_identity_matches(*mode, *value, source_uid, condition_targets, pool, context)
         }

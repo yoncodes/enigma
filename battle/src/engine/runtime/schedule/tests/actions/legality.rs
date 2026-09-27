@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn forbid_blocks_only_non_ultimate_support_incantations_before_card_mutation() {
+fn forbid_discards_non_ultimate_support_incantations_without_playing_them() {
     init_config();
     assert!(buff_act::registry::has_destination(406, "Forbid", &[]));
     assert!(!buff_act::wire::find(406, "Forbid").unwrap().has_output());
@@ -63,6 +63,11 @@ fn forbid_blocks_only_non_ultimate_support_incantations_before_card_mutation() {
                     skill_id: Some(200),
                     ..Default::default()
                 },
+                CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(200),
+                    ..Default::default()
+                },
             ],
             draw_pile: Vec::new(),
             deck_num: 16,
@@ -78,7 +83,7 @@ fn forbid_blocks_only_non_ultimate_support_incantations_before_card_mutation() {
         crate::engine::skill::effect::catalog::SkillEffectTag::RealityDamage as i32,
     );
 
-    let error = match run_player_commands(
+    let result = run_player_commands(
         &mut managers,
         &pool,
         &catalog,
@@ -92,18 +97,23 @@ fn forbid_blocks_only_non_ultimate_support_incantations_before_card_mutation() {
         }],
         1,
         crate::engine::manager::emitter::UID,
-    ) {
-        Err(error) => error,
-        Ok(_) => panic!("forbidden card play succeeded"),
-    };
-    assert_eq!(
-        error,
-        DrainError::ForbiddenCardSkill {
-            owner_uid: 10,
-            skill_id: 100,
-        }
-    );
+    )
+    .unwrap();
     assert_eq!(managers.card.hand().len(), 2);
+    assert!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .all(|card| card.skill_id == Some(200))
+    );
+    assert_eq!(managers.ex_point.get(10), 0);
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0].act_effect[0].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Cardspush as i32)
+    );
 
     run_player_commands(
         &mut managers,
@@ -112,7 +122,7 @@ fn forbid_blocks_only_non_ultimate_support_incantations_before_card_mutation() {
         &mut RoundDeterminism::default(),
         TargetContext::default(),
         [RoundCommand::PlayCard {
-            card_index: 1,
+            card_index: 0,
             target_uid: None,
             chosen_skill_id: None,
             recorded_skill: None,
@@ -122,7 +132,7 @@ fn forbid_blocks_only_non_ultimate_support_incantations_before_card_mutation() {
     )
     .unwrap();
     assert_eq!(managers.card.hand().len(), 1);
-    assert_eq!(managers.card.hand()[0].skill_id, Some(100));
+    assert_eq!(managers.card.hand()[0].skill_id, Some(200));
 }
 
 #[test]
@@ -230,7 +240,7 @@ fn incapacitating_control_buffs_block_card_actions() {
 }
 
 #[test]
-fn channeling_blocks_active_card_actions() {
+fn channeling_blocks_regular_and_ultimate_card_actions() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -239,7 +249,7 @@ fn channeling_blocks_active_card_actions() {
                 current_hp: Some(100),
                 buffs: vec![BuffInfo {
                     uid: Some(1),
-                    buff_id: Some(222000931),
+                    buff_id: Some(30830131),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -248,13 +258,12 @@ fn channeling_blocks_active_card_actions() {
         }),
         ..Default::default()
     };
+    let managers = BattleManagers::seeded(&fight);
+    let catalog = crate::engine::skill::effect::catalog::global();
 
-    assert!(card_skill_is_blocked(
-        &BattleManagers::seeded(&fight),
-        &SkillEffectCatalog::default(),
-        10,
-        100,
-    ));
+    for skill_id in [30830121, 30830131] {
+        assert!(card_skill_is_blocked(&managers, catalog, 10, skill_id));
+    }
 }
 
 #[test]
