@@ -192,10 +192,10 @@ fn ulrich_channel_reacts_before_take_stage_104_expires_from_the_round_snapshot()
 #[test]
 fn jiu_tipsy_casts_then_releases_its_channel() {
     init_config();
-    let entity = |uid, team_type, model_id, buffs| FightEntityInfo {
+    let entity = |uid, team_type, model_id, current_hp, buffs| FightEntityInfo {
         uid: Some(uid),
         model_id: Some(model_id),
-        current_hp: Some(10_000),
+        current_hp: Some(current_hp),
         team_type: Some(team_type),
         attr: Some(HeroAttribute {
             hp: Some(10_000),
@@ -213,6 +213,7 @@ fn jiu_tipsy_casts_then_releases_its_channel() {
                 10,
                 1,
                 3083,
+                10_000,
                 vec![BuffInfo {
                     uid: Some(20),
                     buff_id: Some(30830131),
@@ -224,7 +225,10 @@ fn jiu_tipsy_casts_then_releases_its_channel() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![entity(-1, 2, 1000, Vec::new())],
+            entitys: vec![
+                entity(-1, 2, 1000, 5_000, Vec::new()),
+                entity(-2, 2, 1001, 9_000, Vec::new()),
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -247,6 +251,8 @@ fn jiu_tipsy_casts_then_releases_its_channel() {
     .unwrap();
 
     assert!(!managers.buff.has_buff_id(10, 30830131));
+    assert!(managers.hp.current(-1) < 5_000);
+    assert_eq!(managers.hp.current(-2), 9_000);
 }
 
 #[test]

@@ -2,7 +2,7 @@ use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
     manager::buff::{BuffCommand, BuffRemove, BuffRemoveSelector},
     skill::{
-        action::{SkillInvocation, SkillRequest},
+        action::{SkillInvocation, SkillRequest, SkillTarget},
         buff_act::registry::BuffActKind,
         rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
@@ -15,13 +15,17 @@ pub fn rule_ops(subscriber: &BuffActSubscriber, event: &BattleEvent) -> Option<V
     {
         return None;
     }
-    let skill_id = referenced_skill(&subscriber.args)?;
+    let [skill_id, _, target_code, _] = subscriber.args.as_slice() else {
+        return None;
+    };
     let origin = super::command_origin(subscriber)?;
+    let mut invocation = SkillInvocation::from(SkillRequest {
+        source_uid: subscriber.owner_uid,
+        skill_id: *skill_id,
+    });
+    invocation.target = SkillTarget::LogicRule(*target_code);
     Some(vec![
-        RuleOp::Skill(SkillInvocation::from(SkillRequest {
-            source_uid: subscriber.owner_uid,
-            skill_id,
-        })),
+        RuleOp::Skill(invocation),
         RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
             origin,
             target_uid: subscriber.owner_uid,
@@ -53,7 +57,7 @@ pub fn referenced_skill(args: &[i32]) -> Option<i32> {
 }
 
 pub fn supports(args: &[i32]) -> bool {
-    referenced_skill(args).is_some()
+    matches!(args, [skill_id, _, target_code, _] if *skill_id > 0 && *target_code > 0)
 }
 
 #[cfg(test)]
@@ -78,8 +82,8 @@ mod tests {
             act_type: "CastChannel".to_owned(),
             effect_time: 1041,
             effect_condition: 0,
-            args: vec![40, 1, 1, 1],
-            raw: "731#40#1#1#1".to_owned(),
+            args: vec![40, 1, 210, 1],
+            raw: "731#40#1#210#1".to_owned(),
         };
 
         assert!(matches!(
@@ -90,6 +94,7 @@ mod tests {
                         source_uid: 10,
                         skill_id: 40,
                     },
+                    target: SkillTarget::LogicRule(210),
                     ..
                 }),
                 RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
