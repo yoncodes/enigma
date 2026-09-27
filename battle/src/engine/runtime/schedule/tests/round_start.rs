@@ -190,6 +190,66 @@ fn ulrich_channel_reacts_before_take_stage_104_expires_from_the_round_snapshot()
 }
 
 #[test]
+fn jiu_tipsy_casts_then_releases_its_channel() {
+    init_config();
+    let entity = |uid, team_type, model_id, buffs| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(10_000),
+        team_type: Some(team_type),
+        attr: Some(HeroAttribute {
+            hp: Some(10_000),
+            attack: Some(1_000),
+            defense: Some(100),
+            mdefense: Some(100),
+            ..Default::default()
+        }),
+        buffs,
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(
+                10,
+                1,
+                3083,
+                vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(30830131),
+                    from_uid: Some(10),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+            )],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1000, Vec::new())],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [30830111], [30830131]);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    run_round_start_split(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        1,
+    )
+    .unwrap();
+
+    assert!(!managers.buff.has_buff_id(10, 30830131));
+}
+
+#[test]
 fn voiceless_switches_afflatus_weakness_after_recovery() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());

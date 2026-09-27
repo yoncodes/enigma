@@ -43,10 +43,6 @@ pub enum DrainError {
     MissingAssistBoss,
     InvalidAssistBossSkill(i32),
     InsufficientAssistBossPower(i32),
-    ForbiddenCardSkill {
-        owner_uid: i64,
-        skill_id: i32,
-    },
     InsufficientUltimateResource {
         owner_uid: i64,
         skill_id: i32,

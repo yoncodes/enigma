@@ -1,9 +1,10 @@
 use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
+    manager::buff::{BuffCommand, BuffRemove, BuffRemoveSelector},
     skill::{
         action::{SkillInvocation, SkillRequest},
         buff_act::registry::BuffActKind,
-        rule::output::RuleOp,
+        rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
     },
 };
@@ -15,10 +16,33 @@ pub fn rule_ops(subscriber: &BuffActSubscriber, event: &BattleEvent) -> Option<V
         return None;
     }
     let skill_id = referenced_skill(&subscriber.args)?;
-    Some(vec![RuleOp::Skill(SkillInvocation::from(SkillRequest {
-        source_uid: subscriber.owner_uid,
-        skill_id,
-    }))])
+    let origin = super::command_origin(subscriber)?;
+    Some(vec![
+        RuleOp::Skill(SkillInvocation::from(SkillRequest {
+            source_uid: subscriber.owner_uid,
+            skill_id,
+        })),
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+            origin,
+            target_uid: subscriber.owner_uid,
+            selector: BuffRemoveSelector::Uid(subscriber.buff_uid),
+        }))),
+    ])
+}
+
+pub fn scoped_rule_ops(
+    subscriber: &BuffActSubscriber,
+    event: &BattleEvent,
+) -> Option<Vec<super::BuffActRuleOp>> {
+    rule_ops(subscriber, event).map(|ops| {
+        ops.into_iter()
+            .enumerate()
+            .map(|(index, op)| match index {
+                0 => super::BuffActRuleOp::subscriber(op),
+                _ => super::BuffActRuleOp::separate_subscriber_from_owner(op),
+            })
+            .collect()
+    })
 }
 
 pub fn referenced_skill(args: &[i32]) -> Option<i32> {
@@ -38,7 +62,7 @@ mod tests {
     use crate::engine::{event::subscription::SubscriptionKey, skill::rule::DefinitionKey};
 
     #[test]
-    fn round_start_casts_the_configured_channel_skill() {
+    fn round_start_casts_then_removes_the_channel() {
         let subscriber = BuffActSubscriber {
             owner_uid: 10,
             source_uid: 10,
@@ -60,13 +84,20 @@ mod tests {
 
         assert!(matches!(
             rule_ops(&subscriber, &BattleEvent::RoundStart).as_deref(),
-            Some([RuleOp::Skill(SkillInvocation {
-                plan: SkillRequest {
-                    source_uid: 10,
-                    skill_id: 40,
-                },
-                ..
-            })])
+            Some([
+                RuleOp::Skill(SkillInvocation {
+                    plan: SkillRequest {
+                        source_uid: 10,
+                        skill_id: 40,
+                    },
+                    ..
+                }),
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                    target_uid: 10,
+                    selector: BuffRemoveSelector::Uid(20),
+                    ..
+                })))
+            ])
         ));
     }
 }

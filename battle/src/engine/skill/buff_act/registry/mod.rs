@@ -868,7 +868,7 @@ buff_act_definitions! {
         supports: |_| true;
     (731, "CastChannel") => CastChannel,
         event: EventKind::RoundStart,
-        runtime: |context| super::cast_channel::rule_ops(context.subscriber, context.event?),
+        scoped_runtime: |context| super::cast_channel::scoped_rule_ops(context.subscriber, context.event?),
         supports: super::cast_channel::supports, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(731, "CastChannel"), &[]));
     (726, "Burn") => Burn, stat_read: OnTrigger,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
