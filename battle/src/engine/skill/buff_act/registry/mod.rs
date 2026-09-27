@@ -1036,7 +1036,6 @@ buff_act_definitions! {
         runtime: |context| super::assassination::rule_ops(context.catalog, context.subscriber, context.event?),
         supports: super::assassination::supports_target_trigger,
         parser: super::assassination::parse_target_trigger,
-        completion_gap: "skill-buff map application is not proven",
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10004, "BeAttackedAssassinate"), &[EffectType::None as i32]));
     (10006, "BeatBackDependOnAttackMe") => BeatBackDependOnAttackMe,
         event: EventKind::SkillAction, phase: HitPassives, frame: CausingFrame, actor: OpposingTeam,

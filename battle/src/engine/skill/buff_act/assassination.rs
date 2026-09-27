@@ -3,13 +3,16 @@ use crate::engine::{
     event::payload::BattleEvent,
     manager::{
         BattleManagers,
-        buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
+        buff::{BuffCommand, BuffConsume, BuffGrant, BuffSelector, DepletedBuff},
         hp::HurtDamageFromType,
     },
     skill::{
         buff_act::registry::BuffActKind,
         effect::SkillEffectCatalog,
-        rule::output::{BattleCommand, RuleOp},
+        rule::{
+            CommandOrigin, RuleDomain,
+            output::{BattleCommand, RuleOp},
+        },
         subscriber::BuffActSubscriber,
     },
 };
@@ -26,35 +29,86 @@ pub fn supports_source_bonus(args: &[i32]) -> bool {
 }
 
 pub fn supports_target_trigger(args: &[i32]) -> bool {
-    matches!(args, [rate, consume, skill_ids @ ..]
-        if *rate > 0 && *consume > 0 && skill_ids.iter().all(|skill_id| *skill_id > 0))
+    matches!(args, [rate, consume, mappings @ ..]
+        if *rate > 0
+            && *consume > 0
+            && !mappings.is_empty()
+            && mappings.len() % 2 == 0
+            && mappings.iter().all(|skill_id| *skill_id > 0))
 }
 
 pub fn parse_target_trigger(raw_args: &[String]) -> Option<Vec<i32>> {
-    let rate = raw_args.first()?.trim().parse::<i32>().ok()?;
-    let consume = raw_args.get(1)?.trim().parse::<i32>().ok()?;
+    let [rate, consume, mappings] = raw_args else {
+        return None;
+    };
+    let rate = rate.trim().parse::<i32>().ok()?;
+    let consume = consume.trim().parse::<i32>().ok()?;
     let mut values = vec![rate, consume];
-    let mut mapped_values = 0;
-    for cell in &raw_args[2..] {
-        for part in cell.split(',') {
-            let mut atoms = part.split(':');
-            let first = atoms.next()?.trim().parse::<i32>().ok()?;
-            if first <= 0 {
+    for pair in mappings.split(':') {
+        let mut pair = pair.split(',');
+        let passive_skill = pair.next()?;
+        let active_skill = pair.next()?;
+        if pair.next().is_some() {
+            return None;
+        }
+        for skill_id in [passive_skill, active_skill] {
+            let skill_id = skill_id.trim().parse::<i32>().ok()?;
+            if skill_id <= 0 {
                 return None;
             }
-            values.push(first);
-            mapped_values += 1;
-            if let Some(second) = atoms.next() {
-                let second = second.trim().parse::<i32>().ok()?;
-                if second <= 0 || atoms.next().is_some() {
-                    return None;
+            values.push(skill_id);
+        }
+    }
+    supports_target_trigger(&values).then_some(values)
+}
+
+pub fn mapped_stack_rule_ops(
+    catalog: &SkillEffectCatalog,
+    managers: &BattleManagers,
+    source_uid: i64,
+    active_skill_id: i32,
+    target_uids: &[i64],
+) -> Vec<RuleOp> {
+    let Some(passive_skills) = managers.entity.passive_skills(source_uid) else {
+        return Vec::new();
+    };
+    let mut grants = Vec::new();
+    for passive_skill_id in passive_skills {
+        for &(buff_id, key) in
+            catalog.assassination_stack_grants(*passive_skill_id, active_skill_id)
+        {
+            for target_uid in target_uids
+                .iter()
+                .copied()
+                .filter(|target_uid| *target_uid != 0)
+            {
+                if grants
+                    .iter()
+                    .any(|&(target, buff, _)| target == target_uid && buff == buff_id)
+                {
+                    continue;
                 }
-                values.push(second);
-                mapped_values += 1;
+                grants.push((target_uid, buff_id, key));
             }
         }
     }
-    (rate > 0 && consume > 0 && mapped_values > 0).then_some(values)
+    grants
+        .into_iter()
+        .map(|(target_uid, buff_id, key)| {
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::BuffAct,
+                    key,
+                },
+                source_uid,
+                target_uid,
+                buff_id,
+                amount: Some(1),
+                occurrences: 1,
+                child_uid_reservations: 0,
+            })))
+        })
+        .collect()
 }
 
 pub fn target_modifier(
@@ -245,5 +299,51 @@ mod tests {
                 final_damage_bonus: 150,
             }
         );
+    }
+
+    #[test]
+    fn mapped_stack_grants_are_unique_per_target_and_commit_through_buff_manager() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    passive_skill: vec![312401453, 312401453],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![
+                    FightEntityInfo {
+                        uid: Some(-1),
+                        current_hp: Some(100),
+                        ..Default::default()
+                    },
+                    FightEntityInfo {
+                        uid: Some(-2),
+                        current_hp: Some(100),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let catalog =
+            SkillEffectCatalog::from_roots(config::configs::get(), [31240103, 312401453], []);
+        let mut managers = BattleManagers::seeded(&fight);
+        let ops = mapped_stack_rule_ops(&catalog, &managers, 10, 31240103, &[-1, -1, -2]);
+
+        assert_eq!(ops.len(), 2);
+        for op in ops {
+            let RuleOp::Command(BattleCommand::Buff(command @ BuffCommand::Grant(_))) = op else {
+                panic!("expected a normal buff grant");
+            };
+            managers.execute_buff(command).unwrap();
+        }
+        assert_eq!(managers.buff.max_id_or_type_layer(-1, 31240121), 1);
+        assert_eq!(managers.buff.max_id_or_type_layer(-2, 31240121), 1);
     }
 }

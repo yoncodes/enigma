@@ -1358,7 +1358,7 @@ fn structured_features_keep_semantic_values_and_references() {
 
     let assassination = resolve_feature(
         Some(game),
-        "10004#10#1#312401451:312401452,312401453:312401454",
+        "10004#10#1#312401451,312401452:312401453,312401454",
     )
     .unwrap();
     assert!(assassination.arguments_supported);
@@ -1369,7 +1369,7 @@ fn structured_features_keep_semantic_values_and_references() {
     assert!(assassination.references(Some(game)).skills.is_empty());
     assert!(assassination.references(Some(game)).buffs.is_empty());
 
-    let malformed = resolve_feature(Some(game), "10004#10#1#312401451:312401452,bad").unwrap();
+    let malformed = resolve_feature(Some(game), "10004#10#1#312401451,312401452:bad").unwrap();
     assert!(malformed.values.is_empty());
     assert!(malformed.is_malformed());
 
