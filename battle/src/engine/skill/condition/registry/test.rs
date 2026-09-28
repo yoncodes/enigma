@@ -4,6 +4,8 @@ use crate::engine::skill::condition::{
     ConditionCompare, buff::BuffConditionMode, none::NoneMode, parse::BuffAddedScope,
 };
 
+mod mane;
+
 #[test]
 fn generic_round_end_keys_keep_their_exact_timing() {
     assert_eq!(
@@ -503,7 +505,7 @@ fn round_start_buff_type_threshold_keeps_its_entity_lane() {
 }
 
 #[test]
-fn round_start_none_103_keeps_its_entity_frame() {
+fn round_start_unconditional_condition_keeps_its_entity_frame() {
     let definition = find_key(103, "None").unwrap();
     assert_eq!(
         definition.role,
@@ -551,84 +553,6 @@ fn dreamscape_active_skill_condition_runs_after_hit() {
             event: EventKind::SkillAction,
             phase: Some(SkillPhase::AfterHit),
         }
-    );
-}
-
-#[test]
-fn mane_attack_conditions_keep_their_exact_routes() {
-    let incoming = find_key(502202, "ActiveUseSkill").unwrap();
-    assert_eq!(
-        incoming.role,
-        ConditionRole::Trigger {
-            event: EventKind::SkillAction,
-            phase: Some(SkillPhase::Immediate),
-        }
-    );
-    assert_eq!(
-        incoming.skill_action_observer,
-        SkillActionObserver::AttackTarget
-    );
-    assert_eq!(
-        incoming.attack_modifier_side,
-        Some(AttackModifierSide::IncomingTarget)
-    );
-
-    assert_eq!(
-        find_key(501209, "UseHurtSkill").map(|definition| definition.role),
-        Some(ConditionRole::Trigger {
-            event: EventKind::TargetAttacked,
-            phase: None,
-        })
-    );
-    assert_eq!(
-        find_key(792209, "UseDeviceSkill").map(|definition| definition.role),
-        Some(ConditionRole::Trigger {
-            event: EventKind::TargetAttacked,
-            phase: None,
-        })
-    );
-}
-
-#[test]
-fn mane_buff_and_obscurity_conditions_keep_their_exact_routes() {
-    assert_eq!(
-        parse(88, "BuffTypeAdd", &["4".into()]),
-        Some(ParsedConditionKind::BuffTypeAdded(vec![4]))
-    );
-    assert_eq!(
-        find_key(88, "BuffTypeAdd").map(|definition| definition.role),
-        Some(ConditionRole::Trigger {
-            event: EventKind::BuffAdded,
-            phase: None,
-        })
-    );
-    assert_eq!(
-        find_key(749209, "PowerRatio").map(|definition| definition.role),
-        Some(ConditionRole::Trigger {
-            event: EventKind::EurekaChanged,
-            phase: None,
-        })
-    );
-    let absent = find_key(57209, "NoBuffId").unwrap();
-    assert_eq!(absent.role, ConditionRole::Predicate);
-    assert_eq!(absent.dependencies, &[EventKind::TargetAttacked]);
-}
-
-#[test]
-fn final_settlement_team_buff_and_round_start_absence_keep_exact_routes() {
-    assert_eq!(
-        find_key(750307, "PlayerHasBuff").map(|definition| definition.role),
-        Some(ConditionRole::Trigger {
-            event: EventKind::RoundEndFinalSettlement,
-            phase: None,
-        })
-    );
-    assert_eq!(
-        find_key(57101, "NoBuffId").map(|definition| definition.role),
-        Some(ConditionRole::Setup {
-            stage: SetupStage::RoundStartCondition,
-            priority: 101,
-        })
     );
 }
 
@@ -3202,22 +3126,7 @@ fn ultimate_level_keeps_its_exact_round_start_route() {
 }
 
 #[test]
-fn buff_expire_only_observes_natural_buff_removal() {
-    assert_eq!(
-        parse(515005, "BuffIdExpireOnly", &["4004".into()]),
-        Some(ParsedConditionKind::BuffExpired(vec![4004]))
-    );
-    assert_eq!(
-        find_key(515005, "BuffIdExpireOnly").map(|definition| definition.role),
-        Some(ConditionRole::Trigger {
-            event: EventKind::BuffRemoved,
-            phase: None,
-        })
-    );
-}
-
-#[test]
-fn exact_after_hit_ultimate_level_751210_is_a_membership_predicate() {
+fn after_hit_ultimate_level_condition_is_a_membership_predicate() {
     assert_eq!(
         parse(751210, "ExSkillLevel", &["0,1,2,3,4".into()]),
         Some(ParsedConditionKind::ExSkillLevels(vec![0, 1, 2, 3, 4]))
