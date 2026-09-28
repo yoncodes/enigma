@@ -7,9 +7,10 @@ enum SummonConstId {
 pub(super) async fn summon_info(
     db: &SqlitePool,
     player_id: i64,
+    visible: &[database::models::game::summon::SummonPoolWindow],
 ) -> Result<GetSummonInfoReply, AppError> {
     let stats = summon::get_summon_stats(db, player_id).await?;
-    let mut pool_infos = summon::get_summon_pool_infos(db, player_id).await?;
+    let mut pool_infos = summon::get_summon_pool_infos(db, player_id, visible).await?;
     let tables = config::configs::get();
     for info in &mut pool_infos {
         let Some(pool) = tables.summon_pool.get(info.pool.pool_id) else {
@@ -50,9 +51,18 @@ pub(super) async fn summon_info(
         free_equip_summon: Some(stats.free_equip_summon),
         is_show_new_summon: Some(is_show_new_summon),
         new_summon_count: Some(new_summon_count),
-        pool_infos: pool_infos.into_iter().map(Into::into).collect(),
+        pool_infos: pool_infos.into_iter().map(pool_info_reply).collect(),
         total_summon_count: Some(stats.total_summon_count),
     })
+}
+
+fn pool_info_reply(
+    info: database::models::game::summon::SummonPoolInfo,
+) -> sonettobuf::SummonPoolInfo {
+    let pity_6 = info.pity_6;
+    let mut reply: sonettobuf::SummonPoolInfo = info.into();
+    reply.not_ssr_count = Some(pity_6);
+    reply
 }
 
 pub(super) async fn progress_rewards(

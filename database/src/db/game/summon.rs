@@ -1,10 +1,9 @@
 use crate::models::game::summon::*;
 use anyhow::Result;
-use chrono::{NaiveDateTime, TimeZone, Utc};
 use common::time::ServerTime;
 use sonettobuf::SummonResult;
 use sqlx::{Sqlite, SqlitePool, Transaction};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 pub async fn get_summon_stats(pool: &SqlitePool, user_id: i64) -> Result<UserSummonStats> {
     let stats =
@@ -107,8 +106,11 @@ pub async fn save_gacha_state_in_transaction(
     Ok(result.rows_affected() == 1)
 }
 
-pub async fn get_summon_pool_infos(pool: &SqlitePool, user_id: i64) -> Result<Vec<SummonPoolInfo>> {
-    let visible_pools = visible_pools();
+pub async fn get_summon_pool_infos(
+    pool: &SqlitePool,
+    user_id: i64,
+    visible_pools: &[SummonPoolWindow],
+) -> Result<Vec<SummonPoolInfo>> {
     if visible_pools.is_empty() {
         return Ok(vec![]);
     }
@@ -148,9 +150,9 @@ pub async fn get_summon_pool_infos(pool: &SqlitePool, user_id: i64) -> Result<Ve
     let now = ServerTime::now_ms();
 
     let result = visible_pools
-        .into_iter()
+        .iter()
         .map(|visible| {
-            let mut pool_data = user_pools.get(&visible.pool_id).cloned().unwrap_or({
+            let pool_data = user_pools.get(&visible.pool_id).cloned().unwrap_or({
                 UserSummonPool {
                     id: 0,
                     user_id,
@@ -170,12 +172,11 @@ pub async fn get_summon_pool_infos(pool: &SqlitePool, user_id: i64) -> Result<Ve
                     updated_at: now,
                 }
             });
-            pool_data.not_ssr_count = pity_by_pool
-                .get(&visible.pool_id)
-                .copied()
-                .unwrap_or_default();
-
             SummonPoolInfo {
+                pity_6: pity_by_pool
+                    .get(&visible.pool_id)
+                    .copied()
+                    .unwrap_or_default(),
                 lucky_bag: lucky_bags.get(&visible.pool_id).cloned(),
                 sp_pool: sp_pools.get(&visible.pool_id).cloned(),
                 pop_up_infos: all_pop_up_infos
@@ -190,18 +191,13 @@ pub async fn get_summon_pool_infos(pool: &SqlitePool, user_id: i64) -> Result<Ve
     Ok(result)
 }
 
-#[derive(Clone)]
-struct VisibleSummonPool {
-    pool_id: i32,
-    online_time: i32,
-    offline_time: i32,
-    discount_time: i32,
-}
-
-pub async fn sync_visible_pools(pool: &SqlitePool, user_id: i64) -> Result<()> {
-    let visible = visible_pools();
+pub async fn sync_summon_pools(
+    pool: &SqlitePool,
+    user_id: i64,
+    visible: &[SummonPoolWindow],
+) -> Result<()> {
     let now = ServerTime::now_ms();
-    for visible_pool in &visible {
+    for visible_pool in visible {
         sqlx::query(
             r#"
             INSERT INTO user_summon_pools
@@ -226,105 +222,6 @@ pub async fn sync_visible_pools(pool: &SqlitePool, user_id: i64) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn visible_pools() -> Vec<VisibleSummonPool> {
-    visible_pools_at(ServerTime::now_sec_i32())
-}
-
-fn visible_pools_at(now_sec: i32) -> Vec<VisibleSummonPool> {
-    let mut visible = visible_scheduled_pools(now_sec);
-    visible.entry(2).or_insert(VisibleSummonPool {
-        pool_id: 2,
-        online_time: 0,
-        offline_time: i32::MAX,
-        discount_time: 0,
-    });
-
-    visible.into_values().collect()
-}
-
-pub fn visible_summon_pool_ids_at(now_sec: i32) -> Vec<i32> {
-    visible_pools_at(now_sec)
-        .into_iter()
-        .map(|pool| pool.pool_id)
-        .collect()
-}
-
-fn visible_scheduled_pools(now_sec: i32) -> BTreeMap<i32, VisibleSummonPool> {
-    let tables = config::configs::get();
-    let active = scheduled_pools()
-        .into_iter()
-        .filter(|pool| pool.online_time <= now_sec && now_sec <= pool.offline_time)
-        .collect::<Vec<_>>();
-    let version = active
-        .iter()
-        .max_by_key(|pool| pool.online_time)
-        .and_then(|pool| tables.summon_pool.get(pool.pool_id))
-        .and_then(|pool| summon_version(&pool.prefab_path));
-
-    active
-        .into_iter()
-        .filter(|visible| {
-            tables.summon_pool.get(visible.pool_id).is_some_and(|pool| {
-                pool.r#type == 1 || summon_version(&pool.prefab_path) == version
-            })
-        })
-        .map(|pool| (pool.pool_id, pool))
-        .collect()
-}
-
-fn scheduled_pools() -> Vec<VisibleSummonPool> {
-    let tables = config::configs::get();
-    let mut by_pool = BTreeMap::<i32, VisibleSummonPool>::new();
-    for store in tables
-        .store_recommend
-        .iter()
-        .filter(|store| store.is_offline == 0)
-    {
-        let Some(pool_id) = parse_pool_relation(&store.relations) else {
-            continue;
-        };
-        let Some(pool) = tables.summon_pool.get(pool_id) else {
-            continue;
-        };
-        let (online_time, offline_time) = match (
-            parse_ts_seconds(&store.online_time),
-            parse_ts_seconds(&store.offline_time),
-        ) {
-            (Some(online), Some(offline)) => (online, offline),
-            (None, None) if pool.r#type == 1 => (0, i32::MAX),
-            _ => continue,
-        };
-        let next = VisibleSummonPool {
-            pool_id,
-            online_time,
-            offline_time,
-            discount_time: pool.discount_time10,
-        };
-        by_pool.entry(pool_id).or_insert(next);
-    }
-
-    by_pool.into_values().collect()
-}
-
-fn summon_version(prefab_path: &str) -> Option<&str> {
-    prefab_path
-        .split(['/', '\\'])
-        .next()
-        .filter(|version| version.starts_with("version_"))
-}
-
-fn parse_pool_relation(relations: &str) -> Option<i32> {
-    relations
-        .split('|')
-        .map(str::trim)
-        .find_map(|part| part.strip_prefix("1#")?.parse::<i32>().ok())
-}
-
-fn parse_ts_seconds(s: &str) -> Option<i32> {
-    let dt = NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%d %H:%M:%S").ok()?;
-    Some(Utc.from_utc_datetime(&dt).timestamp() as i32)
 }
 
 async fn load_all_lucky_bags(

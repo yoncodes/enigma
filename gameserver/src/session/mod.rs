@@ -7,7 +7,7 @@ use byteorder::{BE, ByteOrder};
 use common::time::ServerTime;
 use database::db::user::account;
 use logic::task::UserTask;
-use sonettobuf::Mail;
+use sonettobuf::{CmdId, DeleteTaskPush, Mail};
 use sqlx::SqlitePool;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,13 +154,22 @@ pub async fn start_session(
 pub async fn reconcile_periodic_resets(
     conn: &mut ConnectionContext,
     now_ms: i64,
-) -> Result<Vec<i32>, AppError> {
+) -> Result<(), AppError> {
     let db = conn.state.db;
     let periods = reconcile_periodic_resets_for_player(conn.player_mut()?, db, now_ms).await?;
     if periods.0 || periods.1 {
         conn.save_player().await?;
     }
-    Ok(periods.2)
+    if !periods.2.is_empty() {
+        conn.notify(
+            CmdId::DeleteTaskPushCmd,
+            DeleteTaskPush {
+                task_ids: periods.2,
+            },
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 async fn reconcile_periodic_resets_for_player(

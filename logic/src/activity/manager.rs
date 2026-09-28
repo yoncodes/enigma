@@ -941,8 +941,9 @@ impl ActivityManager {
         db: &SqlitePool,
         activity_id: i32,
         trap_id: i32,
+        tables: &config::GameDB,
     ) -> Result<PutTrapReply, AppError> {
-        put_trap(db, self.player_id, activity_id, trap_id).await
+        put_trap(db, self.player_id, activity_id, trap_id, tables).await
     }
 
     pub async fn get_act128_milestone_bonus(

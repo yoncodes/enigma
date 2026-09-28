@@ -16,7 +16,7 @@ pub enum ClothSkillType {
     SelectCrystal = 6,
     Rouge2 = 7,
     BattleSelection = 8,
-    MeiLeiErExtraRound = 9,
+    ExtraRound = 9,
     TwinsSelect = 10,
 }
 
@@ -34,7 +34,7 @@ impl TryFrom<i32> for ClothSkillType {
             6 => Ok(Self::SelectCrystal),
             7 => Ok(Self::Rouge2),
             8 => Ok(Self::BattleSelection),
-            9 => Ok(Self::MeiLeiErExtraRound),
+            9 => Ok(Self::ExtraRound),
             10 => Ok(Self::TwinsSelect),
             _ => Err(()),
         }
@@ -344,58 +344,17 @@ impl BattleRuntime {
                     )
                     .ok()?
             }
-            ClothSkillType::MeiLeiErExtraRound => {
+            ClothSkillType::ExtraRound => {
                 if request.skill_id.unwrap_or_default() != 0
                     || request.to_id.unwrap_or_default() != 0
                 {
                     return None;
                 }
                 let owner_uid = request.from_id?;
-                let feature = self
-                    .managers
-                    .buff
-                    .active_features(&self.managers.hp)
-                    .into_iter()
-                    .find(|feature| {
-                        feature.owner_uid == owner_uid
-                            && crate::engine::skill::buff_act::is_kind(
-                                feature,
-                                crate::engine::skill::buff_act::registry::BuffActKind::BuffOwnedCharge,
-                            )
-                    })?;
-                let [trigger, limit, _linked_skill] = feature.values.get(1..)? else {
-                    return None;
-                };
-                let act_id = feature.act_id()?;
-                let mut buff = self.managers.buff.snapshot(owner_uid, feature.buff_uid)?;
-                let info = buff
-                    .act_info
-                    .iter_mut()
-                    .find(|info| info.act_id == Some(act_id))?;
-                let [current] = info.param.as_slice() else {
-                    return None;
-                };
-                if info.str_param.as_deref() != Some("") || *current < *trigger || *current > *limit
-                {
-                    return None;
-                }
-                let next = current - trigger;
-                info.param = vec![next];
-                let origin = crate::engine::skill::buff_act::feature_command_origin(&feature)?;
-                let state = self
-                    .managers
-                    .execute_buff(crate::engine::manager::buff::BuffCommand::SetInternalState(
-                        crate::engine::manager::buff::BuffSetState {
-                            origin,
-                            target_uid: owner_uid,
-                            buff_uid: feature.buff_uid,
-                            ex_info: None,
-                            params: None,
-                            act_info: Some(buff.act_info),
-                        },
-                    ))
-                    .ok()?;
-                self.pending_extra_round = true;
+                let granted =
+                    crate::engine::mechanic::extra_round::grant(&mut self.managers, owner_uid)?;
+                self.round_state.grant_extra_round();
+                let team_type = granted.marker.team_type;
                 let frames = [
                     record::SemanticFrame {
                         owner: record::FrameOwner::EventEffect {
@@ -405,24 +364,12 @@ impl BattleRuntime {
                         trigger: record::FrameTrigger::Active,
                         items: vec![
                             record::FrameItem::Change(Box::new(change::BattleChange::Buff(
-                                Box::new(state),
+                                Box::new(granted.buff),
                             ))),
                             record::FrameItem::Change(Box::new(
-                                change::BattleChange::BuffActInfoMarker(
-                                    crate::engine::manager::buff::BuffActInfoMarkerResult {
-                                        target_uid: owner_uid,
-                                        buff_uid: feature.buff_uid,
-                                        act_id,
-                                        params: vec![next],
-                                        str_param: Some(String::new()),
-                                        team_type: feature.team_type,
-                                    },
-                                ),
+                                change::BattleChange::BuffActInfoMarker(granted.marker),
                             )),
-                            record::FrameItem::Cue(record::RoundCue::FightParamChange {
-                                key: 18,
-                                delta: 1,
-                            }),
+                            record::FrameItem::Cue(record::RoundCue::ExtraRoundGranted),
                         ],
                     },
                     record::SemanticFrame {
@@ -430,11 +377,11 @@ impl BattleRuntime {
                         trigger: record::FrameTrigger::Active,
                         items: vec![
                             record::FrameItem::Cue(record::RoundCue::RedealHandSync {
-                                cards: self.managers.card.hand().to_vec(),
+                                cards: granted.cards,
                             }),
                             record::FrameItem::Cue(record::RoundCue::DeckCount {
-                                count: self.managers.card.deck_num(),
-                                team_type: 1,
+                                count: granted.deck_count,
+                                team_type,
                             }),
                         ],
                     },
@@ -556,10 +503,7 @@ mod tests {
             ClothSkillType::try_from(8),
             Ok(ClothSkillType::BattleSelection)
         );
-        assert_eq!(
-            ClothSkillType::try_from(9),
-            Ok(ClothSkillType::MeiLeiErExtraRound)
-        );
+        assert_eq!(ClothSkillType::try_from(9), Ok(ClothSkillType::ExtraRound));
         assert_eq!(
             ClothSkillType::try_from(10),
             Ok(ClothSkillType::TwinsSelect)

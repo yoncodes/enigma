@@ -18,7 +18,7 @@ fn activity_id(
     tables: &config::GameDB,
     now_ms: i64,
 ) -> Result<i32, AppError> {
-    activity_id
+    let activity_id = activity_id
         .or_else(|| {
             let now_ms = u64::try_from(now_ms).ok()?;
             tables
@@ -34,6 +34,17 @@ fn activity_id(
                 })
                 .max()
         })
+        .ok_or(AppError::InvalidRequest)?;
+    ensure_activity(activity_id, tables)?;
+    Ok(activity_id)
+}
+
+fn ensure_activity(activity_id: i32, tables: &config::GameDB) -> Result<(), AppError> {
+    tables
+        .activity
+        .get(activity_id)
+        .filter(|activity| activity.type_id == 116)
+        .map(|_| ())
         .ok_or(AppError::InvalidRequest)
 }
 
@@ -85,12 +96,8 @@ pub async fn upgrade_element(
     element_id: i32,
     tables: &config::GameDB,
 ) -> Result<Activity116Cost<UpgradeElementReply>, AppError> {
-    let state = activity116::get_or_create_state(db, player_id, activity_id).await?;
-    let current_level = state
-        .elements
-        .iter()
-        .find_map(|(id, level)| (*id == element_id).then_some(*level))
-        .unwrap_or_default();
+    ensure_activity(activity_id, tables)?;
+    let current_level = activity116::element_level(db, player_id, activity_id, element_id).await?;
     let next = tables
         .activity116_building
         .iter()
@@ -123,6 +130,7 @@ pub async fn build_trap(
     trap_id: i32,
     tables: &config::GameDB,
 ) -> Result<Activity116Cost<BuildTrapReply>, AppError> {
+    ensure_activity(activity_id, tables)?;
     let trap = tables
         .activity116_building
         .get(trap_id)
@@ -150,7 +158,9 @@ pub async fn put_trap(
     player_id: i64,
     activity_id: i32,
     trap_id: i32,
+    tables: &config::GameDB,
 ) -> Result<PutTrapReply, AppError> {
+    ensure_activity(activity_id, tables)?;
     if !activity116::put_trap(db, player_id, activity_id, trap_id).await? {
         return Err(AppError::InvalidRequest);
     }
@@ -205,7 +215,7 @@ mod tests {
         assert_eq!(upgrade.reply.level, Some(1));
         let built = build_trap(&pool, 1, 11204, 10301, tables).await.unwrap();
         assert_eq!(built.reply.trap_id, Some(10301));
-        assert!(put_trap(&pool, 1, 11204, 10301).await.is_ok());
+        assert!(put_trap(&pool, 1, 11204, 10301, tables).await.is_ok());
 
         let saved = info(&pool, 1, Some(11204), tables, captured_time)
             .await
@@ -229,6 +239,38 @@ mod tests {
                 .unwrap()
                 .quantity,
             750
+        );
+
+        let wrong_activity_id = tables
+            .activity
+            .iter()
+            .find(|activity| activity.type_id != 116)
+            .unwrap()
+            .id;
+        assert!(
+            upgrade_element(&pool, 1, wrong_activity_id, 12101021, tables)
+                .await
+                .is_err()
+        );
+        assert!(
+            build_trap(&pool, 1, wrong_activity_id, 10301, tables)
+                .await
+                .is_err()
+        );
+        assert!(
+            put_trap(&pool, 1, wrong_activity_id, 10301, tables)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM user_activity116_state WHERE activity_id = ?"
+            )
+            .bind(wrong_activity_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+            0
         );
     }
 }

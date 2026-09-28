@@ -9,10 +9,7 @@ use crate::engine::{
     skill::{
         buff_act::registry::BuffActKind,
         effect::SkillEffectCatalog,
-        rule::{
-            CommandOrigin, RuleDomain,
-            output::{BattleCommand, RuleOp},
-        },
+        rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
     },
 };
@@ -62,55 +59,6 @@ pub fn parse_target_trigger(raw_args: &[String]) -> Option<Vec<i32>> {
     supports_target_trigger(&values).then_some(values)
 }
 
-pub fn mapped_stack_rule_ops(
-    catalog: &SkillEffectCatalog,
-    managers: &BattleManagers,
-    source_uid: i64,
-    active_skill_id: i32,
-    target_uids: &[i64],
-) -> Vec<RuleOp> {
-    let Some(passive_skills) = managers.entity.passive_skills(source_uid) else {
-        return Vec::new();
-    };
-    let mut grants = Vec::new();
-    for passive_skill_id in passive_skills {
-        for &(buff_id, key) in
-            catalog.assassination_stack_grants(*passive_skill_id, active_skill_id)
-        {
-            for target_uid in target_uids
-                .iter()
-                .copied()
-                .filter(|target_uid| *target_uid != 0)
-            {
-                if grants
-                    .iter()
-                    .any(|&(target, buff, _)| target == target_uid && buff == buff_id)
-                {
-                    continue;
-                }
-                grants.push((target_uid, buff_id, key));
-            }
-        }
-    }
-    grants
-        .into_iter()
-        .map(|(target_uid, buff_id, key)| {
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
-                origin: CommandOrigin {
-                    domain: RuleDomain::BuffAct,
-                    key,
-                },
-                source_uid,
-                target_uid,
-                buff_id,
-                amount: Some(1),
-                occurrences: 1,
-                child_uid_reservations: 0,
-            })))
-        })
-        .collect()
-}
-
 pub fn target_modifier(
     managers: &BattleManagers,
     source_uid: i64,
@@ -158,6 +106,40 @@ pub fn rule_ops(
 ) -> Option<Vec<RuleOp>> {
     if !super::subscriber_is_kind(subscriber, BuffActKind::BeAttackedAssassinate) {
         return None;
+    }
+    if let BattleEvent::SkillAction(action) = event {
+        let [active_skill_id] = subscriber.args.as_slice() else {
+            return None;
+        };
+        if action.phase != crate::engine::skill::action::SkillPhase::Immediate
+            || action.source_uid != subscriber.owner_uid
+            || action.skill_id != *active_skill_id
+        {
+            return Some(Vec::new());
+        }
+        let mut targets = action.target_uids.clone();
+        if targets.is_empty() && action.target_uid != 0 {
+            targets.push(action.target_uid);
+        }
+        targets.retain(|target_uid| *target_uid != 0);
+        targets.sort_unstable();
+        targets.dedup();
+        return Some(
+            targets
+                .into_iter()
+                .map(|target_uid| {
+                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
+                        origin: super::command_origin(subscriber).expect("registered buff act"),
+                        source_uid: subscriber.owner_uid,
+                        target_uid,
+                        buff_id: subscriber.buff_id,
+                        amount: Some(1),
+                        occurrences: 1,
+                        child_uid_reservations: 0,
+                    })))
+                })
+                .collect(),
+        );
     }
     let BattleEvent::Hit(hit) = event else {
         return Some(Vec::new());
@@ -319,6 +301,13 @@ mod tests {
                     FightEntityInfo {
                         uid: Some(-1),
                         current_hp: Some(100),
+                        buffs: vec![BuffInfo {
+                            uid: Some(30),
+                            buff_id: Some(31240121),
+                            from_uid: Some(10),
+                            layer: Some(1),
+                            ..Default::default()
+                        }],
                         ..Default::default()
                     },
                     FightEntityInfo {
@@ -331,19 +320,60 @@ mod tests {
             }),
             ..Default::default()
         };
+        let mut managers = BattleManagers::seeded(&fight);
+        let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
         let catalog =
             SkillEffectCatalog::from_roots(config::configs::get(), [31240103, 312401453], []);
-        let mut managers = BattleManagers::seeded(&fight);
-        let ops = mapped_stack_rule_ops(&catalog, &managers, 10, 31240103, &[-1, -1, -2]);
+        let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+            source_uid: 10,
+            skill_id: 31240103,
+            target_uid: -1,
+            target_uids: vec![-1, -1, -2],
+            attacked_target_uids: vec![-1, -2],
+            phase: crate::engine::skill::action::SkillPhase::Immediate,
+            skill_slot: 0,
+            is_attack: true,
+            rank: 1,
+            skill_type: 1,
+            effect_tag: 1,
+            assassinate: true,
+            ignore_riposte: false,
+            damage_amount: 0,
+            kill_count: 0,
+            crit_count: 0,
+            guard_break_count: 0,
+            additional_moxie: 0,
+            extra_skill_kind: 0,
+            mode: crate::engine::skill::action::SkillExecutionMode::Active,
+            teammate_injury_count: 0,
+            teammate_injury_count_not_reset: 0,
+            team_injury_count_round: 0,
+            card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
+        });
+        let dispatched = crate::engine::event::dispatcher::dispatch_event(
+            &pool,
+            &managers,
+            &catalog,
+            &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
+            &event,
+        )
+        .unwrap();
+        let ops = dispatched
+            .buff_acts
+            .into_iter()
+            .flat_map(|(_, ops)| ops.unwrap_or_default())
+            .collect::<Vec<_>>();
 
         assert_eq!(ops.len(), 2);
         for op in ops {
-            let RuleOp::Command(BattleCommand::Buff(command @ BuffCommand::Grant(_))) = op else {
+            let RuleOp::Command(BattleCommand::Buff(command @ BuffCommand::Grant(_))) = op.op
+            else {
                 panic!("expected a normal buff grant");
             };
             managers.execute_buff(command).unwrap();
         }
-        assert_eq!(managers.buff.max_id_or_type_layer(-1, 31240121), 1);
+        assert_eq!(managers.buff.max_id_or_type_layer(-1, 31240121), 2);
         assert_eq!(managers.buff.max_id_or_type_layer(-2, 31240121), 1);
     }
 }

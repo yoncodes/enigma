@@ -4,6 +4,12 @@ use tokio::sync::{Mutex, mpsc};
 
 use crate::net::outbound::CommandPacket;
 
+#[cfg(test)]
+pub(crate) fn init_test_server_config() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| common::init_config(common::config::ServerConfig::template()));
+}
+
 /// App-level shared state
 pub struct AppState {
     next_down_tag: Mutex<u8>,
@@ -16,6 +22,8 @@ pub struct AppState {
 #[allow(dead_code)]
 impl AppState {
     pub fn new(db: SqlitePool, tables: &'static config::GameDB) -> Self {
+        #[cfg(test)]
+        init_test_server_config();
         Self {
             next_down_tag: Mutex::new(0),
             db: Box::leak(Box::new(db)),

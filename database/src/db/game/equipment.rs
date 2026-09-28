@@ -234,7 +234,7 @@ pub async fn build_equip_records(
                     equip_id: Some(equip_data.equip_id),
                     equip_lv: Some(equip_data.level),
                     refine_lv: Some(equip_data.refine_lv),
-                    break_lv: None,
+                    break_lv: Some(equip_data.break_lv),
                 });
             }
         }
