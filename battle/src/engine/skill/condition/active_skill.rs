@@ -24,6 +24,11 @@ pub fn hurt_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKin
     args.is_empty().then_some(ParsedConditionKind::UseHurtSkill)
 }
 
+pub fn device_hurt_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty()
+        .then_some(ParsedConditionKind::UseDeviceSkill)
+}
+
 pub fn skill_id(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::ActiveSkillId(parse_i32_list(
         args.first()?,

@@ -317,6 +317,7 @@ impl BuffManager {
                         });
                 BuffChanges::without_refresh_echo(catalog, origin, change)
                     .with_lifecycle_transitions(transitions)
+                    .with_duration_expiry()
             }
             BuffPlanAction::SyncRoundStartDuration(plans) => BuffChanges::new(
                 catalog,

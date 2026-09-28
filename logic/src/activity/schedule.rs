@@ -1,6 +1,8 @@
 pub(super) use common::config::ActivitySchedule;
 
 pub(super) fn get(id: i32) -> Option<&'static ActivitySchedule> {
+    #[cfg(test)]
+    crate::init_test_server_config();
     common::activity_schedule()
         .binary_search_by_key(&id, |row| row.id)
         .ok()
@@ -13,6 +15,7 @@ mod tests {
 
     #[test]
     fn configured_schedule_is_sorted_unique_and_current() {
+        crate::init_test_server_config();
         let rows = common::activity_schedule();
         assert_eq!(rows.len(), 110);
         assert!(rows.windows(2).all(|rows| rows[0].id < rows[1].id));

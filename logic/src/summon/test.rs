@@ -1,7 +1,7 @@
 use super::{
     GachaRules, SummonManager,
     commands::{is_newbie_pool, select_summon_cost, validate_summon_count},
-    parse_ids,
+    parse_ids, visible_summon_pool_ids_at,
 };
 use crate::reward::{self, RewardSet};
 use database::{
@@ -169,7 +169,7 @@ async fn current_catalog_and_special_pool_type_follow_config() {
     .execute(&pool)
     .await
     .unwrap();
-    let current_pool_ids = summon::visible_summon_pool_ids_at(
+    let current_pool_ids = visible_summon_pool_ids_at(
         chrono::NaiveDateTime::parse_from_str("2026-07-28 12:00:00", "%Y-%m-%d %H:%M:%S")
             .unwrap()
             .and_utc()
@@ -178,9 +178,10 @@ async fn current_catalog_and_special_pool_type_follow_config() {
     assert!(current_pool_ids.contains(&385141));
     assert!(!current_pool_ids.contains(&38151));
     assert!(current_pool_ids.contains(&11));
+    assert!(current_pool_ids.contains(&2));
     assert!(!current_pool_ids.contains(&1));
 
-    let lower_id_catalog = summon::visible_summon_pool_ids_at(
+    let lower_id_catalog = visible_summon_pool_ids_at(
         chrono::NaiveDateTime::parse_from_str("2025-11-05 12:00:00", "%Y-%m-%d %H:%M:%S")
             .unwrap()
             .and_utc()

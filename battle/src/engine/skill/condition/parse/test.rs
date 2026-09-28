@@ -359,7 +359,7 @@ fn parses_hurt_restraint_conditions_by_type() {
 }
 
 #[test]
-fn opcode_53210_checks_the_active_skill_target_count() {
+fn active_skill_target_count_condition_checks_the_committed_targets() {
     init_config();
 
     assert_eq!(
@@ -369,7 +369,7 @@ fn opcode_53210_checks_the_active_skill_target_count() {
 }
 
 #[test]
-fn opcode_812_is_an_entity_death_subscription() {
+fn entity_death_condition_is_an_event_subscription() {
     init_config();
 
     let condition = parse_conditions(config::configs::get(), "812")

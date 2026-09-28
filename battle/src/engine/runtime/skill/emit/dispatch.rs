@@ -155,7 +155,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         execution.record_targets([uid]);
     }
     if let SkillOpTrigger::Event(event) = trigger {
-        apply_event_context(managers.catalog(), &mut execution.context, event);
+        apply_event_context(managers, &mut execution.context, event);
     }
     let source_team =
         pool.team_type(invocation.plan.source_uid)
@@ -641,24 +641,6 @@ pub(in crate::engine::runtime) fn emit_ops(
         {
             fired_rules.push((slot_index, condition_key));
         }
-    }
-    if active_phase == Some(SkillPhase::Immediate) {
-        outputs.extend(
-            crate::engine::skill::buff_act::assassination::mapped_stack_rule_ops(
-                catalog,
-                managers,
-                invocation.plan.source_uid,
-                invocation.plan.skill_id,
-                &execution.affected_targets,
-            )
-            .into_iter()
-            .map(|op| SkillEmissionOp {
-                op,
-                owner: behavior::registry::OutputOwner::Skill,
-                consequence: ConsequencePolicy::Default,
-                frame_owner: None,
-            }),
-        );
     }
     if active_phase == Some(SkillPhase::Immediate) {
         let mut phase_completed = phase_completed_op(

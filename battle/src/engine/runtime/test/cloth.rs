@@ -237,7 +237,7 @@ fn conduit_selection_adds_the_configured_precast_and_commits_the_choice() {
 }
 
 #[test]
-fn mei_lei_er_charge_starts_the_captured_extra_round_flow() {
+fn owned_charge_starts_the_captured_extra_round_flow() {
     crate::test_support::init_config();
     let fight = Fight {
         version: Some(7),
@@ -297,7 +297,7 @@ fn mei_lei_er_charge_starts_the_captured_extra_round_flow() {
             skill_id: Some(0),
             from_id: Some(10),
             to_id: Some(0),
-            r#type: Some(ClothSkillType::MeiLeiErExtraRound as i32),
+            r#type: Some(ClothSkillType::ExtraRound as i32),
         })
         .unwrap()
         .round
@@ -357,7 +357,7 @@ fn mei_lei_er_charge_starts_the_captured_extra_round_flow() {
                 skill_id: Some(0),
                 from_id: Some(10),
                 to_id: Some(0),
-                r#type: Some(ClothSkillType::MeiLeiErExtraRound as i32),
+                r#type: Some(ClothSkillType::ExtraRound as i32),
             })
             .is_none()
     );

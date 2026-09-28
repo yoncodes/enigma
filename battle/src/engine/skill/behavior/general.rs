@@ -56,6 +56,50 @@ impl BehaviorHandler for Handler {
 
 pub(super) struct AssassinateHandler;
 
+pub(super) struct AddMaxRoundHandler;
+
+impl BehaviorHandler for AddMaxRoundHandler {
+    const VALIDATES_ARGUMENTS: bool = true;
+
+    fn supports(behavior: &ParsedBehavior) -> bool {
+        matches!(behavior.args.as_slice(), [increment, cap] if *increment > 0 && *cap > 0)
+    }
+
+    fn emit_ops(_: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+        Self::supports(behavior).then(|| {
+            vec![RuleOp::Command(BattleCommand::MaxRound(
+                crate::engine::manager::battle_rule::MaxRoundCommand {
+                    increment: behavior.args[0],
+                    cap: behavior.args[1],
+                    config_effect: behavior.spec.key.opcode,
+                },
+            ))]
+        })
+    }
+}
+
+pub(super) struct AddIndicatorHandler;
+
+impl BehaviorHandler for AddIndicatorHandler {
+    const VALIDATES_ARGUMENTS: bool = true;
+
+    fn supports(behavior: &ParsedBehavior) -> bool {
+        matches!(behavior.args.as_slice(), [indicator_id, _] if *indicator_id > 0)
+    }
+
+    fn emit_ops(_: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+        Self::supports(behavior).then(|| {
+            vec![RuleOp::Command(BattleCommand::Indicator(
+                crate::engine::manager::indicator::IndicatorCommand {
+                    indicator_id: behavior.args[0],
+                    amount: behavior.args[1],
+                    config_effect: behavior.spec.key.opcode,
+                },
+            ))]
+        })
+    }
+}
+
 impl BehaviorHandler for AssassinateHandler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         if behavior.args.is_empty() {

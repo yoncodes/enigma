@@ -152,6 +152,52 @@ pub fn for_active_buffs(managers: &BattleManagers, event: EventKind) -> Vec<Buff
         .collect()
 }
 
+fn for_configured_buff_acts(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    event: EventKind,
+) -> Vec<BuffActSubscriber> {
+    if event != EventKind::SkillAction {
+        return Vec::new();
+    }
+    let mut subscribers = Vec::new();
+    for entity in pool.active_entities() {
+        let Some(passive_skills) = managers.entity.passive_skills(entity.uid) else {
+            continue;
+        };
+        for &passive_skill_id in passive_skills {
+            for (active_skill_id, buff_id, key) in
+                catalog.assassination_stack_grants(passive_skill_id)
+            {
+                let subscriber = BuffActSubscriber {
+                    owner_uid: entity.uid,
+                    source_uid: entity.uid,
+                    buff_uid: 0,
+                    buff_id,
+                    team_type: pool.team_type(entity.uid).unwrap_or_default(),
+                    owner_alive: entity.current_hp > 0,
+                    amount: 0,
+                    key: SubscriptionKey::at_phase(
+                        event,
+                        key,
+                        Some(crate::engine::skill::action::SkillPhase::Immediate),
+                    ),
+                    act_type: key.type_name.to_owned(),
+                    effect_time: 0,
+                    effect_condition: 0,
+                    args: vec![active_skill_id],
+                    raw: String::new(),
+                };
+                if !subscribers.contains(&subscriber) {
+                    subscribers.push(subscriber);
+                }
+            }
+        }
+    }
+    subscribers
+}
+
 pub fn active_buffs_for_owners(
     managers: &BattleManagers,
     event: EventKind,
@@ -238,10 +284,9 @@ pub fn for_event(
             .collect())
     })
     .expect("legacy subscription lookup is infallible");
-    EventSubscribers {
-        skills,
-        buff_acts: for_active_buffs(managers, event),
-    }
+    let mut buff_acts = for_active_buffs(managers, event);
+    buff_acts.extend(for_configured_buff_acts(pool, managers, catalog, event));
+    EventSubscribers { skills, buff_acts }
 }
 
 pub fn for_compiled_event(
@@ -250,6 +295,8 @@ pub fn for_compiled_event(
     catalog: &SkillEffectCatalog,
     event: EventKind,
 ) -> Result<EventSubscribers, SubscriberError> {
+    let mut buff_acts = for_active_buffs(managers, event);
+    buff_acts.extend(for_configured_buff_acts(pool, managers, catalog, event));
     Ok(EventSubscribers {
         skills: collect_event_skills(pool, managers, catalog, event, |skill_id| {
             catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
@@ -259,7 +306,7 @@ pub fn for_compiled_event(
                     .collect()
             })
         })?,
-        buff_acts: for_active_buffs(managers, event),
+        buff_acts,
     })
 }
 

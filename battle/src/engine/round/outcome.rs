@@ -40,6 +40,14 @@ pub(crate) fn battle_ended(fight: &Fight, pool: &TargetPool, managers: &BattleMa
     battle_ended_for_battle_id(fight.battle_id.unwrap_or_default(), pool, managers)
 }
 
+pub(crate) fn should_advance_wave(
+    fight: &Fight,
+    pool: &TargetPool,
+    managers: &BattleManagers,
+) -> bool {
+    defenders_defeated(pool, managers) && !battle_ended(fight, pool, managers)
+}
+
 pub(crate) fn battle_ended_for_battle_id(
     battle_id: i32,
     pool: &TargetPool,
@@ -109,8 +117,8 @@ pub(crate) fn finish_if_battle_ended(
 
 pub(crate) fn round_limit_reached(fight: &Fight, managers: &BattleManagers) -> bool {
     managers
-        .catalog()
-        .battle_max_round(fight.battle_id.unwrap_or_default())
+        .battle_rule
+        .max_round()
         .is_some_and(|max_round| max_round > 0 && fight.cur_round.unwrap_or_default() >= max_round)
 }
 

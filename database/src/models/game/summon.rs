@@ -31,6 +31,14 @@ pub struct UserSummonPool {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct SummonPoolWindow {
+    pub pool_id: i32,
+    pub online_time: i32,
+    pub offline_time: i32,
+    pub discount_time: i32,
+}
+
 #[derive(Debug, Clone)]
 pub struct SingleBagInfo {
     pub bag_id: i32,
@@ -109,6 +117,7 @@ impl From<PopUpInfo> for sonettobuf::PopUpInfo {
 #[derive(Debug, Clone)]
 pub struct SummonPoolInfo {
     pub pool: UserSummonPool,
+    pub pity_6: i32,
     pub lucky_bag: Option<LuckyBagInfo>,
     pub sp_pool: Option<SpPoolInfo>,
     pub pop_up_infos: Vec<PopUpInfo>,

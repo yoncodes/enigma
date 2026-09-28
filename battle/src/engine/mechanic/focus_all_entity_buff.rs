@@ -137,6 +137,7 @@ pub(crate) fn execute(
             target_uid: command.target_uid,
             effect_type: sonettobuf::effect_type_enum::EffectType::Ananfocusbuff as i32,
             effect_num: 0,
+            effect_num1: None,
             config_effect: command.origin.key.opcode,
             reserve_id: Some(0),
             reserve_str: Some(format!("{reservations},{donors}")),

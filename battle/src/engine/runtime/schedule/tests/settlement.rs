@@ -1,5 +1,7 @@
 use super::*;
 
+mod mane;
+
 #[test]
 fn round_end_settlement_drains_dot_layers_then_durations() {
     init_config();

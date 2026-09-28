@@ -23,6 +23,9 @@ excel_data = "./data/excel2json"
 [database]
 path = "./db/sonetto.db"
 
+[summon]
+permanent_pool_ids = [2]
+
 [activity]
 schedule = [
   { id = 10003, start_time = 1672549200000, end_time = 2145934800000, is_unlock = true },

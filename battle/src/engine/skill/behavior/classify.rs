@@ -161,6 +161,8 @@ pub enum BehaviorKind {
     NotifyUpgradeHero,
     IgnoreSkillConfigDamageRate,
     ClientEffect,
+    AddMaxRound,
+    AddIndicator,
     ChangeScene,
     CareerRatioFix,
     ChangeAttackCareer,

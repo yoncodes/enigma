@@ -54,6 +54,24 @@ pub async fn get_or_create_state(
     })
 }
 
+pub async fn element_level(
+    pool: &SqlitePool,
+    user_id: i64,
+    activity_id: i32,
+    element_id: i32,
+) -> Result<i32> {
+    Ok(sqlx::query_scalar(
+        "SELECT level FROM user_activity116_elements
+         WHERE user_id = ? AND activity_id = ? AND element_id = ?",
+    )
+    .bind(user_id)
+    .bind(activity_id)
+    .bind(element_id)
+    .fetch_optional(pool)
+    .await?
+    .unwrap_or_default())
+}
+
 async fn ensure_state(
     tx: &mut Transaction<'_, Sqlite>,
     user_id: i64,

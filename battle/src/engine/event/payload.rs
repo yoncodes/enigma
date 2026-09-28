@@ -15,6 +15,7 @@ pub struct BuffChangeEvent {
     pub after_amount: i32,
     pub act_id: i32,
     pub act_value: i32,
+    pub duration_expired: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -500,6 +501,7 @@ mod tests {
             after_amount: 2,
             act_id: 0,
             act_value: 0,
+            duration_expired: false,
         };
 
         assert_eq!(BattleEvent::BuffAdded(change).kind(), EventKind::BuffAdded);
