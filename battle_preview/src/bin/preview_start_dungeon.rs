@@ -7,9 +7,10 @@ use std::{
 use battle::engine::runtime::BattleRuntime;
 use battle_preview::{
     battle_inputs, canonical_comparison, comparable_json, first_diff_path, normalize_live_json,
-    preview_attributes, preview_output_text, render_json_with_capture_conventions, tower_plan_id,
+    opening_determinism, preview_attributes, preview_output_text,
+    render_json_with_capture_conventions, tower_plan_id,
 };
-use sonettobuf::{CardInfoPush, Fight, StartDungeonReply};
+use sonettobuf::{CardInfoPush, Fight, FightRound, StartDungeonReply};
 
 fn main() -> anyhow::Result<()> {
     std::thread::Builder::new()
@@ -126,10 +127,17 @@ fn generate_reply(
         )
     })?;
     let fight: Fight = serde_json::from_value(fight)?;
+    let captured_round: FightRound = serde_json::from_value(
+        value
+            .get("round")
+            .cloned()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "capture has no round"))?,
+    )?;
     let tower_rule_skills = tower_plan_id(path)
         .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, path)?;
+    let determinism = opening_determinism(db, &fight, &captured_round);
     let mut runtime = BattleRuntime::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
@@ -137,7 +145,9 @@ fn generate_reply(
         sp_attributes,
     );
     runtime.extend_battle_rule_skills(tower_rule_skills);
-    runtime.start_round().map_err(io::Error::other)?;
+    runtime
+        .start_round_with_determinism(determinism)
+        .map_err(io::Error::other)?;
 
     Ok((
         battle::dungeon::start_reply(&runtime),
