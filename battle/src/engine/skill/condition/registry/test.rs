@@ -4,6 +4,8 @@ use crate::engine::skill::condition::{
     ConditionCompare, buff::BuffConditionMode, none::NoneMode, parse::BuffAddedScope,
 };
 
+mod mane;
+
 #[test]
 fn generic_round_end_keys_keep_their_exact_timing() {
     assert_eq!(
@@ -503,7 +505,7 @@ fn round_start_buff_type_threshold_keeps_its_entity_lane() {
 }
 
 #[test]
-fn round_start_none_103_keeps_its_entity_frame() {
+fn round_start_unconditional_condition_keeps_its_entity_frame() {
     let definition = find_key(103, "None").unwrap();
     assert_eq!(
         definition.role,
@@ -3124,7 +3126,7 @@ fn ultimate_level_keeps_its_exact_round_start_route() {
 }
 
 #[test]
-fn exact_after_hit_ultimate_level_751210_is_a_membership_predicate() {
+fn after_hit_ultimate_level_condition_is_a_membership_predicate() {
     assert_eq!(
         parse(751210, "ExSkillLevel", &["0,1,2,3,4".into()]),
         Some(ParsedConditionKind::ExSkillLevels(vec![0, 1, 2, 3, 4]))

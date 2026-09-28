@@ -2,6 +2,8 @@ use std::collections::HashSet;
 
 use super::*;
 
+mod mane;
+
 #[test]
 fn registry_requires_exact_id_and_type() {
     assert_eq!(

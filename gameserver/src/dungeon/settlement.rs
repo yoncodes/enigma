@@ -70,9 +70,7 @@ pub async fn settle_active(
         player_id,
         active.episode_id,
         active.battle_id,
-        active
-            .runtime
-            .indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore),
+        active.runtime.activity_score(),
     )
     .await?;
     settlement.compose_push =
@@ -214,9 +212,7 @@ pub async fn settle_refund(
         Some((
             active.episode_id,
             active.battle_id,
-            active
-                .runtime
-                .indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore),
+            active.runtime.activity_score(),
         )),
     )
     .await
@@ -243,9 +239,7 @@ pub async fn settle_failed(
         Some((
             active.episode_id,
             active.battle_id,
-            active
-                .runtime
-                .indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore),
+            active.runtime.activity_score(),
         )),
     )
     .await

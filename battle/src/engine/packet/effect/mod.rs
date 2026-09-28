@@ -42,6 +42,7 @@ impl EffectPacket {
             target_id: Some(marker.target_uid),
             effect_type: Some(marker.effect_type),
             effect_num: Some(marker.effect_num),
+            effect_num1: marker.effect_num1,
             config_effect: Some(marker.config_effect),
             reserve_id: marker.reserve_id,
             reserve_str: marker.reserve_str,

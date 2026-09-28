@@ -217,7 +217,7 @@ fn completed_active_use_skill_requires_an_active_execution_mode_and_real_source(
         crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp.id(),
         crate::engine::skill::action::SkillExecutionMode::Active,
     ));
-    for opcode in [502203, 502208, 502210] {
+    for opcode in [502202, 502203, 502208, 502210] {
         let owner = exact_condition(opcode, "ActiveUseSkill", &["0"]);
         for mode in [
             crate::engine::skill::action::SkillExecutionMode::Active,
@@ -245,6 +245,18 @@ fn completed_active_use_skill_requires_an_active_execution_mode_and_real_source(
         10,
         0,
         crate::engine::skill::action::SkillExecutionMode::Device,
+    ));
+    assert!(matches(
+        &exact_condition(792209, "UseDeviceSkill", &[]),
+        10,
+        0,
+        crate::engine::skill::action::SkillExecutionMode::Device,
+    ));
+    assert!(!matches(
+        &exact_condition(792209, "UseDeviceSkill", &[]),
+        10,
+        0,
+        crate::engine::skill::action::SkillExecutionMode::Active,
     ));
     assert!(!matches(
         &ally,

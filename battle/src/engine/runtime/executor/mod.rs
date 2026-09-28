@@ -495,6 +495,16 @@ pub(crate) fn execute_rule_op(
             }
             Ok(RuleOutcome::HpBatch(batch))
         }
+        RuleOp::Command(BattleCommand::MaxRound(command)) => managers
+            .battle_rule
+            .add_max_round(command)
+            .map(RuleOutcome::EffectMarker)
+            .map_or(Ok(RuleOutcome::StateChanged), Ok),
+        RuleOp::Command(BattleCommand::Indicator(command)) => managers
+            .indicator
+            .add(command)
+            .map(RuleOutcome::EffectMarker)
+            .map_or(Ok(RuleOutcome::StateChanged), Ok),
         RuleOp::NuoDiKaHit(hit) => Ok(RuleOutcome::NuoDiKaHit(hit)),
         RuleOp::Command(BattleCommand::Injury(command)) => {
             Ok(RuleOutcome::Injury(managers.injury.execute(command)))
@@ -810,6 +820,7 @@ pub(crate) fn execute_rule_op(
                 target_uid,
                 effect_type,
                 effect_num,
+                effect_num1: None,
                 config_effect,
                 reserve_id,
                 reserve_str,

@@ -6,6 +6,7 @@ use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, PowerInfo};
 mod actions;
 mod buffs;
 mod counts;
+mod mane;
 mod mechanics;
 mod targets;
 

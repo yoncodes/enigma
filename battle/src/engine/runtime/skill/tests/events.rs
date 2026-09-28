@@ -1,5 +1,7 @@
 use super::*;
 
+mod mane;
+
 fn attack_crit_route_catalog(condition_opcode: i32) -> SkillEffectCatalog {
     let mut slot = SkillEffectSlot::new(
         ParsedBehavior::new(50008, "DirectUseSkill", vec![100]),
@@ -194,7 +196,7 @@ fn ally_action_context_preserves_assassination_identity() {
     });
 
     super::super::invoke::apply_event_context(
-        crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+        &BattleManagers::seeded(&Fight::default()),
         &mut context,
         &event,
     );
@@ -226,7 +228,7 @@ fn hit_context_uses_the_explicit_skill_catalog_rank() {
     });
 
     super::super::invoke::apply_event_context(
-        crate::catalog::BattleCatalog::new(db),
+        &BattleManagers::seeded(&Fight::default()),
         &mut context,
         &event,
     );
@@ -236,6 +238,8 @@ fn hit_context_uses_the_explicit_skill_catalog_rank() {
         db.skill.get(skill_id).unwrap().skill_rank
     );
     assert_eq!(context.hit_career_restraint, Some(true));
+    assert!(context.active_skill_is_attack);
+    assert_eq!(context.active_skill_mode, SkillExecutionMode::Active);
 }
 
 #[test]
@@ -553,6 +557,7 @@ fn event_context_does_not_override_a_reactive_skills_own_target_rule() {
         after_amount: 1,
         act_id: 0,
         act_value: 0,
+        duration_expired: false,
     });
 
     let emission = emit_ops(

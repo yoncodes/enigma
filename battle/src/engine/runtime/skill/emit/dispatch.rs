@@ -155,7 +155,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         execution.record_targets([uid]);
     }
     if let SkillOpTrigger::Event(event) = trigger {
-        apply_event_context(managers.catalog(), &mut execution.context, event);
+        apply_event_context(managers, &mut execution.context, event);
     }
     let source_team =
         pool.team_type(invocation.plan.source_uid)

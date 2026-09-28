@@ -134,6 +134,7 @@ impl BuffReplaceResult {
                     .and_then(|info| info.param.first())
                     .copied()
                     .unwrap_or_default(),
+                duration_expired: false,
             }));
             for fanout in &applied.fanout {
                 push_added(events, fanout);
@@ -168,6 +169,7 @@ impl BuffReplaceResult {
                             .copied()
                             .unwrap_or_default()
                     },
+                    duration_expired: false,
                 })
             })
             .collect::<Vec<_>>();
@@ -197,6 +199,7 @@ impl BuffReplaceResult {
                     .and_then(|info| info.param.first())
                     .copied()
                     .unwrap_or_default(),
+                duration_expired: false,
             }))
         }));
         events.extend(self.refreshed.iter().filter_map(|refresh| {

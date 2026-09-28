@@ -373,6 +373,7 @@ mod tests {
                 after_amount: 0,
                 act_id: ACT_ID,
                 act_value,
+                duration_expired: false,
             })
         };
         assert!(transaction_rule_ops(&overflow, &removed(0)).is_empty());
@@ -402,6 +403,7 @@ mod tests {
             after_amount: 1,
             act_id: 0,
             act_value: 0,
+            duration_expired: false,
         });
         let ops = transaction_rule_ops(&managers, &event);
 

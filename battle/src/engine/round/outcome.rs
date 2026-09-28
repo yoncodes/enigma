@@ -109,8 +109,8 @@ pub(crate) fn finish_if_battle_ended(
 
 pub(crate) fn round_limit_reached(fight: &Fight, managers: &BattleManagers) -> bool {
     managers
-        .catalog()
-        .battle_max_round(fight.battle_id.unwrap_or_default())
+        .battle_rule
+        .max_round()
         .is_some_and(|max_round| max_round > 0 && fight.cur_round.unwrap_or_default() >= max_round)
 }
 

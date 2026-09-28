@@ -86,10 +86,11 @@ pub(super) fn resource_fire_count(
 }
 
 pub(super) fn apply_event_context(
-    catalog: crate::catalog::BattleCatalog,
+    managers: &crate::engine::manager::BattleManagers,
     context: &mut TargetContext,
     event: &BattleEvent,
 ) {
+    let catalog = managers.catalog();
     context.event_source_uid = event.source_uid().unwrap_or_default();
     match event {
         BattleEvent::BuffAdded(change) | BattleEvent::BuffChanged(change) => {
@@ -97,11 +98,16 @@ pub(super) fn apply_event_context(
             context.added_buff_id = change.buff_id;
             context.added_buff_amount = (change.after_amount - change.before_amount).max(0);
             context.added_buff_target_uid = change.target_uid;
+            context.added_buff_status_id = catalog
+                .buff_status(change.buff_id)
+                .map(|status| status as i32)
+                .unwrap_or_default();
         }
         BattleEvent::BuffRemoved(change) => {
             context.runtime_target_uid = change.target_uid;
             context.removed_buff_id = change.buff_id;
             context.removed_buff_target_uid = change.target_uid;
+            context.removed_buff_duration_expired = change.duration_expired;
         }
         BattleEvent::BuffRejected(change) => {
             context.runtime_target_uid = change.target_uid;
@@ -132,6 +138,13 @@ pub(super) fn apply_event_context(
             context.active_skill_id = hit.skill_id;
             context.active_skill_source_uid = hit.source_uid;
             context.active_skill_rank = catalog.skill_rank(hit.skill_id);
+            context.active_skill_is_attack = catalog.skill_is_attack(hit.skill_id);
+            context.active_skill_mode = if managers.conduit.owns_skill(hit.source_uid, hit.skill_id)
+            {
+                crate::engine::skill::action::SkillExecutionMode::Device
+            } else {
+                crate::engine::skill::action::SkillExecutionMode::Active
+            };
         }
         BattleEvent::EntityDied(death) => context.runtime_target_uid = death.target_uid,
         BattleEvent::EntityEntered { target_uid }

@@ -834,7 +834,7 @@ fn from_game_db_keeps_skill_effect_logic_target() {
 }
 
 #[test]
-fn from_game_db_resolves_behavior_target_999_like_lua() {
+fn from_game_db_resolves_dynamic_behavior_targets_like_lua() {
     init_config();
 
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
@@ -844,7 +844,7 @@ fn from_game_db_resolves_behavior_target_999_like_lua() {
 }
 
 #[test]
-fn behavior_target_999_keeps_per_target_conditions_when_condition_uses_logic_target() {
+fn dynamic_behavior_targets_keep_per_target_conditions_for_logic_targets() {
     init_config();
 
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
