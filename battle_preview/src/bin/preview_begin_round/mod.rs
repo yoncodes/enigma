@@ -7,8 +7,8 @@ use std::{
 use battle::engine::{runtime::BattleRuntime, skill::effect::catalog};
 use battle_preview::{
     begin_round_inputs, canonical_comparison, expand_compressed_fight_steps, first_diff_path,
-    normalize_live_json, preview_attributes, preview_output_text,
-    render_json_with_capture_conventions, tower_plan_id,
+    normalize_live_json, opening_determinism, preview_attributes, preview_output_text,
+    render_json_with_capture_conventions, seed_round_determinism, tower_plan_id,
 };
 use sonettobuf::{BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep};
 
@@ -137,6 +137,7 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
     let tower_rule_skills = tower_plan_id(path)
         .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
+    let opening_determinism = opening_determinism(db, &fight, &captured_start_round);
     let mut runtime = BattleRuntime::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
@@ -147,7 +148,9 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
         .inherit_absorb_hurt_map_layout(&captured_start_round)
         .map_err(anyhow::Error::msg)?;
     runtime.extend_battle_rule_skills(tower_rule_skills);
-    let mut round_reply = runtime.start_round().map_err(io::Error::other)?;
+    let mut round_reply = runtime
+        .start_round_with_determinism(opening_determinism)
+        .map_err(io::Error::other)?;
     let mut previous_captured_round = captured_start_round;
     replay_cloth_input(path, 0, &mut runtime)?;
     if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage)
@@ -175,6 +178,7 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
         validate_captured_round_continuity(&previous_captured_round, &captured)?;
         report_rule_issues(&captured);
         replay_cloth_input(path, index, &mut runtime)?;
+        seed_round_determinism(&mut runtime, catalog::global(), &captured);
         round_reply = runtime.advance_round(request).map_err(io::Error::other)?;
         previous_captured_round = captured;
     }
