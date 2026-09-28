@@ -175,6 +175,7 @@ async fn act236_reward_command_emits_captured_semantic_sequence() {
 
 #[tokio::test]
 async fn completed_charge_skips_act236_updates_when_no_charge_event_is_scheduled() {
+    crate::net::app::init_test_server_config();
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()

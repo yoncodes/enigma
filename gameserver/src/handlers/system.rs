@@ -90,16 +90,7 @@ async fn reconnect_at(
     req: ClientPacket,
     now_ms: i64,
 ) -> Result<(), AppError> {
-    let reset_task_ids = session::reconcile_periodic_resets(ctx, now_ms).await?;
-    if !reset_task_ids.is_empty() {
-        ctx.notify(
-            CmdId::DeleteTaskPushCmd,
-            DeleteTaskPush {
-                task_ids: reset_task_ids,
-            },
-        )
-        .await?;
-    }
+    session::reconcile_periodic_resets(ctx, now_ms).await?;
     ctx.player()?
         .activity
         .sync_act101_login_progress(ctx.state.db, now_ms)
@@ -135,6 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn reconnect_advances_activity101_once_per_server_day() {
+        crate::net::app::init_test_server_config();
         let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()

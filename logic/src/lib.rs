@@ -45,3 +45,9 @@ pub mod types;
 pub mod udimo;
 
 pub use error::LogicError;
+
+#[cfg(test)]
+pub(crate) fn init_test_server_config() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| common::init_config(common::config::ServerConfig::template()));
+}

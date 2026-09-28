@@ -24,6 +24,7 @@ pub struct RoundState {
     pub team_a_cards2: Vec<CardInfo>,
     pub hero_sp_attributes: Vec<FightHeroSpAttributeInfo>,
     pub last_change_hero_uid: Option<i64>,
+    pub(crate) extra_rounds: usize,
 }
 
 impl RoundState {
@@ -47,8 +48,16 @@ impl RoundState {
         }
     }
 
+    pub fn grant_extra_round(&mut self) {
+        self.extra_rounds += 1;
+    }
+
     pub fn begin_round(&mut self) {
-        self.cur_round += 1;
+        if self.extra_rounds == 0 {
+            self.cur_round += 1;
+        } else {
+            self.extra_rounds -= 1;
+        }
     }
 }
 

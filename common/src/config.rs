@@ -12,7 +12,13 @@ pub struct ServerConfig {
     pub muip_gm: MuipGmConfig,
     pub paths: PathConfig,
     pub database: DatabaseConfig,
+    pub summon: SummonConfig,
     pub activity: ActivityConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SummonConfig {
+    pub permanent_pool_ids: Vec<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,6 +130,18 @@ impl ServerConfig {
             std::fs::create_dir_all(parent)?;
         }
 
+        let permanent_pool_ids = self
+            .summon
+            .permanent_pool_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        if permanent_pool_ids.len() != self.summon.permanent_pool_ids.len()
+            || permanent_pool_ids.iter().any(|pool_id| *pool_id <= 0)
+        {
+            anyhow::bail!("permanent summon pool IDs must be positive and unique");
+        }
+
         if self
             .activity
             .schedule
@@ -167,6 +185,7 @@ mod tests {
         assert!(!cfg.server.skip_tutorial);
         assert_eq!(cfg.muip.port, 21100);
         assert_eq!(cfg.muip_gm.port, 21101);
+        assert_eq!(cfg.summon.permanent_pool_ids, [2]);
         assert!(cfg.activity.schedule.iter().any(|row| row.id == 13801));
 
         std::fs::remove_dir_all(dir).unwrap();

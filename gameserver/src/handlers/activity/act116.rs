@@ -54,6 +54,7 @@ pub async fn on_put_trap(ctx: &mut ConnectionContext, req: ClientPacket) -> Resu
             ctx.state.db,
             msg.activity_id.ok_or(AppError::InvalidRequest)?,
             msg.trap_id.ok_or(AppError::InvalidRequest)?,
+            ctx.state.tables,
         )
         .await?;
     ctx.send_reply(CmdId::PutTrapCmd, reply, 0, req.up_tag)

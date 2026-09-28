@@ -225,6 +225,7 @@ async fn completed_charges_follow_captured_act236_score_progression() {
     .unwrap();
 
     let store = StoreManager::new(236);
+    crate::init_test_server_config();
     let current_time = ::common::activity_schedule()
         .iter()
         .find(|schedule| schedule.id == 13801)
