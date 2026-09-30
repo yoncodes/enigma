@@ -271,7 +271,16 @@ pub fn external_output_path(output_root: &Path, input: &Path) -> PathBuf {
     let relative = input
         .components()
         .filter_map(|component| match component {
-            std::path::Component::Normal(part) => Some(part),
+            std::path::Component::Normal(part) => Some(part.to_owned()),
+            std::path::Component::Prefix(prefix) => Some(
+                prefix
+                    .as_os_str()
+                    .to_string_lossy()
+                    .chars()
+                    .filter(char::is_ascii_alphanumeric)
+                    .collect::<String>()
+                    .into(),
+            ),
             _ => None,
         })
         .collect::<PathBuf>();

@@ -443,7 +443,7 @@ fn round_indices(path: &Path, through: i32) -> anyhow::Result<Vec<i32>> {
 fn output_path(input_root: &Path, output_root: &Path, input: &Path) -> anyhow::Result<PathBuf> {
     Ok(match input.strip_prefix(input_root) {
         Ok(path) => output_root.join(path),
-        Err(_) => battle_preview::external_output_path(output_root, input),
+        Err(_) => battle_preview::external_output_path(output_root, &fs::canonicalize(input)?),
     })
 }
 

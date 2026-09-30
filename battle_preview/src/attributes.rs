@@ -82,6 +82,8 @@ pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<P
 /// engine's loadout differs from the captured one.
 pub fn loadout_diffs(fight: &Fight, battle_path: &Path) -> anyhow::Result<Vec<String>> {
     let metadata = battle_build_metadata(battle_path)?;
+    let battle_balance =
+        request_battle_balance(fight, battle_request_metadata(battle_path)?.is_balance)?;
     let mut diffs = Vec::new();
     let teams = fight.attacker.iter().flat_map(|team| {
         team.entitys
@@ -90,20 +92,27 @@ pub fn loadout_diffs(fight: &Fight, battle_path: &Path) -> anyhow::Result<Vec<St
             .chain(team.sub_entitys.iter().map(|entity| (entity, true)))
     });
     for (entity, is_sub) in teams {
-        let uid = entity.uid.unwrap_or_default();
+        let uid = entity
+            .uid
+            .ok_or_else(|| anyhow::anyhow!("attacker is missing uid"))?;
         let built = if let Some((trial, _)) = configured_trial(entity)? {
             trial
         } else {
             let hero = metadata.get(&uid).ok_or_else(|| {
                 anyhow::anyhow!("loadout preview missing build metadata uid={uid}")
             })?;
-            battle::engine::entity::builder::EntityBuilder::new(
-                preview_build_input(entity, hero)?,
+            let build = preview_build_input(entity, hero)?;
+            let mut builder = battle::engine::entity::builder::EntityBuilder::new(
+                build.clone(),
                 entity.position.unwrap_or_default(),
                 entity.team_type.unwrap_or_default(),
                 is_sub,
-            )
-            .build()
+            );
+            // Balance rewrites rank, which picks the kit and resource type.
+            if let Some(balance) = battle_balance {
+                builder = builder.with_balance(balance, balance.stats_for(&build, &[]));
+            }
+            builder.build()
         };
         let fields = [
             (
@@ -1084,17 +1093,22 @@ mod tests {
     fn loadout_diffs_report_fields_that_differ_from_the_rebuilt_entity() {
         crate::init_test_config();
         let uid = 42;
-        let trial_id = 116385001;
+        let directory = test_directory("loadout");
+        let hero = hero(uid);
+        write_roster(&directory, hero.clone());
         let mut fight = fight(uid);
         let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
-        entity.trial_id = Some(trial_id);
-        let (built, _) =
-            battle::engine::entity::builder::EntityBuilder::trial(trial_id, uid, 0, 0).unwrap();
+        let built = battle::engine::entity::builder::EntityBuilder::new(
+            preview_build_input(entity, &hero).unwrap(),
+            0,
+            0,
+            false,
+        )
+        .build();
         entity.skill_group1 = built.skill_group1.clone();
         entity.skill_group2 = built.skill_group2.clone();
         entity.ex_skill = built.ex_skill;
         entity.ex_point_type = built.ex_point_type;
-        let directory = test_directory("loadout");
         let path = directory.join("StartDungeonReply.json");
 
         assert!(loadout_diffs(&fight, &path).unwrap().is_empty());
