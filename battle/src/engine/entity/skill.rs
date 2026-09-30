@@ -57,6 +57,10 @@ impl Skill {
             Self::apply_exchange(&mut sg1, map);
             Self::apply_exchange(&mut sg2, map);
         }
+        let talents = game.talent_exchanges(hero.hero_id, &hero.extra_str, hero.ex_skill_level);
+        for id in sg1.iter_mut().chain(sg2.iter_mut()) {
+            *id = talent_exchange(*id, &talents);
+        }
 
         (sg1, sg2)
     }
@@ -80,7 +84,11 @@ impl Skill {
             .unwrap_or_else(|| {
                 Self::active_skills(game, hero.hero_id, hero.rank, hero.ex_skill_level).2
             });
-        destiny.and_then(|map| map.get(&ex).copied()).unwrap_or(ex)
+        let ex = destiny.and_then(|map| map.get(&ex).copied()).unwrap_or(ex);
+        talent_exchange(
+            ex,
+            &game.talent_exchanges(hero.hero_id, &hero.extra_str, hero.ex_skill_level),
+        )
     }
 
     pub fn get_skill_groups_with_destiny(
@@ -164,6 +172,14 @@ impl Skill {
             }
         }
     }
+}
+
+/// Talent exchanges apply in order, so a later one can remap an id an earlier
+/// one produced.
+pub(crate) fn talent_exchange(id: i32, exchanges: &[(i32, i32)]) -> i32 {
+    exchanges
+        .iter()
+        .fold(id, |id, (from, to)| if id == *from { *to } else { id })
 }
 
 fn configured_skill_ids(game: &config::GameDB, raw: &str) -> Vec<i32> {
