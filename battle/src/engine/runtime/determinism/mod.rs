@@ -454,6 +454,10 @@ impl RoundDeterminism {
         (value % 1000) < chance.clamp(0, 1000) as u64
     }
 
+    pub fn card_random_index(&mut self, len: usize) -> Option<usize> {
+        random_index(self.card_seed, &mut self.card_roll_index, len)
+    }
+
     pub fn lua_random_index(&mut self, len: usize) -> Option<usize> {
         if len == 0 {
             return None;
