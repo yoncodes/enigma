@@ -503,6 +503,13 @@ fn detail_page(kind: &str, subject: &Subject, links: &Links) -> String {
             }
             text.push('\n');
         }
+        if !variant.scan.notes.is_empty() {
+            text.push_str("### Notes\n\n");
+            for note in &variant.scan.notes {
+                text.push_str(&format!("- `{}`\n", inline(note)));
+            }
+            text.push('\n');
+        }
     }
     text
 }

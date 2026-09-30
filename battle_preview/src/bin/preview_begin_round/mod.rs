@@ -6,9 +6,10 @@ use std::{
 
 use battle::engine::{runtime::BattleRuntime, skill::effect::catalog};
 use battle_preview::{
-    begin_round_inputs, canonical_comparison, expand_compressed_fight_steps, first_diff_path,
-    normalize_live_json, opening_determinism, preview_attributes, preview_output_text,
-    render_json_with_capture_conventions, seed_round_determinism, tower_plan_id,
+    array_len_diff_lines, begin_round_inputs, canonical_comparison, expand_compressed_fight_steps,
+    first_diff_path, normalize_live_json, opening_determinism, preview_attributes,
+    preview_output_text, render_json_with_capture_conventions, seed_round_determinism,
+    tower_plan_id,
 };
 use sonettobuf::{BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep};
 
@@ -62,6 +63,9 @@ fn run() -> anyhow::Result<()> {
             && let Some(path) = first_diff_path(generated_round, original_round, "/round")
         {
             eprintln!("  first round diff: {path}");
+            for line in array_len_diff_lines(generated_round, original_round, &path, "/round") {
+                eprintln!("    {line}");
+            }
         }
         let output = output_path(&input_root, &output_root, &input)?;
         if let Some(parent) = output.parent() {
@@ -439,15 +443,7 @@ fn round_indices(path: &Path, through: i32) -> anyhow::Result<Vec<i32>> {
 fn output_path(input_root: &Path, output_root: &Path, input: &Path) -> anyhow::Result<PathBuf> {
     Ok(match input.strip_prefix(input_root) {
         Ok(path) => output_root.join(path),
-        Err(_) => {
-            let battle = input
-                .parent()
-                .and_then(|path| path.file_name())
-                .unwrap_or_default();
-            output_root
-                .join(battle)
-                .join(input.file_name().unwrap_or_default())
-        }
+        Err(_) => battle_preview::external_output_path(output_root, &fs::canonicalize(input)?),
     })
 }
 

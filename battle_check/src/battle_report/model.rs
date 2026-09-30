@@ -24,6 +24,7 @@ pub(crate) struct Scan {
     pub(crate) buffs: Vec<Buff>,
     pub(crate) errors: BTreeSet<String>,
     pub(crate) warnings: BTreeSet<String>,
+    pub(crate) notes: BTreeSet<String>,
     pub(crate) gaps: usize,
 }
 
