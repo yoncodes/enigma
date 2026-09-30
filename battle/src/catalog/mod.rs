@@ -627,6 +627,7 @@ impl BattleCatalog {
         let (group1, group2, _) = crate::engine::entity::skill::Skill::active_skills(
             self.game_data,
             model_id,
+            crate::engine::entity::stats::configured_rank(self.game_data, model_id, trial.level),
             trial.ex_skill_lv,
         );
         Some(ConfiguredSkillGroups { group1, group2 })

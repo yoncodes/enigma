@@ -224,7 +224,7 @@ impl EntityBuilder {
         }
         let attr = stats.base();
         let (skill_group1, skill_group2, configured_ex_skill) =
-            Skill::active_skills(tables, trial.hero_id, trial.ex_skill_lv);
+            Skill::active_skills(tables, trial.hero_id, rank, trial.ex_skill_lv);
         let (ex_point_type, ex_point_max) = Self::ex_point_spec(tables, trial.hero_id);
         let device_owned = crate::catalog::configured_conduit_device_id(
             tables,
