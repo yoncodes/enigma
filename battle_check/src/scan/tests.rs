@@ -189,6 +189,28 @@ fn non_device_max_roots_keep_character_groups_and_ultimate() {
 }
 
 #[test]
+fn hero_roots_cover_every_kit_tier() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut skills = VecDeque::new();
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    collect_hero_build_roots(3120, None, None, db, &mut skills, &mut report).unwrap();
+
+    let ids = skills
+        .into_iter()
+        .map(|pending| pending.id)
+        .collect::<Vec<_>>();
+    // Pre-Insight kit, Insight replacement, and an intermediate Portrait tier.
+    for id in [31200201, 31200211, 31200111, 31200131, 312001213, 312001214] {
+        assert!(ids.contains(&id), "missing kit tier skill {id}");
+    }
+}
+
+#[test]
 fn choice_families_keep_primary_roots_and_scan_alternatives() {
     crate::init_config().unwrap();
     let db = config::get();
