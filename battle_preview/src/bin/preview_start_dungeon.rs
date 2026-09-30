@@ -193,24 +193,8 @@ fn compare_card_push(path: &Path, generated: CardInfoPush) -> anyhow::Result<Opt
                 .and_then(serde_json::Value::as_array)
                 .map(Vec::len);
             eprintln!("  card push {field} generated={generated_len:?} captured={captured_len:?}");
-            if field == "cardGroup" {
-                let summary = |value: &serde_json::Value| {
-                    value
-                        .get("cardGroup")
-                        .and_then(serde_json::Value::as_array)
-                        .into_iter()
-                        .flatten()
-                        .map(|card| {
-                            (
-                                card.get("uid").and_then(serde_json::Value::as_i64),
-                                card.get("skillId").and_then(serde_json::Value::as_i64),
-                                card.get("tempCard").and_then(serde_json::Value::as_bool),
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                };
-                eprintln!("  generated cards={:?}", summary(&generated));
-                eprintln!("  captured cards={:?}", summary(&captured));
+            for line in array_len_diff_lines(&generated, &captured, &path, "/cardInfoPush") {
+                eprintln!("    {line}");
             }
         }
     }
