@@ -4,8 +4,9 @@ use crate::{
     character_destiny_facets_consume::CharacterDestinyFacetsConsume,
     character_destiny_slots::CharacterDestinySlots, character_level::CharacterLevel,
     character_rank::CharacterRank, character_talent::CharacterTalent,
-    character_voice::CharacterVoice, hero3124_skill_talent::Hero3124SkillTalent, skin::Skin,
-    talent_scheme::TalentScheme, talent_style_cost::TalentStyleCost,
+    character_voice::CharacterVoice, fight_eziozhuangbei::FightEziozhuangbei,
+    hero3124_skill_talent::Hero3124SkillTalent, skin::Skin, talent_scheme::TalentScheme,
+    talent_style_cost::TalentStyleCost,
 };
 
 impl GameDB {
@@ -150,9 +151,38 @@ impl GameDB {
             .ok()
     }
 
-    pub fn has_character_weapon(&self, main_id: i32, sub_id: i32, skill_level: i32) -> bool {
-        self.fight_eziozhuangbei.iter().any(|row| {
+    pub fn has_character_weapon(
+        &self,
+        hero_id: i32,
+        main_id: i32,
+        sub_id: i32,
+        skill_level: i32,
+    ) -> bool {
+        self.gear_rows(hero_id).any(|row| {
             row.first_id == main_id && row.second_id == sub_id && row.skill_level == skill_level
+        })
+    }
+
+    /// Gear rows a hero can equip. The gear table has no hero column; heroes
+    /// whose unique skill kind is the weapon kind own it.
+    pub fn gear_rows(&self, hero_id: i32) -> impl Iterator<Item = &FightEziozhuangbei> {
+        const WEAPON_UNIQUE_SKILL_KIND: i32 = 2;
+        let owns_gear = self.character_unique_skill_kind(hero_id) == Some(WEAPON_UNIQUE_SKILL_KIND);
+        self.fight_eziozhuangbei.iter().filter(move |_| owns_gear)
+    }
+
+    /// Gear row selected by a hero's `extraStr` ("first#second").
+    pub fn equipped_gear(
+        &self,
+        hero_id: i32,
+        extra_str: &str,
+        skill_level: i32,
+    ) -> Option<&FightEziozhuangbei> {
+        let mut ids = extra_str.split('#').map(|id| id.trim().parse::<i32>().ok());
+        let first = ids.next().flatten().filter(|id| *id > 0)?;
+        let second = ids.next().flatten().unwrap_or(0);
+        self.gear_rows(hero_id).find(|row| {
+            row.first_id == first && row.second_id == second && row.skill_level == skill_level
         })
     }
 

@@ -41,6 +41,13 @@ impl Skill {
                 Self::get_from_character(game, hero.hero_id, 1),
                 Self::get_from_character(game, hero.hero_id, 2),
             )
+        } else if let Some(gear) =
+            game.equipped_gear(hero.hero_id, &hero.extra_str, hero.ex_skill_level)
+        {
+            (
+                configured_skill_ids(game, &gear.skill_group1),
+                configured_skill_ids(game, &gear.skill_group2),
+            )
         } else {
             let (group1, group2, _) =
                 Self::active_skills(game, hero.hero_id, hero.rank, hero.ex_skill_level);
@@ -67,7 +74,12 @@ impl Skill {
         hero: &HeroBuildInput,
         destiny: Option<&HashMap<i32, i32>>,
     ) -> i32 {
-        let ex = Self::active_skills(game, hero.hero_id, hero.rank, hero.ex_skill_level).2;
+        let ex = game
+            .equipped_gear(hero.hero_id, &hero.extra_str, hero.ex_skill_level)
+            .map(|gear| gear.skill_ex)
+            .unwrap_or_else(|| {
+                Self::active_skills(game, hero.hero_id, hero.rank, hero.ex_skill_level).2
+            });
         destiny.and_then(|map| map.get(&ex).copied()).unwrap_or(ex)
     }
 

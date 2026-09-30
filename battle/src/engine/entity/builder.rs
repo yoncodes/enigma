@@ -505,6 +505,42 @@ mod tests {
     }
 
     #[test]
+    fn ezio_equipped_gear_replaces_the_kit_and_adds_its_passives() {
+        crate::test_support::init_config();
+        let hero = HeroBuildInput {
+            uid: 20_000_004,
+            user_id: 1,
+            hero_id: 3123,
+            skin: 312302,
+            level: 180,
+            rank: 4,
+            ex_skill_level: 5,
+            talent: 10,
+            extra_str: "1001#2003".to_owned(),
+            ..Default::default()
+        };
+
+        let geared = EntityBuilder::new(hero.clone(), 1, 1, false).build();
+        assert_eq!(geared.skill_group1, vec![312301142, 312301152, 312301162]);
+        assert_eq!(geared.skill_group2, vec![312301242, 312301252, 312301262]);
+        assert_eq!(geared.ex_skill, Some(312301313));
+        assert!(geared.passive_skill.ends_with(&[312301701, 312300011]));
+
+        let plain = EntityBuilder::new(
+            HeroBuildInput {
+                extra_str: String::new(),
+                ..hero
+            },
+            1,
+            1,
+            false,
+        )
+        .build();
+        assert_ne!(plain.skill_group1, geared.skill_group1);
+        assert!(!plain.passive_skill.contains(&312300011));
+    }
+
+    #[test]
     fn nautika_trial_gains_faith_only_from_insight_two() {
         crate::test_support::init_config();
 
