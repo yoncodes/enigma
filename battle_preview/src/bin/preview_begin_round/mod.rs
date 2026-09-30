@@ -6,10 +6,10 @@ use std::{
 
 use battle::engine::{runtime::BattleRuntime, skill::effect::catalog};
 use battle_preview::{
-    array_len_diff_lines, begin_round_inputs, canonical_comparison, expand_compressed_fight_steps,
-    first_diff_path, normalize_live_json, opening_determinism, preview_attributes,
-    preview_output_text, render_json_with_capture_conventions, seed_round_determinism,
-    tower_plan_id,
+    array_len_diff_lines, begin_round_inputs, build_metadata_source, canonical_comparison,
+    expand_compressed_fight_steps, first_diff_path, normalize_live_json, opening_determinism,
+    preview_attributes, preview_output_text, render_json_with_capture_conventions,
+    seed_round_determinism, tower_plan_id,
 };
 use sonettobuf::{BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep};
 
@@ -76,9 +76,10 @@ fn run() -> anyhow::Result<()> {
             preview_output_text(&output_value, &original, original_text)?,
         )?;
         println!(
-            "{} round={}",
+            "{} round={} build={}",
             output.display(),
             if round_matches { "MATCH" } else { "DIFF" },
+            build_metadata_source(&input)?,
         );
     }
 

@@ -10,7 +10,7 @@ mod compression;
 mod normalize;
 mod replay_rng;
 
-pub use attributes::{loadout_diffs, preview_attributes};
+pub use attributes::{build_metadata_source, loadout_diffs, preview_attributes};
 pub use compression::expand_compressed_fight_steps;
 pub use normalize::normalize_live_json;
 pub use replay_rng::{opening_determinism, seed_round_determinism};
