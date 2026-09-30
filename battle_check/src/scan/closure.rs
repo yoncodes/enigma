@@ -109,7 +109,7 @@ fn scan_skill(
             None => {
                 report.gap(behavior_key.clone(), "unvalidated behavior arguments");
                 report.error(format!(
-                    "UnvalidatedBehaviorArguments opcode={} type={}",
+                    "UnvalidatedBehaviorArguments path={slot_path} opcode={} type={}",
                     slot.behavior.spec.key.opcode, slot.behavior.spec.key.type_name,
                 ));
             }
