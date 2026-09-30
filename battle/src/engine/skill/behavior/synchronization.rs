@@ -219,6 +219,18 @@ fn damage_rule_ops(
     Some(ops)
 }
 
+pub(super) fn supports_props(behavior: &ParsedBehavior) -> bool {
+    definition(behavior).is_some()
+}
+
+pub(super) fn supports_big_skill_rate(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [base, bonus, threshold] if *base > 0 && *bonus >= 0 && *threshold > 0)
+}
+
+pub(super) fn supports_big_skill_end(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [rate] if *rate > 0)
+}
+
 fn damage_rate(behavior: &ParsedBehavior, current_hp: i32, max_hp: i32) -> Option<(i32, i32)> {
     match (
         behavior.spec.key.opcode,
