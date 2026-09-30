@@ -81,7 +81,7 @@ impl EntityBuilder {
             .unwrap_or_else(|| Attr::get(hero, &self.equips));
         let (sg1, sg2, configured_ex_skill) =
             Skill::loadout(game, hero, self.is_sub, destiny.as_ref());
-        let ex_point_type = Self::ex_point_spec(game, hero.hero_id).0;
+        let ex_point_type = Self::ex_point_spec(game, hero.hero_id, hero.rank).0;
         let device_owned = crate::catalog::configured_conduit_device_id(
             game,
             hero.hero_id,
@@ -224,8 +224,8 @@ impl EntityBuilder {
         }
         let attr = stats.base();
         let (skill_group1, skill_group2, configured_ex_skill) =
-            Skill::active_skills(tables, trial.hero_id, trial.ex_skill_lv);
-        let (ex_point_type, ex_point_max) = Self::ex_point_spec(tables, trial.hero_id);
+            Skill::active_skills(tables, trial.hero_id, rank, trial.ex_skill_lv);
+        let (ex_point_type, ex_point_max) = Self::ex_point_spec(tables, trial.hero_id, rank);
         let device_owned = crate::catalog::configured_conduit_device_id(
             tables,
             trial.hero_id,
@@ -392,16 +392,8 @@ impl EntityBuilder {
         }
     }
 
-    fn ex_point_spec(game: &config::GameDB, hero_id: i32) -> (i32, i32) {
-        let spec = game
-            .character_rank_replace
-            .get(hero_id)
-            .map(|r| r.unique_skill_point.as_str())
-            .or_else(|| {
-                game.character
-                    .get(hero_id)
-                    .map(|c| c.unique_skill_point.as_str())
-            });
+    fn ex_point_spec(game: &config::GameDB, hero_id: i32, rank: i32) -> (i32, i32) {
+        let spec = crate::catalog::configured_unique_skill_point(game, hero_id, rank);
 
         let mut values = spec.into_iter().flat_map(|spec| spec.split('#'));
         (
@@ -510,6 +502,23 @@ mod tests {
         assert_eq!(entity.ex_point_type, Some(4));
         assert_eq!(entity.ex_point_max, Some(100));
         assert_eq!(entity.ex_skill, Some(0));
+    }
+
+    #[test]
+    fn nautika_trial_gains_faith_only_from_insight_two() {
+        crate::test_support::init_config();
+
+        let (before, _) = EntityBuilder::trial(5280101, 10, 1, 1).unwrap();
+        assert_eq!(
+            (before.ex_point_type, before.ex_point_max),
+            (Some(0), Some(5))
+        );
+
+        let (after, _) = EntityBuilder::trial(5280102, 10, 1, 1).unwrap();
+        assert_eq!(
+            (after.ex_point_type, after.ex_point_max),
+            (Some(1), Some(8))
+        );
     }
 
     #[test]
