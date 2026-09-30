@@ -1242,6 +1242,24 @@ pub(crate) fn summoned_unique_skills(game_data: &config::GameDB, summoned_id: i3
         .collect()
 }
 
+pub(crate) fn configured_unique_skill_point(
+    game_data: &config::GameDB,
+    hero_id: i32,
+    rank: i32,
+) -> Option<&str> {
+    game_data
+        .character_rank_replace
+        .get(hero_id)
+        .filter(|_| rank > 2)
+        .map(|row| row.unique_skill_point.as_str())
+        .or_else(|| {
+            game_data
+                .character
+                .get(hero_id)
+                .map(|row| row.unique_skill_point.as_str())
+        })
+}
+
 pub(crate) fn configured_ex_point_max(
     game_data: &config::GameDB,
     explicit_max: Option<i32>,
@@ -1254,22 +1272,7 @@ pub(crate) fn configured_ex_point_max(
 
     let model_id = model_id?;
     let rank = crate::engine::entity::stats::configured_rank(game_data, model_id, level);
-    let spec = if rank > 2 {
-        game_data
-            .character_rank_replace
-            .get(model_id)
-            .map(|row| row.unique_skill_point.as_str())
-    } else {
-        None
-    }
-    .or_else(|| {
-        game_data
-            .character
-            .get(model_id)
-            .map(|row| row.unique_skill_point.as_str())
-    });
-
-    if let Some(spec) = spec {
+    if let Some(spec) = configured_unique_skill_point(game_data, model_id, rank) {
         return spec.split('#').nth(1)?.trim().parse().ok();
     }
 

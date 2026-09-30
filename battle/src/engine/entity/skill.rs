@@ -121,7 +121,7 @@ impl Skill {
         };
         let mut group1 = parse_skill_group(skill, 1);
         let mut group2 = parse_skill_group(skill, 2);
-        // Portrayal upgrades a rank-replaced kit only after the replacement.
+        // Portraits upgrade a rank-replaced kit only after the replacement.
         if rank_replace.is_some() && rank <= 2 {
             return (group1, group2, ex_skill);
         }
