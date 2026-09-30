@@ -163,12 +163,14 @@ impl GameDB {
         })
     }
 
-    /// Gear rows a hero can equip. The gear table has no hero column; heroes
-    /// whose unique skill kind is the weapon kind own it.
+    /// Gear rows a hero can equip. The table has no hero column and the
+    /// resource kind in `uniqueSkill_point` is not an owner; like the client,
+    /// the table belongs to Ezio.
     pub fn gear_rows(&self, hero_id: i32) -> impl Iterator<Item = &FightEziozhuangbei> {
-        const WEAPON_UNIQUE_SKILL_KIND: i32 = 2;
-        let owns_gear = self.character_unique_skill_kind(hero_id) == Some(WEAPON_UNIQUE_SKILL_KIND);
-        self.fight_eziozhuangbei.iter().filter(move |_| owns_gear)
+        const GEAR_HERO: i32 = 3123;
+        self.fight_eziozhuangbei
+            .iter()
+            .filter(move |_| hero_id == GEAR_HERO)
     }
 
     /// Gear row selected by a hero's `extraStr` ("first#second").
