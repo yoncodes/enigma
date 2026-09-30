@@ -958,8 +958,19 @@ mod tests {
             .iter()
             .map(|card| (card.uid.unwrap(), card.skill_id.unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(deal.len(), 5);
-        assert!(deal.iter().all(|(uid, _)| matches!(uid, -1 | -2)));
+        // Captured episode 10002: seven cards as dealt, composed to five.
+        assert_eq!(
+            deal,
+            vec![
+                (-1, 30250121),
+                (-1, 30250121),
+                (-1, 30250121),
+                (-2, 30230111),
+                (-2, 30230111),
+                (-2, 30230121),
+                (-1, 30250121),
+            ]
+        );
         assert_eq!(
             cards
                 .deal_card_group
@@ -973,7 +984,17 @@ mod tests {
             .into_iter()
             .map(|card| (card.uid.unwrap(), card.skill_id.unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(opening, deal);
+        assert_eq!(
+            opening,
+            vec![
+                (-1, 30250122),
+                (-1, 30250121),
+                (-2, 30230112),
+                (-2, 30230121),
+                (-1, 30250121),
+            ]
+        );
+        assert_eq!(opening[4], opening[1]);
         let attacker = built.fight.attacker.unwrap();
         let defender = built.fight.defender.unwrap();
 

@@ -149,7 +149,7 @@ fn opening_adds_one_ready_ultimate_outside_the_normal_hand() {
 }
 
 #[test]
-fn version_seven_opening_projections_use_the_committed_composed_order() {
+fn version_seven_opening_deals_before_composition_and_hands_after() {
     crate::test_support::init_config();
     let fight = Fight {
         version: Some(7),
@@ -207,12 +207,17 @@ fn version_seven_opening_projections_use_the_committed_composed_order() {
             .filter_map(|card| card.skill_id)
             .collect::<Vec<_>>()
     };
-    let expected = vec![31020121, 31020111, 31020121, 31020112, 31020121];
-    assert_eq!(skills(&round.team_a_cards1), expected);
-    assert_eq!(skills(&push.card_group), expected);
-    assert_eq!(skills(&push.deal_card_group), expected);
-    assert_eq!(round.team_a_cards1, push.card_group);
+    // The dealt snapshot keeps the cards as dealt; the hand shows them after
+    // composition.
+    assert_eq!(
+        skills(&round.team_a_cards1),
+        vec![31020121, 31020111, 31020121, 31020111, 31020111, 31020121]
+    );
     assert_eq!(round.team_a_cards1, push.deal_card_group);
+    assert_eq!(
+        skills(&push.card_group),
+        vec![31020121, 31020111, 31020121, 31020112, 31020121]
+    );
     assert_eq!(push.card_group, runtime.managers.card.hand());
     fn contains_effect(steps: &[sonettobuf::FightStep], types: &[i32]) -> bool {
         steps
@@ -356,15 +361,16 @@ fn tutorial_without_scripted_cards_uses_the_normal_opening() {
 
     assert!(!runtime.determinism.has_queued_card_draw());
     let push = runtime.card_info_push();
-    assert_eq!(round.team_a_cards1.len(), 5);
+    // Captured episode 10002 deals 7 and composes to a 5-card hand.
+    assert_eq!(round.team_a_cards1.len(), 7);
     assert!(
         round
             .team_a_cards1
             .iter()
             .all(|card| card.uid == Some(-1) || card.uid == Some(-2))
     );
-    assert_eq!(round.team_a_cards1, push.card_group);
     assert_eq!(round.team_a_cards1, push.deal_card_group);
+    assert_eq!(push.card_group.len(), 5);
 }
 
 #[test]
@@ -460,12 +466,13 @@ fn tutorial_without_scripted_opening_uses_the_normal_hand_size() {
     };
     let mut runtime = runtime(fight);
 
-    let round = runtime.build_start_round_from_schedule().unwrap();
+    let round = runtime.start_round().unwrap();
 
     let push = runtime.card_info_push();
-    assert_eq!(round.team_a_cards1.len(), 4);
-    assert_eq!(round.team_a_cards1, push.card_group);
+    // Captured episode 10003 deals 7 and composes to a 4-card hand.
+    assert_eq!(round.team_a_cards1.len(), 7);
     assert_eq!(round.team_a_cards1, push.deal_card_group);
+    assert_eq!(push.card_group.len(), 4);
 }
 
 #[test]

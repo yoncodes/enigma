@@ -250,6 +250,18 @@ fn element_summary(value: &serde_json::Value) -> String {
             .collect::<Vec<_>>();
         return format!("step({})", effects.join(" "));
     }
+    if value.get("skillId").is_some() && value.get("uid").is_some() {
+        return format!(
+            "card(uid={} skill={}{})",
+            field(value, "uid"),
+            field(value, "skillId"),
+            if value.get("tempCard").and_then(serde_json::Value::as_bool) == Some(true) {
+                " temp"
+            } else {
+                ""
+            }
+        );
+    }
     if value.get("effectType").is_some() {
         let buff = value
             .get("buff")
