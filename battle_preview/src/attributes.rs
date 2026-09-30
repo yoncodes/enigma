@@ -642,6 +642,7 @@ fn preview_build_input(
             .or(hero.destiny_rank)
             .unwrap_or_default(),
         destiny_stone: entity.destiny_stone.unwrap_or_default(),
+        extra_str: hero.extra_str.clone().unwrap_or_default(),
     })
 }
 

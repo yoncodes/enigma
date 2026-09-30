@@ -131,6 +131,31 @@ pub(crate) fn collect_hero_build_roots(
                 destiny.as_ref(),
             );
         }
+        for gear in db.gear_rows(hero_id) {
+            let path = format!(
+                "hero {hero_id} > gear {}#{} Portrait {}",
+                gear.first_id, gear.second_id, gear.skill_level
+            );
+            enqueue_kit_tier(
+                skills,
+                &path,
+                [
+                    configured_skill_ids(&gear.skill_group1, db),
+                    configured_skill_ids(&gear.skill_group2, db),
+                ],
+                gear.skill_ex,
+                destiny.as_ref(),
+            );
+            for skill_id in configured_skill_ids(&gear.passive_skill, db) {
+                enqueue(skills, skill_id, format!("{path} passive"));
+            }
+            if !gear.exchange_skills.trim().is_empty() {
+                report.warning(format!(
+                    "GearExchangeSkillsUnsupported path={path} raw={:?}",
+                    gear.exchange_skills
+                ));
+            }
+        }
         for row in db
             .skill_ex_level
             .iter()

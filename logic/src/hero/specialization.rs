@@ -15,6 +15,7 @@ impl HeroManager {
         let data = hero.get_hero(hero_id).await?;
         if (main_id != 0 || sub_id != 0)
             && !config::configs::get().has_character_weapon(
+                hero_id,
                 main_id,
                 sub_id,
                 data.record.ex_skill_level,
