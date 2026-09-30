@@ -1226,7 +1226,7 @@ buff_act_definitions! {
         runtime: |context| super::revive::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::revive::supports_dying_heal, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1010, "DyingHealDisperse1"), &[EffectType::None as i32]));
     (1011, "CureUpByLostHp") => CureUpByLostHp,
-        supports: |args| matches!(args, [200, 75, 8, 100]),
+        supports: |args| matches!(args, [base, per_step, max_steps, step_size] if *base >= 0 && *per_step >= 0 && *max_steps >= 0 && *step_size > 0),
         state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1011, "CureUpByLostHp"), &[EffectType::Cureupbylosthp as i32]));
     (1019, "LostHpCountAddBuff") => LostHpCountAddBuff,
