@@ -664,6 +664,21 @@ fn maximum_buff_layer_gate_is_an_exact_inline_predicate() {
 }
 
 #[test]
+fn own_ultimate_use_fires_before_the_ultimate_damages() {
+    assert_eq!(
+        parse(25201, "UseExSkill", &[]),
+        Some(ParsedConditionKind::UseExSkill)
+    );
+    assert_eq!(
+        find_key(25201, "UseExSkill").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        })
+    );
+}
+
+#[test]
 fn trigger_families_reject_unconfigured_ids_and_wrong_types() {
     assert_eq!(
         parse(741402, "TriggerTypeBullet", &[]),
