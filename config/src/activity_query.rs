@@ -194,8 +194,7 @@ impl GameDB {
 mod tests {
     #[test]
     fn act220_first_online_episode_matches_the_captured_activity() {
-        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
-        let _ = crate::init(&data_dir);
+        crate::init_test_config();
         let tables = crate::configs::get();
 
         assert_eq!(
@@ -206,8 +205,7 @@ mod tests {
 
     #[test]
     fn act236_reward_rows_load_for_the_configured_activity() {
-        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
-        let _ = crate::init(&data_dir);
+        crate::init_test_config();
         let tables = crate::configs::get();
         let activity_id = tables.latest_open_activity_id(236).unwrap();
         let rows = tables
@@ -223,8 +221,7 @@ mod tests {
 
     #[test]
     fn act236_charge_score_uses_configured_price_and_conversion_rate() {
-        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
-        let _ = crate::init(&data_dir);
+        crate::init_test_config();
         let tables = crate::configs::get();
         let activity_id = tables.latest_open_activity_id(236).unwrap();
 
@@ -252,8 +249,7 @@ mod tests {
 
     #[test]
     fn act128_rank_config_maps_currency_thresholds_and_captured_rewards() {
-        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
-        let _ = crate::init(&data_dir);
+        crate::init_test_config();
         let tables = crate::configs::get();
 
         assert_eq!(tables.activity128_rank_currency_id(), Some(3206));

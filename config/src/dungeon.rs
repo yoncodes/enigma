@@ -82,11 +82,7 @@ impl GameDB {
 mod tests {
     #[test]
     fn story_and_tutorial_episode_queries_do_not_overlap() {
-        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join("data/excel2json");
-        let _ = crate::init(data_dir.to_str().unwrap());
+        crate::init_test_config();
         let story = crate::get()
             .story_episodes()
             .map(|episode| episode.id)

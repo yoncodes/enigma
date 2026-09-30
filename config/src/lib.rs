@@ -7,6 +7,25 @@ pub(crate) fn load_rows<T: serde::de::DeserializeOwned>(path: &str) -> anyhow::R
     Ok(rows)
 }
 
+/// Loads the workspace game-data snapshot once for config tests.
+#[cfg(test)]
+pub(crate) fn init_test_config() {
+    let data_dir = std::env::var_os("ENIGMA_BATTLE_DATA_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("config crate must live under the workspace root")
+                .join("data/excel2json")
+        });
+    init(
+        data_dir
+            .to_str()
+            .expect("workspace game-data path must be valid UTF-8"),
+    )
+    .expect("test game data must load");
+}
+
 // Handwritten semantic queries belong here, not in generated table files or callers.
 mod activity_query;
 mod battle_pass;
