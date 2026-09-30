@@ -21,6 +21,8 @@ impl CapabilityKey {
 pub(crate) struct Report {
     pub(crate) errors: BTreeSet<String>,
     pub(crate) warnings: BTreeSet<String>,
+    // Unproven but not actionable, e.g. wire markers inferred without a capture.
+    pub(crate) notes: BTreeSet<String>,
     pub(crate) checked_skills: HashSet<i32>,
     pub(crate) checked_buffs: HashSet<i32>,
     pub(crate) capabilities: BTreeSet<CapabilityKey>,
@@ -46,6 +48,12 @@ impl Report {
     pub(super) fn warning(&mut self, message: impl Into<String>) {
         if !self.quiet {
             self.warnings.insert(message.into());
+        }
+    }
+
+    pub(super) fn note(&mut self, message: impl Into<String>) {
+        if !self.quiet {
+            self.notes.insert(message.into());
         }
     }
 
@@ -76,14 +84,24 @@ impl Report {
         for error in &self.errors {
             println!("ERROR {error}");
         }
+        for (key, reasons) in &self.gaps {
+            let reasons = reasons.iter().copied().collect::<Vec<_>>().join(", ");
+            println!(
+                "GAP   {} opcode={} type={} reasons={reasons}",
+                key.domain, key.opcode, key.type_name
+            );
+        }
         for warning in &self.warnings {
             println!("WARN  {warning}");
+        }
+        for note in &self.notes {
+            println!("NOTE  {note}");
         }
         for explanation in &self.explanations {
             println!("INFO  {explanation}");
         }
         println!(
-            "{} skills={} buffs={} errors={} warnings={} gaps={}",
+            "{} skills={} buffs={} errors={} warnings={} notes={} gaps={}",
             if self.is_ready() {
                 "READY"
             } else {
@@ -93,6 +111,7 @@ impl Report {
             self.checked_buffs.len(),
             self.errors.len(),
             self.warnings.len(),
+            self.notes.len(),
             self.gaps.len(),
         );
     }

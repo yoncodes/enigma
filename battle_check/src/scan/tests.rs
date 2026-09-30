@@ -211,6 +211,42 @@ fn hero_roots_cover_every_kit_tier() {
 }
 
 #[test]
+fn inferred_wire_markers_are_notes_not_warnings() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut skills = VecDeque::new();
+    let mut report = Report::default();
+
+    collect_hero_build_roots(3120, None, None, db, &mut skills, &mut report).unwrap();
+    let mut catalog = SkillEffectCatalog::from_roots(
+        db,
+        skills.iter().map(|pending| pending.id),
+        std::iter::empty(),
+    );
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut VecDeque::new(),
+        &mut report,
+    );
+
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|note| note.starts_with("InferredBuffActMarker"))
+    );
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|warning| warning.starts_with("InferredBuffActMarker"))
+    );
+}
+
+#[test]
 fn choice_families_keep_primary_roots_and_scan_alternatives() {
     crate::init_config().unwrap();
     let db = config::get();

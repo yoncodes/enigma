@@ -477,7 +477,7 @@ fn scan_buff(
                                 .map_or("Inferred".to_owned(), |source| format!("Captured({source})")),
                         ));
                         if evidence.is_none() {
-                            report.warning(format!(
+                            report.note(format!(
                                 "InferredBuffActMarker act={} type={} phase={phase:?} effectType={effect_type}",
                                 act.id, act.r#type,
                             ));
