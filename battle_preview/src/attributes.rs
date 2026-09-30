@@ -78,6 +78,67 @@ pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<P
     Ok((ex_attributes, sp_attributes))
 }
 
+/// Rebuilds each captured attacker from its build inputs and lists where the
+/// engine's loadout differs from the captured one.
+pub fn loadout_diffs(fight: &Fight, battle_path: &Path) -> anyhow::Result<Vec<String>> {
+    let metadata = battle_build_metadata(battle_path)?;
+    let mut diffs = Vec::new();
+    let teams = fight.attacker.iter().flat_map(|team| {
+        team.entitys
+            .iter()
+            .map(|entity| (entity, false))
+            .chain(team.sub_entitys.iter().map(|entity| (entity, true)))
+    });
+    for (entity, is_sub) in teams {
+        let uid = entity.uid.unwrap_or_default();
+        let built = if let Some((trial, _)) = configured_trial(entity)? {
+            trial
+        } else {
+            let hero = metadata.get(&uid).ok_or_else(|| {
+                anyhow::anyhow!("loadout preview missing build metadata uid={uid}")
+            })?;
+            battle::engine::entity::builder::EntityBuilder::new(
+                preview_build_input(entity, hero)?,
+                entity.position.unwrap_or_default(),
+                entity.team_type.unwrap_or_default(),
+                is_sub,
+            )
+            .build()
+        };
+        let fields = [
+            (
+                "skillGroup1",
+                format!("{:?}", built.skill_group1),
+                format!("{:?}", entity.skill_group1),
+            ),
+            (
+                "skillGroup2",
+                format!("{:?}", built.skill_group2),
+                format!("{:?}", entity.skill_group2),
+            ),
+            (
+                "exSkill",
+                format!("{}", built.ex_skill.unwrap_or_default()),
+                format!("{}", entity.ex_skill.unwrap_or_default()),
+            ),
+            (
+                "exPointType",
+                format!("{}", built.ex_point_type.unwrap_or_default()),
+                format!("{}", entity.ex_point_type.unwrap_or_default()),
+            ),
+        ];
+        for (field, built, captured) in fields {
+            if built != captured {
+                diffs.push(format!(
+                    "uid={uid} hero={} {field} built={built} captured={captured}",
+                    entity.model_id.unwrap_or_default()
+                ));
+            }
+        }
+    }
+    Ok(diffs)
+}
+
 #[derive(Debug, Default)]
 struct BattleRequestMetadata {
     is_balance: bool,
@@ -1016,6 +1077,32 @@ mod tests {
             (vec![(uid, expected.ex())], vec![(uid, expected.sp())]),
         );
         assert_ne!(expected, unbalanced);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn loadout_diffs_report_fields_that_differ_from_the_rebuilt_entity() {
+        crate::init_test_config();
+        let uid = 42;
+        let trial_id = 116385001;
+        let mut fight = fight(uid);
+        let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
+        entity.trial_id = Some(trial_id);
+        let (built, _) =
+            battle::engine::entity::builder::EntityBuilder::trial(trial_id, uid, 0, 0).unwrap();
+        entity.skill_group1 = built.skill_group1.clone();
+        entity.skill_group2 = built.skill_group2.clone();
+        entity.ex_skill = built.ex_skill;
+        entity.ex_point_type = built.ex_point_type;
+        let directory = test_directory("loadout");
+        let path = directory.join("StartDungeonReply.json");
+
+        assert!(loadout_diffs(&fight, &path).unwrap().is_empty());
+
+        fight.attacker.as_mut().unwrap().entitys[0].ex_skill = Some(1);
+        let diffs = loadout_diffs(&fight, &path).unwrap();
+        assert_eq!(diffs.len(), 1);
+        assert!(diffs[0].contains("exSkill"));
         fs::remove_dir_all(directory).unwrap();
     }
 
