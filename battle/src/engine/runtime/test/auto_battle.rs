@@ -425,6 +425,38 @@ fn auto_round_indices_replay_through_the_real_round_after_merges() {
 }
 
 #[test]
+fn auto_round_picks_one_of_a_choice_cards_options() {
+    let runtime_with_seed = |seed| {
+        let mut runtime = team_runtime(
+            vec![team_hero(10, 3120, 1_000, [31200111, 312001215])],
+            vec![hand_card(10, 312001215, false)],
+        );
+        runtime.determinism = RoundDeterminism::with_seed(seed);
+        runtime
+    };
+    let picks: std::collections::HashSet<_> = (1..=20)
+        .map(|seed| {
+            runtime_with_seed(seed)
+                .plan_auto_round(&AutoRoundRequest::default())
+                .opers[0]
+                .param3
+        })
+        .collect();
+    assert_eq!(picks, [Some(31200164), Some(31200231)].into());
+
+    let mut runtime = runtime_with_seed(1);
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+    assert_eq!(reply.opers.len(), 1);
+    runtime
+        .advance_round(BeginRoundRequest {
+            opers: reply.opers,
+            auto_oper: Some(true),
+            ..Default::default()
+        })
+        .unwrap();
+}
+
+#[test]
 fn auto_round_plays_hero_precasts_first_and_leaves_stage_cards_alone() {
     let runtime = support_runtime(
         1_000,

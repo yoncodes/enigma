@@ -29,6 +29,7 @@ struct Candidate {
     skill_id: i32,
     target_uid: i64,
     normal_ap: i32,
+    chosen_skill_id: Option<i32>,
     free: bool,
     ultimate: bool,
     support: Support,
@@ -55,6 +56,30 @@ pub(crate) fn plan(
 ) -> AutoRoundReply {
     // Every card resolves before any skill runs, so indices, AP and readiness use round-start state.
     let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
+    let options: Vec<i32> = managers
+        .card
+        .hand()
+        .iter()
+        .chain(managers.card.team_cards())
+        .flat_map(|card| card_choice_options(card, managers))
+        .chain(
+            request
+                .opers
+                .iter()
+                .filter_map(|oper| oper.param3)
+                .filter(|skill_id| *skill_id > 0),
+        )
+        .collect();
+    let catalog = if options.is_empty() {
+        std::borrow::Cow::Borrowed(catalog)
+    } else {
+        let mut extended = catalog.clone();
+        managers
+            .catalog()
+            .extend_skill_roots(&mut extended, options, std::iter::empty());
+        std::borrow::Cow::Owned(extended)
+    };
+    let catalog = catalog.as_ref();
     let mut cards = managers.card.clone();
     let mut sim = managers.clone();
     let mut sim_determinism = determinism.clone();
@@ -75,23 +100,33 @@ pub(crate) fn plan(
     let live_pool = pool.runtime_view(managers);
     let mut opers = Vec::new();
     let mut reported_unsupported = HashSet::new();
-    while let Some(candidate) = best_candidate(
-        &cards,
-        normal_ap,
-        request.to_id,
-        managers,
-        &sim,
-        &live_pool,
-        &pool.runtime_view(&sim),
-        catalog,
-        &sim_determinism,
-        &mut reported_unsupported,
-    ) {
+    loop {
+        let choices: Vec<_> = cards
+            .hand()
+            .iter()
+            .chain(cards.team_cards())
+            .map(|card| random_card_choice(card, managers, &mut sim_determinism))
+            .collect();
+        let Some(candidate) = best_candidate(
+            &cards,
+            &choices,
+            normal_ap,
+            request.to_id,
+            managers,
+            &sim,
+            &live_pool,
+            &pool.runtime_view(&sim),
+            catalog,
+            &sim_determinism,
+            &mut reported_unsupported,
+        ) else {
+            break;
+        };
         let play = CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: candidate.card_index,
             target_uid: Some(candidate.target_uid),
-            chosen_skill_id: None,
+            chosen_skill_id: candidate.chosen_skill_id,
             choice: None,
             recorded_skill: None,
         };
@@ -111,6 +146,7 @@ pub(crate) fn plan(
             oper_type: Some(CardOpType::PlayCard.id()),
             param1: Some(candidate.card_index as i32 + 1),
             to_id: Some(candidate.target_uid),
+            param3: candidate.chosen_skill_id,
             ..Default::default()
         });
     }
@@ -118,6 +154,35 @@ pub(crate) fn plan(
     reply(request, opers, devices_opers)
 }
 
+fn card_choice_options(card: &CardInfo, managers: &BattleManagers) -> Vec<i32> {
+    card.skill_id
+        .and_then(|skill_id| {
+            managers
+                .catalog()
+                .game_data()
+                .fight_card_choice
+                .get(skill_id)
+        })
+        .map(|row| {
+            row.choice_sk_ills
+                .split('#')
+                .filter_map(|option| option.trim().parse().ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+// Cards with a `fight_card_choice` row get one of their options at random.
+fn random_card_choice(
+    card: &CardInfo,
+    managers: &BattleManagers,
+    determinism: &mut RoundDeterminism,
+) -> Option<i32> {
+    let options = card_choice_options(card, managers);
+    options
+        .get(determinism.card_random_index(options.len())?)
+        .copied()
+}
 fn reply(
     request: &AutoRoundRequest,
     opers: Vec<BeginRoundOper>,
@@ -272,6 +337,7 @@ fn apply_prefix(
 #[allow(clippy::too_many_arguments)]
 fn best_candidate(
     cards: &CardManager,
+    choices: &[Option<i32>],
     normal_ap: i32,
     preferred_target: Option<i64>,
     managers: &BattleManagers,
@@ -288,7 +354,8 @@ fn best_candidate(
         .chain(cards.team_cards())
         .enumerate()
         .filter_map(|(card_index, card)| {
-            let (source_uid, skill_id) = card_identity(card, None)?;
+            let chosen_skill_id = choices.get(card_index).copied().flatten();
+            let (source_uid, skill_id) = card_identity(card, chosen_skill_id)?;
             let normal_ap_cost = action_point_cost(card, source_uid, skill_id, managers, catalog);
             if normal_ap_cost > normal_ap {
                 return None;
@@ -353,6 +420,7 @@ fn best_candidate(
                 skill_id,
                 target_uid,
                 normal_ap: normal_ap_cost,
+                chosen_skill_id,
                 free: normal_ap_cost == 0,
                 ultimate,
                 support,
