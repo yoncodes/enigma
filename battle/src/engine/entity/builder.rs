@@ -505,6 +505,62 @@ mod tests {
     }
 
     #[test]
+    fn kassandra_lit_talents_exchange_the_kit_and_add_their_skills() {
+        crate::test_support::init_config();
+        let hero = HeroBuildInput {
+            uid: 20_000_005,
+            user_id: 1,
+            hero_id: 3124,
+            skin: 312402,
+            level: 180,
+            rank: 4,
+            ex_skill_level: 5,
+            talent: 10,
+            extra_str: "1#11,12|2#21,22,23".to_owned(),
+            ..Default::default()
+        };
+
+        let lit = EntityBuilder::new(hero.clone(), 1, 1, false).build();
+        assert_eq!(lit.skill_group1, vec![312451115, 312451125, 312451135]);
+        assert_eq!(lit.skill_group2, vec![312431212, 312431222, 312431232]);
+        assert_eq!(lit.ex_skill, Some(312451031));
+        assert_eq!(
+            lit.passive_skill,
+            vec![
+                31243141, 31240142, 31244144, 312451405, 312401454, 312401451, 312451452,
+                312401444, 312401441, 312441440,
+            ]
+        );
+
+        let unlit = EntityBuilder::new(
+            HeroBuildInput {
+                extra_str: String::new(),
+                ..hero.clone()
+            },
+            1,
+            1,
+            false,
+        )
+        .build();
+        assert_eq!(unlit.skill_group1, vec![31243111, 31243112, 31243113]);
+        assert_eq!(unlit.ex_skill, Some(31242103));
+
+        // Talent 13 upgrades the passive talent 12 adds.
+        let upgraded = EntityBuilder::new(
+            HeroBuildInput {
+                extra_str: "1#11,12,13".to_owned(),
+                ..hero
+            },
+            1,
+            1,
+            false,
+        )
+        .build();
+        assert!(upgraded.passive_skill.contains(&312461452));
+        assert!(!upgraded.passive_skill.contains(&312451452));
+    }
+
+    #[test]
     fn ezio_equipped_gear_replaces_the_kit_and_adds_its_passives() {
         crate::test_support::init_config();
         let hero = HeroBuildInput {

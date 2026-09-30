@@ -163,12 +163,14 @@ impl GameDB {
         })
     }
 
-    /// Gear rows a hero can equip. The gear table has no hero column; heroes
-    /// whose unique skill kind is the weapon kind own it.
+    /// Gear rows a hero can equip. The table has no hero column and the
+    /// resource kind in `uniqueSkill_point` is not an owner; like the client,
+    /// the table belongs to Ezio.
     pub fn gear_rows(&self, hero_id: i32) -> impl Iterator<Item = &FightEziozhuangbei> {
-        const WEAPON_UNIQUE_SKILL_KIND: i32 = 2;
-        let owns_gear = self.character_unique_skill_kind(hero_id) == Some(WEAPON_UNIQUE_SKILL_KIND);
-        self.fight_eziozhuangbei.iter().filter(move |_| owns_gear)
+        const GEAR_HERO: i32 = 3123;
+        self.fight_eziozhuangbei
+            .iter()
+            .filter(move |_| hero_id == GEAR_HERO)
     }
 
     /// Gear row selected by a hero's `extraStr` ("first#second").
@@ -184,6 +186,68 @@ impl GameDB {
         self.gear_rows(hero_id).find(|row| {
             row.first_id == first && row.second_id == second && row.skill_level == skill_level
         })
+    }
+
+    /// Talent-tree rows a hero can light. Like the client, the table belongs
+    /// to Kassandra.
+    pub fn talent_tree_rows(&self, hero_id: i32) -> impl Iterator<Item = &Hero3124SkillTalent> {
+        const TALENT_TREE_HERO: i32 = 3124;
+        self.hero3124_skill_talent
+            .iter()
+            .filter(move |_| hero_id == TALENT_TREE_HERO)
+    }
+
+    /// Talents lit in a hero's `extraStr` ("sub#id,id|sub#id"), in talent-id
+    /// order, which is the order the client applies their skill exchanges.
+    pub fn lit_talents(&self, hero_id: i32, extra_str: &str) -> Vec<&Hero3124SkillTalent> {
+        let lit = extra_str
+            .split('|')
+            .filter_map(|group| group.split_once('#'))
+            .flat_map(|(_, ids)| ids.split(','))
+            .filter_map(|id| id.trim().parse::<i32>().ok())
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut rows = self
+            .talent_tree_rows(hero_id)
+            .filter(|row| lit.contains(&row.talent_id))
+            .collect::<Vec<_>>();
+        rows.sort_by_key(|row| row.talent_id);
+        rows
+    }
+
+    pub fn talent_skills_at(row: &Hero3124SkillTalent, skill_level: i32) -> (&str, &str) {
+        match skill_level {
+            0 => (&row.new_skills0, &row.exchange_skills0),
+            1 => (&row.new_skills1, &row.exchange_skills1),
+            2 => (&row.new_skills2, &row.exchange_skills2),
+            3 => (&row.new_skills3, &row.exchange_skills3),
+            4 => (&row.new_skills4, &row.exchange_skills4),
+            5 => (&row.new_skills5, &row.exchange_skills5),
+            _ => ("", ""),
+        }
+    }
+
+    pub fn talent_exchanges(
+        &self,
+        hero_id: i32,
+        extra_str: &str,
+        skill_level: i32,
+    ) -> Vec<(i32, i32)> {
+        self.lit_talents(hero_id, extra_str)
+            .into_iter()
+            .flat_map(|row| Self::talent_skills_at(row, skill_level).1.split('|'))
+            .filter_map(|pair| {
+                let (from, to) = pair.split_once('#')?;
+                Some((from.trim().parse().ok()?, to.trim().parse().ok()?))
+            })
+            .collect()
+    }
+
+    pub fn talent_new_skills(&self, hero_id: i32, extra_str: &str, skill_level: i32) -> Vec<i32> {
+        self.lit_talents(hero_id, extra_str)
+            .into_iter()
+            .flat_map(|row| Self::talent_skills_at(row, skill_level).0.split('#'))
+            .filter_map(|id| id.trim().parse().ok())
+            .collect()
     }
 
     pub fn hero_skill_talent(&self, sub_id: i32, level: i32) -> Option<&Hero3124SkillTalent> {

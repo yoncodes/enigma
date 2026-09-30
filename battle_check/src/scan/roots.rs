@@ -156,6 +156,24 @@ pub(crate) fn collect_hero_build_roots(
                 ));
             }
         }
+        for talent in db.talent_tree_rows(hero_id) {
+            for level in 0..=5 {
+                let (added, exchanges) = config::GameDB::talent_skills_at(talent, level);
+                let path = format!(
+                    "hero {hero_id} > talent {} Portrait {level}",
+                    talent.talent_id
+                );
+                let targets = exchanges
+                    .split('|')
+                    .filter_map(|pair| pair.split_once('#').map(|(_, to)| to));
+                for skill_id in configured_skill_ids(added, db)
+                    .into_iter()
+                    .chain(targets.flat_map(|to| configured_skill_ids(to, db)))
+                {
+                    enqueue(skills, skill_id, path.clone());
+                }
+            }
+        }
         for row in db
             .skill_ex_level
             .iter()
