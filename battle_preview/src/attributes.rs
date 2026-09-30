@@ -375,45 +375,69 @@ fn validated_equipment_loadout(
     Ok(std::iter::once(primary).chain(supplemental).collect())
 }
 
+/// Where attacker builds come from: the capture timeline; the roster files saved
+/// next to the battle; or, lowest confidence, the whole session's rosters and
+/// updates (which may include changes made after the battle).
+pub fn build_metadata_source(battle_path: &Path) -> anyhow::Result<&'static str> {
+    Ok(resolve_build_metadata(battle_path)?.1)
+}
+
 fn battle_build_metadata(path: &Path) -> anyhow::Result<HashMap<i64, HeroInfo>> {
+    Ok(resolve_build_metadata(path)?.0)
+}
+
+fn resolve_build_metadata(path: &Path) -> anyhow::Result<(HashMap<i64, HeroInfo>, &'static str)> {
     if let Some(captured) = capture_build_metadata(path)? {
-        return Ok(captured);
+        return Ok((captured, "timeline"));
     }
-    let Some(parent) = path.parent() else {
-        return Ok(HashMap::new());
-    };
     let mut roster_files = Vec::new();
     let mut update_files = Vec::new();
-    for path in fs::read_dir(parent)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-    {
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if name.starts_with("HeroInfoListReply") && name.ends_with(".json") {
-            roster_files.push(path);
-        } else if name.starts_with("HeroUpdatePush") && name.ends_with(".json") {
-            update_files.push(path);
+    if let Some(parent) = path.parent() {
+        for path in fs::read_dir(parent)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+        {
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if name.starts_with("HeroInfoListReply") && name.ends_with(".json") {
+                roster_files.push(path);
+            } else if name.starts_with("HeroUpdatePush") && name.ends_with(".json") {
+                update_files.push(path);
+            }
         }
     }
-    roster_files.sort();
-    update_files.sort();
-
-    let mut heroes = HashMap::new();
-    for file in roster_files {
-        apply_hero_roster(&file, &mut heroes)?;
+    if !roster_files.is_empty() || !update_files.is_empty() {
+        roster_files.sort();
+        update_files.sort();
+        let mut heroes = HashMap::new();
+        for file in roster_files {
+            apply_hero_roster(&file, &mut heroes)?;
+        }
+        for file in update_files {
+            apply_hero_update(&file, &mut heroes)?;
+        }
+        return Ok((heroes, "local"));
     }
-    for file in update_files {
-        apply_hero_update(&file, &mut heroes)?;
+    if let Some(files) = session_files(path)?
+        && let Some(heroes) = replay_rosters(files)?
+    {
+        return Ok((heroes, "session"));
     }
-    Ok(heroes)
+    Ok((HashMap::new(), "none"))
 }
 
 fn capture_build_metadata(path: &Path) -> anyhow::Result<Option<HashMap<i64, HeroInfo>>> {
     let Some(files) = capture_timeline_through(path)? else {
         return Ok(None);
     };
+    replay_rosters(files)?
+        .map(Some)
+        .ok_or_else(|| anyhow::anyhow!("capture timeline has no hero roster before battle"))
+}
+
+/// Replays rosters and hero updates in timeline order; `None` without a roster.
+fn replay_rosters(files: Vec<PathBuf>) -> anyhow::Result<Option<HashMap<i64, HeroInfo>>> {
     let mut heroes = HashMap::new();
     let mut saw_roster = false;
     for file in files {
@@ -428,13 +452,10 @@ fn capture_build_metadata(path: &Path) -> anyhow::Result<Option<HashMap<i64, Her
             apply_hero_update(&file, &mut heroes)?;
         }
     }
-    if !saw_roster {
-        anyhow::bail!("capture timeline has no hero roster before battle");
-    }
-    Ok(Some(heroes))
+    Ok(saw_roster.then_some(heroes))
 }
 
-fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
+fn session_files(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
     let Some(common) = path
         .ancestors()
         .map(|ancestor| ancestor.join("common"))
@@ -448,13 +469,22 @@ fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>>
         .filter(|path| path.is_file())
         .collect::<Vec<_>>();
     files.sort();
+    Ok(Some(files))
+}
+
+fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
+    let Some(mut files) = session_files(path)? else {
+        return Ok(None);
+    };
 
     let target = fs::read(path)?;
     let command = capture_command(path)
         .ok_or_else(|| anyhow::anyhow!("capture packet has no command name"))?;
     let matches = matching_packets(&files, &command, &target)?;
     let target_index = match matches.as_slice() {
-        [] => anyhow::bail!("capture packet not found in common timeline"),
+        // Older captures keep a shared timeline without this battle; their
+        // build comes from the roster files saved next to the battle.
+        [] => return Ok(None),
         [index] => *index,
         _ => resolve_repeated_packet(path, &files, &matches)?,
     };
@@ -1212,6 +1242,7 @@ mod tests {
             battle_build_metadata(&battle_path).unwrap()[&uid].hero_id,
             3149
         );
+        assert_eq!(build_metadata_source(&battle_path).unwrap(), "timeline");
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -1294,7 +1325,7 @@ mod tests {
     }
 
     #[test]
-    fn unresolved_common_timeline_does_not_use_local_updates() {
+    fn unmatched_common_timeline_falls_back_to_local_build_metadata() {
         let directory = test_directory("unresolved-common");
         let common = directory.join("decoded/common");
         let battle = directory.join("decoded/Dungeon/Battle1");
@@ -1318,10 +1349,38 @@ mod tests {
 
         assert!(
             battle_build_metadata(&battle_path)
-                .unwrap_err()
-                .to_string()
-                .contains("not found in common timeline")
+                .unwrap()
+                .contains_key(&42)
         );
+        assert_eq!(build_metadata_source(&battle_path).unwrap(), "local");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn session_roster_backs_battles_missing_from_the_timeline() {
+        let directory = test_directory("session-roster");
+        let common = directory.join("decoded/common");
+        let battle = directory.join("decoded/Dungeon/Battle1");
+        fs::create_dir_all(&common).unwrap();
+        fs::create_dir_all(&battle).unwrap();
+        fs::write(
+            common.join("capture_000001_HeroInfoListReply.json"),
+            serde_json::to_vec(&HeroInfoListReply {
+                heros: vec![hero(42)],
+                ..Default::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        let battle_path = battle.join("StartDungeonReply.json");
+        fs::write(&battle_path, b"captured battle").unwrap();
+
+        assert!(
+            battle_build_metadata(&battle_path)
+                .unwrap()
+                .contains_key(&42)
+        );
+        assert_eq!(build_metadata_source(&battle_path).unwrap(), "session");
         fs::remove_dir_all(directory).unwrap();
     }
 

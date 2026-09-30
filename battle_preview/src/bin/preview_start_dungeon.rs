@@ -6,9 +6,9 @@ use std::{
 
 use battle::engine::runtime::BattleRuntime;
 use battle_preview::{
-    array_len_diff_lines, battle_inputs, canonical_comparison, comparable_json, first_diff_path,
-    loadout_diffs, normalize_live_json, opening_determinism, preview_attributes,
-    preview_output_text, render_json_with_capture_conventions, tower_plan_id,
+    array_len_diff_lines, battle_inputs, build_metadata_source, canonical_comparison,
+    comparable_json, first_diff_path, loadout_diffs, normalize_live_json, opening_determinism,
+    preview_attributes, preview_output_text, render_json_with_capture_conventions, tower_plan_id,
 };
 use sonettobuf::{CardInfoPush, Fight, FightRound, StartDungeonReply};
 
@@ -71,12 +71,13 @@ fn run() -> anyhow::Result<()> {
             preview_output_text(&output_value, &original, original_text)?,
         )?;
         println!(
-            "{} fight={} round={} cards={} loadout={}",
+            "{} fight={} round={} cards={} loadout={} build={}",
             output.display(),
             if fight_matches { "MATCH" } else { "DIFF" },
             if round_matches { "MATCH" } else { "DIFF" },
             card_matches.map_or("N/A", |matches| if matches { "MATCH" } else { "DIFF" }),
             if loadout.is_empty() { "MATCH" } else { "DIFF" },
+            build_metadata_source(&input)?,
         );
     }
 
