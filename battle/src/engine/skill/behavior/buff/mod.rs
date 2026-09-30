@@ -72,6 +72,24 @@ pub(super) fn supports_consume_power_add_buff(behavior: &ParsedBehavior) -> bool
             .is_some_and(|buffs| buffs.iter().all(|buff_id| *buff_id > 0))
 }
 
+/// One buff per listed hero; any other shape is ambiguous.
+pub(super) fn supports_add_buff_by_hero_id(behavior: &ParsedBehavior) -> bool {
+    let Some(heroes) = behavior.arg_list(0) else {
+        return false;
+    };
+    let buffs = behavior
+        .raw_args
+        .iter()
+        .skip(1)
+        .map(|raw| raw.trim().parse::<i32>().ok())
+        .collect::<Option<Vec<_>>>();
+    buffs.is_some_and(|buffs| {
+        !heroes.is_empty()
+            && buffs.len() == heroes.len()
+            && heroes.iter().chain(&buffs).all(|id| *id > 0)
+    })
+}
+
 pub(super) fn supports_consume_card_add_buff(behavior: &ParsedBehavior) -> bool {
     let rewards = if behavior.raw_args.is_empty() {
         behavior.args.get(1..).map(<[i32]>::to_vec)

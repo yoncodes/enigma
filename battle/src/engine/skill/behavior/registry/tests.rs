@@ -36,6 +36,56 @@ fn lookup_requires_the_exact_opcode_type_pair() {
 }
 
 #[test]
+fn ezio_behaviors_accept_only_their_configured_shapes() {
+    let behavior = |opcode, type_name, raw_args: &[&str]| {
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(opcode, type_name),
+            raw_args.iter().filter_map(|raw| raw.parse().ok()).collect(),
+            raw_args.iter().map(|raw| (*raw).to_owned()).collect(),
+        )
+    };
+    let supports = |behavior: &ParsedBehavior| find(behavior).unwrap().supports.unwrap()(behavior);
+    for (opcode, type_name, valid, invalid) in [
+        (
+            100000,
+            "EzioProps",
+            vec!["312301323", "312301333", "312301343", "4", "100"],
+            vec!["312301323", "4", "100"],
+        ),
+        (
+            100001,
+            "EzioBigSkillTyp1",
+            vec!["1400", "500", "500"],
+            vec!["1400", "500"],
+        ),
+        (
+            100002,
+            "EzioBigSkillTyp2",
+            vec!["1000", "500", "500"],
+            vec!["0", "500", "500"],
+        ),
+        (100003, "EzioBigSkillEnd", vec!["9000"], vec!["9000", "1"]),
+        (100014, "EzioAddSynchronization", vec!["10"], vec!["0"]),
+        (100022, "EzioBigSkillCheckTimes", vec![], vec!["1"]),
+        (
+            100006,
+            "AddBuffByHeroId",
+            vec!["3122,3124", "2295033", "2295043"],
+            vec!["3003", "3061", "304"],
+        ),
+    ] {
+        assert!(
+            supports(&behavior(opcode, type_name, &valid)),
+            "{type_name} {valid:?}"
+        );
+        assert!(
+            !supports(&behavior(opcode, type_name, &invalid)),
+            "{type_name} {invalid:?}"
+        );
+    }
+}
+
+#[test]
 fn per_type_buff_team_energy_keeps_exact_shape_and_setup_parent_owner() {
     let behavior = |raw_args: &[&str]| {
         ParsedBehavior::from_spec(
