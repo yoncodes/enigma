@@ -21,6 +21,7 @@ use crate::engine::{
 };
 
 const HEAL_BELOW_HP_PERCENT: i64 = 80;
+const URGENT_HEAL_BELOW_HP_PERCENT: i64 = 60;
 
 #[derive(Debug, Clone, Copy)]
 struct Candidate {
@@ -32,6 +33,8 @@ struct Candidate {
     chosen_skill_id: Option<i32>,
     free: bool,
     ultimate: bool,
+    energy: bool,
+    first_for_owner: bool,
     support: Support,
     damage_rate: i32,
     rank: i32,
@@ -42,6 +45,7 @@ enum Support {
     Unneeded,
     None,
     Needed,
+    Urgent,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -84,10 +88,12 @@ pub(crate) fn plan(
     let mut sim = managers.clone();
     let mut sim_determinism = determinism.clone();
     let mut normal_ap = round_state.act_point.max(0);
+    let mut played_owners = HashSet::new();
     if !apply_prefix(
         &mut cards,
         &mut sim,
         &mut normal_ap,
+        &mut played_owners,
         &request.opers,
         managers,
         &pool,
@@ -110,6 +116,7 @@ pub(crate) fn plan(
         let Some(candidate) = best_candidate(
             &cards,
             &choices,
+            &played_owners,
             normal_ap,
             request.to_id,
             managers,
@@ -142,6 +149,9 @@ pub(crate) fn plan(
             break;
         }
         normal_ap = normal_ap.saturating_sub(candidate.normal_ap);
+        if candidate.normal_ap > 0 {
+            played_owners.insert(candidate.source_uid);
+        }
         opers.push(BeginRoundOper {
             oper_type: Some(CardOpType::PlayCard.id()),
             param1: Some(candidate.card_index as i32 + 1),
@@ -233,6 +243,7 @@ fn apply_prefix(
     cards: &mut CardManager,
     sim: &mut BattleManagers,
     normal_ap: &mut i32,
+    played_owners: &mut HashSet<i64>,
     opers: &[BeginRoundOper],
     managers: &BattleManagers,
     pool: &TargetPool,
@@ -315,6 +326,9 @@ fn apply_prefix(
                     return false;
                 }
                 *normal_ap = normal_ap.saturating_sub(ap_cost);
+                if ap_cost > 0 {
+                    played_owners.insert(source_uid);
+                }
                 continue;
             }
         };
@@ -338,6 +352,7 @@ fn apply_prefix(
 fn best_candidate(
     cards: &CardManager,
     choices: &[Option<i32>],
+    played_owners: &HashSet<i64>,
     normal_ap: i32,
     preferred_target: Option<i64>,
     managers: &BattleManagers,
@@ -423,6 +438,10 @@ fn best_candidate(
                 chosen_skill_id,
                 free: normal_ap_cost == 0,
                 ultimate,
+                first_for_owner: !played_owners.contains(&source_uid)
+                    && support != Support::Unneeded,
+                energy: effect_tag
+                    == crate::engine::skill::effect::catalog::SkillEffectTag::Device as i32,
                 support,
                 damage_rate: catalog.damage_rate(skill_id),
                 rank: managers.catalog().card_skill_rank(card),
@@ -434,6 +453,10 @@ fn best_candidate(
             (
                 candidate.free,
                 candidate.ultimate,
+                candidate.support == Support::Urgent,
+                // Give every hero a card before any hero plays a second one.
+                candidate.first_for_owner,
+                candidate.energy,
                 candidate.support,
                 strength,
                 Reverse(candidate.card_index),
@@ -472,14 +495,15 @@ fn support_need(
     pool: &TargetPool,
 ) -> Support {
     if heal {
-        let hurt = targets
+        let lowest = targets
             .iter()
             .filter_map(|uid| pool.entity(*uid))
-            .any(|target| below_heal_threshold(target.current_hp, target.max_hp));
-        return if hurt {
-            Support::Needed
-        } else {
-            Support::Unneeded
+            .map(|target| i64::from(target.current_hp) * 100 / i64::from(target.max_hp.max(1)))
+            .min();
+        return match lowest {
+            Some(percent) if percent < URGENT_HEAL_BELOW_HP_PERCENT => Support::Urgent,
+            Some(percent) if percent < HEAL_BELOW_HP_PERCENT => Support::Needed,
+            _ => Support::Unneeded,
         };
     }
     if !buffs.is_empty()
@@ -493,10 +517,6 @@ fn support_need(
     } else {
         Support::None
     }
-}
-
-fn below_heal_threshold(current_hp: i32, max_hp: i32) -> bool {
-    i64::from(current_hp) * 100 < i64::from(max_hp.max(1)) * HEAL_BELOW_HP_PERCENT
 }
 
 // Shields stack, so they never count as held.

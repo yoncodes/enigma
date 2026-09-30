@@ -457,6 +457,82 @@ fn auto_round_picks_one_of_a_choice_cards_options() {
 }
 
 #[test]
+fn auto_round_plays_energy_cards_before_other_cards() {
+    let runtime = team_runtime(
+        vec![
+            team_hero(10, 3066, 1_000, [30660111, 30660121]),
+            team_hero(11, 3144, 1_000, [31446011, 31446012]),
+        ],
+        vec![
+            hand_card(10, 30660111, false),
+            hand_card(11, 31446011, false),
+        ],
+    );
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    let played: Vec<_> = reply.opers.iter().map(|oper| oper.param1).collect();
+    assert_eq!(played, vec![Some(2)]);
+}
+
+#[test]
+fn auto_round_gives_every_hero_a_card_before_repeating_one() {
+    let mut runtime = team_runtime(
+        vec![
+            team_hero(10, 3066, 1_000, [30660111, 30660121]),
+            team_hero(11, 3074, 1_000, [30740111, 30740121]),
+        ],
+        vec![
+            hand_card(10, 30660111, false),
+            hand_card(10, 30660121, false),
+            hand_card(11, 30740111, false),
+        ],
+    );
+    runtime.round_state.act_point = 2;
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    let played: Vec<_> = reply.opers.iter().map(|oper| oper.param1).collect();
+    assert_eq!(played, vec![Some(1), Some(2)]);
+}
+
+#[test]
+fn auto_round_puts_an_urgent_heal_before_other_heroes_first_cards() {
+    for (ally_hp, expected) in [(500, (Some(1), Some(10))), (700, (Some(2), Some(-1)))] {
+        let mut runtime = team_runtime(
+            vec![
+                team_hero(10, 3066, ally_hp, [30660111, 30660121]),
+                team_hero(11, 3082, 1_000, [30820111, 30820121]),
+            ],
+            vec![
+                hand_card(11, 30820111, false),
+                hand_card(11, 30820121, false),
+                hand_card(10, 30660111, false),
+            ],
+        );
+        runtime.round_state.act_point = 2;
+        let request = AutoRoundRequest {
+            opers: vec![BeginRoundOper {
+                oper_type: Some(CardOpType::PlayCard.id()),
+                param1: Some(1),
+                to_id: Some(-1),
+                ..Default::default()
+            }],
+            to_id: Some(-1),
+        };
+
+        let reply = runtime.plan_auto_round(&request);
+
+        assert_eq!(reply.opers.len(), 1, "ally hp {ally_hp}");
+        assert_eq!(
+            (reply.opers[0].param1, reply.opers[0].to_id),
+            expected,
+            "ally hp {ally_hp}"
+        );
+    }
+}
+
+#[test]
 fn auto_round_plays_hero_precasts_first_and_leaves_stage_cards_alone() {
     let runtime = support_runtime(
         1_000,
