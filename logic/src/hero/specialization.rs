@@ -8,18 +8,21 @@ impl HeroManager {
         main_id: i32,
         sub_id: i32,
     ) -> Result<(ChoiceHero3123WeaponReply, HeroInfo), AppError> {
-        if !has_unique_skill(hero_id, UniqueSkillKind::Weapon) {
+        let game = config::configs::get();
+        if game.gear_rows(hero_id).next().is_none() {
             return Err(AppError::InvalidRequest);
         }
         let hero = UserHeroModel::new(self.player_id, db.clone());
         let data = hero.get_hero(hero_id).await?;
+        let unlocked = |second| {
+            game.gear_slot_unlock_rank(second)
+                .is_some_and(|rank| data.record.rank >= rank)
+        };
+        if (main_id != 0 && !unlocked(false)) || (sub_id != 0 && !unlocked(true)) {
+            return Err(AppError::InvalidRequest);
+        }
         if (main_id != 0 || sub_id != 0)
-            && !config::configs::get().has_character_weapon(
-                hero_id,
-                main_id,
-                sub_id,
-                data.record.ex_skill_level,
-            )
+            && !game.has_character_weapon(hero_id, main_id, sub_id, data.record.ex_skill_level)
         {
             return Err(AppError::InvalidRequest);
         }
@@ -96,7 +99,7 @@ impl HeroManager {
         db: &SqlitePool,
         hero_id: i32,
     ) -> Result<(ResetHero3124TalentTreeReply, HeroInfo), AppError> {
-        if !has_unique_skill(hero_id, UniqueSkillKind::TalentTree) {
+        if !owns_talent_tree(hero_id) {
             return Err(AppError::InvalidRequest);
         }
         let hero = UserHeroModel::new(self.player_id, db.clone());
@@ -121,14 +124,18 @@ impl HeroManager {
         level: i32,
         add: bool,
     ) -> Result<String, AppError> {
-        if !has_unique_skill(hero_id, UniqueSkillKind::TalentTree) {
+        if !owns_talent_tree(hero_id) || hero_3124_talent_id(sub_id, level).is_none() {
             return Err(AppError::InvalidRequest);
         }
-        let talent_id = hero_3124_talent_id(sub_id, level).ok_or(AppError::InvalidRequest)?;
         let hero = UserHeroModel::new(self.player_id, db.clone());
         let data = hero.get_hero(hero_id).await?;
-        let extra_str =
-            update_talent_extra_str(&data.record.extra_str, sub_id, level, talent_id, add);
+        let extra_str = if add {
+            let points = config::configs::get().talent_points(data.record.rank);
+            light_talents(&data.record.extra_str, sub_id, level, points)
+                .ok_or(AppError::InvalidRequest)?
+        } else {
+            cancel_talents(&data.record.extra_str, sub_id, level).ok_or(AppError::InvalidRequest)?
+        };
 
         hero.update_special_equipped_gear(hero_id, extra_str.clone())
             .await?;
@@ -137,8 +144,11 @@ impl HeroManager {
     }
 }
 
-fn has_unique_skill(hero_id: i32, kind: UniqueSkillKind) -> bool {
-    config::configs::get().character_unique_skill_kind(hero_id) == Some(kind as i32)
+fn owns_talent_tree(hero_id: i32) -> bool {
+    config::configs::get()
+        .talent_tree_rows(hero_id)
+        .next()
+        .is_some()
 }
 
 pub(super) fn hero_3124_talent_id(sub_id: i32, level: i32) -> Option<i32> {
@@ -151,29 +161,47 @@ fn hero_3124_talent_level(sub_id: i32, talent_id: i32) -> Option<i32> {
     config::configs::get().hero_skill_talent_level(sub_id, talent_id)
 }
 
-pub(super) fn update_talent_extra_str(
+/// Lights every level up to `level` in the branch, like the client. A new
+/// branch can start only once three talents are lit in total, and lit talents
+/// cannot exceed the rank's points.
+pub(super) fn light_talents(
     extra_str: &str,
     sub_id: i32,
     level: i32,
-    talent_id: i32,
-    add: bool,
-) -> String {
+    points: i32,
+) -> Option<String> {
+    const TREE_NODES: usize = 3;
     let mut talents = parse_talent_extra_str(extra_str);
-    let sub_talents = talents.entry(sub_id).or_default();
+    let total = talents.values().map(BTreeSet::len).sum::<usize>();
+    if !talents.contains_key(&sub_id) && total > 0 && total < TREE_NODES {
+        return None;
+    }
+    let ids = (1..=level)
+        .map(|level| hero_3124_talent_id(sub_id, level))
+        .collect::<Option<Vec<_>>>()?;
+    talents.entry(sub_id).or_default().extend(ids);
+    let lit = talents.values().map(BTreeSet::len).sum::<usize>();
+    (lit <= usize::try_from(points).unwrap_or_default()).then(|| format_talent_extra_str(&talents))
+}
 
-    if add {
-        sub_talents.insert(talent_id);
-    } else {
+/// Cancels `level` and every higher level in the branch. Like the client, a
+/// full branch is locked while another branch has talents.
+pub(super) fn cancel_talents(extra_str: &str, sub_id: i32, level: i32) -> Option<String> {
+    const TREE_NODES: usize = 3;
+    let mut talents = parse_talent_extra_str(extra_str);
+    if talents.len() > 1
+        && talents
+            .get(&sub_id)
+            .is_some_and(|ids| ids.len() >= TREE_NODES)
+    {
+        return None;
+    }
+    if let Some(sub_talents) = talents.get_mut(&sub_id) {
         sub_talents.retain(|id| {
             hero_3124_talent_level(sub_id, *id).is_none_or(|talent_level| talent_level < level)
         });
     }
-
-    if sub_talents.is_empty() {
-        talents.remove(&sub_id);
-    }
-
-    format_talent_extra_str(&talents)
+    Some(format_talent_extra_str(&talents))
 }
 
 fn parse_talent_extra_str(extra_str: &str) -> BTreeMap<i32, BTreeSet<i32>> {
