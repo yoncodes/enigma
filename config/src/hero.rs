@@ -141,16 +141,6 @@ impl GameDB {
             .find(|row| row.facets_id == stone_id)
     }
 
-    pub fn character_unique_skill_kind(&self, hero_id: i32) -> Option<i32> {
-        self.character
-            .get(hero_id)?
-            .unique_skill_point
-            .split_once('#')?
-            .0
-            .parse()
-            .ok()
-    }
-
     pub fn has_character_weapon(
         &self,
         hero_id: i32,
@@ -248,6 +238,31 @@ impl GameDB {
             .flat_map(|row| Self::talent_skills_at(row, skill_level).0.split('#'))
             .filter_map(|id| id.trim().parse().ok())
             .collect()
+    }
+
+    /// Talent points a hero has at a rank; `fight_const` 52 lists "rank#points".
+    pub fn talent_points(&self, rank: i32) -> i32 {
+        const TALENT_POINTS: i32 = 52;
+        self.fight_const
+            .get(TALENT_POINTS)
+            .map(|row| {
+                row.value
+                    .split('|')
+                    .filter_map(|entry| entry.split_once('#'))
+                    .filter_map(|(at, points)| {
+                        Some((at.parse::<i32>().ok()?, points.parse::<i32>().ok()?))
+                    })
+                    .filter(|(at, _)| *at <= rank)
+                    .map(|(_, points)| points)
+                    .sum()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Rank that unlocks a gear slot; `fight_const` 53 (first) and 54 (second).
+    pub fn gear_slot_unlock_rank(&self, second: bool) -> Option<i32> {
+        let id = if second { 54 } else { 53 };
+        self.fight_const.get(id)?.value.trim().parse().ok()
     }
 
     pub fn hero_skill_talent(&self, sub_id: i32, level: i32) -> Option<&Hero3124SkillTalent> {

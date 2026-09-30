@@ -20,12 +20,6 @@ enum HeroConstId {
     TouchFaith = 33,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum UniqueSkillKind {
-    Weapon = 2,
-    TalentTree = 3,
-}
-
 mod destiny;
 mod group;
 mod profile;
@@ -59,7 +53,7 @@ use destiny::next_destiny_slot;
 #[cfg(test)]
 use progression::duplicate_item_id;
 #[cfg(test)]
-use specialization::{hero_3124_talent_id, update_talent_extra_str};
+use specialization::{cancel_talents, light_talents};
 
 #[cfg(test)]
 mod test;

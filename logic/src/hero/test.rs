@@ -1,18 +1,38 @@
 use super::*;
 
 #[test]
-fn updates_hero_3124_talent_extra_str() {
+fn talent_choices_light_whole_branches_like_the_captured_requests() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
+    let points = config::configs::get().talent_points(4);
 
-    let level_1 = hero_3124_talent_id(2, 1).unwrap();
-    let level_2 = hero_3124_talent_id(2, 2).unwrap();
-    let extra = update_talent_extra_str("", 2, 1, level_1, true);
-    let extra = update_talent_extra_str(&extra, 2, 2, level_2, true);
-    assert_eq!(extra, format!("2#{level_1},{level_2}"));
+    let extra = light_talents("", 2, 3, points).unwrap();
+    assert_eq!(extra, "2#21,22,23");
+    let extra = cancel_talents(&extra, 2, 2).unwrap();
+    assert_eq!(extra, "2#21");
+    let extra = light_talents(&extra, 2, 3, points).unwrap();
+    let extra = light_talents(&extra, 1, 2, points).unwrap();
+    assert_eq!(extra, "1#11,12|2#21,22,23");
+    assert_eq!(
+        cancel_talents(&extra, 2, 3),
+        None,
+        "full branch locked while another has talents"
+    );
 
-    let extra = update_talent_extra_str(&extra, 2, 2, level_2, false);
-    assert_eq!(extra, format!("2#{level_1}"));
+    assert_eq!(
+        light_talents("2#21", 1, 1, points),
+        None,
+        "second branch before a full one"
+    );
+    assert_eq!(
+        light_talents("", 2, 3, config::configs::get().talent_points(2)),
+        Some("2#21,22,23".to_owned())
+    );
+    assert_eq!(
+        light_talents("", 2, 3, config::configs::get().talent_points(1)),
+        None,
+        "no points below rank 2"
+    );
 }
 
 #[test]
@@ -665,6 +685,7 @@ async fn specialization_rejects_the_wrong_hero_and_unknown_weapon_group() {
     let heroes = UserHeroModel::new(21, pool.clone());
     heroes.create_hero(3003).await.unwrap();
     heroes.create_hero(3123).await.unwrap();
+    heroes.create_hero(3122).await.unwrap();
 
     assert!(
         HeroManager::new(21)
@@ -683,6 +704,26 @@ async fn specialization_rejects_the_wrong_hero_and_unknown_weapon_group() {
             .reset_talents(&pool, 3003)
             .await
             .is_err()
+    );
+    // Alexios shares Kassandra's resource type but has no talent tree.
+    assert!(
+        HeroManager::new(21)
+            .choose_talent(&pool, 3122, 2, 1)
+            .await
+            .is_err()
+    );
+    // The second gear slot unlocks at a higher rank than a new hero has.
+    assert!(
+        HeroManager::new(21)
+            .choice_weapon(&pool, 3123, 1001, 2001)
+            .await
+            .is_err()
+    );
+    assert!(
+        HeroManager::new(21)
+            .choice_weapon(&pool, 3123, 1001, 0)
+            .await
+            .is_ok()
     );
 }
 
