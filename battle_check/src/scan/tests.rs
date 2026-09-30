@@ -137,7 +137,7 @@ fn missing_summoned_definition_fails_loudly() {
 }
 
 #[test]
-fn device_owned_max_roots_use_configured_device_skills() {
+fn device_owned_roots_cover_every_device_tier() {
     crate::init_config().unwrap();
     let db = config::get();
     let mut skills = VecDeque::new();
@@ -152,9 +152,10 @@ fn device_owned_max_roots_use_configured_device_skills() {
         .into_iter()
         .map(|pending| pending.id)
         .collect::<Vec<_>>();
-    assert!(ids.contains(&31444111));
-    assert!(ids.contains(&31441121));
-    assert!(ids.contains(&31445131));
+    // Device skills from the lowest and highest Portrait tiers.
+    for id in [31440111, 31440131, 31444111, 31441121, 31445131] {
+        assert!(ids.contains(&id), "missing device tier skill {id}");
+    }
     for false_id in [31440112, 31440113, 31440122, 31440123] {
         assert!(
             !ids.contains(&false_id),

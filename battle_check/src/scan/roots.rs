@@ -82,34 +82,40 @@ pub(crate) fn collect_hero_build_roots(
     let destiny_stone = destiny_selection
         .map(|(stone, _)| stone)
         .unwrap_or_default();
-    let max_skill_level = if destiny_stone > 0 {
-        db.destiny_facets_ex_level
-            .iter()
-            .filter(|row| row.hero_id == destiny_stone)
-            .map(|row| row.skill_level)
-            .max()
-            .unwrap_or_default()
-    } else {
-        db.skill_ex_level
-            .iter()
-            .filter(|row| row.hero_id == hero_id)
-            .map(|row| row.skill_level)
-            .max()
-            .unwrap_or_default()
-    };
-
-    if let Some(device_skills) =
-        battle::catalog::configured_conduit_skill_ids(db, hero_id, max_skill_level, destiny_stone)
+    // Device ownership and device skills are chosen per Portrait level.
+    let levels = std::iter::once(0)
+        .chain(if destiny_stone > 0 {
+            db.destiny_facets_ex_level
+                .iter()
+                .filter(|row| row.hero_id == destiny_stone)
+                .map(|row| row.skill_level)
+                .collect::<Vec<_>>()
+        } else {
+            db.skill_ex_level
+                .iter()
+                .filter(|row| row.hero_id == hero_id)
+                .map(|row| row.skill_level)
+                .collect()
+        })
+        .collect::<Vec<_>>();
+    let mut character_kit_reachable = false;
+    for level in levels {
+        match battle::catalog::configured_conduit_skill_ids(db, hero_id, level, destiny_stone)
             .map_err(|error| anyhow::anyhow!("resolve configured device skills: {error:?}"))?
-    {
-        for skill_id in device_skills {
-            enqueue(
-                skills,
-                skill_id,
-                format!("hero {hero_id} > max configured device skill"),
-            );
+        {
+            Some(device_skills) => {
+                for skill_id in device_skills {
+                    enqueue(
+                        skills,
+                        skill_id,
+                        format!("hero {hero_id} > device Portrait {level}"),
+                    );
+                }
+            }
+            None => character_kit_reachable = true,
         }
-    } else {
+    }
+    if character_kit_reachable {
         // Scan every kit tier a player can own, not only the max chain.
         let base = [("base", hero.skill.as_str(), hero.ex_skill)];
         let replaced = db
