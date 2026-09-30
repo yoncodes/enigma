@@ -20,6 +20,8 @@ use crate::engine::{
     },
 };
 
+const HEAL_BELOW_HP_PERCENT: i64 = 80;
+
 #[derive(Debug, Clone, Copy)]
 struct Candidate {
     card_index: usize,
@@ -27,9 +29,18 @@ struct Candidate {
     skill_id: i32,
     target_uid: i64,
     normal_ap: i32,
+    free: bool,
     ultimate: bool,
+    support: Support,
     damage_rate: i32,
     rank: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Support {
+    Unneeded,
+    None,
+    Needed,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -42,22 +53,26 @@ pub(crate) fn plan(
     determinism: &RoundDeterminism,
     devices_opers: Vec<FightDeviceOper>,
 ) -> AutoRoundReply {
-    let pool =
-        TargetPool::from_fight_with_catalog(managers.catalog(), fight).runtime_view(managers);
+    // Every card resolves before any skill runs, so indices, AP and readiness use round-start state.
+    let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
     let mut cards = managers.card.clone();
+    let mut sim = managers.clone();
+    let mut sim_determinism = determinism.clone();
     let mut normal_ap = round_state.act_point.max(0);
     if !apply_prefix(
         &mut cards,
+        &mut sim,
         &mut normal_ap,
         &request.opers,
         managers,
         &pool,
         catalog,
-        determinism,
+        &mut sim_determinism,
     ) {
         return reply(request, Vec::new(), devices_opers);
     }
 
+    let live_pool = pool.runtime_view(managers);
     let mut opers = Vec::new();
     let mut reported_unsupported = HashSet::new();
     while let Some(candidate) = best_candidate(
@@ -65,9 +80,11 @@ pub(crate) fn plan(
         normal_ap,
         request.to_id,
         managers,
-        &pool,
+        &sim,
+        &live_pool,
+        &pool.runtime_view(&sim),
         catalog,
-        determinism,
+        &sim_determinism,
         &mut reported_unsupported,
     ) {
         let play = CardPlay {
@@ -78,12 +95,17 @@ pub(crate) fn plan(
             choice: None,
             recorded_skill: None,
         };
-        if cards.execute_command(CardCommand::Play(play)).is_err() {
+        if !simulate_play(
+            &cards,
+            &mut sim,
+            &pool,
+            catalog,
+            &mut sim_determinism,
+            play.clone(),
+        ) || !play_card(&mut cards, play)
+        {
             break;
         }
-        let _ = cards.execute_command(CardCommand::ComposeAdjacent {
-            origin: CARD_PLAY_ORIGIN,
-        });
         normal_ap = normal_ap.saturating_sub(candidate.normal_ap);
         opers.push(BeginRoundOper {
             oper_type: Some(CardOpType::PlayCard.id()),
@@ -109,15 +131,48 @@ fn reply(
     }
 }
 
+fn simulate_play(
+    cards: &CardManager,
+    sim: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    play: CardPlay,
+) -> bool {
+    sim.card = cards.clone();
+    crate::engine::runtime::schedule::run_player_action_queue(
+        sim,
+        pool,
+        catalog,
+        determinism,
+        TargetContext::default(),
+        [play],
+        1,
+        crate::engine::manager::emitter::UID,
+    )
+    .inspect_err(|error| tracing::warn!(?error, "auto-battle stopped planning at a failed play"))
+    .is_ok()
+}
+
+fn play_card(cards: &mut CardManager, play: CardPlay) -> bool {
+    cards.execute_command(CardCommand::Play(play)).is_ok()
+        && cards
+            .execute_command(CardCommand::ComposeAdjacent {
+                origin: CARD_PLAY_ORIGIN,
+            })
+            .is_ok()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn apply_prefix(
     cards: &mut CardManager,
+    sim: &mut BattleManagers,
     normal_ap: &mut i32,
     opers: &[BeginRoundOper],
     managers: &BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
-    determinism: &RoundDeterminism,
+    determinism: &mut RoundDeterminism,
 ) -> bool {
     for oper in opers {
         let Some(command) = RoundCommand::from_oper(oper) else {
@@ -171,8 +226,8 @@ fn apply_prefix(
                         source_uid,
                         skill_id,
                         target_uid,
-                        managers,
-                        pool,
+                        sim,
+                        &pool.runtime_view(sim),
                         catalog,
                         determinism,
                     )
@@ -180,17 +235,22 @@ fn apply_prefix(
                     return false;
                 }
                 let ap_cost = action_point_cost(card, source_uid, skill_id, managers, catalog);
-                (
-                    CardCommand::Play(CardPlay {
-                        origin: CARD_PLAY_ORIGIN,
-                        hand_index: card_index,
-                        target_uid,
-                        chosen_skill_id,
-                        choice: None,
-                        recorded_skill,
-                    }),
-                    ap_cost,
-                )
+                let play = CardPlay {
+                    origin: CARD_PLAY_ORIGIN,
+                    hand_index: card_index,
+                    target_uid,
+                    chosen_skill_id,
+                    choice: None,
+                    recorded_skill,
+                };
+                if ap_cost > *normal_ap
+                    || !simulate_play(cards, sim, pool, catalog, determinism, play.clone())
+                    || !play_card(cards, play)
+                {
+                    return false;
+                }
+                *normal_ap = normal_ap.saturating_sub(ap_cost);
+                continue;
             }
         };
         if ap_cost > *normal_ap || cards.execute_command(card_command).is_err() {
@@ -215,6 +275,8 @@ fn best_candidate(
     normal_ap: i32,
     preferred_target: Option<i64>,
     managers: &BattleManagers,
+    sim: &BattleManagers,
+    live_pool: &TargetPool,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
@@ -241,7 +303,12 @@ fn best_candidate(
             if card_skill_is_blocked(managers, catalog, source_uid, skill_id) {
                 return None;
             }
-            let source = pool.entity(source_uid)?;
+            let source = live_pool.entity(source_uid)?;
+            let temporary = card.temp_card.unwrap_or_default();
+            // Stage-rule temporary cards are left for the player.
+            if temporary && managers.catalog().skill_hero_id(skill_id) != Some(source.model_id) {
+                return None;
+            }
             let ultimate = crate::engine::mechanic::card::CardMechanic
                 .is_ultimate_skill(managers, skill_id, source);
             if ultimate
@@ -249,14 +316,36 @@ fn best_candidate(
             {
                 return None;
             }
-            let target_uid = choose_target(
+            let targets = target_options(
                 source_uid,
                 skill_id,
                 preferred_target,
-                managers,
+                sim,
                 pool,
                 catalog,
                 determinism,
+            );
+            let buffs = certain_buffs(skill_id, catalog);
+            let effect_tag = catalog.effect_tag(skill_id);
+            // An enemy's debuff may come from a passive, so debuff cards never count as redundant.
+            let may_be_redundant = !catalog.is_attack(skill_id)
+                && effect_tag
+                    != crate::engine::skill::effect::catalog::SkillEffectTag::Debuff as i32;
+            let support = support_need(
+                effect_tag == crate::engine::skill::effect::catalog::SkillEffectTag::Heal as i32,
+                if may_be_redundant { &buffs } else { &[] },
+                &targets,
+                sim,
+                pool,
+            );
+            let target_uid = choose_target(
+                targets,
+                skill_id,
+                preferred_target,
+                &buffs,
+                sim,
+                pool,
+                catalog,
             )?;
             Some(Candidate {
                 card_index,
@@ -264,20 +353,112 @@ fn best_candidate(
                 skill_id,
                 target_uid,
                 normal_ap: normal_ap_cost,
+                free: normal_ap_cost == 0,
                 ultimate,
+                support,
                 damage_rate: catalog.damage_rate(skill_id),
                 rank: managers.catalog().card_skill_rank(card),
             })
         })
         .max_by_key(|candidate| {
+            // Official auto casts ready ultimates left to right.
+            let strength = (!candidate.ultimate).then_some((candidate.damage_rate, candidate.rank));
             (
+                candidate.free,
                 candidate.ultimate,
-                candidate.damage_rate,
-                candidate.rank,
+                candidate.support,
+                strength,
                 Reverse(candidate.card_index),
                 Reverse(candidate.source_uid),
                 Reverse(candidate.skill_id),
             )
+        })
+}
+
+// Only unconditional `AddBuff` slots aimed at the card's own target count.
+fn certain_buffs(skill_id: i32, catalog: &SkillEffectCatalog) -> Vec<i32> {
+    catalog
+        .get(skill_id)
+        .into_iter()
+        .flat_map(|effect| &effect.slots)
+        .filter(|slot| {
+            slot.behavior.spec.kind
+                == crate::engine::skill::behavior::classify::BehaviorKind::AddBuff
+                && (slot.target.code == 0 || slot.target.code == catalog.logic_target(skill_id))
+                && slot.conditions.iter().all(|condition| {
+                    matches!(
+                        condition.kind,
+                        crate::engine::skill::condition::parse::ParsedConditionKind::None(_)
+                    )
+                })
+        })
+        .filter_map(|slot| slot.behavior.args.first().copied())
+        .collect()
+}
+
+fn support_need(
+    heal: bool,
+    buffs: &[i32],
+    targets: &[i64],
+    managers: &BattleManagers,
+    pool: &TargetPool,
+) -> Support {
+    if heal {
+        let hurt = targets
+            .iter()
+            .filter_map(|uid| pool.entity(*uid))
+            .any(|target| below_heal_threshold(target.current_hp, target.max_hp));
+        return if hurt {
+            Support::Needed
+        } else {
+            Support::Unneeded
+        };
+    }
+    if !buffs.is_empty()
+        && targets.iter().all(|uid| {
+            buffs
+                .iter()
+                .all(|buff_id| buff_held(*uid, *buff_id, managers))
+        })
+    {
+        Support::Unneeded
+    } else {
+        Support::None
+    }
+}
+
+fn below_heal_threshold(current_hp: i32, max_hp: i32) -> bool {
+    i64::from(current_hp) * 100 < i64::from(max_hp.max(1)) * HEAL_BELOW_HP_PERCENT
+}
+
+// Shields stack, so they never count as held.
+fn buff_held(uid: i64, buff_id: i32, managers: &BattleManagers) -> bool {
+    !is_shield_buff(buff_id, managers)
+        && managers
+            .buff
+            .buff_family_carrier_uid(uid, buff_id)
+            .and_then(|buff_uid| managers.buff.snapshot(uid, buff_uid))
+            .is_some_and(|buff| buff.duration.is_none_or(|duration| duration > 1))
+}
+
+fn is_shield_buff(buff_id: i32, managers: &BattleManagers) -> bool {
+    use crate::engine::skill::buff_act::registry::{self, BuffActKind};
+    managers
+        .buff
+        .definition_features(buff_id)
+        .into_iter()
+        .any(|feature| {
+            feature
+                .act_id()
+                .and_then(|act_id| registry::find(act_id, &feature.act_type))
+                .is_some_and(|definition| {
+                    matches!(
+                        definition.kind,
+                        BuffActKind::Shield
+                            | BuffActKind::ShieldByBuffLayer
+                            | BuffActKind::TeamShareShield
+                    )
+                })
         })
 }
 
@@ -315,7 +496,7 @@ fn legal_target(
     determinism: &RoundDeterminism,
 ) -> bool {
     let Some(target_uid) = requested_target else {
-        return choose_target(
+        return !target_options(
             source_uid,
             skill_id,
             None,
@@ -324,7 +505,7 @@ fn legal_target(
             catalog,
             determinism,
         )
-        .is_some();
+        .is_empty();
     };
     target_options(
         source_uid,
@@ -338,29 +519,22 @@ fn legal_target(
     .contains(&target_uid)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn choose_target(
-    source_uid: i64,
+    targets: Vec<i64>,
     skill_id: i32,
     preferred_target: Option<i64>,
+    buffs: &[i32],
     managers: &BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
-    determinism: &RoundDeterminism,
 ) -> Option<i64> {
-    let targets = target_options(
-        source_uid,
-        skill_id,
-        preferred_target,
-        managers,
-        pool,
-        catalog,
-        determinism,
-    );
     let attack = catalog.is_attack(skill_id);
     targets.into_iter().min_by_key(|target_uid| {
         let target = pool.entity(*target_uid);
         let preferred = preferred_target == Some(*target_uid);
+        let already_buffed = buffs
+            .iter()
+            .any(|buff_id| buff_held(*target_uid, *buff_id, managers));
         let hp_priority = target
             .map(|target| {
                 if attack {
@@ -372,6 +546,7 @@ fn choose_target(
             .unwrap_or(i64::MAX);
         (
             !preferred,
+            already_buffed,
             hp_priority,
             target.map(|target| target.position).unwrap_or(i32::MAX),
             *target_uid,
