@@ -675,3 +675,75 @@ fn lethal_injury_consumption_is_its_appliers_buff_act_step() {
     assert_eq!(managers.buff.max_id_or_type_layer(-1, 31240121), 0);
     assert_eq!(found, vec![Some(10)]);
 }
+
+#[test]
+fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let sparta_kicks = |target_buffs: Vec<BuffInfo>| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![entity(10)],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    buffs: target_buffs,
+                    ..entity(-1)
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312451115], []);
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 312451115,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(-1);
+        let result = run_skill(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            invocation,
+            crate::engine::skill::action::SkillModifiers::default(),
+        )
+        .unwrap();
+        result
+            .events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event,
+                    crate::engine::event::payload::BattleEvent::SkillAction(action)
+                        if action.skill_id == 312451011
+                            && action.phase == crate::engine::skill::action::SkillPhase::Immediate
+                )
+            })
+            .count()
+    };
+    let kick_gash = BuffInfo {
+        uid: Some(30),
+        buff_id: Some(312451011),
+        from_uid: Some(10),
+        duration: Some(3),
+        ..Default::default()
+    };
+
+    assert_eq!(sparta_kicks(Vec::new()), 0);
+    assert_eq!(sparta_kicks(vec![kick_gash]), 1);
+}
