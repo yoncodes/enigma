@@ -668,7 +668,7 @@ condition_definitions! {
     [502212] "ActiveUseSkill" => active_skill::active_ally_use, reaction_targets_causing_frame(normal_buff_grant(event_trigger(EventKind::AllyAction, None)));
     [620212] "CurrSkillLevel" => active_skill::rank, event_trigger(EventKind::AllyAction, None);
     [502203] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
-    [502202] "ActiveUseSkill" => active_skill::active_use, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate))));
+    [502202] "ActiveUseSkill" => active_skill::active_use, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate))));
     [502208] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [502210] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [659212] "UseSkill" => active_skill::use_skill, event_trigger(EventKind::AllyAction, None);
