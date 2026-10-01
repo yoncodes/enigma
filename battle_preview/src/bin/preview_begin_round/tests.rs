@@ -444,13 +444,13 @@ fn each_battle_replays_once_through_its_latest_requested_round() {
             (
                 PathBuf::from("a/BeginRoundReply_10.json"),
                 vec![
-                    PathBuf::from("a/BeginRoundReply_2.json"),
-                    PathBuf::from("a/BeginRoundReply_10.json"),
+                    (2, PathBuf::from("a/BeginRoundReply_2.json")),
+                    (10, PathBuf::from("a/BeginRoundReply_10.json")),
                 ],
             ),
             (
                 PathBuf::from("b/begin_round_1.json"),
-                vec![PathBuf::from("b/begin_round_1.json")],
+                vec![(1, PathBuf::from("b/begin_round_1.json"))],
             ),
         ]
     );

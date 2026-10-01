@@ -18,8 +18,24 @@ use crate::normalize_live_json;
 type PreviewAttributes = (Vec<(i64, HeroExAttribute)>, Vec<(i64, HeroSpAttribute)>);
 
 pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<PreviewAttributes> {
+    preview_attributes_with_request(
+        fight,
+        battle_path,
+        folder_request_path(battle_path).as_deref(),
+    )
+}
+
+/// `request_path` is the start request of this battle, when one was captured.
+pub fn preview_attributes_with_request(
+    fight: &Fight,
+    battle_path: &Path,
+    request_path: Option<&Path>,
+) -> anyhow::Result<PreviewAttributes> {
     let metadata = battle_build_metadata(battle_path)?;
-    let request = battle_request_metadata(battle_path)?;
+    let request = request_path
+        .map(request_metadata)
+        .transpose()?
+        .unwrap_or_default();
     let battle_balance = request_battle_balance(fight, request.is_balance)?;
     let mut ex_attributes = Vec::new();
     let mut sp_attributes = Vec::new();
@@ -154,14 +170,18 @@ struct BattleRequestMetadata {
     selected_equips: HashMap<i64, i64>,
 }
 
+fn folder_request_path(battle_path: &Path) -> Option<PathBuf> {
+    Some(battle_path.parent()?.join("StartDungeonRequest.json")).filter(|path| path.exists())
+}
+
 fn battle_request_metadata(battle_path: &Path) -> anyhow::Result<BattleRequestMetadata> {
-    let Some(parent) = battle_path.parent() else {
-        return Ok(BattleRequestMetadata::default());
-    };
-    let request_path = parent.join("StartDungeonRequest.json");
-    if !request_path.exists() {
-        return Ok(BattleRequestMetadata::default());
-    }
+    folder_request_path(battle_path)
+        .map(|path| request_metadata(&path))
+        .transpose()
+        .map(Option::unwrap_or_default)
+}
+
+fn request_metadata(request_path: &Path) -> anyhow::Result<BattleRequestMetadata> {
     let request: serde_json::Value = serde_json::from_str(&fs::read_to_string(request_path)?)?;
     let request = request
         .as_object()
