@@ -109,7 +109,7 @@ fn scan_skill(
             None => {
                 report.gap(behavior_key.clone(), "unvalidated behavior arguments");
                 report.error(format!(
-                    "UnvalidatedBehaviorArguments opcode={} type={}",
+                    "UnvalidatedBehaviorArguments path={slot_path} opcode={} type={}",
                     slot.behavior.spec.key.opcode, slot.behavior.spec.key.type_name,
                 ));
             }
@@ -477,7 +477,7 @@ fn scan_buff(
                                 .map_or("Inferred".to_owned(), |source| format!("Captured({source})")),
                         ));
                         if evidence.is_none() {
-                            report.warning(format!(
+                            report.note(format!(
                                 "InferredBuffActMarker act={} type={} phase={phase:?} effectType={effect_type}",
                                 act.id, act.r#type,
                             ));

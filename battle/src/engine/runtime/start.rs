@@ -210,21 +210,7 @@ impl BattleRuntime {
                 .execute_card(CardCommand::PreserveRefillFloor)
                 .map_err(|error| format!("{error:?}"))?;
         }
-        if crate::engine::fight::versions::round_start_setup_layout(
-            self.fight.version.unwrap_or_default(),
-        ) == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
-        {
-            visible_cards = self
-                .managers
-                .card
-                .hand()
-                .iter()
-                .chain(self.managers.card.team_cards())
-                .cloned()
-                .collect();
-        } else {
-            visible_cards.extend_from_slice(self.managers.card.team_cards());
-        }
+        visible_cards.extend_from_slice(self.managers.card.team_cards());
         self.round_state.act_point = crate::engine::round::state::next_action_points(
             &self.fight,
             &pool,

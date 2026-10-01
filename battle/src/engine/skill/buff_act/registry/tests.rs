@@ -385,8 +385,11 @@ fn missing_hp_healing_is_an_exact_static_consumer() {
 
     assert_eq!(definition.kind, BuffActKind::CureUpByLostHp);
     assert!(definition.state.consumer);
-    assert!(has_destination(1011, "CureUpByLostHp", &[200, 75, 8, 100]));
-    assert!(!has_destination(1011, "CureUpByLostHp", &[100, 50, 8, 100]));
+    for args in [[200, 75, 8, 100], [100, 50, 8, 100], [100, 40, 8, 100]] {
+        assert!(has_destination(1011, "CureUpByLostHp", &args));
+    }
+    assert!(!has_destination(1011, "CureUpByLostHp", &[100, 50, 8, 0]));
+    assert!(!has_destination(1011, "CureUpByLostHp", &[100, 50, 8]));
     assert!(!has_destination(1011, "CureUpByLostHp", &[]));
     assert!(find(1011, "BanLostLife").is_none());
 }

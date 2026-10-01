@@ -73,6 +73,37 @@ impl Passive {
             hero.destiny_rank,
             hero.destiny_stone,
         );
+        if let Some(gear) = game.equipped_gear(hero.hero_id, &hero.extra_str, hero.ex_skill_level) {
+            if !gear.exchange_skills.trim().is_empty() {
+                tracing::warn!(
+                    hero_id = hero.hero_id,
+                    exchange_skills = %gear.exchange_skills,
+                    "gear exchangeSkills are not supported"
+                );
+            }
+            passives.extend(
+                gear.passive_skill
+                    .split('|')
+                    .filter_map(|id| id.trim().parse().ok())
+                    .map(|skill_id| PassiveSkill {
+                        skill_id,
+                        source: PassiveSource::new(PassiveSourceKind::Extra),
+                    }),
+            );
+        }
+        // Added skills go in first: a later talent can exchange one an earlier talent added.
+        passives.extend(
+            game.talent_new_skills(hero.hero_id, &hero.extra_str, hero.ex_skill_level)
+                .into_iter()
+                .map(|skill_id| PassiveSkill {
+                    skill_id,
+                    source: PassiveSource::new(PassiveSourceKind::Extra),
+                }),
+        );
+        let talents = game.talent_exchanges(hero.hero_id, &hero.extra_str, hero.ex_skill_level);
+        for passive in &mut passives {
+            passive.skill_id = super::skill::talent_exchange(passive.skill_id, &talents);
+        }
         for equip in equips {
             passives.extend(Self::psychube_from(
                 game,

@@ -149,6 +149,7 @@ fn hero_build_input(hero: &HeroData) -> HeroBuildInput {
         talent_placements: cubes.iter().map(|cube| cube.cube_id).collect(),
         destiny_rank: record.destiny_rank,
         destiny_stone: record.destiny_stone,
+        extra_str: record.extra_str.clone(),
     }
 }
 

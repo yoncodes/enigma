@@ -6,9 +6,9 @@ use std::{
 
 use battle::engine::runtime::BattleRuntime;
 use battle_preview::{
-    battle_inputs, canonical_comparison, comparable_json, first_diff_path, normalize_live_json,
-    opening_determinism, preview_attributes, preview_output_text,
-    render_json_with_capture_conventions, tower_plan_id,
+    array_len_diff_lines, battle_inputs, build_metadata_source, canonical_comparison,
+    comparable_json, first_diff_path, loadout_diffs, normalize_live_json, opening_determinism,
+    preview_attributes, preview_output_text, render_json_with_capture_conventions, tower_plan_id,
 };
 use sonettobuf::{CardInfoPush, Fight, FightRound, StartDungeonReply};
 
@@ -34,7 +34,10 @@ fn run() -> anyhow::Result<()> {
     for input in inputs {
         let output = output_path(&input_root, &output_root, &input, &mut outputs)?;
         let original_text = fs::read_to_string(&input)?;
-        let (generated, cards, original) = generate_reply(db, &input)?;
+        let (generated, cards, original, loadout) = generate_reply(db, &input)?;
+        for diff in &loadout {
+            eprintln!("  loadout diff: {diff}");
+        }
         let generated_value = serde_json::to_value(&generated)?;
         let captured = captured_start_reply(&original);
         let output_value = render_json_with_capture_conventions(&generated_value, captured);
@@ -51,6 +54,9 @@ fn run() -> anyhow::Result<()> {
             && let Some(path) = first_diff_path(generated_round, original_round, "/round")
         {
             eprintln!("  first round diff: {path}");
+            for line in array_len_diff_lines(generated_round, original_round, &path, "/round") {
+                eprintln!("    {line}");
+            }
         }
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent)?;
@@ -65,11 +71,13 @@ fn run() -> anyhow::Result<()> {
             preview_output_text(&output_value, &original, original_text)?,
         )?;
         println!(
-            "{} fight={} round={} cards={}",
+            "{} fight={} round={} cards={} loadout={} build={}",
             output.display(),
             if fight_matches { "MATCH" } else { "DIFF" },
             if round_matches { "MATCH" } else { "DIFF" },
             card_matches.map_or("N/A", |matches| if matches { "MATCH" } else { "DIFF" }),
+            if loadout.is_empty() { "MATCH" } else { "DIFF" },
+            build_metadata_source(&input)?,
         );
     }
 
@@ -116,7 +124,12 @@ fn captured_start_reply(value: &serde_json::Value) -> &serde_json::Value {
 fn generate_reply(
     db: &'static config::GameDB,
     path: &Path,
-) -> anyhow::Result<(StartDungeonReply, CardInfoPush, serde_json::Value)> {
+) -> anyhow::Result<(
+    StartDungeonReply,
+    CardInfoPush,
+    serde_json::Value,
+    Vec<String>,
+)> {
     let original: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
     let mut value = captured_start_reply(&original).clone();
     normalize_live_json(&mut value);
@@ -137,6 +150,7 @@ fn generate_reply(
         .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, path)?;
+    let loadout = loadout_diffs(&fight, path)?;
     let determinism = opening_determinism(db, &fight, &captured_round);
     let mut runtime = BattleRuntime::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
@@ -153,6 +167,7 @@ fn generate_reply(
         battle::dungeon::start_reply(&runtime),
         runtime.card_info_push(),
         original,
+        loadout,
     ))
 }
 
@@ -179,24 +194,8 @@ fn compare_card_push(path: &Path, generated: CardInfoPush) -> anyhow::Result<Opt
                 .and_then(serde_json::Value::as_array)
                 .map(Vec::len);
             eprintln!("  card push {field} generated={generated_len:?} captured={captured_len:?}");
-            if field == "cardGroup" {
-                let summary = |value: &serde_json::Value| {
-                    value
-                        .get("cardGroup")
-                        .and_then(serde_json::Value::as_array)
-                        .into_iter()
-                        .flatten()
-                        .map(|card| {
-                            (
-                                card.get("uid").and_then(serde_json::Value::as_i64),
-                                card.get("skillId").and_then(serde_json::Value::as_i64),
-                                card.get("tempCard").and_then(serde_json::Value::as_bool),
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                };
-                eprintln!("  generated cards={:?}", summary(&generated));
-                eprintln!("  captured cards={:?}", summary(&captured));
+            for line in array_len_diff_lines(&generated, &captured, &path, "/cardInfoPush") {
+                eprintln!("    {line}");
             }
         }
     }
@@ -215,14 +214,7 @@ fn output_path(
         .and_then(|root| canonical_input.strip_prefix(root).ok().map(PathBuf::from));
     let output = match relative {
         Some(path) => output_root.join(path),
-        None => output_root
-            .join(
-                canonical_input
-                    .parent()
-                    .and_then(|path| path.file_name())
-                    .unwrap_or_default(),
-            )
-            .join(canonical_input.file_name().unwrap_or_default()),
+        None => battle_preview::external_output_path(output_root, &canonical_input),
     };
     let collision_key = if cfg!(windows) {
         output.to_string_lossy().to_lowercase()
@@ -261,10 +253,28 @@ mod tests {
     }
 
     #[test]
-    fn external_output_collisions_fail_loudly() {
+    fn external_captures_sharing_a_battle_name_get_separate_outputs() {
         let (root, input_root, output_root) = output_test_paths("collision");
         let first = write_input(&root, "capture-a", "Battle1");
         let second = write_input(&root, "capture-b", "Battle1");
+        let mut outputs = HashSet::new();
+
+        assert_ne!(
+            output_path(&input_root, &output_root, &first, &mut outputs).unwrap(),
+            output_path(&input_root, &output_root, &second, &mut outputs).unwrap()
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn repeated_external_input_fails_loudly_in_any_case_on_windows() {
+        let (root, input_root, output_root) = output_test_paths("case-collision");
+        let first = write_input(&root, "capture-a", "Battle1");
+        let second = root
+            .join("CAPTURE-A")
+            .join("battle1")
+            .join("StartDungeonReply.json");
         let mut outputs = HashSet::new();
         output_path(&input_root, &output_root, &first, &mut outputs).unwrap();
 
@@ -274,19 +284,6 @@ mod tests {
                 .to_string()
                 .contains("multiple inputs map")
         );
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn external_output_collision_check_is_case_insensitive_on_windows() {
-        let (root, input_root, output_root) = output_test_paths("case-collision");
-        let first = write_input(&root, "capture-a", "Battle1");
-        let second = write_input(&root, "capture-b", "battle1");
-        let mut outputs = HashSet::new();
-        output_path(&input_root, &output_root, &first, &mut outputs).unwrap();
-
-        assert!(output_path(&input_root, &output_root, &second, &mut outputs).is_err());
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -137,7 +137,7 @@ fn missing_summoned_definition_fails_loudly() {
 }
 
 #[test]
-fn device_owned_max_roots_use_configured_device_skills() {
+fn device_owned_roots_cover_every_device_tier() {
     crate::init_config().unwrap();
     let db = config::get();
     let mut skills = VecDeque::new();
@@ -152,9 +152,10 @@ fn device_owned_max_roots_use_configured_device_skills() {
         .into_iter()
         .map(|pending| pending.id)
         .collect::<Vec<_>>();
-    assert!(ids.contains(&31444111));
-    assert!(ids.contains(&31441121));
-    assert!(ids.contains(&31445131));
+    // Device skills from the lowest and highest Portrait tiers.
+    for id in [31440111, 31440131, 31444111, 31441121, 31445131] {
+        assert!(ids.contains(&id), "missing device tier skill {id}");
+    }
     for false_id in [31440112, 31440113, 31440122, 31440123] {
         assert!(
             !ids.contains(&false_id),
@@ -186,6 +187,64 @@ fn non_device_max_roots_keep_character_groups_and_ultimate() {
     assert!(ids.contains(&31345111));
     assert!(ids.contains(&31344121));
     assert!(ids.contains(&31345131));
+}
+
+#[test]
+fn hero_roots_cover_every_kit_tier() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut skills = VecDeque::new();
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    collect_hero_build_roots(3120, None, None, db, &mut skills, &mut report).unwrap();
+
+    let ids = skills
+        .into_iter()
+        .map(|pending| pending.id)
+        .collect::<Vec<_>>();
+    // Pre-Insight kit, Insight replacement, and an intermediate Portrait tier.
+    for id in [31200201, 31200211, 31200111, 31200131, 312001213, 312001214] {
+        assert!(ids.contains(&id), "missing kit tier skill {id}");
+    }
+}
+
+#[test]
+fn inferred_wire_markers_are_notes_not_warnings() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut skills = VecDeque::new();
+    let mut report = Report::default();
+
+    collect_hero_build_roots(3120, None, None, db, &mut skills, &mut report).unwrap();
+    let mut catalog = SkillEffectCatalog::from_roots(
+        db,
+        skills.iter().map(|pending| pending.id),
+        std::iter::empty(),
+    );
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut VecDeque::new(),
+        &mut report,
+    );
+
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|note| note.starts_with("InferredBuffActMarker"))
+    );
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|warning| warning.starts_with("InferredBuffActMarker"))
+    );
 }
 
 #[test]

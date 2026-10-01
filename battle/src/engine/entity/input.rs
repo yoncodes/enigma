@@ -12,6 +12,8 @@ pub struct HeroBuildInput {
     pub talent_placements: Vec<i32>,
     pub destiny_rank: i32,
     pub destiny_stone: i32,
+    /// Hero-specific selections, e.g. Ezio's equipped gear ("first#second").
+    pub extra_str: String,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

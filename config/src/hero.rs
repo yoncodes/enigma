@@ -4,8 +4,9 @@ use crate::{
     character_destiny_facets_consume::CharacterDestinyFacetsConsume,
     character_destiny_slots::CharacterDestinySlots, character_level::CharacterLevel,
     character_rank::CharacterRank, character_talent::CharacterTalent,
-    character_voice::CharacterVoice, hero3124_skill_talent::Hero3124SkillTalent, skin::Skin,
-    talent_scheme::TalentScheme, talent_style_cost::TalentStyleCost,
+    character_voice::CharacterVoice, fight_eziozhuangbei::FightEziozhuangbei,
+    hero3124_skill_talent::Hero3124SkillTalent, skin::Skin, talent_scheme::TalentScheme,
+    talent_style_cost::TalentStyleCost,
 };
 
 impl GameDB {
@@ -140,20 +141,128 @@ impl GameDB {
             .find(|row| row.facets_id == stone_id)
     }
 
-    pub fn character_unique_skill_kind(&self, hero_id: i32) -> Option<i32> {
-        self.character
-            .get(hero_id)?
-            .unique_skill_point
-            .split_once('#')?
-            .0
-            .parse()
-            .ok()
-    }
-
-    pub fn has_character_weapon(&self, main_id: i32, sub_id: i32, skill_level: i32) -> bool {
-        self.fight_eziozhuangbei.iter().any(|row| {
+    pub fn has_character_weapon(
+        &self,
+        hero_id: i32,
+        main_id: i32,
+        sub_id: i32,
+        skill_level: i32,
+    ) -> bool {
+        self.gear_rows(hero_id).any(|row| {
             row.first_id == main_id && row.second_id == sub_id && row.skill_level == skill_level
         })
+    }
+
+    /// Gear rows a hero can equip. The table has no hero column and the
+    /// resource kind in `uniqueSkill_point` is not an owner; like the client,
+    /// the table belongs to Ezio.
+    pub fn gear_rows(&self, hero_id: i32) -> impl Iterator<Item = &FightEziozhuangbei> {
+        const GEAR_HERO: i32 = 3123;
+        self.fight_eziozhuangbei
+            .iter()
+            .filter(move |_| hero_id == GEAR_HERO)
+    }
+
+    /// Gear row selected by a hero's `extraStr` ("first#second").
+    pub fn equipped_gear(
+        &self,
+        hero_id: i32,
+        extra_str: &str,
+        skill_level: i32,
+    ) -> Option<&FightEziozhuangbei> {
+        let mut ids = extra_str.split('#').map(|id| id.trim().parse::<i32>().ok());
+        let first = ids.next().flatten().filter(|id| *id > 0)?;
+        let second = ids.next().flatten().unwrap_or(0);
+        self.gear_rows(hero_id).find(|row| {
+            row.first_id == first && row.second_id == second && row.skill_level == skill_level
+        })
+    }
+
+    /// Talent-tree rows a hero can light. Like the client, the table belongs
+    /// to Kassandra.
+    pub fn talent_tree_rows(&self, hero_id: i32) -> impl Iterator<Item = &Hero3124SkillTalent> {
+        const TALENT_TREE_HERO: i32 = 3124;
+        self.hero3124_skill_talent
+            .iter()
+            .filter(move |_| hero_id == TALENT_TREE_HERO)
+    }
+
+    /// Talents lit in a hero's `extraStr` ("sub#id,id|sub#id"), in talent-id
+    /// order, which is the order the client applies their skill exchanges.
+    pub fn lit_talents(&self, hero_id: i32, extra_str: &str) -> Vec<&Hero3124SkillTalent> {
+        let lit = extra_str
+            .split('|')
+            .filter_map(|group| group.split_once('#'))
+            .flat_map(|(_, ids)| ids.split(','))
+            .filter_map(|id| id.trim().parse::<i32>().ok())
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut rows = self
+            .talent_tree_rows(hero_id)
+            .filter(|row| lit.contains(&row.talent_id))
+            .collect::<Vec<_>>();
+        rows.sort_by_key(|row| row.talent_id);
+        rows
+    }
+
+    pub fn talent_skills_at(row: &Hero3124SkillTalent, skill_level: i32) -> (&str, &str) {
+        match skill_level {
+            0 => (&row.new_skills0, &row.exchange_skills0),
+            1 => (&row.new_skills1, &row.exchange_skills1),
+            2 => (&row.new_skills2, &row.exchange_skills2),
+            3 => (&row.new_skills3, &row.exchange_skills3),
+            4 => (&row.new_skills4, &row.exchange_skills4),
+            5 => (&row.new_skills5, &row.exchange_skills5),
+            _ => ("", ""),
+        }
+    }
+
+    pub fn talent_exchanges(
+        &self,
+        hero_id: i32,
+        extra_str: &str,
+        skill_level: i32,
+    ) -> Vec<(i32, i32)> {
+        self.lit_talents(hero_id, extra_str)
+            .into_iter()
+            .flat_map(|row| Self::talent_skills_at(row, skill_level).1.split('|'))
+            .filter_map(|pair| {
+                let (from, to) = pair.split_once('#')?;
+                Some((from.trim().parse().ok()?, to.trim().parse().ok()?))
+            })
+            .collect()
+    }
+
+    pub fn talent_new_skills(&self, hero_id: i32, extra_str: &str, skill_level: i32) -> Vec<i32> {
+        self.lit_talents(hero_id, extra_str)
+            .into_iter()
+            .flat_map(|row| Self::talent_skills_at(row, skill_level).0.split('#'))
+            .filter_map(|id| id.trim().parse().ok())
+            .collect()
+    }
+
+    /// Talent points a hero has at a rank; `fight_const` 52 lists "rank#points".
+    pub fn talent_points(&self, rank: i32) -> i32 {
+        const TALENT_POINTS: i32 = 52;
+        self.fight_const
+            .get(TALENT_POINTS)
+            .map(|row| {
+                row.value
+                    .split('|')
+                    .filter_map(|entry| entry.split_once('#'))
+                    .filter_map(|(at, points)| {
+                        Some((at.parse::<i32>().ok()?, points.parse::<i32>().ok()?))
+                    })
+                    .filter(|(at, _)| *at <= rank)
+                    .map(|(_, points)| points)
+                    .sum()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Rank that unlocks a gear slot; `fight_const` 53 (first) and 54 (second).
+    pub fn gear_slot_unlock_rank(&self, second: bool) -> Option<i32> {
+        let id = if second { 54 } else { 53 };
+        self.fight_const.get(id)?.value.trim().parse().ok()
     }
 
     pub fn hero_skill_talent(&self, sub_id: i32, level: i32) -> Option<&Hero3124SkillTalent> {

@@ -78,6 +78,76 @@ pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<P
     Ok((ex_attributes, sp_attributes))
 }
 
+/// Rebuilds each captured attacker from its build inputs and lists where the
+/// engine's loadout differs from the captured one.
+pub fn loadout_diffs(fight: &Fight, battle_path: &Path) -> anyhow::Result<Vec<String>> {
+    let metadata = battle_build_metadata(battle_path)?;
+    let battle_balance =
+        request_battle_balance(fight, battle_request_metadata(battle_path)?.is_balance)?;
+    let mut diffs = Vec::new();
+    let teams = fight.attacker.iter().flat_map(|team| {
+        team.entitys
+            .iter()
+            .map(|entity| (entity, false))
+            .chain(team.sub_entitys.iter().map(|entity| (entity, true)))
+    });
+    for (entity, is_sub) in teams {
+        let uid = entity
+            .uid
+            .ok_or_else(|| anyhow::anyhow!("attacker is missing uid"))?;
+        let built = if let Some((trial, _)) = configured_trial(entity)? {
+            trial
+        } else {
+            let hero = metadata.get(&uid).ok_or_else(|| {
+                anyhow::anyhow!("loadout preview missing build metadata uid={uid}")
+            })?;
+            let build = preview_build_input(entity, hero)?;
+            let mut builder = battle::engine::entity::builder::EntityBuilder::new(
+                build.clone(),
+                entity.position.unwrap_or_default(),
+                entity.team_type.unwrap_or_default(),
+                is_sub,
+            );
+            // Balance rewrites rank, which picks the kit and resource type.
+            if let Some(balance) = battle_balance {
+                builder = builder.with_balance(balance, balance.stats_for(&build, &[]));
+            }
+            builder.build()
+        };
+        let fields = [
+            (
+                "skillGroup1",
+                format!("{:?}", built.skill_group1),
+                format!("{:?}", entity.skill_group1),
+            ),
+            (
+                "skillGroup2",
+                format!("{:?}", built.skill_group2),
+                format!("{:?}", entity.skill_group2),
+            ),
+            (
+                "exSkill",
+                format!("{}", built.ex_skill.unwrap_or_default()),
+                format!("{}", entity.ex_skill.unwrap_or_default()),
+            ),
+            (
+                "exPointType",
+                format!("{}", built.ex_point_type.unwrap_or_default()),
+                format!("{}", entity.ex_point_type.unwrap_or_default()),
+            ),
+        ];
+        for (field, built, captured) in fields {
+            if built != captured {
+                diffs.push(format!(
+                    "uid={uid} hero={} {field} built={built} captured={captured}",
+                    entity.model_id.unwrap_or_default()
+                ));
+            }
+        }
+    }
+    Ok(diffs)
+}
+
 #[derive(Debug, Default)]
 struct BattleRequestMetadata {
     is_balance: bool,
@@ -305,45 +375,69 @@ fn validated_equipment_loadout(
     Ok(std::iter::once(primary).chain(supplemental).collect())
 }
 
+/// Where attacker builds come from: the capture timeline; the roster files saved
+/// next to the battle; or, lowest confidence, the whole session's rosters and
+/// updates (which may include changes made after the battle).
+pub fn build_metadata_source(battle_path: &Path) -> anyhow::Result<&'static str> {
+    Ok(resolve_build_metadata(battle_path)?.1)
+}
+
 fn battle_build_metadata(path: &Path) -> anyhow::Result<HashMap<i64, HeroInfo>> {
+    Ok(resolve_build_metadata(path)?.0)
+}
+
+fn resolve_build_metadata(path: &Path) -> anyhow::Result<(HashMap<i64, HeroInfo>, &'static str)> {
     if let Some(captured) = capture_build_metadata(path)? {
-        return Ok(captured);
+        return Ok((captured, "timeline"));
     }
-    let Some(parent) = path.parent() else {
-        return Ok(HashMap::new());
-    };
     let mut roster_files = Vec::new();
     let mut update_files = Vec::new();
-    for path in fs::read_dir(parent)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-    {
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if name.starts_with("HeroInfoListReply") && name.ends_with(".json") {
-            roster_files.push(path);
-        } else if name.starts_with("HeroUpdatePush") && name.ends_with(".json") {
-            update_files.push(path);
+    if let Some(parent) = path.parent() {
+        for path in fs::read_dir(parent)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+        {
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if name.starts_with("HeroInfoListReply") && name.ends_with(".json") {
+                roster_files.push(path);
+            } else if name.starts_with("HeroUpdatePush") && name.ends_with(".json") {
+                update_files.push(path);
+            }
         }
     }
-    roster_files.sort();
-    update_files.sort();
-
-    let mut heroes = HashMap::new();
-    for file in roster_files {
-        apply_hero_roster(&file, &mut heroes)?;
+    if !roster_files.is_empty() || !update_files.is_empty() {
+        roster_files.sort();
+        update_files.sort();
+        let mut heroes = HashMap::new();
+        for file in roster_files {
+            apply_hero_roster(&file, &mut heroes)?;
+        }
+        for file in update_files {
+            apply_hero_update(&file, &mut heroes)?;
+        }
+        return Ok((heroes, "local"));
     }
-    for file in update_files {
-        apply_hero_update(&file, &mut heroes)?;
+    if let Some(files) = session_files(path)?
+        && let Some(heroes) = replay_rosters(files)?
+    {
+        return Ok((heroes, "session"));
     }
-    Ok(heroes)
+    Ok((HashMap::new(), "none"))
 }
 
 fn capture_build_metadata(path: &Path) -> anyhow::Result<Option<HashMap<i64, HeroInfo>>> {
     let Some(files) = capture_timeline_through(path)? else {
         return Ok(None);
     };
+    replay_rosters(files)?
+        .map(Some)
+        .ok_or_else(|| anyhow::anyhow!("capture timeline has no hero roster before battle"))
+}
+
+/// Replays rosters and hero updates in timeline order; `None` without a roster.
+fn replay_rosters(files: Vec<PathBuf>) -> anyhow::Result<Option<HashMap<i64, HeroInfo>>> {
     let mut heroes = HashMap::new();
     let mut saw_roster = false;
     for file in files {
@@ -358,13 +452,10 @@ fn capture_build_metadata(path: &Path) -> anyhow::Result<Option<HashMap<i64, Her
             apply_hero_update(&file, &mut heroes)?;
         }
     }
-    if !saw_roster {
-        anyhow::bail!("capture timeline has no hero roster before battle");
-    }
-    Ok(Some(heroes))
+    Ok(saw_roster.then_some(heroes))
 }
 
-fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
+fn session_files(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
     let Some(common) = path
         .ancestors()
         .map(|ancestor| ancestor.join("common"))
@@ -378,13 +469,22 @@ fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>>
         .filter(|path| path.is_file())
         .collect::<Vec<_>>();
     files.sort();
+    Ok(Some(files))
+}
+
+fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
+    let Some(mut files) = session_files(path)? else {
+        return Ok(None);
+    };
 
     let target = fs::read(path)?;
     let command = capture_command(path)
         .ok_or_else(|| anyhow::anyhow!("capture packet has no command name"))?;
     let matches = matching_packets(&files, &command, &target)?;
     let target_index = match matches.as_slice() {
-        [] => anyhow::bail!("capture packet not found in common timeline"),
+        // Older captures keep a shared timeline without this battle; their
+        // build comes from the roster files saved next to the battle.
+        [] => return Ok(None),
         [index] => *index,
         _ => resolve_repeated_packet(path, &files, &matches)?,
     };
@@ -572,6 +672,7 @@ fn preview_build_input(
             .or(hero.destiny_rank)
             .unwrap_or_default(),
         destiny_stone: entity.destiny_stone.unwrap_or_default(),
+        extra_str: hero.extra_str.clone().unwrap_or_default(),
     })
 }
 
@@ -1020,6 +1121,37 @@ mod tests {
     }
 
     #[test]
+    fn loadout_diffs_report_fields_that_differ_from_the_rebuilt_entity() {
+        crate::init_test_config();
+        let uid = 42;
+        let directory = test_directory("loadout");
+        let hero = hero(uid);
+        write_roster(&directory, hero.clone());
+        let mut fight = fight(uid);
+        let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
+        let built = battle::engine::entity::builder::EntityBuilder::new(
+            preview_build_input(entity, &hero).unwrap(),
+            0,
+            0,
+            false,
+        )
+        .build();
+        entity.skill_group1 = built.skill_group1.clone();
+        entity.skill_group2 = built.skill_group2.clone();
+        entity.ex_skill = built.ex_skill;
+        entity.ex_point_type = built.ex_point_type;
+        let path = directory.join("StartDungeonReply.json");
+
+        assert!(loadout_diffs(&fight, &path).unwrap().is_empty());
+
+        fight.attacker.as_mut().unwrap().entitys[0].ex_skill = Some(1);
+        let diffs = loadout_diffs(&fight, &path).unwrap();
+        assert_eq!(diffs.len(), 1);
+        assert!(diffs[0].contains("exSkill"));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn configured_trial_uses_configured_attributes_without_roster_metadata() {
         crate::init_test_config();
         let uid = 42;
@@ -1110,6 +1242,7 @@ mod tests {
             battle_build_metadata(&battle_path).unwrap()[&uid].hero_id,
             3149
         );
+        assert_eq!(build_metadata_source(&battle_path).unwrap(), "timeline");
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -1192,7 +1325,7 @@ mod tests {
     }
 
     #[test]
-    fn unresolved_common_timeline_does_not_use_local_updates() {
+    fn unmatched_common_timeline_falls_back_to_local_build_metadata() {
         let directory = test_directory("unresolved-common");
         let common = directory.join("decoded/common");
         let battle = directory.join("decoded/Dungeon/Battle1");
@@ -1216,10 +1349,38 @@ mod tests {
 
         assert!(
             battle_build_metadata(&battle_path)
-                .unwrap_err()
-                .to_string()
-                .contains("not found in common timeline")
+                .unwrap()
+                .contains_key(&42)
         );
+        assert_eq!(build_metadata_source(&battle_path).unwrap(), "local");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn session_roster_backs_battles_missing_from_the_timeline() {
+        let directory = test_directory("session-roster");
+        let common = directory.join("decoded/common");
+        let battle = directory.join("decoded/Dungeon/Battle1");
+        fs::create_dir_all(&common).unwrap();
+        fs::create_dir_all(&battle).unwrap();
+        fs::write(
+            common.join("capture_000001_HeroInfoListReply.json"),
+            serde_json::to_vec(&HeroInfoListReply {
+                heros: vec![hero(42)],
+                ..Default::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        let battle_path = battle.join("StartDungeonReply.json");
+        fs::write(&battle_path, b"captured battle").unwrap();
+
+        assert!(
+            battle_build_metadata(&battle_path)
+                .unwrap()
+                .contains_key(&42)
+        );
+        assert_eq!(build_metadata_source(&battle_path).unwrap(), "session");
         fs::remove_dir_all(directory).unwrap();
     }
 

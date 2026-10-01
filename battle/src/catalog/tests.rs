@@ -73,6 +73,10 @@ fn normalizes_entity_ex_point_max() {
         Some(8)
     );
     assert_eq!(
+        configured_ex_point_max(game_data, None, Some(3120), 55),
+        Some(5)
+    );
+    assert_eq!(
         configured_ex_point_max(game_data, Some(17), Some(3120), 180),
         Some(17)
     );

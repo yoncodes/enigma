@@ -294,6 +294,7 @@ fn scan(
             .collect(),
         errors: report.errors,
         warnings: report.warnings,
+        notes: report.notes,
         gaps: report.gaps.len(),
     }
 }

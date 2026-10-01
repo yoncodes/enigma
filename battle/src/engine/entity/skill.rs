@@ -41,13 +41,25 @@ impl Skill {
                 Self::get_from_character(game, hero.hero_id, 1),
                 Self::get_from_character(game, hero.hero_id, 2),
             )
+        } else if let Some(gear) =
+            game.equipped_gear(hero.hero_id, &hero.extra_str, hero.ex_skill_level)
+        {
+            (
+                configured_skill_ids(game, &gear.skill_group1),
+                configured_skill_ids(game, &gear.skill_group2),
+            )
         } else {
-            let (group1, group2, _) = Self::active_skills(game, hero.hero_id, hero.ex_skill_level);
+            let (group1, group2, _) =
+                Self::active_skills(game, hero.hero_id, hero.rank, hero.ex_skill_level);
             (group1, group2)
         };
         if let Some(map) = destiny {
             Self::apply_exchange(&mut sg1, map);
             Self::apply_exchange(&mut sg2, map);
+        }
+        let talents = game.talent_exchanges(hero.hero_id, &hero.extra_str, hero.ex_skill_level);
+        for id in sg1.iter_mut().chain(sg2.iter_mut()) {
+            *id = talent_exchange(*id, &talents);
         }
 
         (sg1, sg2)
@@ -66,8 +78,17 @@ impl Skill {
         hero: &HeroBuildInput,
         destiny: Option<&HashMap<i32, i32>>,
     ) -> i32 {
-        let ex = Self::active_skills(game, hero.hero_id, hero.ex_skill_level).2;
-        destiny.and_then(|map| map.get(&ex).copied()).unwrap_or(ex)
+        let ex = game
+            .equipped_gear(hero.hero_id, &hero.extra_str, hero.ex_skill_level)
+            .map(|gear| gear.skill_ex)
+            .unwrap_or_else(|| {
+                Self::active_skills(game, hero.hero_id, hero.rank, hero.ex_skill_level).2
+            });
+        let ex = destiny.and_then(|map| map.get(&ex).copied()).unwrap_or(ex);
+        talent_exchange(
+            ex,
+            &game.talent_exchanges(hero.hero_id, &hero.extra_str, hero.ex_skill_level),
+        )
     }
 
     pub fn get_skill_groups_with_destiny(
@@ -76,7 +97,7 @@ impl Skill {
         destiny: Option<&HashMap<i32, i32>>,
     ) -> (Vec<i32>, Vec<i32>) {
         let game = crate::catalog::BattleCatalog::global().game_data();
-        let (mut sg1, mut sg2, _) = Self::active_skills(game, hero_id, ex_level);
+        let (mut sg1, mut sg2, _) = Self::active_skills(game, hero_id, 0, ex_level);
 
         if let Some(map) = destiny {
             Self::apply_exchange(&mut sg1, map);
@@ -90,6 +111,7 @@ impl Skill {
         Self::active_skills(
             crate::catalog::BattleCatalog::global().game_data(),
             hero_id,
+            0,
             ex_level,
         )
     }
@@ -105,15 +127,24 @@ impl Skill {
     pub(crate) fn active_skills(
         game: &config::GameDB,
         hero_id: i32,
+        rank: i32,
         ex_level: i32,
     ) -> (Vec<i32>, Vec<i32>, i32) {
         let Some(character) = game.character.get(hero_id) else {
             tracing::warn!(hero_id, "character not found while resolving active skills");
             return Default::default();
         };
-        let mut group1 = parse_skill_group(&character.skill, 1);
-        let mut group2 = parse_skill_group(&character.skill, 2);
-        let mut ex_skill = character.ex_skill;
+        let rank_replace = game.character_rank_replace.get(hero_id);
+        let (skill, mut ex_skill) = match rank_replace {
+            Some(replace) if rank > 2 => (replace.skill.as_str(), replace.ex_skill),
+            _ => (character.skill.as_str(), character.ex_skill),
+        };
+        let mut group1 = parse_skill_group(skill, 1);
+        let mut group2 = parse_skill_group(skill, 2);
+        // Portraits upgrade a rank-replaced kit only after the replacement.
+        if rank_replace.is_some() && rank <= 2 {
+            return (group1, group2, ex_skill);
+        }
         let mut upgrades = game
             .skill_ex_level
             .iter()
@@ -141,6 +172,14 @@ impl Skill {
             }
         }
     }
+}
+
+/// Talent exchanges apply in order, so a later one can remap an id an earlier
+/// one produced.
+pub(crate) fn talent_exchange(id: i32, exchanges: &[(i32, i32)]) -> i32 {
+    exchanges
+        .iter()
+        .fold(id, |id, (from, to)| if id == *from { *to } else { id })
 }
 
 fn configured_skill_ids(game: &config::GameDB, raw: &str) -> Vec<i32> {
@@ -215,9 +254,32 @@ mod tests {
             (3, vec![312001214, 312001224, 312001234]),
             (4, vec![312001215, 312001225, 312001235]),
         ] {
-            let (_, group2, _) = Skill::active_skills(game, 3120, level);
+            let (_, group2, _) = Skill::active_skills(game, 3120, 3, level);
             assert_eq!(group2, expected, "portrayal level {level}");
         }
+    }
+
+    #[test]
+    fn nautika_swaps_kit_and_gains_ultimate_at_insight_two() {
+        init_config();
+        let game = crate::test_support::game_data();
+        assert_eq!(
+            Skill::active_skills(game, 3120, 2, 5),
+            (
+                vec![31200201, 31200202, 31200203],
+                vec![31200211, 31200212, 31200213],
+                0,
+            )
+        );
+        assert_eq!(
+            Skill::active_skills(game, 3120, 3, 0),
+            (
+                vec![31200111, 31200112, 31200113],
+                vec![31200121, 31200122, 31200123],
+                31200131,
+            )
+        );
+        assert_eq!(Skill::active_skills(game, 3120, 3, 1).2, 31200131);
     }
 
     #[test]
@@ -225,7 +287,7 @@ mod tests {
         init_config();
         let game = crate::test_support::game_data();
         assert_eq!(
-            Skill::active_skills(game, 3135, 0),
+            Skill::active_skills(game, 3135, 0, 0),
             (
                 vec![31350111, 31350112, 31350113],
                 vec![31350121, 31350122, 31350123],
@@ -233,7 +295,7 @@ mod tests {
             )
         );
         assert_eq!(
-            Skill::active_skills(game, 3135, 1).0,
+            Skill::active_skills(game, 3135, 0, 1).0,
             vec![31350114, 31350115, 31350116]
         );
     }
@@ -243,7 +305,7 @@ mod tests {
         init_config();
 
         assert_eq!(
-            Skill::active_skills(crate::test_support::game_data(), 3134, 5),
+            Skill::active_skills(crate::test_support::game_data(), 3134, 0, 5),
             (
                 vec![31345111, 31345112, 31345113],
                 vec![31344121, 31344122, 31344123],

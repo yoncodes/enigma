@@ -493,7 +493,7 @@ pub(crate) fn emit_runtime_ops(
 behavior_definitions! {
     [20002] "AddExPoint" => super::resource::Handler, AddExPoint, AfterDamage, aggregated_destination, arguments::at_least_one;
     [100004] "AddAdrenalineExPoint" => super::resource::Handler, AddAdrenalineExPoint, AfterDamage, destination, super::resource::supports_ex_point_gain;
-    [100014] "EzioAddSynchronization" => super::resource::Handler, AddSynchronization, AfterDamage, destination;
+    [100014] "EzioAddSynchronization" => super::resource::Handler, AddSynchronization, AfterDamage, destination, super::resource::supports_ex_point_gain;
     [10010] "AttrFixExPoint" => super::resource::Handler, AttrFixExPoint, Immediate, destination;
     [30001] "DelExPoint" => super::resource::Handler, DelExPoint, AfterDamage, destination, super::resource::supports_ex_point_loss;
     [30007] "DelExPoint" => super::resource::Handler, DelExPoint, AfterDamage, destination;
@@ -566,7 +566,7 @@ behavior_definitions! {
     [20017] "AddBuffRound2" => super::buff::Handler, AddBuffRound2, AfterDamage, aggregated_destination;
     [20021] "AddBuffRanId" => super::buff::Handler, AddBuffRanId, AfterDamage, destination, super::buff::supports_random_pool;
     [20022] "AddBuffRanTypeId" => super::buff::Handler, AddBuffRanTypeId, AfterDamage, destination, super::buff::supports_random_pool;
-    [100006] "AddBuffByHeroId" => super::buff::Handler, AddBuffByHeroId, AfterDamage, destination;
+    [100006] "AddBuffByHeroId" => super::buff::Handler, AddBuffByHeroId, AfterDamage, destination, super::buff::supports_add_buff_by_hero_id;
     [60029] "RemoveBuffToAddBuff" => super::buff::Handler, RemoveBuffToAddBuff, AfterDamage, destination, arguments::exactly_two;
     [60145] "AddBuffDuration" => super::buff::Handler, AddBuffDuration, Immediate, destination, arguments::exactly_two;
     [60094] "ReduceCastChannelCount" => super::buff::Handler, ReduceCastChannelCount, AfterDamage, destination, super::buff::supports_channel_count_reduction;
@@ -606,11 +606,11 @@ behavior_definitions! {
     [50021] "RemoveMagicCircleById" => super::magic_circle::Handler, RemoveMagicCircleById, Immediate, destination;
     [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, destination;
     [60195] "ElectricTransform" => super::electric::Handler, ElectricTransform, Immediate, destination, super::electric::supports;
-    [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, destination;
-    [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterDamage, destination;
-    [100002] "EzioBigSkillTyp2" => super::synchronization::Handler, EzioBigSkillType2, AfterDamage, destination;
-    [100003] "EzioBigSkillEnd" => super::synchronization::Handler, EzioBigSkillEnd, AfterDamage, destination;
-    [100022] "EzioBigSkillCheckTimes" => super::synchronization::Handler, EzioBigSkillCheckTimes, AfterHit, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(214, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::AfterHit) });
+    [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, destination, super::synchronization::supports_props;
+    [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterDamage, destination, super::synchronization::supports_big_skill_rate;
+    [100002] "EzioBigSkillTyp2" => super::synchronization::Handler, EzioBigSkillType2, AfterDamage, destination, super::synchronization::supports_big_skill_rate;
+    [100003] "EzioBigSkillEnd" => super::synchronization::Handler, EzioBigSkillEnd, AfterDamage, destination, super::synchronization::supports_big_skill_end;
+    [100022] "EzioBigSkillCheckTimes" => super::synchronization::Handler, EzioBigSkillCheckTimes, AfterHit, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(214, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::AfterHit) }), arguments::none;
     [100012] "EzioBigSkillWeapon2" => super::ultimate_kind::Handler, UltimateExtraAction, Immediate, destination;
     [40009] "AddSummoned" => super::summon::Handler, AddSummoned, Immediate, destination, super::summon::supports_add_summoned;
     [40010] "ChangeSummonedLevel" => super::summon::Handler, ChangeSummonedLevel, Immediate, destination;

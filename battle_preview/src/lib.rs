@@ -10,7 +10,7 @@ mod compression;
 mod normalize;
 mod replay_rng;
 
-pub use attributes::preview_attributes;
+pub use attributes::{build_metadata_source, loadout_diffs, preview_attributes};
 pub use compression::expand_compressed_fight_steps;
 pub use normalize::normalize_live_json;
 pub use replay_rng::{opening_determinism, seed_round_determinism};
@@ -205,6 +205,100 @@ pub fn value_at_diff_path<'a>(
     Some(value)
 }
 
+/// For a `.len` diff, lists both arrays element by element (`!!` marks a
+/// mismatch) so an inserted or moved element is visible, not just the count.
+pub fn array_len_diff_lines(
+    generated: &serde_json::Value,
+    captured: &serde_json::Value,
+    path: &str,
+    root: &str,
+) -> Vec<String> {
+    let Some(array_path) = path.strip_suffix(".len") else {
+        return Vec::new();
+    };
+    let items = |value| {
+        value_at_diff_path(value, array_path, root)
+            .and_then(serde_json::Value::as_array)
+            .map(|items| items.iter().map(element_summary).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    let (generated, captured) = (items(generated), items(captured));
+    (0..generated.len().max(captured.len()))
+        .map(|index| {
+            let (generated, captured) = (generated.get(index), captured.get(index));
+            format!(
+                "{} [{index}] generated={} captured={}",
+                if generated == captured { "  " } else { "!!" },
+                generated.map_or("-", String::as_str),
+                captured.map_or("-", String::as_str),
+            )
+        })
+        .collect()
+}
+
+fn element_summary(value: &serde_json::Value) -> String {
+    let field = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .map(|field| field.to_string())
+            .unwrap_or_default()
+    };
+    if let Some(effects) = value.get("actEffect").and_then(serde_json::Value::as_array) {
+        let effects = effects
+            .iter()
+            .map(|effect| field(effect, "effectType"))
+            .collect::<Vec<_>>();
+        return format!("step({})", effects.join(" "));
+    }
+    if value.get("skillId").is_some() && value.get("uid").is_some() {
+        return format!(
+            "card(uid={} skill={}{})",
+            field(value, "uid"),
+            field(value, "skillId"),
+            if value.get("tempCard").and_then(serde_json::Value::as_bool) == Some(true) {
+                " temp"
+            } else {
+                ""
+            }
+        );
+    }
+    if value.get("effectType").is_some() {
+        let buff = value
+            .get("buff")
+            .map(|buff| format!(" buff={}", field(buff, "buffId")))
+            .unwrap_or_default();
+        return format!(
+            "{}:{}{buff}",
+            field(value, "effectType"),
+            field(value, "targetId")
+        );
+    }
+    let text = value.to_string();
+    text.chars().take(80).collect()
+}
+
+/// Output for an input outside the fixture root. Mirrors the input's full
+/// path so captures that share a battle folder name never overwrite each other.
+pub fn external_output_path(output_root: &Path, input: &Path) -> PathBuf {
+    let relative = input
+        .components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(part) => Some(part.to_owned()),
+            std::path::Component::Prefix(prefix) => Some(
+                prefix
+                    .as_os_str()
+                    .to_string_lossy()
+                    .chars()
+                    .filter(char::is_ascii_alphanumeric)
+                    .collect::<String>()
+                    .into(),
+            ),
+            _ => None,
+        })
+        .collect::<PathBuf>();
+    output_root.join("external").join(relative)
+}
+
 pub fn battle_id(reply_path: &Path) -> Option<i32> {
     let request_path = reply_path.with_file_name("StartDungeonRequest.json");
     let request: StartDungeonRequest =
@@ -346,6 +440,37 @@ fn prune_empty_json(value: &mut serde_json::Value) -> bool {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+
+    #[test]
+    fn length_diffs_list_each_step_and_mark_the_moved_effect() {
+        let generated = json!({"fightStep": [
+            {"actEffect": [{"effectType": 162}, {"effectType": 7}]},
+            {"actEffect": [{"effectType": 162}]},
+        ]});
+        let captured = json!({"fightStep": [
+            {"actEffect": [{"effectType": 7}, {"effectType": 162}]},
+        ]});
+
+        assert_eq!(
+            super::array_len_diff_lines(&generated, &captured, "/round/fightStep.len", "/round"),
+            vec![
+                "!! [0] generated=step(162 7) captured=step(7 162)",
+                "!! [1] generated=step(162) captured=-",
+            ]
+        );
+    }
+
+    #[test]
+    fn external_outputs_keep_the_whole_capture_path() {
+        let root = std::path::Path::new("gen");
+        let first =
+            super::external_output_path(root, std::path::Path::new("/a/Day1/Battle1/R.json"));
+        let second =
+            super::external_output_path(root, std::path::Path::new("/a/Day2/Battle1/R.json"));
+
+        assert_ne!(first, second);
+        assert!(first.ends_with("Day1/Battle1/R.json"));
+    }
 
     #[test]
     fn resolves_the_value_reported_by_a_diff_path() {
