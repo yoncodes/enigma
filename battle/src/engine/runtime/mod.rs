@@ -136,7 +136,9 @@ impl BattleRuntime {
     }
 
     /// Seeds externally observed random draws without bypassing legal draw candidates.
+    /// Each round's seeds replace any the previous round left unused.
     pub fn seed_card_draws(&mut self, cards: Vec<CardInfo>) {
+        self.determinism.clear_card_draws();
         self.determinism.enqueue_card_draws(cards);
     }
 

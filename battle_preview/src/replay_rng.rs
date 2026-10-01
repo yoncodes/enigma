@@ -71,7 +71,15 @@ pub fn seed_round_determinism(
     catalog: &SkillEffectCatalog,
     round: &FightRound,
 ) {
-    runtime.seed_card_draws(round.team_a_cards2.clone());
+    // The deal after actions draws teamACards2; the round-start refill then draws teamACards1.
+    runtime.seed_card_draws(
+        round
+            .team_a_cards2
+            .iter()
+            .chain(&round.team_a_cards1)
+            .cloned()
+            .collect(),
+    );
     runtime.seed_crystal_cards(
         round
             .before_cards1
