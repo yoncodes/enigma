@@ -111,12 +111,6 @@ fn action_event(
         team_injury_count_round: execution.team_injury_count_round,
         card_enchants: invocation.card_enchants.clone(),
         buff_additions: execution.buff_additions.clone(),
-        marked_targets: execution
-            .marked_targets
-            .iter()
-            .flatten()
-            .map(|(target_uid, _)| *target_uid)
-            .collect(),
     }
 }
 

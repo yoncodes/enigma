@@ -135,7 +135,7 @@ pub fn rule_ops(
         if !action.is_attack
             || catalog.damage_rate(action.skill_id) <= 0
             || action.source_uid == subscriber.owner_uid
-            || !action.marked_targets.contains(&subscriber.owner_uid)
+            || subscriber.amount <= 0
             || !action.target_uids.contains(&subscriber.owner_uid)
             || catalog.is_assassinate(action.skill_id)
         {
@@ -151,40 +151,38 @@ pub fn rule_ops(
             }),
         ))]);
     }
+    let [active_skill_id] = subscriber.args.as_slice() else {
+        return None;
+    };
+    if !matches!(event, BattleEvent::SkillAction(_))
+        || action.source_uid != subscriber.owner_uid
+        || action.skill_id != *active_skill_id
     {
-        let [active_skill_id] = subscriber.args.as_slice() else {
-            return None;
-        };
-        if !matches!(event, BattleEvent::SkillAction(_))
-            || action.source_uid != subscriber.owner_uid
-            || action.skill_id != *active_skill_id
-        {
-            return Some(Vec::new());
-        }
-        let mut targets = action.target_uids.clone();
-        if targets.is_empty() && action.target_uid != 0 {
-            targets.push(action.target_uid);
-        }
-        targets.retain(|target_uid| *target_uid != 0);
-        targets.sort_unstable();
-        targets.dedup();
-        return Some(
-            targets
-                .into_iter()
-                .map(|target_uid| {
-                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
-                        origin: super::command_origin(subscriber).expect("registered buff act"),
-                        source_uid: subscriber.owner_uid,
-                        target_uid,
-                        buff_id: subscriber.buff_id,
-                        amount: Some(1),
-                        occurrences: 1,
-                        child_uid_reservations: 0,
-                    })))
-                })
-                .collect(),
-        );
+        return Some(Vec::new());
     }
+    let mut targets = action.target_uids.clone();
+    if targets.is_empty() && action.target_uid != 0 {
+        targets.push(action.target_uid);
+    }
+    targets.retain(|target_uid| *target_uid != 0);
+    targets.sort_unstable();
+    targets.dedup();
+    Some(
+        targets
+            .into_iter()
+            .map(|target_uid| {
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
+                    origin: super::command_origin(subscriber).expect("registered buff act"),
+                    source_uid: subscriber.owner_uid,
+                    target_uid,
+                    buff_id: subscriber.buff_id,
+                    amount: Some(1),
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                })))
+            })
+            .collect(),
+    )
 }
 
 #[cfg(test)]
@@ -259,21 +257,20 @@ mod tests {
     }
 
     #[test]
-    fn only_damaging_attacks_on_a_target_marked_at_action_start_consume_lethal_injury_as_they_start()
-     {
+    fn only_damaging_attacks_on_a_marked_target_consume_lethal_injury_as_they_start() {
         crate::test_support::init_config();
         let catalog =
             SkillEffectCatalog::from_roots(config::configs::get(), [312431212, 435221], []);
-        let subscriber = BuffActSubscriber {
+        let lethal_injury = |stacks| BuffActSubscriber {
             owner_uid: -1,
             source_uid: 10,
             buff_uid: 20,
             buff_id: 31240121,
             team_type: 2,
             owner_alive: true,
-            amount: 1,
+            amount: stacks,
             key: crate::engine::event::subscription::SubscriptionKey::new(
-                crate::engine::event::kind::EventKind::SkillAction,
+                crate::engine::event::kind::EventKind::SkillEffectStarted,
                 crate::engine::skill::rule::DefinitionKey::new(10004, "BeAttackedAssassinate"),
             ),
             act_type: "BeAttackedAssassinate".to_owned(),
@@ -282,40 +279,35 @@ mod tests {
             args: vec![10, 1, 312401451, 31240121],
             raw: "10004#10#1#312401451,31240121".to_owned(),
         };
-        let action =
-            |skill_id, marked_targets: Vec<i64>| crate::engine::skill::action::SkillActionEvent {
-                source_uid: 11,
-                skill_id,
-                target_uid: -1,
-                target_uids: vec![-1],
-                attacked_target_uids: Vec::new(),
-                phase: crate::engine::skill::action::SkillPhase::Immediate,
-                skill_slot: 0,
-                is_attack: true,
-                rank: 1,
-                skill_type: 1,
-                effect_tag: 1,
-                assassinate: false,
-                ignore_riposte: false,
-                damage_amount: 0,
-                kill_count: 0,
-                crit_count: 0,
-                guard_break_count: 0,
-                additional_moxie: 0,
-                extra_skill_kind: 0,
-                mode: crate::engine::skill::action::SkillExecutionMode::Active,
-                teammate_injury_count: 0,
-                teammate_injury_count_not_reset: 0,
-                team_injury_count_round: 0,
-                card_enchants: Vec::new(),
-                buff_additions: Vec::new(),
-                marked_targets,
-            };
-        let attack = |skill_id, marked_targets| {
-            BattleEvent::SkillEffectStarted(action(skill_id, marked_targets))
+        let action = |skill_id| crate::engine::skill::action::SkillActionEvent {
+            source_uid: 11,
+            skill_id,
+            target_uid: -1,
+            target_uids: vec![-1],
+            attacked_target_uids: Vec::new(),
+            phase: crate::engine::skill::action::SkillPhase::Immediate,
+            skill_slot: 0,
+            is_attack: true,
+            rank: 1,
+            skill_type: 1,
+            effect_tag: 1,
+            assassinate: false,
+            ignore_riposte: false,
+            damage_amount: 0,
+            kill_count: 0,
+            crit_count: 0,
+            guard_break_count: 0,
+            additional_moxie: 0,
+            extra_skill_kind: 0,
+            mode: crate::engine::skill::action::SkillExecutionMode::Active,
+            teammate_injury_count: 0,
+            teammate_injury_count_not_reset: 0,
+            team_injury_count_round: 0,
+            card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
         };
-        let consumes = |event| {
-            rule_ops(&catalog, &subscriber, &event)
+        let consumes = |stacks, event| {
+            rule_ops(&catalog, &lethal_injury(stacks), &event)
                 .unwrap()
                 .iter()
                 .any(|op| {
@@ -325,15 +317,13 @@ mod tests {
                     )
                 })
         };
+        let starts = |skill_id| BattleEvent::SkillEffectStarted(action(skill_id));
 
-        assert!(consumes(attack(312431212, vec![-1])));
-        assert!(!consumes(attack(312431212, Vec::new())));
-        assert!(!consumes(attack(435221, vec![-1])));
+        assert!(consumes(1, starts(312431212)));
+        assert!(!consumes(0, starts(312431212)));
+        assert!(!consumes(1, starts(435221)));
         // Not after the attack's own start effects.
-        assert!(!consumes(BattleEvent::SkillAction(action(
-            312431212,
-            vec![-1]
-        ))));
+        assert!(!consumes(1, BattleEvent::SkillAction(action(312431212))));
     }
 
     #[test]
@@ -464,7 +454,6 @@ mod tests {
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
-            marked_targets: Vec::new(),
         });
         let mapped_ops = |managers: &BattleManagers| {
             crate::engine::event::dispatcher::dispatch_event(

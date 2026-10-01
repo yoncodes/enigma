@@ -73,8 +73,6 @@ pub struct SkillActionEvent {
     pub team_injury_count_round: i32,
     pub card_enchants: Vec<i32>,
     pub buff_additions: Vec<(i32, i32)>,
-    // Targets carrying an Assassination mark when the action began.
-    pub marked_targets: Vec<i64>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

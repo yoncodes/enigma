@@ -90,7 +90,6 @@ mod tests {
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
-            marked_targets: Vec::new(),
         })
     }
 
