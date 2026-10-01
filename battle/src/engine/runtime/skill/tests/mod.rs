@@ -16,10 +16,8 @@ use crate::engine::{
             AdditionalDamageModifier, SkillExecutionMode, SkillInvocation, SkillPhase,
             SkillRequest, SkillTarget,
         },
-        behavior::{self, classify::BehaviorSpec},
-        condition::{
-            ConditionCompare, ParsedCondition, ParsedConditionKind, registry::ConsequencePolicy,
-        },
+        behavior::classify::BehaviorSpec,
+        condition::{ConditionCompare, ParsedCondition, ParsedConditionKind},
         effect::{
             ParsedBehavior, ParsedSkillEffect, SkillEffectCatalog, SkillEffectSlot,
             catalog::{RuleIssue, RuleIssueReason},

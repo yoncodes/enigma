@@ -315,9 +315,6 @@ pub(in crate::engine::runtime) fn emit_ops(
                 continue;
             }
         }
-        if skill_destination_already_emitted(&outputs, definition, &slot.behavior) {
-            continue;
-        }
         let (conditions, selected_event, condition_key) = match (invocation.condition_key, trigger)
         {
             (None, SkillOpTrigger::Active) => {
@@ -1095,28 +1092,6 @@ pub(in crate::engine::runtime::skill) fn action_mode(
     } else {
         mode
     }
-}
-
-pub(in crate::engine::runtime::skill) fn skill_destination_already_emitted(
-    outputs: &[SkillEmissionOp],
-    definition: &crate::engine::skill::behavior::registry::BehaviorDefinition,
-    behavior: &crate::engine::skill::effect::ParsedBehavior,
-) -> bool {
-    if definition.skill_destination_mode
-        != crate::engine::skill::behavior::registry::SkillDestinationMode::Unique
-    {
-        return false;
-    }
-    let references = (definition.references)(behavior);
-    let [skill_id] = references.skills.as_slice() else {
-        return false;
-    };
-    outputs.iter().any(|output| {
-        matches!(
-            &output.op,
-            RuleOp::Skill(invocation) if invocation.plan.skill_id == *skill_id
-        )
-    })
 }
 
 fn consequence_policy(

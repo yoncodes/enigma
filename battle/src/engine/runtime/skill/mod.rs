@@ -5,7 +5,7 @@ mod plan;
 
 pub(in crate::engine::runtime) use emit::SkillEmissionOp;
 #[cfg(test)]
-use emit::{action_mode, skill_destination_already_emitted};
+use emit::action_mode;
 pub use errors::SkillOpError;
 pub use invoke::SkillOpTrigger;
 #[cfg(test)]

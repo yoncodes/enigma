@@ -744,6 +744,13 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
         ..Default::default()
     };
 
+    let arrow_gash = BuffInfo {
+        uid: Some(31),
+        buff_id: Some(312451021),
+        ..kick_gash.clone()
+    };
+
     assert_eq!(sparta_kicks(Vec::new()), 0);
-    assert_eq!(sparta_kicks(vec![kick_gash]), 1);
+    assert_eq!(sparta_kicks(vec![kick_gash.clone()]), 1);
+    assert_eq!(sparta_kicks(vec![kick_gash, arrow_gash]), 2);
 }

@@ -116,6 +116,6 @@ fn action_event(
 
 mod dispatch;
 
-pub(in crate::engine::runtime) use dispatch::emit_ops;
 #[cfg(test)]
-pub(super) use dispatch::{action_mode, skill_destination_already_emitted};
+pub(super) use dispatch::action_mode;
+pub(in crate::engine::runtime) use dispatch::emit_ops;
