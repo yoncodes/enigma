@@ -641,7 +641,7 @@ fn drain_queue_with_deferred(
                         RuleOp::Skill(child) => {
                             let after_current_action = child.start
                                 == crate::engine::skill::action::SkillStart::AfterCurrentAction;
-                            let queued = QueuedOp {
+                            let mut queued = QueuedOp {
                                 op: RuleOp::Skill(child),
                                 trigger: SkillOpTrigger::Active,
                                 skill_execution: None,
@@ -658,10 +658,12 @@ fn drain_queue_with_deferred(
                             match after_current_action
                                 .then(|| active_skill_scope_path(&result.frames, &frame_path))
                                 .flatten()
+                                .filter(|action_path| state.action_in_progress(action_path))
                             {
                                 Some(action_path) => {
                                     let caster =
                                         casting_reaction(&result.frames, &action_path, &frame_path);
+                                    queued.parent_path = Some(action_path.clone());
                                     state.push_after_action_cast(action_path, caster, queued)
                                 }
                                 None => outputs.push(queued),
@@ -1353,7 +1355,8 @@ fn drain_queue_with_deferred(
                     );
                     let skill_path = after_current_action
                         .then(|| active_skill_scope_path(&result.frames, &frame_path))
-                        .flatten();
+                        .flatten()
+                        .filter(|action_path| state.action_in_progress(action_path));
                     let queued = QueuedOp {
                         op,
                         trigger: SkillOpTrigger::Active,

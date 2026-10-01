@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::engine::{
     manager::hp::DeathTransition,
@@ -15,6 +15,7 @@ pub(super) struct DrainState {
     after_action: HashMap<FramePath, Vec<QueuedOp>>,
     // Casts held until their action completes, with the step that cast them.
     after_action_casts: HashMap<FramePath, Vec<(Option<FrameOwner>, QueuedOp)>>,
+    completed_actions: HashSet<FramePath>,
     injuries: HashMap<FramePath, Vec<i64>>,
     deaths: HashMap<FramePath, Vec<DeathTransition>>,
     target_modifiers: HashMap<FramePath, i32>,
@@ -103,9 +104,15 @@ impl DrainState {
         &mut self,
         action_path: &FramePath,
     ) -> Vec<(Option<FrameOwner>, QueuedOp)> {
+        self.completed_actions.insert(action_path.clone());
         self.after_action_casts
             .remove(action_path)
             .unwrap_or_default()
+    }
+
+    // An action that already completed releases nothing more; casts held for it run at once.
+    pub(super) fn action_in_progress(&self, action_path: &FramePath) -> bool {
+        !self.completed_actions.contains(action_path)
     }
 
     pub(super) fn add_target_modifier(&mut self, action_path: FramePath, amount: i32) {

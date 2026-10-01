@@ -879,3 +879,159 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
             .any(|step| step.act_id == Some(31090114))
     );
 }
+
+fn direct_use_passive(
+    skill_id: i32,
+    condition: i32,
+    condition_target: i32,
+    cast_skill_id: i32,
+) -> ParsedSkillEffect {
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(50008, "DirectUseSkill"),
+            vec![cast_skill_id],
+            Vec::new(),
+        ),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = vec![ParsedCondition {
+        opcode: condition,
+        type_name: "None".to_owned(),
+        kind: crate::engine::skill::condition::registry::parse(condition, "None", &[])
+            .expect("registered condition"),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    slot.condition_target = TargetRequest {
+        code: condition_target,
+        raw: Vec::new(),
+    };
+    slot.limit = 1;
+    ParsedSkillEffect {
+        skill_id,
+        slots: vec![slot],
+    }
+}
+
+fn attack_with_passives(
+    attacker_passives: Vec<i32>,
+    ally_passives: Vec<i32>,
+    extra: Vec<ParsedSkillEffect>,
+) -> DrainResult {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    passive_skill: attacker_passives,
+                    ..entity(10)
+                },
+                FightEntityInfo {
+                    passive_skill: ally_passives,
+                    ..entity(11)
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 31050141], []);
+    for effect in extra {
+        catalog.insert(effect);
+    }
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+    run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_passive_cast_during_an_action_follows_it_inside_one_passive_step() {
+    let result = attack_with_passives(
+        vec![400],
+        vec![31050141],
+        vec![
+            direct_use_passive(400, 402, 103, 401),
+            ParsedSkillEffect {
+                skill_id: 401,
+                slots: Vec::new(),
+            },
+        ],
+    );
+
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(31090111))
+        .expect("the attack projects a step");
+    let children = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .collect::<Vec<_>>();
+    let ally_reaction = children
+        .iter()
+        .position(|step| step.act_id == Some(31050141))
+        .expect("the ally-action reaction reacts to the attack");
+    let passive = children.last().expect("the attack has reaction steps");
+    let passive_children = passive
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .filter_map(|step| step.act_id)
+        .collect::<Vec<_>>();
+    assert!(ally_reaction < children.len() - 1);
+    assert_eq!(passive.act_id, Some(400));
+    assert_eq!(passive_children, vec![401]);
+}
+
+#[test]
+fn a_cast_from_a_completed_action_reaction_runs_at_once() {
+    // Like Flutterpage's "after any ally takes an action" (212 on all allies).
+    let result = attack_with_passives(
+        Vec::new(),
+        vec![300],
+        vec![
+            direct_use_passive(300, 212, 101, 301),
+            ParsedSkillEffect {
+                skill_id: 301,
+                slots: Vec::new(),
+            },
+        ],
+    );
+
+    assert!(result.events.iter().any(|event| matches!(
+        event,
+        BattleEvent::SkillAction(action) if action.skill_id == 301
+    )));
+}
