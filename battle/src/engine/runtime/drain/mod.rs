@@ -552,6 +552,14 @@ fn drain_queue_with_deferred(
                 } else {
                     trigger
                 };
+                let starts_action = matches!(trigger, SkillOpTrigger::Active)
+                    && matches!(
+                        invocation.mode,
+                        crate::engine::skill::action::SkillExecutionMode::Active
+                            | crate::engine::skill::action::SkillExecutionMode::DirectBig
+                            | crate::engine::skill::action::SkillExecutionMode::Device
+                            | crate::engine::skill::action::SkillExecutionMode::DeviceCard
+                    );
                 let frame_path = ensure_frame(
                     &mut result.frames,
                     frame_path,
@@ -566,6 +574,9 @@ fn drain_queue_with_deferred(
                 );
                 if !skill_from_buff_act && let Some(group) = &frame_group {
                     *group.borrow_mut() = Some(frame_path.clone());
+                }
+                if starts_action {
+                    state.open_action(frame_path.clone());
                 }
                 let mut defeated_owner_card_cleanups = Vec::new();
                 if matches!(trigger, SkillOpTrigger::Active)

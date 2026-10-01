@@ -15,6 +15,8 @@ pub(super) struct DrainState {
     after_action: HashMap<FramePath, Vec<QueuedOp>>,
     // Casts held until their action completes, with the step that cast them.
     after_action_casts: HashMap<FramePath, Vec<(Option<FrameOwner>, QueuedOp)>>,
+    // Actions that will publish ActionCompleted and have not yet done so.
+    open_actions: HashSet<FramePath>,
     completed_actions: HashSet<FramePath>,
     injuries: HashMap<FramePath, Vec<i64>>,
     deaths: HashMap<FramePath, Vec<DeathTransition>>,
@@ -104,15 +106,22 @@ impl DrainState {
         &mut self,
         action_path: &FramePath,
     ) -> Vec<(Option<FrameOwner>, QueuedOp)> {
+        self.open_actions.remove(action_path);
         self.completed_actions.insert(action_path.clone());
         self.after_action_casts
             .remove(action_path)
             .unwrap_or_default()
     }
 
-    // An action that already completed releases nothing more; casts held for it run at once.
+    pub(super) fn open_action(&mut self, action_path: FramePath) {
+        if !self.completed_actions.contains(&action_path) {
+            self.open_actions.insert(action_path);
+        }
+    }
+
+    // Only an action that will still complete releases held casts; otherwise they run at once.
     pub(super) fn action_in_progress(&self, action_path: &FramePath) -> bool {
-        !self.completed_actions.contains(action_path)
+        self.open_actions.contains(action_path)
     }
 
     pub(super) fn add_target_modifier(&mut self, action_path: FramePath, amount: i32) {

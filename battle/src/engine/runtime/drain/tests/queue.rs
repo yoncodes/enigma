@@ -1035,3 +1035,72 @@ fn a_cast_from_a_completed_action_reaction_runs_at_once() {
         BattleEvent::SkillAction(action) if action.skill_id == 301
     )));
 }
+
+#[test]
+fn a_follow_up_cast_from_a_nested_skill_still_runs() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                buffs: vec![BuffInfo {
+                    uid: Some(30),
+                    buff_id: Some(312451011),
+                    from_uid: Some(10),
+                    duration: Some(3),
+                    ..Default::default()
+                }],
+                ..entity(-1)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312451115], []);
+    // A nested cast never completes an action, so nothing is held for it.
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312451115,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    let result = run_skill(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        invocation,
+        crate::engine::skill::action::SkillModifiers::default(),
+    )
+    .unwrap();
+
+    let kicks = result
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                crate::engine::event::payload::BattleEvent::SkillAction(action)
+                    if action.skill_id == 312451011
+                        && action.phase == crate::engine::skill::action::SkillPhase::Immediate
+            )
+        })
+        .count();
+    assert_eq!(kicks, 1);
+}
