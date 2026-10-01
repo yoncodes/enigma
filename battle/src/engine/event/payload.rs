@@ -212,6 +212,13 @@ pub enum BattleEvent {
         amount: i32,
         buff_uid: Option<i64>,
     },
+    // A ShareHurt share: `source_uid` attacked an ally and `target_uid` took this part of the hit.
+    DamageShared {
+        origin: CommandOrigin,
+        source_uid: i64,
+        target_uid: i64,
+        amount: i32,
+    },
     HpHealed {
         origin: CommandOrigin,
         source_uid: i64,
@@ -262,6 +269,7 @@ impl BattleEvent {
             Self::BuffStateChanged(change) => Some(change.source_uid),
             Self::BuffFeatureTriggered(trigger) => Some(trigger.source_uid),
             Self::HpLost { source_uid, .. }
+            | Self::DamageShared { source_uid, .. }
             | Self::HpHealed { source_uid, .. }
             | Self::ToughnessBroken { source_uid, .. } => Some(*source_uid),
             Self::Hit(hit) => Some(hit.source_uid),
@@ -290,6 +298,7 @@ impl BattleEvent {
             Self::EntityEntered { target_uid }
             | Self::EntityTransformed { target_uid }
             | Self::HpLost { target_uid, .. }
+            | Self::DamageShared { target_uid, .. }
             | Self::HpHealed { target_uid, .. }
             | Self::ToughnessBroken { target_uid, .. } => Some(*target_uid),
             Self::SkillEffectStarted(action) | Self::SkillAction(action) => Some(action.target_uid),
@@ -342,6 +351,7 @@ impl BattleEvent {
             Self::BuffsSettled(_) => EventKind::RoundEndFinalSettlement,
             Self::BuffFeatureTriggered(_) => EventKind::BuffFeatureTriggered,
             Self::HpLost { .. } => EventKind::HpLost,
+            Self::DamageShared { .. } => EventKind::DamageShared,
             Self::HpHealed { .. } => EventKind::HpHealed,
             Self::Hit(_) => EventKind::TargetAttacked,
             Self::ToughnessBroken { .. } => EventKind::ToughnessBroken,
