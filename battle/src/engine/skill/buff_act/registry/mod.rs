@@ -1102,9 +1102,8 @@ buff_act_definitions! {
     (871, "ShellDebuff") => ShellDebuff, event: EventKind::BeAttacked, frame: CausingFrame,
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(871, "ShellDebuff"), &[EffectType::None as i32]));
-    (872, "ShareHurt") => ShareHurt, frame: CausingFrame,
-        runtime: |context| super::share_hurt::rule_ops(context.managers, context.pool, context.subscriber, context.event?),
-        supports: |_| true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(872, "ShareHurt"), &[EffectType::None as i32]));
+    (872, "ShareHurt") => ShareHurt, effect_time_subscription: false,
+        supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(872, "ShareHurt"), &[EffectType::None as i32]));
     (873, "ShellLock") => ShellLock, event: EventKind::ShellRetrieved, frame: CausingFrame,
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(873, "ShellLock"), &[EffectType::None as i32]));

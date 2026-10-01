@@ -137,8 +137,16 @@ fn deploy(
     } else {
         requested.min(available)
     };
-    if source_uid == 0 || target_uid == 0 || amount <= 0 {
+    if source_uid == 0 || target_uid == 0 || requested == 0 {
         return Err(ShellError::MissingStock);
+    }
+    // Several hits in one batch can each plan a deploy; once the stock is spent the rest deploy nothing.
+    if amount <= 0 {
+        return Ok(ShellChanges {
+            buffs: Vec::new(),
+            events: Vec::new(),
+            skills: Vec::new(),
+        });
     }
 
     let buffs = vec![
@@ -345,6 +353,48 @@ mod tests {
         domain: RuleDomain::Behavior,
         key: DefinitionKey::new(60134, "ShellRecycle"),
     };
+
+    #[test]
+    fn deploy_after_the_stock_is_spent_deploys_nothing() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    team_type: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    team_type: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+
+        let changes = execute(
+            &mut managers,
+            ShellCommand::Deploy {
+                origin: ORIGIN,
+                source_uid: 10,
+                target_uid: -1,
+                stock_buff_id: 31090117,
+                amount: 1,
+            },
+        )
+        .unwrap();
+
+        assert!(changes.buffs.is_empty() && changes.events.is_empty());
+        assert_eq!(managers.buff.buff_id_amount(-1, 31090118), 0);
+    }
 
     #[test]
     fn negative_deploy_amount_moves_all_stock() {

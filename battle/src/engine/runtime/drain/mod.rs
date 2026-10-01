@@ -449,6 +449,31 @@ fn drain_queue_with_deferred(
         let current_pool = base_pool.runtime_view(managers);
         let pool = &current_pool;
 
+        // Shared hits split before they land, so their parts commit in captured order.
+        if let Some(expanded) =
+            crate::engine::skill::buff_act::share_hurt::expand(managers, pool, &op)
+        {
+            let mut skill_execution = skill_execution;
+            for (index, op) in expanded.into_iter().enumerate().rev() {
+                queue.push_front(QueuedOp {
+                    op,
+                    trigger: trigger.clone(),
+                    skill_execution: if index == 0 {
+                        skill_execution.take()
+                    } else {
+                        None
+                    },
+                    frame_path: frame_path.clone(),
+                    parent_path: parent_path.clone(),
+                    frame_group: frame_group.clone(),
+                    independent_parent_group: independent_parent_group.clone(),
+                    frame_owner: frame_owner.clone(),
+                    subscriber_owner_uid,
+                });
+            }
+            continue;
+        }
+
         // Frame groups keep independent reactions under one semantic owner while
         // ordinary children inherit the parent selected by their emitter.
         let frame_path = frame_path.or_else(|| {
