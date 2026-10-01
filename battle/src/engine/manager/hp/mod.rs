@@ -242,6 +242,13 @@ pub struct MaxHpChange {
     pub after_max: i32,
 }
 
+/// A hit split by ShareHurt before it landed: the consumed stack and each ally's share.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharedHurt {
+    pub consumed: crate::engine::manager::buff::BuffChanges,
+    pub shares: Vec<HpChanges>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct HpChanges {
     pub origin: CommandOrigin,
@@ -250,6 +257,7 @@ pub struct HpChanges {
     pub damage: Option<DamageRecord>,
     pub team_shared_shield_absorbed: Option<TeamSharedShieldAbsorption>,
     pub team_shared_shield_removed: Option<crate::engine::manager::buff::BuffChanges>,
+    pub shared_hurt: Option<Box<SharedHurt>>,
     pub shield_absorbed: Option<ShieldChange>,
     pub shield_granted: Option<ShieldGain>,
     pub max_hp: Option<MaxHpChange>,
@@ -295,6 +303,12 @@ impl HpChanges {
 
     pub fn events(&self) -> Vec<BattleEvent> {
         let mut events = Vec::with_capacity(3);
+        if let Some(shared) = &self.shared_hurt {
+            events.extend(shared.consumed.events());
+            for share in &shared.shares {
+                events.extend(share.events());
+            }
+        }
         if self.kill.is_none()
             && let Some(change) = self.hp.filter(|change| change.delta < 0)
         {
@@ -375,6 +389,7 @@ pub enum HpCommandError {
     InvalidCommand,
     MissingTarget(i64),
     InvalidTeamSharedState,
+    InvalidShareHurtState,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -643,6 +658,7 @@ impl HpManager {
             damage: None,
             team_shared_shield_absorbed: None,
             team_shared_shield_removed: None,
+            shared_hurt: None,
             shield_absorbed: None,
             shield_granted: None,
             max_hp: None,

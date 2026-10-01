@@ -191,17 +191,6 @@ pub fn command_origin(subscriber: &BuffActSubscriber) -> Option<CommandOrigin> {
     origin(subscriber.key.definition.opcode, &subscriber.act_type)
 }
 
-/// Applies the first registered HP intercept that rewrites `op`.
-pub fn intercept_hp_op(
-    managers: &crate::engine::manager::BattleManagers,
-    pool: &crate::engine::skill::target::TargetPool,
-    op: &crate::engine::skill::rule::output::RuleOp,
-) -> Option<Vec<registry::InterceptedHpOp>> {
-    registry::definitions()
-        .filter_map(|definition| definition.state.hp_intercept)
-        .find_map(|intercept| intercept(managers, pool, op))
-}
-
 pub fn feature_command_origin(feature: &ActiveBuffFeature) -> Option<CommandOrigin> {
     origin(feature.act_id()?, &feature.act_type)
 }
