@@ -189,8 +189,12 @@ mod tests {
         let managers = managers();
 
         assert_eq!(
-            rule_ops(&managers, &subscriber(0), &hit(HurtDamageFromType::Additional))
-                .map(|ops| ops.len()),
+            rule_ops(
+                &managers,
+                &subscriber(0),
+                &hit(HurtDamageFromType::Additional)
+            )
+            .map(|ops| ops.len()),
             Some(0)
         );
     }
