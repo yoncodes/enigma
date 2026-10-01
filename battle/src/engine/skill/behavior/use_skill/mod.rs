@@ -346,6 +346,8 @@ impl BehaviorHandler for Handler {
                 invocation.target =
                     crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
                 invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+                // The cast follows the casting action's own after-attack and ally-action reactions.
+                invocation.start = crate::engine::skill::action::SkillStart::AfterCurrentAction;
                 Some(vec![RuleOp::Skill(invocation)])
             }
             BehaviorKind::DirectUseSkill2 => {

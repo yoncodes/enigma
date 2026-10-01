@@ -1,7 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::engine::{
-    manager::hp::DeathTransition, runtime::record::FramePath, skill::target::TargetContext,
+    manager::hp::DeathTransition,
+    runtime::record::{FrameOwner, FramePath},
+    skill::target::TargetContext,
 };
 
 use super::{DrainBudget, DrainError, QueuedOp};
@@ -11,6 +13,11 @@ use super::{DrainBudget, DrainError, QueuedOp};
 pub(super) struct DrainState {
     after_hit: HashMap<FramePath, Vec<QueuedOp>>,
     after_action: HashMap<FramePath, Vec<QueuedOp>>,
+    // Casts held until their action completes, with the step that cast them.
+    after_action_casts: HashMap<FramePath, Vec<(Option<FrameOwner>, QueuedOp)>>,
+    // Actions that will publish ActionCompleted and have not yet done so.
+    open_actions: HashSet<FramePath>,
+    completed_actions: HashSet<FramePath>,
     injuries: HashMap<FramePath, Vec<i64>>,
     deaths: HashMap<FramePath, Vec<DeathTransition>>,
     target_modifiers: HashMap<FramePath, i32>,
@@ -79,15 +86,42 @@ impl DrainState {
         defer(&mut self.after_action, action_path, queued);
     }
 
-    pub(super) fn push_after_action(&mut self, action_path: FramePath, queued: QueuedOp) {
-        self.after_action
+    pub(super) fn push_after_action_cast(
+        &mut self,
+        action_path: FramePath,
+        caster: Option<FrameOwner>,
+        queued: QueuedOp,
+    ) {
+        self.after_action_casts
             .entry(action_path)
             .or_default()
-            .push(queued);
+            .push((caster, queued));
     }
 
     pub(super) fn take_after_action(&mut self, action_path: &FramePath) -> Vec<QueuedOp> {
         self.after_action.remove(action_path).unwrap_or_default()
+    }
+
+    pub(super) fn take_after_action_casts(
+        &mut self,
+        action_path: &FramePath,
+    ) -> Vec<(Option<FrameOwner>, QueuedOp)> {
+        self.open_actions.remove(action_path);
+        self.completed_actions.insert(action_path.clone());
+        self.after_action_casts
+            .remove(action_path)
+            .unwrap_or_default()
+    }
+
+    pub(super) fn open_action(&mut self, action_path: FramePath) {
+        if !self.completed_actions.contains(&action_path) {
+            self.open_actions.insert(action_path);
+        }
+    }
+
+    // Only an action that will still complete releases held casts; otherwise they run at once.
+    pub(super) fn action_in_progress(&self, action_path: &FramePath) -> bool {
+        self.open_actions.contains(action_path)
     }
 
     pub(super) fn add_target_modifier(&mut self, action_path: FramePath, amount: i32) {

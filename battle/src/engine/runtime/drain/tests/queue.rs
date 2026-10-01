@@ -86,6 +86,7 @@ fn after_skill_reaction_waits_for_remaining_ops_in_the_skill_frame() {
             independent_parent_group: None,
             frame_owner: None,
             subscriber_owner_uid: None,
+            caster_frame: None,
         }
     }
 
@@ -255,6 +256,7 @@ fn active_skill_rates_freeze_after_immediate_reactions_and_before_later_gauge_ch
         independent_parent_group: None,
         frame_owner: None,
         subscriber_owner_uid: None,
+        caster_frame: None,
     };
     let mut queue = VecDeque::from([
         queued(
@@ -552,4 +554,575 @@ fn attack_followup_does_not_start_without_a_living_configured_target() {
 
     assert!(result.events.is_empty());
     assert!(result.frames.is_empty());
+}
+
+#[test]
+fn lethal_injury_inflicted_by_an_attack_waits_for_the_next_attack() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312431212], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312431212,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+
+    run_skill(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        invocation,
+        crate::engine::skill::action::SkillModifiers::default(),
+    )
+    .unwrap();
+
+    // "Inflicts 2 stacks of [Lethal Injury] on the target hit": the hit itself is not an Assassination.
+    assert_eq!(managers.buff.max_id_or_type_layer(-1, 31240121), 2);
+}
+
+#[test]
+fn lethal_injury_consumption_is_its_appliers_buff_act_step() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10), entity(11)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                buffs: vec![BuffInfo {
+                    uid: Some(30),
+                    buff_id: Some(31240121),
+                    from_uid: Some(10),
+                    layer: Some(1),
+                    ..Default::default()
+                }],
+                ..entity(-1)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31090111], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 11,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+
+    let result = run_skill(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        invocation,
+        crate::engine::skill::action::SkillModifiers::default(),
+    )
+    .unwrap();
+
+    fn lethal_injury_steps(effects: &[sonettobuf::ActEffect], found: &mut Vec<Option<i64>>) {
+        for step in effects
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+        {
+            if step.act_id == Some(31240121) {
+                found.push(step.from_id);
+            }
+            lethal_injury_steps(&step.act_effect, found);
+        }
+    }
+    let mut found = Vec::new();
+    for step in crate::engine::packet::timeline::project(&result.frames).unwrap() {
+        lethal_injury_steps(&step.act_effect, &mut found);
+    }
+    assert_eq!(managers.buff.max_id_or_type_layer(-1, 31240121), 0);
+    assert_eq!(found, vec![Some(10)]);
+}
+
+#[test]
+fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let sparta_kicks = |target_buffs: Vec<BuffInfo>| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![entity(10)],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    buffs: target_buffs,
+                    ..entity(-1)
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312451115], []);
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 312451115,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(-1);
+        invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+        let result = run_action(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [],
+            invocation,
+        )
+        .unwrap();
+        let kicks = result
+            .events
+            .iter()
+            .enumerate()
+            .filter(|(_, event)| {
+                matches!(
+                    event,
+                    crate::engine::event::payload::BattleEvent::SkillAction(action)
+                        if action.skill_id == 312451011
+                            && action.phase == crate::engine::skill::action::SkillPhase::Immediate
+                )
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        // The recast follows the mass attack's completion and its ally-action reactions.
+        let completed = result.events.iter().position(|event| {
+            matches!(
+                event,
+                crate::engine::event::payload::BattleEvent::AllyAction(action)
+                    if action.skill_id == 312451115
+            )
+        });
+        assert!(
+            kicks
+                .iter()
+                .all(|kick| completed.is_some_and(|completed| completed < *kick))
+        );
+        kicks.len()
+    };
+    let kick_gash = BuffInfo {
+        uid: Some(30),
+        buff_id: Some(312451011),
+        from_uid: Some(10),
+        duration: Some(3),
+        ..Default::default()
+    };
+
+    let arrow_gash = BuffInfo {
+        uid: Some(31),
+        buff_id: Some(312451021),
+        ..kick_gash.clone()
+    };
+
+    assert_eq!(sparta_kicks(Vec::new()), 0);
+    assert_eq!(sparta_kicks(vec![kick_gash.clone()]), 1);
+    assert_eq!(sparta_kicks(vec![kick_gash, arrow_gash]), 2);
+}
+
+#[test]
+fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    passive_skill: vec![31090144],
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(31090111),
+                        from_uid: Some(10),
+                        layer: Some(15),
+                        ..Default::default()
+                    }],
+                    ..entity(10)
+                },
+                // Flutterpage gains Gust after any ally takes an action.
+                FightEntityInfo {
+                    passive_skill: vec![31050141],
+                    ..entity(11)
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 31090144, 31050141], []);
+    // Six deployments or retrievals so far; the attack's deployment is the seventh.
+    crate::engine::mechanic::shell::execute(
+        &mut managers,
+        ShellCommand::AccumulateAndUseSkill {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60135, "ShellUseSkill"),
+            },
+            source_uid: 10,
+            target_uid: -1,
+            threshold: 7,
+            delta: 6,
+            skill_id: 31090114,
+        },
+    )
+    .unwrap();
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(31090111))
+        .expect("the attack projects a step");
+    let children = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .collect::<Vec<_>>();
+    let ally_reaction = children
+        .iter()
+        .position(|step| step.act_id == Some(31050141))
+        .expect("the ally-action reaction reacts to the attack");
+    let last_child = children.last().expect("the attack has reaction steps");
+    assert!(ally_reaction < children.len() - 1);
+    assert_eq!(last_child.act_id, Some(31090144));
+    assert!(
+        last_child
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.act_id == Some(31090114))
+    );
+}
+
+fn direct_use_passive(
+    skill_id: i32,
+    condition: i32,
+    condition_target: i32,
+    cast_skill_id: i32,
+) -> ParsedSkillEffect {
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(50008, "DirectUseSkill"),
+            vec![cast_skill_id],
+            Vec::new(),
+        ),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = vec![ParsedCondition {
+        opcode: condition,
+        type_name: "None".to_owned(),
+        kind: crate::engine::skill::condition::registry::parse(condition, "None", &[])
+            .expect("registered condition"),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    slot.condition_target = TargetRequest {
+        code: condition_target,
+        raw: Vec::new(),
+    };
+    slot.limit = 1;
+    ParsedSkillEffect {
+        skill_id,
+        slots: vec![slot],
+    }
+}
+
+fn attack_with_passives(
+    attacker_passives: Vec<i32>,
+    ally_passives: Vec<i32>,
+    extra: Vec<ParsedSkillEffect>,
+    extra_kind: Option<crate::engine::skill::condition::extra::ExtraSkillKind>,
+) -> DrainResult {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    passive_skill: attacker_passives,
+                    ..entity(10)
+                },
+                FightEntityInfo {
+                    passive_skill: ally_passives,
+                    ..entity(11)
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 31050141], []);
+    for effect in extra {
+        catalog.insert(effect);
+    }
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    // A cast follow-up stays nested until dispatch settles it as an action.
+    match extra_kind {
+        Some(kind) => invocation.extra_skill_kind = Some(kind),
+        None => invocation.mode = SkillExecutionMode::Active,
+    }
+    run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap()
+}
+
+fn assert_passive_cast_follows_the_attack(
+    condition: i32,
+    extra_kind: Option<crate::engine::skill::condition::extra::ExtraSkillKind>,
+) {
+    let result = attack_with_passives(
+        vec![400],
+        vec![31050141],
+        vec![
+            direct_use_passive(400, condition, 103, 401),
+            ParsedSkillEffect {
+                skill_id: 401,
+                slots: Vec::new(),
+            },
+        ],
+        extra_kind,
+    );
+
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(31090111))
+        .expect("the attack projects a step");
+    let children = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .collect::<Vec<_>>();
+    let ally_reaction = children
+        .iter()
+        .position(|step| step.act_id == Some(31050141))
+        .expect("the ally-action reaction reacts to the attack");
+    let passive = children.last().expect("the attack has reaction steps");
+    let passive_children = passive
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .filter_map(|step| step.act_id)
+        .collect::<Vec<_>>();
+    assert!(ally_reaction < children.len() - 1);
+    assert_eq!(passive.act_id, Some(400));
+    assert_eq!(passive_children, vec![401]);
+}
+
+#[test]
+fn a_passive_cast_during_an_action_follows_it_inside_one_passive_step() {
+    assert_passive_cast_follows_the_attack(402, None);
+}
+
+#[test]
+fn a_passive_cast_as_a_cast_follow_up_attack_starts_follows_it() {
+    assert_passive_cast_follows_the_attack(
+        201,
+        Some(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp),
+    );
+}
+
+#[test]
+fn a_cast_from_a_completed_action_reaction_runs_at_once() {
+    // Like Flutterpage's "after any ally takes an action" (212 on all allies).
+    let result = attack_with_passives(
+        Vec::new(),
+        vec![300],
+        vec![
+            direct_use_passive(300, 212, 101, 301),
+            ParsedSkillEffect {
+                skill_id: 301,
+                slots: Vec::new(),
+            },
+        ],
+        None,
+    );
+
+    assert!(result.events.iter().any(|event| matches!(
+        event,
+        BattleEvent::SkillAction(action) if action.skill_id == 301
+    )));
+}
+
+#[test]
+fn a_follow_up_cast_from_a_nested_skill_still_runs() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                buffs: vec![BuffInfo {
+                    uid: Some(30),
+                    buff_id: Some(312451011),
+                    from_uid: Some(10),
+                    duration: Some(3),
+                    ..Default::default()
+                }],
+                ..entity(-1)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312451115], []);
+    // A nested cast never completes an action, so nothing is held for it.
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312451115,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    let result = run_skill(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        invocation,
+        crate::engine::skill::action::SkillModifiers::default(),
+    )
+    .unwrap();
+
+    let kicks = result
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                crate::engine::event::payload::BattleEvent::SkillAction(action)
+                    if action.skill_id == 312451011
+                        && action.phase == crate::engine::skill::action::SkillPhase::Immediate
+            )
+        })
+        .count();
+    assert_eq!(kicks, 1);
 }

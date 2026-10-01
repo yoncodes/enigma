@@ -9,7 +9,7 @@ use crate::engine::{
     manager::BattleManagers,
     runtime::{
         determinism::RoundDeterminism,
-        executor::{RuleExecutionError, RuleOutcome, execute_rule_op},
+        executor::{RuleExecutionError, RuleOutcome, execute_rule_op_with},
         record::{
             FrameOwner, FramePath, FrameTrigger, RoundCue, SemanticFrame, SetupSide,
             active_skill_scope_path, event_scope_path, owner_at_path, push_change, push_child,
@@ -145,6 +145,8 @@ struct QueuedOp {
     independent_parent_group: Option<Rc<RefCell<Option<FramePath>>>>,
     frame_owner: Option<FrameOwner>,
     subscriber_owner_uid: Option<i64>,
+    // The reaction step that cast a held skill, recreated when the skill runs.
+    caster_frame: Option<FrameOwner>,
 }
 
 fn queued_defeated_owner_card_cleanup(
@@ -185,6 +187,7 @@ fn queued_defeated_owner_card_cleanup(
         independent_parent_group: None,
         frame_owner: Some(FrameOwner::EventRule),
         subscriber_owner_uid: None,
+        caster_frame: None,
     })
 }
 
@@ -423,6 +426,7 @@ fn drain_queue_with_deferred(
         independent_parent_group,
         frame_owner,
         subscriber_owner_uid,
+        caster_frame,
     }) = queue.pop_front()
     {
         // Root and nested drains share this budget, so reaction cycles fail the
@@ -515,6 +519,16 @@ fn drain_queue_with_deferred(
                     continue;
                 }
 
+                let parent_path = match caster_frame {
+                    Some(caster) => Some(ensure_frame(
+                        &mut result.frames,
+                        None,
+                        parent_path.as_deref(),
+                        caster,
+                        &trigger,
+                    )),
+                    None => parent_path,
+                };
                 // A skill emitted by a buff act remains nested under that buff-act
                 // frame; the skill still runs through the normal skill emitter.
                 let (frame_path, parent_path, frame_owner, skill_from_buff_act) =
@@ -609,6 +623,22 @@ fn drain_queue_with_deferred(
                     );
                 }
                 set_skill_target(&mut result.frames, &frame_path, emission.target_uid);
+                // Dispatch settles the action mode, so open the action from what it emitted.
+                if emission
+                    .continuation
+                    .as_ref()
+                    .is_some_and(|continuation| continuation.mode.completes_action())
+                    || emission.ops.iter().any(|emitted| {
+                        matches!(
+                            emitted.op,
+                            RuleOp::SkillLifecycle(
+                                crate::engine::skill::action::SkillLifecycle::ActionCompleted(_)
+                            )
+                        )
+                    })
+                {
+                    state.open_action(frame_path.clone());
+                }
                 let mut outputs = defeated_owner_card_cleanups
                     .into_iter()
                     .filter_map(|death| {
@@ -627,7 +657,7 @@ fn drain_queue_with_deferred(
                         RuleOp::Skill(child) => {
                             let after_current_action = child.start
                                 == crate::engine::skill::action::SkillStart::AfterCurrentAction;
-                            let queued = QueuedOp {
+                            let mut queued = QueuedOp {
                                 op: RuleOp::Skill(child),
                                 trigger: SkillOpTrigger::Active,
                                 skill_execution: None,
@@ -637,11 +667,22 @@ fn drain_queue_with_deferred(
                                 independent_parent_group: None,
                                 frame_owner: None,
                                 subscriber_owner_uid: None,
+                                caster_frame: None,
                             };
-                            if after_current_action {
-                                state.push_after_action(frame_path.clone(), queued);
-                            } else {
-                                outputs.push(queued);
+                            // Like manager follow-ups, wait for the enclosing action; with no
+                            // action in progress the cast runs now.
+                            match after_current_action
+                                .then(|| active_skill_scope_path(&result.frames, &frame_path))
+                                .flatten()
+                                .filter(|action_path| state.action_in_progress(action_path))
+                            {
+                                Some(action_path) => {
+                                    let caster =
+                                        casting_reaction(&result.frames, &action_path, &frame_path);
+                                    queued.parent_path = Some(action_path.clone());
+                                    state.push_after_action_cast(action_path, caster, queued)
+                                }
+                                None => outputs.push(queued),
                             }
                         }
                         command => outputs.push(match frame_owner {
@@ -655,6 +696,7 @@ fn drain_queue_with_deferred(
                                 independent_parent_group: None,
                                 frame_owner: Some(frame_owner),
                                 subscriber_owner_uid: None,
+                                caster_frame: None,
                             },
                             None => QueuedOp {
                                 op: command,
@@ -666,6 +708,7 @@ fn drain_queue_with_deferred(
                                 independent_parent_group: None,
                                 frame_owner: None,
                                 subscriber_owner_uid: None,
+                                caster_frame: None,
                             },
                         }),
                     }
@@ -681,6 +724,7 @@ fn drain_queue_with_deferred(
                         independent_parent_group: None,
                         frame_owner: None,
                         subscriber_owner_uid: None,
+                        caster_frame: None,
                     });
                 }
                 prepend(queue, outputs);
@@ -740,6 +784,7 @@ fn drain_queue_with_deferred(
                         independent_parent_group,
                         frame_owner,
                         subscriber_owner_uid,
+                        caster_frame,
                     });
                     prepend(queue, observers);
                     continue;
@@ -858,7 +903,7 @@ fn drain_queue_with_deferred(
 
                 // This is the single durable commit point for non-skill RuleOps.
                 // The returned outcome describes committed changes and follow-ups.
-                let mut outcome = execute_rule_op(managers, &mut bus, command)?;
+                let mut outcome = execute_rule_op_with(managers, &mut bus, determinism, command)?;
                 if let RuleOutcome::ActiveSkillTargetsModified(additional_count) = outcome {
                     let action_scope = action_scope
                         .clone()
@@ -1299,10 +1344,18 @@ fn drain_queue_with_deferred(
                         )
                     }),
                 );
-                let after_action = if completes_action {
-                    state.take_after_action(&frame_path)
+                let (after_action, held_casts) = if completes_action {
+                    let casts = state
+                        .take_after_action_casts(&frame_path)
+                        .into_iter()
+                        .map(|(caster, mut queued)| {
+                            queued.caster_frame = caster;
+                            queued
+                        })
+                        .collect();
+                    (state.take_after_action(&frame_path), casts)
                 } else {
-                    Vec::new()
+                    (Vec::new(), Vec::new())
                 };
                 prepend(queue, after_action);
 
@@ -1318,7 +1371,8 @@ fn drain_queue_with_deferred(
                     );
                     let skill_path = after_current_action
                         .then(|| active_skill_scope_path(&result.frames, &frame_path))
-                        .flatten();
+                        .flatten()
+                        .filter(|action_path| state.action_in_progress(action_path));
                     let queued = QueuedOp {
                         op,
                         trigger: SkillOpTrigger::Active,
@@ -1329,15 +1383,22 @@ fn drain_queue_with_deferred(
                         independent_parent_group: None,
                         frame_owner: deferred_followup_owner.clone(),
                         subscriber_owner_uid: None,
+                        caster_frame: None,
                     };
                     if let Some(skill_path) = skill_path {
-                        state.push_after_action(skill_path, queued);
+                        let caster = deferred_followup_owner
+                            .is_none()
+                            .then(|| casting_reaction(&result.frames, &skill_path, &frame_path))
+                            .flatten();
+                        state.push_after_action_cast(skill_path, caster, queued);
                     } else {
                         immediate_followups.push(queued);
                     }
                 }
                 prepend(queue, immediate_followups);
                 insert_after_frame(queue, &frame_path, reactions.after_skill);
+                // Held casts run once the completed action's own reactions are queued.
+                insert_after_frame(queue, &frame_path, held_casts);
                 prepend(queue, after_publish);
             }
         }
@@ -1537,6 +1598,20 @@ fn prepend(queue: &mut VecDeque<QueuedOp>, items: impl IntoIterator<Item = Queue
     for item in items.into_iter().rev() {
         queue.push_front(item);
     }
+}
+
+// The reaction step inside an action that cast a held skill; the action's own casts have none.
+fn casting_reaction(
+    frames: &[SemanticFrame],
+    action_path: &[usize],
+    frame_path: &[usize],
+) -> Option<FrameOwner> {
+    (action_path.len() + 1..=frame_path.len())
+        .rev()
+        .find_map(|len| match owner_at_path(frames, &frame_path[..len]) {
+            owner @ FrameOwner::Skill { .. } => Some(owner.clone()),
+            _ => None,
+        })
 }
 
 fn insert_after_frame(

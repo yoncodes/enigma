@@ -243,13 +243,21 @@ pub(in crate::engine::runtime) fn emit_ops(
                 invocation.mode,
             ),
         );
+        if execution.marked_targets.is_none() {
+            execution.marked_targets =
+                Some(crate::engine::skill::buff_act::assassination::marked_targets(managers));
+        }
+        // The caster's and its targets' reactions to the action starting run before its own effects.
+        let effect_started_owners = std::iter::once(invocation.plan.source_uid)
+            .chain(execution.affected_targets.iter().copied())
+            .collect::<Vec<_>>();
         let effect_started_subscribers =
             crate::engine::skill::subscriber::for_compiled_owner_events(
                 pool,
                 managers,
                 catalog,
                 [crate::engine::event::kind::EventKind::SkillEffectStarted],
-                &[invocation.plan.source_uid],
+                &effect_started_owners,
             )
             .map_err(SkillOpError::from)?;
         if !effect_started_subscribers.skills.is_empty()
@@ -310,9 +318,6 @@ pub(in crate::engine::runtime) fn emit_ops(
             } {
                 continue;
             }
-        }
-        if skill_destination_already_emitted(&outputs, definition, &slot.behavior) {
-            continue;
         }
         let (conditions, selected_event, condition_key) = match (invocation.condition_key, trigger)
         {
@@ -1029,15 +1034,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             });
         }
     }
-    if continuation.is_none()
-        && matches!(
-            invocation.mode,
-            crate::engine::skill::action::SkillExecutionMode::Active
-                | crate::engine::skill::action::SkillExecutionMode::DirectBig
-                | crate::engine::skill::action::SkillExecutionMode::Device
-                | crate::engine::skill::action::SkillExecutionMode::DeviceCard
-        )
-    {
+    if continuation.is_none() && invocation.mode.completes_action() {
         outputs.push(SkillEmissionOp {
             op: RuleOp::SkillLifecycle(
                 crate::engine::skill::action::SkillLifecycle::ActionCompleted(
@@ -1091,28 +1088,6 @@ pub(in crate::engine::runtime::skill) fn action_mode(
     } else {
         mode
     }
-}
-
-pub(in crate::engine::runtime::skill) fn skill_destination_already_emitted(
-    outputs: &[SkillEmissionOp],
-    definition: &crate::engine::skill::behavior::registry::BehaviorDefinition,
-    behavior: &crate::engine::skill::effect::ParsedBehavior,
-) -> bool {
-    if definition.skill_destination_mode
-        != crate::engine::skill::behavior::registry::SkillDestinationMode::Unique
-    {
-        return false;
-    }
-    let references = (definition.references)(behavior);
-    let [skill_id] = references.skills.as_slice() else {
-        return false;
-    };
-    outputs.iter().any(|output| {
-        matches!(
-            &output.op,
-            RuleOp::Skill(invocation) if invocation.plan.skill_id == *skill_id
-        )
-    })
 }
 
 fn consequence_policy(

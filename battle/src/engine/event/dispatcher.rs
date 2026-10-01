@@ -193,6 +193,10 @@ fn dispatch_subscribers(
                     pool.source_is_attacker(subscriber.owner_uid)
                         != pool.source_is_attacker(action.source_uid)
                 }
+                buff_act::registry::RuntimeActorScope::OwnerOrTarget => {
+                    subscriber.owner_uid == action.source_uid
+                        || action.target_uids.contains(&subscriber.owner_uid)
+                }
             };
             observes_actor
                 && subscriber

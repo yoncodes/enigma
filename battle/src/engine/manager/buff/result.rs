@@ -234,6 +234,8 @@ impl BuffReplaceResult {
 pub struct BuffRejectResult {
     pub target_uid: i64,
     pub blocker_buff_id: i32,
+    // Resisted by the target's full resistance rather than blocked by a buff.
+    pub resisted: bool,
     pub type_id: i32,
     pub buff: BuffInfo,
 }

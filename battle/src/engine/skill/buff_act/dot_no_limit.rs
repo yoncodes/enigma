@@ -25,7 +25,11 @@ pub fn rule_ops(
     let [mode, raw_attr, permille] = subscriber.args.as_slice() else {
         return None;
     };
-    if hit.target_uid != subscriber.owner_uid || !subscriber.owner_alive {
+    // "When being attacked": additional damage riding on an attack is not another attack.
+    if hit.target_uid != subscriber.owner_uid
+        || !subscriber.owner_alive
+        || hit.damage_from == HurtDamageFromType::Additional
+    {
         return Some(Vec::new());
     }
     let attr_uid = match mode {
@@ -108,8 +112,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn mode_selects_applier_or_holder_attribute() {
+    fn managers() -> BattleManagers {
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
@@ -139,8 +142,11 @@ mod tests {
             }),
             ..Default::default()
         };
-        let managers = BattleManagers::seeded(&fight);
-        let event = BattleEvent::Hit(HitEvent {
+        BattleManagers::seeded(&fight)
+    }
+
+    fn hit(damage_from: HurtDamageFromType) -> BattleEvent {
+        BattleEvent::Hit(HitEvent {
             origin: CommandOrigin {
                 domain: RuleDomain::Behavior,
                 key: DefinitionKey::new(1, "Damage"),
@@ -151,10 +157,16 @@ mod tests {
             amount: 100,
             shield_absorbed: 0,
             career_restraint: false,
-            damage_from: HurtDamageFromType::Skill,
+            damage_from,
             assassinate: false,
             ignore_riposte: false,
-        });
+        })
+    }
+
+    #[test]
+    fn mode_selects_applier_or_holder_attribute() {
+        let managers = managers();
+        let event = hit(HurtDamageFromType::Skill);
         let amount = |mode| match rule_ops(&managers, &subscriber(mode), &event)
             .unwrap()
             .as_slice()
@@ -170,5 +182,20 @@ mod tests {
         };
 
         assert_eq!((amount(0), amount(1)), (200, 400));
+    }
+
+    #[test]
+    fn additional_damage_is_not_another_attack() {
+        let managers = managers();
+
+        assert_eq!(
+            rule_ops(
+                &managers,
+                &subscriber(0),
+                &hit(HurtDamageFromType::Additional)
+            )
+            .map(|ops| ops.len()),
+            Some(0)
+        );
     }
 }

@@ -12,6 +12,7 @@ use super::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GrantAction {
     Reject(i32),
+    Resist,
     RefreshCount,
     RefreshLayer,
     RefreshExisting,

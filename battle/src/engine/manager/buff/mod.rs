@@ -200,8 +200,24 @@ struct ActiveBuff {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TrackedEntity {
     uid: i64,
+    model_id: i32,
     team_type: i32,
     active: bool,
+}
+
+/// Values resolved outside the buff manager before a grant is planned.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct GrantInputs {
+    pub source_attack: Option<i32>,
+    pub resist_roll: Option<ResistRoll>,
+}
+
+/// A partial-resistance roll for one grant, rolled like a crit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ResistRoll {
+    pub target_uid: i64,
+    pub buff_id: i32,
+    pub resisted: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

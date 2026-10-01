@@ -225,7 +225,46 @@ impl BattleManagers {
         Ok(self.commit_buff(plan))
     }
 
+    // A grant the target partly resists rolls its resistance like a crit.
+    pub(crate) fn execute_buff_rolled(
+        &mut self,
+        command: BuffCommand,
+        determinism: &mut crate::engine::runtime::determinism::RoundDeterminism,
+    ) -> Result<BuffChanges, BuffCommandError> {
+        let resist_roll = match &command {
+            BuffCommand::Grant(grant)
+            | BuffCommand::GrantRelated(buff::RelatedBuffGrant { grant, .. })
+            | BuffCommand::GrantIndependent(grant)
+            | BuffCommand::Accumulate(grant)
+            | BuffCommand::GrantUsingChildUid(grant)
+            | BuffCommand::GrantUsingNormalUid(grant) => {
+                let chance = self.buff.buff_resistance(grant.target_uid, grant.buff_id);
+                (chance > 0 && chance < 1000).then(|| buff::ResistRoll {
+                    target_uid: grant.target_uid,
+                    buff_id: grant.buff_id,
+                    resisted: determinism.roll_crit(
+                        grant.buff_id,
+                        grant.source_uid,
+                        grant.target_uid,
+                        chance,
+                    ),
+                })
+            }
+            _ => None,
+        };
+        let plan = self.plan_buff_with(command, resist_roll)?;
+        Ok(self.commit_buff(plan))
+    }
+
     pub(crate) fn plan_buff(&self, command: BuffCommand) -> Result<BuffPlan, BuffCommandError> {
+        self.plan_buff_with(command, None)
+    }
+
+    fn plan_buff_with(
+        &self,
+        command: BuffCommand,
+        resist_roll: Option<buff::ResistRoll>,
+    ) -> Result<BuffPlan, BuffCommandError> {
         let source_uid = match &command {
             BuffCommand::Grant(grant)
             | BuffCommand::GrantRelated(buff::RelatedBuffGrant { grant, .. })
@@ -293,9 +332,14 @@ impl BattleManagers {
                 + dynamic;
             base * rate.max(0) / 1000 + flat
         });
-        let mut plan = self
-            .buff
-            .plan_with_source_attack(&self.hp, command, source_attack)?;
+        let mut plan = self.buff.plan_with_source_attack(
+            &self.hp,
+            command,
+            buff::GrantInputs {
+                source_attack,
+                resist_roll,
+            },
+        )?;
         if let Some((source_uid, features)) = plan.source_relative_attribute_features() {
             let act_info = features
                 .into_iter()

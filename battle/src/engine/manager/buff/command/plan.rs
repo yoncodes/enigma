@@ -7,7 +7,7 @@ impl BuffManager {
         hp: &HpManager,
         command: BuffCommand,
     ) -> Result<BuffPlan, BuffCommandError> {
-        self.plan_with_source_attack(hp, command, None)
+        self.plan_with_source_attack(hp, command, GrantInputs::default())
     }
 
     /// Builds a complete mutation plan without changing active state or consuming UIDs.
@@ -16,7 +16,7 @@ impl BuffManager {
         &self,
         hp: &HpManager,
         command: BuffCommand,
-        source_attack: Option<i32>,
+        inputs: GrantInputs,
     ) -> Result<BuffPlan, BuffCommandError> {
         let (origin, action) = match command {
             BuffCommand::Grant(grant) => (
@@ -24,7 +24,7 @@ impl BuffManager {
                 BuffPlanAction::Grant(Box::new(self.plan_grant_with_source_attack(
                     hp,
                     (&grant).into(),
-                    source_attack,
+                    inputs,
                 )?)),
             ),
             BuffCommand::GrantRelated(related) => {
@@ -55,7 +55,7 @@ impl BuffManager {
                             child_uid_reservations: grant.child_uid_reservations,
                             force_normal_uid,
                         },
-                        source_attack,
+                        inputs,
                     )?)),
                 )
             }
@@ -75,12 +75,11 @@ impl BuffManager {
                         child_uid_reservations: grant.child_uid_reservations,
                         force_normal_uid: false,
                     },
-                    source_attack,
+                    inputs,
                 )?)),
             ),
             BuffCommand::Accumulate(grant) => {
-                let mut plan =
-                    self.plan_grant_with_source_attack(hp, (&grant).into(), source_attack)?;
+                let mut plan = self.plan_grant_with_source_attack(hp, (&grant).into(), inputs)?;
                 plan.layer_refresh_uid = None;
                 (grant.origin, BuffPlanAction::Accumulate(Box::new(plan)))
             }
@@ -96,7 +95,7 @@ impl BuffManager {
                         child_uid_reservations: 0,
                         force_normal_uid: false,
                     },
-                    source_attack,
+                    inputs,
                 )?;
                 if grant.params.is_some() {
                     plan.initial_params = grant.params;
@@ -122,7 +121,7 @@ impl BuffManager {
                         child_uid_reservations: grant.child_uid_reservations,
                         force_normal_uid: false,
                     },
-                    source_attack,
+                    inputs,
                 )?)),
             ),
             BuffCommand::GrantUsingNormalUid(grant) => (
@@ -138,7 +137,7 @@ impl BuffManager {
                         child_uid_reservations: grant.child_uid_reservations,
                         force_normal_uid: true,
                     },
-                    source_attack,
+                    inputs,
                 )?)),
             ),
             command @ (BuffCommand::GrantChild(_) | BuffCommand::GrantInternalChild(_)) => {
@@ -174,7 +173,7 @@ impl BuffManager {
                         child_uid_reservations: 0,
                         force_normal_uid: false,
                     },
-                    source_attack,
+                    inputs,
                 )?;
                 if grant.params.is_some() {
                     plan.initial_params = grant.params;
@@ -255,7 +254,7 @@ impl BuffManager {
                                 child_uid_reservations: 0,
                                 force_normal_uid: false,
                             },
-                            source_attack,
+                            inputs,
                         )
                     })
                     .transpose()?;
@@ -266,7 +265,7 @@ impl BuffManager {
             }
             BuffCommand::Replace(replace) => (
                 replace.origin,
-                BuffPlanAction::Replace(Box::new(self.plan_replace(hp, replace, source_attack)?)),
+                BuffPlanAction::Replace(Box::new(self.plan_replace(hp, replace, inputs)?)),
             ),
             BuffCommand::Remove(remove) => (
                 remove.origin,
@@ -518,14 +517,14 @@ impl BuffManager {
         hp: &HpManager,
         request: GrantRequest,
     ) -> Result<GrantPlan, BuffCommandError> {
-        self.plan_grant_with_source_attack(hp, request, None)
+        self.plan_grant_with_source_attack(hp, request, GrantInputs::default())
     }
 
     fn plan_grant_with_source_attack(
         &self,
         hp: &HpManager,
         request: GrantRequest,
-        source_attack: Option<i32>,
+        inputs: GrantInputs,
     ) -> Result<GrantPlan, BuffCommandError> {
         if request.buff_id <= 0
             || request.target_uid == 0
@@ -639,7 +638,22 @@ impl BuffManager {
             .flatten();
         let blocker =
             configured_blocker.or_else(|| immunity.as_ref().map(|(buff_id, _, _)| *buff_id));
-        let blocked = blocker.is_some() || !semantic_grant_allowed;
+        let resisted = !unconditional
+            && semantic_grant_allowed
+            && blocker.is_none()
+            && match self.resistance(request.target_uid, &definition) {
+                resistance if resistance >= 1000 => true,
+                resistance if resistance > 0 => {
+                    inputs.resist_roll
+                        == Some(ResistRoll {
+                            target_uid: request.target_uid,
+                            buff_id: request.buff_id,
+                            resisted: true,
+                        })
+                }
+                _ => false,
+            };
+        let blocked = blocker.is_some() || resisted || !semantic_grant_allowed;
         let mut excluded_uids = if blocked || unconditional {
             Vec::new()
         } else {
@@ -732,6 +746,8 @@ impl BuffManager {
             GrantAction::Add
         } else if let Some(blocker) = blocker {
             GrantAction::Reject(blocker)
+        } else if resisted {
+            GrantAction::Resist
         } else {
             let action = self.resolve_grant_action(route, &definition, &policy, args, repeat);
             if matches!(request.input, GrantInput::ChildUid { .. })
@@ -805,7 +821,7 @@ impl BuffManager {
             0
         };
         let uid = match action {
-            GrantAction::Reject(_) => Some(super::uid_policy::plan(
+            GrantAction::Reject(_) | GrantAction::Resist => Some(super::uid_policy::plan(
                 self,
                 route,
                 &definition,
@@ -1005,9 +1021,10 @@ impl BuffManager {
             post_add_uids.extend(child_uids);
         }
         let dot_snapshots =
-            Self::plan_grant_snapshots(&definition, route.source_uid, source_attack, args);
+            Self::plan_grant_snapshots(&definition, route.source_uid, inputs.source_attack, args);
         let grant_values = self.plan_grant_values(&definition, route.source_uid);
-        let initial_act_info = definition.initial_planned_act_info(source_attack, &grant_values);
+        let initial_act_info =
+            definition.initial_planned_act_info(inputs.source_attack, &grant_values);
         let initial_params = self.plan_grant_params(&definition, route.source_uid);
         let replacement_uids = if action == GrantAction::ReplaceExisting {
             self.buffs
@@ -1116,7 +1133,7 @@ impl BuffManager {
                     route.target_uid,
                     route.buff_id,
                     replacement_buff_id,
-                    source_attack,
+                    inputs,
                 )?));
             }
         }
@@ -1185,7 +1202,7 @@ impl BuffManager {
         &self,
         hp: &HpManager,
         replace: BuffReplace,
-        source_attack: Option<i32>,
+        inputs: GrantInputs,
     ) -> Result<ReplacePlan, BuffCommandError> {
         let BuffSelector::IdOrType(source_id_or_type) = replace.source else {
             return Err(BuffCommandError::InvalidReplace);
@@ -1196,7 +1213,7 @@ impl BuffManager {
             replace.target_uid,
             source_id_or_type,
             replace.replacement_id_or_type,
-            source_attack,
+            inputs,
         )
     }
 
@@ -1207,7 +1224,7 @@ impl BuffManager {
         target_uid: i64,
         source_id_or_type: i32,
         replacement_id_or_type: i32,
-        source_attack: Option<i32>,
+        inputs: GrantInputs,
     ) -> Result<ReplacePlan, BuffCommandError> {
         if target_uid == 0 || source_id_or_type <= 0 || replacement_id_or_type <= 0 {
             return Err(BuffCommandError::InvalidReplace);
@@ -1233,7 +1250,7 @@ impl BuffManager {
                 child_uid_reservations: 0,
                 force_normal_uid: false,
             },
-            source_attack,
+            inputs,
         )?;
         let removed_uids = self
             .buffs
