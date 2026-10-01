@@ -53,6 +53,7 @@ fn queued_invalid_ultimate_removal(
         independent_parent_group: None,
         frame_owner: Some(FrameOwner::EventRule),
         subscriber_owner_uid: None,
+        caster_frame: None,
     })
 }
 
@@ -79,6 +80,7 @@ fn queued_buff_act_feature_op(
             key,
         }),
         subscriber_owner_uid: Some(feature.owner_uid),
+        caster_frame: None,
     })
 }
 
@@ -484,6 +486,7 @@ pub(super) fn dispatch_reactions(
                 key: definition.key,
             }),
             subscriber_owner_uid: Some(feature.owner_uid),
+            caster_frame: None,
         };
         if timing == crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::AfterAction {
             reactions.after_action.push(queued);
@@ -620,6 +623,7 @@ pub(super) fn dispatch_reactions(
                             key: expiry.trigger.key(),
                         }),
                         subscriber_owner_uid: None,
+                        caster_frame: None,
                     }),
             );
     }
@@ -690,6 +694,7 @@ pub(super) fn dispatch_reactions(
                 independent_parent_group: None,
                 frame_owner: Some(FrameOwner::EventRule),
                 subscriber_owner_uid: None,
+                caster_frame: None,
             }));
     }
     Ok(reactions)
@@ -869,6 +874,7 @@ pub(super) fn queued_reactions(
                     }),
                 }),
                 subscriber_owner_uid: Some(subscriber.owner_uid),
+                caster_frame: None,
             })
         })
         .collect::<Result<Vec<_>, DrainError>>()?;
@@ -955,6 +961,7 @@ pub(super) fn queued_reactions(
                     },
                 ),
                 subscriber_owner_uid: Some(subscriber.owner_uid),
+                caster_frame: None,
             }
         }));
     }

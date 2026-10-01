@@ -152,6 +152,7 @@ fn run_owned_buff_act_groups(
                 independent_parent_group: None,
                 frame_owner: None,
                 subscriber_owner_uid: None,
+                caster_frame: None,
             });
         }
     }

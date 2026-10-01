@@ -86,6 +86,7 @@ fn after_skill_reaction_waits_for_remaining_ops_in_the_skill_frame() {
             independent_parent_group: None,
             frame_owner: None,
             subscriber_owner_uid: None,
+            caster_frame: None,
         }
     }
 
@@ -255,6 +256,7 @@ fn active_skill_rates_freeze_after_immediate_reactions_and_before_later_gauge_ch
         independent_parent_group: None,
         frame_owner: None,
         subscriber_owner_uid: None,
+        caster_frame: None,
     };
     let mut queue = VecDeque::from([
         queued(
@@ -713,20 +715,22 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
         }
         .into();
         invocation.target = SkillTarget::Explicit(-1);
-        let result = run_skill(
+        invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+        let result = run_action(
             &mut managers,
             &pool,
             &catalog,
             &mut RoundDeterminism::default(),
             TargetContext::default(),
+            [],
             invocation,
-            crate::engine::skill::action::SkillModifiers::default(),
         )
         .unwrap();
-        result
+        let kicks = result
             .events
             .iter()
-            .filter(|event| {
+            .enumerate()
+            .filter(|(_, event)| {
                 matches!(
                     event,
                     crate::engine::event::payload::BattleEvent::SkillAction(action)
@@ -734,7 +738,22 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
                             && action.phase == crate::engine::skill::action::SkillPhase::Immediate
                 )
             })
-            .count()
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        // The recast follows the mass attack's completion and its ally-action reactions.
+        let completed = result.events.iter().position(|event| {
+            matches!(
+                event,
+                crate::engine::event::payload::BattleEvent::AllyAction(action)
+                    if action.skill_id == 312451115
+            )
+        });
+        assert!(
+            kicks
+                .iter()
+                .all(|kick| completed.is_some_and(|completed| completed < *kick))
+        );
+        kicks.len()
     };
     let kick_gash = BuffInfo {
         uid: Some(30),
@@ -753,4 +772,110 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
     assert_eq!(sparta_kicks(Vec::new()), 0);
     assert_eq!(sparta_kicks(vec![kick_gash.clone()]), 1);
     assert_eq!(sparta_kicks(vec![kick_gash, arrow_gash]), 2);
+}
+
+#[test]
+fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    passive_skill: vec![31090144],
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(31090111),
+                        from_uid: Some(10),
+                        layer: Some(15),
+                        ..Default::default()
+                    }],
+                    ..entity(10)
+                },
+                // Flutterpage gains Gust after any ally takes an action.
+                FightEntityInfo {
+                    passive_skill: vec![31050141],
+                    ..entity(11)
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 31090144, 31050141], []);
+    // Six deployments or retrievals so far; the attack's deployment is the seventh.
+    crate::engine::mechanic::shell::execute(
+        &mut managers,
+        ShellCommand::AccumulateAndUseSkill {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60135, "ShellUseSkill"),
+            },
+            source_uid: 10,
+            target_uid: -1,
+            threshold: 7,
+            delta: 6,
+            skill_id: 31090114,
+        },
+    )
+    .unwrap();
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(31090111))
+        .expect("the attack projects a step");
+    let children = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .collect::<Vec<_>>();
+    let ally_reaction = children
+        .iter()
+        .position(|step| step.act_id == Some(31050141))
+        .expect("the ally-action reaction reacts to the attack");
+    let last_child = children.last().expect("the attack has reaction steps");
+    assert!(ally_reaction < children.len() - 1);
+    assert_eq!(last_child.act_id, Some(31090144));
+    assert!(
+        last_child
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.act_id == Some(31090114))
+    );
 }

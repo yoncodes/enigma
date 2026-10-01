@@ -183,6 +183,7 @@ fn bloodtithe_spend_keeps_atomic_changes_in_their_semantic_frames() {
         independent_parent_group: None,
         frame_owner: None,
         subscriber_owner_uid: None,
+        caster_frame: None,
     }]);
 
     let mut catalog = SkillEffectCatalog::default();

@@ -20,6 +20,7 @@ pub fn run(
             independent_parent_group: None,
             frame_owner: None,
             subscriber_owner_uid: None,
+            caster_frame: None,
         })
         .collect::<VecDeque<_>>();
     drain_queue(managers, pool, catalog, determinism, context, &mut queue)
@@ -44,6 +45,7 @@ pub fn run_skill(
         independent_parent_group: None,
         frame_owner: None,
         subscriber_owner_uid: None,
+        caster_frame: None,
     }]);
     drain_queue(managers, pool, catalog, determinism, context, &mut queue)
 }
@@ -114,6 +116,7 @@ pub fn run_action_with_cost(
             independent_parent_group: None,
             frame_owner: None,
             subscriber_owner_uid: None,
+            caster_frame: None,
         })
         .collect::<VecDeque<_>>();
     queue.push_back(QueuedOp {
@@ -126,6 +129,7 @@ pub fn run_action_with_cost(
         independent_parent_group: None,
         frame_owner: None,
         subscriber_owner_uid: None,
+        caster_frame: None,
     });
     drain_queue_with_frames(
         managers,
@@ -184,6 +188,7 @@ pub fn run_conduit_action(
             independent_parent_group: None,
             frame_owner: None,
             subscriber_owner_uid: None,
+            caster_frame: None,
         },
         QueuedOp {
             op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
@@ -201,6 +206,7 @@ pub fn run_conduit_action(
             independent_parent_group: None,
             frame_owner: None,
             subscriber_owner_uid: None,
+            caster_frame: None,
         },
     ]);
     if let Some((_, consume)) = cost_modifier {
@@ -214,6 +220,7 @@ pub fn run_conduit_action(
             independent_parent_group: None,
             frame_owner: None,
             subscriber_owner_uid: None,
+            caster_frame: None,
         });
     }
     queue.extend([
@@ -232,6 +239,7 @@ pub fn run_conduit_action(
             independent_parent_group: None,
             frame_owner: None,
             subscriber_owner_uid: None,
+            caster_frame: None,
         },
         QueuedOp {
             op: RuleOp::Skill(crate::engine::skill::action::SkillInvocation {
@@ -261,6 +269,7 @@ pub fn run_conduit_action(
                 target_uid: frame_target_uid,
             }),
             subscriber_owner_uid: None,
+            caster_frame: None,
         },
         QueuedOp {
             op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
@@ -277,6 +286,7 @@ pub fn run_conduit_action(
             independent_parent_group: None,
             frame_owner: None,
             subscriber_owner_uid: None,
+            caster_frame: None,
         },
         QueuedOp {
             op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
@@ -293,6 +303,7 @@ pub fn run_conduit_action(
             independent_parent_group: None,
             frame_owner: None,
             subscriber_owner_uid: None,
+            caster_frame: None,
         },
     ]);
     drain_queue_with_frames(
@@ -336,6 +347,7 @@ pub fn run_conduit_stop(
         independent_parent_group: None,
         frame_owner: None,
         subscriber_owner_uid: None,
+        caster_frame: None,
     }]);
     drain_queue_with_frames(
         managers,
