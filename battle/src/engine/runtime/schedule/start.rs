@@ -359,6 +359,13 @@ pub fn run_round_start_after_ai_split(
             0,
         )?,
     );
+    // Captured hands place the round-start refill ahead of cards generated at round start.
+    let refill_start = managers.card.refilled().len();
+    append(
+        &mut next_round_begin_steps,
+        run_round_start_refill(managers, pool, catalog, determinism, context, hand_size, 1)?,
+    );
+    let mut dealt_cards = managers.card.refilled()[refill_start..].to_vec();
     append(
         &mut next_round_begin_steps,
         drain::run_group_event(
@@ -401,12 +408,6 @@ pub fn run_round_start_after_ai_split(
             0,
         )?,
     );
-    let refill_start = managers.card.refilled().len();
-    append(
-        &mut next_round_begin_steps,
-        run_round_start_refill(managers, pool, catalog, determinism, context, hand_size, 1)?,
-    );
-    let mut dealt_cards = managers.card.refilled()[refill_start..].to_vec();
     for take_stage in effect_time::ROUND_START_CARD_STAGES {
         append(
             &mut next_round_begin_steps,

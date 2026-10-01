@@ -919,7 +919,9 @@ buff_act_definitions! {
             if *buff_id > 0 && *compound_cap >= 0 && *first_stacks > 0
                 && *ending_skill > 0 && *target_code != 0), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(846, "DuduBoneContinueChannel"), &[EffectType::Dudubonecontinuechannel as i32]));
     (862, "PaperCircleContinueChannel") => PaperCircleContinueChannel,
-        runtime: |context| super::paper_circle_continue_channel::rule_ops(context.subscriber, context.event?),
+        setup: [RoundStart(3)],
+        runtime: |context| super::paper_circle_continue_channel::rule_ops(context.managers, context.subscriber, context.event?),
+        setup_handler: |context| super::paper_circle_continue_channel::setup_rule_ops(context.managers, &context.subscriber.feature),
         supports: |args| matches!(args, [skill_id, _, _, pairs @ ..]
             if *skill_id > 0 && pairs.len() >= 2 && pairs.len() % 2 == 0), references: references_for_feature, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(862, "PaperCircleContinueChannel"), &[EffectType::None as i32]));
     (850, "AddBuffBoth") => AddBuffBoth,
