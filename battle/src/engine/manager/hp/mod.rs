@@ -464,6 +464,12 @@ impl HpManager {
         }
     }
 
+    pub(crate) fn resync_current(&mut self, uid: i64, current: i32) {
+        if let Some(state) = self.states.get_mut(&uid) {
+            state.current = current.clamp(0, state.max);
+        }
+    }
+
     pub fn shield(&self, uid: i64) -> i32 {
         self.shields.get(&uid).copied().unwrap_or_default()
     }

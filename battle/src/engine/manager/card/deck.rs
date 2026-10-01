@@ -421,6 +421,14 @@ impl CardDeck {
         Some(self.hand.remove(index))
     }
 
+    pub(super) fn replace_hand(&mut self, hand: Vec<CardInfo>) {
+        self.hand.clear();
+        self.hand_ids.clear();
+        for card in hand {
+            self.push_hand(card);
+        }
+    }
+
     fn push_hand(&mut self, card: CardInfo) {
         let card_id = self.allocate_hand_id();
         self.hand.push(card);
