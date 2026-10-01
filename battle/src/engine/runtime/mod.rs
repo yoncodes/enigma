@@ -26,6 +26,7 @@ pub(crate) mod drain;
 pub(crate) mod executor;
 mod objective;
 pub(crate) mod record;
+mod resync;
 mod round;
 pub(crate) mod schedule;
 pub mod skill;

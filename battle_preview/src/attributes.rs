@@ -18,8 +18,24 @@ use crate::normalize_live_json;
 type PreviewAttributes = (Vec<(i64, HeroExAttribute)>, Vec<(i64, HeroSpAttribute)>);
 
 pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<PreviewAttributes> {
+    preview_attributes_with_request(
+        fight,
+        battle_path,
+        folder_request_path(battle_path).as_deref(),
+    )
+}
+
+/// `request_path` is the start request of this battle, when one was captured.
+pub fn preview_attributes_with_request(
+    fight: &Fight,
+    battle_path: &Path,
+    request_path: Option<&Path>,
+) -> anyhow::Result<PreviewAttributes> {
     let metadata = battle_build_metadata(battle_path)?;
-    let request = battle_request_metadata(battle_path)?;
+    let request = request_path
+        .map(request_metadata)
+        .transpose()?
+        .unwrap_or_default();
     let battle_balance = request_battle_balance(fight, request.is_balance)?;
     let mut ex_attributes = Vec::new();
     let mut sp_attributes = Vec::new();
@@ -154,14 +170,18 @@ struct BattleRequestMetadata {
     selected_equips: HashMap<i64, i64>,
 }
 
+fn folder_request_path(battle_path: &Path) -> Option<PathBuf> {
+    Some(battle_path.parent()?.join("StartDungeonRequest.json")).filter(|path| path.exists())
+}
+
 fn battle_request_metadata(battle_path: &Path) -> anyhow::Result<BattleRequestMetadata> {
-    let Some(parent) = battle_path.parent() else {
-        return Ok(BattleRequestMetadata::default());
-    };
-    let request_path = parent.join("StartDungeonRequest.json");
-    if !request_path.exists() {
-        return Ok(BattleRequestMetadata::default());
-    }
+    folder_request_path(battle_path)
+        .map(|path| request_metadata(&path))
+        .transpose()
+        .map(Option::unwrap_or_default)
+}
+
+fn request_metadata(request_path: &Path) -> anyhow::Result<BattleRequestMetadata> {
     let request: serde_json::Value = serde_json::from_str(&fs::read_to_string(request_path)?)?;
     let request = request
         .as_object()
@@ -571,11 +591,19 @@ fn matching_packets(
 
 fn capture_command(path: &Path) -> Option<String> {
     let stem = path.file_stem()?.to_str()?;
-    Some(if stem.starts_with("begin_round_") {
-        "BeginRoundReply".to_owned()
-    } else {
-        stem.split('_').next()?.to_owned()
-    })
+    if stem.starts_with("begin_round_") {
+        return Some("BeginRoundReply".to_owned());
+    }
+    // Session timeline packets are `<date>_<time>_<millis>_<sequence>_<Command>`.
+    let parts = stem.splitn(5, '_').collect::<Vec<_>>();
+    if let [date, time, millis, sequence, command] = parts.as_slice()
+        && [date, time, millis, sequence]
+            .iter()
+            .all(|part| part.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return Some((*command).to_owned());
+    }
+    Some(stem.split('_').next()?.to_owned())
 }
 
 fn apply_hero_roster(path: &Path, heroes: &mut HashMap<i64, HeroInfo>) -> anyhow::Result<()> {
@@ -1385,6 +1413,39 @@ mod tests {
     }
 
     #[test]
+    fn session_battle_uses_only_builds_captured_before_its_start() {
+        let directory = test_directory("session-battle-build");
+        let common = directory.join("decoded/common");
+        fs::create_dir_all(&common).unwrap();
+        fs::write(
+            common.join("20260927_080000_000_000001_HeroInfoListReply.json"),
+            serde_json::to_vec(&HeroInfoListReply {
+                heros: vec![hero(42)],
+                ..Default::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        let start = common.join("20260927_080100_000_000002_StartDungeonReply.json");
+        fs::write(&start, b"captured battle").unwrap();
+        fs::write(
+            common.join("20260927_080200_000_000003_HeroUpdatePush.json"),
+            serde_json::to_vec(&HeroUpdatePush {
+                hero_updates: vec![hero(43)],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        let heroes = battle_build_metadata(&start).unwrap();
+
+        assert!(heroes.contains_key(&42));
+        assert!(!heroes.contains_key(&43));
+        assert_eq!(build_metadata_source(&start).unwrap(), "timeline");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn snake_case_round_name_maps_to_capture_command() {
         assert_eq!(
             capture_command(Path::new("begin_round_2.json")).as_deref(),
@@ -1393,6 +1454,13 @@ mod tests {
         assert_eq!(
             capture_command(Path::new("BeginRoundReply_2.json")).as_deref(),
             Some("BeginRoundReply")
+        );
+        assert_eq!(
+            capture_command(Path::new(
+                "20260927_080404_757_000410_StartDungeonReply.json"
+            ))
+            .as_deref(),
+            Some("StartDungeonReply")
         );
     }
 }

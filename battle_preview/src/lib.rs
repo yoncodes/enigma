@@ -10,7 +10,9 @@ mod compression;
 mod normalize;
 mod replay_rng;
 
-pub use attributes::{build_metadata_source, loadout_diffs, preview_attributes};
+pub use attributes::{
+    build_metadata_source, loadout_diffs, preview_attributes, preview_attributes_with_request,
+};
 pub use compression::expand_compressed_fight_steps;
 pub use normalize::normalize_live_json;
 pub use replay_rng::{opening_determinism, seed_round_determinism};
@@ -307,7 +309,10 @@ pub fn battle_id(reply_path: &Path) -> Option<i32> {
 }
 
 pub fn tower_plan_id(reply_path: &Path) -> Option<i32> {
-    let request_path = reply_path.with_file_name("StartTowerBattleRequest.json");
+    tower_plan_id_from_request(&reply_path.with_file_name("StartTowerBattleRequest.json"))
+}
+
+pub fn tower_plan_id_from_request(request_path: &Path) -> Option<i32> {
     let request: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(request_path).ok()?).ok()?;
     request

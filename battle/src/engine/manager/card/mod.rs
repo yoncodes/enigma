@@ -279,6 +279,10 @@ impl CardManager {
         self.deck.hand_mut()
     }
 
+    pub(crate) fn resync_hand(&mut self, hand: Vec<CardInfo>) {
+        self.deck.replace_hand(hand);
+    }
+
     pub fn reset(&mut self, hand: Vec<CardInfo>, deck_num: i32) {
         self.reset_with_draw_pile(hand, Vec::new(), deck_num);
     }
