@@ -288,6 +288,7 @@ fn active_skill_rates_freeze_after_immediate_reactions_and_before_later_gauge_ch
                         team_injury_count_round: 0,
                         card_enchants: Vec::new(),
                         buff_additions: Vec::new(),
+                        marked_targets: Vec::new(),
                     },
                 ),
             ),

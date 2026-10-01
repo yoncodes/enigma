@@ -193,6 +193,10 @@ fn dispatch_subscribers(
                     pool.source_is_attacker(subscriber.owner_uid)
                         != pool.source_is_attacker(action.source_uid)
                 }
+                buff_act::registry::RuntimeActorScope::OwnerOrTarget => {
+                    subscriber.owner_uid == action.source_uid
+                        || action.target_uids.contains(&subscriber.owner_uid)
+                }
             };
             observes_actor
                 && subscriber
@@ -588,6 +592,7 @@ mod tests {
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
+            marked_targets: Vec::new(),
         });
 
         let dispatched = dispatch_event(
@@ -660,6 +665,7 @@ mod tests {
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
+            marked_targets: Vec::new(),
         };
 
         assert!(skill_subscriber_observes_action(
@@ -742,6 +748,7 @@ mod tests {
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
+            marked_targets: Vec::new(),
         };
 
         assert!(skill_subscriber_observes_action(
@@ -811,6 +818,7 @@ mod tests {
             team_injury_count_round: 1,
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
+            marked_targets: Vec::new(),
         });
 
         let dispatched = dispatch_event(

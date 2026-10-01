@@ -76,6 +76,7 @@ fn be_attacked_reaction_commits_before_same_hit_threshold() {
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
+            marked_targets: Vec::new(),
         }),
     )
     .unwrap();
@@ -359,6 +360,7 @@ fn contract_psychube_buffs_the_owner_then_the_selected_bound_ally() {
             team_injury_count_round: 0,
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
+            marked_targets: Vec::new(),
         }),
     )
     .unwrap();
@@ -1045,6 +1047,7 @@ fn assist_boss_attack_passive_resolves_from_the_derived_skill_cast_event() {
         team_injury_count_round: 0,
         card_enchants: Vec::new(),
         buff_additions: Vec::new(),
+        marked_targets: Vec::new(),
     });
 
     run_event(

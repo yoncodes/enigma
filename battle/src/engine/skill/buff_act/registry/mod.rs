@@ -358,6 +358,8 @@ pub enum RuntimeActorScope {
     Owner,
     Team,
     OpposingTeam,
+    // Actions taken by the owner and actions that target the owner.
+    OwnerOrTarget,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -1034,7 +1036,7 @@ buff_act_definitions! {
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(407, "Seal"), &[]));
     (10005, "Provoke") => Provoke, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10005, "Provoke"), &[EffectType::None as i32]));
     (10004, "BeAttackedAssassinate") => BeAttackedAssassinate,
-        event: EventKind::BeAttacked, source: Applier,
+        event: EventKind::SkillAction, phase: Immediate, source: Applier, actor: OwnerOrTarget,
         runtime: |context| super::assassination::rule_ops(context.catalog, context.subscriber, context.event?),
         supports: super::assassination::supports_target_trigger,
         parser: super::assassination::parse_target_trigger,

@@ -18,7 +18,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) configured_targets: Option<Vec<i64>>,
     pub(super) configured_additional_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
-    pub(super) marked_targets: Option<Vec<i64>>,
+    pub(super) marked_targets: Option<Vec<(i64, i32)>>,
     pub(super) injured_allies: Vec<i64>,
     pub(super) affected_targets: Vec<i64>,
     pub(super) attacked_targets: Vec<i64>,
@@ -555,10 +555,7 @@ pub(super) fn damage_ops(
             source_uid,
             target_uid,
             inherent_assassinate,
-            execution
-                .marked_targets
-                .as_ref()
-                .is_none_or(|marked| marked.contains(&target_uid)),
+            execution.marked_targets.as_deref(),
         );
         execution.context.active_skill_assassinate |= assassination.assassinate;
         if assassination.final_damage_bonus != 0 {
