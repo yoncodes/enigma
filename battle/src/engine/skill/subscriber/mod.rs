@@ -163,7 +163,8 @@ fn for_configured_buff_acts(
     }
     let mut subscribers = Vec::new();
     for entity in pool.active_entities() {
-        // "Current [Force Field] New Effect Added": the extra stack follows the active Force Field.
+        // The extra stack follows the mapped Way buff being active ("Current [Force Field] New Effect
+        // Added"), not ownership of the talent passive.
         let field_buff_ids = managers
             .buff
             .active_for(entity.uid)
