@@ -567,13 +567,14 @@ fn condition_kind_matches(
             from_buff_id,
             to_buff_id,
         } => managers.is_some_and(|managers| {
+            // The hit comes from a condition target holding `from` to the owner holding `to`.
             managers
                 .buff
-                .has_active_buff_id_or_type(source_uid, *from_buff_id)
+                .has_active_buff_id_or_type(source_uid, *to_buff_id)
                 && condition_targets.iter().any(|target_uid| {
                     managers
                         .buff
-                        .has_active_buff_id_or_type(*target_uid, *to_buff_id)
+                        .has_active_buff_id_or_type(*target_uid, *from_buff_id)
                 })
         }),
         ParsedConditionKind::SelfBuffTypeTargetBuffTypes {
