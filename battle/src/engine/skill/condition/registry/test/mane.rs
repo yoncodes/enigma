@@ -6,7 +6,7 @@ fn attack_conditions_keep_their_exact_routes() {
     assert_eq!(
         incoming.role,
         ConditionRole::Trigger {
-            event: EventKind::SkillAction,
+            event: EventKind::SkillEffectStarted,
             phase: Some(SkillPhase::Immediate),
         }
     );

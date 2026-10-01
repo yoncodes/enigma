@@ -1126,3 +1126,76 @@ fn a_follow_up_cast_from_a_nested_skill_still_runs() {
         .count();
     assert_eq!(kicks, 1);
 }
+
+#[test]
+fn an_attacked_targets_attack_start_reaction_runs_before_the_attacks_own_effects() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                passive_skill: vec![109380003],
+                ..entity(-1)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 109380003], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+    let position = |matches: fn(&crate::engine::event::payload::BattleEvent) -> bool| {
+        result
+            .events
+            .iter()
+            .position(matches)
+            .expect("the event is published")
+    };
+    // "When being actively attacked, the attack counts as a Stronger Afflatus attack."
+    let stronger_afflatus = position(|event| {
+        matches!(
+            event,
+            crate::engine::event::payload::BattleEvent::BuffAdded(buff)
+                if buff.target_uid == 10 && buff.buff_id == 109380006
+        )
+    });
+    let attack_effects = position(|event| {
+        matches!(
+            event,
+            crate::engine::event::payload::BattleEvent::SkillAction(action)
+                if action.skill_id == 31090111
+                    && action.phase == crate::engine::skill::action::SkillPhase::Immediate
+        )
+    });
+    assert!(stronger_afflatus < attack_effects);
+}
