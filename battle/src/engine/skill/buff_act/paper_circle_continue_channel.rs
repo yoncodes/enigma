@@ -4,7 +4,7 @@ use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
     manager::{
         BattleManagers,
-        buff::ActiveBuffFeature,
+        buff::{ActiveBuffFeature, BuffCommand, BuffRemove, BuffRemoveSelector},
         card::{CardCommand, CardConsumeForEffect},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
         ex_point::{ExPointChange, ExPointCommand},
@@ -32,7 +32,16 @@ pub fn rule_ops(
                 source_uid: subscriber.owner_uid,
                 skill_id,
             }))];
-            ops.extend(channel_end_moxie(managers, subscriber));
+            if channel_ending(managers, subscriber.owner_uid, subscriber.buff_uid) {
+                ops.extend(channel_end_moxie(managers, subscriber));
+                ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(
+                    BuffRemove {
+                        origin: super::command_origin(subscriber)?,
+                        target_uid: subscriber.owner_uid,
+                        selector: BuffRemoveSelector::Uid(subscriber.buff_uid),
+                    },
+                ))));
+            }
             Some(ops)
         }
         _ => Some(Vec::new()),
@@ -51,9 +60,6 @@ pub fn setup_rule_ops(
     let (skill_id, target_rule) = conversion(&feature.raw)?;
     let origin = super::feature_command_origin(feature)?;
     let owner_uid = feature.owner_uid;
-    if channel_ending(managers, owner_uid, feature.buff_uid)? {
-        return Some(Vec::new());
-    }
     let eureka = managers.eureka.get(owner_uid, EUREKA_RESOURCE_ID);
     let cards = managers.card.plan_effect_consumption(owner_uid);
     let mut ops = Vec::with_capacity(cards.len() + 2);
@@ -95,9 +101,6 @@ pub fn setup_rule_ops(
 // Field".
 fn channel_end_moxie(managers: &BattleManagers, subscriber: &BuffActSubscriber) -> Option<RuleOp> {
     let owner_uid = subscriber.owner_uid;
-    if !channel_ending(managers, owner_uid, subscriber.buff_uid)? {
-        return None;
-    }
     let mut fields = subscriber.raw.split('#').skip(4);
     let levels = fields.next()?.split(',');
     let field_ids = fields.next()?.split(',');
@@ -125,10 +128,13 @@ fn channel_end_moxie(managers: &BattleManagers, subscriber: &BuffActSubscriber) 
     )))
 }
 
-// The last round-end tick and the following round-start settlement both run while one round
-// of channel duration remains; the channel then ends instead of converting again.
-fn channel_ending(managers: &BattleManagers, owner_uid: i64, buff_uid: i64) -> Option<bool> {
-    Some(managers.buff.snapshot(owner_uid, buff_uid)?.duration == Some(1))
+// The channel's last round-end tick runs while one round of duration remains; the act ends the
+// channel there.
+fn channel_ending(managers: &BattleManagers, owner_uid: i64, buff_uid: i64) -> bool {
+    managers
+        .buff
+        .snapshot(owner_uid, buff_uid)
+        .is_some_and(|buff| buff.duration == Some(1))
 }
 
 // Fields: act # skill # value # conversion target rule # levels # force fields.
@@ -258,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn channel_end_grants_moxie_for_the_current_force_field() {
+    fn channel_end_grants_moxie_for_the_current_force_field_and_ends_the_channel() {
         crate::test_support::init_config();
         let event = BattleEvent::Kind(EventKind::RoundEnd);
         let ending = BattleManagers::seeded(&channel_fight(1));
@@ -274,7 +280,11 @@ mod tests {
                         delta: 3,
                         ..
                     }
-                )))
+                ))),
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                    selector: BuffRemoveSelector::Uid(20),
+                    ..
+                })))
             ])
         ));
         assert!(matches!(

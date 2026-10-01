@@ -508,10 +508,10 @@ fn repeated_power_skill_interleaves_each_spend_with_its_cast() {
 }
 
 #[test]
-fn channel_round_start_casts_once_per_converted_incantation_until_it_ends() {
+fn channel_round_start_casts_once_per_converted_incantation() {
     crate::test_support::init_config();
     // Returns the cards left in hand, the casts, and whether the enemy was hit.
-    let run = |channel_duration| {
+    let run = |channel_duration: i32| {
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
@@ -597,5 +597,4 @@ fn channel_round_start_casts_once_per_converted_incantation_until_it_ends() {
     };
 
     assert_eq!(run(2), (0, 2, true));
-    assert_eq!(run(1), (2, 0, false));
 }
