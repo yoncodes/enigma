@@ -30,6 +30,7 @@ use crate::engine::{
 };
 
 mod frames;
+mod intercept;
 mod queue;
 mod reactions;
 mod safety;

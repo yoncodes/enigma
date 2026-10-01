@@ -38,12 +38,18 @@ pub struct SetupContext<'a> {
 pub type SetupHandler = for<'a> fn(&SetupContext<'a>) -> Option<Vec<RuleOp>>;
 
 pub type SupportsHandler = fn(&[i32]) -> bool;
+/// One op produced by an HP intercept. A settled op commits without being intercepted again.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterceptedHpOp {
+    pub op: crate::engine::skill::rule::output::RuleOp,
+    pub settled: bool,
+}
 /// Rewrites a queued HP op before it commits; `None` leaves the op unchanged.
 pub type HpInterceptHandler = fn(
     &BattleManagers,
     &crate::engine::skill::target::TargetPool,
     &crate::engine::skill::rule::output::RuleOp,
-) -> Option<Vec<crate::engine::skill::rule::output::RuleOp>>;
+) -> Option<Vec<InterceptedHpOp>>;
 pub type RawSupportsHandler = fn(Option<&config::GameDB>, &str) -> bool;
 pub type FeatureParser = fn(&[String]) -> Option<Vec<i32>>;
 pub type FeatureReferences = fn(Option<&config::GameDB>, &ParsedBuffAct) -> RuleReferences;

@@ -140,7 +140,7 @@ fn deploy(
     if source_uid == 0 || target_uid == 0 || requested == 0 {
         return Err(ShellError::MissingStock);
     }
-    // Several hits in one batch can each plan a deploy; once the stock is spent the rest deploy nothing.
+    // Reactions planned together can each request a deploy; once the stock is spent the rest deploy nothing.
     if amount <= 0 {
         return Ok(ShellChanges {
             buffs: Vec::new(),

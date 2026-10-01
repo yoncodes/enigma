@@ -410,6 +410,7 @@ fn drain_queue_with_deferred(
         frames,
     };
     let base_pool = pool;
+    let mut settled_hp_ops = Vec::<RuleOp>::new();
 
     // Eligible skills expand into queued operations. Non-skill operations reach
     // manager commit only after observers at the preceding boundary are released.
@@ -451,10 +452,17 @@ fn drain_queue_with_deferred(
 
         // Registered HP intercepts rewrite an HP op before it commits, so the parts they
         // produce commit in order through the ordinary manager paths.
-        if let Some(expanded) = crate::engine::skill::buff_act::intercept_hp_op(managers, pool, &op)
+        if let Some(index) = settled_hp_ops.iter().position(|settled| settled == &op) {
+            settled_hp_ops.remove(index);
+        } else if let Some(expanded) =
+            crate::engine::skill::buff_act::intercept_hp_op(managers, pool, &op)
         {
             let mut skill_execution = skill_execution;
-            for (index, op) in expanded.into_iter().enumerate().rev() {
+            for (index, intercepted) in expanded.into_iter().enumerate().rev() {
+                if intercepted.settled {
+                    settled_hp_ops.push(intercepted.op.clone());
+                }
+                let op = intercepted.op;
                 queue.push_front(QueuedOp {
                     op,
                     trigger: trigger.clone(),

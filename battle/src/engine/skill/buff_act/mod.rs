@@ -196,7 +196,7 @@ pub fn intercept_hp_op(
     managers: &crate::engine::manager::BattleManagers,
     pool: &crate::engine::skill::target::TargetPool,
     op: &crate::engine::skill::rule::output::RuleOp,
-) -> Option<Vec<crate::engine::skill::rule::output::RuleOp>> {
+) -> Option<Vec<registry::InterceptedHpOp>> {
     registry::definitions()
         .filter_map(|definition| definition.state.hp_intercept)
         .find_map(|intercept| intercept(managers, pool, op))
