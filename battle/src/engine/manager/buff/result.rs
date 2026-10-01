@@ -216,7 +216,7 @@ impl BuffReplaceResult {
                 },
             ))
         }));
-        if let Some(rejected) = &self.rejected {
+        if let Some(rejected) = self.rejected.as_ref().filter(|rejected| !rejected.resisted) {
             events.push(BattleEvent::BuffRejected(BuffRejectedEvent {
                 source_uid: rejected.buff.from_uid.unwrap_or_default(),
                 target_uid: rejected.target_uid,
@@ -234,6 +234,8 @@ impl BuffReplaceResult {
 pub struct BuffRejectResult {
     pub target_uid: i64,
     pub blocker_buff_id: i32,
+    // Resisted by the target's full resistance rather than blocked by a buff.
+    pub resisted: bool,
     pub type_id: i32,
     pub buff: BuffInfo,
 }

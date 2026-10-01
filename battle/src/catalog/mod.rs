@@ -72,6 +72,25 @@ pub(crate) struct MonsterResistances {
     pub charm: i32,
 }
 
+impl MonsterResistances {
+    pub(crate) fn by_id(self, resistance_id: i32) -> Option<i32> {
+        Some(match resistance_id {
+            401 => self.dizzy,
+            402 => self.sleep,
+            403 => self.petrified,
+            404 => self.frozen,
+            405 => self.disarm,
+            406 => self.forbid,
+            407 => self.seal,
+            408 => self.cant_get_exskill,
+            409 => self.del_ex_point,
+            410 => self.stress_up,
+            411 => self.charm,
+            _ => return None,
+        })
+    }
+}
+
 impl Default for EntityExAttributes {
     fn default() -> Self {
         Self {
@@ -779,6 +798,14 @@ impl BattleCatalog {
             })
             .map(|row| row.dmg_type)
             .unwrap_or_default()
+    }
+
+    // `resistances_const` rows name the resisted buff act type and its resistance, e.g. `Dizzy#401`.
+    pub(crate) fn resistance_id_for_act(self, act_type: &str) -> Option<i32> {
+        self.game_data.resistances_const.iter().find_map(|row| {
+            let (name, id) = row.value.split_once('#')?;
+            (name == act_type).then(|| id.parse().ok()).flatten()
+        })
     }
 
     pub(crate) fn monster_resistances(self, model_id: i32) -> Option<MonsterResistances> {

@@ -639,7 +639,11 @@ impl BuffManager {
             .flatten();
         let blocker =
             configured_blocker.or_else(|| immunity.as_ref().map(|(buff_id, _, _)| *buff_id));
-        let blocked = blocker.is_some() || !semantic_grant_allowed;
+        let resisted = !unconditional
+            && semantic_grant_allowed
+            && blocker.is_none()
+            && self.fully_resists(request.target_uid, &definition);
+        let blocked = blocker.is_some() || resisted || !semantic_grant_allowed;
         let mut excluded_uids = if blocked || unconditional {
             Vec::new()
         } else {
@@ -732,6 +736,8 @@ impl BuffManager {
             GrantAction::Add
         } else if let Some(blocker) = blocker {
             GrantAction::Reject(blocker)
+        } else if resisted {
+            GrantAction::Resist
         } else {
             let action = self.resolve_grant_action(route, &definition, &policy, args, repeat);
             if matches!(request.input, GrantInput::ChildUid { .. })
@@ -805,7 +811,7 @@ impl BuffManager {
             0
         };
         let uid = match action {
-            GrantAction::Reject(_) => Some(super::uid_policy::plan(
+            GrantAction::Reject(_) | GrantAction::Resist => Some(super::uid_policy::plan(
                 self,
                 route,
                 &definition,

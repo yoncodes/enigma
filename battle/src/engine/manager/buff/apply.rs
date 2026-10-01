@@ -244,6 +244,11 @@ impl BuffManager {
                 result.rejected =
                     Some(self.reject_with_blocker(route, definition, args, blocker, uid));
             }
+            GrantAction::Resist => {
+                let mut resisted = self.reject_with_blocker(route, definition, args, 0, uid);
+                resisted.resisted = true;
+                result.rejected = Some(resisted);
+            }
             GrantAction::RefreshCount => {
                 result.refreshed = self.refresh_typed_count_using_uids(
                     route.target_uid,
@@ -341,6 +346,7 @@ impl BuffManager {
         BuffRejectResult {
             target_uid: route.target_uid,
             blocker_buff_id,
+            resisted: false,
             type_id: definition.effective_type_id(),
             buff: BuffInfo {
                 buff_id: Some(route.buff_id),
@@ -383,6 +389,27 @@ impl BuffManager {
                 && !incoming_blocks_resident
                 && resident_blocks_incoming)
                 .then_some(resident_buff_id)
+        })
+    }
+
+    // "A chance to resist that status based on their resistance to the status": only full resistance
+    // (1000, the client's full-resistance mark) is proven; partial chances keep applying the buff.
+    pub(super) fn fully_resists(&self, target_uid: i64, definition: &BuffDefinition) -> bool {
+        let catalog = self.catalog();
+        let base = self
+            .entities
+            .iter()
+            .find(|tracked| tracked.uid == target_uid)
+            .and_then(|tracked| catalog.monster_resistances(tracked.model_id))
+            .unwrap_or_default();
+        definition.features().iter().any(|feature| {
+            let Some(resistance_id) = catalog.resistance_id_for_act(&feature.act_type) else {
+                return false;
+            };
+            let bonus = AttrId::from_raw(resistance_id)
+                .map(|attr| self.attribute_delta(target_uid, attr))
+                .unwrap_or_default();
+            base.by_id(resistance_id).unwrap_or_default() + bonus >= 1000
         })
     }
 

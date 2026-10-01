@@ -200,6 +200,7 @@ struct ActiveBuff {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TrackedEntity {
     uid: i64,
+    model_id: i32,
     team_type: i32,
     active: bool,
 }

@@ -311,6 +311,7 @@ pub mod production_line_level;
 pub mod push_box_task;
 pub mod reddot;
 pub mod resistances_attribute;
+pub mod resistances_const;
 pub mod reward;
 pub mod reward_group;
 pub mod role_activity_task;
@@ -735,6 +736,7 @@ pub struct GameDB {
     pub push_box_task: push_box_task::PushBoxTaskTable,
     pub reddot: reddot::ReddotTable,
     pub resistances_attribute: resistances_attribute::ResistancesAttributeTable,
+    pub resistances_const: resistances_const::ResistancesConstTable,
     pub reward: reward::RewardTable,
     pub reward_group: reward_group::RewardGroupTable,
     pub role_activity_task: role_activity_task::RoleActivityTaskTable,
@@ -1781,6 +1783,9 @@ impl GameDB {
         let resistances_attribute = resistances_attribute::ResistancesAttributeTable::load(
             &format!("{}/resistances_attribute.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load resistances_attribute.json: {}", e))?;
+        let resistances_const = resistances_const::ResistancesConstTable::load(
+            &format!("{}/resistances_const.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load resistances_const.json: {}", e))?;
         let reward = reward::RewardTable::load(
             &format!("{}/reward.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load reward.json: {}", e))?;
@@ -2421,6 +2426,7 @@ impl GameDB {
             push_box_task,
             reddot,
             resistances_attribute,
+            resistances_const,
             reward,
             reward_group,
             role_activity_task,

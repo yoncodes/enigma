@@ -808,6 +808,59 @@ fn static_control_immunity_rejects_without_consuming_the_carrier() {
 }
 
 #[test]
+fn full_daze_resistance_resists_daze_without_a_rejection_event() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        ..Default::default()
+    };
+    manager.seed(&Fight {
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 109380001), entity(-2, 0)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let daze = |target_uid| {
+        BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: 10,
+            target_uid,
+            buff_id: 4011,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })
+    };
+
+    let resisted = manager.execute(&HpManager::default(), daze(-1)).unwrap();
+    let applied = manager.execute(&HpManager::default(), daze(-2)).unwrap();
+
+    assert!(
+        resisted
+            .change
+            .rejected
+            .as_ref()
+            .is_some_and(|rejected| rejected.resisted)
+    );
+    assert!(!manager.has_buff_id(-1, 4011));
+    assert!(resisted.events().is_empty());
+    assert_eq!(
+        crate::engine::packet::effect::EffectPacket::buff_changes(&resisted.change)
+            .first()
+            .and_then(|effect| effect.effect_type),
+        Some(sonettobuf::effect_type_enum::EffectType::Resistances as i32)
+    );
+    assert!(applied.change.rejected.is_none());
+    assert!(manager.has_buff_id(-2, 4011));
+}
+
+#[test]
 fn team_status_immunity_consumes_the_shared_carrier_budget() {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();
