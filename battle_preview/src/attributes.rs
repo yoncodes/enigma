@@ -497,6 +497,12 @@ fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>>
         return Ok(None);
     };
 
+    // A packet read in place from the timeline is its own position, even when an
+    // identical packet repeats elsewhere in the session.
+    if let Some(index) = timeline_position(&files, path) {
+        files.truncate(index + 1);
+        return Ok(Some(files));
+    }
     let target = fs::read(path)?;
     let command = capture_command(path)
         .ok_or_else(|| anyhow::anyhow!("capture packet has no command name"))?;
@@ -510,6 +516,19 @@ fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>>
     };
     files.truncate(target_index + 1);
     Ok(Some(files))
+}
+
+fn timeline_position(timeline: &[PathBuf], path: &Path) -> Option<usize> {
+    let name = path.file_name()?;
+    let directory = fs::canonicalize(path.parent()?).ok()?;
+    let timeline_directory = fs::canonicalize(timeline.first()?.parent()?).ok()?;
+    (directory == timeline_directory)
+        .then(|| {
+            timeline
+                .iter()
+                .position(|file| file.file_name() == Some(name))
+        })
+        .flatten()
 }
 
 fn resolve_repeated_packet(
@@ -1381,6 +1400,35 @@ mod tests {
                 .contains_key(&42)
         );
         assert_eq!(build_metadata_source(&battle_path).unwrap(), "local");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn repeated_session_starts_use_the_rosters_before_their_own_position() {
+        let directory = test_directory("repeated-session-start");
+        let common = directory.join("decoded/common");
+        fs::create_dir_all(&common).unwrap();
+        let roster = |name: &str, uid| {
+            fs::write(
+                common.join(name),
+                serde_json::to_vec(&HeroInfoListReply {
+                    heros: vec![hero(uid)],
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        };
+        roster("20260927_080000_000_000001_HeroInfoListReply.json", 42);
+        let first = common.join("20260927_080100_000_000002_StartDungeonReply.json");
+        fs::write(&first, b"same battle").unwrap();
+        roster("20260927_080200_000_000003_HeroInfoListReply.json", 43);
+        let second = common.join("20260927_080300_000_000004_StartDungeonReply.json");
+        fs::write(&second, b"same battle").unwrap();
+
+        assert!(battle_build_metadata(&first).unwrap().contains_key(&42));
+        assert!(battle_build_metadata(&second).unwrap().contains_key(&43));
+        assert_eq!(build_metadata_source(&second).unwrap(), "timeline");
         fs::remove_dir_all(directory).unwrap();
     }
 
