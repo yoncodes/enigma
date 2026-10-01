@@ -506,3 +506,96 @@ fn repeated_power_skill_interleaves_each_spend_with_its_cast() {
     }
     assert_eq!(sequence, ["spend", "cast", "spend", "cast"]);
 }
+
+#[test]
+fn channel_round_start_casts_once_per_converted_incantation_until_it_ends() {
+    crate::test_support::init_config();
+    // Returns the cards left in hand, the casts, and whether the enemy was hit.
+    let run = |channel_duration| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3105),
+                    current_hp: Some(100),
+                    attr: Some(HeroAttribute {
+                        hp: Some(100),
+                        attack: Some(100),
+                        ..Default::default()
+                    }),
+                    skill_group1: vec![31050111, 31050112],
+                    skill_group2: vec![31050121, 31050122],
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(31050131),
+                        from_uid: Some(10),
+                        duration: Some(channel_duration),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(100_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let card = |skill_id| CardInfo {
+            uid: Some(10),
+            skill_id: Some(skill_id),
+            ..Default::default()
+        };
+        managers
+            .execute_card(CardCommand::Setup(CardSetup {
+                hand: vec![card(31050111), card(31050121)],
+                draw_pile: Vec::new(),
+                deck_num: 0,
+            }))
+            .unwrap();
+        let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+        let result = run_buff_act_setup_stage_for_owners(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            SetupStage::RoundStart,
+            2,
+            &[10],
+        )
+        .unwrap();
+
+        fn casts(effects: &[sonettobuf::ActEffect]) -> usize {
+            effects
+                .iter()
+                .filter_map(|effect| effect.fight_step.as_ref())
+                .map(|step| usize::from(step.act_id == Some(31050151)) + casts(&step.act_effect))
+                .sum()
+        }
+        let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+        (
+            managers.card.hand().len(),
+            steps
+                .iter()
+                .map(|step| casts(&step.act_effect))
+                .sum::<usize>(),
+            managers.hp.current(-1) < 100_000,
+        )
+    };
+
+    assert_eq!(run(2), (0, 2, true));
+    assert_eq!(run(1), (2, 0, false));
+}

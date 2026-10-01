@@ -51,6 +51,9 @@ pub fn setup_rule_ops(
     let (skill_id, target_rule) = conversion(&feature.raw)?;
     let origin = super::feature_command_origin(feature)?;
     let owner_uid = feature.owner_uid;
+    if channel_ending(managers, owner_uid, feature.buff_uid)? {
+        return Some(Vec::new());
+    }
     let eureka = managers.eureka.get(owner_uid, EUREKA_RESOURCE_ID);
     let cards = managers.card.plan_effect_consumption(owner_uid);
     let mut ops = Vec::with_capacity(cards.len() + 2);
@@ -89,15 +92,10 @@ pub fn setup_rule_ops(
 }
 
 // "When the channel status ends, grants Moxie +1/2/3 to self based on the current Gust Force
-// Field": the last round-end tick runs while one round of duration remains.
+// Field".
 fn channel_end_moxie(managers: &BattleManagers, subscriber: &BuffActSubscriber) -> Option<RuleOp> {
     let owner_uid = subscriber.owner_uid;
-    if managers
-        .buff
-        .snapshot(owner_uid, subscriber.buff_uid)?
-        .duration
-        != Some(1)
-    {
+    if !channel_ending(managers, owner_uid, subscriber.buff_uid)? {
         return None;
     }
     let mut fields = subscriber.raw.split('#').skip(4);
@@ -125,6 +123,12 @@ fn channel_end_moxie(managers: &BattleManagers, subscriber: &BuffActSubscriber) 
             effect_type: EffectType::Expointchange as i32,
         }),
     )))
+}
+
+// The last round-end tick and the following round-start settlement both run while one round
+// of channel duration remains; the channel then ends instead of converting again.
+fn channel_ending(managers: &BattleManagers, owner_uid: i64, buff_uid: i64) -> Option<bool> {
+    Some(managers.buff.snapshot(owner_uid, buff_uid)?.duration == Some(1))
 }
 
 // Fields: act # skill # value # conversion target rule # levels # force fields.
@@ -208,8 +212,6 @@ mod tests {
                 entitys: vec![sonettobuf::FightEntityInfo {
                     uid: Some(10),
                     model_id: Some(3105),
-                    skill_group1: vec![31050111, 31050112],
-                    skill_group2: vec![31050121, 31050122],
                     current_hp: Some(100),
                     buffs: vec![
                         sonettobuf::BuffInfo {
@@ -279,58 +281,5 @@ mod tests {
             rule_ops(&continuing, &channel_subscriber(), &event).as_deref(),
             Some([RuleOp::Skill(_)])
         ));
-    }
-
-    #[test]
-    fn round_start_converts_every_own_incantation_into_a_cast() {
-        crate::test_support::init_config();
-        let mut managers = BattleManagers::seeded(&channel_fight(2));
-        let card = |skill_id| sonettobuf::CardInfo {
-            uid: Some(10),
-            skill_id: Some(skill_id),
-            ..Default::default()
-        };
-        managers
-            .execute_card(CardCommand::Setup(
-                crate::engine::manager::card::CardSetup {
-                    hand: vec![card(31050111), card(31050121)],
-                    draw_pile: Vec::new(),
-                    deck_num: 0,
-                },
-            ))
-            .unwrap();
-        let feature = managers
-            .buff
-            .active_features(&managers.hp)
-            .into_iter()
-            .find(|feature| super::super::is_kind(feature, BuffActKind::PaperCircleContinueChannel))
-            .expect("channel buff carries act 862");
-
-        let ops = setup_rule_ops(&managers, &feature).unwrap();
-
-        let consumed = ops.iter().find_map(|op| match op {
-            RuleOp::Command(BattleCommand::Card(CardCommand::ConsumeForEffect(consume))) => {
-                Some(consume.indices.clone())
-            }
-            _ => None,
-        });
-        assert_eq!(consumed, Some(vec![0, 1]));
-        let casts = ops
-            .iter()
-            .filter(|op| {
-                matches!(
-                    op,
-                    RuleOp::Skill(SkillInvocation {
-                        plan: SkillRequest {
-                            source_uid: 10,
-                            skill_id: 31050151,
-                        },
-                        target: SkillTarget::LogicRule(210),
-                        ..
-                    })
-                )
-            })
-            .count();
-        assert_eq!(casts, 2);
     }
 }
