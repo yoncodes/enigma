@@ -66,6 +66,9 @@ fn run() -> anyhow::Result<()> {
         }
     }
 
+    if battles.is_empty() {
+        println!("no battles found in the given inputs");
+    }
     for (battle, inputs) in battles {
         let Some(&(through, _)) = inputs.last() else {
             continue;
@@ -181,7 +184,7 @@ fn report_input(
         output.display(),
         if round_matches { "MATCH" } else { "DIFF" },
         if outcome.resynced { " resynced" } else { "" },
-        build_metadata_source(input)?,
+        run.build,
     );
     Ok(())
 }
@@ -241,6 +244,7 @@ struct RoundOutcome {
 struct ReplayRun {
     outcomes: Vec<RoundOutcome>,
     stopped: Option<String>,
+    build: &'static str,
 }
 
 /// Replays captured requests through `BattleRuntime` from the captured start-state fixture,
@@ -293,26 +297,49 @@ fn replay_rounds(
         eprintln!("  start-round damage:");
         report_damage_comparison(&start_round, &captured_start_round);
     }
+    let mut run = ReplayRun {
+        outcomes: Vec::new(),
+        stopped: None,
+        build: build_metadata_source(&battle.metadata)?,
+    };
     let mut resynced = false;
     if resync {
-        resynced |= resync_round(&mut runtime, 0, &captured_start_round)?;
+        match resync_round(&mut runtime, 0, &captured_start_round) {
+            Ok(changed) => resynced |= changed,
+            Err(error) => {
+                run.stopped = Some(format!("resync after start: {error:#}"));
+                return Ok(run);
+            }
+        }
     }
     let mut previous_captured_round = captured_start_round;
-    let mut outcomes = Vec::new();
-    let mut stopped = None;
-    replay_cloth_input(&battle.start_cloth, &mut runtime)?;
+    if let Err(error) = replay_cloth_input(&battle.start_cloth, &mut runtime) {
+        run.stopped = Some(format!("cloth before round 1: {error:#}"));
+        return Ok(run);
+    }
 
     for round in battle.rounds.iter().filter(|round| round.index <= through) {
         let index = round.index;
-        let request = begin_round_request(&round.request)?;
-        let captured = captured_round(&round.reply)?;
-        validate_captured_round_continuity(&previous_captured_round, &captured)?;
+        // Capture problems block this round and every later one, never the earlier results.
+        let prepared = (|| -> anyhow::Result<(BeginRoundRequest, FightRound)> {
+            let request = begin_round_request(&round.request)?;
+            let captured = captured_round(&round.reply)?;
+            validate_captured_round_continuity(&previous_captured_round, &captured)?;
+            replay_cloth_input(&round.cloth, &mut runtime)?;
+            Ok((request, captured))
+        })();
+        let (request, captured) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                run.stopped = Some(format!("round {index} capture: {error:#}"));
+                break;
+            }
+        };
         report_rule_issues(&captured);
-        replay_cloth_input(&round.cloth, &mut runtime)?;
         seed_round_determinism(&mut runtime, catalog::global(), &captured);
         let result = runtime.advance_round(request);
         let failed = result.is_err();
-        outcomes.push(RoundOutcome {
+        run.outcomes.push(RoundOutcome {
             index,
             result,
             resynced,
@@ -324,7 +351,7 @@ fn replay_rounds(
             match resync_round(&mut runtime, index, &captured) {
                 Ok(changed) => resynced |= changed,
                 Err(error) => {
-                    stopped = Some(format!("resync after round {index}: {error}"));
+                    run.stopped = Some(format!("resync after round {index}: {error:#}"));
                     break;
                 }
             }
@@ -332,7 +359,7 @@ fn replay_rounds(
         previous_captured_round = captured;
     }
 
-    Ok(ReplayRun { outcomes, stopped })
+    Ok(run)
 }
 
 fn resync_round(

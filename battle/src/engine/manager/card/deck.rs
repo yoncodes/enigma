@@ -421,11 +421,21 @@ impl CardDeck {
         Some(self.hand.remove(index))
     }
 
+    // Cards that stay in the same slot keep their identity so pending expiries still apply.
     pub(super) fn replace_hand(&mut self, hand: Vec<CardInfo>) {
-        self.hand.clear();
-        self.hand_ids.clear();
-        for card in hand {
-            self.push_hand(card);
+        let previous = std::mem::take(&mut self.hand);
+        let previous_ids = std::mem::take(&mut self.hand_ids);
+        for (index, card) in hand.into_iter().enumerate() {
+            let kept = previous
+                .get(index)
+                .is_some_and(|old| old.uid == card.uid && old.skill_id == card.skill_id);
+            let card_id = if kept {
+                previous_ids[index]
+            } else {
+                self.allocate_hand_id()
+            };
+            self.hand.push(card);
+            self.hand_ids.push(card_id);
         }
     }
 
@@ -715,5 +725,18 @@ mod tests {
             skill_id: Some(skill_id),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn replaced_hand_keeps_identity_for_unchanged_slots() {
+        let mut deck = CardDeck::new(vec![card(10, 1), card(10, 2)]);
+        let before = deck.hand_ids.clone();
+
+        deck.replace_hand(vec![card(10, 1), card(10, 3), card(10, 4)]);
+
+        assert_eq!(deck.hand_ids[0], before[0]);
+        assert!(!before.contains(&deck.hand_ids[1]));
+        assert!(!before.contains(&deck.hand_ids[2]));
+        assert_ne!(deck.hand_ids[1], deck.hand_ids[2]);
     }
 }

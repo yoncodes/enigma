@@ -1,4 +1,4 @@
-use sonettobuf::{CardInfo, FightRound, FightStep};
+use sonettobuf::{CardInfo, FightRound, FightStep, effect_type_enum::EffectType};
 
 use super::BattleRuntime;
 
@@ -28,14 +28,16 @@ impl BattleRuntime {
                 }
                 if generated != hp {
                     self.managers.hp.resync_current(uid, hp);
-                    changes.push(format!("hp uid={uid} {generated}->{hp}"));
+                    let resynced = self.managers.hp.current(uid);
+                    changes.push(format!("hp uid={uid} {generated}->{resynced}"));
                 }
             }
             if let Some(ex_point) = info.ex_point {
                 let generated = self.managers.ex_point.get(uid);
                 if generated != ex_point {
-                    self.managers.ex_point.set(uid, uid, ex_point, 0);
-                    changes.push(format!("exPoint uid={uid} {generated}->{ex_point}"));
+                    self.managers.ex_point.resync_current(uid, ex_point);
+                    let resynced = self.managers.ex_point.get(uid);
+                    changes.push(format!("exPoint uid={uid} {generated}->{resynced}"));
                 }
             }
         }
@@ -54,11 +56,11 @@ impl BattleRuntime {
     }
 }
 
-// The last card list published while preparing the next round is the hand the client holds.
+// The last card push published while preparing the next round is the hand the client holds.
 fn captured_next_round_hand(round: &FightRound) -> Option<Vec<CardInfo>> {
     fn visit(step: &FightStep, hand: &mut Option<Vec<CardInfo>>) {
         for effect in &step.act_effect {
-            if !effect.card_info_list.is_empty() {
+            if effect.effect_type == Some(EffectType::Cardspush as i32) {
                 *hand = Some(effect.card_info_list.clone());
             }
             if let Some(nested) = effect.fight_step.as_ref() {
@@ -135,12 +137,18 @@ mod tests {
             next_round_begin_step: vec![FightStep {
                 act_effect: vec![
                     sonettobuf::ActEffect {
+                        effect_type: Some(EffectType::Cardspush as i32),
                         card_info_list: vec![card(10, 1)],
+                        ..Default::default()
+                    },
+                    sonettobuf::ActEffect {
+                        card_info_list: vec![card(10, 9)],
                         ..Default::default()
                     },
                     sonettobuf::ActEffect {
                         fight_step: Some(FightStep {
                             act_effect: vec![sonettobuf::ActEffect {
+                                effect_type: Some(EffectType::Cardspush as i32),
                                 card_info_list: vec![card(10, 1), card(10, 2)],
                                 ..Default::default()
                             }],
