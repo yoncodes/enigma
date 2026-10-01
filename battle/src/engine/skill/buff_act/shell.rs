@@ -306,11 +306,7 @@ mod tests {
 
     use super::*;
     use crate::engine::{
-        event::{
-            kind::EventKind,
-            payload::ShellChangeEvent,
-            subscription::SubscriptionKey,
-        },
+        event::{kind::EventKind, payload::ShellChangeEvent, subscription::SubscriptionKey},
         manager::buff::CommandOrigin,
         skill::rule::{DefinitionKey, RuleDomain},
     };
