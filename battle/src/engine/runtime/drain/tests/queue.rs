@@ -553,3 +553,52 @@ fn attack_followup_does_not_start_without_a_living_configured_target() {
     assert!(result.events.is_empty());
     assert!(result.frames.is_empty());
 }
+
+#[test]
+fn lethal_injury_inflicted_by_an_attack_waits_for_the_next_attack() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312431212], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312431212,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+
+    run_skill(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        invocation,
+        crate::engine::skill::action::SkillModifiers::default(),
+    )
+    .unwrap();
+
+    // "Inflicts 2 stacks of [Lethal Injury] on the target hit": the hit itself is not an Assassination.
+    assert_eq!(managers.buff.max_id_or_type_layer(-1, 31240121), 2);
+}

@@ -163,12 +163,14 @@ fn for_configured_buff_acts(
     }
     let mut subscribers = Vec::new();
     for entity in pool.active_entities() {
-        let Some(passive_skills) = managers.entity.passive_skills(entity.uid) else {
-            continue;
-        };
-        for &passive_skill_id in passive_skills {
-            for (active_skill_id, buff_id, key) in
-                catalog.assassination_stack_grants(passive_skill_id)
+        // "Current [Force Field] New Effect Added": the extra stack follows the active Force Field.
+        let field_buff_ids = managers
+            .buff
+            .active_for(entity.uid)
+            .filter_map(|buff| buff.buff_id)
+            .collect::<Vec<_>>();
+        for field_buff_id in field_buff_ids {
+            for (active_skill_id, buff_id, key) in catalog.assassination_stack_grants(field_buff_id)
             {
                 let subscriber = BuffActSubscriber {
                     owner_uid: entity.uid,

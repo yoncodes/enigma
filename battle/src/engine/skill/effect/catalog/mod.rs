@@ -213,11 +213,11 @@ impl SkillEffectCatalog {
 
     pub(crate) fn assassination_stack_grants(
         &self,
-        passive_skill_id: i32,
+        field_buff_id: i32,
     ) -> impl Iterator<Item = (i32, i32, DefinitionKey)> + '_ {
         self.assassination_stack_grants
             .iter()
-            .filter(move |((passive, _), _)| *passive == passive_skill_id)
+            .filter(move |((field, _), _)| *field == field_buff_id)
             .flat_map(|((_, active), grants)| {
                 grants
                     .iter()

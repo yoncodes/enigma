@@ -283,6 +283,10 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution,
         );
     }
+    if active_phase == Some(SkillPhase::Immediate) && execution.marked_targets.is_none() {
+        execution.marked_targets =
+            Some(crate::engine::skill::buff_act::assassination::marked_targets(managers));
+    }
     for (slot_index, slot) in effect.slots.iter().enumerate() {
         if invocation
             .condition_slot

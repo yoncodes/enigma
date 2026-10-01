@@ -59,11 +59,24 @@ pub fn parse_target_trigger(raw_args: &[String]) -> Option<Vec<i32>> {
     supports_target_trigger(&values).then_some(values)
 }
 
+// Targets marked when an action begins; marks the action inflicts itself land after it attacked.
+pub fn marked_targets(managers: &BattleManagers) -> Vec<i64> {
+    managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .filter(|feature| feature.amount > 0)
+        .filter(|feature| super::is_kind(feature, BuffActKind::BeAttackedAssassinate))
+        .map(|feature| feature.owner_uid)
+        .collect()
+}
+
 pub fn target_modifier(
     managers: &BattleManagers,
     source_uid: i64,
     target_uid: i64,
     already_assassinate: bool,
+    marked_before_action: bool,
 ) -> AssassinationModifier {
     let features = managers.buff.active_features(&managers.hp);
     let mut target_rate = 0;
@@ -79,6 +92,7 @@ pub fn target_modifier(
         marked = true;
         target_rate = target_rate.max(*configured_per_hundred);
     }
+    let marked = marked && marked_before_action;
     let assassinate = already_assassinate || marked;
     let source_rate = features
         .iter()
@@ -216,7 +230,7 @@ mod tests {
             ..Default::default()
         };
 
-        let modifier = target_modifier(&BattleManagers::seeded(&fight), 10, -1, false);
+        let modifier = target_modifier(&BattleManagers::seeded(&fight), 10, -1, false, true);
 
         assert_eq!(
             modifier,
@@ -274,7 +288,7 @@ mod tests {
         };
 
         assert_eq!(
-            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true),
+            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, true),
             AssassinationModifier {
                 assassinate: true,
                 triggered_by_target: false,
@@ -284,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn mapped_stack_grants_are_unique_per_target_and_commit_through_buff_manager() {
+    fn active_field_stack_grants_are_unique_per_target_and_commit_through_buff_manager() {
         crate::test_support::init_config();
         let fight = Fight {
             attacker: Some(FightTeam {
@@ -292,6 +306,12 @@ mod tests {
                     uid: Some(10),
                     current_hp: Some(100),
                     passive_skill: vec![312401453, 312401453],
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(312401453),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    }],
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -351,19 +371,26 @@ mod tests {
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
         });
-        let dispatched = crate::engine::event::dispatcher::dispatch_event(
-            &pool,
-            &managers,
-            &catalog,
-            &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
-            &event,
-        )
-        .unwrap();
-        let ops = dispatched
+        let mapped_ops = |managers: &BattleManagers| {
+            crate::engine::event::dispatcher::dispatch_event(
+                &pool,
+                managers,
+                &catalog,
+                &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
+                &event,
+            )
+            .unwrap()
             .buff_acts
             .into_iter()
             .flat_map(|(_, ops)| ops.unwrap_or_default())
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+        };
+        let mut without_field = fight.clone();
+        without_field.attacker.as_mut().unwrap().entitys[0]
+            .buffs
+            .clear();
+        assert!(mapped_ops(&BattleManagers::seeded(&without_field)).is_empty());
+        let ops = mapped_ops(&managers);
 
         assert_eq!(ops.len(), 2);
         for op in ops {
