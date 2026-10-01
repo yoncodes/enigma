@@ -602,3 +602,76 @@ fn lethal_injury_inflicted_by_an_attack_waits_for_the_next_attack() {
     // "Inflicts 2 stacks of [Lethal Injury] on the target hit": the hit itself is not an Assassination.
     assert_eq!(managers.buff.max_id_or_type_layer(-1, 31240121), 2);
 }
+
+#[test]
+fn lethal_injury_consumption_is_its_appliers_buff_act_step() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10), entity(11)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                buffs: vec![BuffInfo {
+                    uid: Some(30),
+                    buff_id: Some(31240121),
+                    from_uid: Some(10),
+                    layer: Some(1),
+                    ..Default::default()
+                }],
+                ..entity(-1)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31090111], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 11,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+
+    let result = run_skill(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        invocation,
+        crate::engine::skill::action::SkillModifiers::default(),
+    )
+    .unwrap();
+
+    fn lethal_injury_steps(effects: &[sonettobuf::ActEffect], found: &mut Vec<Option<i64>>) {
+        for step in effects
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+        {
+            if step.act_id == Some(31240121) {
+                found.push(step.from_id);
+            }
+            lethal_injury_steps(&step.act_effect, found);
+        }
+    }
+    let mut found = Vec::new();
+    for step in crate::engine::packet::timeline::project(&result.frames).unwrap() {
+        lethal_injury_steps(&step.act_effect, &mut found);
+    }
+    assert_eq!(managers.buff.max_id_or_type_layer(-1, 31240121), 0);
+    assert_eq!(found, vec![Some(10)]);
+}
