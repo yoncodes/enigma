@@ -530,40 +530,43 @@ pub(in crate::engine::runtime) fn emit_ops(
         } else {
             None
         };
-        let mut targets = if let Some(targets) = event_targets {
-            targets.to_vec()
-        } else if active_phase.is_some()
-            && has_row_damage
-            && condition_uses_hit_targets
-            && uses_action_targets
-        {
-            execution.attacked_targets.clone()
-        } else if active_phase.is_some()
-            && uses_action_targets
-            && let Some(targets) = &execution.configured_targets
-        {
-            targets.clone()
-        } else {
-            behavior::use_skill::resolve_targets(
-                invocation.plan.skill_id,
-                invocation.plan.source_uid,
-                slot.target.code,
-                pool,
-                determinism,
-                &slot.behavior,
-            )
-            .unwrap_or_else(|| {
-                TargetResolver::resolve_with_managers_and_context(
-                    &slot.target,
+        let mut targets =
+            if definition.target_emission_mode == behavior::registry::TargetEmissionMode::Owner {
+                vec![invocation.plan.source_uid]
+            } else if let Some(targets) = event_targets {
+                targets.to_vec()
+            } else if active_phase.is_some()
+                && has_row_damage
+                && condition_uses_hit_targets
+                && uses_action_targets
+            {
+                execution.attacked_targets.clone()
+            } else if active_phase.is_some()
+                && uses_action_targets
+                && let Some(targets) = &execution.configured_targets
+            {
+                targets.clone()
+            } else {
+                behavior::use_skill::resolve_targets(
                     invocation.plan.skill_id,
                     invocation.plan.source_uid,
+                    slot.target.code,
                     pool,
                     determinism,
-                    Some(managers),
-                    execution.context,
+                    &slot.behavior,
                 )
-            })
-        };
+                .unwrap_or_else(|| {
+                    TargetResolver::resolve_with_managers_and_context(
+                        &slot.target,
+                        invocation.plan.skill_id,
+                        invocation.plan.source_uid,
+                        pool,
+                        determinism,
+                        Some(managers),
+                        execution.context,
+                    )
+                })
+            };
         if per_target_conditions {
             targets.retain(|target_uid| {
                 conditions.iter().all(|condition| {

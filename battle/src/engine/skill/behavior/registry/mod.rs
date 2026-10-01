@@ -19,6 +19,8 @@ pub enum FireCountMode {
 pub enum TargetEmissionMode {
     Each,
     Once,
+    // Configures the casting owner itself, whatever the configured target resolves to.
+    Owner,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -260,6 +262,18 @@ pub const fn once_definition<H: BehaviorHandler>(
     }
 }
 
+pub const fn owner_destination_definition<H: BehaviorHandler>(
+    opcode: i32,
+    type_name: &'static str,
+    kind: BehaviorKind,
+    phase: BehaviorPhase,
+) -> BehaviorDefinition {
+    BehaviorDefinition {
+        target_emission_mode: TargetEmissionMode::Owner,
+        ..destination_definition::<H>(opcode, type_name, kind, phase)
+    }
+}
+
 pub const fn once_destination_definition<H: BehaviorHandler>(
     opcode: i32,
     type_name: &'static str,
@@ -446,6 +460,9 @@ macro_rules! behavior_definitions {
     (@definition queue_preparation, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::queue_preparation_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
     };
+    (@definition owner_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
+        $crate::engine::skill::behavior::registry::owner_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
+    };
     (@definition once_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::once_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
     };
@@ -606,7 +623,7 @@ behavior_definitions! {
     [50021] "RemoveMagicCircleById" => super::magic_circle::Handler, RemoveMagicCircleById, Immediate, destination;
     [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, destination;
     [60195] "ElectricTransform" => super::electric::Handler, ElectricTransform, Immediate, destination, super::electric::supports;
-    [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, destination, super::synchronization::supports_props;
+    [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, owner_destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(0, "None"), stage: SetupStage::Unconditional, priority: 0 }), super::synchronization::supports_props;
     [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterDamage, destination, super::synchronization::supports_big_skill_rate;
     [100002] "EzioBigSkillTyp2" => super::synchronization::Handler, EzioBigSkillType2, AfterDamage, destination, super::synchronization::supports_big_skill_rate;
     [100003] "EzioBigSkillEnd" => super::synchronization::Handler, EzioBigSkillEnd, AfterDamage, destination, super::synchronization::supports_big_skill_end;

@@ -175,3 +175,50 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
     assert!(!runtime.managers.buff.has_buff_id(10, 229100));
     assert!(runtime.use_cloth_skill(request).is_none());
 }
+
+#[test]
+fn battle_start_configures_synchronization_from_the_owner_passive() {
+    crate::test_support::init_config();
+    let mut runtime = runtime(Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3123),
+                team_type: Some(1),
+                position: Some(1),
+                current_hp: Some(1_000),
+                ex_point_type: Some(2),
+                passive_skill: vec![312301403],
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                position: Some(1),
+                current_hp: Some(1_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    runtime.start_round().unwrap();
+
+    assert_eq!(
+        runtime
+            .managers
+            .ex_point
+            .synchronization_definition(10)
+            .map(|definition| definition.skills),
+        Some([312301323, 312301333, 312301343])
+    );
+}
