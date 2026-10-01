@@ -121,14 +121,17 @@ pub fn rule_ops(
     if !super::subscriber_is_kind(subscriber, BuffActKind::BeAttackedAssassinate) {
         return None;
     }
-    let BattleEvent::SkillAction(action) = event else {
+    let (BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action)) = event else {
         return Some(Vec::new());
     };
     if action.phase != crate::engine::skill::action::SkillPhase::Immediate {
         return Some(Vec::new());
     }
-    // "When being attacked, trigger [Assassination] and remove 1 stack", as the attack starts.
+    // "When being attacked, trigger [Assassination] and remove 1 stack", before the attack's own effects.
     if let [_, amount, _, ..] = subscriber.args.as_slice() {
+        if !matches!(event, BattleEvent::SkillEffectStarted(_)) {
+            return Some(Vec::new());
+        }
         if !action.is_attack
             || catalog.damage_rate(action.skill_id) <= 0
             || action.source_uid == subscriber.owner_uid
@@ -152,7 +155,10 @@ pub fn rule_ops(
         let [active_skill_id] = subscriber.args.as_slice() else {
             return None;
         };
-        if action.source_uid != subscriber.owner_uid || action.skill_id != *active_skill_id {
+        if !matches!(event, BattleEvent::SkillAction(_))
+            || action.source_uid != subscriber.owner_uid
+            || action.skill_id != *active_skill_id
+        {
             return Some(Vec::new());
         }
         let mut targets = action.target_uids.clone();
@@ -253,7 +259,8 @@ mod tests {
     }
 
     #[test]
-    fn only_damaging_attacks_on_a_target_marked_at_action_start_consume_lethal_injury() {
+    fn only_damaging_attacks_on_a_target_marked_at_action_start_consume_lethal_injury_as_they_start()
+     {
         crate::test_support::init_config();
         let catalog =
             SkillEffectCatalog::from_roots(config::configs::get(), [312431212, 435221], []);
@@ -275,8 +282,8 @@ mod tests {
             args: vec![10, 1, 312401451, 31240121],
             raw: "10004#10#1#312401451,31240121".to_owned(),
         };
-        let attack = |skill_id, marked_targets: Vec<i64>| {
-            BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+        let action =
+            |skill_id, marked_targets: Vec<i64>| crate::engine::skill::action::SkillActionEvent {
                 source_uid: 11,
                 skill_id,
                 target_uid: -1,
@@ -303,7 +310,9 @@ mod tests {
                 card_enchants: Vec::new(),
                 buff_additions: Vec::new(),
                 marked_targets,
-            })
+            };
+        let attack = |skill_id, marked_targets| {
+            BattleEvent::SkillEffectStarted(action(skill_id, marked_targets))
         };
         let consumes = |event| {
             rule_ops(&catalog, &subscriber, &event)
@@ -320,6 +329,11 @@ mod tests {
         assert!(consumes(attack(312431212, vec![-1])));
         assert!(!consumes(attack(312431212, Vec::new())));
         assert!(!consumes(attack(435221, vec![-1])));
+        // Not after the attack's own start effects.
+        assert!(!consumes(BattleEvent::SkillAction(action(
+            312431212,
+            vec![-1]
+        ))));
     }
 
     #[test]

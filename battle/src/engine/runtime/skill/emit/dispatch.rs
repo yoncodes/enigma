@@ -243,13 +243,21 @@ pub(in crate::engine::runtime) fn emit_ops(
                 invocation.mode,
             ),
         );
+        if execution.marked_targets.is_none() {
+            execution.marked_targets =
+                Some(crate::engine::skill::buff_act::assassination::marked_targets(managers));
+        }
+        // The caster's and its targets' reactions to the action starting run before its own effects.
+        let effect_started_owners = std::iter::once(invocation.plan.source_uid)
+            .chain(execution.affected_targets.iter().copied())
+            .collect::<Vec<_>>();
         let effect_started_subscribers =
             crate::engine::skill::subscriber::for_compiled_owner_events(
                 pool,
                 managers,
                 catalog,
                 [crate::engine::event::kind::EventKind::SkillEffectStarted],
-                &[invocation.plan.source_uid],
+                &effect_started_owners,
             )
             .map_err(SkillOpError::from)?;
         if !effect_started_subscribers.skills.is_empty()
@@ -282,10 +290,6 @@ pub(in crate::engine::runtime) fn emit_ops(
             determinism,
             execution,
         );
-    }
-    if active_phase == Some(SkillPhase::Immediate) && execution.marked_targets.is_none() {
-        execution.marked_targets =
-            Some(crate::engine::skill::buff_act::assassination::marked_targets(managers));
     }
     for (slot_index, slot) in effect.slots.iter().enumerate() {
         if invocation
