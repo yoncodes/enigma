@@ -531,7 +531,7 @@ condition_definitions! {
     [77203] "HasBuffGroup" => buff::buff_group, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [77208] "HasBuffGroup" => buff::buff_group, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [78208] "NoBuffGroup" => buff::no_buff_group, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
-    [1007204] "FromBuffAndToBuff" => buff::from_and_to_buff, predicate(&[EventKind::BuffChanged]);
+    [1007204] "FromBuffAndToBuff" => buff::from_and_to_buff, incoming_attack_modifier(predicate(&[EventKind::BuffChanged]));
     [701201] "HasMasterHalo" => buff::master_halo, predicate(&[EventKind::BuffChanged]);
     [701203] "HasMasterHalo" => buff::master_halo, predicate(&[EventKind::BuffChanged]);
     [701210] "HasMasterHalo" => buff::master_halo, predicate(&[EventKind::BuffChanged]);

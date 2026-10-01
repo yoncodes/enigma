@@ -840,7 +840,7 @@ fn enemy_highest_buff_count_reads_the_enemy_team_maximum() {
 }
 
 #[test]
-fn from_and_to_buff_checks_source_and_resolved_target_separately() {
+fn from_and_to_buff_needs_the_attacker_from_buff_and_the_owner_to_buff() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -849,7 +849,7 @@ fn from_and_to_buff_checks_source_and_resolved_target_separately() {
                 current_hp: Some(1),
                 buffs: vec![BuffInfo {
                     uid: Some(1),
-                    buff_id: Some(229101),
+                    buff_id: Some(2292031),
                     duration: Some(1),
                     ..Default::default()
                 }],
@@ -863,7 +863,7 @@ fn from_and_to_buff_checks_source_and_resolved_target_separately() {
                 current_hp: Some(1),
                 buffs: vec![BuffInfo {
                     uid: Some(2),
-                    buff_id: Some(229102),
+                    buff_id: Some(229103),
                     duration: Some(2),
                     ..Default::default()
                 }],
