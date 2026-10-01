@@ -9,7 +9,7 @@ use crate::engine::{
     manager::BattleManagers,
     runtime::{
         determinism::RoundDeterminism,
-        executor::{RuleExecutionError, RuleOutcome, execute_rule_op},
+        executor::{RuleExecutionError, RuleOutcome, execute_rule_op_with},
         record::{
             FrameOwner, FramePath, FrameTrigger, RoundCue, SemanticFrame, SetupSide,
             active_skill_scope_path, event_scope_path, owner_at_path, push_change, push_child,
@@ -858,7 +858,7 @@ fn drain_queue_with_deferred(
 
                 // This is the single durable commit point for non-skill RuleOps.
                 // The returned outcome describes committed changes and follow-ups.
-                let mut outcome = execute_rule_op(managers, &mut bus, command)?;
+                let mut outcome = execute_rule_op_with(managers, &mut bus, determinism, command)?;
                 if let RuleOutcome::ActiveSkillTargetsModified(additional_count) = outcome {
                     let action_scope = action_scope
                         .clone()

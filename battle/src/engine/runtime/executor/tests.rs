@@ -594,3 +594,55 @@ fn committed_resources_publish_change_and_overflow_facts() {
     ));
     assert!(events.is_empty());
 }
+
+#[test]
+fn partial_resistance_resists_on_a_crit_style_roll() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(103370111),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let daze = || {
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: 10,
+            target_uid: -1,
+            buff_id: 4011,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })))
+    };
+
+    let outcomes = (0..32)
+        .map(|seed| {
+            let mut managers = BattleManagers::seeded(&fight);
+            let mut determinism =
+                crate::engine::runtime::determinism::RoundDeterminism::with_seed(seed);
+            // Daze Resistance 600 for this monster: resisted when the crit roll lands under 600.
+            let expected = determinism.clone().roll_crit(4011, 10, -1, 600);
+            execute_rule_op_with(
+                &mut managers,
+                &mut EventBus::default(),
+                &mut determinism,
+                daze(),
+            )
+            .unwrap();
+            assert_eq!(!managers.buff.has_buff_id(-1, 4011), expected);
+            expected
+        })
+        .collect::<Vec<_>>();
+
+    assert!(outcomes.contains(&true) && outcomes.contains(&false));
+}

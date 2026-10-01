@@ -216,7 +216,7 @@ impl BuffReplaceResult {
                 },
             ))
         }));
-        if let Some(rejected) = self.rejected.as_ref().filter(|rejected| !rejected.resisted) {
+        if let Some(rejected) = &self.rejected {
             events.push(BattleEvent::BuffRejected(BuffRejectedEvent {
                 source_uid: rejected.buff.from_uid.unwrap_or_default(),
                 target_uid: rejected.target_uid,

@@ -808,7 +808,7 @@ fn static_control_immunity_rejects_without_consuming_the_carrier() {
 }
 
 #[test]
-fn full_daze_resistance_resists_daze_without_a_rejection_event() {
+fn full_daze_resistance_resists_daze_like_immunity() {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();
     let entity = |uid, model_id| FightEntityInfo {
@@ -849,7 +849,11 @@ fn full_daze_resistance_resists_daze_without_a_rejection_event() {
             .is_some_and(|rejected| rejected.resisted)
     );
     assert!(!manager.has_buff_id(-1, 4011));
-    assert!(resisted.events().is_empty());
+    assert!(matches!(
+        resisted.events().as_slice(),
+        [crate::engine::event::payload::BattleEvent::BuffRejected(rejected)]
+            if rejected.target_uid == -1 && rejected.buff_id == 4011
+    ));
     assert_eq!(
         crate::engine::packet::effect::EffectPacket::buff_changes(&resisted.change)
             .first()

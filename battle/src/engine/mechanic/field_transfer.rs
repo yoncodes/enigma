@@ -98,7 +98,7 @@ pub(crate) fn execute(
             amount,
             depleted: DepletedBuff::Remove,
         }),
-        None,
+        crate::engine::manager::buff::GrantInputs::default(),
     )?;
     buff_changes.push(next_buffs.commit(&managers.hp, buff));
     for extra in extras {
@@ -111,7 +111,7 @@ pub(crate) fn execute(
                 amount: extra.consumed_layers,
                 depleted: DepletedBuff::Remove,
             }),
-            None,
+            crate::engine::manager::buff::GrantInputs::default(),
         )?;
         buff_changes.push(next_buffs.commit(&managers.hp, buff));
     }
@@ -125,7 +125,7 @@ pub(crate) fn execute(
                 act_id: record.act_id,
                 delta: record.delta,
             }),
-            None,
+            crate::engine::manager::buff::GrantInputs::default(),
         )?;
         next_buffs.commit(&managers.hp, update);
     }

@@ -439,9 +439,24 @@ impl From<crate::engine::manager::revive::ReviveError> for RuleExecutionError {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn execute_rule_op(
     managers: &mut BattleManagers,
     events: &mut EventBus,
+    output: RuleOp,
+) -> Result<RuleOutcome, RuleExecutionError> {
+    execute_rule_op_with(
+        managers,
+        events,
+        &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
+        output,
+    )
+}
+
+pub(crate) fn execute_rule_op_with(
+    managers: &mut BattleManagers,
+    events: &mut EventBus,
+    determinism: &mut crate::engine::runtime::determinism::RoundDeterminism,
     output: RuleOp,
 ) -> Result<RuleOutcome, RuleExecutionError> {
     match output {
@@ -450,7 +465,7 @@ pub(crate) fn execute_rule_op(
             Ok(RuleOutcome::PublishedEvent)
         }
         RuleOp::Command(BattleCommand::Buff(command)) => {
-            let changes = managers.execute_buff(command)?;
+            let changes = managers.execute_buff_rolled(command, determinism)?;
             for event in changes.events() {
                 events.push(event);
             }
@@ -461,7 +476,7 @@ pub(crate) fn execute_rule_op(
             let batch_result = (|| {
                 let mut batch = Vec::with_capacity(commands.len());
                 for command in commands {
-                    batch.push(managers.execute_buff(command)?);
+                    batch.push(managers.execute_buff_rolled(command, determinism)?);
                 }
                 Ok::<_, RuleExecutionError>(batch)
             })();

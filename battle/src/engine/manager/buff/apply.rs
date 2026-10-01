@@ -392,9 +392,9 @@ impl BuffManager {
         })
     }
 
-    // "A chance to resist that status based on their resistance to the status": only full resistance
-    // (1000, the client's full-resistance mark) is proven; partial chances keep applying the buff.
-    pub(super) fn fully_resists(&self, target_uid: i64, definition: &BuffDefinition) -> bool {
+    // "A chance to resist that status based on their resistance to the status", in permille;
+    // 1000 is the client's full-resistance mark.
+    pub(super) fn resistance(&self, target_uid: i64, definition: &BuffDefinition) -> i32 {
         let catalog = self.catalog();
         let base = self
             .entities
@@ -402,15 +402,24 @@ impl BuffManager {
             .find(|tracked| tracked.uid == target_uid)
             .and_then(|tracked| catalog.monster_resistances(tracked.model_id))
             .unwrap_or_default();
-        definition.features().iter().any(|feature| {
-            let Some(resistance_id) = catalog.resistance_id_for_act(&feature.act_type) else {
-                return false;
-            };
-            let bonus = AttrId::from_raw(resistance_id)
-                .map(|attr| self.attribute_delta(target_uid, attr))
-                .unwrap_or_default();
-            base.by_id(resistance_id).unwrap_or_default() + bonus >= 1000
-        })
+        definition
+            .features()
+            .iter()
+            .filter_map(|feature| {
+                let resistance_id = catalog.resistance_id_for_act(&feature.act_type)?;
+                let bonus = AttrId::from_raw(resistance_id)
+                    .map(|attr| self.attribute_delta(target_uid, attr))
+                    .unwrap_or_default();
+                Some(base.by_id(resistance_id).unwrap_or_default() + bonus)
+            })
+            .max()
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn buff_resistance(&self, target_uid: i64, buff_id: i32) -> i32 {
+        BuffDefinition::configured(self.catalog().game_data(), buff_id)
+            .map(|definition| self.resistance(target_uid, &definition))
+            .unwrap_or_default()
     }
 
     pub(super) fn immunity_blocker(
