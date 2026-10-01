@@ -917,6 +917,7 @@ fn attack_with_passives(
     attacker_passives: Vec<i32>,
     ally_passives: Vec<i32>,
     extra: Vec<ParsedSkillEffect>,
+    extra_kind: Option<crate::engine::skill::condition::extra::ExtraSkillKind>,
 ) -> DrainResult {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {
@@ -962,7 +963,11 @@ fn attack_with_passives(
     }
     .into();
     invocation.target = SkillTarget::Explicit(-1);
-    invocation.mode = SkillExecutionMode::Active;
+    // A cast follow-up stays nested until dispatch settles it as an action.
+    match extra_kind {
+        Some(kind) => invocation.extra_skill_kind = Some(kind),
+        None => invocation.mode = SkillExecutionMode::Active,
+    }
     run_action(
         &mut managers,
         &pool,
@@ -975,18 +980,21 @@ fn attack_with_passives(
     .unwrap()
 }
 
-#[test]
-fn a_passive_cast_during_an_action_follows_it_inside_one_passive_step() {
+fn assert_passive_cast_follows_the_attack(
+    condition: i32,
+    extra_kind: Option<crate::engine::skill::condition::extra::ExtraSkillKind>,
+) {
     let result = attack_with_passives(
         vec![400],
         vec![31050141],
         vec![
-            direct_use_passive(400, 402, 103, 401),
+            direct_use_passive(400, condition, 103, 401),
             ParsedSkillEffect {
                 skill_id: 401,
                 slots: Vec::new(),
             },
         ],
+        extra_kind,
     );
 
     let attack = crate::engine::packet::timeline::project(&result.frames)
@@ -1016,6 +1024,19 @@ fn a_passive_cast_during_an_action_follows_it_inside_one_passive_step() {
 }
 
 #[test]
+fn a_passive_cast_during_an_action_follows_it_inside_one_passive_step() {
+    assert_passive_cast_follows_the_attack(402, None);
+}
+
+#[test]
+fn a_passive_cast_as_a_cast_follow_up_attack_starts_follows_it() {
+    assert_passive_cast_follows_the_attack(
+        201,
+        Some(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp),
+    );
+}
+
+#[test]
 fn a_cast_from_a_completed_action_reaction_runs_at_once() {
     // Like Flutterpage's "after any ally takes an action" (212 on all allies).
     let result = attack_with_passives(
@@ -1028,6 +1049,7 @@ fn a_cast_from_a_completed_action_reaction_runs_at_once() {
                 slots: Vec::new(),
             },
         ],
+        None,
     );
 
     assert!(result.events.iter().any(|event| matches!(

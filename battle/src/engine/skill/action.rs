@@ -30,6 +30,15 @@ pub enum SkillExecutionMode {
     DeviceCard,
 }
 
+impl SkillExecutionMode {
+    pub(crate) fn completes_action(self) -> bool {
+        matches!(
+            self,
+            Self::Active | Self::DirectBig | Self::Device | Self::DeviceCard
+        )
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum SkillStart {
     #[default]

@@ -1034,15 +1034,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             });
         }
     }
-    if continuation.is_none()
-        && matches!(
-            invocation.mode,
-            crate::engine::skill::action::SkillExecutionMode::Active
-                | crate::engine::skill::action::SkillExecutionMode::DirectBig
-                | crate::engine::skill::action::SkillExecutionMode::Device
-                | crate::engine::skill::action::SkillExecutionMode::DeviceCard
-        )
-    {
+    if continuation.is_none() && invocation.mode.completes_action() {
         outputs.push(SkillEmissionOp {
             op: RuleOp::SkillLifecycle(
                 crate::engine::skill::action::SkillLifecycle::ActionCompleted(
