@@ -4,7 +4,7 @@ use crate::engine::{
     manager::{
         BattleManagers,
         buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
-        hp::{HpCommand, HpLoss, HurtDamageFromType, HurtInfoData},
+        hp::{HpCommand, HpDamage, HpLoss, HurtDamageFromType, HurtInfoData},
     },
     skill::{
         buff_act::{feature_command_origin, is_kind, registry::BuffActKind},
@@ -13,8 +13,9 @@ use crate::engine::{
     },
 };
 
-/// Splits each attack hit on a ShareHurt holder before it lands: one stack is consumed, every
-/// other living main ally loses an equal share, and the holder keeps the same share.
+/// Splits the first attack hit on a ShareHurt holder before it lands: one stack is consumed,
+/// every other living main ally loses an equal share, and the holder keeps the same share.
+/// Later hits in the same batch are re-queued so each split sees the committed state.
 pub fn expand(managers: &BattleManagers, pool: &TargetPool, op: &RuleOp) -> Option<Vec<RuleOp>> {
     let commands = match op {
         RuleOp::Command(BattleCommand::Hp(command)) => vec![*command],
@@ -27,52 +28,32 @@ pub fn expand(managers: &BattleManagers, pool: &TargetPool, op: &RuleOp) -> Opti
     }) {
         return None;
     }
-
-    let mut expanded = Vec::new();
-    let mut unshared = Vec::new();
-    let mut split_any = false;
-    for command in commands {
-        let Some([consume, shared]) = split(managers, pool, command) else {
-            unshared.push(command);
-            continue;
-        };
-        if !unshared.is_empty() {
-            expanded.push(RuleOp::Command(BattleCommand::HpBatch(std::mem::take(
-                &mut unshared,
-            ))));
-        }
-        expanded.extend([consume, shared]);
-        split_any = true;
+    let (index, [consume, shared]) = commands
+        .iter()
+        .enumerate()
+        .find_map(|(index, command)| Some((index, split(managers, pool, *command)?)))?;
+    let mut expanded = Vec::with_capacity(4);
+    if index > 0 {
+        expanded.push(RuleOp::Command(BattleCommand::HpBatch(
+            commands[..index].to_vec(),
+        )));
     }
-    if !split_any {
-        return None;
-    }
-    if !unshared.is_empty() {
-        expanded.push(RuleOp::Command(BattleCommand::HpBatch(unshared)));
+    expanded.extend([consume, shared]);
+    if index + 1 < commands.len() {
+        expanded.push(RuleOp::Command(BattleCommand::HpBatch(
+            commands[index + 1..].to_vec(),
+        )));
     }
     Some(expanded)
 }
 
 fn split(managers: &BattleManagers, pool: &TargetPool, command: HpCommand) -> Option<[RuleOp; 2]> {
-    let (target_uid, source_uid, amount, config_effect, hurt) = match command {
-        HpCommand::Damage(damage) => (
-            damage.target_uid,
-            damage.source_uid,
-            damage.amount,
-            damage.config_effect,
-            damage.hurt,
-        ),
-        HpCommand::Lose(loss) => (
-            loss.target_uid,
-            loss.source_uid,
-            loss.amount,
-            loss.config_effect,
-            loss.hurt?,
-        ),
-        _ => return None,
+    // Captures prove the split for skill hits and their skill-effect damage only.
+    let HpCommand::Damage(damage) = command else {
+        return None;
     };
-    // Only attacks are shared: skill hits and their skill-effect damage.
-    if amount <= 0
+    let hurt = damage.hurt;
+    if damage.amount <= 0
         || !matches!(
             hurt.damage_from,
             HurtDamageFromType::Skill | HurtDamageFromType::SkillEffect
@@ -85,35 +66,41 @@ fn split(managers: &BattleManagers, pool: &TargetPool, command: HpCommand) -> Op
         .active_features(&managers.hp)
         .into_iter()
         .find(|feature| {
-            feature.owner_uid == target_uid && is_kind(feature, BuffActKind::ShareHurt)
+            feature.owner_uid == damage.target_uid && is_kind(feature, BuffActKind::ShareHurt)
         })?;
     let allies = pool
-        .main_allies(target_uid)
+        .main_allies(damage.target_uid)
         .iter()
-        .filter(|ally| ally.uid != target_uid && managers.hp.current(ally.uid) > 0)
+        .filter(|ally| ally.uid != damage.target_uid && managers.hp.current(ally.uid) > 0)
         .map(|ally| ally.uid)
         .collect::<Vec<_>>();
     if allies.is_empty() {
         return None;
     }
-    let share = amount / (allies.len() as i32 + 1);
+    let share = damage.amount / (allies.len() as i32 + 1);
     let origin = feature_command_origin(&feature)?;
+    // Skill hits share with zero effect and skill ids; skill-effect damage keeps its own.
+    let (effect_id, skill_id) = if hurt.damage_from == HurtDamageFromType::SkillEffect {
+        (hurt.effect_id, hurt.skill_id)
+    } else {
+        (0, 0)
+    };
     let mut shared = allies
         .into_iter()
         .map(|ally_uid| {
             HpCommand::Lose(HpLoss {
                 origin,
-                source_uid,
+                source_uid: damage.source_uid,
                 target_uid: ally_uid,
                 amount: share,
-                config_effect,
+                config_effect: damage.config_effect,
                 hurt: Some(HurtInfoData {
                     from_uid: hurt.from_uid,
                     is_crit: false,
                     career_restraint: false,
                     reduce_hp: 0,
-                    effect_id: 0,
-                    skill_id: 0,
+                    effect_id,
+                    skill_id,
                     damage_from: HurtDamageFromType::ShareHurt,
                     buff_act_id: 0,
                     buff_uid: 0,
@@ -123,11 +110,14 @@ fn split(managers: &BattleManagers, pool: &TargetPool, command: HpCommand) -> Op
             })
         })
         .collect::<Vec<_>>();
-    shared.push(with_amount(command, share));
+    shared.push(HpCommand::Damage(HpDamage {
+        amount: share,
+        ..damage
+    }));
     Some([
         RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
             origin,
-            target_uid,
+            target_uid: damage.target_uid,
             selector: BuffSelector::Uid(feature.buff_uid),
             amount: 1,
             depleted: DepletedBuff::Remove,
@@ -144,22 +134,13 @@ fn hurt(command: &HpCommand) -> Option<HurtInfoData> {
     }
 }
 
-fn with_amount(mut command: HpCommand, amount: i32) -> HpCommand {
-    match &mut command {
-        HpCommand::Damage(damage) => damage.amount = amount,
-        HpCommand::Lose(loss) => loss.amount = amount,
-        _ => {}
-    }
-    command
-}
-
 #[cfg(test)]
 mod tests {
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute};
 
     use super::*;
     use crate::engine::{
-        manager::hp::{DamageEffectKind, HpDamage},
+        manager::hp::DamageEffectKind,
         skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
     };
 
@@ -315,6 +296,109 @@ mod tests {
                 &managers,
                 &pool,
                 &RuleOp::Command(BattleCommand::Hp(hit(HurtDamageFromType::Buff))),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn only_the_first_holder_in_a_batch_splits_and_the_rest_is_requeued() {
+        crate::test_support::init_config();
+        let fight = fight(&[]);
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let HpCommand::Damage(first) = hit(HurtDamageFromType::Skill) else {
+            unreachable!()
+        };
+        let other = HpCommand::Damage(HpDamage {
+            target_uid: 11,
+            ..first
+        });
+
+        let ops = expand(
+            &managers,
+            &pool,
+            &RuleOp::Command(BattleCommand::HpBatch(vec![
+                other,
+                HpCommand::Damage(first),
+                other,
+            ])),
+        )
+        .unwrap();
+
+        assert_eq!(ops.len(), 4);
+        assert!(
+            matches!(&ops[0], RuleOp::Command(BattleCommand::HpBatch(before)) if before == &vec![other])
+        );
+        assert!(matches!(&ops[1], RuleOp::Command(BattleCommand::Buff(_))));
+        assert_eq!(
+            amounts(&ops[2]).last(),
+            Some(&(10, 525, HurtDamageFromType::Skill))
+        );
+        assert!(
+            matches!(&ops[3], RuleOp::Command(BattleCommand::HpBatch(after)) if after == &vec![other])
+        );
+    }
+
+    #[test]
+    fn skill_effect_shares_keep_their_effect_and_skill_ids() {
+        crate::test_support::init_config();
+        let fight = fight(&[]);
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let HpCommand::Damage(mut genesis) = hit(HurtDamageFromType::SkillEffect) else {
+            unreachable!()
+        };
+        genesis.config_effect = 30014;
+        genesis.hurt.effect_id = 109380001;
+        genesis.hurt.skill_id = 109380001;
+
+        let ops = expand(
+            &managers,
+            &pool,
+            &RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(genesis))),
+        )
+        .unwrap();
+
+        let RuleOp::Command(BattleCommand::HpBatch(commands)) = &ops[1] else {
+            panic!("expected the shared HP batch");
+        };
+        assert!(matches!(
+            commands[0],
+            HpCommand::Lose(HpLoss {
+                config_effect: 30014,
+                hurt: Some(HurtInfoData {
+                    effect_id: 109380001,
+                    skill_id: 109380001,
+                    ..
+                }),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn hp_losses_are_not_split() {
+        crate::test_support::init_config();
+        let fight = fight(&[]);
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let HpCommand::Damage(damage) = hit(HurtDamageFromType::SkillEffect) else {
+            unreachable!()
+        };
+
+        assert!(
+            expand(
+                &managers,
+                &pool,
+                &RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(HpLoss {
+                    origin: damage.origin,
+                    source_uid: damage.source_uid,
+                    target_uid: damage.target_uid,
+                    amount: damage.amount,
+                    config_effect: damage.config_effect,
+                    hurt: Some(damage.hurt),
+                }))),
             )
             .is_none()
         );

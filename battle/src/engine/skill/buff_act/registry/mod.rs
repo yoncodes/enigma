@@ -38,6 +38,12 @@ pub struct SetupContext<'a> {
 pub type SetupHandler = for<'a> fn(&SetupContext<'a>) -> Option<Vec<RuleOp>>;
 
 pub type SupportsHandler = fn(&[i32]) -> bool;
+/// Rewrites a queued HP op before it commits; `None` leaves the op unchanged.
+pub type HpInterceptHandler = fn(
+    &BattleManagers,
+    &crate::engine::skill::target::TargetPool,
+    &crate::engine::skill::rule::output::RuleOp,
+) -> Option<Vec<crate::engine::skill::rule::output::RuleOp>>;
 pub type RawSupportsHandler = fn(Option<&config::GameDB>, &str) -> bool;
 pub type FeatureParser = fn(&[String]) -> Option<Vec<i32>>;
 pub type FeatureReferences = fn(Option<&config::GameDB>, &ParsedBuffAct) -> RuleReferences;
@@ -429,6 +435,7 @@ pub struct BuffActTransactionDefinition {
 pub struct BuffActStateDefinition {
     pub read_timing: StatReadTiming,
     pub attack_replacement: Option<AttackReplacementHandler>,
+    pub hp_intercept: Option<HpInterceptHandler>,
     pub consumer: bool,
 }
 
@@ -540,6 +547,7 @@ macro_rules! buff_act_definitions {
             $(, parser: $parser:expr)?
             $(, references: $references:expr)?
             $(, attack_replacement: $attack_replacement:expr)?
+            $(, hp_intercept: $hp_intercept:expr)?
             $(, state_consumer: $state_consumer:expr)?
             $(, completion_gap: $completion_gap:literal)?
             $(, wire: ($wire:expr))?
@@ -584,6 +592,7 @@ macro_rules! buff_act_definitions {
                 state: BuffActStateDefinition {
                     read_timing: buff_act_definitions!(@stat_read $($stat_read)?),
                     attack_replacement: buff_act_definitions!(@attack_replacement $($attack_replacement)?),
+                    hp_intercept: buff_act_definitions!(@hp_intercept $($hp_intercept)?),
                     consumer: buff_act_definitions!(@state_consumer $($state_consumer)?),
                 },
                 supports: buff_act_definitions!(@supports $($supports)?),
@@ -656,6 +665,8 @@ macro_rules! buff_act_definitions {
     (@completion_gap) => { None };
     (@attack_replacement $handler:expr) => { Some($handler) };
     (@attack_replacement) => { None };
+    (@hp_intercept $handler:expr) => { Some($handler) };
+    (@hp_intercept) => { None };
     (@state_consumer $value:expr) => { $value };
     (@state_consumer) => { false };
     (@wire $wire:expr) => { Some($wire) };
@@ -1103,7 +1114,7 @@ buff_act_definitions! {
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(871, "ShellDebuff"), &[EffectType::None as i32]));
     (872, "ShareHurt") => ShareHurt, effect_time_subscription: false,
-        supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(872, "ShareHurt"), &[EffectType::None as i32]));
+        supports: |_| true, hp_intercept: super::share_hurt::expand, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(872, "ShareHurt"), &[EffectType::None as i32]));
     (873, "ShellLock") => ShellLock, event: EventKind::ShellRetrieved, frame: CausingFrame,
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(873, "ShellLock"), &[EffectType::None as i32]));

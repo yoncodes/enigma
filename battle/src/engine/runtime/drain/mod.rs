@@ -449,9 +449,9 @@ fn drain_queue_with_deferred(
         let current_pool = base_pool.runtime_view(managers);
         let pool = &current_pool;
 
-        // Shared hits split before they land, so their parts commit in captured order.
-        if let Some(expanded) =
-            crate::engine::skill::buff_act::share_hurt::expand(managers, pool, &op)
+        // Registered HP intercepts rewrite an HP op before it commits, so the parts they
+        // produce commit in order through the ordinary manager paths.
+        if let Some(expanded) = crate::engine::skill::buff_act::intercept_hp_op(managers, pool, &op)
         {
             let mut skill_execution = skill_execution;
             for (index, op) in expanded.into_iter().enumerate().rev() {
