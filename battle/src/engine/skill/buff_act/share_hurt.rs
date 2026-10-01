@@ -104,6 +104,7 @@ mod tests {
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute};
 
     use crate::engine::{
+        event::payload::BattleEvent,
         manager::{
             BattleManagers,
             hp::{
@@ -227,6 +228,30 @@ mod tests {
         for uid in [10, 11, 12, 13] {
             assert_eq!(managers.hp.current(uid), 10_000 - 525);
         }
+    }
+
+    #[test]
+    fn each_share_publishes_the_attacker_and_the_sharing_ally() {
+        let mut managers = managers(&[], 3);
+
+        let changes = managers
+            .execute_hp(HpCommand::Damage(hit(10, HurtDamageFromType::Skill)))
+            .unwrap();
+
+        let shared = changes
+            .events()
+            .into_iter()
+            .filter_map(|event| match event {
+                BattleEvent::DamageShared {
+                    source_uid,
+                    target_uid,
+                    amount,
+                    ..
+                } => Some((source_uid, target_uid, amount)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(shared, vec![(-1, 11, 525), (-1, 12, 525), (-1, 13, 525)]);
     }
 
     #[test]

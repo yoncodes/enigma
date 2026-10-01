@@ -76,7 +76,8 @@ impl BehaviorHandler for Handler {
                     source_uid: context.source_uid,
                     target_uid: context.target_uid,
                     threshold: *threshold,
-                    delta: context.target.shell_change_amount,
+                    // "A total of N deployments and or retrievals": one per change, whatever it moved.
+                    delta: 1,
                     skill_id: *skill_id,
                 }
             }
@@ -191,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_use_skill_forwards_event_progress_and_configured_skill() {
+    fn shell_use_skill_counts_one_deployment_or_retrieval_per_change() {
         let managers = BattleManagers::default();
         let pool = TargetPool::default();
         let behavior = ParsedBehavior::from_spec(
@@ -231,7 +232,7 @@ mod tests {
                     source_uid: 10,
                     target_uid: -1,
                     threshold: 5,
-                    delta: 3,
+                    delta: 1,
                     skill_id: 31090174,
                     ..
                 }

@@ -15,6 +15,7 @@ pub enum EventKind {
     BuffRejected,
     BuffFeatureTriggered,
     HpLost,
+    DamageShared,
     HpHealed,
     ToughnessBroken,
     TargetAttacked,
