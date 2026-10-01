@@ -111,12 +111,18 @@ impl RuleOutcome {
     }
 
     pub(crate) fn death_count(&self) -> i32 {
+        let deaths = |changes: &HpChanges| {
+            changes
+                .with_shares()
+                .filter(|change| change.caused_death())
+                .count() as i32
+        };
         match self {
-            Self::Hp(execution) => i32::from(execution.changes.caused_death()),
+            Self::Hp(execution) => deaths(&execution.changes),
             Self::HpBatch(changes) => changes
                 .iter()
-                .filter(|execution| execution.changes.caused_death())
-                .count() as i32,
+                .map(|execution| deaths(&execution.changes))
+                .sum(),
             _ => 0,
         }
     }
@@ -136,10 +142,10 @@ impl RuleOutcome {
 
     pub(crate) fn take_deaths(&mut self) -> Vec<crate::engine::manager::hp::DeathTransition> {
         match self {
-            Self::Hp(execution) => execution.changes.death.take().into_iter().collect(),
+            Self::Hp(execution) => execution.changes.take_deaths_with_shares(),
             Self::HpBatch(changes) => changes
                 .iter_mut()
-                .filter_map(|execution| execution.changes.death.take())
+                .flat_map(|execution| execution.changes.take_deaths_with_shares())
                 .collect(),
             _ => Vec::new(),
         }
@@ -149,10 +155,14 @@ impl RuleOutcome {
         let injured =
             |change: &HpChanges| change.hp.filter(|hp| hp.delta < 0).map(|hp| hp.target_uid);
         match self {
-            Self::Hp(execution) => injured(&execution.changes).into_iter().collect(),
+            Self::Hp(execution) => execution
+                .changes
+                .with_shares()
+                .filter_map(injured)
+                .collect(),
             Self::HpBatch(changes) => changes
                 .iter()
-                .filter_map(|execution| injured(&execution.changes))
+                .flat_map(|execution| execution.changes.with_shares().filter_map(injured))
                 .collect(),
             _ => Vec::new(),
         }

@@ -86,6 +86,12 @@ struct HpPlan {
     command: hp::HpCommand,
     team_shared: Option<hp::TeamSharedShieldPlan>,
     team_shared_buff: Option<BuffPlan>,
+    share: Option<ShareHurtPlan>,
+}
+
+struct ShareHurtPlan {
+    consume: BuffPlan,
+    shares: Vec<hp::HpCommand>,
 }
 
 pub(crate) fn persistent_attribute_delta(
@@ -382,6 +388,7 @@ impl BattleManagers {
         }
         let mut staged_hp = self.hp.clone();
         let mut shared_values = HashMap::new();
+        let mut share_spent = HashMap::new();
         let mut plans = Vec::with_capacity(commands.len());
         for command in commands {
             let target_count = match command {
@@ -392,7 +399,16 @@ impl BattleManagers {
                     .map_or(1, std::collections::HashSet::len),
                 _ => 1,
             };
-            let plan = self.plan_hp(command, target_count, &staged_hp, &mut shared_values)?;
+            let plan = self.plan_hp(
+                command,
+                target_count,
+                &staged_hp,
+                &mut shared_values,
+                &mut share_spent,
+            )?;
+            for share in plan.share.iter().flat_map(|share| &share.shares) {
+                staged_hp.commit_validated_command_with_team_shared(*share, None);
+            }
             staged_hp.commit_validated_command_with_team_shared(plan.command, plan.team_shared);
             plans.push(plan);
         }
@@ -423,7 +439,13 @@ impl BattleManagers {
         command: hp::HpCommand,
         target_count: usize,
     ) -> Result<hp::HpChanges, hp::HpCommandError> {
-        let plan = self.plan_hp(command, target_count, &self.hp, &mut HashMap::new())?;
+        let plan = self.plan_hp(
+            command,
+            target_count,
+            &self.hp,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+        )?;
         Ok(self.commit_hp(plan))
     }
 
@@ -433,7 +455,35 @@ impl BattleManagers {
         target_count: usize,
         hp: &HpManager,
         shared_values: &mut HashMap<i64, i32>,
+        share_spent: &mut HashMap<i64, i32>,
     ) -> Result<HpPlan, hp::HpCommandError> {
+        let share = if let hp::HpCommand::Damage(damage) = &mut command
+            && let Some(split) = crate::engine::skill::buff_act::share_hurt::plan(
+                &self.buff,
+                hp,
+                &self.entity,
+                damage,
+                share_spent,
+            ) {
+            damage.amount = split.holder_amount;
+            *share_spent.entry(split.buff_uid).or_default() += 1;
+            let shares = split
+                .shares
+                .into_iter()
+                .map(hp::HpCommand::Lose)
+                .collect::<Vec<_>>();
+            for share in &shares {
+                hp.validate_command(*share)?;
+            }
+            Some(ShareHurtPlan {
+                consume: self
+                    .plan_buff(split.consume)
+                    .map_err(|_| hp::HpCommandError::InvalidShareHurtState)?,
+                shares,
+            })
+        } else {
+            None
+        };
         if let hp::HpCommand::Damage(damage) = &mut command
             && let Some(cap) = self
                 .buff
@@ -471,10 +521,23 @@ impl BattleManagers {
             command,
             team_shared,
             team_shared_buff,
+            share,
         })
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> hp::HpChanges {
+        let shared_hurt = plan.share.map(|share| {
+            let consumed = self.commit_buff(share.consume);
+            let shares = share
+                .shares
+                .into_iter()
+                .map(|share| {
+                    self.hp
+                        .commit_validated_command_with_team_shared(share, None)
+                })
+                .collect();
+            Box::new(hp::SharedHurt { consumed, shares })
+        });
         let toughness = match plan.command {
             hp::HpCommand::Damage(damage)
                 if damage.effect_kind != hp::DamageEffectKind::Avoided
@@ -494,6 +557,7 @@ impl BattleManagers {
             .commit_validated_command_with_team_shared(plan.command, plan.team_shared);
         changes.toughness = toughness;
         changes.team_shared_shield_removed = team_shared_shield_removed;
+        changes.shared_hurt = shared_hurt;
         if let Some(shield) = &mut changes.shield_absorbed {
             shield.buff_uid = self
                 .buff

@@ -391,6 +391,7 @@ fn round_start_capacity_uses_only_exact_raspberry_loss_instances() {
                 damage: None,
                 team_shared_shield_absorbed: None,
                 team_shared_shield_removed: None,
+                shared_hurt: None,
                 shield_absorbed: None,
                 shield_granted: None,
                 max_hp: None,

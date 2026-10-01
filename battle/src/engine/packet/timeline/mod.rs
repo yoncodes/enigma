@@ -370,6 +370,19 @@ fn project_change(
                 return Ok(vec![EffectPacket::kill(changes.target_uid, config_effect)]);
             }
             let mut effects = Vec::new();
+            // A shared hit lands after its stack update and every ally's share.
+            if let Some(shared) = &changes.shared_hurt {
+                effects.extend(EffectPacket::recorded_buff_changes(&shared.consumed));
+                for share in &shared.shares {
+                    effects.extend(project_change(
+                        &BattleChange::Hp(Box::new(share.clone())),
+                        writes_reduce_hp,
+                        hurt_info_layout,
+                        absorb_map_layout,
+                        redeal_layout,
+                    )?);
+                }
+            }
             if let Some(shield) = changes
                 .shield_absorbed
                 .filter(|_| hurt_info_layout == HurtInfoWireLayout::Version6)
