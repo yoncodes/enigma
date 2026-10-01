@@ -278,6 +278,25 @@ pub struct DamageRecord {
 }
 
 impl HpChanges {
+    /// Every HP change this commit made: ShareHurt shares first, then this change.
+    pub fn with_shares(&self) -> impl Iterator<Item = &HpChanges> {
+        self.shared_hurt
+            .iter()
+            .flat_map(|shared| shared.shares.iter())
+            .chain(std::iter::once(self))
+    }
+
+    pub fn take_deaths_with_shares(&mut self) -> Vec<DeathTransition> {
+        let mut deaths = self
+            .shared_hurt
+            .iter_mut()
+            .flat_map(|shared| shared.shares.iter_mut())
+            .filter_map(|share| share.death.take())
+            .collect::<Vec<_>>();
+        deaths.extend(self.death.take());
+        deaths
+    }
+
     pub fn caused_death(&self) -> bool {
         self.hp
             .is_some_and(|change| change.before > 0 && change.after == 0)

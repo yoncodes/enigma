@@ -90,7 +90,8 @@ pub fn plan(
             origin,
             target_uid: damage.target_uid,
             selector: BuffSelector::Uid(feature.buff_uid),
-            amount: 1,
+            // Consume plans store the resulting layer, so count stacks planned earlier in the batch.
+            amount: 1 + spent.get(&feature.buff_uid).copied().unwrap_or_default(),
             depleted: DepletedBuff::Remove,
         }),
         shares,
@@ -119,7 +120,13 @@ mod tests {
             uid: Some(uid),
             position: Some(position),
             team_type: Some(1),
-            current_hp: Some(if dead.contains(&uid) { 0 } else { 10_000 }),
+            current_hp: Some(if dead.contains(&uid) {
+                0
+            } else if uid == 11 && stacks < 0 {
+                100
+            } else {
+                10_000
+            }),
             attr: Some(HeroAttribute {
                 hp: Some(10_000),
                 ..Default::default()
@@ -129,7 +136,7 @@ mod tests {
                     uid: Some(50),
                     buff_id: Some(31090121),
                     from_uid: Some(13),
-                    layer: Some(stacks),
+                    layer: Some(stacks.abs()),
                     ..Default::default()
                 })
                 .into_iter()
@@ -309,5 +316,43 @@ mod tests {
 
         assert!(lost.shared_hurt.is_none() && burned.shared_hurt.is_none());
         assert_eq!(managers.hp.current(11), 10_000);
+    }
+
+    #[test]
+    fn two_hits_in_one_batch_spend_two_stacks() {
+        let mut managers = managers(&[], 2);
+
+        let batch = managers
+            .execute_hp_batch(vec![
+                HpCommand::Damage(hit(10, HurtDamageFromType::Skill)),
+                HpCommand::Damage(hit(10, HurtDamageFromType::Skill)),
+            ])
+            .unwrap();
+
+        assert!(batch.iter().all(|changes| changes.shared_hurt.is_some()));
+        assert!(!managers.buff.has_buff_id(10, 31090121));
+        assert_eq!(managers.hp.current(11), 10_000 - 525 - 525);
+    }
+
+    #[test]
+    fn an_ally_killed_by_a_share_reaches_death_settlement() {
+        // A negative stack count marks ally 11 as nearly dead in this fixture.
+        let mut managers = managers(&[], -3);
+
+        let execution = managers
+            .execute_rule_hp(HpCommand::Damage(hit(10, HurtDamageFromType::Skill)))
+            .unwrap();
+        let mut outcome = crate::engine::runtime::executor::RuleOutcome::Hp(Box::new(execution));
+
+        assert_eq!(outcome.death_count(), 1);
+        assert!(outcome.injured_targets().contains(&11));
+        let deaths = outcome.take_deaths();
+        assert_eq!(
+            deaths
+                .iter()
+                .map(|death| death.target_uid)
+                .collect::<Vec<_>>(),
+            vec![11]
+        );
     }
 }
