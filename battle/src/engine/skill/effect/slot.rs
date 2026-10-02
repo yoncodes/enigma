@@ -101,8 +101,15 @@ impl SkillEffectSlot {
     pub fn active_phases(&self) -> Result<Vec<SkillPhase>, RouteError> {
         let mut phases = Vec::new();
         for subscription in self.compiled_subscriptions()? {
-            if subscription.event == crate::engine::event::kind::EventKind::SkillAction
-                && let Some(phase) = subscription.phase
+            let phase = match subscription.event {
+                crate::engine::event::kind::EventKind::SkillAction => subscription.phase,
+                // The action-start trigger runs with the action's own Immediate slots.
+                crate::engine::event::kind::EventKind::SkillEffectStarted => subscription
+                    .phase
+                    .filter(|phase| *phase == SkillPhase::Immediate),
+                _ => None,
+            };
+            if let Some(phase) = phase
                 && !phases.contains(&phase)
             {
                 phases.push(phase);

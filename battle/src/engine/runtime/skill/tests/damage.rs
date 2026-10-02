@@ -2134,3 +2134,82 @@ fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() 
             .any(|emission| matches!(emission.op, RuleOp::EffectMarker { .. }))
     );
 }
+
+#[test]
+fn an_extra_action_resolves_its_extra_action_passives_before_the_force_field_cost() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![433911],
+                power_infos: vec![sonettobuf::PowerInfo {
+                    power_id: Some(crate::engine::manager::eureka::EUREKA_RESOURCE_ID),
+                    num: Some(2),
+                    max: Some(5),
+                }],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31050146),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31050151, 433911], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31050151,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-1);
+    let mut execution = SkillExecution::new(TargetContext::default());
+    let ops = emit_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        &mut execution,
+        &SkillOpTrigger::Active,
+    )
+    .unwrap()
+    .ops;
+    let position =
+        |matches: &dyn Fn(&RuleOp) -> bool| ops.iter().position(|emission| matches(&emission.op));
+    let started = position(&|op| {
+        matches!(
+            op,
+            RuleOp::Publish(crate::engine::event::payload::BattleEvent::SkillEffectStarted(_))
+        )
+    });
+    let cost = position(&|op| matches!(op, RuleOp::Command(BattleCommand::Eureka(_))));
+
+    // Psychube 433911 "When the carrier performs an extra action" resolves as the action starts.
+    assert!(matches!((started, cost), (Some(started), Some(cost)) if started < cost));
+}
