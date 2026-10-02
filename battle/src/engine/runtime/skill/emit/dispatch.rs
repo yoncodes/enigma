@@ -280,6 +280,35 @@ pub(in crate::engine::runtime) fn emit_ops(
             .slots
             .iter()
             .any(|slot| slot.behavior.spec.kind == BehaviorKind::IgnoreSkillConfigDamageRate);
+    // An extra action's Force Field Eureka cost and forced crit open the action, before its own
+    // effects; other additional-damage activations follow those effects.
+    if resume_slot == 0 && active_phase == Some(SkillPhase::Immediate) && has_row_damage {
+        for activation in plan::additional_damage_activation(&invocation, managers, execution)
+            .into_iter()
+            .filter(|activation| activation.pays_extra_action_cost)
+        {
+            outputs.extend(emit_additional_damage_activation(
+                &invocation,
+                execution,
+                activation,
+            ));
+        }
+        if plan::forces_critical(&invocation, managers, execution) {
+            outputs.push(SkillEmissionOp {
+                op: RuleOp::EffectMarker {
+                    target_uid: invocation.plan.source_uid,
+                    effect_type: sonettobuf::effect_type_enum::EffectType::Mustcrit as i32,
+                    effect_num: 0,
+                    config_effect: 0,
+                    reserve_id: execution.primary_target_uid,
+                    reserve_str: None,
+                },
+                owner: behavior::registry::OutputOwner::Skill,
+                consequence: ConsequencePolicy::Default,
+                frame_owner: None,
+            });
+        }
+    }
     if resume_slot == 0
         && active_phase == Some(SkillPhase::Damage)
         && has_row_damage
@@ -734,42 +763,18 @@ pub(in crate::engine::runtime) fn emit_ops(
         );
     }
     if active_phase == Some(SkillPhase::Immediate) && has_row_damage {
-        let activations = plan::additional_damage_activation(&invocation, managers, execution);
-        for activation in activations {
-            let feature = &activation.additional.feature;
-            execution
-                .activated_additional_damage
-                .push(activation.additional.clone());
-            execution
-                .temporary_damage_buffs
-                .extend(activation.temporary_buff);
-            let frame_owner =
-                crate::engine::skill::buff_act::feature_command_origin(feature).map(|origin| {
-                    crate::engine::runtime::record::FrameOwner::BuffAct {
-                        owner_uid: invocation.plan.source_uid,
-                        source_uid: feature.source_uid,
-                        buff_uid: feature.buff_uid,
-                        buff_id: feature.buff_id,
-                        key: origin.key,
-                    }
-                });
-            outputs.extend(
-                activation
-                    .buff_act_ops
-                    .into_iter()
-                    .map(|op| SkillEmissionOp {
-                        op,
-                        owner: behavior::registry::OutputOwner::Skill,
-                        consequence: ConsequencePolicy::Default,
-                        frame_owner: frame_owner.clone(),
-                    }),
-            );
-            outputs.extend(activation.skill_ops.into_iter().map(|op| SkillEmissionOp {
-                op,
-                owner: behavior::registry::OutputOwner::Skill,
-                consequence: ConsequencePolicy::Default,
-                frame_owner: None,
-            }));
+        for activation in plan::additional_damage_activation(&invocation, managers, execution) {
+            let activated = execution.activated_additional_damage.iter().any(|planned| {
+                planned.feature.buff_uid == activation.additional.feature.buff_uid
+                    && planned.feature.buff_id == activation.additional.feature.buff_id
+            });
+            if !activated {
+                outputs.extend(emit_additional_damage_activation(
+                    &invocation,
+                    execution,
+                    activation,
+                ));
+            }
         }
     }
     let mut has_after_damage = false;
@@ -1177,4 +1182,44 @@ fn consequence_policy(
             .map(|definition| definition.consequence)
             .unwrap_or_default(),
     )
+}
+
+fn emit_additional_damage_activation(
+    invocation: &SkillInvocation,
+    execution: &mut SkillExecution,
+    activation: plan::AdditionalDamageActivation,
+) -> Vec<SkillEmissionOp> {
+    let feature = &activation.additional.feature;
+    execution
+        .activated_additional_damage
+        .push(activation.additional.clone());
+    execution
+        .temporary_damage_buffs
+        .extend(activation.temporary_buff);
+    let frame_owner =
+        crate::engine::skill::buff_act::feature_command_origin(feature).map(|origin| {
+            crate::engine::runtime::record::FrameOwner::BuffAct {
+                owner_uid: invocation.plan.source_uid,
+                source_uid: feature.source_uid,
+                buff_uid: feature.buff_uid,
+                buff_id: feature.buff_id,
+                key: origin.key,
+            }
+        });
+    activation
+        .buff_act_ops
+        .into_iter()
+        .map(|op| SkillEmissionOp {
+            op,
+            owner: behavior::registry::OutputOwner::Skill,
+            consequence: ConsequencePolicy::Default,
+            frame_owner: frame_owner.clone(),
+        })
+        .chain(activation.skill_ops.into_iter().map(|op| SkillEmissionOp {
+            op,
+            owner: behavior::registry::OutputOwner::Skill,
+            consequence: ConsequencePolicy::Default,
+            frame_owner: None,
+        }))
+        .collect()
 }

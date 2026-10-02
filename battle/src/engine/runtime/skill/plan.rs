@@ -281,6 +281,7 @@ pub(super) struct AdditionalDamageActivation {
     pub(super) buff_act_ops: Vec<RuleOp>,
     pub(super) skill_ops: Vec<RuleOp>,
     pub(super) temporary_buff: Option<(CommandOrigin, i32)>,
+    pub(super) pays_extra_action_cost: bool,
 }
 
 #[derive(Clone)]
@@ -378,18 +379,19 @@ pub(super) fn additional_damage_activation(
                 ),
             ));
         }
-        if let Some(op) = crate::engine::skill::buff_act::additional_damage::extra_action_cost_op(
+        let cost = crate::engine::skill::buff_act::additional_damage::extra_action_cost_op(
             &additional.feature,
             additional.spec,
             extra_action,
-        ) {
-            buff_act_ops.push(op);
-        }
+        );
+        let pays_extra_action_cost = cost.is_some();
+        buff_act_ops.extend(cost);
         Some(AdditionalDamageActivation {
             additional,
             buff_act_ops,
             skill_ops,
             temporary_buff,
+            pays_extra_action_cost,
         })
     })
     .collect()
@@ -441,6 +443,7 @@ pub(super) fn damage_ops(
         .unwrap_or_default();
     let main_target = targets.first().copied();
     let extra_action = performs_extra_action(invocation, execution);
+    let forced_critical = field_forces_critical(source_uid, managers, extra_action);
     let additional = additional_damage(source_uid, managers, execution, extra_action)
         .into_iter()
         .filter_map(|additional| {
@@ -730,7 +733,7 @@ pub(super) fn damage_ops(
                 additional.credited_source_uid,
                 target_uid,
                 damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
-            );
+            ) || forced_critical;
             let mut additional_attributes = linked_attack_attributes
                 .iter()
                 .copied()
@@ -955,6 +958,30 @@ pub(super) fn plan_crits(
     execution.planned_crits = Some(planned);
 }
 
+pub(super) fn forces_critical(
+    invocation: &SkillInvocation,
+    managers: &BattleManagers,
+    execution: &SkillExecution,
+) -> bool {
+    field_forces_critical(
+        invocation.plan.source_uid,
+        managers,
+        performs_extra_action(invocation, execution),
+    )
+}
+
+// Gust Force Field: "The extra action is always a critical hit".
+fn field_forces_critical(source_uid: i64, managers: &BattleManagers, extra_action: bool) -> bool {
+    extra_action && {
+        let active_features = managers.buff.active_features(&managers.hp);
+        crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::forces_critical(
+            &active_features,
+            source_uid,
+            true,
+        )
+    }
+}
+
 fn planned_crit_chance(
     source_uid: i64,
     target_uid: i64,
@@ -963,15 +990,9 @@ fn planned_crit_chance(
     execution: &SkillExecution,
     extra_action: bool,
 ) -> i32 {
-    let field_forces_critical = extra_action && {
-        let active_features = managers.buff.active_features(&managers.hp);
-        crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::forces_critical(
-            &active_features,
-            source_uid,
-            true,
-        )
-    };
-    if execution.modifiers.force_critical || field_forces_critical {
+    if execution.modifiers.force_critical
+        || field_forces_critical(source_uid, managers, extra_action)
+    {
         return 1000;
     }
     damage::crit_chance(source_uid, target_uid, pool, managers)

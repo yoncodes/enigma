@@ -2016,3 +2016,121 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
     ));
     assert!(additional_damage(false).is_empty());
 }
+
+#[test]
+fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                power_infos: vec![sonettobuf::PowerInfo {
+                    power_id: Some(crate::engine::manager::eureka::EUREKA_RESOURCE_ID),
+                    num: Some(2),
+                    max: Some(5),
+                }],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31050146),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312451011], []);
+    let damage_phase = |card_index| {
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 312451011,
+        }
+        .into();
+        invocation.mode = SkillExecutionMode::Active;
+        invocation.card_index = card_index;
+        invocation.target = SkillTarget::Explicit(-1);
+        let mut execution = SkillExecution::new(TargetContext::default());
+        let mut determinism = RoundDeterminism::default();
+        let mut ops = Vec::new();
+        let mut next = Some(invocation);
+        while let Some(invocation) = next.take() {
+            let emission = emit_ops(
+                invocation,
+                &managers,
+                &pool,
+                &catalog,
+                &mut determinism,
+                &mut execution,
+                &SkillOpTrigger::Active,
+            )
+            .unwrap();
+            let hits = emission
+                .ops
+                .iter()
+                .any(|emission| matches!(emission.op, RuleOp::Command(BattleCommand::HpBatch(_))));
+            ops.extend(emission.ops);
+            if hits {
+                return (ops, execution.pending_additional_damage);
+            }
+            next = emission.continuation;
+        }
+        panic!("no damage phase");
+    };
+    let opens_with_cost_then_marker = |ops: &[SkillEmissionOp]| {
+        let position = |matches: &dyn Fn(&RuleOp) -> bool| {
+            ops.iter().position(|emission| matches(&emission.op))
+        };
+        let cost = position(&|op| matches!(op, RuleOp::Command(BattleCommand::Eureka(_))));
+        let marker = position(&|op| {
+            matches!(
+                op,
+                RuleOp::EffectMarker { target_uid: 10, effect_type, reserve_id: Some(-1), .. }
+                    if *effect_type == sonettobuf::effect_type_enum::EffectType::Mustcrit as i32
+            )
+        });
+        let own_effect = position(&|op| matches!(op, RuleOp::Command(BattleCommand::Buff(_))));
+        let hits = position(&|op| matches!(op, RuleOp::Command(BattleCommand::HpBatch(_))));
+        matches!(
+            (cost, marker, own_effect, hits),
+            (Some(cost), Some(marker), Some(own_effect), Some(hits))
+                if cost < marker && marker < own_effect && own_effect < hits
+        )
+    };
+
+    // "The extra action is always a critical hit".
+    let (ops, additional) = damage_phase(0);
+    assert!(opens_with_cost_then_marker(&ops));
+    assert!(!additional.is_empty());
+    assert!(additional.iter().all(|command| matches!(
+        command,
+        HpCommand::Damage(damage)
+            if damage.effect_kind == crate::engine::manager::hp::DamageEffectKind::Critical
+    )));
+    let (ops, _) = damage_phase(1);
+    assert!(
+        !ops.iter()
+            .any(|emission| matches!(emission.op, RuleOp::EffectMarker { .. }))
+    );
+}
