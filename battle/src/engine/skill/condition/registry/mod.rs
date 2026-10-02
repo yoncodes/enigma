@@ -681,7 +681,7 @@ condition_definitions! {
     [6622032] "ActiveUseSkillId" => active_skill::skill_id, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [662208] "ActiveUseSkillId" => active_skill::skill_id, uses_active_skill_targets(child_buff_grant(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage))));
     [403201, 403208] "SkillExtraType" => extra::active_action, predicate(&[]);
-    [403203] "SkillExtraType" => extra::active_action, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [403203] "SkillExtraType" => extra::active_action, event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate));
     [403210] "SkillExtraType" => extra::active_action, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [403212] "SkillExtraType" => extra::other_ally_action, event_trigger(EventKind::AllyAction, None);
     [626212] "ActionSkillExtraType" => extra::other_ally_action, event_trigger(EventKind::AllyAction, None);

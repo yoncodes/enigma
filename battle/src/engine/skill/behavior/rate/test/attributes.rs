@@ -587,3 +587,47 @@ fn virtual_emitter_does_not_trigger_character_target_attack_modifiers() {
         "ordinary source modifiers must not become incoming target modifiers"
     );
 }
+
+#[test]
+fn an_action_start_extra_action_gate_still_modifies_that_action() {
+    crate::test_support::init_config();
+    let effects = SkillEffectCatalog::from_roots(config::configs::get(), [4130046], []);
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let collect = |extra_skill_kind| {
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        emit_passive_attack_attributes(
+            &mut modifiers,
+            10,
+            30630122,
+            &[4130046],
+            RateRuntime {
+                effects: &effects,
+                managers: &managers,
+                pool: &TargetPool::from_fight(&fight),
+                context: TargetContext {
+                    extra_skill_kind,
+                    ..Default::default()
+                },
+            },
+            &mut RoundDeterminism::default(),
+        );
+        modifiers.attack_attributes
+    };
+
+    // "When triggering extra actions, the said action gains DMG Bonus +80%."
+    assert_eq!(
+        collect(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction.id()),
+        vec![(AttrId::DmgBonus, 800)]
+    );
+    assert!(collect(0).is_empty());
+}

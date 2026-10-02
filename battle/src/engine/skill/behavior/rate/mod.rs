@@ -419,12 +419,17 @@ fn collect_attack_modifier_slot(
         .branches
         .iter()
         .filter_map(|branch| match branch.driver {
+            // An action-start trigger drives the same action's modifiers.
             Some(crate::engine::skill::rule::route::ConditionDriver::Trigger(trigger))
-                if trigger.event == crate::engine::event::kind::EventKind::SkillAction
+                if (trigger.event == crate::engine::event::kind::EventKind::SkillAction
                     && matches!(
                         trigger.phase,
                         None | Some(crate::engine::skill::action::SkillPhase::Immediate)
-                    ) =>
+                    ))
+                    || (trigger.event
+                        == crate::engine::event::kind::EventKind::SkillEffectStarted
+                        && trigger.phase
+                            == Some(crate::engine::skill::action::SkillPhase::Immediate)) =>
             {
                 Some(trigger.key)
             }
