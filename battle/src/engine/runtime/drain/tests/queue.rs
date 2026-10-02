@@ -1548,3 +1548,65 @@ fn a_skill_cast_by_another_skill_keeps_its_step_without_effects() {
         .expect("the cast skill keeps its step");
     assert!(cast.act_effect.is_empty());
 }
+
+#[test]
+fn an_after_being_attacked_buff_act_runs_with_the_hits_skill_reactions() {
+    fn queued(frame_owner: FrameOwner) -> QueuedOp {
+        QueuedOp {
+            op: RuleOp::Skill(
+                SkillRequest {
+                    source_uid: -1,
+                    skill_id: 1,
+                }
+                .into(),
+            ),
+            trigger: SkillOpTrigger::Active,
+            skill_execution: None,
+            frame_path: None,
+            parent_path: None,
+            frame_group: None,
+            independent_parent_group: None,
+            frame_owner: Some(frame_owner),
+            subscriber_owner_uid: Some(-1),
+            caster_frame: None,
+        }
+    }
+    let buff_act = |opcode, type_name| FrameOwner::BuffAct {
+        owner_uid: -1,
+        source_uid: 10,
+        buff_uid: 1,
+        buff_id: 1,
+        key: DefinitionKey::new(opcode, type_name),
+    };
+    let skill = FrameOwner::Skill {
+        source_uid: -1,
+        skill_id: 109380005,
+        card_index: 0,
+        target_uid: None,
+    };
+    let batch = ReactionBatch {
+        after_publish: vec![
+            queued(skill.clone()),
+            queued(buff_act(721, "DotNoLimit")),
+            queued(buff_act(871, "ShellDebuff")),
+        ],
+        ..Default::default()
+    };
+
+    let (buff_acts, skills) = batch.partition_skill_reactions();
+
+    // Spirit Shell: "After being attacked, Fatutu retrieves 1 stack" follows the boss's own
+    // "after being attacked" reactions; a per-hit buff act still runs first.
+    let owners = |batch: &ReactionBatch| {
+        batch
+            .after_publish
+            .iter()
+            .map(|queued| queued.frame_owner.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(owners(&buff_acts), vec![Some(buff_act(721, "DotNoLimit"))]);
+    assert_eq!(
+        owners(&skills),
+        vec![Some(skill), Some(buff_act(871, "ShellDebuff"))]
+    );
+}
