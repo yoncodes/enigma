@@ -12,7 +12,7 @@ fn team_injury_count_is_resynchronized_between_skill_phases() {
 }
 
 #[test]
-fn config_extra_actions_publish_as_actions_without_changing_other_nested_skills() {
+fn config_extra_actions_and_ripostes_publish_as_actions_without_changing_other_nested_skills() {
     use crate::engine::skill::{action::SkillExecutionMode, condition::extra::ExtraSkillKind};
 
     assert_eq!(
@@ -24,6 +24,10 @@ fn config_extra_actions_publish_as_actions_without_changing_other_nested_skills(
     );
     assert_eq!(
         action_mode(SkillExecutionMode::Nested, Some(ExtraSkillKind::Riposte)),
+        SkillExecutionMode::Active
+    );
+    assert_eq!(
+        action_mode(SkillExecutionMode::Nested, Some(ExtraSkillKind::Reinforced)),
         SkillExecutionMode::Nested
     );
     assert_eq!(

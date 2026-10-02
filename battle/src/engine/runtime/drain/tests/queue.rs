@@ -1262,3 +1262,109 @@ fn a_later_slot_sees_the_changes_of_an_earlier_slot_in_the_same_phase() {
     assert!(managers.buff.has_active_buff_id(11, 109380001));
     assert!(!managers.buff.has_active_buff_id(10, 109380005));
 }
+
+#[test]
+fn a_riposte_completes_as_an_ally_action() {
+    let result = attack_with_passives(
+        Vec::new(),
+        vec![31050141],
+        Vec::new(),
+        Some(crate::engine::skill::condition::extra::ExtraSkillKind::Riposte),
+    );
+
+    // Flutterpage: "After any ally takes an action, gains 1 stack of [Gust]".
+    assert!(result.events.iter().any(|event| matches!(
+        event,
+        crate::engine::event::payload::BattleEvent::BuffAdded(gust)
+            if gust.target_uid == 11 && gust.buff_id == 31050111
+    )));
+}
+
+#[test]
+fn a_riposte_follows_the_attack_inside_its_own_buff_step() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                buffs: vec![BuffInfo {
+                    uid: Some(30),
+                    buff_id: Some(2292031),
+                    from_uid: Some(10),
+                    duration: Some(3),
+                    ..Default::default()
+                }],
+                ..entity(10)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            // "After any ally takes an action, gains 1 stack of [Gust]".
+            entitys: vec![
+                entity(-1),
+                FightEntityInfo {
+                    passive_skill: vec![31050141],
+                    ..entity(-2)
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 312301611, 31050141], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: -1,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(10);
+    invocation.mode = SkillExecutionMode::Active;
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    // [Fighting Experience]: "After an ally is attacked, Ezio ripostes with [Counter Kill]".
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(31090111))
+        .expect("the attack projects a step");
+    let reactions = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .collect::<Vec<_>>();
+    let ally_action = reactions
+        .iter()
+        .position(|step| step.act_id == Some(31050141))
+        .expect("the attacker's ally reacts to the action");
+    let riposte = reactions.last().expect("the attack has reaction steps");
+    assert!(ally_action < reactions.len() - 1);
+    assert_eq!((riposte.act_id, riposte.from_id), (Some(2292031), Some(10)));
+    assert!(
+        riposte
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.act_id == Some(312301611))
+    );
+}
