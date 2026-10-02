@@ -31,6 +31,7 @@ pub fn resolve(feature: &ActiveBuffFeature) -> Option<AdditionalDamageSpec> {
         extra_eureka_cost: *cost,
         power_id: *power_id,
         source_count_cost: 0,
+        requires_assassination: false,
     })
 }
 

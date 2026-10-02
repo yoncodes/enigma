@@ -15,6 +15,7 @@ pub mod add_to_buff_entity_2;
 pub mod add_to_target;
 pub mod additional_damage;
 pub mod adrenaline_add_card;
+pub mod assassinate_create_additional_damage;
 pub mod assassination;
 pub mod attr;
 pub mod attr_and_layer_attr;

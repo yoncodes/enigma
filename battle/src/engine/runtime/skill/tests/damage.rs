@@ -1929,3 +1929,90 @@ fn an_action_not_played_from_a_card_is_forced_critical_by_the_gust_force_field()
     assert_eq!(planned_crits(0), Some(vec![(-1, true)]));
     assert_eq!(planned_crits(1), Some(vec![(-1, false)]));
 }
+
+#[test]
+fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets() {
+    crate::test_support::init_config();
+    let additional_damage = |marked: bool| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(312451456),
+                        from_uid: Some(11),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(100_000),
+                        ..Default::default()
+                    }),
+                    buffs: marked
+                        .then(|| BuffInfo {
+                            uid: Some(30),
+                            buff_id: Some(31240121),
+                            from_uid: Some(11),
+                            layer: Some(1),
+                            ..Default::default()
+                        })
+                        .into_iter()
+                        .collect(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert_damage_rate(100, 1_000);
+        catalog.insert_logic_target(100, 1);
+        let invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 100,
+        }
+        .into();
+        let mut execution = SkillExecution::new(TargetContext::default());
+        execution.configured_targets = Some(vec![-1]);
+        for activation in plan::additional_damage_activation(&invocation, &managers, &execution) {
+            execution
+                .activated_additional_damage
+                .push(activation.additional);
+        }
+        plan::damage_ops(
+            &invocation,
+            &managers,
+            &pool,
+            &catalog,
+            100,
+            &mut RoundDeterminism::default(),
+            &mut execution,
+        )
+        .additional_damage
+    };
+
+    // Way of Ares: "When an allied [Assassination] is triggered, deal an additional 125% DMG of
+    // the attacker's type."
+    let marked = additional_damage(true);
+    assert!(matches!(
+        marked.as_slice(),
+        [HpCommand::Damage(damage)] if damage.source_uid == 10
+    ));
+    assert!(additional_damage(false).is_empty());
+}

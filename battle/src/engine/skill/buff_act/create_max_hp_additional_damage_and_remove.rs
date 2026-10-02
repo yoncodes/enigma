@@ -24,6 +24,7 @@ pub fn resolve(feature: &ActiveBuffFeature) -> Option<AdditionalDamageSpec> {
         extra_eureka_cost: 0,
         power_id: 0,
         source_count_cost: *source_count_cost,
+        requires_assassination: false,
     })
 }
 
@@ -62,6 +63,7 @@ mod tests {
                 extra_eureka_cost: 0,
                 power_id: 0,
                 source_count_cost: 1,
+                requires_assassination: false,
             })
         );
     }

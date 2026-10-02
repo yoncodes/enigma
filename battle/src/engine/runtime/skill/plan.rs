@@ -721,6 +721,9 @@ pub(super) fn damage_ops(
             ));
         }
         for (_, additional, origin) in &additional {
+            if additional.requires_assassination && !assassination.assassinate {
+                continue;
+            }
             let additional_is_crit = determinism.roll_additional_crit(
                 skill_id,
                 source_uid,
