@@ -765,3 +765,47 @@ fn discovers_damage_calculation_buff_acts_without_publishing_a_fake_runtime_even
                 == Some(buff_act::registry::BuffActKind::AddBuffAfterAttack)
     }));
 }
+
+#[test]
+fn an_owners_skills_answer_one_event_in_their_own_order_across_kinds() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1),
+                passive_skill: vec![109380005, 109380003, 109380004],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let catalog = crate::engine::skill::effect::SkillEffectCatalog::from_fight(
+        config::configs::get(),
+        &fight,
+    );
+
+    // A hit publishes TargetAttacked and BeAttacked together; the capture answers it
+    // 109380005, 109380003, 109380004, the boss's configured passive order.
+    let skills = for_compiled_events(
+        &pool,
+        &managers,
+        &catalog,
+        [EventKind::TargetAttacked, EventKind::BeAttacked],
+    )
+    .unwrap()
+    .skills
+    .into_iter()
+    .map(|subscriber| subscriber.skill_id)
+    .fold(Vec::new(), |mut order, skill_id| {
+        if !order.contains(&skill_id) {
+            order.push(skill_id);
+        }
+        order
+    });
+
+    assert_eq!(skills, vec![109380005, 109380003, 109380004]);
+}
