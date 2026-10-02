@@ -20,6 +20,7 @@ pub struct AdditionalDamageSpec {
     pub extra_eureka_cost: i32,
     pub power_id: i32,
     pub source_count_cost: i32,
+    pub requires_assassination: bool,
 }
 
 pub fn uses_costed_lane(extra_skill_kind: i32) -> bool {
@@ -88,6 +89,9 @@ pub fn resolve(feature: &ActiveBuffFeature) -> Option<AdditionalDamageSpec> {
     match super::feature_kind(feature)? {
         super::registry::BuffActKind::CreateAdditionalDamage => {
             super::create_additional_damage::resolve(feature)
+        }
+        super::registry::BuffActKind::AssassinateCreateAdditionalDamage => {
+            super::assassinate_create_additional_damage::resolve(feature)
         }
         super::registry::BuffActKind::CreateMaxHpAdditionalDamageAndRemove => {
             super::create_max_hp_additional_damage_and_remove::resolve(feature)
@@ -230,6 +234,7 @@ mod tests {
             extra_eureka_cost: 0,
             power_id: 0,
             source_count_cost: 0,
+            requires_assassination: false,
         };
 
         assert_eq!(

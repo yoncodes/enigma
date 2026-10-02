@@ -88,6 +88,8 @@ pub enum FrameTrigger {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RoundCue {
+    // A skill cast by another skill keeps its step even when it changes nothing.
+    CastStep,
     EnterFightDeal,
     ClearUniversalCard,
     DealCard1,
@@ -194,6 +196,10 @@ pub(crate) fn push_child(
             items: Vec::new(),
         })));
     parent.iter().copied().chain([index]).collect()
+}
+
+pub(crate) fn push_frame_cue(frames: &mut [SemanticFrame], path: &[usize], cue: RoundCue) {
+    frame_mut(frames, path).items.push(FrameItem::Cue(cue));
 }
 
 pub(crate) fn push_change(frames: &mut [SemanticFrame], path: &[usize], change: BattleChange) {

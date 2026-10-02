@@ -117,6 +117,7 @@ pub enum BuffActKind {
     AttrByShield,
     AttrSkillMultiple,
     AttrSkillSingle,
+    AssassinateCreateAdditionalDamage,
     AttrByHeatScale,
     AttrFromEntity,
     AttrOnlyCalDamageAttack,
@@ -1035,6 +1036,9 @@ buff_act_definitions! {
     (407, "Seal") => Seal, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(407, "Seal"), &[]));
     (10005, "Provoke") => Provoke, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10005, "Provoke"), &[EffectType::None as i32]));
+    (10003, "AssassinateCreateAdditionalDamage") => AssassinateCreateAdditionalDamage,
+        supports: super::assassinate_create_additional_damage::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10003, "AssassinateCreateAdditionalDamage"), &[EffectType::None as i32]));
     (10004, "BeAttackedAssassinate") => BeAttackedAssassinate,
         event: EventKind::SkillEffectStarted, phase: Immediate, source: Applier, actor: OwnerOrTarget,
         runtime: |context| super::assassination::rule_ops(context.catalog, context.subscriber, context.event?),

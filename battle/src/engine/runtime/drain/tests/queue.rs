@@ -1368,3 +1368,183 @@ fn a_riposte_follows_the_attack_inside_its_own_buff_step() {
             .any(|step| step.act_id == Some(312301611))
     );
 }
+
+#[test]
+fn an_assassination_synchronization_gain_lands_in_the_attack_step() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                passive_skill: vec![312301403],
+                ..entity(10)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [312301142, 312301403], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312301142,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    // "When a basic incantation triggers [Assassination], Synchronization +5%."
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(312301142))
+        .expect("the attack projects a step");
+    assert!(
+        attack
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .all(|step| step.act_id != Some(312301403))
+    );
+    assert!(
+        attack
+            .act_effect
+            .iter()
+            .any(|effect| effect.effect_type == Some(111) && effect.target_id == Some(10))
+    );
+}
+
+fn ezio_card_with_passives(passives: Vec<i32>) -> DrainResult {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                passive_skill: passives.clone(),
+                ..entity(10)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        std::iter::once(312301142).chain(passives),
+        [],
+    );
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312301142,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+    run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_one_target_assassination_satisfies_skill_type_one() {
+    let result = ezio_card_with_passives(vec![435115]);
+
+    // "When triggering an [Assassination], if the attack aims at 1 target, gains Critical DMG +6%".
+    assert!(result.events.iter().any(|event| matches!(
+        event,
+        crate::engine::event::payload::BattleEvent::BuffAdded(buff)
+            if buff.target_uid == 10 && buff.buff_id == 435125
+    )));
+}
+
+#[test]
+fn allied_assassination_reactions_follow_the_attacks_after_hit_reactions() {
+    let result = ezio_card_with_passives(vec![312301533, 435115]);
+
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(312301142))
+        .expect("the attack projects a step");
+    let order = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .filter_map(|step| step.act_id)
+        .filter(|act_id| [312301533, 435115].contains(act_id))
+        .collect::<Vec<_>>();
+    // "When any ally triggers an [Assassination]" answers the completed action.
+    assert_eq!(order, vec![435115, 312301533]);
+}
+
+#[test]
+fn a_skill_cast_by_another_skill_keeps_its_step_without_effects() {
+    // "When any ally triggers an [Assassination], if the carrier owns [Force Field], ...":
+    // without a Force Field the cast skill changes nothing but still shows its step.
+    let result = ezio_card_with_passives(vec![435211]);
+
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(312301142))
+        .expect("the attack projects a step");
+    let reaction = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .find(|step| step.act_id == Some(435211))
+        .expect("the psychube reacts");
+    let cast = reaction
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .find(|step| step.act_id == Some(435221))
+        .expect("the cast skill keeps its step");
+    assert!(cast.act_effect.is_empty());
+}

@@ -713,8 +713,8 @@ fn trigger_families_reject_unconfigured_ids_and_wrong_types() {
             .map(|definition| { (definition.role, definition.skill_action_observer) }),
         Some((
             ConditionRole::Trigger {
-                event: EventKind::SkillAction,
-                phase: Some(SkillPhase::AfterHit),
+                event: EventKind::AllyAction,
+                phase: None,
             },
             SkillActionObserver::Team,
         ))

@@ -31,6 +31,7 @@ pub fn additional_damage(feature: &ActiveBuffFeature) -> Option<AdditionalDamage
         extra_eureka_cost: 0,
         power_id: 0,
         source_count_cost: 0,
+        requires_assassination: false,
     })
 }
 
@@ -155,6 +156,7 @@ mod tests {
                 extra_eureka_cost: 0,
                 power_id: 0,
                 source_count_cost: 0,
+                requires_assassination: false,
             })
         );
     }

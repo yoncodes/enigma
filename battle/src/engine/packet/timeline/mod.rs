@@ -114,7 +114,12 @@ fn project_frame(
         absorb_map_layout,
         redeal_layout,
     )?;
-    if effects.is_empty() {
+    if effects.is_empty()
+        && !frame
+            .items
+            .iter()
+            .any(|item| matches!(item, FrameItem::Cue(RoundCue::CastStep)))
+    {
         return Ok(None);
     }
     match &frame.owner {
@@ -1291,6 +1296,7 @@ fn magic_circle_snapshot(
 
 fn project_cue(cue: &RoundCue, redeal_layout: RedealWireLayout) -> Vec<ActEffect> {
     match cue {
+        RoundCue::CastStep => Vec::new(),
         RoundCue::EnterFightDeal => vec![CardPacket::enter_fight_deal()],
         RoundCue::ClearUniversalCard => vec![EffectPacket::clear_universal_card()],
         RoundCue::DealCard1 => vec![CardPacket::deal_card1()],
