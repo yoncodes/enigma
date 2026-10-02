@@ -412,16 +412,15 @@ impl BuffManager {
     pub(super) fn blocking_buff_id(
         &self,
         target_uid: i64,
-        buff_id: i32,
         definition: &BuffDefinition,
     ) -> Option<i32> {
         self.buffs.iter().find_map(|active| {
             let resident_buff_id = active.buff.buff_id.unwrap_or_default();
             let resident = active.definition.as_ref()?;
-            let incoming_blocks_resident = definition.blocks_buff_id(resident_buff_id)
+            let incoming_blocks_resident = definition.blocks_type(resident.effective_type_id())
                 || definition.blocks_status_id(resident.status_id);
-            let resident_blocks_incoming =
-                resident.blocks_buff_id(buff_id) || resident.blocks_status_id(definition.status_id);
+            let resident_blocks_incoming = resident.blocks_type(definition.effective_type_id())
+                || resident.blocks_status_id(definition.status_id);
             (active.owner_uid == target_uid
                 && !incoming_blocks_resident
                 && resident_blocks_incoming)
