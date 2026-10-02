@@ -70,16 +70,18 @@ pub fn team_model_presence(_: i32, _: &str, args: &[String]) -> Option<ParsedCon
     if entity_type != "6" || scope != "0" {
         return None;
     }
-    let present = match mode.as_str() {
-        "1" => false,
-        "2" => true,
-        _ => return None,
-    };
+    // Master Assassin: "If there are other [Assassination] characters on the team".
+    if mode != "1" {
+        return None;
+    }
     let model_ids = model_ids
         .split(',')
         .map(|value| value.trim().parse().ok())
         .collect::<Option<Vec<_>>>()?;
-    (!model_ids.is_empty()).then_some(ParsedConditionKind::TeamModelPresence { model_ids, present })
+    (!model_ids.is_empty()).then_some(ParsedConditionKind::TeamModelPresence {
+        model_ids,
+        present: true,
+    })
 }
 
 fn identity(mode: TargetIdentityMode, value: i32) -> Option<ParsedConditionKind> {
@@ -170,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn ezio_roster_gate_keeps_its_exact_absence_semantics() {
+    fn ezio_roster_gate_requires_the_listed_hero_on_the_team() {
         assert_eq!(
             team_model_presence(
                 643004,
@@ -179,7 +181,7 @@ mod tests {
             ),
             Some(ParsedConditionKind::TeamModelPresence {
                 model_ids: vec![3122, 3124],
-                present: false,
+                present: true,
             })
         );
         assert!(

@@ -10,17 +10,19 @@ pub(super) fn hero_grant_command(
     }
     let model_id = context.pool.entity(context.target_uid)?.model_id;
     let heroes = behavior.arg_list(0)?;
-    let buffs = behavior
-        .raw_args
-        .iter()
-        .skip(1)
-        .flat_map(|raw| raw.split(','))
-        .filter_map(|raw| raw.trim().parse::<i32>().ok())
-        .collect::<Vec<_>>();
-    let buff_id = heroes
-        .into_iter()
-        .zip(buffs)
-        .find_map(|(hero_id, buff_id)| (hero_id == model_id && buff_id > 0).then_some(buff_id))?;
+    // "70% of effect for [Assassination] characters and 50% for others": the listed heroes get the
+    // first buff, everyone else the second.
+    let [listed, others] = behavior.raw_args.get(1..3)? else {
+        return None;
+    };
+    let buff_id = if heroes.contains(&model_id) {
+        listed
+    } else {
+        others
+    }
+    .trim()
+    .parse::<i32>()
+    .ok()?;
     Some(BuffCommand::Grant(BuffGrant {
         origin: CommandOrigin {
             domain: RuleDomain::Behavior,

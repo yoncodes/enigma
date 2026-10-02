@@ -312,3 +312,35 @@ fn career_check_parameter_selects_share_or_not_share() {
         TargetContext::default(),
     ));
 }
+
+#[test]
+fn buff_id_add_matches_the_buff_or_its_type_added_to_the_condition_target() {
+    let condition = ParsedCondition {
+        opcode: 10,
+        type_name: "BuffIdAdd".into(),
+        kind: ParsedConditionKind::BuffAdded(vec![229502]),
+        raw_args: vec!["229502".into()],
+    };
+    let added_to = |target_uid, buff_id, type_id| {
+        condition_matches(
+            &condition,
+            10,
+            &[10],
+            None,
+            &TargetPool::default(),
+            TargetContext {
+                added_buff_id: buff_id,
+                added_buff_type_id: type_id,
+                added_buff_amount: 1,
+                added_buff_target_uid: target_uid,
+                ..Default::default()
+            },
+        )
+    };
+
+    // Master Assassin 2295023 is of type 229502; an ally's copy of the same type is not ours.
+    assert!(added_to(10, 2295023, 229502));
+    assert!(added_to(10, 229502, 0));
+    assert!(!added_to(10, 2295013, 229501));
+    assert!(!added_to(11, 2295033, 229502));
+}

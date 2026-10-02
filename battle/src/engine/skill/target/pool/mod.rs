@@ -123,6 +123,7 @@ pub struct TargetContext {
     pub triggered_buff_act_id: i32,
     pub triggered_buff_uid: i64,
     pub added_buff_id: i32,
+    pub added_buff_type_id: i32,
     pub added_buff_amount: i32,
     pub added_buff_target_uid: i64,
     pub added_buff_status_id: i32,

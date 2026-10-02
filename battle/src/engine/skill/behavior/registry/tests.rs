@@ -71,7 +71,7 @@ fn ezio_behaviors_accept_only_their_configured_shapes() {
             100006,
             "AddBuffByHeroId",
             vec!["3122,3124", "2295033", "2295043"],
-            vec!["3003", "3061", "304"],
+            vec!["3122,3124", "2295033"],
         ),
     ] {
         assert!(

@@ -9,6 +9,8 @@ pub enum TraceArea {
     Skill,
     Target,
     Buff,
+    Condition,
+    Event,
 }
 
 #[derive(Debug, Default)]
@@ -20,6 +22,8 @@ struct TraceFlags {
     skill: bool,
     target: bool,
     buff: bool,
+    condition: bool,
+    event: bool,
 }
 
 /// Returns whether diagnostics are enabled for one source-owned subsystem.
@@ -38,6 +42,8 @@ pub fn enabled(area: TraceArea) -> bool {
             TraceArea::Skill => flags.skill,
             TraceArea::Target => flags.target,
             TraceArea::Buff => flags.buff,
+            TraceArea::Condition => flags.condition,
+            TraceArea::Event => flags.event,
         }
 }
 
@@ -65,6 +71,8 @@ impl TraceFlags {
                 "skill" => flags.skill = true,
                 "target" | "targets" => flags.target = true,
                 "buff" | "buffs" => flags.buff = true,
+                "condition" | "conditions" => flags.condition = true,
+                "event" | "events" => flags.event = true,
                 "" => {}
                 _ => {}
             }
@@ -79,11 +87,13 @@ mod test {
 
     #[test]
     fn trace_flags_select_independent_source_areas() {
-        let flags = TraceFlags::parse("damage, target,BUFF");
+        let flags = TraceFlags::parse("damage, target,BUFF,conditions,events");
 
         assert!(flags.damage);
         assert!(flags.target);
         assert!(flags.buff);
+        assert!(flags.condition);
+        assert!(flags.event);
         assert!(!flags.drain);
         assert!(!flags.all);
     }
