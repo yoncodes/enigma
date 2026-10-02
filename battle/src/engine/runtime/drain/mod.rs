@@ -447,6 +447,12 @@ fn drain_queue_with_deferred(
             }
             return Err(error);
         }
+        if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Drain) {
+            let summary = format!("{op:?}").chars().take(240).collect::<String>();
+            eprintln!(
+                "drain depth={depth} owner={subscriber_owner_uid:?} frame={frame_owner:?} op={summary}"
+            );
+        }
 
         // Previous operations may have changed HP, buffs, entities, or resources.
         // Target resolution must see those committed manager values.
