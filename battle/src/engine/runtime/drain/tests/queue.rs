@@ -1199,3 +1199,66 @@ fn an_attacked_targets_attack_start_reaction_runs_before_the_attacks_own_effects
     });
     assert!(stronger_afflatus < attack_effects);
 }
+
+#[test]
+fn a_later_slot_sees_the_changes_of_an_earlier_slot_in_the_same_phase() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    buffs: vec![BuffInfo {
+                        uid: Some(30),
+                        buff_id: Some(109380001),
+                        from_uid: Some(-1),
+                        duration: Some(3),
+                        ..Default::default()
+                    }],
+                    ..entity(10)
+                },
+                entity(11),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [109380001], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: -1,
+        skill_id: 109380001,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    // "After hitting a target afflicted with [Vacant], ... removes [Vacant] from them;
+    // otherwise, inflicts [Vacant] on the target."
+    assert!(!managers.buff.has_active_buff_id(10, 109380001));
+    assert!(managers.buff.has_active_buff_id(11, 109380001));
+    assert!(!managers.buff.has_active_buff_id(10, 109380005));
+}

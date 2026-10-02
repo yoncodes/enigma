@@ -31,9 +31,15 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pending_after_damage_ops: Vec<RuleOp>,
     pending_after_damage_frame_owner: Option<crate::engine::runtime::record::FrameOwner>,
     action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
+    // The next slot to run when a phase continues after an earlier slot's changes commit.
+    pub(super) resume_slot: usize,
 }
 
 impl SkillExecution {
+    pub(in crate::engine::runtime) fn resumes_phase(&self) -> bool {
+        self.resume_slot > 0
+    }
+
     pub(in crate::engine::runtime) fn new(context: TargetContext) -> Self {
         Self {
             modifiers: SkillModifiers::default(),
@@ -55,6 +61,7 @@ impl SkillExecution {
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
             action_cost: None,
+            resume_slot: 0,
         }
     }
 
@@ -82,6 +89,7 @@ impl SkillExecution {
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
             action_cost: None,
+            resume_slot: 0,
         }
     }
 

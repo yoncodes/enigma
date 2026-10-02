@@ -571,6 +571,9 @@ fn drain_queue_with_deferred(
                 if matches!(trigger, SkillOpTrigger::Active)
                     && invocation.phase
                         == Some(crate::engine::skill::action::SkillPhase::AfterDamage)
+                    && !skill_execution
+                        .as_ref()
+                        .is_some_and(|execution| execution.resumes_phase())
                     && let Some(deaths) = state.take_deaths(&frame_path)
                 {
                     for death in deaths
