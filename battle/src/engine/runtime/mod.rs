@@ -160,6 +160,24 @@ impl BattleRuntime {
             .enqueue_hidden_crits(skill_id, source_uid, choices);
     }
 
+    /// Seeds observed crit outcomes per rolling skill or buff and source, in roll order.
+    /// Each round's seeds replace any the previous round left unused.
+    pub fn seed_crits(
+        &mut self,
+        hidden: impl IntoIterator<Item = ((i32, i64), bool)>,
+        additional: impl IntoIterator<Item = ((i32, i64, i64), bool)>,
+    ) {
+        self.determinism.clear_crit_choices();
+        for ((skill_id, source_uid), crit) in hidden {
+            self.determinism
+                .enqueue_hidden_crits(skill_id, source_uid, [crit]);
+        }
+        for ((skill_id, source_uid, target_uid), crit) in additional {
+            self.determinism
+                .enqueue_additional_crits(skill_id, source_uid, target_uid, [crit]);
+        }
+    }
+
     pub fn seed_random_skills(&mut self, skills: impl IntoIterator<Item = i32>) {
         self.determinism.enqueue_random_skills(skills);
     }
