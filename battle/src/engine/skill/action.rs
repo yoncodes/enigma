@@ -91,6 +91,8 @@ pub struct ActionEvent {
     pub target_uid: i64,
     pub target_uids: Vec<i64>,
     pub skill_slot: i32,
+    // The played card's hand index; 0 for a cast made by a skill.
+    pub card_index: i32,
     pub is_attack: bool,
     pub rank: i32,
     pub skill_type: i32,
