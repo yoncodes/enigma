@@ -72,7 +72,7 @@ pub(super) fn supports_consume_power_add_buff(behavior: &ParsedBehavior) -> bool
             .is_some_and(|buffs| buffs.iter().all(|buff_id| *buff_id > 0))
 }
 
-/// One buff per listed hero; any other shape is ambiguous.
+/// Listed heroes, then the buff for listed heroes and the buff for everyone else.
 pub(super) fn supports_add_buff_by_hero_id(behavior: &ParsedBehavior) -> bool {
     let Some(heroes) = behavior.arg_list(0) else {
         return false;
@@ -84,9 +84,7 @@ pub(super) fn supports_add_buff_by_hero_id(behavior: &ParsedBehavior) -> bool {
         .map(|raw| raw.trim().parse::<i32>().ok())
         .collect::<Option<Vec<_>>>();
     buffs.is_some_and(|buffs| {
-        !heroes.is_empty()
-            && buffs.len() == heroes.len()
-            && heroes.iter().chain(&buffs).all(|id| *id > 0)
+        !heroes.is_empty() && buffs.len() == 2 && heroes.iter().chain(&buffs).all(|id| *id > 0)
     })
 }
 

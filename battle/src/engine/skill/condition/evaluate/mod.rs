@@ -380,12 +380,13 @@ pub(crate) fn condition_matches(
     );
     if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Condition) {
         eprintln!(
-            "condition {} {} args={:?} source={source_uid} targets={condition_targets:?} skill={} buff_added={}x{} on {} matched={matched}",
+            "condition {} {} args={:?} source={source_uid} targets={condition_targets:?} skill={} buff_added={}/{}x{} on {} matched={matched}",
             condition.opcode,
             condition.type_name,
             condition.raw_args,
             context.active_skill_id,
             context.added_buff_id,
+            context.added_buff_type_id,
             context.added_buff_amount,
             context.added_buff_target_uid,
         );
@@ -652,8 +653,12 @@ fn condition_kind_matches(
         } => managers.is_some_and(|managers| {
             conduit_counter_count(source_uid, *kind, *divisor, *max_count, managers, pool) > 0
         }),
+        // "BuffIdAdd" also lists buff types: Master Assassin's ally grant fires on type 229502.
         ParsedConditionKind::BuffAdded(buff_ids) => {
-            context.added_buff_amount > 0 && buff_ids.contains(&context.added_buff_id)
+            context.added_buff_amount > 0
+                && condition_targets.contains(&context.added_buff_target_uid)
+                && (buff_ids.contains(&context.added_buff_id)
+                    || buff_ids.contains(&context.added_buff_type_id))
         }
         ParsedConditionKind::BuffTypeAdded(type_ids) => {
             context.added_buff_amount > 0

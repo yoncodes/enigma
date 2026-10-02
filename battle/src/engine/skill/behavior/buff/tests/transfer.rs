@@ -180,16 +180,17 @@ fn buff_sort_by_hp_redistributes_layers_by_manager_hp_and_preserves_uids() {
 }
 
 #[test]
-fn add_buff_by_hero_id_selects_the_configured_target_mapping() {
+fn add_buff_by_hero_id_grants_listed_heroes_the_first_buff_and_others_the_second() {
     crate::test_support::init_config();
+    let ally = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(100),
+        ..Default::default()
+    };
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(11),
-                model_id: Some(3124),
-                current_hp: Some(100),
-                ..Default::default()
-            }],
+            entitys: vec![ally(11, 3124), ally(12, 3109)],
             ..Default::default()
         }),
         ..Default::default()
@@ -205,38 +206,40 @@ fn add_buff_by_hero_id_selects_the_configured_target_mapping() {
             "2295043".to_owned(),
         ],
     );
-    let mut determinism = RoundDeterminism::default();
-    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
-    let mut target = crate::engine::skill::target::TargetContext::default();
-
-    let ops = super::super::super::rule_ops(
-        BehaviorOpContext {
-            source_uid: 10,
-            source_team: 1,
-            target_uid: 11,
-            active_skill_id: 312301533,
-            transfer_count: 1,
-            event: None,
-            managers: &managers,
-            pool: &pool,
-            determinism: &mut determinism,
-            modifiers: &mut modifiers,
-            target: &mut target,
-        },
-        &behavior,
-    )
-    .unwrap();
-
-    assert!(matches!(
-        ops.as_slice(),
-        [RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
-            BuffGrant {
-                target_uid: 11,
-                buff_id: 2295043,
-                ..
+    let granted = |target_uid| {
+        let mut determinism = RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext::default();
+        let ops = super::super::super::rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid,
+                active_skill_id: 312301533,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+        match ops.as_slice() {
+            [RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))]
+                if grant.target_uid == target_uid =>
+            {
+                grant.buff_id
             }
-        )))]
-    ));
+            _ => panic!("expected one grant: {ops:?}"),
+        }
+    };
+
+    // Master Assassin: "70% of effect for [Assassination] characters and 50% for others".
+    assert_eq!(granted(11), 2295033);
+    assert_eq!(granted(12), 2295043);
 }
 
 #[test]
