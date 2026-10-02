@@ -1366,7 +1366,6 @@ fn drain_queue_with_deferred(
                 } else {
                     (Vec::new(), Vec::new())
                 };
-                prepend(queue, after_action);
 
                 // Manager-produced follow-ups re-enter the same queue. Skills marked
                 // AfterCurrentAction are retained until that action closes.
@@ -1406,7 +1405,8 @@ fn drain_queue_with_deferred(
                 }
                 prepend(queue, immediate_followups);
                 insert_after_frame(queue, &frame_path, reactions.after_skill);
-                // Held casts run once the completed action's own reactions are queued.
+                // Buff acts waiting on the action, then held casts, follow its own reactions.
+                insert_after_frame(queue, &frame_path, after_action);
                 insert_after_frame(queue, &frame_path, held_casts);
                 prepend(queue, after_publish);
             }

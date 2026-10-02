@@ -1308,14 +1308,22 @@ fn a_riposte_follows_the_attack_inside_its_own_buff_step() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![entity(-1)],
+            // "After any ally takes an action, gains 1 stack of [Gust]".
+            entitys: vec![
+                entity(-1),
+                FightEntityInfo {
+                    passive_skill: vec![31050141],
+                    ..entity(-2)
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
-    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 312301611], []);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 312301611, 31050141], []);
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: -1,
         skill_id: 31090111,
@@ -1340,12 +1348,17 @@ fn a_riposte_follows_the_attack_inside_its_own_buff_step() {
         .into_iter()
         .find(|step| step.act_id == Some(31090111))
         .expect("the attack projects a step");
-    let riposte = attack
+    let reactions = attack
         .act_effect
         .iter()
         .filter_map(|effect| effect.fight_step.as_ref())
-        .next_back()
-        .expect("the attack has reaction steps");
+        .collect::<Vec<_>>();
+    let ally_action = reactions
+        .iter()
+        .position(|step| step.act_id == Some(31050141))
+        .expect("the attacker's ally reacts to the action");
+    let riposte = reactions.last().expect("the attack has reaction steps");
+    assert!(ally_action < reactions.len() - 1);
     assert_eq!((riposte.act_id, riposte.from_id), (Some(2292031), Some(10)));
     assert!(
         riposte
