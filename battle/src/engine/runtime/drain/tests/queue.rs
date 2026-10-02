@@ -1368,3 +1368,73 @@ fn a_riposte_follows_the_attack_inside_its_own_buff_step() {
             .any(|step| step.act_id == Some(312301611))
     );
 }
+
+#[test]
+fn an_assassination_synchronization_gain_lands_in_the_attack_step() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                passive_skill: vec![312301403],
+                ..entity(10)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [312301142, 312301403], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312301142,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    // "When a basic incantation triggers [Assassination], Synchronization +5%."
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(312301142))
+        .expect("the attack projects a step");
+    assert!(
+        attack
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .all(|step| step.act_id != Some(312301403))
+    );
+    assert!(
+        attack
+            .act_effect
+            .iter()
+            .any(|effect| effect.effect_type == Some(111) && effect.target_id == Some(10))
+    );
+}
