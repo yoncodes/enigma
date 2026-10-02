@@ -286,7 +286,7 @@ impl BuffManager {
         args: BuffAddArgs,
         repeat: i32,
     ) -> GrantAction {
-        if let Some(blocker) = self.blocking_buff_id(route.target_uid, route.buff_id, definition) {
+        if let Some(blocker) = self.blocking_buff_id(route.target_uid, definition) {
             return GrantAction::Reject(blocker);
         }
         if self.buffs.iter().any(|active| {

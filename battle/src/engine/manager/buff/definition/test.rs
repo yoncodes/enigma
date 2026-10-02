@@ -11,13 +11,13 @@ fn parses_include_type_values_like_csharp() {
 }
 
 #[test]
-fn parses_exact_exclude_buff_ids() {
+fn parses_exact_exclude_type_ids() {
     assert_eq!(
-        parse_exclude_buff_ids("1#9|2#530000111,530000112"),
+        parse_exclude_type_ids("1#9|2#530000111,530000112"),
         vec![530000111, 530000112]
     );
     assert_eq!(
-        parse_exclude_buff_ids("2#530000111\u{ff0c}530000112"),
+        parse_exclude_type_ids("2#530000111\u{ff0c}530000112"),
         vec![530000111, 530000112]
     );
 }
@@ -203,7 +203,7 @@ fn stacked_include_value_is_the_layer_cap() {
         cannot_remove: false,
         duration: 0,
         count: 0,
-        exclude_buff_ids: Vec::new(),
+        exclude_type_ids: Vec::new(),
         exclude_status_ids: Vec::new(),
         include_entries: parse_include_entries("10#3").unwrap(),
         include_types_valid: true,

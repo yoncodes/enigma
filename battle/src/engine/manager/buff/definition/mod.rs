@@ -104,7 +104,7 @@ pub(super) struct BuffDefinition {
     pub(super) cannot_remove: bool,
     pub duration: i32,
     count: i32,
-    exclude_buff_ids: Vec<i32>,
+    exclude_type_ids: Vec<i32>,
     exclude_status_ids: Vec<i32>,
     include_entries: Vec<(i32, i32)>,
     include_types_valid: bool,
@@ -180,7 +180,7 @@ impl BuffDefinition {
             cannot_remove: buff_type.is_some_and(|row| row.cannot_remove),
             duration: row.during_time,
             count: row.effect_count,
-            exclude_buff_ids: parse_exclude_buff_ids(exclude_types),
+            exclude_type_ids: parse_exclude_type_ids(exclude_types),
             exclude_status_ids: parse_exclude_status_ids(exclude_types),
             include_entries: include_entries.unwrap_or_default(),
             include_types_valid,
@@ -226,8 +226,8 @@ impl BuffDefinition {
                 && self.take_act.is_empty())
     }
 
-    pub fn exclude_buff_ids(&self) -> &[i32] {
-        &self.exclude_buff_ids
+    pub fn exclude_type_ids(&self) -> &[i32] {
+        &self.exclude_type_ids
     }
 
     pub fn exclude_status_ids(&self) -> &[i32] {
@@ -492,8 +492,10 @@ impl BuffDefinition {
         self.count > 0
     }
 
-    pub fn blocks_buff_id(&self, buff_id: i32) -> bool {
-        self.exclude_buff_ids.contains(&buff_id)
+    // Excluded entries name buff types: Master Assassin's "2#229501" rejects Apprentice
+    // Assassin 2295013 of type 229501, and Vajra's Boon's "2#2130005" is "Immune to Fragile".
+    pub fn blocks_type(&self, type_id: i32) -> bool {
+        self.exclude_type_ids.contains(&type_id)
     }
 
     pub fn blocks_status_id(&self, status_id: i32) -> bool {
@@ -904,7 +906,7 @@ fn mutates_max_hp(feature: &super::feature::ResolvedBuffFeature) -> bool {
     }
 }
 
-fn parse_exclude_buff_ids(raw: &str) -> Vec<i32> {
+fn parse_exclude_type_ids(raw: &str) -> Vec<i32> {
     parse_exclude_values(raw, "2")
 }
 

@@ -631,7 +631,7 @@ impl BuffManager {
                 | GrantInput::UnconditionalLayer(_)
         );
         let configured_blocker = (!unconditional)
-            .then(|| self.blocking_buff_id(request.target_uid, request.buff_id, &definition))
+            .then(|| self.blocking_buff_id(request.target_uid, &definition))
             .flatten();
         let immunity = (!unconditional && semantic_grant_allowed && configured_blocker.is_none())
             .then(|| self.immunity_blocker(request.target_uid, definition.status))
@@ -663,9 +663,8 @@ impl BuffManager {
                 .iter()
                 .flat_map(|excluded_id| {
                     self.buffs.iter().filter_map(|active| {
-                        (active.owner_uid == request.target_uid
-                            && active.buff.buff_id == Some(*excluded_id))
-                        .then_some(active.buff.uid.unwrap_or_default())
+                        (active.owner_uid == request.target_uid && active.type_id == *excluded_id)
+                            .then_some(active.buff.uid.unwrap_or_default())
                     })
                 })
                 .chain(self.buffs.iter().filter_map(|active| {

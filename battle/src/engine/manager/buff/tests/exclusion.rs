@@ -345,3 +345,33 @@ fn defaulted_stack_layer_uses_child_uid_lane() {
     assert_eq!(first.buff.uid, Some(2));
     assert_eq!(stacked.added.unwrap().buff.uid, Some(3));
 }
+
+#[test]
+fn resident_exclusion_rejects_a_buff_of_the_excluded_type() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                buffs: vec![BuffInfo {
+                    uid: Some(100001),
+                    buff_id: Some(2295023),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    // Master Assassin (type 229502) excludes "2#229501"; Apprentice Assassin 2295013 is of
+    // type 229501.
+    let result = manager.add_replacing_excluded(&HpManager::default(), 10, 10, 2295013, 0);
+
+    assert_eq!(result.rejected.unwrap().blocker_buff_id, 2295023);
+    assert!(!manager.has_buff_id(10, 2295013));
+}
