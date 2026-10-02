@@ -487,3 +487,21 @@ fn include_type_two_grant_prolongs_the_held_copy_of_its_type_family() {
     assert_eq!(second.refreshed[0].after.duration, Some(7));
     assert_eq!(manager.active_for(10).count(), 1);
 }
+
+#[test]
+fn include_type_two_grant_never_prolongs_a_permanent_family_member() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.add_replacing_excluded(&hp, 10, 10, 801650341, 0);
+
+    let timed = manager.add_replacing_excluded(&hp, 10, 10, 4031, 0);
+
+    assert!(timed.added.is_some());
+    assert!(timed.refreshed.is_empty());
+    assert!(
+        manager
+            .active_for(10)
+            .any(|buff| buff.buff_id == Some(801650341) && buff.duration.unwrap_or_default() == 0)
+    );
+}

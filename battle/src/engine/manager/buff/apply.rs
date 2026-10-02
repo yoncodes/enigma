@@ -347,10 +347,14 @@ impl BuffManager {
         definition: &BuffDefinition,
     ) -> Option<BuffUpdateResult> {
         let type_id = definition.effective_type_id();
-        let active = self
-            .buffs
-            .iter_mut()
-            .find(|active| active.owner_uid == route.target_uid && active.type_id == type_id)?;
+        let active = self.buffs.iter_mut().find(|active| {
+            active.owner_uid == route.target_uid
+                && active.type_id == type_id
+                && active
+                    .definition
+                    .as_ref()
+                    .is_some_and(BuffDefinition::prolongs_duration)
+        })?;
         let before = active.buff.clone();
         active.buff.duration = Some(
             active

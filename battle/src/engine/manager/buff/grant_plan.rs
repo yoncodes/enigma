@@ -344,6 +344,10 @@ impl BuffManager {
             && self.buffs.iter().any(|active| {
                 active.owner_uid == route.target_uid
                     && active.type_id == definition.effective_type_id()
+                    && active
+                        .definition
+                        .as_ref()
+                        .is_some_and(BuffDefinition::prolongs_duration)
             })
         {
             return GrantAction::ProlongDuration;
