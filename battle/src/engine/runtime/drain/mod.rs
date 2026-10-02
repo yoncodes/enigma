@@ -606,6 +606,12 @@ fn drain_queue_with_deferred(
                     execution.prepare_direct_big(invocation.additional_moxie);
                 }
 
+                if invocation.phase.is_none() {
+                    managers.release_held_rule_progress(
+                        invocation.plan.source_uid,
+                        invocation.plan.skill_id,
+                    );
+                }
                 // Skill evaluation emits RuleOps only. Managers remain the sole
                 // owners of durable mutations when those operations are drained.
                 let emission = skill::emit_ops(
