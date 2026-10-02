@@ -312,6 +312,7 @@ fn direct_damage_uses_manager_combat_stats_instead_of_stale_pool_values() {
             assassinate: false,
             main_target: true,
             extra_skill_kind: 0,
+            performs_extra_action: false,
             additional_enabled: false,
             additional_is_crit: None,
         },

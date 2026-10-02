@@ -76,6 +76,7 @@ fn additional_damage_ignores_direct_hit_crit_defense_and_career_lanes() {
             is_conduit: false,
             is_crit: true,
             extra_skill_kind: 0,
+            performs_extra_action: false,
         },
         runtime,
         None,
@@ -119,6 +120,7 @@ fn additional_damage_ignores_direct_hit_crit_defense_and_career_lanes() {
             is_conduit: false,
             is_crit: false,
             extra_skill_kind: 1,
+            performs_extra_action: false,
         },
         DamageRuntime {
             fight_version: 6,
@@ -215,6 +217,7 @@ fn career_ratio_fix_extends_the_existing_advantage_lane() {
         assassinate: false,
         main_target: true,
         extra_skill_kind: 0,
+        performs_extra_action: false,
         additional_enabled: false,
         additional_is_crit: None,
     };

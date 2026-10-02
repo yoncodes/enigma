@@ -361,6 +361,7 @@ mod tests {
                         assassinate: false,
                         main_target: true,
                         extra_skill_kind: 0,
+                        performs_extra_action: false,
                         additional_enabled: false,
                         additional_is_crit: None,
                     },

@@ -185,6 +185,11 @@ fn emit_ops(
                     .owns_skill(context.source_uid, context.active_skill_id),
                 is_crit,
                 extra_skill_kind: context.target.extra_skill_kind,
+                performs_extra_action:
+                    crate::engine::skill::condition::extra::skill_kind_from_is_extra(
+                        context.target.extra_skill_kind,
+                    )
+                    .is_some_and(|kind| kind.is_extra_action()),
             },
             runtime,
             replacement_buff_id,
