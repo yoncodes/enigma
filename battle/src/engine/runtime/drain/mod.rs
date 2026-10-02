@@ -567,6 +567,20 @@ fn drain_queue_with_deferred(
                 if !skill_from_buff_act && let Some(group) = &frame_group {
                     *group.borrow_mut() = Some(frame_path.clone());
                 }
+                if invocation.phase.is_none()
+                    && matches!(trigger, SkillOpTrigger::Active)
+                    && frame_path.len() > 1
+                    && matches!(
+                        owner_at_path(&result.frames, &frame_path[..frame_path.len() - 1]),
+                        FrameOwner::Skill { .. }
+                    )
+                {
+                    crate::engine::runtime::record::push_frame_cue(
+                        &mut result.frames,
+                        &frame_path,
+                        crate::engine::runtime::record::RoundCue::CastStep,
+                    );
+                }
                 let mut defeated_owner_card_cleanups = Vec::new();
                 if matches!(trigger, SkillOpTrigger::Active)
                     && invocation.phase

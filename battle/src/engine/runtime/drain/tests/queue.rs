@@ -1522,3 +1522,29 @@ fn allied_assassination_reactions_follow_the_attacks_after_hit_reactions() {
     // "When any ally triggers an [Assassination]" answers the completed action.
     assert_eq!(order, vec![435115, 312301533]);
 }
+
+#[test]
+fn a_skill_cast_by_another_skill_keeps_its_step_without_effects() {
+    // "When any ally triggers an [Assassination], if the carrier owns [Force Field], ...":
+    // without a Force Field the cast skill changes nothing but still shows its step.
+    let result = ezio_card_with_passives(vec![435211]);
+
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(312301142))
+        .expect("the attack projects a step");
+    let reaction = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .find(|step| step.act_id == Some(435211))
+        .expect("the psychube reacts");
+    let cast = reaction
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .find(|step| step.act_id == Some(435221))
+        .expect("the cast skill keeps its step");
+    assert!(cast.act_effect.is_empty());
+}
