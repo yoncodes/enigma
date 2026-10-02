@@ -271,9 +271,17 @@ impl ReactionBatch {
 
     fn partition_skill_reactions(self) -> (Self, Self) {
         fn partition(items: Vec<QueuedOp>) -> (Vec<QueuedOp>, Vec<QueuedOp>) {
-            items
-                .into_iter()
-                .partition(|queued| !matches!(queued.frame_owner, Some(FrameOwner::Skill { .. })))
+            items.into_iter().partition(|queued| match &queued.frame_owner {
+                Some(FrameOwner::Skill { .. }) => false,
+                Some(FrameOwner::BuffAct { key, .. }) => {
+                    crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)
+                        .is_none_or(|definition| {
+                            definition.runtime.execution_timing
+                                != crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::AfterHitSkills
+                        })
+                }
+                _ => true,
+            })
         }
 
         let (buff_before_publish, skill_before_publish) = partition(self.before_publish);
