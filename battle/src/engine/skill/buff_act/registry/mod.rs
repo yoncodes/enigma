@@ -733,7 +733,7 @@ buff_act_definitions! {
         supports: super::add_sp_temp_card::supports_configured_skill3,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10015, "CreateTempSkill3Card"), &[EffectType::None as i32]));
     (302, "BeatBack") => BeatBack,
-        event: EventKind::SkillAction, phase: HitPassives, frame: CausingFrame, actor: OpposingTeam,
+        event: EventKind::SkillAction, phase: HitPassives, source: Owner, actor: OpposingTeam, timing: AfterAction,
         runtime: |context| super::riposte::holder_rule_ops(context.pool, context.subscriber, context.event?),
         supports: super::riposte::supports_holder, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(302, "BeatBack"), &[EffectType::Beatback as i32]));
     (301, "Taunt") => Taunt, effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(301, "Taunt"), &[EffectType::Taunt as i32]));
@@ -1042,7 +1042,7 @@ buff_act_definitions! {
         parser: super::assassination::parse_target_trigger,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10004, "BeAttackedAssassinate"), &[EffectType::None as i32]));
     (10006, "BeatBackDependOnAttackMe") => BeatBackDependOnAttackMe,
-        event: EventKind::SkillAction, phase: HitPassives, frame: CausingFrame, actor: OpposingTeam,
+        event: EventKind::SkillAction, phase: HitPassives, source: Owner, actor: OpposingTeam, timing: AfterAction,
         runtime: |context| super::riposte::rule_ops(context.pool, context.subscriber, context.event?),
         supports: super::riposte::supports_dependent, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10006, "BeatBackDependOnAttackMe"), &[EffectType::None as i32]));
     (815, "AddSpTempCard") => AddSpTempCard,

@@ -1279,3 +1279,79 @@ fn a_riposte_completes_as_an_ally_action() {
             if gust.target_uid == 11 && gust.buff_id == 31050111
     )));
 }
+
+#[test]
+fn a_riposte_follows_the_attack_inside_its_own_buff_step() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                buffs: vec![BuffInfo {
+                    uid: Some(30),
+                    buff_id: Some(2292031),
+                    from_uid: Some(10),
+                    duration: Some(3),
+                    ..Default::default()
+                }],
+                ..entity(10)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 312301611], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: -1,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(10);
+    invocation.mode = SkillExecutionMode::Active;
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    // [Fighting Experience]: "After an ally is attacked, Ezio ripostes with [Counter Kill]".
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(31090111))
+        .expect("the attack projects a step");
+    let riposte = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .next_back()
+        .expect("the attack has reaction steps");
+    assert_eq!((riposte.act_id, riposte.from_id), (Some(2292031), Some(10)));
+    assert!(
+        riposte
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.act_id == Some(312301611))
+    );
+}
