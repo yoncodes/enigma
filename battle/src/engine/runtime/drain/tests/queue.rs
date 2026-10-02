@@ -1262,3 +1262,20 @@ fn a_later_slot_sees_the_changes_of_an_earlier_slot_in_the_same_phase() {
     assert!(managers.buff.has_active_buff_id(11, 109380001));
     assert!(!managers.buff.has_active_buff_id(10, 109380005));
 }
+
+#[test]
+fn a_riposte_completes_as_an_ally_action() {
+    let result = attack_with_passives(
+        Vec::new(),
+        vec![31050141],
+        Vec::new(),
+        Some(crate::engine::skill::condition::extra::ExtraSkillKind::Riposte),
+    );
+
+    // Flutterpage: "After any ally takes an action, gains 1 stack of [Gust]".
+    assert!(result.events.iter().any(|event| matches!(
+        event,
+        crate::engine::event::payload::BattleEvent::BuffAdded(gust)
+            if gust.target_uid == 11 && gust.buff_id == 31050111
+    )));
+}

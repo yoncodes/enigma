@@ -1114,7 +1114,13 @@ pub(in crate::engine::runtime::skill) fn action_mode(
     mode: SkillExecutionMode,
     extra_kind: Option<crate::engine::skill::condition::extra::ExtraSkillKind>,
 ) -> SkillExecutionMode {
-    if mode == SkillExecutionMode::Nested && extra_kind.is_some_and(|kind| kind.is_extra_action()) {
+    // A riposte is an ally action too: "after any ally takes an action" reactions answer it.
+    if mode == SkillExecutionMode::Nested
+        && extra_kind.is_some_and(|kind| {
+            kind.is_extra_action()
+                || kind == crate::engine::skill::condition::extra::ExtraSkillKind::Riposte
+        })
+    {
         SkillExecutionMode::Active
     } else {
         mode
