@@ -339,15 +339,18 @@ impl BuffManager {
         })
     }
 
-    // "Can be stacked to prolong the duration": the grant's duration adds to the held copy.
+    // "Can be stacked to prolong the duration": the grant's duration adds to the held copy of
+    // its type family, which keeps its own id.
     fn prolong_duration(
         &mut self,
         route: BuffRoute,
         definition: &BuffDefinition,
     ) -> Option<BuffUpdateResult> {
-        let active = self.buffs.iter_mut().find(|active| {
-            active.owner_uid == route.target_uid && active.buff.buff_id == Some(route.buff_id)
-        })?;
+        let type_id = definition.effective_type_id();
+        let active = self
+            .buffs
+            .iter_mut()
+            .find(|active| active.owner_uid == route.target_uid && active.type_id == type_id)?;
         let before = active.buff.clone();
         active.buff.duration = Some(
             active

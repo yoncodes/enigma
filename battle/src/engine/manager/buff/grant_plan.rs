@@ -340,7 +340,12 @@ impl BuffManager {
             }
             return GrantAction::KeepExisting;
         }
-        if has_same_id && definition.prolongs_duration() {
+        if definition.prolongs_duration()
+            && self.buffs.iter().any(|active| {
+                active.owner_uid == route.target_uid
+                    && active.type_id == definition.effective_type_id()
+            })
+        {
             return GrantAction::ProlongDuration;
         }
         if has_matching && policy.on_duplicate == DuplicateGrant::ReplaceExisting {

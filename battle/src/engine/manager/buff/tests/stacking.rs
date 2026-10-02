@@ -470,3 +470,20 @@ fn include_type_two_timed_grant_prolongs_the_held_copy() {
     assert_eq!(second.refreshed[0].after.duration, Some(6));
     assert_eq!(manager.active_for(10).count(), 1);
 }
+
+#[test]
+fn include_type_two_grant_prolongs_the_held_copy_of_its_type_family() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.add_replacing_excluded(&hp, 10, 10, 2292041, 0);
+
+    let second = manager.add_replacing_excluded(&hp, 10, 10, 2292031, 0);
+
+    // Both Fighting Experience ranks share one type: the held copy keeps its id and gains 3 rounds.
+    assert!(second.added.is_none());
+    assert_eq!(second.refreshed.len(), 1);
+    assert_eq!(second.refreshed[0].after.buff_id, Some(2292041));
+    assert_eq!(second.refreshed[0].after.duration, Some(7));
+    assert_eq!(manager.active_for(10).count(), 1);
+}
