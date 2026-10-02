@@ -1502,3 +1502,23 @@ fn a_one_target_assassination_satisfies_skill_type_one() {
             if buff.target_uid == 10 && buff.buff_id == 435125
     )));
 }
+
+#[test]
+fn allied_assassination_reactions_follow_the_attacks_after_hit_reactions() {
+    let result = ezio_card_with_passives(vec![312301533, 435115]);
+
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(312301142))
+        .expect("the attack projects a step");
+    let order = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .filter_map(|step| step.act_id)
+        .filter(|act_id| [312301533, 435115].contains(act_id))
+        .collect::<Vec<_>>();
+    // "When any ally triggers an [Assassination]" answers the completed action.
+    assert_eq!(order, vec![435115, 312301533]);
+}
