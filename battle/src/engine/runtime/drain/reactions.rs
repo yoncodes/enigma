@@ -969,6 +969,10 @@ pub(super) fn queued_reactions(
             }
         }));
     }
+    // As an action starts, reactions owned by others (its targets) resolve before the actor's own.
+    if let BattleEvent::SkillEffectStarted(action) = event {
+        reactions.sort_by_key(|reaction| reaction.subscriber_owner_uid == Some(action.source_uid));
+    }
     Ok(reactions)
 }
 
