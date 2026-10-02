@@ -280,6 +280,12 @@ impl BuffManager {
                     .into_iter()
                     .collect();
             }
+            GrantAction::ProlongDuration => {
+                result.refreshed = self
+                    .prolong_duration(route, definition)
+                    .into_iter()
+                    .collect();
+            }
             GrantAction::KeepExisting => {}
             GrantAction::RetainEnhancedVariant => {
                 if let Some(uid) = uid {
@@ -325,6 +331,30 @@ impl BuffManager {
                 .duration
                 .unwrap_or_default()
                 .max(definition.duration),
+        );
+        Some(BuffUpdateResult {
+            target_uid: route.target_uid,
+            before,
+            after: active.buff.clone(),
+        })
+    }
+
+    // "Can be stacked to prolong the duration": the grant's duration adds to the held copy.
+    fn prolong_duration(
+        &mut self,
+        route: BuffRoute,
+        definition: &BuffDefinition,
+    ) -> Option<BuffUpdateResult> {
+        let active = self.buffs.iter_mut().find(|active| {
+            active.owner_uid == route.target_uid && active.buff.buff_id == Some(route.buff_id)
+        })?;
+        let before = active.buff.clone();
+        active.buff.duration = Some(
+            active
+                .buff
+                .duration
+                .unwrap_or_default()
+                .saturating_add(definition.duration),
         );
         Some(BuffUpdateResult {
             target_uid: route.target_uid,

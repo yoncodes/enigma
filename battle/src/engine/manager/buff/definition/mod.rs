@@ -669,6 +669,14 @@ impl BuffDefinition {
             && self.count > 0
     }
 
+    // Include type 2 on a timed buff without count or layers: a re-grant prolongs the held copy.
+    pub(super) fn prolongs_duration(&self) -> bool {
+        self.has_include_type(BuffIncludeType::ExistingRefresh)
+            && self.duration > 0
+            && self.count == 0
+            && !self.uses_stack_layer()
+    }
+
     pub(super) fn reserves_normal_uid_on_count_refresh(&self) -> bool {
         self.has_include_type(BuffIncludeType::ExistingRefresh)
     }

@@ -449,3 +449,24 @@ fn timed_layer_grants_only_merge_with_an_instance_at_the_fresh_duration() {
     assert_eq!(second.refreshed[0].after.layer, Some(2));
     assert_eq!(manager.active_for(10).count(), 2);
 }
+
+#[test]
+fn include_type_two_timed_grant_prolongs_the_held_copy() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.add_replacing_excluded(&hp, 10, 10, 2292031, 0);
+    let held = manager
+        .active_for(10)
+        .find(|buff| buff.buff_id == Some(2292031))
+        .and_then(|buff| buff.uid);
+
+    let second = manager.add_replacing_excluded(&hp, 10, 10, 2292031, 0);
+
+    // [Fighting Experience]: "Can be stacked to prolong the duration".
+    assert!(second.added.is_none());
+    assert_eq!(second.refreshed.len(), 1);
+    assert_eq!(second.refreshed[0].after.uid, held);
+    assert_eq!(second.refreshed[0].after.duration, Some(6));
+    assert_eq!(manager.active_for(10).count(), 1);
+}

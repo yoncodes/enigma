@@ -16,6 +16,7 @@ pub(super) enum GrantAction {
     RefreshCount,
     RefreshLayer,
     RefreshExisting,
+    ProlongDuration,
     KeepExisting,
     RetainEnhancedVariant,
     ReplaceExisting,
@@ -338,6 +339,9 @@ impl BuffManager {
                 return GrantAction::RefreshExisting;
             }
             return GrantAction::KeepExisting;
+        }
+        if has_same_id && definition.prolongs_duration() {
+            return GrantAction::ProlongDuration;
         }
         if has_matching && policy.on_duplicate == DuplicateGrant::ReplaceExisting {
             return GrantAction::ReplaceExisting;
