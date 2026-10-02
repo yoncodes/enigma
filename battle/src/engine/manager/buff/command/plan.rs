@@ -1326,10 +1326,9 @@ impl BuffManager {
                         .excluded_ids_or_types
                         .iter()
                         .any(|id| active.buff.buff_id == Some(*id) || active.type_id == *id)
-                    && active
-                        .definition
-                        .as_ref()
-                        .is_some_and(|definition| dispel.statuses.contains(&definition.status))
+                    && active.definition.as_ref().is_some_and(|definition| {
+                        dispel.statuses.contains(&definition.status) && !definition.cannot_remove
+                    })
             })
             .filter_map(|active| active.buff.uid)
             .take(if limit == 0 { usize::MAX } else { limit })

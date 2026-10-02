@@ -100,6 +100,8 @@ pub(super) struct BuffDefinition {
     is_no_show: bool,
     pub(super) status_id: i32,
     pub status: BuffStatus,
+    // The buff type's "cannot be dispelled"; targeted removals still apply.
+    pub(super) cannot_remove: bool,
     pub duration: i32,
     count: i32,
     exclude_buff_ids: Vec<i32>,
@@ -175,6 +177,7 @@ impl BuffDefinition {
             is_no_show: row.is_no_show != 0,
             status_id,
             status: BuffStatus::from_id(status_id),
+            cannot_remove: buff_type.is_some_and(|row| row.cannot_remove),
             duration: row.during_time,
             count: row.effect_count,
             exclude_buff_ids: parse_exclude_buff_ids(exclude_types),
