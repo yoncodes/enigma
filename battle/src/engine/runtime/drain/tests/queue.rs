@@ -1438,3 +1438,67 @@ fn an_assassination_synchronization_gain_lands_in_the_attack_step() {
             .any(|effect| effect.effect_type == Some(111) && effect.target_id == Some(10))
     );
 }
+
+fn ezio_card_with_passives(passives: Vec<i32>) -> DrainResult {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                passive_skill: passives.clone(),
+                ..entity(10)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        std::iter::once(312301142).chain(passives),
+        [],
+    );
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312301142,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+    run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_one_target_assassination_satisfies_skill_type_one() {
+    let result = ezio_card_with_passives(vec![435115]);
+
+    // "When triggering an [Assassination], if the attack aims at 1 target, gains Critical DMG +6%".
+    assert!(result.events.iter().any(|event| matches!(
+        event,
+        crate::engine::event::payload::BattleEvent::BuffAdded(buff)
+            if buff.target_uid == 10 && buff.buff_id == 435125
+    )));
+}

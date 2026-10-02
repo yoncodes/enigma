@@ -143,7 +143,8 @@ pub(in crate::engine::runtime) fn emit_ops(
             );
             execution.context.active_skill_rank =
                 managers.catalog().skill_rank(invocation.plan.skill_id);
-            execution.context.active_skill_type = catalog.skill_type(effect_skill_id);
+            // "SkillType" conditions read the skill's target kind: 1-target (1) or mass (2).
+            execution.context.active_skill_type = execution.context.damage_target_count_kind;
             execution.context.active_skill_effect_tag = catalog.effect_tag(effect_skill_id);
         }
         execution.context.additional_moxie = invocation.additional_moxie;
@@ -1071,7 +1072,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                         ),
                         is_attack: catalog.is_attack(effect_skill_id),
                         rank: managers.catalog().skill_rank(invocation.plan.skill_id),
-                        skill_type: catalog.skill_type(effect_skill_id),
+                        skill_type: execution.context.damage_target_count_kind,
                         effect_tag: catalog.effect_tag(effect_skill_id),
                         additional_moxie: invocation.additional_moxie,
                         extra_skill_kind: execution.context.extra_skill_kind,

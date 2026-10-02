@@ -664,7 +664,7 @@ fn target_options(
         active_skill_source_uid: source_uid,
         active_skill_is_attack: attack,
         active_skill_rank: managers.catalog().skill_rank(skill_id),
-        active_skill_type: catalog.skill_type(skill_id),
+        active_skill_type: managers.catalog().damage_target_count_kind(code),
         active_skill_effect_tag: catalog.effect_tag(skill_id),
         damage_target_count_kind: managers.catalog().damage_target_count_kind(code),
         ..Default::default()
