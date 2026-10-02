@@ -200,6 +200,7 @@ fn stacked_include_value_is_the_layer_cap() {
         is_no_show: false,
         status_id: 0,
         status: BuffStatus::Unknown,
+        cannot_remove: false,
         duration: 0,
         count: 0,
         exclude_buff_ids: Vec::new(),

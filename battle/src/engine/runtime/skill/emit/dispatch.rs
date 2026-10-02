@@ -180,12 +180,14 @@ pub(in crate::engine::runtime) fn emit_ops(
         .unwrap_or_else(|| execution.context.heat_scale_value.saturating_mul(1000));
     let mut outputs = Vec::new();
     let mut fired_rules = Vec::new();
+    let resume_slot = std::mem::take(&mut execution.resume_slot);
     let active_phase = matches!(trigger, SkillOpTrigger::Active).then_some(
         invocation
             .phase
             .unwrap_or(crate::engine::skill::action::SkillPhase::Immediate),
     );
-    if active_phase == Some(crate::engine::skill::action::SkillPhase::Immediate)
+    if resume_slot == 0
+        && active_phase == Some(crate::engine::skill::action::SkillPhase::Immediate)
         && execution.configured_targets.is_none()
     {
         let request = TargetRequest {
@@ -232,7 +234,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         execution.record_targets(configured_targets.iter().copied());
         execution.configured_targets = Some(configured_targets);
     }
-    if active_phase == Some(SkillPhase::Immediate) {
+    if resume_slot == 0 && active_phase == Some(SkillPhase::Immediate) {
         if let Some(modifier) = invocation.rate_modifier {
             execution.modifiers.rates.push(modifier);
         }
@@ -277,7 +279,8 @@ pub(in crate::engine::runtime) fn emit_ops(
             .slots
             .iter()
             .any(|slot| slot.behavior.spec.kind == BehaviorKind::IgnoreSkillConfigDamageRate);
-    if active_phase == Some(SkillPhase::Damage)
+    if resume_slot == 0
+        && active_phase == Some(SkillPhase::Damage)
         && has_row_damage
         && execution.planned_crits.is_none()
     {
@@ -291,7 +294,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution,
         );
     }
-    for (slot_index, slot) in effect.slots.iter().enumerate() {
+    for (slot_index, slot) in effect.slots.iter().enumerate().skip(resume_slot) {
         if invocation
             .condition_slot
             .is_some_and(|selected| selected != slot_index)
@@ -648,6 +651,24 @@ pub(in crate::engine::runtime) fn emit_ops(
             && let Some(condition_key) = condition_key
         {
             fired_rules.push((slot_index, condition_key));
+        }
+        // The game runs a skill's slots in order, so a later condition in this phase sees what
+        // this slot changed: let those changes commit before checking it.
+        if let Some(phase) = active_phase
+            && outputs.len() > outputs_before
+            && effect.slots[slot_index + 1..]
+                .iter()
+                .any(|later| !later.conditions.is_empty() && slot_runs_in_phase(later, phase))
+        {
+            execution.resume_slot = slot_index + 1;
+            let mut continuation = invocation.clone();
+            continuation.phase = Some(phase);
+            return Ok(SkillEmission {
+                ops: outputs,
+                fired_rules,
+                continuation: Some(continuation),
+                target_uid: execution.primary_target_uid,
+            });
         }
     }
     if active_phase == Some(SkillPhase::Immediate) {
@@ -1078,6 +1099,15 @@ pub(in crate::engine::runtime) fn emit_ops(
         continuation,
         target_uid: execution.primary_target_uid,
     })
+}
+
+fn slot_runs_in_phase(slot: &SkillEffectSlot, phase: SkillPhase) -> bool {
+    let routed_phases = slot.active_phases().unwrap_or_default();
+    if routed_phases.is_empty() {
+        behavior::registry::find(&slot.behavior).is_some_and(|definition| definition.phase == phase)
+    } else {
+        routed_phases.contains(&phase)
+    }
 }
 
 pub(in crate::engine::runtime::skill) fn action_mode(

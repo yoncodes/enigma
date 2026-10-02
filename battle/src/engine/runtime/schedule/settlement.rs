@@ -522,6 +522,23 @@ pub fn run_round_end_final_settlement(
             &owner_uids,
         )?,
     );
+    // "When Obscurity reaches zero, you'll enter a bonus Witness Round during the following
+    // round": checks for a buff granted as the final settlement's durations expire.
+    let after = BattleEvent::Kind(EventKind::RoundEndAfterFinalSettlement);
+    let mut after_skills = drain::run_group_event(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        after.clone(),
+        drain::ReactionLane::Skills,
+        None,
+    )?;
+    if after_skills.events.first() == Some(&after) {
+        after_skills.events.remove(0);
+    }
+    append(&mut result, after_skills);
     Ok(result)
 }
 

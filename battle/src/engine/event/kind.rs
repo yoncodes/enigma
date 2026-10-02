@@ -46,6 +46,8 @@ pub enum EventKind {
     ExPointOverflow,
     RoundEndEntitySettlement,
     RoundEndFinalSettlement,
+    // After the final settlement's buff durations advance.
+    RoundEndAfterFinalSettlement,
     RoundEndAfterSettlement,
     Riposte,
 }

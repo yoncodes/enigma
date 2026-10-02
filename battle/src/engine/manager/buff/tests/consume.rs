@@ -258,3 +258,48 @@ fn master_halo_fans_linked_buff_to_allies_with_child_uids() {
         vec![12]
     );
 }
+
+#[test]
+fn a_dispel_skips_buffs_that_cannot_be_dispelled() {
+    init_config();
+    let buff = |uid, buff_id| BuffInfo {
+        buff_id: Some(buff_id),
+        uid: Some(uid),
+        duration: Some(1),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![buff(2, 4011), buff(3, 109380007)],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
+
+    managers
+        .execute_buff(BuffCommand::Dispel(BuffDispel {
+            origin: CommandOrigin {
+                domain: crate::engine::skill::rule::RuleDomain::Behavior,
+                key: crate::engine::skill::rule::DefinitionKey::new(20020, "PurifyX"),
+            },
+            target_uid: 10,
+            statuses: vec![
+                BuffStatus::from_id(2),
+                BuffStatus::from_id(4),
+                BuffStatus::from_id(6),
+            ],
+            excluded_ids_or_types: Vec::new(),
+            count: 0,
+        }))
+        .unwrap();
+
+    // [Skyward Gaze]: "(undispellable, stackable up to 5 times)".
+    assert!(!managers.buff.has_active_buff_id(10, 4011));
+    assert!(managers.buff.has_active_buff_id(10, 109380007));
+}
