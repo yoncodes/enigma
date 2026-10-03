@@ -513,6 +513,7 @@ fn drain_queue_with_deferred(
                     && frame_path.is_none()
                     && managers.terminal_outcome().is_some()
                 {
+                    cancel_invocation_progress(managers, state, None, &invocation);
                     continue;
                 }
                 let attack_has_no_target = matches!(trigger, SkillOpTrigger::Active)
@@ -530,6 +531,7 @@ fn drain_queue_with_deferred(
                         && pool.entity(invocation.plan.source_uid).is_none())
                         || attack_has_no_target)
                 {
+                    cancel_invocation_progress(managers, state, frame_path.as_ref(), &invocation);
                     continue;
                 }
 
@@ -634,12 +636,7 @@ fn drain_queue_with_deferred(
                     execution.prepare_direct_big(invocation.additional_moxie);
                 }
 
-                if invocation.phase.is_none() {
-                    managers.release_held_rule_progress(
-                        invocation.plan.source_uid,
-                        invocation.plan.skill_id,
-                    );
-                }
+                release_invocation_progress(managers, &invocation);
                 // Skill evaluation emits RuleOps only. Managers remain the sole
                 // owners of durable mutations when those operations are drained.
                 let emission = skill::emit_ops(
@@ -1442,6 +1439,34 @@ fn drain_queue_with_deferred(
     }
 
     Ok(result)
+}
+
+fn release_invocation_progress(
+    managers: &mut BattleManagers,
+    invocation: &crate::engine::skill::action::SkillInvocation,
+) {
+    if invocation.phase.is_none()
+        && let Some(key) = invocation.release_progress
+    {
+        managers.release_held_rule_progress(invocation.plan.source_uid, key);
+    }
+}
+
+fn cancel_invocation_progress(
+    managers: &mut BattleManagers,
+    state: &mut DrainState,
+    action_path: Option<&FramePath>,
+    invocation: &crate::engine::skill::action::SkillInvocation,
+) {
+    release_invocation_progress(managers, invocation);
+    let Some(action_path) = action_path else {
+        return;
+    };
+    for queued in state.cancel_action(action_path) {
+        if let RuleOp::Skill(invocation) = queued.op {
+            release_invocation_progress(managers, &invocation);
+        }
+    }
 }
 
 fn drain_nested_queue(

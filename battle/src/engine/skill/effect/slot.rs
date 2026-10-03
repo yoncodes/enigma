@@ -178,6 +178,8 @@ pub struct ParsedBehavior {
     pub args: Vec<i32>,
     pub raw_args: Vec<String>,
     pub config_effect: i32,
+    pub effect_id: i32,
+    pub slot: u8,
 }
 
 impl ParsedBehavior {
@@ -188,6 +190,8 @@ impl ParsedBehavior {
             args,
             raw_args: Vec::new(),
             config_effect: 0,
+            effect_id: 0,
+            slot: 0,
         }
     }
 
@@ -197,6 +201,8 @@ impl ParsedBehavior {
             spec,
             args,
             raw_args,
+            effect_id: 0,
+            slot: 0,
         }
     }
 

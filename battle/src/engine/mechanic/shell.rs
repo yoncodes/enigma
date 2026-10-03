@@ -38,7 +38,7 @@ pub enum ShellCommand {
         stock_buff_id: i32,
     },
     AccumulateAndUseSkill {
-        origin: CommandOrigin,
+        rule: crate::engine::skill::rule::ConfiguredRuleKey,
         source_uid: i64,
         target_uid: i64,
         threshold: i32,
@@ -107,14 +107,14 @@ pub(crate) fn execute(
             stock_buff_id,
         } => retrieve_all(managers, origin, source_uid, stock_buff_id),
         ShellCommand::AccumulateAndUseSkill {
-            origin,
+            rule,
             source_uid,
             target_uid,
             threshold,
             delta,
             skill_id,
         } => accumulate_and_use_skill(
-            managers, origin, source_uid, target_uid, threshold, delta, skill_id,
+            managers, rule, source_uid, target_uid, threshold, delta, skill_id,
         ),
     }
 }
@@ -304,7 +304,7 @@ fn runtime_deployed_buff_id(
 
 fn accumulate_and_use_skill(
     managers: &mut BattleManagers,
-    origin: CommandOrigin,
+    rule: crate::engine::skill::rule::ConfiguredRuleKey,
     source_uid: i64,
     target_uid: i64,
     threshold: i32,
@@ -315,8 +315,8 @@ fn accumulate_and_use_skill(
         return Err(ShellError::InvalidCommand);
     }
     // Changes made while the triggered cast waits do not count toward the next one.
-    let triggered = managers
-        .advance_rule_progress_until_cast(source_uid, origin.key, threshold, delta, skill_id);
+    let triggered =
+        managers.advance_configured_rule_progress_until_cast(source_uid, rule, threshold, delta);
     let skills = triggered
         .then(|| {
             let mut invocation: crate::engine::skill::action::SkillInvocation =
@@ -328,6 +328,7 @@ fn accumulate_and_use_skill(
             invocation.target = crate::engine::skill::action::SkillTarget::Explicit(target_uid);
             // Unmendable Cracks follows the triggering action's ally-action reactions.
             invocation.start = crate::engine::skill::action::SkillStart::AfterCurrentAction;
+            invocation.release_progress = Some(rule);
             invocation
         })
         .into_iter()
@@ -352,23 +353,24 @@ mod tests {
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
     use super::*;
-    use crate::engine::skill::rule::{DefinitionKey, RuleDomain};
+    use crate::engine::skill::rule::{ConfiguredRuleKey, DefinitionKey, RuleDomain};
 
     const ORIGIN: CommandOrigin = CommandOrigin {
         domain: RuleDomain::Behavior,
-        key: DefinitionKey::new(60134, "ShellRecycle"),
+        key: DefinitionKey::new(60135, "ShellUseSkill"),
     };
+    const RULE: ConfiguredRuleKey = ConfiguredRuleKey::new(31090114, 1, ORIGIN.key);
 
     #[test]
     fn changes_while_the_triggered_cast_waits_do_not_count() {
         let mut managers = BattleManagers::default();
-        let casts_after = |managers: &mut BattleManagers, changes: i32| {
+        let casts_after = |managers: &mut BattleManagers, rule, changes: i32| {
             (0..changes)
                 .map(|_| {
                     execute(
                         managers,
                         ShellCommand::AccumulateAndUseSkill {
-                            origin: ORIGIN,
+                            rule,
                             source_uid: 10,
                             target_uid: -1,
                             threshold: 7,
@@ -384,11 +386,43 @@ mod tests {
         };
 
         // "After accumulating a total of 7 deployments and or retrievals, triggers" one cast.
-        assert_eq!(casts_after(&mut managers, 7), 1);
-        assert_eq!(casts_after(&mut managers, 7), 0);
-        managers.release_held_rule_progress(10, 31090114);
-        assert_eq!(casts_after(&mut managers, 6), 0);
-        assert_eq!(casts_after(&mut managers, 1), 1);
+        assert_eq!(casts_after(&mut managers, RULE, 7), 1);
+        assert_eq!(casts_after(&mut managers, RULE, 7), 0);
+        managers.release_held_rule_progress(10, RULE);
+        assert_eq!(casts_after(&mut managers, RULE, 6), 0);
+        assert_eq!(casts_after(&mut managers, RULE, 1), 1);
+    }
+
+    #[test]
+    fn releasing_a_cast_resumes_only_its_exact_rule() {
+        let mut managers = BattleManagers::default();
+        let other = ConfiguredRuleKey::new(RULE.effect_id, 2, RULE.definition);
+        let trigger = |managers: &mut BattleManagers, rule| {
+            (0..7).fold(0, |casts, _| {
+                casts
+                    + execute(
+                        managers,
+                        ShellCommand::AccumulateAndUseSkill {
+                            rule,
+                            source_uid: 10,
+                            target_uid: -1,
+                            threshold: 7,
+                            delta: 1,
+                            skill_id: 31090114,
+                        },
+                    )
+                    .unwrap()
+                    .skills
+                    .len()
+            })
+        };
+
+        assert_eq!(trigger(&mut managers, RULE), 1);
+        assert_eq!(trigger(&mut managers, other), 1);
+        managers.release_held_rule_progress(10, RULE);
+
+        assert_eq!(trigger(&mut managers, RULE), 1);
+        assert_eq!(trigger(&mut managers, other), 0);
     }
 
     #[test]
@@ -583,10 +617,7 @@ mod tests {
     fn configured_progress_emits_one_skill_per_completed_threshold() {
         let mut managers = BattleManagers::default();
         let command = |delta| ShellCommand::AccumulateAndUseSkill {
-            origin: CommandOrigin {
-                domain: RuleDomain::Behavior,
-                key: DefinitionKey::new(60135, "ShellUseSkill"),
-            },
+            rule: RULE,
             source_uid: 10,
             target_uid: -1,
             threshold: 5,

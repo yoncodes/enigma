@@ -18,7 +18,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) configured_targets: Option<Vec<i64>>,
     pub(super) configured_additional_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
-    pub(super) marked_targets: Option<Vec<(i64, i32)>>,
+    pub(super) assassination_marks_at_action_start: Option<Vec<(i64, i32)>>,
     pub(super) injured_allies: Vec<i64>,
     pub(super) affected_targets: Vec<i64>,
     pub(super) attacked_targets: Vec<i64>,
@@ -48,7 +48,7 @@ impl SkillExecution {
             configured_targets: None,
             configured_additional_targets: None,
             planned_crits: None,
-            marked_targets: None,
+            assassination_marks_at_action_start: None,
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
@@ -76,7 +76,7 @@ impl SkillExecution {
             configured_targets: None,
             configured_additional_targets: None,
             planned_crits: None,
-            marked_targets: None,
+            assassination_marks_at_action_start: None,
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
@@ -253,6 +253,17 @@ impl SkillExecution {
             }
         }
     }
+}
+
+pub(super) fn snapshot_action_start_damage_state(
+    managers: &BattleManagers,
+    execution: &mut SkillExecution,
+) {
+    execution
+        .assassination_marks_at_action_start
+        .get_or_insert_with(|| {
+            crate::engine::skill::buff_act::assassination::marked_targets(managers)
+        });
 }
 
 fn hp_command_target(command: HpCommand) -> i64 {
@@ -571,7 +582,7 @@ pub(super) fn damage_ops(
             source_uid,
             target_uid,
             inherent_assassinate,
-            execution.marked_targets.as_deref(),
+            execution.assassination_marks_at_action_start.as_deref(),
         );
         execution.context.active_skill_assassinate |= assassination.assassinate;
         if assassination.final_damage_bonus != 0 {
