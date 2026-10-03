@@ -91,6 +91,7 @@ fn damage_command_commits_shield_hp_crit_and_death_once() {
                 shield_absorbed: 20,
                 career_restraint: true,
                 damage_from: HurtDamageFromType::Skill,
+                share_count: 0,
                 assassinate: false,
                 ignore_riposte: true,
             }),
@@ -161,6 +162,7 @@ fn shield_only_damage_is_a_hit_but_not_hp_loss() {
             shield_absorbed: 10,
             career_restraint: false,
             damage_from: HurtDamageFromType::Skill,
+            share_count: 0,
             assassinate: false,
             ignore_riposte: false,
         })]

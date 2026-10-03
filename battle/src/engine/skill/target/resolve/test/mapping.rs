@@ -185,6 +185,35 @@ fn lowest_hp_percentage_enemy_uses_current_hp_ratio() {
 }
 
 #[test]
+fn hp_percentage_targets_use_widened_ratio_arithmetic() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                entity_stats(-2, 1, 100_000_000, 100_000_000, 0),
+                entity_stats(-3, 2, 90_000_000, 100_000_000, 0),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+
+    assert_eq!(
+        resolve_code(210, 10, &pool, &mut RoundDeterminism::default()),
+        vec![-3]
+    );
+    assert_eq!(
+        resolve_code(208, 10, &pool, &mut RoundDeterminism::default()),
+        vec![-2]
+    );
+}
+
+#[test]
 fn target_207_selects_the_enemy_with_the_highest_attack() {
     init_config();
     let enemy = |uid, position, attack| FightEntityInfo {

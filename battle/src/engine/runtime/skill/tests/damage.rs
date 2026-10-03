@@ -1981,7 +1981,7 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
         let managers = BattleManagers::seeded(&fight);
         let pool = TargetPool::from_fight(&fight);
         let mut catalog = SkillEffectCatalog::default();
-        catalog.insert_damage_rate(100, 1_000);
+        catalog.insert_damage_rate(100, 6_000);
         catalog.insert_logic_target(100, 1);
         let invocation: SkillInvocation = SkillRequest {
             source_uid: 10,
@@ -1995,7 +1995,7 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
                 .activated_additional_damage
                 .push(activation.additional);
         }
-        plan::damage_ops(
+        let ops = plan::damage_ops(
             &invocation,
             &managers,
             &pool,
@@ -2003,18 +2003,27 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
             100,
             &mut RoundDeterminism::default(),
             &mut execution,
-        )
-        .additional_damage
+        );
+        (ops.damage, ops.additional_damage)
     };
 
     // Way of Ares: "When an allied [Assassination] is triggered, deal an additional 125% DMG of
     // the attacker's type."
-    let marked = additional_damage(true);
+    let (main, marked) = additional_damage(true);
     assert!(matches!(
         marked.as_slice(),
         [HpCommand::Damage(damage)] if damage.source_uid == 10
     ));
-    assert!(additional_damage(false).is_empty());
+    let main_amount = match main.as_slice() {
+        [HpCommand::Damage(damage)] => damage.amount,
+        _ => panic!("expected one main damage command"),
+    };
+    let linked_amount = match marked.as_slice() {
+        [HpCommand::Damage(damage)] => damage.amount,
+        _ => panic!("expected one linked damage command"),
+    };
+    assert_eq!(linked_amount, main_amount * 1_250 / 6_000);
+    assert!(additional_damage(false).1.is_empty());
 }
 
 #[test]

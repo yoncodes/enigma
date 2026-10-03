@@ -260,6 +260,14 @@ pub enum ReactionLane {
 }
 
 impl ReactionBatch {
+    fn append(&mut self, mut other: Self) {
+        self.before_publish.append(&mut other.before_publish);
+        self.after_publish.append(&mut other.after_publish);
+        self.after_skill.append(&mut other.after_skill);
+        self.after_hit.append(&mut other.after_hit);
+        self.after_action.append(&mut other.after_action);
+    }
+
     fn into_ordered(self) -> Vec<QueuedOp> {
         self.before_publish
             .into_iter()
@@ -307,6 +315,49 @@ impl ReactionBatch {
             },
         )
     }
+
+    fn order_skills(
+        &mut self,
+        pool: &TargetPool,
+        managers: &BattleManagers,
+        catalog: &SkillEffectCatalog,
+        events: &[BattleEvent],
+    ) -> Result<(), DrainError> {
+        let mut order = std::collections::HashMap::new();
+        for subscriber in crate::engine::skill::subscriber::for_compiled_events(
+            pool,
+            managers,
+            catalog,
+            events.iter().flat_map(BattleEvent::subscription_kinds),
+        )?
+        .skills
+        {
+            let next = order.len();
+            order
+                .entry((subscriber.owner_uid, subscriber.skill_id))
+                .or_insert(next);
+        }
+        for lane in [
+            &mut self.before_publish,
+            &mut self.after_publish,
+            &mut self.after_skill,
+            &mut self.after_hit,
+            &mut self.after_action,
+        ] {
+            lane.sort_by_key(|queued| match queued.frame_owner {
+                Some(FrameOwner::Skill {
+                    source_uid,
+                    skill_id,
+                    ..
+                }) => order
+                    .get(&(source_uid, skill_id))
+                    .copied()
+                    .unwrap_or(usize::MAX),
+                _ => usize::MAX,
+            });
+        }
+        Ok(())
+    }
 }
 
 mod entry;
@@ -314,11 +365,12 @@ mod reactions;
 mod state;
 
 pub use entry::*;
-use reactions::{dispatch_event_batch, dispatch_owner_reactions, dispatch_reactions};
 #[cfg(test)]
 use reactions::{
-    ordered_hit_entities, queued_reactions, reaction_counterparty, reaction_skill_target,
+    dispatch_event_batch, ordered_hit_entities, queued_reactions, reaction_counterparty,
+    reaction_skill_target,
 };
+use reactions::{dispatch_event_groups, dispatch_owner_reactions, dispatch_reactions};
 use state::DrainState;
 
 fn drain_queue(
@@ -361,44 +413,50 @@ fn drain_queue_with_frames(
     )
 }
 
-fn split_active_hit_events(
-    events: Vec<BattleEvent>,
+fn grouped_hp_events(
+    events: &[BattleEvent],
     batch_events: Vec<Vec<BattleEvent>>,
-) -> (Vec<BattleEvent>, Vec<BattleEvent>) {
-    let expected = batch_events
-        .into_iter()
-        .flat_map(|events| {
-            let defers_hp_loss = events.iter().any(|event| {
-                matches!(
-                    event,
-                    BattleEvent::Hit(hit)
-                        if hit.damage_from
-                            == crate::engine::manager::hp::HurtDamageFromType::Skill
-                )
-            });
-            events.into_iter().map(move |event| {
-                let deferred = matches!(event, BattleEvent::Hit(_))
-                    || defers_hp_loss && matches!(event, BattleEvent::HpLost { .. });
-                (event, deferred)
-            })
-        })
-        .collect::<Vec<_>>();
-    if !expected.iter().map(|(event, _)| event).eq(events.iter()) {
-        return events
-            .into_iter()
-            .partition(|event| !matches!(event, BattleEvent::Hit(_)));
+) -> Vec<Vec<BattleEvent>> {
+    if batch_events.iter().flatten().eq(events.iter()) {
+        batch_events
+    } else {
+        vec![events.to_vec()]
     }
+}
 
-    let mut immediate = Vec::new();
-    let mut deferred = Vec::new();
-    for (event, (_, is_deferred)) in events.into_iter().zip(expected) {
-        if is_deferred {
-            deferred.push(event);
-        } else {
-            immediate.push(event);
+fn split_active_hit_event_groups(
+    event_groups: Vec<Vec<BattleEvent>>,
+) -> (Vec<Vec<BattleEvent>>, Vec<Vec<BattleEvent>>) {
+    let mut immediate_groups = Vec::new();
+    let mut deferred_groups = Vec::new();
+    for events in event_groups {
+        let defers_hp_loss = events.iter().any(|event| {
+            matches!(
+                event,
+                BattleEvent::Hit(hit)
+                    if hit.damage_from
+                        == crate::engine::manager::hp::HurtDamageFromType::Skill
+            )
+        });
+        let (deferred, immediate): (Vec<_>, Vec<_>) = events.into_iter().partition(|event| {
+            matches!(event, BattleEvent::Hit(_))
+                || defers_hp_loss && matches!(event, BattleEvent::HpLost { .. })
+        });
+        if !immediate.is_empty() {
+            immediate_groups.push(immediate);
+        }
+        if !deferred.is_empty() {
+            deferred_groups.push(deferred);
         }
     }
-    (immediate, deferred)
+    (immediate_groups, deferred_groups)
+}
+
+fn flatten_event_groups(event_groups: &[Vec<BattleEvent>]) -> Vec<BattleEvent> {
+    event_groups
+        .iter()
+        .flat_map(|events| events.iter().cloned())
+        .collect()
 }
 
 /// Drains queued operations and registered reactions into semantic frames using declared phase and lane order.
@@ -414,7 +472,7 @@ fn drain_queue_with_deferred(
 ) -> Result<DrainResult, DrainError> {
     let context = state.context();
     let mut bus = EventBus::default();
-    let mut pending_hits = HashMap::<FramePath, Vec<BattleEvent>>::new();
+    let mut pending_hits = HashMap::<FramePath, Vec<Vec<BattleEvent>>>::new();
     let mut result = DrainResult {
         outcomes: Vec::new(),
         events: Vec::new(),
@@ -1003,6 +1061,16 @@ fn drain_queue_with_deferred(
                 // Managers publish semantic events through the bus. Reactions are
                 // derived from these committed events, never fired by packet code.
                 let mut events = std::iter::from_fn(|| bus.pop()).collect::<Vec<_>>();
+                let mut event_groups = match &outcome {
+                    RuleOutcome::HpBatch(batch) => grouped_hp_events(
+                        &events,
+                        batch
+                            .iter()
+                            .map(|execution| execution.changes.events())
+                            .collect(),
+                    ),
+                    _ => vec![events.clone()],
+                };
                 if matches!(trigger, SkillOpTrigger::Active)
                     && let Some(queued) = queue.iter_mut().find(|queued| {
                         matches!(queued.trigger, SkillOpTrigger::Active)
@@ -1045,30 +1113,24 @@ fn drain_queue_with_deferred(
                     // Multi-part active hits share one HitPassives boundary. Hold
                     // primary hits and their own HP loss; unrelated events remain
                     // immediately visible.
-                    let RuleOutcome::HpBatch(batch) = &outcome else {
-                        unreachable!("active hit deferral requires an HP batch")
-                    };
-                    let batch_events = batch
-                        .iter()
-                        .map(|execution| execution.changes.events())
-                        .collect();
-                    let (immediate, deferred) = split_active_hit_events(events, batch_events);
+                    let (immediate, deferred) = split_active_hit_event_groups(event_groups);
                     pending_hits
                         .entry(frame_path.clone())
                         .or_default()
                         .extend(deferred);
-                    events = immediate;
+                    event_groups = immediate;
+                    events = flatten_event_groups(&event_groups);
                 }
 
                 // BeforePublish reactions run before this outcome is recorded in
                 // its semantic frame. Their own manager commits use nested drains.
                 let action_scope = active_skill_scope_path(&result.frames, &frame_path);
-                let mut before_reactions = dispatch_event_batch(
+                let mut before_reactions = dispatch_event_groups(
                     pool,
                     managers,
                     catalog,
                     determinism,
-                    &events,
+                    &event_groups,
                     &event_scope,
                     &frame_path,
                     action_scope.as_deref(),
@@ -1080,12 +1142,12 @@ fn drain_queue_with_deferred(
                 )?;
                 let mut started_after_reactions = None;
                 if matches!(&outcome, RuleOutcome::SkillActionStarted { .. }) {
-                    let mut started_reactions = dispatch_event_batch(
+                    let mut started_reactions = dispatch_event_groups(
                         pool,
                         managers,
                         catalog,
                         determinism,
-                        &events,
+                        &event_groups,
                         &event_scope,
                         &frame_path,
                         action_scope.as_deref(),
@@ -1111,13 +1173,14 @@ fn drain_queue_with_deferred(
                 let released_hit_events = releases_pending_hits
                     .then(|| pending_hits.remove(&frame_path))
                     .flatten();
-                if let Some(hit_events) = released_hit_events.as_ref() {
-                    let hit_reactions = dispatch_event_batch(
+                if let Some(hit_event_groups) = released_hit_events.as_ref() {
+                    let hit_events = flatten_event_groups(hit_event_groups);
+                    let mut hit_reactions = dispatch_event_groups(
                         pool,
                         managers,
                         catalog,
                         determinism,
-                        hit_events,
+                        hit_event_groups,
                         &event_scope,
                         &frame_path,
                         action_scope.as_deref(),
@@ -1128,6 +1191,7 @@ fn drain_queue_with_deferred(
                         None,
                     )?;
                     result.events.extend(hit_events.iter().cloned());
+                    hit_reactions.order_skills(pool, managers, catalog, &hit_events)?;
                     let (hit_buff_acts, hit_skills) = hit_reactions.partition_skill_reactions();
                     pending_hit_skills = hit_skills;
                     drain_nested_queue(
@@ -1224,12 +1288,12 @@ fn drain_queue_with_deferred(
                 let mut reactions = if was_skill_action_started {
                     started_after_reactions.unwrap_or_default()
                 } else {
-                    dispatch_event_batch(
+                    dispatch_event_groups(
                         pool,
                         managers,
                         catalog,
                         determinism,
-                        &events,
+                        &event_groups,
                         &event_scope,
                         &frame_path,
                         action_scope.as_deref(),
@@ -1250,13 +1314,14 @@ fn drain_queue_with_deferred(
                 } else {
                     reactions.after_publish.extend(after_action);
                 }
-                if let Some(hit_events) = released_hit_events.as_ref() {
-                    let mut hit_reactions = dispatch_event_batch(
+                if let Some(hit_event_groups) = released_hit_events.as_ref() {
+                    let hit_events = flatten_event_groups(hit_event_groups);
+                    let mut hit_reactions = dispatch_event_groups(
                         pool,
                         managers,
                         catalog,
                         determinism,
-                        hit_events,
+                        hit_event_groups,
                         &event_scope,
                         &frame_path,
                         action_scope.as_deref(),
@@ -1276,6 +1341,7 @@ fn drain_queue_with_deferred(
                     } else {
                         hit_reactions.after_publish.extend(hit_after_action);
                     }
+                    hit_reactions.order_skills(pool, managers, catalog, &hit_events)?;
                     let (hit_buff_acts, hit_skills) = hit_reactions.partition_skill_reactions();
                     let hit_queue = hit_buff_acts
                         .into_ordered()

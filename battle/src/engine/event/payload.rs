@@ -58,6 +58,7 @@ pub struct HitEvent {
     pub shield_absorbed: i32,
     pub career_restraint: bool,
     pub damage_from: crate::engine::manager::hp::HurtDamageFromType,
+    pub share_count: i32,
     pub assassinate: bool,
     pub ignore_riposte: bool,
 }
@@ -212,12 +213,14 @@ pub enum BattleEvent {
         amount: i32,
         buff_uid: Option<i64>,
     },
-    // A ShareHurt share: `source_uid` attacked an ally and `target_uid` took this part of the hit.
+    // A ShareHurt split: `source_uid` attacked `target_uid`, which shared damage with its allies.
     DamageShared {
         origin: CommandOrigin,
         source_uid: i64,
         target_uid: i64,
         amount: i32,
+        share_count: i32,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType,
     },
     HpHealed {
         origin: CommandOrigin,
@@ -426,6 +429,7 @@ mod subscription_tests {
             shield_absorbed: 0,
             career_restraint: false,
             damage_from,
+            share_count: 0,
             assassinate: false,
             ignore_riposte: false,
         })

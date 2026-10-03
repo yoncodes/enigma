@@ -123,9 +123,20 @@ pub(super) fn apply_event_context(
             context.triggered_buff_act_id = trigger.act_id;
             context.triggered_buff_uid = trigger.buff_uid;
         }
-        BattleEvent::HpLost { target_uid, .. }
-        | BattleEvent::DamageShared { target_uid, .. }
-        | BattleEvent::HpHealed { target_uid, .. } => context.runtime_target_uid = *target_uid,
+        BattleEvent::DamageShared {
+            target_uid,
+            share_count,
+            damage_from,
+            ..
+        } => {
+            context.runtime_target_uid = *target_uid;
+            context.damage_shared_uid = *target_uid;
+            context.damage_shared_count = *share_count;
+            context.hit_damage_from = Some(*damage_from);
+        }
+        BattleEvent::HpLost { target_uid, .. } | BattleEvent::HpHealed { target_uid, .. } => {
+            context.runtime_target_uid = *target_uid
+        }
         BattleEvent::ToughnessBroken { target_uid, .. } => {
             context.runtime_target_uid = *target_uid;
             context.toughness_broken_uid = *target_uid;
@@ -136,6 +147,10 @@ pub(super) fn apply_event_context(
             context.hit_target_uid = hit.target_uid;
             context.hit_career_restraint = Some(hit.career_restraint);
             context.hit_damage_from = Some(hit.damage_from);
+            if hit.share_count > 0 {
+                context.damage_shared_uid = hit.target_uid;
+                context.damage_shared_count = hit.share_count;
+            }
             context.active_skill_id = hit.skill_id;
             context.active_skill_source_uid = hit.source_uid;
             context.active_skill_rank = catalog.skill_rank(hit.skill_id);

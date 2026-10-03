@@ -114,7 +114,7 @@ pub(super) fn sort_buff_by_hp_ops(
 }
 
 pub(super) fn damage_window_remove_ops(
-    target_uid: i64,
+    context: &BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
 ) -> Option<Vec<RuleOp>> {
     let origin = super::command_origin(behavior)?;
@@ -124,9 +124,31 @@ pub(super) fn damage_window_remove_ops(
             .into_iter()
             .filter(|buff_id| *buff_id > 0)
             .map(|buff_id| {
+                if let Some(spec) = crate::engine::skill::buff_act::shell::resolve_process_spec(
+                    context.managers.catalog(),
+                    buff_id,
+                )
+                .filter(|spec| {
+                    spec.deployed_buff_id == buff_id
+                        && context
+                            .managers
+                            .buff
+                            .buff_id_amount(context.target_uid, buff_id)
+                            > 0
+                }) {
+                    return RuleOp::Command(BattleCommand::Shell(
+                        crate::engine::mechanic::shell::ShellCommand::Retrieve {
+                            origin,
+                            source_uid: context.source_uid,
+                            target_uid: context.target_uid,
+                            stock_buff_id: spec.stock_buff_id,
+                            amount: -1,
+                        },
+                    ));
+                }
                 RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
                     origin,
-                    target_uid,
+                    target_uid: context.target_uid,
                     selector: BuffRemoveSelector::IdOrType(buff_id),
                 })))
             })

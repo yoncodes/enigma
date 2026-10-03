@@ -158,6 +158,7 @@ mod tests {
             shield_absorbed: 0,
             career_restraint: false,
             damage_from,
+            share_count: 0,
             assassinate: false,
             ignore_riposte: false,
         })

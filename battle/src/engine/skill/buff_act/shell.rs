@@ -131,28 +131,35 @@ pub fn rule_ops(
         }
         BuffActKind::Shell => {
             // "After being attacked or sharing damage": a skill or skill-effect hit, or a ShareHurt share.
-            let (attacker_uid, target_uid, damage) = match event {
+            let (attacker_uid, target_uid, damage, event_count) = match event {
                 BattleEvent::Hit(hit)
                     if matches!(
                         hit.damage_from,
                         HurtDamageFromType::Skill | HurtDamageFromType::SkillEffect
                     ) =>
                 {
-                    (hit.source_uid, hit.target_uid, hit.amount)
+                    (hit.source_uid, hit.target_uid, hit.amount, 1)
                 }
                 BattleEvent::DamageShared {
                     source_uid,
                     target_uid,
                     amount,
+                    share_count,
                     ..
-                } => (*source_uid, *target_uid, *amount),
+                } => (*source_uid, *target_uid, *amount, (*share_count).max(1)),
                 _ => return Some(Vec::new()),
             };
             if target_uid != subscriber.owner_uid || damage <= 0 {
                 return Some(Vec::new());
             }
             let spec = runtime_process_spec(managers, subscriber.buff_id)?;
-            let amount = subscriber.args.first().copied().unwrap_or(1).max(0);
+            let amount = subscriber
+                .args
+                .first()
+                .copied()
+                .unwrap_or(1)
+                .max(0)
+                .saturating_mul(event_count);
             if amount == 0
                 || managers
                     .buff
@@ -393,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn stock_shell_moves_one_layer_to_the_attacker_after_shared_damage() {
+    fn stock_shell_preserves_shared_damage_cardinality() {
         crate::test_support::init_config();
         let fight = Fight {
             attacker: Some(FightTeam {
@@ -429,6 +436,8 @@ mod tests {
             source_uid: -1,
             target_uid: 10,
             amount: 20,
+            share_count: 3,
+            damage_from: HurtDamageFromType::Skill,
         };
 
         let pool = TargetPool::from_fight(&fight);
@@ -448,7 +457,7 @@ mod tests {
                     source_uid: 10,
                     target_uid: -1,
                     stock_buff_id: 31090111,
-                    amount: 1,
+                    amount: 3,
                     ..
                 }
             ))]
@@ -498,6 +507,7 @@ mod tests {
                 shield_absorbed: 0,
                 career_restraint: false,
                 damage_from,
+                share_count: 0,
                 assassinate: false,
                 ignore_riposte: false,
             });

@@ -232,6 +232,82 @@ fn eagle_death_dispatches_the_exact_cleanup_through_buff_manager() {
 }
 
 #[test]
+fn shell_carrier_death_retrieves_the_configured_deployed_shell() {
+    use crate::engine::{
+        mechanic::shell::ShellCommand,
+        runtime::determinism::RoundDeterminism,
+        skill::{action::SkillModifiers, behavior, target::TargetContext},
+    };
+
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                buffs: vec![BuffInfo {
+                    uid: Some(52),
+                    buff_id: Some(31090112),
+                    layer: Some(3),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(60010, "DisperseForce2"),
+        vec![31090112],
+        vec!["31090112".into()],
+    );
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = SkillModifiers::default();
+    let mut target = TargetContext::default();
+
+    let ops = behavior::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: -1,
+            active_skill_id: 31090121,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Command(BattleCommand::Shell(
+            ShellCommand::Retrieve {
+                source_uid: 10,
+                target_uid: -1,
+                stock_buff_id: 31090111,
+                amount: -1,
+                ..
+            }
+        ))]
+    ));
+}
+
+#[test]
 fn purify_x_keeps_the_limit_separate_from_status_arguments() {
     let behavior = ParsedBehavior::from_spec(
         crate::engine::skill::behavior::classify::BehaviorSpec::new(20020, "PurifyX"),

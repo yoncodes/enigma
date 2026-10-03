@@ -165,7 +165,7 @@ impl BehaviorHandler for Handler {
             }
             BehaviorKind::AddBuffByHeroId => hero_grant_command(&context, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
-            BehaviorKind::DisperseForce2 => damage_window_remove_ops(context.target_uid, behavior),
+            BehaviorKind::DisperseForce2 => damage_window_remove_ops(&context, behavior),
             BehaviorKind::DisperseForce3 | BehaviorKind::DisperseTypeId => {
                 remove_each_buff_family_ops(context.target_uid, behavior)
             }

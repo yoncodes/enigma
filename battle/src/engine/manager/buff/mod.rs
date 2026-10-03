@@ -14,6 +14,7 @@ mod grant_plan;
 mod lifecycle;
 mod query;
 mod result;
+mod resync;
 mod rules;
 mod state;
 mod status;

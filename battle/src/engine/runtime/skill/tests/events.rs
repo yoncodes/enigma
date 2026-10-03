@@ -223,6 +223,7 @@ fn hit_context_uses_the_explicit_skill_catalog_rank() {
         shield_absorbed: 0,
         career_restraint: true,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+        share_count: 0,
         assassinate: false,
         ignore_riposte: false,
     });

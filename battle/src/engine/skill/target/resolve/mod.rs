@@ -794,15 +794,23 @@ fn random_ally_by_rng(entities: &[TargetEntity], determinism: &mut RoundDetermin
 fn lowest_hp_percentage(entities: &[TargetEntity]) -> Vec<i64> {
     entities
         .iter()
-        .min_by_key(|entity| {
-            (
-                entity.current_hp * 10000 / entity.max_hp.max(1),
-                entity.position,
-                entity.uid,
-            )
+        .min_by(|left, right| {
+            compare_hp_percentage(left.current_hp, left.max_hp, right.current_hp, right.max_hp)
+                .then_with(|| left.position.cmp(&right.position))
+                .then_with(|| left.uid.cmp(&right.uid))
         })
         .map(|entity| vec![entity.uid])
         .unwrap_or_default()
+}
+
+fn compare_hp_percentage(
+    left_current: i32,
+    left_max: i32,
+    right_current: i32,
+    right_max: i32,
+) -> std::cmp::Ordering {
+    (i64::from(left_current) * i64::from(right_max.max(1)))
+        .cmp(&(i64::from(right_current) * i64::from(left_max.max(1))))
 }
 
 fn lowest_hp(entities: &[TargetEntity]) -> Vec<i64> {
@@ -897,15 +905,22 @@ fn highest_ex_point(
 fn highest_hp(entities: &[TargetEntity], managers: Option<&BattleManagers>) -> Vec<i64> {
     entities
         .iter()
-        .min_by_key(|entity| {
-            let current_hp = managers
-                .map(|managers| managers.hp.current(entity.uid))
-                .unwrap_or(entity.current_hp);
-            let max_hp = managers
-                .map(|managers| managers.hp.max(entity.uid))
-                .unwrap_or(entity.max_hp)
-                .max(1);
-            (-(current_hp * 10000 / max_hp), entity.position, entity.uid)
+        .min_by(|left, right| {
+            let left_current = managers
+                .map(|managers| managers.hp.current(left.uid))
+                .unwrap_or(left.current_hp);
+            let left_max = managers
+                .map(|managers| managers.hp.max(left.uid))
+                .unwrap_or(left.max_hp);
+            let right_current = managers
+                .map(|managers| managers.hp.current(right.uid))
+                .unwrap_or(right.current_hp);
+            let right_max = managers
+                .map(|managers| managers.hp.max(right.uid))
+                .unwrap_or(right.max_hp);
+            compare_hp_percentage(right_current, right_max, left_current, left_max)
+                .then_with(|| left.position.cmp(&right.position))
+                .then_with(|| left.uid.cmp(&right.uid))
         })
         .map(|entity| vec![entity.uid])
         .unwrap_or_default()
