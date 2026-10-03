@@ -109,16 +109,25 @@ pub fn rule_ops(
             return process_rule_ops(managers, pool, determinism, subscriber, event);
         }
         BuffActKind::Shell => {
-            let BattleEvent::Hit(hit) = event else {
-                return Some(Vec::new());
+            // "After being attacked or sharing damage": a skill or skill-effect hit, or a ShareHurt share.
+            let (attacker_uid, target_uid, damage) = match event {
+                BattleEvent::Hit(hit)
+                    if matches!(
+                        hit.damage_from,
+                        HurtDamageFromType::Skill | HurtDamageFromType::SkillEffect
+                    ) =>
+                {
+                    (hit.source_uid, hit.target_uid, hit.amount)
+                }
+                BattleEvent::DamageShared {
+                    source_uid,
+                    target_uid,
+                    amount,
+                    ..
+                } => (*source_uid, *target_uid, *amount),
+                _ => return Some(Vec::new()),
             };
-            if hit.target_uid != subscriber.owner_uid
-                || hit.amount <= 0
-                || !matches!(
-                    hit.damage_from,
-                    HurtDamageFromType::Skill | HurtDamageFromType::ShareHurt
-                )
-            {
+            if target_uid != subscriber.owner_uid || damage <= 0 {
                 return Some(Vec::new());
             }
             let spec = runtime_process_spec(managers, subscriber.buff_id)?;
@@ -134,7 +143,7 @@ pub fn rule_ops(
             ShellCommand::Deploy {
                 origin,
                 source_uid: subscriber.owner_uid,
-                target_uid: hit.source_uid,
+                target_uid: attacker_uid,
                 stock_buff_id: spec.stock_buff_id,
                 amount,
             }
@@ -302,11 +311,7 @@ mod tests {
 
     use super::*;
     use crate::engine::{
-        event::{
-            kind::EventKind,
-            payload::{HitEvent, ShellChangeEvent},
-            subscription::SubscriptionKey,
-        },
+        event::{kind::EventKind, payload::ShellChangeEvent, subscription::SubscriptionKey},
         manager::buff::CommandOrigin,
         skill::rule::{DefinitionKey, RuleDomain},
     };
@@ -386,21 +391,15 @@ mod tests {
             ..Default::default()
         };
         let managers = BattleManagers::seeded(&fight);
-        let event = BattleEvent::Hit(HitEvent {
+        let event = BattleEvent::DamageShared {
             origin: CommandOrigin {
-                domain: RuleDomain::Skill,
-                key: DefinitionKey::new(1, "SkillDamage"),
+                domain: RuleDomain::BuffAct,
+                key: DefinitionKey::new(872, "ShareHurt"),
             },
             source_uid: -1,
             target_uid: 10,
-            skill_id: 1,
             amount: 20,
-            shield_absorbed: 0,
-            career_restraint: false,
-            damage_from: HurtDamageFromType::ShareHurt,
-            assassinate: false,
-            ignore_riposte: false,
-        });
+        };
 
         let pool = TargetPool::from_fight(&fight);
         let ops = rule_ops(
@@ -424,6 +423,68 @@ mod tests {
                 }
             ))]
         ));
+    }
+
+    #[test]
+    fn stock_shell_deploys_after_a_skill_effect_hit_but_not_after_buff_damage() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(31090111),
+                        layer: Some(8),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let deploys = |damage_from| {
+            let event = BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Skill,
+                    key: DefinitionKey::new(109380001, "SkillDamage"),
+                },
+                source_uid: -1,
+                target_uid: 10,
+                skill_id: 109380001,
+                amount: 20,
+                shield_absorbed: 0,
+                career_restraint: false,
+                damage_from,
+                assassinate: false,
+                ignore_riposte: false,
+            });
+            rule_ops(
+                &managers,
+                &pool,
+                &mut RoundDeterminism::default(),
+                &subscriber(10, 10, 31090111, 870, "Shell", vec![1]),
+                &event,
+            )
+            .unwrap()
+            .len()
+        };
+
+        // "After being attacked": an attack's additional skill-effect damage is still the attack.
+        assert_eq!(deploys(HurtDamageFromType::SkillEffect), 1);
+        assert_eq!(deploys(HurtDamageFromType::Buff), 0);
     }
 
     #[test]

@@ -159,3 +159,20 @@ fn captured_condition_roll_is_owned_by_skill_and_opcode() {
     assert_eq!(determinism.condition_random_roll(31260161, 552210), 999);
     assert!((0..1000).contains(&determinism.condition_random_roll(1, 552210)));
 }
+
+#[test]
+fn observed_additional_crits_are_consumed_per_target_until_replaced() {
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_additional_crits(100, 10, -1, [false, true]);
+    determinism.enqueue_additional_crits(100, 10, -2, [true]);
+
+    assert!(!determinism.roll_additional_crit(100, 10, 20, -1, 1000));
+    assert!(determinism.roll_additional_crit(100, 10, 20, -2, 0));
+    assert!(determinism.roll_additional_crit(100, 10, 20, -1, 0));
+
+    determinism.enqueue_hidden_crits(100, 10, [true]);
+    determinism.enqueue_additional_crits(100, 10, -1, [true]);
+    determinism.clear_crit_choices();
+    assert!(!determinism.roll_hidden_crit(100, 10, -1, 0));
+    assert!(!determinism.roll_additional_crit(100, 10, 20, -1, 0));
+}

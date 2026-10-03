@@ -161,6 +161,25 @@ fn dispatch_subscribers(
     determinism: &mut crate::engine::runtime::determinism::RoundDeterminism,
     event: &BattleEvent,
 ) -> DispatchBatch {
+    if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Event) {
+        eprintln!(
+            "event {event:?} skills={:?} buff_acts={:?}",
+            subscribers
+                .skills
+                .iter()
+                .map(|subscriber| (
+                    subscriber.owner_uid,
+                    subscriber.skill_id,
+                    subscriber.key.definition.opcode
+                ))
+                .collect::<Vec<_>>(),
+            subscribers
+                .buff_acts
+                .iter()
+                .map(|subscriber| (subscriber.owner_uid, subscriber.buff_id))
+                .collect::<Vec<_>>(),
+        );
+    }
     let mut batch = outputs(
         subscribers,
         managers,
@@ -192,6 +211,10 @@ fn dispatch_subscribers(
                 buff_act::registry::RuntimeActorScope::OpposingTeam => {
                     pool.source_is_attacker(subscriber.owner_uid)
                         != pool.source_is_attacker(action.source_uid)
+                }
+                buff_act::registry::RuntimeActorScope::OwnerOrTarget => {
+                    subscriber.owner_uid == action.source_uid
+                        || action.target_uids.contains(&subscriber.owner_uid)
                 }
             };
             observes_actor

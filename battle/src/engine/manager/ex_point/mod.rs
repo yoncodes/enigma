@@ -535,6 +535,12 @@ impl ExPointManager {
         self.apply(source_uid, target_uid, delta, config_effect, 0)
     }
 
+    pub(crate) fn resync_current(&mut self, uid: i64, value: i32) {
+        if let Some(state) = self.states.get_mut(&uid) {
+            state.current = Self::clamp_value(value, Self::cap_for_state(*state));
+        }
+    }
+
     pub fn set(
         &mut self,
         source_uid: i64,

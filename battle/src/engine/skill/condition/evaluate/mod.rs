@@ -369,7 +369,7 @@ pub(crate) fn condition_matches(
     pool: &TargetPool,
     context: TargetContext,
 ) -> bool {
-    condition_kind_matches(
+    let matched = condition_kind_matches(
         condition,
         &condition.kind,
         source_uid,
@@ -377,7 +377,21 @@ pub(crate) fn condition_matches(
         managers,
         pool,
         context,
-    )
+    );
+    if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Condition) {
+        eprintln!(
+            "condition {} {} args={:?} source={source_uid} targets={condition_targets:?} skill={} buff_added={}/{}x{} on {} matched={matched}",
+            condition.opcode,
+            condition.type_name,
+            condition.raw_args,
+            context.active_skill_id,
+            context.added_buff_id,
+            context.added_buff_type_id,
+            context.added_buff_amount,
+            context.added_buff_target_uid,
+        );
+    }
+    matched
 }
 
 fn condition_kind_matches(
@@ -567,13 +581,14 @@ fn condition_kind_matches(
             from_buff_id,
             to_buff_id,
         } => managers.is_some_and(|managers| {
+            // The hit comes from a condition target holding `from` to the owner holding `to`.
             managers
                 .buff
-                .has_active_buff_id_or_type(source_uid, *from_buff_id)
+                .has_active_buff_id_or_type(source_uid, *to_buff_id)
                 && condition_targets.iter().any(|target_uid| {
                     managers
                         .buff
-                        .has_active_buff_id_or_type(*target_uid, *to_buff_id)
+                        .has_active_buff_id_or_type(*target_uid, *from_buff_id)
                 })
         }),
         ParsedConditionKind::SelfBuffTypeTargetBuffTypes {
@@ -638,8 +653,12 @@ fn condition_kind_matches(
         } => managers.is_some_and(|managers| {
             conduit_counter_count(source_uid, *kind, *divisor, *max_count, managers, pool) > 0
         }),
+        // "BuffIdAdd" also lists buff types: Master Assassin's ally grant fires on type 229502.
         ParsedConditionKind::BuffAdded(buff_ids) => {
-            context.added_buff_amount > 0 && buff_ids.contains(&context.added_buff_id)
+            context.added_buff_amount > 0
+                && condition_targets.contains(&context.added_buff_target_uid)
+                && (buff_ids.contains(&context.added_buff_id)
+                    || buff_ids.contains(&context.added_buff_type_id))
         }
         ParsedConditionKind::BuffTypeAdded(type_ids) => {
             context.added_buff_amount > 0

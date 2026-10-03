@@ -117,6 +117,7 @@ pub enum BuffActKind {
     AttrByShield,
     AttrSkillMultiple,
     AttrSkillSingle,
+    AssassinateCreateAdditionalDamage,
     AttrByHeatScale,
     AttrFromEntity,
     AttrOnlyCalDamageAttack,
@@ -358,6 +359,8 @@ pub enum RuntimeActorScope {
     Owner,
     Team,
     OpposingTeam,
+    // Actions taken by the owner and actions that target the owner.
+    OwnerOrTarget,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -372,6 +375,8 @@ pub enum RuntimeExecutionTiming {
     #[default]
     Immediate,
     AfterAction,
+    // "After being attacked": runs with the hit's skill reactions, after them.
+    AfterHitSkills,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -731,7 +736,7 @@ buff_act_definitions! {
         supports: super::add_sp_temp_card::supports_configured_skill3,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10015, "CreateTempSkill3Card"), &[EffectType::None as i32]));
     (302, "BeatBack") => BeatBack,
-        event: EventKind::SkillAction, phase: HitPassives, frame: CausingFrame, actor: OpposingTeam,
+        event: EventKind::SkillAction, phase: HitPassives, source: Owner, actor: OpposingTeam, timing: AfterAction,
         runtime: |context| super::riposte::holder_rule_ops(context.pool, context.subscriber, context.event?),
         supports: super::riposte::supports_holder, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(302, "BeatBack"), &[EffectType::Beatback as i32]));
     (301, "Taunt") => Taunt, effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(301, "Taunt"), &[EffectType::Taunt as i32]));
@@ -919,7 +924,9 @@ buff_act_definitions! {
             if *buff_id > 0 && *compound_cap >= 0 && *first_stacks > 0
                 && *ending_skill > 0 && *target_code != 0), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(846, "DuduBoneContinueChannel"), &[EffectType::Dudubonecontinuechannel as i32]));
     (862, "PaperCircleContinueChannel") => PaperCircleContinueChannel,
-        runtime: |context| super::paper_circle_continue_channel::rule_ops(context.subscriber, context.event?),
+        setup: [RoundStart(2)],
+        runtime: |context| super::paper_circle_continue_channel::rule_ops(context.managers, context.subscriber, context.event?),
+        setup_handler: |context| super::paper_circle_continue_channel::setup_rule_ops(context.managers, &context.subscriber.feature),
         supports: |args| matches!(args, [skill_id, _, _, pairs @ ..]
             if *skill_id > 0 && pairs.len() >= 2 && pairs.len() % 2 == 0), references: references_for_feature, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(862, "PaperCircleContinueChannel"), &[EffectType::None as i32]));
     (850, "AddBuffBoth") => AddBuffBoth,
@@ -1031,14 +1038,17 @@ buff_act_definitions! {
     (407, "Seal") => Seal, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(407, "Seal"), &[]));
     (10005, "Provoke") => Provoke, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10005, "Provoke"), &[EffectType::None as i32]));
+    (10003, "AssassinateCreateAdditionalDamage") => AssassinateCreateAdditionalDamage,
+        supports: super::assassinate_create_additional_damage::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10003, "AssassinateCreateAdditionalDamage"), &[EffectType::None as i32]));
     (10004, "BeAttackedAssassinate") => BeAttackedAssassinate,
-        event: EventKind::BeAttacked, frame: CausingFrame,
+        event: EventKind::SkillEffectStarted, phase: Immediate, source: Applier, actor: OwnerOrTarget,
         runtime: |context| super::assassination::rule_ops(context.catalog, context.subscriber, context.event?),
         supports: super::assassination::supports_target_trigger,
         parser: super::assassination::parse_target_trigger,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10004, "BeAttackedAssassinate"), &[EffectType::None as i32]));
     (10006, "BeatBackDependOnAttackMe") => BeatBackDependOnAttackMe,
-        event: EventKind::SkillAction, phase: HitPassives, frame: CausingFrame, actor: OpposingTeam,
+        event: EventKind::SkillAction, phase: HitPassives, source: Owner, actor: OpposingTeam, timing: AfterAction,
         runtime: |context| super::riposte::rule_ops(context.pool, context.subscriber, context.event?),
         supports: super::riposte::supports_dependent, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10006, "BeatBackDependOnAttackMe"), &[EffectType::None as i32]));
     (815, "AddSpTempCard") => AddSpTempCard,
@@ -1096,15 +1106,14 @@ buff_act_definitions! {
         events: [EventKind::ShellDeployed, EventKind::ShellRetrieved], frame: CausingFrame,
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(869, "ShellProcess"), &[EffectType::None as i32]));
-    (870, "Shell") => Shell, event: EventKind::BeAttacked, frame: CausingFrame,
+    (870, "Shell") => Shell, event: EventKind::BeAttacked, events: [EventKind::DamageShared], frame: CausingFrame,
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(870, "Shell"), &[EffectType::None as i32]));
-    (871, "ShellDebuff") => ShellDebuff, event: EventKind::BeAttacked, frame: CausingFrame,
+    (871, "ShellDebuff") => ShellDebuff, event: EventKind::BeAttacked, frame: CausingFrame, timing: AfterHitSkills,
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(871, "ShellDebuff"), &[EffectType::None as i32]));
-    (872, "ShareHurt") => ShareHurt, frame: CausingFrame,
-        runtime: |context| super::share_hurt::rule_ops(context.managers, context.pool, context.subscriber, context.event?),
-        supports: |_| true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(872, "ShareHurt"), &[EffectType::None as i32]));
+    (872, "ShareHurt") => ShareHurt, effect_time_subscription: false,
+        supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(872, "ShareHurt"), &[EffectType::None as i32]));
     (873, "ShellLock") => ShellLock, event: EventKind::ShellRetrieved, frame: CausingFrame,
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(873, "ShellLock"), &[EffectType::None as i32]));

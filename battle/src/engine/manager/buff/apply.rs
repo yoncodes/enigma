@@ -244,6 +244,11 @@ impl BuffManager {
                 result.rejected =
                     Some(self.reject_with_blocker(route, definition, args, blocker, uid));
             }
+            GrantAction::Resist => {
+                let mut resisted = self.reject_with_blocker(route, definition, args, 0, uid);
+                resisted.resisted = true;
+                result.rejected = Some(resisted);
+            }
             GrantAction::RefreshCount => {
                 result.refreshed = self.refresh_typed_count_using_uids(
                     route.target_uid,
@@ -272,6 +277,12 @@ impl BuffManager {
             GrantAction::RefreshExisting => {
                 result.refreshed = self
                     .refresh_existing(route, definition)
+                    .into_iter()
+                    .collect();
+            }
+            GrantAction::ProlongDuration => {
+                result.refreshed = self
+                    .prolong_duration(route, definition)
                     .into_iter()
                     .collect();
             }
@@ -328,6 +339,37 @@ impl BuffManager {
         })
     }
 
+    // "Can be stacked to prolong the duration": the grant's duration adds to the held copy of
+    // its type family, which keeps its own id.
+    fn prolong_duration(
+        &mut self,
+        route: BuffRoute,
+        definition: &BuffDefinition,
+    ) -> Option<BuffUpdateResult> {
+        let type_id = definition.effective_type_id();
+        let active = self.buffs.iter_mut().find(|active| {
+            active.owner_uid == route.target_uid
+                && active.type_id == type_id
+                && active
+                    .definition
+                    .as_ref()
+                    .is_some_and(BuffDefinition::prolongs_duration)
+        })?;
+        let before = active.buff.clone();
+        active.buff.duration = Some(
+            active
+                .buff
+                .duration
+                .unwrap_or_default()
+                .saturating_add(definition.duration),
+        );
+        Some(BuffUpdateResult {
+            target_uid: route.target_uid,
+            before,
+            after: active.buff.clone(),
+        })
+    }
+
     fn reject_with_blocker(
         &mut self,
         route: BuffRoute,
@@ -341,6 +383,7 @@ impl BuffManager {
         BuffRejectResult {
             target_uid: route.target_uid,
             blocker_buff_id,
+            resisted: false,
             type_id: definition.effective_type_id(),
             buff: BuffInfo {
                 buff_id: Some(route.buff_id),
@@ -369,21 +412,50 @@ impl BuffManager {
     pub(super) fn blocking_buff_id(
         &self,
         target_uid: i64,
-        buff_id: i32,
         definition: &BuffDefinition,
     ) -> Option<i32> {
         self.buffs.iter().find_map(|active| {
             let resident_buff_id = active.buff.buff_id.unwrap_or_default();
             let resident = active.definition.as_ref()?;
-            let incoming_blocks_resident = definition.blocks_buff_id(resident_buff_id)
+            let incoming_blocks_resident = definition.blocks_type(resident.effective_type_id())
                 || definition.blocks_status_id(resident.status_id);
-            let resident_blocks_incoming =
-                resident.blocks_buff_id(buff_id) || resident.blocks_status_id(definition.status_id);
+            let resident_blocks_incoming = resident.blocks_type(definition.effective_type_id())
+                || resident.blocks_status_id(definition.status_id);
             (active.owner_uid == target_uid
                 && !incoming_blocks_resident
                 && resident_blocks_incoming)
                 .then_some(resident_buff_id)
         })
+    }
+
+    // "A chance to resist that status based on their resistance to the status", in permille;
+    // 1000 is the client's full-resistance mark.
+    pub(super) fn resistance(&self, target_uid: i64, definition: &BuffDefinition) -> i32 {
+        let catalog = self.catalog();
+        let base = self
+            .entities
+            .iter()
+            .find(|tracked| tracked.uid == target_uid)
+            .and_then(|tracked| catalog.monster_resistances(tracked.model_id))
+            .unwrap_or_default();
+        definition
+            .features()
+            .iter()
+            .filter_map(|feature| {
+                let resistance_id = catalog.resistance_id_for_act(&feature.act_type)?;
+                let bonus = AttrId::from_raw(resistance_id)
+                    .map(|attr| self.attribute_delta(target_uid, attr))
+                    .unwrap_or_default();
+                Some(base.by_id(resistance_id).unwrap_or_default() + bonus)
+            })
+            .max()
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn buff_resistance(&self, target_uid: i64, buff_id: i32) -> i32 {
+        BuffDefinition::configured(self.catalog().game_data(), buff_id)
+            .map(|definition| self.resistance(target_uid, &definition))
+            .unwrap_or_default()
     }
 
     pub(super) fn immunity_blocker(

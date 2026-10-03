@@ -12,9 +12,11 @@ use super::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GrantAction {
     Reject(i32),
+    Resist,
     RefreshCount,
     RefreshLayer,
     RefreshExisting,
+    ProlongDuration,
     KeepExisting,
     RetainEnhancedVariant,
     ReplaceExisting,
@@ -284,7 +286,7 @@ impl BuffManager {
         args: BuffAddArgs,
         repeat: i32,
     ) -> GrantAction {
-        if let Some(blocker) = self.blocking_buff_id(route.target_uid, route.buff_id, definition) {
+        if let Some(blocker) = self.blocking_buff_id(route.target_uid, definition) {
             return GrantAction::Reject(blocker);
         }
         if self.buffs.iter().any(|active| {
@@ -337,6 +339,18 @@ impl BuffManager {
                 return GrantAction::RefreshExisting;
             }
             return GrantAction::KeepExisting;
+        }
+        if definition.prolongs_duration()
+            && self.buffs.iter().any(|active| {
+                active.owner_uid == route.target_uid
+                    && active.type_id == definition.effective_type_id()
+                    && active
+                        .definition
+                        .as_ref()
+                        .is_some_and(BuffDefinition::prolongs_duration)
+            })
+        {
+            return GrantAction::ProlongDuration;
         }
         if has_matching && policy.on_duplicate == DuplicateGrant::ReplaceExisting {
             return GrantAction::ReplaceExisting;

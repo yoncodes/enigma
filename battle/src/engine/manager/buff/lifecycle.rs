@@ -448,6 +448,7 @@ impl BuffManager {
         self.team_types.insert(uid, team_type);
         self.entities.push(TrackedEntity {
             uid,
+            model_id: entity.model_id.unwrap_or_default(),
             team_type,
             active,
         });

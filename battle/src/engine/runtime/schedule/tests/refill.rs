@@ -687,6 +687,95 @@ fn round_start_refill_waits_for_a_deficit_before_adding_a_newly_ready_ultimate()
 }
 
 #[test]
+fn round_start_refill_draws_before_round_start_cards_are_generated() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3124),
+                current_hp: Some(100),
+                ex_point: Some(10),
+                ex_point_type: Some(3),
+                skill_group1: vec![100],
+                buffs: vec![sonettobuf::BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31242140),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_buff(
+            crate::engine::manager::buff::BuffCommand::AccumulateActValue(
+                crate::engine::manager::buff::BuffAccumulateActValue {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::BuffAct,
+                        key: DefinitionKey::new(10001, "AdrenalineAddCard"),
+                    },
+                    target_uid: 10,
+                    buff_uid: 20,
+                    act_id: 10001,
+                    delta: 2,
+                },
+            ),
+        )
+        .unwrap();
+    let card = CardInfo {
+        uid: Some(10),
+        skill_id: Some(100),
+        ..Default::default()
+    };
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![card.clone()],
+            draw_pile: vec![card.clone()],
+            deck_num: 1,
+        }))
+        .unwrap();
+    let mut determinism = RoundDeterminism::default();
+
+    let (_, next_round, _, _) = run_round_start_after_ai_split(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut determinism,
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        &[],
+        2,
+    )
+    .unwrap();
+
+    let cards = next_round
+        .frames
+        .iter()
+        .flat_map(|frame| &frame.items)
+        .find_map(|item| match item {
+            FrameItem::Cue(RoundCue::NextRoundCards { cards, .. }) => Some(cards),
+            FrameItem::Change(_) | FrameItem::Child(_) | FrameItem::Cue(_) => None,
+        })
+        .expect("round start emits the next hand");
+    assert_eq!(
+        cards
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>(),
+        vec![100, 100, 31242103]
+    );
+}
+
+#[test]
 fn opening_refill_defers_an_ultimate_made_ready_during_setup() {
     init_config();
     let fight = Fight {

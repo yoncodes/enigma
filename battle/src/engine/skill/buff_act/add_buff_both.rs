@@ -224,6 +224,23 @@ mod tests {
             .is_empty()
         );
 
+        let mut ally_attack = event.clone();
+        let BattleEvent::SkillAction(action) = &mut ally_attack else {
+            unreachable!()
+        };
+        action.source_uid = 11;
+        assert!(
+            rule_ops(
+                &managers,
+                &pool,
+                &mut Default::default(),
+                &subscriber,
+                &ally_attack,
+            )
+            .unwrap()
+            .is_empty()
+        );
+
         let mut wrong_phase = event;
         let BattleEvent::SkillAction(action) = &mut wrong_phase else {
             unreachable!()

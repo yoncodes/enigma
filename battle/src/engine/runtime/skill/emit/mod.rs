@@ -95,7 +95,7 @@ fn action_event(
         ),
         is_attack: catalog.is_attack(invocation.plan.skill_id),
         rank: managers.catalog().skill_rank(invocation.plan.skill_id),
-        skill_type: catalog.skill_type(invocation.plan.skill_id),
+        skill_type: execution.context.damage_target_count_kind,
         effect_tag: catalog.effect_tag(invocation.plan.skill_id),
         assassinate: execution.context.active_skill_assassinate,
         ignore_riposte: execution.modifiers.ignore_riposte,
@@ -116,6 +116,6 @@ fn action_event(
 
 mod dispatch;
 
-pub(in crate::engine::runtime) use dispatch::emit_ops;
 #[cfg(test)]
-pub(super) use dispatch::{action_mode, skill_destination_already_emitted};
+pub(super) use dispatch::action_mode;
+pub(in crate::engine::runtime) use dispatch::emit_ops;

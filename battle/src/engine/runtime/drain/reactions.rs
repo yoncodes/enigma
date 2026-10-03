@@ -53,6 +53,7 @@ fn queued_invalid_ultimate_removal(
         independent_parent_group: None,
         frame_owner: Some(FrameOwner::EventRule),
         subscriber_owner_uid: None,
+        caster_frame: None,
     })
 }
 
@@ -79,6 +80,7 @@ fn queued_buff_act_feature_op(
             key,
         }),
         subscriber_owner_uid: Some(feature.owner_uid),
+        caster_frame: None,
     })
 }
 
@@ -484,6 +486,7 @@ pub(super) fn dispatch_reactions(
                 key: definition.key,
             }),
             subscriber_owner_uid: Some(feature.owner_uid),
+            caster_frame: None,
         };
         if timing == crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::AfterAction {
             reactions.after_action.push(queued);
@@ -620,10 +623,11 @@ pub(super) fn dispatch_reactions(
                             key: expiry.trigger.key(),
                         }),
                         subscriber_owner_uid: None,
+                        caster_frame: None,
                     }),
             );
     }
-    reactions.after_publish.extend(queued_reactions(
+    let (after_action, after_publish): (Vec<_>, Vec<_>) = queued_reactions(
         pool,
         after_publish,
         event,
@@ -632,7 +636,11 @@ pub(super) fn dispatch_reactions(
         action_path,
         reentry_skill,
         current_skill_target,
-    )?);
+    )?
+    .into_iter()
+    .partition(waits_for_action);
+    reactions.after_publish.extend(after_publish);
+    reactions.after_action.extend(after_action);
     reactions.after_skill.extend(queued_reactions(
         pool,
         after_skill,
@@ -690,6 +698,7 @@ pub(super) fn dispatch_reactions(
                 independent_parent_group: None,
                 frame_owner: Some(FrameOwner::EventRule),
                 subscriber_owner_uid: None,
+                caster_frame: None,
             }));
     }
     Ok(reactions)
@@ -869,6 +878,7 @@ pub(super) fn queued_reactions(
                     }),
                 }),
                 subscriber_owner_uid: Some(subscriber.owner_uid),
+                caster_frame: None,
             })
         })
         .collect::<Result<Vec<_>, DrainError>>()?;
@@ -955,8 +965,13 @@ pub(super) fn queued_reactions(
                     },
                 ),
                 subscriber_owner_uid: Some(subscriber.owner_uid),
+                caster_frame: None,
             }
         }));
+    }
+    // As an action starts, reactions owned by others (its targets) resolve before the actor's own.
+    if let BattleEvent::SkillEffectStarted(action) = event {
+        reactions.sort_by_key(|reaction| reaction.subscriber_owner_uid == Some(action.source_uid));
     }
     Ok(reactions)
 }
@@ -1067,4 +1082,17 @@ pub(super) fn reaction_skill_target(
         ReactionFrameTarget::Owner => Some(owner_uid),
         ReactionFrameTarget::CausingFrame => current_skill_target.or_else(|| event.target_uid()),
     }
+}
+
+// A buff act declared to run after the causing action waits for that action to complete.
+fn waits_for_action(queued: &QueuedOp) -> bool {
+    matches!(
+        &queued.frame_owner,
+        Some(FrameOwner::BuffAct { key, .. })
+            if crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)
+                .is_some_and(|definition| {
+                    definition.runtime.execution_timing
+                        == crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::AfterAction
+                })
+    )
 }

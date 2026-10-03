@@ -40,6 +40,7 @@ pub struct DamageRequest<'a> {
     pub is_conduit: bool,
     pub is_crit: bool,
     pub extra_skill_kind: i32,
+    pub performs_extra_action: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -76,6 +77,7 @@ pub fn resolve_attack_command(
             is_conduit: plan.is_conduit,
             is_crit: plan.is_crit,
             extra_skill_kind: plan.extra_skill_kind,
+            performs_extra_action: plan.performs_extra_action,
         },
         runtime,
     )?;
@@ -463,6 +465,7 @@ pub(super) fn direct_damage(
         is_conduit,
         is_crit,
         extra_skill_kind,
+        performs_extra_action,
         ..
     } = request;
     let DamageRuntime {
@@ -675,6 +678,7 @@ pub(super) fn direct_damage(
                     hp,
                     is_ultimate,
                     extra_action,
+                    performs_extra_action,
                 )
             })
             .sum::<i32>()
@@ -931,6 +935,7 @@ pub(super) fn direct_damage(
                         hp,
                         is_ultimate,
                         extra_action,
+                        performs_extra_action,
                     );
                 (delta != 0).then_some((feature.buff_id, feature.act_type.as_str(), delta))
             })

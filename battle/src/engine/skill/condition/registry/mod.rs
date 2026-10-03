@@ -465,7 +465,7 @@ condition_definitions! {
     [64208] "HasRejectBuffId" => buff::rejected_buff_id_or_type, filters_behavior_targets(event_trigger(EventKind::BuffRejected, None));
     [56301] "NoBuff" => buff::first_status_absent, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
     [750101] "PlayerHasBuff" => buff::team_buff_presence, setup_route(SetupStage::RoundStartCondition, 101, &[]);
-    [750307] "PlayerHasBuff" => buff::team_buff_presence, event_trigger(EventKind::RoundEndFinalSettlement, None);
+    [750307] "PlayerHasBuff" => buff::team_buff_presence, event_trigger(EventKind::RoundEndAfterFinalSettlement, None);
     [514100] "SelfTeamHasBuffTypeLayerLessThan" => buff::team_buff_type_layer_at_most, setup_route(SetupStage::RoundStartCondition, 100, &[EventKind::BuffChanged]);
     [57208] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [57209] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[EventKind::TargetAttacked]));
@@ -483,6 +483,7 @@ condition_definitions! {
     [539203] "PerSelfTeamTypeType2BuffTypeIdNum" => buff::per_team_status_type_count, predicate(&[EventKind::BuffChanged]);
     [539301] "PerSelfTeamTypeType2BuffTypeIdNum" => buff::per_team_status_type_count, event_trigger(EventKind::SmallRoundEnd, None);
     [51201] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [51402] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [51203] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [51210] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [51212] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, predicate(&[]);
@@ -531,7 +532,7 @@ condition_definitions! {
     [77203] "HasBuffGroup" => buff::buff_group, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [77208] "HasBuffGroup" => buff::buff_group, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [78208] "NoBuffGroup" => buff::no_buff_group, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
-    [1007204] "FromBuffAndToBuff" => buff::from_and_to_buff, predicate(&[EventKind::BuffChanged]);
+    [1007204] "FromBuffAndToBuff" => buff::from_and_to_buff, incoming_attack_modifier(predicate(&[EventKind::BuffChanged]));
     [701201] "HasMasterHalo" => buff::master_halo, predicate(&[EventKind::BuffChanged]);
     [701203] "HasMasterHalo" => buff::master_halo, predicate(&[EventKind::BuffChanged]);
     [701210] "HasMasterHalo" => buff::master_halo, predicate(&[EventKind::BuffChanged]);
@@ -651,9 +652,9 @@ condition_definitions! {
     [695213] "ShareDamage" => trigger::parse_share_damage, event_trigger(EventKind::TargetAttacked, None);
     [1001203] "Assassinate" => trigger::parse_assassinate, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [1001204] "Assassinate" => trigger::parse_assassinate, event_trigger(EventKind::SkillAction, None);
-    [1001208] "Assassinate" => trigger::parse_assassinate, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
+    [1001208] "Assassinate" => trigger::parse_assassinate, in_causing_frame(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [1001210] "Assassinate" => trigger::parse_assassinate, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
-    [1001212] "Assassinate" => trigger::parse_assassinate, team_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit)));
+    [1001212] "Assassinate" => trigger::parse_assassinate, team_observes(event_trigger(EventKind::AllyAction, None));
     [791210] "ToBrokenEnemy" => trigger::parse_target_guard_broken, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [25201] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [25203] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
@@ -667,7 +668,7 @@ condition_definitions! {
     [502212] "ActiveUseSkill" => active_skill::active_ally_use, reaction_targets_causing_frame(normal_buff_grant(event_trigger(EventKind::AllyAction, None)));
     [620212] "CurrSkillLevel" => active_skill::rank, event_trigger(EventKind::AllyAction, None);
     [502203] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
-    [502202] "ActiveUseSkill" => active_skill::active_use, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate))));
+    [502202] "ActiveUseSkill" => active_skill::active_use, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate))));
     [502208] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [502210] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [659212] "UseSkill" => active_skill::use_skill, event_trigger(EventKind::AllyAction, None);
@@ -680,7 +681,7 @@ condition_definitions! {
     [6622032] "ActiveUseSkillId" => active_skill::skill_id, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [662208] "ActiveUseSkillId" => active_skill::skill_id, uses_active_skill_targets(child_buff_grant(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage))));
     [403201, 403208] "SkillExtraType" => extra::active_action, predicate(&[]);
-    [403203] "SkillExtraType" => extra::active_action, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [403203] "SkillExtraType" => extra::active_action, event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate));
     [403210] "SkillExtraType" => extra::active_action, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [403212] "SkillExtraType" => extra::other_ally_action, event_trigger(EventKind::AllyAction, None);
     [626212] "ActionSkillExtraType" => extra::other_ally_action, event_trigger(EventKind::AllyAction, None);
@@ -704,7 +705,7 @@ condition_definitions! {
     [542004] "InMagicCircleId" => magic_circle::present, predicate(&[EventKind::FieldChanged]);
     [711039] "AddMagicCircle" => magic_circle::added, event_trigger(EventKind::FieldChanged, None);
     [712040] "RemoveMagicCircle" => magic_circle::removed, event_trigger(EventKind::FieldChanged, None);
-    [10] "BuffIdAdd" => buff::buff_added, event_trigger(EventKind::BuffChanged, None);
+    [10] "BuffIdAdd" => buff::buff_added, reactivates_on(event_trigger(EventKind::BuffChanged, None), &[EventKind::BuffAdded]);
     [88] "BuffTypeAdd" => buff::buff_type_added, event_trigger(EventKind::BuffAdded, None);
     [49] "BuffIdDel" => buff::buff_removed, event_trigger(EventKind::BuffRemoved, None);
     [515005] "BuffIdExpireOnly" => buff::buff_expired, event_trigger(EventKind::BuffRemoved, None);

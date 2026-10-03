@@ -167,6 +167,15 @@ impl BehaviorHandler for Handler {
                 let [buff_id, amount, skill_id] = behavior.args.as_slice() else {
                     return None;
                 };
+                // "When other allies cast an incantation actively, Ezio consumes 1 stack ... on the
+                // main target": a played attack card, not a cast by a skill or a buff on allies.
+                if !matches!(
+                    context.event,
+                    Some(crate::engine::event::payload::BattleEvent::AllyAction(action))
+                        if action.card_index > 0 && action.is_attack
+                ) {
+                    return Some(Vec::new());
+                }
                 if context
                     .managers
                     .buff
@@ -346,6 +355,8 @@ impl BehaviorHandler for Handler {
                 invocation.target =
                     crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
                 invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+                // The cast follows the casting action's own after-attack and ally-action reactions.
+                invocation.start = crate::engine::skill::action::SkillStart::AfterCurrentAction;
                 Some(vec![RuleOp::Skill(invocation)])
             }
             BehaviorKind::DirectUseSkill2 => {

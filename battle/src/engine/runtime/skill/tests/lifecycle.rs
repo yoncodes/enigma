@@ -12,7 +12,7 @@ fn team_injury_count_is_resynchronized_between_skill_phases() {
 }
 
 #[test]
-fn config_extra_actions_publish_as_actions_without_changing_other_nested_skills() {
+fn config_extra_actions_and_ripostes_publish_as_actions_without_changing_other_nested_skills() {
     use crate::engine::skill::{action::SkillExecutionMode, condition::extra::ExtraSkillKind};
 
     assert_eq!(
@@ -24,6 +24,10 @@ fn config_extra_actions_publish_as_actions_without_changing_other_nested_skills(
     );
     assert_eq!(
         action_mode(SkillExecutionMode::Nested, Some(ExtraSkillKind::Riposte)),
+        SkillExecutionMode::Active
+    );
+    assert_eq!(
+        action_mode(SkillExecutionMode::Nested, Some(ExtraSkillKind::Reinforced)),
         SkillExecutionMode::Nested
     );
     assert_eq!(
@@ -540,39 +544,6 @@ fn additional_damage_activation_consumes_source_count_before_temporary_buff() {
         })
         .unwrap();
     assert!(phase < cleanup);
-}
-
-#[test]
-fn repeated_direct_use_destinations_are_alternatives_within_one_parent_skill() {
-    let behavior = ParsedBehavior::new(50008, "DirectUseSkill", vec![20]);
-    let invocation: SkillInvocation = SkillRequest {
-        source_uid: 10,
-        skill_id: 20,
-    }
-    .into();
-    let outputs = vec![SkillEmissionOp {
-        op: RuleOp::Skill(invocation),
-        owner: crate::engine::skill::behavior::registry::OutputOwner::Skill,
-        consequence: ConsequencePolicy::Default,
-        frame_owner: None,
-    }];
-
-    let definition = behavior::registry::find(&behavior).unwrap();
-    assert!(skill_destination_already_emitted(
-        &outputs, definition, &behavior
-    ));
-    let other = ParsedBehavior::new(50008, "DirectUseSkill", vec![21]);
-    assert!(!skill_destination_already_emitted(
-        &outputs,
-        behavior::registry::find(&other).unwrap(),
-        &other,
-    ));
-    let repeated = ParsedBehavior::new(50012, "DirectUseSkillNoAct", vec![20]);
-    assert!(!skill_destination_already_emitted(
-        &outputs,
-        behavior::registry::find(&repeated).unwrap(),
-        &repeated,
-    ));
 }
 
 #[test]

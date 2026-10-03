@@ -111,12 +111,18 @@ impl RuleOutcome {
     }
 
     pub(crate) fn death_count(&self) -> i32 {
+        let deaths = |changes: &HpChanges| {
+            changes
+                .with_shares()
+                .filter(|change| change.caused_death())
+                .count() as i32
+        };
         match self {
-            Self::Hp(execution) => i32::from(execution.changes.caused_death()),
+            Self::Hp(execution) => deaths(&execution.changes),
             Self::HpBatch(changes) => changes
                 .iter()
-                .filter(|execution| execution.changes.caused_death())
-                .count() as i32,
+                .map(|execution| deaths(&execution.changes))
+                .sum(),
             _ => 0,
         }
     }
@@ -136,10 +142,10 @@ impl RuleOutcome {
 
     pub(crate) fn take_deaths(&mut self) -> Vec<crate::engine::manager::hp::DeathTransition> {
         match self {
-            Self::Hp(execution) => execution.changes.death.take().into_iter().collect(),
+            Self::Hp(execution) => execution.changes.take_deaths_with_shares(),
             Self::HpBatch(changes) => changes
                 .iter_mut()
-                .filter_map(|execution| execution.changes.death.take())
+                .flat_map(|execution| execution.changes.take_deaths_with_shares())
                 .collect(),
             _ => Vec::new(),
         }
@@ -149,10 +155,14 @@ impl RuleOutcome {
         let injured =
             |change: &HpChanges| change.hp.filter(|hp| hp.delta < 0).map(|hp| hp.target_uid);
         match self {
-            Self::Hp(execution) => injured(&execution.changes).into_iter().collect(),
+            Self::Hp(execution) => execution
+                .changes
+                .with_shares()
+                .filter_map(injured)
+                .collect(),
             Self::HpBatch(changes) => changes
                 .iter()
-                .filter_map(|execution| injured(&execution.changes))
+                .flat_map(|execution| execution.changes.with_shares().filter_map(injured))
                 .collect(),
             _ => Vec::new(),
         }
@@ -429,9 +439,24 @@ impl From<crate::engine::manager::revive::ReviveError> for RuleExecutionError {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn execute_rule_op(
     managers: &mut BattleManagers,
     events: &mut EventBus,
+    output: RuleOp,
+) -> Result<RuleOutcome, RuleExecutionError> {
+    execute_rule_op_with(
+        managers,
+        events,
+        &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
+        output,
+    )
+}
+
+pub(crate) fn execute_rule_op_with(
+    managers: &mut BattleManagers,
+    events: &mut EventBus,
+    determinism: &mut crate::engine::runtime::determinism::RoundDeterminism,
     output: RuleOp,
 ) -> Result<RuleOutcome, RuleExecutionError> {
     match output {
@@ -440,7 +465,7 @@ pub(crate) fn execute_rule_op(
             Ok(RuleOutcome::PublishedEvent)
         }
         RuleOp::Command(BattleCommand::Buff(command)) => {
-            let changes = managers.execute_buff(command)?;
+            let changes = managers.execute_buff_rolled(command, determinism)?;
             for event in changes.events() {
                 events.push(event);
             }
@@ -451,7 +476,7 @@ pub(crate) fn execute_rule_op(
             let batch_result = (|| {
                 let mut batch = Vec::with_capacity(commands.len());
                 for command in commands {
-                    batch.push(managers.execute_buff(command)?);
+                    batch.push(managers.execute_buff_rolled(command, determinism)?);
                 }
                 Ok::<_, RuleExecutionError>(batch)
             })();

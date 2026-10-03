@@ -183,6 +183,7 @@ fn bloodtithe_spend_keeps_atomic_changes_in_their_semantic_frames() {
         independent_parent_group: None,
         frame_owner: None,
         subscriber_owner_uid: None,
+        caster_frame: None,
     }]);
 
     let mut catalog = SkillEffectCatalog::default();
@@ -933,4 +934,82 @@ fn ally_action_settles_the_acting_owners_take_stage_buff() {
             if changes.origin.key.opcode == 212
                 && changes.change.removed.iter().any(|removed| removed.buff.uid == Some(2))
     )));
+}
+
+#[test]
+fn an_action_start_queues_its_targets_reactions_before_the_actors() {
+    use crate::engine::{
+        event::{kind::EventKind, subscription::SubscriptionKey},
+        skill::subscriber::SkillSubscriber,
+    };
+
+    let reaction = |owner_uid, skill_id, key| {
+        (
+            SkillSubscriber {
+                owner_uid,
+                skill_id,
+                slot_index: Some(0),
+                key: SubscriptionKey::new(EventKind::SkillEffectStarted, key),
+            },
+            RuleOp::Skill(
+                SkillRequest {
+                    source_uid: owner_uid,
+                    skill_id,
+                }
+                .into(),
+            ),
+        )
+    };
+    let started = BattleEvent::SkillEffectStarted(crate::engine::skill::action::SkillActionEvent {
+        source_uid: 10,
+        skill_id: 31050151,
+        target_uid: -1,
+        target_uids: vec![-1],
+        attacked_target_uids: Vec::new(),
+        phase: crate::engine::skill::action::SkillPhase::Immediate,
+        skill_slot: 0,
+        is_attack: true,
+        rank: 1,
+        skill_type: 1,
+        effect_tag: 1,
+        assassinate: false,
+        ignore_riposte: false,
+        damage_amount: 0,
+        kill_count: 0,
+        crit_count: 0,
+        guard_break_count: 0,
+        additional_moxie: 0,
+        extra_skill_kind: 1,
+        mode: crate::engine::skill::action::SkillExecutionMode::Active,
+        teammate_injury_count: 0,
+        teammate_injury_count_not_reset: 0,
+        team_injury_count_round: 0,
+        card_enchants: Vec::new(),
+        buff_additions: Vec::new(),
+    });
+    let queued = queued_reactions(
+        &TargetPool::default(),
+        dispatcher::DispatchBatch {
+            skills: vec![
+                reaction(10, 433911, DefinitionKey::new(403203, "SkillExtraType")),
+                reaction(-1, 109380003, DefinitionKey::new(502202, "ActiveUseSkill")),
+            ],
+            ..Default::default()
+        },
+        &started,
+        Some(&[0]),
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(
+        queued
+            .iter()
+            .map(|reaction| reaction.subscriber_owner_uid)
+            .collect::<Vec<_>>(),
+        vec![Some(-1), Some(10)]
+    );
 }

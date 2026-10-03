@@ -11,6 +11,7 @@ fn queued(op: RuleOp) -> QueuedOp {
         independent_parent_group: None,
         frame_owner: None,
         subscriber_owner_uid: None,
+        caster_frame: None,
     }
 }
 
@@ -407,6 +408,7 @@ fn terminal_skips_unstarted_losing_subscribers_by_presentation_frame_owner() {
                 independent_parent_group: None,
                 frame_owner: Some(owner.clone()),
                 subscriber_owner_uid: Some(-1),
+                caster_frame: None,
             },
             QueuedOp {
                 op: RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(
@@ -430,6 +432,7 @@ fn terminal_skips_unstarted_losing_subscribers_by_presentation_frame_owner() {
                 independent_parent_group: None,
                 frame_owner: Some(losing_frame_owner),
                 subscriber_owner_uid: Some(-2),
+                caster_frame: None,
             },
         ]);
 

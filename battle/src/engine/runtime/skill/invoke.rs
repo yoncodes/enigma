@@ -96,6 +96,7 @@ pub(super) fn apply_event_context(
         BattleEvent::BuffAdded(change) | BattleEvent::BuffChanged(change) => {
             context.runtime_target_uid = change.target_uid;
             context.added_buff_id = change.buff_id;
+            context.added_buff_type_id = catalog.buff_type_id(change.buff_id);
             context.added_buff_amount = (change.after_amount - change.before_amount).max(0);
             context.added_buff_target_uid = change.target_uid;
             context.added_buff_status_id = catalog
@@ -122,9 +123,9 @@ pub(super) fn apply_event_context(
             context.triggered_buff_act_id = trigger.act_id;
             context.triggered_buff_uid = trigger.buff_uid;
         }
-        BattleEvent::HpLost { target_uid, .. } | BattleEvent::HpHealed { target_uid, .. } => {
-            context.runtime_target_uid = *target_uid
-        }
+        BattleEvent::HpLost { target_uid, .. }
+        | BattleEvent::DamageShared { target_uid, .. }
+        | BattleEvent::HpHealed { target_uid, .. } => context.runtime_target_uid = *target_uid,
         BattleEvent::ToughnessBroken { target_uid, .. } => {
             context.runtime_target_uid = *target_uid;
             context.toughness_broken_uid = *target_uid;

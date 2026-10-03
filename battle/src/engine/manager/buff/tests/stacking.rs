@@ -449,3 +449,59 @@ fn timed_layer_grants_only_merge_with_an_instance_at_the_fresh_duration() {
     assert_eq!(second.refreshed[0].after.layer, Some(2));
     assert_eq!(manager.active_for(10).count(), 2);
 }
+
+#[test]
+fn include_type_two_timed_grant_prolongs_the_held_copy() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.add_replacing_excluded(&hp, 10, 10, 2292031, 0);
+    let held = manager
+        .active_for(10)
+        .find(|buff| buff.buff_id == Some(2292031))
+        .and_then(|buff| buff.uid);
+
+    let second = manager.add_replacing_excluded(&hp, 10, 10, 2292031, 0);
+
+    // [Fighting Experience]: "Can be stacked to prolong the duration".
+    assert!(second.added.is_none());
+    assert_eq!(second.refreshed.len(), 1);
+    assert_eq!(second.refreshed[0].after.uid, held);
+    assert_eq!(second.refreshed[0].after.duration, Some(6));
+    assert_eq!(manager.active_for(10).count(), 1);
+}
+
+#[test]
+fn include_type_two_grant_prolongs_the_held_copy_of_its_type_family() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.add_replacing_excluded(&hp, 10, 10, 2292041, 0);
+
+    let second = manager.add_replacing_excluded(&hp, 10, 10, 2292031, 0);
+
+    // Both Fighting Experience ranks share one type: the held copy keeps its id and gains 3 rounds.
+    assert!(second.added.is_none());
+    assert_eq!(second.refreshed.len(), 1);
+    assert_eq!(second.refreshed[0].after.buff_id, Some(2292041));
+    assert_eq!(second.refreshed[0].after.duration, Some(7));
+    assert_eq!(manager.active_for(10).count(), 1);
+}
+
+#[test]
+fn include_type_two_grant_never_prolongs_a_permanent_family_member() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.add_replacing_excluded(&hp, 10, 10, 801650341, 0);
+
+    let timed = manager.add_replacing_excluded(&hp, 10, 10, 4031, 0);
+
+    assert!(timed.added.is_some());
+    assert!(timed.refreshed.is_empty());
+    assert!(
+        manager
+            .active_for(10)
+            .any(|buff| buff.buff_id == Some(801650341) && buff.duration.unwrap_or_default() == 0)
+    );
+}

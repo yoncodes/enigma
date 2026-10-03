@@ -545,6 +545,11 @@ impl BehaviorHandler for Handler {
                             .owns_skill(source_uid, context.active_skill_id),
                         is_crit,
                         extra_skill_kind: context.target.extra_skill_kind,
+                        performs_extra_action:
+                            crate::engine::skill::condition::extra::skill_kind_from_is_extra(
+                                context.target.extra_skill_kind,
+                            )
+                            .is_some_and(|kind| kind.is_extra_action()),
                     },
                     DamageRuntime {
                         fight_version: context.managers.fight_version(),

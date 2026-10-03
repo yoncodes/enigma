@@ -169,6 +169,11 @@ fn damage_rule_ops(
             assassinate: true,
             main_target: true,
             extra_skill_kind: context.target.extra_skill_kind,
+            performs_extra_action:
+                crate::engine::skill::condition::extra::skill_kind_from_is_extra(
+                    context.target.extra_skill_kind,
+                )
+                .is_some_and(|kind| kind.is_extra_action()),
             additional_enabled: false,
             additional_is_crit: None,
         },

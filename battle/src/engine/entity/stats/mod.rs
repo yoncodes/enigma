@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use sonettobuf::{HeroAttribute, HeroExAttribute, HeroSpAttribute};
 
@@ -737,7 +737,8 @@ fn talent_bonus(
     let counts = placements
         .into_iter()
         .map(|id| if id == star_cube { style_cube } else { id })
-        .fold(HashMap::<i32, i32>::new(), |mut counts, id| {
+        // Sorted so the float sums below add in the same order on every run.
+        .fold(BTreeMap::<i32, i32>::new(), |mut counts, id| {
             *counts.entry(id).or_default() += 1;
             counts
         });

@@ -71,7 +71,15 @@ pub fn seed_round_determinism(
     catalog: &SkillEffectCatalog,
     round: &FightRound,
 ) {
-    runtime.seed_card_draws(round.team_a_cards2.clone());
+    // The deal after actions draws teamACards2; the round-start refill then draws teamACards1.
+    runtime.seed_card_draws(
+        round
+            .team_a_cards2
+            .iter()
+            .chain(&round.team_a_cards1)
+            .cloned()
+            .collect(),
+    );
     runtime.seed_crystal_cards(
         round
             .before_cards1
@@ -83,6 +91,69 @@ pub fn seed_round_determinism(
         runtime.seed_next_ai_cards(round.ai_use_cards.clone());
     }
     runtime.seed_random_skills(random_skill_choices(catalog, round));
+    let (hidden, additional) = crit_choices(round);
+    runtime.seed_crits(hidden, additional);
+}
+
+type HiddenCrit = ((i32, i64), bool);
+type AdditionalCrit = ((i32, i64, i64), bool);
+
+// Each effect the engine rolls a crit for is rolled under its own step's skill (or buff) and
+// source, in step order. Config effects name the rolling source: skill row damage (-1), healing
+// behaviors 20001/90001, Spirit Shell heals (0), and crit-capable origin damage 30015/60127.
+fn crit_choices(round: &FightRound) -> (Vec<HiddenCrit>, Vec<AdditionalCrit>) {
+    use sonettobuf::effect_type_enum::EffectType;
+
+    fn visit(step: &FightStep, hidden: &mut Vec<HiddenCrit>, additional: &mut Vec<AdditionalCrit>) {
+        let key = step
+            .act_id
+            .filter(|act_id| *act_id > 0)
+            .zip(step.from_id.filter(|from_id| *from_id != 0));
+        for effect in &step.act_effect {
+            if let Some((act_id, from_id)) = key {
+                let effect_type = effect.effect_type.unwrap_or_default();
+                let crit = |normal: EffectType, crit: EffectType| {
+                    [(normal as i32, false), (crit as i32, true)]
+                        .into_iter()
+                        .find_map(|(kind, is_crit)| (kind == effect_type).then_some(is_crit))
+                };
+                if let Some(is_crit) = crit(
+                    EffectType::Additionaldamage,
+                    EffectType::Additionaldamagecrit,
+                ) {
+                    additional.push((
+                        (act_id, from_id, effect.target_id.unwrap_or_default()),
+                        is_crit,
+                    ));
+                } else {
+                    let config_effect = effect.config_effect.unwrap_or_default();
+                    let rolled = crit(EffectType::Damage, EffectType::Crit)
+                        .filter(|_| config_effect == -1)
+                        .or_else(|| {
+                            crit(EffectType::Heal, EffectType::Healcrit)
+                                .filter(|_| matches!(config_effect, 0 | 20001 | 90001))
+                        })
+                        .or_else(|| {
+                            crit(EffectType::Origindamage, EffectType::Origincrit)
+                                .filter(|_| matches!(config_effect, 30015 | 60127))
+                        });
+                    if let Some(is_crit) = rolled {
+                        hidden.push(((act_id, from_id), is_crit));
+                    }
+                }
+            }
+            if let Some(child) = effect.fight_step.as_ref() {
+                visit(child, hidden, additional);
+            }
+        }
+    }
+
+    let mut hidden = Vec::new();
+    let mut additional = Vec::new();
+    for step in &round.fight_step {
+        visit(step, &mut hidden, &mut additional);
+    }
+    (hidden, additional)
 }
 
 fn random_skill_choices(catalog: &SkillEffectCatalog, round: &FightRound) -> Vec<i32> {
@@ -245,6 +316,63 @@ mod tests {
         assert_eq!(
             determinism.take_start_decks(),
             Some((ai, normal.clone(), normal, 0))
+        );
+    }
+
+    #[test]
+    fn observed_crits_follow_only_rolled_effects_of_their_own_step_in_order() {
+        use sonettobuf::{ActEffect, effect_type_enum::EffectType};
+
+        let effect = |effect_type: EffectType, target_id: i64, config_effect: i32| ActEffect {
+            effect_type: Some(effect_type as i32),
+            target_id: Some(target_id),
+            config_effect: Some(config_effect),
+            ..Default::default()
+        };
+        let nested = FightStep {
+            act_id: Some(31090112),
+            from_id: Some(20),
+            act_effect: vec![effect(EffectType::Healcrit, 10, 0)],
+            ..Default::default()
+        };
+        let round = FightRound {
+            fight_step: vec![FightStep {
+                act_id: Some(31090111),
+                from_id: Some(10),
+                act_effect: vec![
+                    // Life loss and plain heals are not crit rolls.
+                    effect(EffectType::Damage, 10, 30006),
+                    effect(EffectType::Crit, -1, -1),
+                    effect(EffectType::Additionaldamage, -1, -1),
+                    ActEffect {
+                        fight_step: Some(nested),
+                        ..Default::default()
+                    },
+                    effect(EffectType::Additionaldamagecrit, -1, -1),
+                    effect(EffectType::Heal, 10, 20016),
+                    effect(EffectType::Damage, -2, -1),
+                    effect(EffectType::Heal, 10, 20001),
+                    effect(EffectType::Buffadd, -2, 0),
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let (hidden, additional) = crit_choices(&round);
+
+        assert_eq!(
+            hidden,
+            vec![
+                ((31090111, 10), true),
+                ((31090112, 20), true),
+                ((31090111, 10), false),
+                ((31090111, 10), false)
+            ]
+        );
+        assert_eq!(
+            additional,
+            vec![((31090111, 10, -1), false), ((31090111, 10, -1), true)]
         );
     }
 }

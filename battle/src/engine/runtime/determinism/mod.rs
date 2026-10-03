@@ -230,6 +230,24 @@ impl RoundDeterminism {
             .extend(choices);
     }
 
+    pub fn enqueue_additional_crits(
+        &mut self,
+        skill_id: i32,
+        source_uid: i64,
+        target_uid: i64,
+        choices: impl IntoIterator<Item = bool>,
+    ) {
+        self.additional_crit_choices
+            .entry((skill_id, source_uid, target_uid))
+            .or_default()
+            .extend(choices);
+    }
+
+    pub fn clear_crit_choices(&mut self) {
+        self.hidden_crit_choices.clear();
+        self.additional_crit_choices.clear();
+    }
+
     pub fn enqueue_skill_target_choices(
         &mut self,
         choices: impl IntoIterator<Item = SkillTargetChoice>,

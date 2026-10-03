@@ -15,6 +15,7 @@ pub mod add_to_buff_entity_2;
 pub mod add_to_target;
 pub mod additional_damage;
 pub mod adrenaline_add_card;
+pub mod assassinate_create_additional_damage;
 pub mod assassination;
 pub mod attr;
 pub mod attr_and_layer_attr;
@@ -903,6 +904,7 @@ pub fn incoming_target_attack_attribute_delta(
         .sum()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn calculated_attack_attribute_delta_for_skill(
     feature: &ActiveBuffFeature,
     attr_id: AttrId,
@@ -911,12 +913,26 @@ pub fn calculated_attack_attribute_delta_for_skill(
     hp: &crate::engine::manager::hp::HpManager,
     is_big_skill: bool,
     extra_action: bool,
+    performs_extra_action: bool,
 ) -> i32 {
-    if extra_action && feature_kind(feature) == Some(registry::BuffActKind::MustCritAndFixTempAttr)
-    {
-        return must_crit_and_fix_temp_attr::attribute_delta(
-            feature, attr_id, attributes, buffs, hp,
-        );
+    // Gust Force Field bonuses share the field's own "performs an extra action" clause.
+    match feature_kind(feature) {
+        Some(registry::BuffActKind::MustCritAndFixTempAttr) if performs_extra_action => {
+            return must_crit_and_fix_temp_attr::attribute_delta(
+                feature, attr_id, attributes, buffs, hp,
+            );
+        }
+        Some(registry::BuffActKind::FixTempAttrByBuffLayer) => {
+            return attack_attribute_delta_for_skill(
+                feature,
+                attr_id,
+                buffs,
+                hp,
+                is_big_skill,
+                performs_extra_action,
+            );
+        }
+        _ => {}
     }
     attack_attribute_delta_for_skill(feature, attr_id, buffs, hp, is_big_skill, extra_action)
 }

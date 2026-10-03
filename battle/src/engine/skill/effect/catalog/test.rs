@@ -677,7 +677,7 @@ fn master_halo_immediate_gate_uses_the_skill_extra_type_driver() {
     assert_eq!(
         slot.compiled_subscriptions().unwrap(),
         vec![SubscriptionKey::at_phase(
-            crate::engine::event::kind::EventKind::SkillAction,
+            crate::engine::event::kind::EventKind::SkillEffectStarted,
             crate::engine::skill::rule::DefinitionKey::new(403203, "SkillExtraType"),
             Some(crate::engine::skill::action::SkillPhase::Immediate),
         )]

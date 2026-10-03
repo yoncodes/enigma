@@ -1817,3 +1817,399 @@ fn dodged_attack_does_not_apply_effects_to_the_target_hit() {
     assert_eq!(managers.hp.current(-1), hp_before);
     assert!(!managers.buff.has_buff_id(-1, 4051));
 }
+
+#[test]
+fn an_action_not_played_from_a_card_pays_the_extra_action_eureka_cost() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                power_infos: vec![sonettobuf::PowerInfo {
+                    power_id: Some(crate::engine::manager::eureka::EUREKA_RESOURCE_ID),
+                    num: Some(2),
+                    max: Some(5),
+                }],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31050145),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let execution = SkillExecution::new(TargetContext::default());
+    let pays_eureka = |card_index| {
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 100,
+        }
+        .into();
+        invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+        invocation.card_index = card_index;
+        plan::additional_damage_activation(&invocation, &managers, &execution)
+            .iter()
+            .any(|activation| {
+                matches!(
+                    activation.buff_act_ops.as_slice(),
+                    [RuleOp::Command(BattleCommand::Eureka(_))]
+                )
+            })
+    };
+
+    // Paper Parade: "When an ally performs an extra action: Consume 2 of Flutterpage's Eureka".
+    assert!(pays_eureka(0));
+    assert!(!pays_eureka(1));
+}
+
+#[test]
+fn an_action_not_played_from_a_card_is_forced_critical_by_the_gust_force_field() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31050146),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312451011], []);
+    let planned_crits = |card_index| {
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 312451011,
+        }
+        .into();
+        invocation.mode = SkillExecutionMode::Active;
+        invocation.card_index = card_index;
+        let mut execution = SkillExecution::new(TargetContext::default());
+        execution.configured_targets = Some(vec![-1]);
+        plan::plan_crits(
+            &invocation,
+            &managers,
+            &pool,
+            &catalog,
+            312451011,
+            &mut RoundDeterminism::default(),
+            &mut execution,
+        );
+        execution.planned_crits
+    };
+
+    // "When an ally performs an extra action: ... this action must crit."
+    assert_eq!(planned_crits(0), Some(vec![(-1, true)]));
+    assert_eq!(planned_crits(1), Some(vec![(-1, false)]));
+}
+
+#[test]
+fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets() {
+    crate::test_support::init_config();
+    let additional_damage = |marked: bool| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(312451456),
+                        from_uid: Some(11),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(100_000),
+                        ..Default::default()
+                    }),
+                    buffs: marked
+                        .then(|| BuffInfo {
+                            uid: Some(30),
+                            buff_id: Some(31240121),
+                            from_uid: Some(11),
+                            layer: Some(1),
+                            ..Default::default()
+                        })
+                        .into_iter()
+                        .collect(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert_damage_rate(100, 1_000);
+        catalog.insert_logic_target(100, 1);
+        let invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 100,
+        }
+        .into();
+        let mut execution = SkillExecution::new(TargetContext::default());
+        execution.configured_targets = Some(vec![-1]);
+        for activation in plan::additional_damage_activation(&invocation, &managers, &execution) {
+            execution
+                .activated_additional_damage
+                .push(activation.additional);
+        }
+        plan::damage_ops(
+            &invocation,
+            &managers,
+            &pool,
+            &catalog,
+            100,
+            &mut RoundDeterminism::default(),
+            &mut execution,
+        )
+        .additional_damage
+    };
+
+    // Way of Ares: "When an allied [Assassination] is triggered, deal an additional 125% DMG of
+    // the attacker's type."
+    let marked = additional_damage(true);
+    assert!(matches!(
+        marked.as_slice(),
+        [HpCommand::Damage(damage)] if damage.source_uid == 10
+    ));
+    assert!(additional_damage(false).is_empty());
+}
+
+#[test]
+fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                power_infos: vec![sonettobuf::PowerInfo {
+                    power_id: Some(crate::engine::manager::eureka::EUREKA_RESOURCE_ID),
+                    num: Some(2),
+                    max: Some(5),
+                }],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31050146),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312451011], []);
+    let damage_phase = |card_index| {
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 312451011,
+        }
+        .into();
+        invocation.mode = SkillExecutionMode::Active;
+        invocation.card_index = card_index;
+        invocation.target = SkillTarget::Explicit(-1);
+        let mut execution = SkillExecution::new(TargetContext::default());
+        let mut determinism = RoundDeterminism::default();
+        let mut ops = Vec::new();
+        let mut next = Some(invocation);
+        while let Some(invocation) = next.take() {
+            let emission = emit_ops(
+                invocation,
+                &managers,
+                &pool,
+                &catalog,
+                &mut determinism,
+                &mut execution,
+                &SkillOpTrigger::Active,
+            )
+            .unwrap();
+            let hits = emission
+                .ops
+                .iter()
+                .any(|emission| matches!(emission.op, RuleOp::Command(BattleCommand::HpBatch(_))));
+            ops.extend(emission.ops);
+            if hits {
+                return (ops, execution.pending_additional_damage);
+            }
+            next = emission.continuation;
+        }
+        panic!("no damage phase");
+    };
+    let opens_with_cost_then_marker = |ops: &[SkillEmissionOp]| {
+        let position = |matches: &dyn Fn(&RuleOp) -> bool| {
+            ops.iter().position(|emission| matches(&emission.op))
+        };
+        let cost = position(&|op| matches!(op, RuleOp::Command(BattleCommand::Eureka(_))));
+        let marker = position(&|op| {
+            matches!(
+                op,
+                RuleOp::EffectMarker { target_uid: 10, effect_type, reserve_id: Some(-1), .. }
+                    if *effect_type == sonettobuf::effect_type_enum::EffectType::Mustcrit as i32
+            )
+        });
+        let own_effect = position(&|op| matches!(op, RuleOp::Command(BattleCommand::Buff(_))));
+        let hits = position(&|op| matches!(op, RuleOp::Command(BattleCommand::HpBatch(_))));
+        matches!(
+            (cost, marker, own_effect, hits),
+            (Some(cost), Some(marker), Some(own_effect), Some(hits))
+                if cost < marker && marker < own_effect && own_effect < hits
+        )
+    };
+
+    // "The extra action is always a critical hit".
+    let (ops, additional) = damage_phase(0);
+    assert!(opens_with_cost_then_marker(&ops));
+    assert!(!additional.is_empty());
+    assert!(additional.iter().all(|command| matches!(
+        command,
+        HpCommand::Damage(damage)
+            if damage.effect_kind == crate::engine::manager::hp::DamageEffectKind::Critical
+    )));
+    let (ops, _) = damage_phase(1);
+    assert!(
+        !ops.iter()
+            .any(|emission| matches!(emission.op, RuleOp::EffectMarker { .. }))
+    );
+}
+
+#[test]
+fn an_extra_action_resolves_its_extra_action_passives_before_the_force_field_cost() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![433911],
+                power_infos: vec![sonettobuf::PowerInfo {
+                    power_id: Some(crate::engine::manager::eureka::EUREKA_RESOURCE_ID),
+                    num: Some(2),
+                    max: Some(5),
+                }],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31050146),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31050151, 433911], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31050151,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-1);
+    let mut execution = SkillExecution::new(TargetContext::default());
+    let ops = emit_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        &mut execution,
+        &SkillOpTrigger::Active,
+    )
+    .unwrap()
+    .ops;
+    let position =
+        |matches: &dyn Fn(&RuleOp) -> bool| ops.iter().position(|emission| matches(&emission.op));
+    let started = position(&|op| {
+        matches!(
+            op,
+            RuleOp::Publish(crate::engine::event::payload::BattleEvent::SkillEffectStarted(_))
+        )
+    });
+    let cost = position(&|op| matches!(op, RuleOp::Command(BattleCommand::Eureka(_))));
+
+    // Psychube 433911 "When the carrier performs an extra action" resolves as the action starts.
+    assert!(matches!((started, cost), (Some(started), Some(cost)) if started < cost));
+}

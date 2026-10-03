@@ -137,8 +137,16 @@ fn deploy(
     } else {
         requested.min(available)
     };
-    if source_uid == 0 || target_uid == 0 || amount <= 0 {
+    if source_uid == 0 || target_uid == 0 || requested == 0 {
         return Err(ShellError::MissingStock);
+    }
+    // Reactions planned together can each request a deploy; once the stock is spent the rest deploy nothing.
+    if amount <= 0 {
+        return Ok(ShellChanges {
+            buffs: Vec::new(),
+            events: Vec::new(),
+            skills: Vec::new(),
+        });
     }
 
     let buffs = vec![
@@ -306,9 +314,11 @@ fn accumulate_and_use_skill(
     if source_uid == 0 || target_uid == 0 || threshold <= 0 || delta <= 0 || skill_id <= 0 {
         return Err(ShellError::InvalidCommand);
     }
-    let repeats = managers.advance_rule_progress(source_uid, 0, origin.key, threshold, delta);
-    let skills = (0..repeats)
-        .map(|_| {
+    // Changes made while the triggered cast waits do not count toward the next one.
+    let triggered = managers
+        .advance_rule_progress_until_cast(source_uid, origin.key, threshold, delta, skill_id);
+    let skills = triggered
+        .then(|| {
             let mut invocation: crate::engine::skill::action::SkillInvocation =
                 crate::engine::skill::action::SkillRequest {
                     source_uid,
@@ -316,8 +326,11 @@ fn accumulate_and_use_skill(
                 }
                 .into();
             invocation.target = crate::engine::skill::action::SkillTarget::Explicit(target_uid);
+            // Unmendable Cracks follows the triggering action's ally-action reactions.
+            invocation.start = crate::engine::skill::action::SkillStart::AfterCurrentAction;
             invocation
         })
+        .into_iter()
         .collect();
     Ok(ShellChanges {
         buffs: Vec::new(),
@@ -345,6 +358,80 @@ mod tests {
         domain: RuleDomain::Behavior,
         key: DefinitionKey::new(60134, "ShellRecycle"),
     };
+
+    #[test]
+    fn changes_while_the_triggered_cast_waits_do_not_count() {
+        let mut managers = BattleManagers::default();
+        let casts_after = |managers: &mut BattleManagers, changes: i32| {
+            (0..changes)
+                .map(|_| {
+                    execute(
+                        managers,
+                        ShellCommand::AccumulateAndUseSkill {
+                            origin: ORIGIN,
+                            source_uid: 10,
+                            target_uid: -1,
+                            threshold: 7,
+                            delta: 1,
+                            skill_id: 31090114,
+                        },
+                    )
+                    .unwrap()
+                    .skills
+                    .len()
+                })
+                .sum::<usize>()
+        };
+
+        // "After accumulating a total of 7 deployments and or retrievals, triggers" one cast.
+        assert_eq!(casts_after(&mut managers, 7), 1);
+        assert_eq!(casts_after(&mut managers, 7), 0);
+        managers.release_held_rule_progress(10, 31090114);
+        assert_eq!(casts_after(&mut managers, 6), 0);
+        assert_eq!(casts_after(&mut managers, 1), 1);
+    }
+
+    #[test]
+    fn deploy_after_the_stock_is_spent_deploys_nothing() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    team_type: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    team_type: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+
+        let changes = execute(
+            &mut managers,
+            ShellCommand::Deploy {
+                origin: ORIGIN,
+                source_uid: 10,
+                target_uid: -1,
+                stock_buff_id: 31090117,
+                amount: 1,
+            },
+        )
+        .unwrap();
+
+        assert!(changes.buffs.is_empty() && changes.events.is_empty());
+        assert_eq!(managers.buff.buff_id_amount(-1, 31090118), 0);
+    }
 
     #[test]
     fn negative_deploy_amount_moves_all_stock() {

@@ -285,8 +285,8 @@ mod tests {
             route.branches[0].driver,
             Some(ConditionDriver::Trigger(ConditionTrigger {
                 key: crate::engine::skill::rule::DefinitionKey::new(1001212, "Assassinate",),
-                event: EventKind::SkillAction,
-                phase: Some(SkillPhase::AfterHit),
+                event: EventKind::AllyAction,
+                phase: None,
             }))
         );
         assert_eq!(route.branches[0].conditions.len(), 2);

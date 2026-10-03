@@ -18,6 +18,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) configured_targets: Option<Vec<i64>>,
     pub(super) configured_additional_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
+    pub(super) marked_targets: Option<Vec<(i64, i32)>>,
     pub(super) injured_allies: Vec<i64>,
     pub(super) affected_targets: Vec<i64>,
     pub(super) attacked_targets: Vec<i64>,
@@ -30,9 +31,15 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pending_after_damage_ops: Vec<RuleOp>,
     pending_after_damage_frame_owner: Option<crate::engine::runtime::record::FrameOwner>,
     action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
+    // The next slot to run when a phase continues after an earlier slot's changes commit.
+    pub(super) resume_slot: usize,
 }
 
 impl SkillExecution {
+    pub(in crate::engine::runtime) fn resumes_phase(&self) -> bool {
+        self.resume_slot > 0
+    }
+
     pub(in crate::engine::runtime) fn new(context: TargetContext) -> Self {
         Self {
             modifiers: SkillModifiers::default(),
@@ -41,6 +48,7 @@ impl SkillExecution {
             configured_targets: None,
             configured_additional_targets: None,
             planned_crits: None,
+            marked_targets: None,
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
@@ -53,6 +61,7 @@ impl SkillExecution {
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
             action_cost: None,
+            resume_slot: 0,
         }
     }
 
@@ -67,6 +76,7 @@ impl SkillExecution {
             configured_targets: None,
             configured_additional_targets: None,
             planned_crits: None,
+            marked_targets: None,
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
@@ -79,6 +89,7 @@ impl SkillExecution {
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
             action_cost: None,
+            resume_slot: 0,
         }
     }
 
@@ -270,6 +281,7 @@ pub(super) struct AdditionalDamageActivation {
     pub(super) buff_act_ops: Vec<RuleOp>,
     pub(super) skill_ops: Vec<RuleOp>,
     pub(super) temporary_buff: Option<(CommandOrigin, i32)>,
+    pub(super) pays_extra_action_cost: bool,
 }
 
 #[derive(Clone)]
@@ -303,14 +315,21 @@ fn additional_damage(
     planned
 }
 
+// "When an ally performs an extra action": follow-ups, ripostes and extra actions, and any other
+// action not played from a card, such as a skill another skill casts.
+fn performs_extra_action(invocation: &SkillInvocation, execution: &SkillExecution) -> bool {
+    crate::engine::skill::buff_act::additional_damage::uses_costed_lane(
+        execution.context.extra_skill_kind,
+    ) || (invocation.card_index == 0
+        && invocation.mode == crate::engine::skill::action::SkillExecutionMode::Active)
+}
+
 pub(super) fn additional_damage_activation(
     invocation: &SkillInvocation,
     managers: &BattleManagers,
     execution: &SkillExecution,
 ) -> Vec<AdditionalDamageActivation> {
-    let extra_action = crate::engine::skill::buff_act::additional_damage::uses_costed_lane(
-        execution.context.extra_skill_kind,
-    );
+    let extra_action = performs_extra_action(invocation, execution);
     crate::engine::skill::buff_act::additional_damage::active_features(
         managers,
         invocation.plan.source_uid,
@@ -360,18 +379,19 @@ pub(super) fn additional_damage_activation(
                 ),
             ));
         }
-        if let Some(op) = crate::engine::skill::buff_act::additional_damage::extra_action_cost_op(
+        let cost = crate::engine::skill::buff_act::additional_damage::extra_action_cost_op(
             &additional.feature,
             additional.spec,
             extra_action,
-        ) {
-            buff_act_ops.push(op);
-        }
+        );
+        let pays_extra_action_cost = cost.is_some();
+        buff_act_ops.extend(cost);
         Some(AdditionalDamageActivation {
             additional,
             buff_act_ops,
             skill_ops,
             temporary_buff,
+            pays_extra_action_cost,
         })
     })
     .collect()
@@ -422,9 +442,8 @@ pub(super) fn damage_ops(
         .map(|entity| entity.passive_skills.as_slice())
         .unwrap_or_default();
     let main_target = targets.first().copied();
-    let extra_action = crate::engine::skill::buff_act::additional_damage::uses_costed_lane(
-        execution.context.extra_skill_kind,
-    );
+    let extra_action = performs_extra_action(invocation, execution);
+    let forced_critical = field_forces_critical(source_uid, managers, extra_action);
     let additional = additional_damage(source_uid, managers, execution, extra_action)
         .into_iter()
         .filter_map(|additional| {
@@ -552,6 +571,7 @@ pub(super) fn damage_ops(
             source_uid,
             target_uid,
             inherent_assassinate,
+            execution.marked_targets.as_deref(),
         );
         execution.context.active_skill_assassinate |= assassination.assassinate;
         if assassination.final_damage_bonus != 0 {
@@ -573,7 +593,9 @@ pub(super) fn damage_ops(
             let delta = crate::engine::skill::buff_act::target_attack_attribute_delta(
                 managers,
                 target_uid,
-                extra_action,
+                crate::engine::skill::buff_act::additional_damage::uses_costed_lane(
+                    execution.context.extra_skill_kind,
+                ),
                 attr_id,
             );
             if delta != 0 {
@@ -644,7 +666,14 @@ pub(super) fn damage_ops(
                     skill_id,
                     source_uid,
                     target_uid,
-                    planned_crit_chance(source_uid, target_uid, managers, pool, execution),
+                    planned_crit_chance(
+                        source_uid,
+                        target_uid,
+                        managers,
+                        pool,
+                        execution,
+                        extra_action,
+                    ),
                 )
             });
         let main_target = main_target == Some(target_uid);
@@ -666,6 +695,7 @@ pub(super) fn damage_ops(
                 assassinate: assassination.assassinate,
                 main_target,
                 extra_skill_kind: execution.context.extra_skill_kind,
+                performs_extra_action: extra_action,
                 additional_enabled: false,
                 additional_is_crit: None,
             },
@@ -694,13 +724,16 @@ pub(super) fn damage_ops(
             ));
         }
         for (_, additional, origin) in &additional {
+            if additional.requires_assassination && !assassination.assassinate {
+                continue;
+            }
             let additional_is_crit = determinism.roll_additional_crit(
                 skill_id,
                 source_uid,
                 additional.credited_source_uid,
                 target_uid,
                 damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
-            );
+            ) || forced_critical;
             let mut additional_attributes = linked_attack_attributes
                 .iter()
                 .copied()
@@ -754,6 +787,7 @@ pub(super) fn damage_ops(
                     is_conduit: false,
                     is_crit: additional_is_crit,
                     extra_skill_kind: execution.context.extra_skill_kind,
+                    performs_extra_action: extra_action,
                 },
                 damage::DamageRuntime {
                     fight_version: managers.fight_version(),
@@ -900,6 +934,7 @@ pub(super) fn plan_crits(
         execution,
         rend.as_ref(),
     );
+    let extra_action = performs_extra_action(invocation, execution);
     let planned = targets
         .into_iter()
         .map(|target_uid| {
@@ -907,7 +942,14 @@ pub(super) fn plan_crits(
                 skill_id,
                 source_uid,
                 target_uid,
-                planned_crit_chance(source_uid, target_uid, managers, pool, execution),
+                planned_crit_chance(
+                    source_uid,
+                    target_uid,
+                    managers,
+                    pool,
+                    execution,
+                    extra_action,
+                ),
             );
             (target_uid, is_crit)
         })
@@ -916,26 +958,41 @@ pub(super) fn plan_crits(
     execution.planned_crits = Some(planned);
 }
 
-fn planned_crit_chance(
-    source_uid: i64,
-    target_uid: i64,
+pub(super) fn forces_critical(
+    invocation: &SkillInvocation,
     managers: &BattleManagers,
-    pool: &TargetPool,
     execution: &SkillExecution,
-) -> i32 {
-    let extra_action = crate::engine::skill::condition::extra::skill_kind_from_is_extra(
-        execution.context.extra_skill_kind,
+) -> bool {
+    field_forces_critical(
+        invocation.plan.source_uid,
+        managers,
+        performs_extra_action(invocation, execution),
     )
-    .is_some_and(|kind| kind.is_extra_action());
-    let field_forces_critical = extra_action && {
+}
+
+// Gust Force Field: "The extra action is always a critical hit".
+fn field_forces_critical(source_uid: i64, managers: &BattleManagers, extra_action: bool) -> bool {
+    extra_action && {
         let active_features = managers.buff.active_features(&managers.hp);
         crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::forces_critical(
             &active_features,
             source_uid,
             true,
         )
-    };
-    if execution.modifiers.force_critical || field_forces_critical {
+    }
+}
+
+fn planned_crit_chance(
+    source_uid: i64,
+    target_uid: i64,
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    execution: &SkillExecution,
+    extra_action: bool,
+) -> i32 {
+    if execution.modifiers.force_critical
+        || field_forces_critical(source_uid, managers, extra_action)
+    {
         return 1000;
     }
     damage::crit_chance(source_uid, target_uid, pool, managers)

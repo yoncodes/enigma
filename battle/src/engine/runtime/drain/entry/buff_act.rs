@@ -125,7 +125,7 @@ fn run_owned_buff_act_groups(
             push_root(&mut frames, owner, trigger.clone())
         };
         for op in ops {
-            let (frame_path, parent_path) = match &op {
+            let (frame_path, parent_path, op_trigger) = match &op {
                 RuleOp::Command(_)
                 | RuleOp::Publish(_)
                 | RuleOp::SkillLifecycle(_)
@@ -138,12 +138,13 @@ fn run_owned_buff_act_groups(
                 | RuleOp::MarkBuffActFired { .. }
                 | RuleOp::ModifyActiveSkillTargets { .. }
                 | RuleOp::FreezeActiveSkillRates
-                | RuleOp::NuoDiKaHit(_) => (Some(buff_act.clone()), None),
-                RuleOp::Skill(_) => (None, Some(buff_act.clone())),
+                | RuleOp::NuoDiKaHit(_) => (Some(buff_act.clone()), None, skill_trigger.clone()),
+                // A skill cast by a buff act is an active cast, also during a setup stage.
+                RuleOp::Skill(_) => (None, Some(buff_act.clone()), SkillOpTrigger::Active),
             };
             queue.push_back(QueuedOp {
                 op,
-                trigger: skill_trigger.clone(),
+                trigger: op_trigger,
                 skill_execution: None,
                 frame_path,
                 parent_path,
@@ -151,6 +152,7 @@ fn run_owned_buff_act_groups(
                 independent_parent_group: None,
                 frame_owner: None,
                 subscriber_owner_uid: None,
+                caster_frame: None,
             });
         }
     }

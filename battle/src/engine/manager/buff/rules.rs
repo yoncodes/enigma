@@ -191,7 +191,7 @@ impl BuffPolicy {
             match_existing,
             on_duplicate,
             exclusions: BuffExclusions {
-                remove_on_grant: definition.exclude_buff_ids().into(),
+                remove_on_grant: definition.exclude_type_ids().into(),
                 remove_statuses_on_grant: definition.exclude_status_ids().into(),
             },
             lifetime: BuffLifetime {

@@ -19,12 +19,8 @@ pub enum FireCountMode {
 pub enum TargetEmissionMode {
     Each,
     Once,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SkillDestinationMode {
-    Repeat,
-    Unique,
+    // Configures the casting owner itself, whatever the configured target resolves to.
+    Owner,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,7 +84,6 @@ pub struct BehaviorDefinition {
     pub fire_count_mode: FireCountMode,
     pub resolve_fire_count: for<'a> fn(BehaviorFireCountContext<'a>, &ParsedBehavior, i32) -> i32,
     pub target_emission_mode: TargetEmissionMode,
-    pub skill_destination_mode: SkillDestinationMode,
     pub output_owner: OutputOwner,
     pub output_owner_for: fn(&ParsedBehavior, &RuleOp, usize) -> Option<OutputOwner>,
     pub references: fn(&ParsedBehavior) -> RuleReferences,
@@ -167,7 +162,6 @@ pub const fn definition<H: BehaviorHandler>(
         fire_count_mode: FireCountMode::Repeat,
         resolve_fire_count: H::resolve_fire_count,
         target_emission_mode: TargetEmissionMode::Each,
-        skill_destination_mode: SkillDestinationMode::Repeat,
         output_owner: OutputOwner::Skill,
         output_owner_for: H::output_owner,
         references: H::references,
@@ -221,19 +215,6 @@ pub mod arguments {
     }
 }
 
-pub const fn unique_skill_destination_definition<H: BehaviorHandler>(
-    opcode: i32,
-    type_name: &'static str,
-    kind: BehaviorKind,
-    phase: BehaviorPhase,
-) -> BehaviorDefinition {
-    BehaviorDefinition {
-        destination: true,
-        skill_destination_mode: SkillDestinationMode::Unique,
-        ..definition::<H>(opcode, type_name, kind, phase)
-    }
-}
-
 pub const fn queue_preparation_definition<H: BehaviorHandler>(
     opcode: i32,
     type_name: &'static str,
@@ -257,6 +238,18 @@ pub const fn once_definition<H: BehaviorHandler>(
     BehaviorDefinition {
         target_emission_mode: TargetEmissionMode::Once,
         ..definition::<H>(opcode, type_name, kind, phase)
+    }
+}
+
+pub const fn owner_destination_definition<H: BehaviorHandler>(
+    opcode: i32,
+    type_name: &'static str,
+    kind: BehaviorKind,
+    phase: BehaviorPhase,
+) -> BehaviorDefinition {
+    BehaviorDefinition {
+        target_emission_mode: TargetEmissionMode::Owner,
+        ..destination_definition::<H>(opcode, type_name, kind, phase)
     }
 }
 
@@ -440,11 +433,11 @@ macro_rules! behavior_definitions {
     (@definition destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
     };
-    (@definition unique_skill_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
-        $crate::engine::skill::behavior::registry::unique_skill_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
-    };
     (@definition queue_preparation, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::queue_preparation_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
+    };
+    (@definition owner_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
+        $crate::engine::skill::behavior::registry::owner_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
     };
     (@definition once_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::once_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
@@ -541,7 +534,7 @@ behavior_definitions! {
     [60311] "ConsumeBuffUseSkill3" => super::use_skill::Handler, ConsumeBuffUseSkill3, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill3;
     [100007] "EzioReuse" => super::use_skill::Handler, ConsumeTargetBuffUseSkill, Immediate, destination, super::use_skill::supports_consume_target_buff_use_skill;
     [50018] "RemoveBuffUseSkill" => super::use_skill::Handler, RemoveBuffUseSkill, AfterDamage, destination, super::use_skill::supports_remove_buff_use_skill;
-    [50008] "DirectUseSkill" => super::use_skill::Handler, DirectUseSkill, Immediate, unique_skill_destination, arguments::at_least_one;
+    [50008] "DirectUseSkill" => super::use_skill::Handler, DirectUseSkill, Immediate, destination, arguments::at_least_one;
     [60053] "DirectUseSkill2" => super::use_skill::Handler, DirectUseSkill2, Immediate, destination;
     [60014] "DirectUseSkillPrev" => super::use_skill::Handler, DirectUseSkillPrev, Immediate, destination, arguments::none;
     [50039] "DirectUseSkillCard" => super::use_skill::Handler, DirectUseSkillCard, Immediate, plain, super::use_skill::supports_direct_skill_card;
@@ -606,7 +599,7 @@ behavior_definitions! {
     [50021] "RemoveMagicCircleById" => super::magic_circle::Handler, RemoveMagicCircleById, Immediate, destination;
     [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, destination;
     [60195] "ElectricTransform" => super::electric::Handler, ElectricTransform, Immediate, destination, super::electric::supports;
-    [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, destination, super::synchronization::supports_props;
+    [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, owner_destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(0, "None"), stage: SetupStage::Unconditional, priority: 0 }), super::synchronization::supports_props;
     [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterDamage, destination, super::synchronization::supports_big_skill_rate;
     [100002] "EzioBigSkillTyp2" => super::synchronization::Handler, EzioBigSkillType2, AfterDamage, destination, super::synchronization::supports_big_skill_rate;
     [100003] "EzioBigSkillEnd" => super::synchronization::Handler, EzioBigSkillEnd, AfterDamage, destination, super::synchronization::supports_big_skill_end;

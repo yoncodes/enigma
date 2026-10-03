@@ -80,12 +80,20 @@ pub struct BattleManagers {
     round_rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
     buff_act_fires: HashMap<(i64, i64, crate::engine::skill::rule::DefinitionKey), i32>,
     rule_progress: HashMap<(i64, i64, crate::engine::skill::rule::DefinitionKey, i32), i32>,
+    // Progress that triggered a cast stays paused until that cast starts.
+    held_rule_progress: HashMap<(i64, crate::engine::skill::rule::DefinitionKey), i32>,
 }
 
 struct HpPlan {
     command: hp::HpCommand,
     team_shared: Option<hp::TeamSharedShieldPlan>,
     team_shared_buff: Option<BuffPlan>,
+    share: Option<ShareHurtPlan>,
+}
+
+struct ShareHurtPlan {
+    consume: BuffPlan,
+    shares: Vec<hp::HpCommand>,
 }
 
 pub(crate) fn persistent_attribute_delta(
@@ -219,7 +227,46 @@ impl BattleManagers {
         Ok(self.commit_buff(plan))
     }
 
+    // A grant the target partly resists rolls its resistance like a crit.
+    pub(crate) fn execute_buff_rolled(
+        &mut self,
+        command: BuffCommand,
+        determinism: &mut crate::engine::runtime::determinism::RoundDeterminism,
+    ) -> Result<BuffChanges, BuffCommandError> {
+        let resist_roll = match &command {
+            BuffCommand::Grant(grant)
+            | BuffCommand::GrantRelated(buff::RelatedBuffGrant { grant, .. })
+            | BuffCommand::GrantIndependent(grant)
+            | BuffCommand::Accumulate(grant)
+            | BuffCommand::GrantUsingChildUid(grant)
+            | BuffCommand::GrantUsingNormalUid(grant) => {
+                let chance = self.buff.buff_resistance(grant.target_uid, grant.buff_id);
+                (chance > 0 && chance < 1000).then(|| buff::ResistRoll {
+                    target_uid: grant.target_uid,
+                    buff_id: grant.buff_id,
+                    resisted: determinism.roll_crit(
+                        grant.buff_id,
+                        grant.source_uid,
+                        grant.target_uid,
+                        chance,
+                    ),
+                })
+            }
+            _ => None,
+        };
+        let plan = self.plan_buff_with(command, resist_roll)?;
+        Ok(self.commit_buff(plan))
+    }
+
     pub(crate) fn plan_buff(&self, command: BuffCommand) -> Result<BuffPlan, BuffCommandError> {
+        self.plan_buff_with(command, None)
+    }
+
+    fn plan_buff_with(
+        &self,
+        command: BuffCommand,
+        resist_roll: Option<buff::ResistRoll>,
+    ) -> Result<BuffPlan, BuffCommandError> {
         let source_uid = match &command {
             BuffCommand::Grant(grant)
             | BuffCommand::GrantRelated(buff::RelatedBuffGrant { grant, .. })
@@ -287,9 +334,14 @@ impl BattleManagers {
                 + dynamic;
             base * rate.max(0) / 1000 + flat
         });
-        let mut plan = self
-            .buff
-            .plan_with_source_attack(&self.hp, command, source_attack)?;
+        let mut plan = self.buff.plan_with_source_attack(
+            &self.hp,
+            command,
+            buff::GrantInputs {
+                source_attack,
+                resist_roll,
+            },
+        )?;
         if let Some((source_uid, features)) = plan.source_relative_attribute_features() {
             let act_info = features
                 .into_iter()
@@ -382,6 +434,7 @@ impl BattleManagers {
         }
         let mut staged_hp = self.hp.clone();
         let mut shared_values = HashMap::new();
+        let mut share_spent = HashMap::new();
         let mut plans = Vec::with_capacity(commands.len());
         for command in commands {
             let target_count = match command {
@@ -392,7 +445,16 @@ impl BattleManagers {
                     .map_or(1, std::collections::HashSet::len),
                 _ => 1,
             };
-            let plan = self.plan_hp(command, target_count, &staged_hp, &mut shared_values)?;
+            let plan = self.plan_hp(
+                command,
+                target_count,
+                &staged_hp,
+                &mut shared_values,
+                &mut share_spent,
+            )?;
+            for share in plan.share.iter().flat_map(|share| &share.shares) {
+                staged_hp.commit_validated_command_with_team_shared(*share, None);
+            }
             staged_hp.commit_validated_command_with_team_shared(plan.command, plan.team_shared);
             plans.push(plan);
         }
@@ -423,7 +485,13 @@ impl BattleManagers {
         command: hp::HpCommand,
         target_count: usize,
     ) -> Result<hp::HpChanges, hp::HpCommandError> {
-        let plan = self.plan_hp(command, target_count, &self.hp, &mut HashMap::new())?;
+        let plan = self.plan_hp(
+            command,
+            target_count,
+            &self.hp,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+        )?;
         Ok(self.commit_hp(plan))
     }
 
@@ -433,7 +501,35 @@ impl BattleManagers {
         target_count: usize,
         hp: &HpManager,
         shared_values: &mut HashMap<i64, i32>,
+        share_spent: &mut HashMap<i64, i32>,
     ) -> Result<HpPlan, hp::HpCommandError> {
+        let share = if let hp::HpCommand::Damage(damage) = &mut command
+            && let Some(split) = crate::engine::skill::buff_act::share_hurt::plan(
+                &self.buff,
+                hp,
+                &self.entity,
+                damage,
+                share_spent,
+            ) {
+            damage.amount = split.holder_amount;
+            *share_spent.entry(split.buff_uid).or_default() += 1;
+            let shares = split
+                .shares
+                .into_iter()
+                .map(hp::HpCommand::Lose)
+                .collect::<Vec<_>>();
+            for share in &shares {
+                hp.validate_command(*share)?;
+            }
+            Some(ShareHurtPlan {
+                consume: self
+                    .plan_buff(split.consume)
+                    .map_err(|_| hp::HpCommandError::InvalidShareHurtState)?,
+                shares,
+            })
+        } else {
+            None
+        };
         if let hp::HpCommand::Damage(damage) = &mut command
             && let Some(cap) = self
                 .buff
@@ -471,10 +567,23 @@ impl BattleManagers {
             command,
             team_shared,
             team_shared_buff,
+            share,
         })
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> hp::HpChanges {
+        let shared_hurt = plan.share.map(|share| {
+            let consumed = self.commit_buff(share.consume);
+            let shares = share
+                .shares
+                .into_iter()
+                .map(|share| {
+                    self.hp
+                        .commit_validated_command_with_team_shared(share, None)
+                })
+                .collect();
+            Box::new(hp::SharedHurt { consumed, shares })
+        });
         let toughness = match plan.command {
             hp::HpCommand::Damage(damage)
                 if damage.effect_kind != hp::DamageEffectKind::Avoided
@@ -494,6 +603,7 @@ impl BattleManagers {
             .commit_validated_command_with_team_shared(plan.command, plan.team_shared);
         changes.toughness = toughness;
         changes.team_shared_shield_removed = team_shared_shield_removed;
+        changes.shared_hurt = shared_hurt;
         if let Some(shield) = &mut changes.shield_absorbed {
             shield.buff_uid = self
                 .buff
@@ -1022,6 +1132,35 @@ impl BattleManagers {
         self.gauge.begin_combat_round();
         self.field.begin_round();
         self.conduit.begin_round();
+    }
+
+    pub fn advance_rule_progress_until_cast(
+        &mut self,
+        owner_uid: i64,
+        key: crate::engine::skill::rule::DefinitionKey,
+        threshold: i32,
+        delta: i32,
+        skill_id: i32,
+    ) -> bool {
+        if threshold <= 0 || delta <= 0 || self.held_rule_progress.contains_key(&(owner_uid, key)) {
+            return false;
+        }
+        let progress = self
+            .rule_progress
+            .entry((owner_uid, 0, key, threshold))
+            .or_default();
+        *progress = progress.saturating_add(delta);
+        if *progress < threshold {
+            return false;
+        }
+        *progress = 0;
+        self.held_rule_progress.insert((owner_uid, key), skill_id);
+        true
+    }
+
+    pub fn release_held_rule_progress(&mut self, owner_uid: i64, skill_id: i32) {
+        self.held_rule_progress
+            .retain(|(owner, _), held_skill_id| *owner != owner_uid || *held_skill_id != skill_id);
     }
 
     pub fn advance_rule_progress(

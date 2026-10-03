@@ -15,6 +15,7 @@ pub enum EventKind {
     BuffRejected,
     BuffFeatureTriggered,
     HpLost,
+    DamageShared,
     HpHealed,
     ToughnessBroken,
     TargetAttacked,
@@ -45,6 +46,8 @@ pub enum EventKind {
     ExPointOverflow,
     RoundEndEntitySettlement,
     RoundEndFinalSettlement,
+    // After the final settlement's buff durations advance.
+    RoundEndAfterFinalSettlement,
     RoundEndAfterSettlement,
     Riposte,
 }

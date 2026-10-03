@@ -113,8 +113,7 @@ fn consume_buff_use_skill_settles_exact_buff_after_extra_action() {
     ));
 }
 
-#[test]
-fn target_buff_follow_up_consumes_the_mark_before_invocation() {
+fn ezio_reuse_ops(card_index: i32, is_attack: bool) -> (Vec<RuleOp>, ParsedBehavior) {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -154,6 +153,14 @@ fn target_buff_follow_up_consumes_the_mark_before_invocation() {
         Vec::new(),
     );
 
+    let ally_action = crate::engine::event::payload::BattleEvent::AllyAction(
+        crate::engine::skill::action::ActionEvent {
+            source_uid: 11,
+            card_index,
+            is_attack,
+            ..Default::default()
+        },
+    );
     let ops = Handler::emit_ops(
         BehaviorOpContext {
             source_uid: 10,
@@ -161,7 +168,7 @@ fn target_buff_follow_up_consumes_the_mark_before_invocation() {
             target_uid: -1,
             active_skill_id: 0,
             transfer_count: 1,
-            event: None,
+            event: Some(&ally_action),
             managers: &managers,
             pool: &pool,
             determinism: &mut determinism,
@@ -171,6 +178,12 @@ fn target_buff_follow_up_consumes_the_mark_before_invocation() {
         &behavior,
     )
     .unwrap();
+    (ops, behavior)
+}
+
+#[test]
+fn target_buff_follow_up_consumes_the_mark_before_invocation() {
+    let (ops, behavior) = ezio_reuse_ops(1, true);
 
     assert!(matches!(
         ops.as_slice(),
@@ -191,6 +204,14 @@ fn target_buff_follow_up_consumes_the_mark_before_invocation() {
     let references = references(&behavior);
     assert_eq!(references.buffs, vec![229701]);
     assert_eq!(references.skills, vec![312301711]);
+}
+
+#[test]
+fn target_buff_follow_up_ignores_skill_casts_and_buff_cards() {
+    // "When other allies cast an incantation actively": a skill's own cast is not a played card.
+    assert!(ezio_reuse_ops(0, true).0.is_empty());
+    // A mass buff's main target is an ally, never a marked enemy.
+    assert!(ezio_reuse_ops(1, false).0.is_empty());
 }
 
 #[test]

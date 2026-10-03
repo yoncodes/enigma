@@ -224,7 +224,11 @@ impl EffectPacket {
     pub fn buff_reject(change: &BuffRejectResult) -> ActEffect {
         ActEffect {
             target_id: Some(change.target_uid),
-            effect_type: Some(EffectType::Buffreject as i32),
+            effect_type: Some(if change.resisted {
+                EffectType::Resistances as i32
+            } else {
+                EffectType::Buffreject as i32
+            }),
             effect_num: Some(change.blocker_buff_id),
             buff: Some(change.buff.clone()),
             config_effect: Some(1),

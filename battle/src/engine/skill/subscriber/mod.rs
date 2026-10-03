@@ -163,12 +163,15 @@ fn for_configured_buff_acts(
     }
     let mut subscribers = Vec::new();
     for entity in pool.active_entities() {
-        let Some(passive_skills) = managers.entity.passive_skills(entity.uid) else {
-            continue;
-        };
-        for &passive_skill_id in passive_skills {
-            for (active_skill_id, buff_id, key) in
-                catalog.assassination_stack_grants(passive_skill_id)
+        // The extra stack follows the mapped Way buff being active ("Current [Force Field] New Effect
+        // Added"), not ownership of the talent passive.
+        let field_buff_ids = managers
+            .buff
+            .active_for(entity.uid)
+            .filter_map(|buff| buff.buff_id)
+            .collect::<Vec<_>>();
+        for field_buff_id in field_buff_ids {
+            for (active_skill_id, buff_id, key) in catalog.assassination_stack_grants(field_buff_id)
             {
                 let subscriber = BuffActSubscriber {
                     owner_uid: entity.uid,
@@ -276,7 +279,7 @@ pub fn for_event(
     catalog: &SkillEffectCatalog,
     event: EventKind,
 ) -> EventSubscribers {
-    let skills = collect_event_skills(pool, managers, catalog, event, |skill_id| {
+    let skills = collect_event_skills(pool, managers, catalog, &[event], |skill_id| {
         Ok(catalog
             .subscriptions(skill_id)
             .into_iter()
@@ -298,7 +301,7 @@ pub fn for_compiled_event(
     let mut buff_acts = for_active_buffs(managers, event);
     buff_acts.extend(for_configured_buff_acts(pool, managers, catalog, event));
     Ok(EventSubscribers {
-        skills: collect_event_skills(pool, managers, catalog, event, |skill_id| {
+        skills: collect_event_skills(pool, managers, catalog, &[event], |skill_id| {
             catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
                 lanes
                     .into_iter()
@@ -316,14 +319,21 @@ pub fn for_compiled_events(
     catalog: &SkillEffectCatalog,
     events: impl IntoIterator<Item = EventKind>,
 ) -> Result<EventSubscribers, SubscriberError> {
-    let mut merged = EventSubscribers::default();
+    let events = events.into_iter().collect::<Vec<_>>();
+    // One owner's skills answer an event in their own order, whichever kind each slot listens on.
+    let mut merged = EventSubscribers {
+        skills: collect_event_skills(pool, managers, catalog, &events, |skill_id| {
+            catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
+                lanes
+                    .into_iter()
+                    .map(|(slot, key)| (Some(slot), key))
+                    .collect()
+            })
+        })?,
+        buff_acts: Vec::new(),
+    };
     for event in events {
         let subscribers = for_compiled_event(pool, managers, catalog, event)?;
-        for skill in subscribers.skills {
-            if !merged.skills.contains(&skill) {
-                merged.skills.push(skill);
-            }
-        }
         for buff_act in subscribers.buff_acts {
             if !merged.buff_acts.contains(&buff_act) {
                 merged.buff_acts.push(buff_act);
@@ -378,7 +388,7 @@ fn collect_event_skills(
     pool: &TargetPool,
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
-    event: EventKind,
+    events: &[EventKind],
     subscriptions: impl Fn(i32) -> Result<Vec<(Option<usize>, SubscriptionKey)>, RouteError>,
 ) -> Result<Vec<SkillSubscriber>, SubscriberError> {
     let mut skills = Vec::new();
@@ -389,7 +399,7 @@ fn collect_event_skills(
                 owner_uid,
                 &[skill_id],
                 catalog,
-                event,
+                events,
                 &subscriptions,
             )?;
         }
@@ -400,7 +410,7 @@ fn collect_event_skills(
             owner_uid,
             &[skill_id],
             catalog,
-            event,
+            events,
             &subscriptions,
         )?;
     }
@@ -412,7 +422,7 @@ fn push_skill_subscribers(
     owner_uid: i64,
     skill_ids: &[i32],
     catalog: &SkillEffectCatalog,
-    event: EventKind,
+    events: &[EventKind],
     subscriptions: &impl Fn(i32) -> Result<Vec<(Option<usize>, SubscriptionKey)>, RouteError>,
 ) -> Result<(), SubscriberError> {
     for &skill_id in skill_ids {
@@ -424,7 +434,10 @@ fn push_skill_subscribers(
         }
         let keys = subscriptions(skill_id)
             .map_err(|route| SubscriberError::UncompiledRoute { skill_id, route })?;
-        for (slot_index, key) in keys.into_iter().filter(|(_, key)| key.event == event) {
+        for (slot_index, key) in keys
+            .into_iter()
+            .filter(|(_, key)| events.contains(&key.event))
+        {
             let subscriber = SkillSubscriber {
                 owner_uid,
                 skill_id,

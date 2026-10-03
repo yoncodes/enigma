@@ -713,8 +713,8 @@ fn trigger_families_reject_unconfigured_ids_and_wrong_types() {
             .map(|definition| { (definition.role, definition.skill_action_observer) }),
         Some((
             ConditionRole::Trigger {
-                event: EventKind::SkillAction,
-                phase: Some(SkillPhase::AfterHit),
+                event: EventKind::AllyAction,
+                phase: None,
             },
             SkillActionObserver::Team,
         ))
@@ -1470,6 +1470,7 @@ fn incoming_attack_modifier_conditions_keep_their_exact_side() {
     for (opcode, type_name) in [
         (18202, "HasBuff"),
         (19204, "HasBuffId"),
+        (1007204, "FromBuffAndToBuff"),
         (57204, "NoBuffId"),
         (25204, "UseExSkill"),
         (33204, "HurtRestraint"),

@@ -171,6 +171,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "skill_bufftype",
     "skill_next",
     "resistances_attribute",
+    "resistances_const",
     "reddot",
     "fight_card_choice",
     "card_enchant",

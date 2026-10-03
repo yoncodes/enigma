@@ -34,6 +34,7 @@ pub struct AttackPlan {
     pub assassinate: bool,
     pub main_target: bool,
     pub extra_skill_kind: i32,
+    pub performs_extra_action: bool,
     pub additional_enabled: bool,
     pub additional_is_crit: Option<bool>,
 }

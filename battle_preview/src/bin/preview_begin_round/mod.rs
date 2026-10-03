@@ -8,10 +8,14 @@ use battle::engine::{runtime::BattleRuntime, skill::effect::catalog};
 use battle_preview::{
     array_len_diff_lines, begin_round_inputs, build_metadata_source, canonical_comparison,
     expand_compressed_fight_steps, first_diff_path, normalize_live_json, opening_determinism,
-    preview_attributes, preview_output_text, render_json_with_capture_conventions,
-    seed_round_determinism, tower_plan_id,
+    preview_attributes_with_request, preview_output_text, render_json_with_capture_conventions,
+    seed_round_determinism, tower_plan_id_from_request,
 };
 use sonettobuf::{BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep};
+
+mod capture;
+
+use capture::CapturedBattle;
 
 const TRACED_DAMAGE_EFFECT_TYPES: [i32; 8] = [
     sonettobuf::effect_type_enum::EffectType::Damage as i32,
@@ -39,50 +43,149 @@ fn run() -> anyhow::Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures");
     let input_root = root.join("battles");
     let output_root = root.join("battles_gen");
-    let args = env::args().skip(1).collect::<Vec<_>>();
-    let inputs = begin_round_inputs(&input_root, args)?;
-
-    for input in inputs {
-        let original_text = fs::read_to_string(&input)?;
-        let (generated, original) = generate_reply(db, &input)?;
-        if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage)
-            && let Some(generated_round) = generated.round.as_ref()
-        {
-            report_damage_comparison(generated_round, &captured_round(&input)?);
+    let mut args = env::args().skip(1).collect::<Vec<_>>();
+    let resync = take_flag(&mut args, "--resync");
+    let (sessions, args): (Vec<_>, Vec<_>) = args
+        .into_iter()
+        .partition(|arg| capture::is_session_dir(Path::new(arg)));
+    let mut battles = Vec::new();
+    for session in &sessions {
+        for battle in CapturedBattle::from_session(Path::new(session))? {
+            let inputs = battle
+                .rounds
+                .iter()
+                .map(|round| (round.index, round.reply.clone()))
+                .collect::<Vec<_>>();
+            battles.push((Ok(battle), inputs));
         }
-        let generated_value = serde_json::to_value(&generated)?;
-        let output_value = render_json_with_capture_conventions(&generated_value, &original);
-        let (generated_compare, original_compare) =
-            canonical_comparison(generated_value, original.clone());
-        let round_matches = generated_compare.get("round") == original_compare.get("round");
-        if !round_matches
-            && let (Some(generated_round), Some(original_round)) = (
-                generated_compare.get("round"),
-                original_compare.get("round"),
-            )
-            && let Some(path) = first_diff_path(generated_round, original_round, "/round")
-        {
-            eprintln!("  first round diff: {path}");
-            for line in array_len_diff_lines(generated_round, original_round, &path, "/round") {
-                eprintln!("    {line}");
-            }
+    }
+    // Session directories alone select only their own battles.
+    if sessions.is_empty() || !args.is_empty() {
+        for (through, inputs) in battle_groups(begin_round_inputs(&input_root, args)?) {
+            battles.push((CapturedBattle::from_folder(&through), inputs));
         }
-        let output = output_path(&input_root, &output_root, &input)?;
-        if let Some(parent) = output.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(
-            &output,
-            preview_output_text(&output_value, &original, original_text)?,
-        )?;
-        println!(
-            "{} round={} build={}",
-            output.display(),
-            if round_matches { "MATCH" } else { "DIFF" },
-            build_metadata_source(&input)?,
-        );
     }
 
+    if battles.is_empty() {
+        println!("no battles found in the given inputs");
+    }
+    for (battle, inputs) in battles {
+        let Some(&(through, _)) = inputs.last() else {
+            continue;
+        };
+        let run = battle.and_then(|battle| {
+            println!("battle start={}", battle.start.display());
+            replay_rounds(db, &battle, through, resync)
+        });
+        for (index, input) in inputs {
+            let reported = run
+                .as_ref()
+                .map_err(|error| anyhow::anyhow!("{error:#}"))
+                .and_then(|run| report_input(&input_root, &output_root, &input, index, run));
+            if let Err(error) = reported {
+                println!("{} round=ERROR {error:#}", input.display());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn take_flag(args: &mut Vec<String>, flag: &str) -> bool {
+    let before = args.len();
+    args.retain(|arg| arg != flag);
+    args.len() != before
+}
+
+// One replay per battle directory, through the latest requested round.
+fn battle_groups(inputs: Vec<PathBuf>) -> Vec<(PathBuf, Vec<(i32, PathBuf)>)> {
+    let mut groups = std::collections::BTreeMap::<PathBuf, Vec<(i32, PathBuf)>>::new();
+    for input in inputs {
+        let index = round_index(&input).unwrap_or(i32::MAX);
+        groups
+            .entry(input.parent().map(Path::to_path_buf).unwrap_or_default())
+            .or_default()
+            .push((index, input));
+    }
+    groups
+        .into_values()
+        .filter_map(|mut inputs| {
+            inputs.sort();
+            let through = inputs.last()?.1.clone();
+            Some((through, inputs))
+        })
+        .collect()
+}
+
+fn report_input(
+    input_root: &Path,
+    output_root: &Path,
+    input: &Path,
+    index: i32,
+    run: &ReplayRun,
+) -> anyhow::Result<()> {
+    let Some(outcome) = run.outcomes.iter().find(|outcome| outcome.index == index) else {
+        let reason = match run.outcomes.last() {
+            Some(RoundOutcome {
+                index,
+                result: Err(error),
+                ..
+            }) => format!("round {index}: {error}"),
+            _ => run
+                .stopped
+                .clone()
+                .unwrap_or_else(|| "round was not replayed".to_owned()),
+        };
+        println!("{} round=BLOCKED {reason}", input.display());
+        return Ok(());
+    };
+    let generated_round = match &outcome.result {
+        Ok(round) => round.clone(),
+        Err(error) => {
+            println!("{} round=ERROR {error}", input.display());
+            return Ok(());
+        }
+    };
+    let original_text = fs::read_to_string(input)?;
+    let original = captured_original(input)?;
+    if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage) {
+        report_damage_comparison(&generated_round, &captured_round(input)?);
+    }
+    let generated = BeginRoundReply {
+        round: Some(generated_round),
+    };
+    let generated_value = serde_json::to_value(&generated)?;
+    let output_value = render_json_with_capture_conventions(&generated_value, &original);
+    let (generated_compare, original_compare) =
+        canonical_comparison(generated_value, original.clone());
+    let round_matches = generated_compare.get("round") == original_compare.get("round");
+    if !round_matches
+        && let (Some(generated_round), Some(original_round)) = (
+            generated_compare.get("round"),
+            original_compare.get("round"),
+        )
+        && let Some(path) = first_diff_path(generated_round, original_round, "/round")
+    {
+        eprintln!("  first round diff: {path}");
+        for line in array_len_diff_lines(generated_round, original_round, &path, "/round") {
+            eprintln!("    {line}");
+        }
+    }
+    let output = output_path(input_root, output_root, input)?;
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(
+        &output,
+        preview_output_text(&output_value, &original, original_text)?,
+    )?;
+    println!(
+        "{} round={}{} build={}",
+        output.display(),
+        if round_matches { "MATCH" } else { "DIFF" },
+        if outcome.resynced { " resynced" } else { "" },
+        run.build,
+    );
     Ok(())
 }
 
@@ -94,14 +197,8 @@ fn init_config() -> anyhow::Result<&'static config::GameDB> {
     Ok(config::configs::get())
 }
 
-fn captured_start_reply(round_path: &Path) -> anyhow::Result<serde_json::Value> {
-    let dungeon_path = round_path.with_file_name("StartDungeonReply.json");
-    let path = if dungeon_path.exists() {
-        dungeon_path
-    } else {
-        round_path.with_file_name("StartTowerBattleReply.json")
-    };
-    let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path)?)?;
+fn read_start_reply(path: &Path) -> anyhow::Result<serde_json::Value> {
+    let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
     if let Some(start) = value.get("startDungeonReply").cloned() {
         value = start;
     }
@@ -109,26 +206,62 @@ fn captured_start_reply(round_path: &Path) -> anyhow::Result<serde_json::Value> 
     Ok(value)
 }
 
+fn captured_original(path: &Path) -> anyhow::Result<serde_json::Value> {
+    let mut original: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    expand_compressed_fight_steps(&mut original)?;
+    Ok(original)
+}
+
+#[cfg(all(test, feature = "private-fixtures"))]
 fn generate_reply(
     db: &'static config::GameDB,
     path: &Path,
 ) -> anyhow::Result<(BeginRoundReply, serde_json::Value)> {
-    let mut original: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
-    expand_compressed_fight_steps(&mut original)?;
+    let original = captured_original(path)?;
     let round = replay_to_round(db, path)?;
 
     Ok((BeginRoundReply { round: Some(round) }, original))
 }
 
-/// Replays captured requests through `BattleRuntime` from the captured start-state fixture.
-/// Later captured replies are comparison evidence and never supply generated round results.
+#[cfg(all(test, feature = "private-fixtures"))]
 fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<FightRound> {
-    let round_index = round_index(path)?;
-    let value = captured_start_reply(path)?;
+    let battle = CapturedBattle::from_folder(path)?;
+    let outcome = replay_rounds(db, &battle, round_index(path)?, false)?
+        .outcomes
+        .pop()
+        .ok_or_else(|| io::Error::other(format!("{} has no replayed round", path.display())))?;
+    outcome
+        .result
+        .map_err(|error| io::Error::other(error).into())
+}
+
+struct RoundOutcome {
+    index: i32,
+    result: Result<FightRound, String>,
+    resynced: bool,
+}
+
+struct ReplayRun {
+    outcomes: Vec<RoundOutcome>,
+    stopped: Option<String>,
+    build: &'static str,
+}
+
+/// Replays captured requests through `BattleRuntime` from the captured start-state fixture,
+/// once, through the round at `path`. Later captured replies are comparison evidence; with
+/// `resync` they also reset observed HP, ex points, and the hand between rounds so later
+/// rounds can run past an earlier divergence. The first failing round ends the replay.
+fn replay_rounds(
+    db: &'static config::GameDB,
+    battle: &CapturedBattle,
+    through: i32,
+    resync: bool,
+) -> anyhow::Result<ReplayRun> {
+    let value = read_start_reply(&battle.start)?;
     let fight = value.get("fight").cloned().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("{} has no captured start fight", path.display()),
+            format!("{} has no captured start fight", battle.start.display()),
         )
     })?;
     let fight: Fight = serde_json::from_value(fight)?;
@@ -138,8 +271,12 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
             .cloned()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "capture has no round"))?,
     )?;
-    let (ex_attributes, sp_attributes) = preview_attributes(&fight, path)?;
-    let tower_rule_skills = tower_plan_id(path)
+    let (ex_attributes, sp_attributes) =
+        preview_attributes_with_request(&fight, &battle.metadata, battle.start_request.as_deref())?;
+    let tower_rule_skills = battle
+        .start_request
+        .as_deref()
+        .and_then(tower_plan_id_from_request)
         .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
     let opening_determinism = opening_determinism(db, &fight, &captured_start_round);
@@ -153,54 +290,95 @@ fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<F
         .inherit_absorb_hurt_map_layout(&captured_start_round)
         .map_err(anyhow::Error::msg)?;
     runtime.extend_battle_rule_skills(tower_rule_skills);
-    let mut round_reply = runtime
+    let start_round = runtime
         .start_round_with_determinism(opening_determinism)
         .map_err(io::Error::other)?;
-    let mut previous_captured_round = captured_start_round;
-    replay_cloth_input(path, 0, &mut runtime)?;
-    if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage)
-        && let Some(captured) = value.get("round").cloned()
-    {
+    if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage) {
         eprintln!("  start-round damage:");
-        report_damage_comparison(&round_reply, &serde_json::from_value(captured)?);
+        report_damage_comparison(&start_round, &captured_start_round);
+    }
+    let mut run = ReplayRun {
+        outcomes: Vec::new(),
+        stopped: None,
+        build: build_metadata_source(&battle.metadata)?,
+    };
+    let mut resynced = false;
+    if resync {
+        match resync_round(&mut runtime, 0, &captured_start_round) {
+            Ok(changed) => resynced |= changed,
+            Err(error) => {
+                run.stopped = Some(format!("resync after start: {error:#}"));
+                return Ok(run);
+            }
+        }
+    }
+    let mut previous_captured_round = captured_start_round;
+    if let Err(error) = replay_cloth_input(&battle.start_cloth, &mut runtime) {
+        run.stopped = Some(format!("cloth before round 1: {error:#}"));
+        return Ok(run);
     }
 
-    for index in round_indices(path, round_index)? {
-        let (request_name, reply_name) = if uses_legacy_round_names(path) {
-            (
-                format!("BeginRoundRequest_{index}.json"),
-                format!("BeginRoundReply_{index}.json"),
-            )
-        } else {
-            (
-                format!("begin_round_{index}_request.json"),
-                format!("begin_round_{index}.json"),
-            )
+    for round in battle.rounds.iter().filter(|round| round.index <= through) {
+        let index = round.index;
+        // Capture problems block this round and every later one, never the earlier results.
+        let prepared = (|| -> anyhow::Result<(BeginRoundRequest, FightRound)> {
+            let request = begin_round_request(&round.request)?;
+            let captured = captured_round(&round.reply)?;
+            validate_captured_round_continuity(&previous_captured_round, &captured)?;
+            replay_cloth_input(&round.cloth, &mut runtime)?;
+            Ok((request, captured))
+        })();
+        let (request, captured) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                run.stopped = Some(format!("round {index} capture: {error:#}"));
+                break;
+            }
         };
-        let request_path = path.with_file_name(request_name);
-        let request = begin_round_request(&request_path)?;
-        let captured = captured_round(&path.with_file_name(reply_name))?;
-        validate_captured_round_continuity(&previous_captured_round, &captured)?;
         report_rule_issues(&captured);
-        replay_cloth_input(path, index, &mut runtime)?;
         seed_round_determinism(&mut runtime, catalog::global(), &captured);
-        round_reply = runtime.advance_round(request).map_err(io::Error::other)?;
+        let result = runtime.advance_round(request);
+        let failed = result.is_err();
+        run.outcomes.push(RoundOutcome {
+            index,
+            result,
+            resynced,
+        });
+        if failed {
+            break;
+        }
+        if resync {
+            match resync_round(&mut runtime, index, &captured) {
+                Ok(changed) => resynced |= changed,
+                Err(error) => {
+                    run.stopped = Some(format!("resync after round {index}: {error:#}"));
+                    break;
+                }
+            }
+        }
         previous_captured_round = captured;
     }
 
-    Ok(round_reply)
+    Ok(run)
 }
 
-fn replay_cloth_input(
-    path: &Path,
-    round_index: i32,
+fn resync_round(
     runtime: &mut BattleRuntime,
-) -> anyhow::Result<()> {
-    let Some(parent) = path.parent() else {
-        return Ok(());
-    };
-    for input in cloth_input_paths(parent, round_index)? {
-        let mut request: serde_json::Value = serde_json::from_str(&fs::read_to_string(&input)?)?;
+    index: i32,
+    captured: &FightRound,
+) -> anyhow::Result<bool> {
+    let changes = runtime
+        .resync_observed_state(captured)
+        .map_err(io::Error::other)?;
+    for change in &changes {
+        eprintln!("  resync after round {index}: {change}");
+    }
+    Ok(!changes.is_empty())
+}
+
+fn replay_cloth_input(inputs: &[PathBuf], runtime: &mut BattleRuntime) -> anyhow::Result<()> {
+    for input in inputs {
+        let mut request: serde_json::Value = serde_json::from_str(&fs::read_to_string(input)?)?;
         normalize_live_json(&mut request);
         let request = serde_json::from_value(request)?;
         runtime

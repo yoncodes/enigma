@@ -425,3 +425,36 @@ fn reads_dungeon_and_tower_start_reply_envelopes() {
     assert!(dungeon.unwrap().get("fight").is_some());
     assert!(tower.unwrap().get("fight").is_some());
 }
+
+#[test]
+fn each_battle_replays_once_through_its_latest_requested_round() {
+    let inputs = [
+        "a/BeginRoundReply_10.json",
+        "b/begin_round_1.json",
+        "a/BeginRoundReply_2.json",
+    ]
+    .map(PathBuf::from)
+    .to_vec();
+
+    let groups = battle_groups(inputs);
+
+    assert_eq!(
+        groups,
+        vec![
+            (
+                PathBuf::from("a/BeginRoundReply_10.json"),
+                vec![
+                    (2, PathBuf::from("a/BeginRoundReply_2.json")),
+                    (10, PathBuf::from("a/BeginRoundReply_10.json")),
+                ],
+            ),
+            (
+                PathBuf::from("b/begin_round_1.json"),
+                vec![(1, PathBuf::from("b/begin_round_1.json"))],
+            ),
+        ]
+    );
+    let mut args = vec!["--resync".to_owned(), "a".to_owned()];
+    assert!(take_flag(&mut args, "--resync"));
+    assert_eq!(args, vec!["a".to_owned()]);
+}

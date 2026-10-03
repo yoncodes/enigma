@@ -143,7 +143,8 @@ pub(in crate::engine::runtime) fn emit_ops(
             );
             execution.context.active_skill_rank =
                 managers.catalog().skill_rank(invocation.plan.skill_id);
-            execution.context.active_skill_type = catalog.skill_type(effect_skill_id);
+            // "SkillType" conditions read the skill's target kind: 1-target (1) or mass (2).
+            execution.context.active_skill_type = execution.context.damage_target_count_kind;
             execution.context.active_skill_effect_tag = catalog.effect_tag(effect_skill_id);
         }
         execution.context.additional_moxie = invocation.additional_moxie;
@@ -180,12 +181,14 @@ pub(in crate::engine::runtime) fn emit_ops(
         .unwrap_or_else(|| execution.context.heat_scale_value.saturating_mul(1000));
     let mut outputs = Vec::new();
     let mut fired_rules = Vec::new();
+    let resume_slot = std::mem::take(&mut execution.resume_slot);
     let active_phase = matches!(trigger, SkillOpTrigger::Active).then_some(
         invocation
             .phase
             .unwrap_or(crate::engine::skill::action::SkillPhase::Immediate),
     );
-    if active_phase == Some(crate::engine::skill::action::SkillPhase::Immediate)
+    if resume_slot == 0
+        && active_phase == Some(crate::engine::skill::action::SkillPhase::Immediate)
         && execution.configured_targets.is_none()
     {
         let request = TargetRequest {
@@ -232,7 +235,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         execution.record_targets(configured_targets.iter().copied());
         execution.configured_targets = Some(configured_targets);
     }
-    if active_phase == Some(SkillPhase::Immediate) {
+    if resume_slot == 0 && active_phase == Some(SkillPhase::Immediate) {
         if let Some(modifier) = invocation.rate_modifier {
             execution.modifiers.rates.push(modifier);
         }
@@ -243,13 +246,21 @@ pub(in crate::engine::runtime) fn emit_ops(
                 invocation.mode,
             ),
         );
+        if execution.marked_targets.is_none() {
+            execution.marked_targets =
+                Some(crate::engine::skill::buff_act::assassination::marked_targets(managers));
+        }
+        // The caster's and its targets' reactions to the action starting run before its own effects.
+        let effect_started_owners = std::iter::once(invocation.plan.source_uid)
+            .chain(execution.affected_targets.iter().copied())
+            .collect::<Vec<_>>();
         let effect_started_subscribers =
             crate::engine::skill::subscriber::for_compiled_owner_events(
                 pool,
                 managers,
                 catalog,
                 [crate::engine::event::kind::EventKind::SkillEffectStarted],
-                &[invocation.plan.source_uid],
+                &effect_started_owners,
             )
             .map_err(SkillOpError::from)?;
         if !effect_started_subscribers.skills.is_empty()
@@ -269,7 +280,37 @@ pub(in crate::engine::runtime) fn emit_ops(
             .slots
             .iter()
             .any(|slot| slot.behavior.spec.kind == BehaviorKind::IgnoreSkillConfigDamageRate);
-    if active_phase == Some(SkillPhase::Damage)
+    // An extra action's Force Field Eureka cost and forced crit open the action, before its own
+    // effects; other additional-damage activations follow those effects.
+    if resume_slot == 0 && active_phase == Some(SkillPhase::Immediate) && has_row_damage {
+        for activation in plan::additional_damage_activation(&invocation, managers, execution)
+            .into_iter()
+            .filter(|activation| activation.pays_extra_action_cost)
+        {
+            outputs.extend(emit_additional_damage_activation(
+                &invocation,
+                execution,
+                activation,
+            ));
+        }
+        if plan::forces_critical(&invocation, managers, execution) {
+            outputs.push(SkillEmissionOp {
+                op: RuleOp::EffectMarker {
+                    target_uid: invocation.plan.source_uid,
+                    effect_type: sonettobuf::effect_type_enum::EffectType::Mustcrit as i32,
+                    effect_num: 0,
+                    config_effect: 0,
+                    reserve_id: execution.primary_target_uid,
+                    reserve_str: None,
+                },
+                owner: behavior::registry::OutputOwner::Skill,
+                consequence: ConsequencePolicy::Default,
+                frame_owner: None,
+            });
+        }
+    }
+    if resume_slot == 0
+        && active_phase == Some(SkillPhase::Damage)
         && has_row_damage
         && execution.planned_crits.is_none()
     {
@@ -283,7 +324,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution,
         );
     }
-    for (slot_index, slot) in effect.slots.iter().enumerate() {
+    for (slot_index, slot) in effect.slots.iter().enumerate().skip(resume_slot) {
         if invocation
             .condition_slot
             .is_some_and(|selected| selected != slot_index)
@@ -310,9 +351,6 @@ pub(in crate::engine::runtime) fn emit_ops(
             } {
                 continue;
             }
-        }
-        if skill_destination_already_emitted(&outputs, definition, &slot.behavior) {
-            continue;
         }
         let (conditions, selected_event, condition_key) = match (invocation.condition_key, trigger)
         {
@@ -530,40 +568,43 @@ pub(in crate::engine::runtime) fn emit_ops(
         } else {
             None
         };
-        let mut targets = if let Some(targets) = event_targets {
-            targets.to_vec()
-        } else if active_phase.is_some()
-            && has_row_damage
-            && condition_uses_hit_targets
-            && uses_action_targets
-        {
-            execution.attacked_targets.clone()
-        } else if active_phase.is_some()
-            && uses_action_targets
-            && let Some(targets) = &execution.configured_targets
-        {
-            targets.clone()
-        } else {
-            behavior::use_skill::resolve_targets(
-                invocation.plan.skill_id,
-                invocation.plan.source_uid,
-                slot.target.code,
-                pool,
-                determinism,
-                &slot.behavior,
-            )
-            .unwrap_or_else(|| {
-                TargetResolver::resolve_with_managers_and_context(
-                    &slot.target,
+        let mut targets =
+            if definition.target_emission_mode == behavior::registry::TargetEmissionMode::Owner {
+                vec![invocation.plan.source_uid]
+            } else if let Some(targets) = event_targets {
+                targets.to_vec()
+            } else if active_phase.is_some()
+                && has_row_damage
+                && condition_uses_hit_targets
+                && uses_action_targets
+            {
+                execution.attacked_targets.clone()
+            } else if active_phase.is_some()
+                && uses_action_targets
+                && let Some(targets) = &execution.configured_targets
+            {
+                targets.clone()
+            } else {
+                behavior::use_skill::resolve_targets(
                     invocation.plan.skill_id,
                     invocation.plan.source_uid,
+                    slot.target.code,
                     pool,
                     determinism,
-                    Some(managers),
-                    execution.context,
+                    &slot.behavior,
                 )
-            })
-        };
+                .unwrap_or_else(|| {
+                    TargetResolver::resolve_with_managers_and_context(
+                        &slot.target,
+                        invocation.plan.skill_id,
+                        invocation.plan.source_uid,
+                        pool,
+                        determinism,
+                        Some(managers),
+                        execution.context,
+                    )
+                })
+            };
         if per_target_conditions {
             targets.retain(|target_uid| {
                 conditions.iter().all(|condition| {
@@ -641,6 +682,24 @@ pub(in crate::engine::runtime) fn emit_ops(
         {
             fired_rules.push((slot_index, condition_key));
         }
+        // The game runs a skill's slots in order, so a later condition in this phase sees what
+        // this slot changed: let those changes commit before checking it.
+        if let Some(phase) = active_phase
+            && outputs.len() > outputs_before
+            && effect.slots[slot_index + 1..]
+                .iter()
+                .any(|later| !later.conditions.is_empty() && slot_runs_in_phase(later, phase))
+        {
+            execution.resume_slot = slot_index + 1;
+            let mut continuation = invocation.clone();
+            continuation.phase = Some(phase);
+            return Ok(SkillEmission {
+                ops: outputs,
+                fired_rules,
+                continuation: Some(continuation),
+                target_uid: execution.primary_target_uid,
+            });
+        }
     }
     if active_phase == Some(SkillPhase::Immediate) {
         let mut phase_completed = phase_completed_op(
@@ -704,42 +763,18 @@ pub(in crate::engine::runtime) fn emit_ops(
         );
     }
     if active_phase == Some(SkillPhase::Immediate) && has_row_damage {
-        let activations = plan::additional_damage_activation(&invocation, managers, execution);
-        for activation in activations {
-            let feature = &activation.additional.feature;
-            execution
-                .activated_additional_damage
-                .push(activation.additional.clone());
-            execution
-                .temporary_damage_buffs
-                .extend(activation.temporary_buff);
-            let frame_owner =
-                crate::engine::skill::buff_act::feature_command_origin(feature).map(|origin| {
-                    crate::engine::runtime::record::FrameOwner::BuffAct {
-                        owner_uid: invocation.plan.source_uid,
-                        source_uid: feature.source_uid,
-                        buff_uid: feature.buff_uid,
-                        buff_id: feature.buff_id,
-                        key: origin.key,
-                    }
-                });
-            outputs.extend(
-                activation
-                    .buff_act_ops
-                    .into_iter()
-                    .map(|op| SkillEmissionOp {
-                        op,
-                        owner: behavior::registry::OutputOwner::Skill,
-                        consequence: ConsequencePolicy::Default,
-                        frame_owner: frame_owner.clone(),
-                    }),
-            );
-            outputs.extend(activation.skill_ops.into_iter().map(|op| SkillEmissionOp {
-                op,
-                owner: behavior::registry::OutputOwner::Skill,
-                consequence: ConsequencePolicy::Default,
-                frame_owner: None,
-            }));
+        for activation in plan::additional_damage_activation(&invocation, managers, execution) {
+            let activated = execution.activated_additional_damage.iter().any(|planned| {
+                planned.feature.buff_uid == activation.additional.feature.buff_uid
+                    && planned.feature.buff_id == activation.additional.feature.buff_id
+            });
+            if !activated {
+                outputs.extend(emit_additional_damage_activation(
+                    &invocation,
+                    execution,
+                    activation,
+                ));
+            }
         }
     }
     let mut has_after_damage = false;
@@ -1026,15 +1061,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             });
         }
     }
-    if continuation.is_none()
-        && matches!(
-            invocation.mode,
-            crate::engine::skill::action::SkillExecutionMode::Active
-                | crate::engine::skill::action::SkillExecutionMode::DirectBig
-                | crate::engine::skill::action::SkillExecutionMode::Device
-                | crate::engine::skill::action::SkillExecutionMode::DeviceCard
-        )
-    {
+    if continuation.is_none() && invocation.mode.completes_action() {
         outputs.push(SkillEmissionOp {
             op: RuleOp::SkillLifecycle(
                 crate::engine::skill::action::SkillLifecycle::ActionCompleted(
@@ -1050,7 +1077,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                         ),
                         is_attack: catalog.is_attack(effect_skill_id),
                         rank: managers.catalog().skill_rank(invocation.plan.skill_id),
-                        skill_type: catalog.skill_type(effect_skill_id),
+                        skill_type: execution.context.damage_target_count_kind,
                         effect_tag: catalog.effect_tag(effect_skill_id),
                         additional_moxie: invocation.additional_moxie,
                         extra_skill_kind: execution.context.extra_skill_kind,
@@ -1063,6 +1090,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                         teammate_injury_count_not_reset: execution.injured_allies.len() as i32,
                         team_injury_count_round: execution.team_injury_count_round,
                         card_enchants: invocation.card_enchants.clone(),
+                        card_index: invocation.card_index,
                     },
                 ),
             ),
@@ -1079,37 +1107,30 @@ pub(in crate::engine::runtime) fn emit_ops(
     })
 }
 
+fn slot_runs_in_phase(slot: &SkillEffectSlot, phase: SkillPhase) -> bool {
+    let routed_phases = slot.active_phases().unwrap_or_default();
+    if routed_phases.is_empty() {
+        behavior::registry::find(&slot.behavior).is_some_and(|definition| definition.phase == phase)
+    } else {
+        routed_phases.contains(&phase)
+    }
+}
+
 pub(in crate::engine::runtime::skill) fn action_mode(
     mode: SkillExecutionMode,
     extra_kind: Option<crate::engine::skill::condition::extra::ExtraSkillKind>,
 ) -> SkillExecutionMode {
-    if mode == SkillExecutionMode::Nested && extra_kind.is_some_and(|kind| kind.is_extra_action()) {
+    // A riposte is an ally action too: "after any ally takes an action" reactions answer it.
+    if mode == SkillExecutionMode::Nested
+        && extra_kind.is_some_and(|kind| {
+            kind.is_extra_action()
+                || kind == crate::engine::skill::condition::extra::ExtraSkillKind::Riposte
+        })
+    {
         SkillExecutionMode::Active
     } else {
         mode
     }
-}
-
-pub(in crate::engine::runtime::skill) fn skill_destination_already_emitted(
-    outputs: &[SkillEmissionOp],
-    definition: &crate::engine::skill::behavior::registry::BehaviorDefinition,
-    behavior: &crate::engine::skill::effect::ParsedBehavior,
-) -> bool {
-    if definition.skill_destination_mode
-        != crate::engine::skill::behavior::registry::SkillDestinationMode::Unique
-    {
-        return false;
-    }
-    let references = (definition.references)(behavior);
-    let [skill_id] = references.skills.as_slice() else {
-        return false;
-    };
-    outputs.iter().any(|output| {
-        matches!(
-            &output.op,
-            RuleOp::Skill(invocation) if invocation.plan.skill_id == *skill_id
-        )
-    })
 }
 
 fn consequence_policy(
@@ -1161,4 +1182,44 @@ fn consequence_policy(
             .map(|definition| definition.consequence)
             .unwrap_or_default(),
     )
+}
+
+fn emit_additional_damage_activation(
+    invocation: &SkillInvocation,
+    execution: &mut SkillExecution,
+    activation: plan::AdditionalDamageActivation,
+) -> Vec<SkillEmissionOp> {
+    let feature = &activation.additional.feature;
+    execution
+        .activated_additional_damage
+        .push(activation.additional.clone());
+    execution
+        .temporary_damage_buffs
+        .extend(activation.temporary_buff);
+    let frame_owner =
+        crate::engine::skill::buff_act::feature_command_origin(feature).map(|origin| {
+            crate::engine::runtime::record::FrameOwner::BuffAct {
+                owner_uid: invocation.plan.source_uid,
+                source_uid: feature.source_uid,
+                buff_uid: feature.buff_uid,
+                buff_id: feature.buff_id,
+                key: origin.key,
+            }
+        });
+    activation
+        .buff_act_ops
+        .into_iter()
+        .map(|op| SkillEmissionOp {
+            op,
+            owner: behavior::registry::OutputOwner::Skill,
+            consequence: ConsequencePolicy::Default,
+            frame_owner: frame_owner.clone(),
+        })
+        .chain(activation.skill_ops.into_iter().map(|op| SkillEmissionOp {
+            op,
+            owner: behavior::registry::OutputOwner::Skill,
+            consequence: ConsequencePolicy::Default,
+            frame_owner: None,
+        }))
+        .collect()
 }

@@ -242,6 +242,13 @@ pub struct MaxHpChange {
     pub after_max: i32,
 }
 
+/// A hit split by ShareHurt before it landed: the consumed stack and each ally's share.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharedHurt {
+    pub consumed: crate::engine::manager::buff::BuffChanges,
+    pub shares: Vec<HpChanges>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct HpChanges {
     pub origin: CommandOrigin,
@@ -250,6 +257,7 @@ pub struct HpChanges {
     pub damage: Option<DamageRecord>,
     pub team_shared_shield_absorbed: Option<TeamSharedShieldAbsorption>,
     pub team_shared_shield_removed: Option<crate::engine::manager::buff::BuffChanges>,
+    pub shared_hurt: Option<Box<SharedHurt>>,
     pub shield_absorbed: Option<ShieldChange>,
     pub shield_granted: Option<ShieldGain>,
     pub max_hp: Option<MaxHpChange>,
@@ -270,6 +278,25 @@ pub struct DamageRecord {
 }
 
 impl HpChanges {
+    /// Every HP change this commit made: ShareHurt shares first, then this change.
+    pub fn with_shares(&self) -> impl Iterator<Item = &HpChanges> {
+        self.shared_hurt
+            .iter()
+            .flat_map(|shared| shared.shares.iter())
+            .chain(std::iter::once(self))
+    }
+
+    pub fn take_deaths_with_shares(&mut self) -> Vec<DeathTransition> {
+        let mut deaths = self
+            .shared_hurt
+            .iter_mut()
+            .flat_map(|shared| shared.shares.iter_mut())
+            .filter_map(|share| share.death.take())
+            .collect::<Vec<_>>();
+        deaths.extend(self.death.take());
+        deaths
+    }
+
     pub fn caused_death(&self) -> bool {
         self.hp
             .is_some_and(|change| change.before > 0 && change.after == 0)
@@ -295,6 +322,20 @@ impl HpChanges {
 
     pub fn events(&self) -> Vec<BattleEvent> {
         let mut events = Vec::with_capacity(3);
+        if let Some(shared) = &self.shared_hurt {
+            events.extend(shared.consumed.events());
+            for share in &shared.shares {
+                events.extend(share.events());
+                if let Some(change) = share.hp.filter(|change| change.delta < 0) {
+                    events.push(BattleEvent::DamageShared {
+                        origin: share.origin,
+                        source_uid: share.source_uid,
+                        target_uid: share.target_uid,
+                        amount: change.delta.saturating_abs(),
+                    });
+                }
+            }
+        }
         if self.kill.is_none()
             && let Some(change) = self.hp.filter(|change| change.delta < 0)
         {
@@ -375,6 +416,7 @@ pub enum HpCommandError {
     InvalidCommand,
     MissingTarget(i64),
     InvalidTeamSharedState,
+    InvalidShareHurtState,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -461,6 +503,12 @@ impl HpManager {
             state.base_max
         } else {
             state.max
+        }
+    }
+
+    pub(crate) fn resync_current(&mut self, uid: i64, current: i32) {
+        if let Some(state) = self.states.get_mut(&uid) {
+            state.current = current.clamp(0, state.max);
         }
     }
 
@@ -637,6 +685,7 @@ impl HpManager {
             damage: None,
             team_shared_shield_absorbed: None,
             team_shared_shield_removed: None,
+            shared_hurt: None,
             shield_absorbed: None,
             shield_granted: None,
             max_hp: None,
