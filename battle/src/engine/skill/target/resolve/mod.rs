@@ -299,7 +299,9 @@ impl TargetResolver {
             TargetRule::AlliesWithStatus => allies_by_status(pool, source_uid, request, true),
             TargetRule::AlliesWithoutStatus => allies_by_status(pool, source_uid, request, false),
         };
+        // Only an attack puts its primary target first; a skill reacting to an attack keeps roster order.
         if context.active_skill_is_attack
+            && managers.is_none_or(|managers| managers.catalog().skill_is_attack(skill_id))
             && targets.len() > 1
             && let Some(index) = targets
                 .iter()
