@@ -1674,6 +1674,159 @@ fn shared_damage_reaction_transfers_the_number_of_share_recipients() {
 }
 
 #[test]
+fn shared_hit_pipeline_triggers_holder_reactions_for_share_and_hit() {
+    crate::test_support::init_config();
+    let entity = |position, uid, passive_skill, buffs| FightEntityInfo {
+        uid: Some(uid),
+        position: Some(position),
+        team_type: Some(1),
+        current_hp: Some(10_000),
+        attr: Some(HeroAttribute {
+            hp: Some(10_000),
+            ..Default::default()
+        }),
+        passive_skill,
+        buffs,
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(
+                    1,
+                    10,
+                    vec![434111],
+                    vec![BuffInfo {
+                        uid: Some(50),
+                        buff_id: Some(31090121),
+                        from_uid: Some(13),
+                        layer: Some(3),
+                        ..Default::default()
+                    }],
+                ),
+                entity(2, 11, Vec::new(), Vec::new()),
+                entity(3, 12, Vec::new(), Vec::new()),
+                entity(4, 13, Vec::new(), Vec::new()),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                position: Some(1),
+                team_type: Some(2),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    run_command_group(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Command(BattleCommand::Hp(
+            crate::engine::manager::hp::HpCommand::Damage(crate::engine::manager::hp::HpDamage {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Skill,
+                    key: DefinitionKey::new(1, "SkillDamage"),
+                },
+                source_uid: -1,
+                target_uid: 10,
+                amount: 2_102,
+                config_effect: -1,
+                effect_kind: crate::engine::manager::hp::DamageEffectKind::Normal,
+                assassinate: false,
+                ignore_riposte: false,
+                hurt: crate::engine::manager::hp::HurtInfoData {
+                    from_uid: -1,
+                    is_crit: false,
+                    career_restraint: false,
+                    reduce_hp: 0,
+                    effect_id: 0,
+                    skill_id: 1,
+                    damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+                    buff_act_id: 0,
+                    buff_uid: 0,
+                    hurt_effect_type: sonettobuf::effect_type_enum::EffectType::Damage as i32,
+                    display_amount: None,
+                },
+            }),
+        ))],
+    )
+    .unwrap();
+    for uid in [10, 11, 12, 13] {
+        assert_eq!(managers.buff.buff_id_amount(uid, 434121), 6);
+    }
+}
+
+#[test]
+fn carrier_death_pipeline_returns_deployed_shells_to_the_caster() {
+    crate::test_support::init_config();
+    let mut fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(10_000),
+                passive_skill: vec![31090141],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(10_000),
+                buffs: vec![BuffInfo {
+                    uid: Some(52),
+                    buff_id: Some(31090112),
+                    layer: Some(3),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    fight.attacker.as_mut().unwrap().entitys[0].current_hp = Some(0);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
+            source_uid: -1,
+            target_uid: 10,
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(managers.buff.buff_id_amount(-1, 31090112), 0);
+    assert_eq!(managers.buff.buff_id_amount(10, 31090111), 3);
+}
+
+#[test]
 fn allied_action_observer_keeps_the_triggering_action_target() {
     let event = BattleEvent::AllyAction(ActionEvent {
         source_uid: 10,
