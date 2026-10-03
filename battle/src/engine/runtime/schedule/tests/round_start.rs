@@ -670,8 +670,8 @@ fn change_round_effect_num(round: &DrainResult) -> i32 {
 }
 
 #[test]
-fn change_round_payload_is_zero_without_a_conduit_area() {
-    assert_eq!(change_round_effect_num(&scheduled_round_start(7, None)), 0);
+fn version_seven_change_round_payload_names_the_next_round_without_a_conduit_area() {
+    assert_eq!(change_round_effect_num(&scheduled_round_start(7, None)), 4);
 }
 
 #[test]
@@ -685,9 +685,9 @@ fn change_round_payload_is_zero_when_the_layout_does_not_reset_conduit_power() {
 }
 
 #[test]
-fn change_round_payload_follows_the_conduit_action_phase_reset() {
+fn version_seven_change_round_payload_names_the_next_round_with_a_conduit_area() {
     let round = scheduled_round_start(7, Some(3149));
-    assert_eq!(change_round_effect_num(&round), 3);
+    assert_eq!(change_round_effect_num(&round), 4);
     let conduit_changes = round
         .outcomes
         .iter()
