@@ -322,19 +322,45 @@ pub fn resolve_additional_damage_command(
     }))
 }
 
+#[derive(Clone, Copy)]
+pub struct ProportionalAdditionalDamageRequest {
+    pub main: HpDamage,
+    pub rate: i32,
+    pub main_rate: i32,
+    pub credited_source_uid: i64,
+    pub force_career_restraint: bool,
+    pub assassinate: bool,
+    pub origin: CommandOrigin,
+}
+
 pub fn resolve_proportional_additional_damage_command(
-    main: HpDamage,
-    rate: i32,
-    main_rate: i32,
-    credited_source_uid: i64,
-    assassinate: bool,
-    origin: CommandOrigin,
+    request: ProportionalAdditionalDamageRequest,
+    runtime: DamageRuntime<'_>,
 ) -> Option<HpCommand> {
+    let ProportionalAdditionalDamageRequest {
+        main,
+        rate,
+        main_rate,
+        credited_source_uid,
+        force_career_restraint,
+        assassinate,
+        origin,
+    } = request;
     if main.amount <= 0 || rate <= 0 || main_rate <= 0 || credited_source_uid == 0 {
         return None;
     }
     let amount = (i64::from(main.amount) * i64::from(rate) / i64::from(main_rate))
         .clamp(0, i64::from(i32::MAX)) as i32;
+    let credited_source = runtime.pool.entity(credited_source_uid)?;
+    let target = runtime.pool.entity(main.target_uid)?;
+    let career_restraint = force_career_restraint
+        || runtime
+            .buffs
+            .active_features(runtime.hp)
+            .iter()
+            .filter(|feature| feature.owner_uid == credited_source_uid)
+            .any(crate::engine::skill::buff_act::forces_career_restraint)
+        || restrains_target_either(runtime.pool.catalog(), credited_source.career, None, target);
     (amount > 0).then_some(HpCommand::Damage(HpDamage {
         origin,
         source_uid: credited_source_uid,
@@ -351,7 +377,7 @@ pub fn resolve_proportional_additional_damage_command(
         hurt: HurtInfoData {
             from_uid: credited_source_uid,
             is_crit: main.hurt.is_crit,
-            career_restraint: main.hurt.career_restraint,
+            career_restraint,
             reduce_hp: 0,
             effect_id: 0,
             skill_id: 0,

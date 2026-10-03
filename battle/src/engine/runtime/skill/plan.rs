@@ -749,12 +749,26 @@ pub(super) fn damage_ops(
             {
                 resolved_main_damage.and_then(|main| {
                     damage::resolve_proportional_additional_damage_command(
-                        main,
-                        rate,
-                        catalog.damage_rate(effect_skill_id),
-                        additional.credited_source_uid,
-                        assassination.triggered_by_target,
-                        *origin,
+                        damage::ProportionalAdditionalDamageRequest {
+                            main,
+                            rate,
+                            main_rate: catalog.damage_rate(effect_skill_id),
+                            credited_source_uid: additional.credited_source_uid,
+                            force_career_restraint: target_modifiers.force_career_restraint,
+                            assassinate: assassination.triggered_by_target,
+                            origin: *origin,
+                        },
+                        damage::DamageRuntime {
+                            fight_version: managers.fight_version(),
+                            pool,
+                            attributes: &managers.attribute,
+                            buffs: &managers.buff,
+                            target_buffs: &managers.buff,
+                            hp: &managers.hp,
+                            fields: Some((&managers.field, managers.catalog())),
+                            emitter: None,
+                            team_inspiration: 0,
+                        },
                     )
                 })
             } else {

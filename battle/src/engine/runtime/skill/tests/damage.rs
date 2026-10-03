@@ -1981,7 +1981,7 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
         let managers = BattleManagers::seeded(&fight);
         let pool = TargetPool::from_fight(&fight);
         let mut catalog = SkillEffectCatalog::default();
-        catalog.insert_damage_rate(100, 1_000);
+        catalog.insert_damage_rate(100, 6_000);
         catalog.insert_logic_target(100, 1);
         let invocation: SkillInvocation = SkillRequest {
             source_uid: 10,
@@ -2022,7 +2022,7 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
         [HpCommand::Damage(damage)] => damage.amount,
         _ => panic!("expected one linked damage command"),
     };
-    assert_eq!(linked_amount, main_amount * 1_250 / 1_000);
+    assert_eq!(linked_amount, main_amount * 1_250 / 6_000);
     assert!(additional_damage(false).1.is_empty());
 }
 

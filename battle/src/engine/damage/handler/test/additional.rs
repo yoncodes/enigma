@@ -346,6 +346,86 @@ fn credited_source_additional_damage_uses_the_sources_career() {
 }
 
 #[test]
+fn proportional_additional_damage_uses_the_credited_sources_career() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(1, 1, 1, 1_000, 0), entity(2, 1, 2, 1_000, 0)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1, 0, 0)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let runtime = DamageRuntime {
+        fight_version: 6,
+        pool: &pool,
+        attributes: &managers.attribute,
+        buffs: &managers.buff,
+        target_buffs: &managers.buff,
+        hp: &managers.hp,
+        fields: None,
+        emitter: None,
+        team_inspiration: 0,
+    };
+    let origin = CommandOrigin {
+        domain: crate::engine::skill::rule::RuleDomain::BuffAct,
+        key: crate::engine::skill::rule::DefinitionKey::new(
+            10003,
+            "AssassinateCreateAdditionalDamage",
+        ),
+    };
+    let main = HpDamage {
+        origin,
+        source_uid: 1,
+        target_uid: -1,
+        amount: 76_984,
+        config_effect: -1,
+        effect_kind: DamageEffectKind::Critical,
+        assassinate: true,
+        ignore_riposte: false,
+        hurt: HurtInfoData {
+            from_uid: 1,
+            is_crit: true,
+            career_restraint: false,
+            reduce_hp: 0,
+            effect_id: 100,
+            skill_id: 100,
+            damage_from: HurtDamageFromType::Skill,
+            buff_act_id: 0,
+            buff_uid: 0,
+            hurt_effect_type: EffectType::Crit as i32,
+            display_amount: None,
+        },
+    };
+
+    let command = resolve_proportional_additional_damage_command(
+        ProportionalAdditionalDamageRequest {
+            main,
+            rate: 1_250,
+            main_rate: 6_000,
+            credited_source_uid: 2,
+            force_career_restraint: false,
+            assassinate: false,
+            origin,
+        },
+        runtime,
+    )
+    .unwrap();
+    let HpCommand::Damage(damage) = command else {
+        panic!("expected proportional additional damage");
+    };
+
+    assert_eq!(damage.amount, 16_038);
+    assert_eq!(damage.source_uid, 2);
+    assert!(damage.hurt.career_restraint);
+}
+
+#[test]
 fn career_ratio_fix_extends_the_existing_advantage_lane() {
     init_config();
     let fight = Fight {
