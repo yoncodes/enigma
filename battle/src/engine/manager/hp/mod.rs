@@ -326,14 +326,23 @@ impl HpChanges {
             events.extend(shared.consumed.events());
             for share in &shared.shares {
                 events.extend(share.events());
-                if let Some(change) = share.hp.filter(|change| change.delta < 0) {
-                    events.push(BattleEvent::DamageShared {
-                        origin: share.origin,
-                        source_uid: share.source_uid,
-                        target_uid: share.target_uid,
-                        amount: change.delta.saturating_abs(),
-                    });
-                }
+            }
+            let amount = shared
+                .shares
+                .iter()
+                .filter_map(|share| share.hp.filter(|change| change.delta < 0))
+                .map(|change| change.delta.saturating_abs())
+                .sum();
+            if amount > 0 {
+                events.push(BattleEvent::DamageShared {
+                    origin: shared
+                        .shares
+                        .first()
+                        .map_or(self.origin, |share| share.origin),
+                    source_uid: self.source_uid,
+                    target_uid: self.target_uid,
+                    amount,
+                });
             }
         }
         if self.kill.is_none()

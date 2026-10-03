@@ -212,7 +212,7 @@ pub enum BattleEvent {
         amount: i32,
         buff_uid: Option<i64>,
     },
-    // A ShareHurt share: `source_uid` attacked an ally and `target_uid` took this part of the hit.
+    // A ShareHurt split: `source_uid` attacked `target_uid`, which shared damage with its allies.
     DamageShared {
         origin: CommandOrigin,
         source_uid: i64,

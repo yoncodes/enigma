@@ -56,6 +56,17 @@ fn buff_and_obscurity_conditions_keep_their_exact_routes() {
 }
 
 #[test]
+fn share_damage_observes_the_share_hurt_split() {
+    assert_eq!(
+        find_key(695213, "ShareDamage").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::DamageShared,
+            phase: None,
+        })
+    );
+}
+
+#[test]
 fn settlement_and_round_start_conditions_keep_their_exact_routes() {
     assert_eq!(
         find_key(750307, "PlayerHasBuff").map(|definition| definition.role),

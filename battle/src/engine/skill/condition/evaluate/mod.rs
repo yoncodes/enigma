@@ -882,8 +882,7 @@ fn condition_kind_matches(
                     == pool.source_is_attacker(context.hit_target_uid)
         }
         ParsedConditionKind::ShareDamage => {
-            context.hit_damage_from
-                == Some(crate::engine::manager::hp::HurtDamageFromType::ShareHurt)
+            context.damage_shared_uid != 0 && condition_targets.contains(&context.damage_shared_uid)
         }
         ParsedConditionKind::Assassinate => context.active_skill_assassinate,
         ParsedConditionKind::TeammateInjuryCount {

@@ -1041,6 +1041,11 @@ pub(super) fn reaction_counterparty(
             ..
         } => (*source_uid, *target_uid),
         BattleEvent::Hit(hit) => (hit.source_uid, hit.target_uid),
+        BattleEvent::DamageShared {
+            source_uid,
+            target_uid,
+            ..
+        } => (*source_uid, *target_uid),
         BattleEvent::EntityDied(death) => (death.source_uid, death.target_uid),
         BattleEvent::ExPointChanged(change) | BattleEvent::ExPointOverflow(change) => {
             (change.source_uid, change.target_uid)

@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn each_share_publishes_the_attacker_and_the_sharing_ally() {
+    fn a_split_publishes_the_attacker_and_the_holder_once() {
         let mut managers = managers(&[], 3);
 
         let changes = managers
@@ -251,7 +251,7 @@ mod tests {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(shared, vec![(-1, 11, 525), (-1, 12, 525), (-1, 13, 525)]);
+        assert_eq!(shared, vec![(-1, 10, 1_575)]);
     }
 
     #[test]
