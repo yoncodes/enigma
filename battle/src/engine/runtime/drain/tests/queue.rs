@@ -431,10 +431,7 @@ fn manager_followup_runs_the_skill_emitted_after_shell_progress() {
         TargetContext::default(),
         [RuleOp::Command(BattleCommand::Shell(
             ShellCommand::AccumulateAndUseSkill {
-                origin: CommandOrigin {
-                    domain: RuleDomain::Behavior,
-                    key: DefinitionKey::new(60135, "ShellUseSkill"),
-                },
+                rule: ConfiguredRuleKey::new(200, 1, DefinitionKey::new(60135, "ShellUseSkill")),
                 source_uid: 10,
                 target_uid: -1,
                 threshold: 5,
@@ -478,6 +475,8 @@ fn dead_entity_cannot_execute_an_already_queued_active_skill() {
         ..Default::default()
     });
     let mut managers = BattleManagers::seeded(&fight);
+    let held_rule = ConfiguredRuleKey::new(200, 1, DefinitionKey::new(60135, "ShellUseSkill"));
+    assert!(managers.advance_configured_rule_progress_until_cast(10, held_rule, 1, 1));
     let mut catalog = SkillEffectCatalog::default();
     catalog.insert(ParsedSkillEffect {
         skill_id: 200,
@@ -489,6 +488,7 @@ fn dead_entity_cannot_execute_an_already_queued_active_skill() {
     }
     .into();
     invocation.mode = SkillExecutionMode::Active;
+    invocation.release_progress = Some(held_rule);
 
     let result = run(
         &mut managers,
@@ -502,6 +502,7 @@ fn dead_entity_cannot_execute_an_already_queued_active_skill() {
 
     assert!(result.events.is_empty());
     assert!(result.frames.is_empty());
+    assert!(managers.advance_configured_rule_progress_until_cast(10, held_rule, 1, 1));
 }
 
 #[test]
@@ -823,10 +824,7 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
     crate::engine::mechanic::shell::execute(
         &mut managers,
         ShellCommand::AccumulateAndUseSkill {
-            origin: CommandOrigin {
-                domain: RuleDomain::Behavior,
-                key: DefinitionKey::new(60135, "ShellUseSkill"),
-            },
+            rule: ConfiguredRuleKey::new(31090144, 2, DefinitionKey::new(60135, "ShellUseSkill")),
             source_uid: 10,
             target_uid: -1,
             threshold: 7,

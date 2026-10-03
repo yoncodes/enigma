@@ -141,6 +141,8 @@ pub struct SkillInvocation {
     pub trigger: SkillTrigger,
     pub mode: SkillExecutionMode,
     pub start: SkillStart,
+    /// Exact rule whose progress resumes when this cast starts.
+    pub release_progress: Option<super::rule::ConfiguredRuleKey>,
     pub card_enchants: Vec<i32>,
     pub recorded_skill: Option<SkillRequest>,
 }
@@ -160,6 +162,7 @@ impl From<SkillRequest> for SkillInvocation {
             trigger: SkillTrigger::None,
             mode: SkillExecutionMode::Nested,
             start: SkillStart::Immediate,
+            release_progress: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
         }
@@ -189,6 +192,7 @@ mod invocation_tests {
             trigger: SkillTrigger::Explicit(30),
             mode: SkillExecutionMode::Nested,
             start: SkillStart::Immediate,
+            release_progress: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
         };

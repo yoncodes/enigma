@@ -16,6 +16,37 @@ fn queued(op: RuleOp) -> QueuedOp {
 }
 
 #[test]
+fn canceling_an_action_releases_its_held_after_action_casts() {
+    let rule = ConfiguredRuleKey::new(200, 2, DefinitionKey::new(60135, "ShellUseSkill"));
+    let mut managers = BattleManagers::default();
+    assert!(managers.advance_configured_rule_progress_until_cast(10, rule, 1, 1));
+
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 200,
+    }
+    .into();
+    invocation.start = crate::engine::skill::action::SkillStart::AfterCurrentAction;
+    invocation.release_progress = Some(rule);
+
+    let action_path = vec![0];
+    let mut state = DrainState::new(TargetContext::default());
+    state.open_action(action_path.clone());
+    state.push_after_action_cast(action_path.clone(), None, queued(RuleOp::Skill(invocation)));
+
+    let current: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    cancel_invocation_progress(&mut managers, &mut state, Some(&action_path), &current);
+
+    assert!(managers.advance_configured_rule_progress_until_cast(10, rule, 1, 1));
+    assert!(!state.action_in_progress(&action_path));
+    assert!(state.take_after_action_casts(&action_path).is_empty());
+}
+
+#[test]
 fn repeated_capped_state_commands_commit_cumulative_absolute_markers() {
     crate::test_support::init_config();
     let fight = Fight {

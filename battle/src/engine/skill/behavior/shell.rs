@@ -72,7 +72,11 @@ impl BehaviorHandler for Handler {
                     return Some(Vec::new());
                 }
                 ShellCommand::AccumulateAndUseSkill {
-                    origin,
+                    rule: crate::engine::skill::rule::ConfiguredRuleKey::new(
+                        behavior.effect_id,
+                        behavior.slot,
+                        origin.key,
+                    ),
                     source_uid: context.source_uid,
                     target_uid: context.target_uid,
                     threshold: *threshold,

@@ -3,6 +3,28 @@ use super::*;
 use crate::test_support::init_config;
 
 #[test]
+fn configured_behaviors_keep_their_effect_and_slot_identity() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let mut shell_rules = 0;
+
+    for (&effect_id, effect) in &catalog.effects {
+        for (index, slot) in effect.slots.iter().enumerate() {
+            if slot.behavior.spec.kind
+                != crate::engine::skill::behavior::classify::BehaviorKind::ShellUseSkill
+            {
+                continue;
+            }
+            shell_rules += 1;
+            assert_eq!(slot.behavior.effect_id, effect_id);
+            assert_eq!(slot.behavior.slot, index as u8 + 1);
+        }
+    }
+
+    assert!(shell_rules > 0);
+}
+
+#[test]
 fn fight_catalog_excludes_unrelated_heroes() {
     init_config();
     let fight = Fight {

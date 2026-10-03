@@ -80,8 +80,11 @@ pub struct BattleManagers {
     round_rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
     buff_act_fires: HashMap<(i64, i64, crate::engine::skill::rule::DefinitionKey), i32>,
     rule_progress: HashMap<(i64, i64, crate::engine::skill::rule::DefinitionKey, i32), i32>,
-    // Progress that triggered a cast stays paused until that cast starts.
-    held_rule_progress: HashMap<(i64, crate::engine::skill::rule::DefinitionKey), i32>,
+    configured_rule_progress:
+        HashMap<(i64, crate::engine::skill::rule::ConfiguredRuleKey, i32), i32>,
+    // Progress that triggered a cast stays paused until that cast starts or is canceled.
+    held_rule_progress:
+        std::collections::HashSet<(i64, crate::engine::skill::rule::ConfiguredRuleKey)>,
 }
 
 struct HpPlan {
@@ -1134,33 +1137,35 @@ impl BattleManagers {
         self.conduit.begin_round();
     }
 
-    pub fn advance_rule_progress_until_cast(
+    pub fn advance_configured_rule_progress_until_cast(
         &mut self,
         owner_uid: i64,
-        key: crate::engine::skill::rule::DefinitionKey,
+        key: crate::engine::skill::rule::ConfiguredRuleKey,
         threshold: i32,
         delta: i32,
-        skill_id: i32,
     ) -> bool {
-        if threshold <= 0 || delta <= 0 || self.held_rule_progress.contains_key(&(owner_uid, key)) {
+        if threshold <= 0 || delta <= 0 || self.held_rule_progress.contains(&(owner_uid, key)) {
             return false;
         }
         let progress = self
-            .rule_progress
-            .entry((owner_uid, 0, key, threshold))
+            .configured_rule_progress
+            .entry((owner_uid, key, threshold))
             .or_default();
         *progress = progress.saturating_add(delta);
         if *progress < threshold {
             return false;
         }
         *progress = 0;
-        self.held_rule_progress.insert((owner_uid, key), skill_id);
+        self.held_rule_progress.insert((owner_uid, key));
         true
     }
 
-    pub fn release_held_rule_progress(&mut self, owner_uid: i64, skill_id: i32) {
-        self.held_rule_progress
-            .retain(|(owner, _), held_skill_id| *owner != owner_uid || *held_skill_id != skill_id);
+    pub fn release_held_rule_progress(
+        &mut self,
+        owner_uid: i64,
+        key: crate::engine::skill::rule::ConfiguredRuleKey,
+    ) {
+        self.held_rule_progress.remove(&(owner_uid, key));
     }
 
     pub fn advance_rule_progress(
