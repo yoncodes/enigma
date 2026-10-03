@@ -597,7 +597,7 @@ pub fn run_start(
     let version7_opening =
         crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
             == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
-    for (stage, priority) in opening_setup(managers.fight_version()) {
+    for (stage, priority) in START.iter().copied() {
         if stage == SetupStage::RoundStart && !opening_duration_captured {
             opening_duration_snapshot = Some(
                 duration_snapshot(managers, &owner_uids)

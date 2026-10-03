@@ -67,25 +67,6 @@ const ROUND_START_BEFORE_DURATION_SETUP: &[(SetupStage, i32)] = &[
     (SetupStage::RoundStartCondition, 102),
 ];
 
-fn opening_setup(version: i32) -> Vec<(SetupStage, i32)> {
-    let mut setup = START.to_vec();
-    if crate::engine::fight::versions::round_start_setup_layout(version)
-        == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
-    {
-        let round_start = setup
-            .iter()
-            .position(|step| *step == (SetupStage::RoundStart, -1))
-            .expect("opening setup has an early round-start stage");
-        let round_start = setup.remove(round_start);
-        let conditions_end = setup
-            .iter()
-            .position(|step| *step == (SetupStage::RoundStartCondition, 102))
-            .expect("opening setup has the last round-start condition");
-        setup.insert(conditions_end + 1, round_start);
-    }
-    setup
-}
-
 const ROUND_START_SETTLEMENT_SETUP: &[(SetupStage, i32)] = &[(SetupStage::RoundStart, 3)];
 
 const ROUND_START_THRESHOLD_SETUP: &[(SetupStage, i32)] = &[(SetupStage::RoundStart, 4)];
