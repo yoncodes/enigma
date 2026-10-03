@@ -174,7 +174,7 @@ impl TargetResolver {
             );
         }
 
-        let mut targets = match rule {
+        let targets = match rule {
             TargetRule::Logic => {
                 logic_target(source_uid, skill_id, pool, determinism, managers, context)
             }
@@ -299,17 +299,6 @@ impl TargetResolver {
             TargetRule::AlliesWithStatus => allies_by_status(pool, source_uid, request, true),
             TargetRule::AlliesWithoutStatus => allies_by_status(pool, source_uid, request, false),
         };
-        // Only an attack puts its primary target first; a skill reacting to an attack keeps roster order.
-        if context.active_skill_is_attack
-            && managers.is_none_or(|managers| managers.catalog().skill_is_attack(skill_id))
-            && targets.len() > 1
-            && let Some(index) = targets
-                .iter()
-                .position(|uid| *uid == context.runtime_target_uid)
-        {
-            let primary = targets.remove(index);
-            targets.insert(0, primary);
-        }
         if let Some(captured) = determinism.take_skill_targets(skill_id, source_uid, request.code)
             && captured != targets
         {
