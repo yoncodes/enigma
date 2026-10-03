@@ -433,9 +433,22 @@ impl EntityManager {
     }
 
     pub(crate) fn passive_overrides(&self) -> impl Iterator<Item = (i64, &[i32])> {
-        self.replacements
+        // Roster order, not hash order, so subscribers resolve the same way on every run.
+        let mut overrides = self
+            .replacements
             .iter()
             .map(|(&uid, entity)| (uid, entity.passive_skill.as_slice()))
+            .collect::<Vec<_>>();
+        overrides.sort_by_key(|(uid, _)| {
+            (
+                self.order
+                    .iter()
+                    .position(|ordered| ordered == uid)
+                    .unwrap_or(usize::MAX),
+                *uid,
+            )
+        });
+        overrides.into_iter()
     }
 
     pub(crate) fn model_id(&self, uid: i64) -> Option<i32> {

@@ -259,3 +259,30 @@ fn emitter_uses_average_attacker_stats_without_joining_the_team() {
     );
     assert!(pool.enemies(404, false).is_empty());
 }
+
+#[test]
+fn team_uids_follow_roster_order() {
+    crate::test_support::init_config();
+    let roster = [41, 17, 93, 8, 65, 22, 70, 3];
+    let pool = TargetPool::from_fight(&Fight {
+        attacker: Some(FightTeam {
+            entitys: roster
+                .iter()
+                .map(|&uid| FightEntityInfo {
+                    uid: Some(uid),
+                    current_hp: Some(1),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    let mut expected = roster.to_vec();
+    expected.extend([
+        crate::engine::manager::emitter::UID,
+        crate::engine::fight::rules::ATTACKER_SIDE_UID,
+    ]);
+    assert_eq!(pool.team_uids(1), expected);
+}

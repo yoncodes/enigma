@@ -29,7 +29,7 @@ pub struct SkillEffectCatalog {
     target_limits: HashMap<i32, i32>,
     reinforced_skills: HashMap<i32, i32>,
     reachable_buffs: HashSet<i32>,
-    assassination_stack_grants: HashMap<(i32, i32), Vec<(i32, DefinitionKey)>>,
+    assassination_stack_grants: std::collections::BTreeMap<(i32, i32), Vec<(i32, DefinitionKey)>>,
     issues: HashMap<i32, Vec<RuleIssue>>,
 }
 
