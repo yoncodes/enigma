@@ -965,44 +965,6 @@ pub fn run_start(
                 );
             }
         }
-        if stage == SetupStage::AfterRoundStart {
-            let owner_uids = pool
-                .attacker_main
-                .iter()
-                .filter(|entity| managers.hp.current(entity.uid) > 0)
-                .map(|entity| entity.uid)
-                .collect::<Vec<_>>();
-            append(
-                &mut result,
-                drain::run_group_event(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
-                    BattleEvent::Kind(EventKind::RoundStartCard),
-                    drain::ReactionLane::BuffActs,
-                    Some(&owner_uids),
-                )?,
-            );
-            append(
-                &mut result,
-                drain::run_group_event(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
-                    BattleEvent::Kind(EventKind::RoundStartCard),
-                    drain::ReactionLane::Skills,
-                    Some(&owner_uids),
-                )?,
-            );
-            append(
-                &mut result,
-                run_card_energy_allocation(managers, pool, catalog, determinism, context, 1)?,
-            );
-        }
     }
     let mut opening_refill = super::run_opening_hand_refill(
         managers,
@@ -1034,6 +996,42 @@ pub fn run_start(
     );
     append_round_phase(&mut opening_refill, setup_deck_counts);
     append(&mut result, opening_refill);
+    let owner_uids = pool
+        .attacker_main
+        .iter()
+        .filter(|entity| managers.hp.current(entity.uid) > 0)
+        .map(|entity| entity.uid)
+        .collect::<Vec<_>>();
+    append(
+        &mut result,
+        drain::run_group_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundStartCard),
+            drain::ReactionLane::BuffActs,
+            Some(&owner_uids),
+        )?,
+    );
+    append(
+        &mut result,
+        drain::run_group_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundStartCard),
+            drain::ReactionLane::Skills,
+            Some(&owner_uids),
+        )?,
+    );
+    append(
+        &mut result,
+        run_card_energy_allocation(managers, pool, catalog, determinism, context, 1)?,
+    );
     append(
         &mut result,
         drain::run_setup_stage(
