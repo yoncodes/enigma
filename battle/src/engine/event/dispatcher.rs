@@ -154,13 +154,23 @@ pub fn dispatch_skill_event_phase(
 }
 
 fn dispatch_subscribers(
-    subscribers: subscriber::EventSubscribers,
+    mut subscribers: subscriber::EventSubscribers,
     pool: &TargetPool,
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
     determinism: &mut crate::engine::runtime::determinism::RoundDeterminism,
     event: &BattleEvent,
 ) -> DispatchBatch {
+    // A shell change is processed (heals, moxie) before anything else reacts to it, however
+    // recently the receiving shell buff was added.
+    if let BattleEvent::ShellChanged(_) = event {
+        subscribers.buff_acts.sort_by_key(|subscriber| {
+            !crate::engine::skill::buff_act::subscriber_is_kind(
+                subscriber,
+                crate::engine::skill::buff_act::registry::BuffActKind::ShellProcess,
+            )
+        });
+    }
     if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Event) {
         eprintln!(
             "event {event:?} skills={:?} buff_acts={:?}",
@@ -936,6 +946,82 @@ mod tests {
                 && invocation.condition_key
                     == Some(DefinitionKey::new(583004, "AccTeamAddBuffCountByBuffId"))
         ));
+    }
+
+    #[test]
+    fn a_retrieval_is_processed_before_a_shell_lock_reacts_even_by_a_newer_stock() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(30),
+                        buff_id: Some(31090131),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        managers
+            .execute_buff(BuffCommand::Grant(
+                crate::engine::manager::buff::BuffGrant {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Behavior,
+                        key: DefinitionKey::new(1, "AddBuff"),
+                    },
+                    source_uid: 10,
+                    target_uid: 10,
+                    buff_id: 31090111,
+                    amount: Some(1),
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                },
+            ))
+            .unwrap();
+        let event = BattleEvent::ShellChanged(crate::engine::event::payload::ShellChangeEvent {
+            kind: crate::engine::mechanic::shell::ShellChangeKind::Retrieved,
+            source_uid: 10,
+            target_uid: -1,
+            stock_buff_id: 31090111,
+            deployed_buff_id: 31090112,
+            amount: 1,
+            transaction_amount: 1,
+            settles_transaction: true,
+        });
+
+        let dispatched = dispatch_event(
+            &pool,
+            &managers,
+            &SkillEffectCatalog::default(),
+            &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
+            &event,
+        )
+        .unwrap();
+
+        assert_eq!(
+            dispatched
+                .buff_acts
+                .iter()
+                .map(|(subscriber, _)| subscriber.key.definition.opcode)
+                .collect::<Vec<_>>(),
+            vec![869, 873]
+        );
     }
 
     #[test]
