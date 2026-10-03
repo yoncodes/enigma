@@ -324,6 +324,20 @@ impl ConduitManager {
             .collect()
     }
 
+    pub fn opening_action_phase_start_commands(&self, team: i32) -> Vec<ConduitCommand> {
+        std::iter::once(ConduitCommand::ResetPowers { team })
+            .chain(
+                self.areas
+                    .get(&team)
+                    .into_iter()
+                    .flat_map(|area| area.devices.iter())
+                    .map(|device| ConduitCommand::RestartDevice {
+                        source_uid: device.uid,
+                    }),
+            )
+            .collect()
+    }
+
     pub fn power(&self, team: i32, power_id: i32) -> i32 {
         self.areas
             .get(&team)
