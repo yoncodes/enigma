@@ -849,14 +849,13 @@ fn early_round_start_precedes_condition_priorities() {
             (SetupStage::RoundStartCondition, 102),
         ]
     );
-    let opening = opening_setup(7);
     assert!(
-        opening
+        START
             .iter()
-            .position(|step| *step == (SetupStage::RoundStartCondition, 102))
-            < opening
+            .position(|step| *step == (SetupStage::RoundStart, -1))
+            < START
                 .iter()
-                .position(|step| *step == (SetupStage::RoundStart, -1))
+                .position(|step| *step == (SetupStage::RoundStartCondition, 102))
     );
 }
 

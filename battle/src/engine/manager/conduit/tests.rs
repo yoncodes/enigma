@@ -652,3 +652,13 @@ fn action_phase_start_commands_require_an_existing_area() {
         ]
     );
 }
+
+#[test]
+fn opening_action_phase_always_resets_team_power() {
+    let manager = ConduitManager::default();
+
+    assert_eq!(
+        manager.opening_action_phase_start_commands(1),
+        vec![ConduitCommand::ResetPowers { team: 1 }]
+    );
+}

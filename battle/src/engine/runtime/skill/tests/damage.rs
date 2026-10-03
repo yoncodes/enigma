@@ -1364,6 +1364,7 @@ fn assassination_damage_pair(
     inherent_assassination: bool,
     source_bonus: bool,
     target_trigger: bool,
+    deployed_shell: bool,
 ) -> [(i32, bool); 2] {
     crate::test_support::init_config();
     let mut source_buffs = vec![BuffInfo {
@@ -1381,7 +1382,7 @@ fn assassination_damage_pair(
             ..Default::default()
         });
     }
-    let target_buffs = target_trigger
+    let mut target_buffs = target_trigger
         .then_some(BuffInfo {
             uid: Some(3),
             buff_id: Some(31240121),
@@ -1390,21 +1391,41 @@ fn assassination_damage_pair(
             ..Default::default()
         })
         .into_iter()
-        .collect();
+        .collect::<Vec<_>>();
+    if deployed_shell {
+        target_buffs.push(BuffInfo {
+            uid: Some(4),
+            buff_id: Some(31090112),
+            from_uid: Some(11),
+            layer: Some(2),
+            ..Default::default()
+        });
+    }
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                current_hp: Some(10_000),
-                attr: Some(HeroAttribute {
-                    hp: Some(10_000),
-                    attack: Some(1_000),
-                    technic: Some(450),
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        attack: Some(1_000),
+                        technic: Some(450),
+                        ..Default::default()
+                    }),
+                    buffs: source_buffs,
                     ..Default::default()
-                }),
-                buffs: source_buffs,
-                ..Default::default()
-            }],
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         defender: Some(FightTeam {
@@ -1428,13 +1449,22 @@ fn assassination_damage_pair(
     let mut catalog = SkillEffectCatalog::default();
     const SKILL_ID: i32 = 999_999_006;
     catalog.insert_damage_rate(SKILL_ID, 1_000);
-    let invocation: SkillInvocation = SkillRequest {
+    let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
         skill_id: SKILL_ID,
     }
     .into();
+    if deployed_shell {
+        invocation.mode = SkillExecutionMode::Active;
+        invocation.card_index = 0;
+    }
     let mut execution = SkillExecution::new(TargetContext {
         active_skill_assassinate: inherent_assassination,
+        extra_skill_kind: if deployed_shell {
+            crate::engine::skill::condition::extra::ExtraSkillKind::Riposte.id()
+        } else {
+            0
+        },
         ..Default::default()
     });
     execution.configured_targets = Some(vec![-1]);
@@ -1467,8 +1497,8 @@ fn assassination_damage_pair(
 
 #[test]
 fn target_triggered_assassination_converts_main_and_linked_damage() {
-    let baseline = assassination_damage_pair(false, false, false);
-    let converted = assassination_damage_pair(false, false, true);
+    let baseline = assassination_damage_pair(false, false, false, false);
+    let converted = assassination_damage_pair(false, false, true, false);
 
     assert_eq!([converted[0].1, converted[1].1], [true, true]);
     assert!(converted[0].0 > baseline[0].0);
@@ -1477,12 +1507,21 @@ fn target_triggered_assassination_converts_main_and_linked_damage() {
 
 #[test]
 fn inherent_assassination_keeps_its_bonus_out_of_linked_damage() {
-    let baseline = assassination_damage_pair(true, false, false);
-    let source_bonus = assassination_damage_pair(true, true, false);
+    let baseline = assassination_damage_pair(true, false, false, false);
+    let source_bonus = assassination_damage_pair(true, true, false, false);
 
     assert_eq!([source_bonus[0].1, source_bonus[1].1], [true, false]);
     assert!(source_bonus[0].0 > baseline[0].0);
     assert_eq!(source_bonus[1].0, baseline[1].0);
+}
+
+#[test]
+fn target_owned_extra_action_bonuses_apply_to_main_and_linked_damage() {
+    let baseline = assassination_damage_pair(true, false, false, false);
+    let boosted = assassination_damage_pair(true, false, false, true);
+
+    assert!(boosted[0].0 > baseline[0].0);
+    assert!(boosted[1].0 > baseline[1].0);
 }
 
 #[test]
@@ -2027,6 +2066,124 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
 }
 
 #[test]
+fn proportional_assassination_damage_precedes_independently_rolled_linked_damage() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![
+                        BuffInfo {
+                            uid: Some(20),
+                            buff_id: Some(31050144),
+                            from_uid: Some(12),
+                            ..Default::default()
+                        },
+                        BuffInfo {
+                            uid: Some(21),
+                            buff_id: Some(312451456),
+                            from_uid: Some(11),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(12),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                buffs: vec![BuffInfo {
+                    uid: Some(30),
+                    buff_id: Some(31240121),
+                    from_uid: Some(11),
+                    layer: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    const SKILL_ID: i32 = 999_999_006;
+    catalog.insert_damage_rate(SKILL_ID, 6_000);
+    catalog.insert_logic_target(SKILL_ID, 1);
+    let invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: SKILL_ID,
+    }
+    .into();
+    let mut execution = SkillExecution::new(TargetContext::default());
+    execution.configured_targets = Some(vec![-1]);
+    execution.assassination_marks_at_action_start =
+        Some(crate::engine::skill::buff_act::assassination::marked_targets(&managers));
+    execution.activated_additional_damage.extend(
+        plan::additional_damage_activation(&invocation, &managers, &execution)
+            .into_iter()
+            .map(|activation| activation.additional),
+    );
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_hidden_crits(SKILL_ID, 10, [false]);
+    determinism.enqueue_additional_crits(SKILL_ID, 10, -1, [true, false]);
+
+    let hits = plan::damage_ops(
+        &invocation,
+        &managers,
+        &pool,
+        &catalog,
+        SKILL_ID,
+        &mut determinism,
+        &mut execution,
+    )
+    .additional_damage
+    .into_iter()
+    .filter_map(|command| match command {
+        HpCommand::Damage(hit) => Some((hit.source_uid, hit.hurt.is_crit)),
+        _ => None,
+    })
+    .collect::<Vec<_>>();
+
+    assert_eq!(hits, vec![(10, false), (12, false)]);
+}
+
+#[test]
 fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -2128,14 +2285,15 @@ fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() 
         )
     };
 
-    // "The extra action is always a critical hit".
+    // "The extra action is always a critical hit" applies to the action itself. Linked damage
+    // credited to another producer keeps that producer's independently imported critical roll.
     let (ops, additional) = damage_phase(0);
     assert!(opens_with_cost_then_marker(&ops));
     assert!(!additional.is_empty());
     assert!(additional.iter().all(|command| matches!(
         command,
         HpCommand::Damage(damage)
-            if damage.effect_kind == crate::engine::manager::hp::DamageEffectKind::Critical
+            if damage.effect_kind == crate::engine::manager::hp::DamageEffectKind::Normal
     )));
     let (ops, _) = damage_phase(1);
     assert!(

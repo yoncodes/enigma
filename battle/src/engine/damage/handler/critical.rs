@@ -68,6 +68,63 @@ pub fn damage_multiplier(
     multiplier.max(0)
 }
 
+pub fn heal_multiplier(
+    source_uid: i64,
+    target_uid: i64,
+    pool: &TargetPool,
+    managers: &BattleManagers,
+) -> i32 {
+    let technique = pool
+        .entity(source_uid)
+        .zip(pool.entity(target_uid))
+        .map(|(source, target)| {
+            critical_technique_bonus(managers.catalog(), source, target.level, 12)
+        })
+        .unwrap_or_default();
+    let critical_damage = managers.attribute.get(source_uid, AttrId::CriticalDmg)
+        + managers
+            .buff
+            .fixed_attribute_delta(source_uid, AttrId::CriticalDmg)
+        + technique
+        + modifiers::dynamic_attribute_delta(
+            &managers.buff,
+            &managers.hp,
+            source_uid,
+            AttrId::CriticalDmg,
+        )
+        + pool.entity(source_uid).map_or(0, |source| {
+            modifiers::damage_type_attribute_delta(
+                &managers.buff,
+                &managers.hp,
+                source_uid,
+                source.damage_type,
+                AttrId::CriticalDmg,
+            )
+        });
+    let critical_portion_bonus = managers.buff.buff_act_scalar(
+        source_uid,
+        crate::engine::skill::buff_act::registry::BuffActKind::HealCritFix,
+    );
+    heal_multiplier_from_damage_multiplier(critical_damage, critical_portion_bonus)
+}
+
+fn heal_multiplier_from_damage_multiplier(
+    critical_damage: i32,
+    critical_portion_bonus: i32,
+) -> i32 {
+    const CRITICAL_HEAL_CONVERSION: i32 = 300;
+
+    let critical_portion = (critical_damage - 1000).max(0);
+    let conversion = crate::engine::damage::scale_permille(
+        CRITICAL_HEAL_CONVERSION,
+        1000_i32.saturating_add(critical_portion_bonus),
+    );
+    1000_i32.saturating_add(crate::engine::damage::scale_permille(
+        critical_portion,
+        conversion,
+    ))
+}
+
 fn raw_chance(
     source_uid: i64,
     target_uid: i64,
@@ -141,4 +198,20 @@ pub fn excess_rate(
     let raw = raw_chance(source_uid, target_uid, pool, managers, &managers.buff)
         .saturating_add(attack_local);
     (raw - 1000).max(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::heal_multiplier_from_damage_multiplier;
+
+    #[test]
+    fn critical_healing_converts_thirty_percent_of_the_critical_portion() {
+        assert_eq!(heal_multiplier_from_damage_multiplier(1597, 0), 1179);
+        assert_eq!(heal_multiplier_from_damage_multiplier(1669, 0), 1200);
+    }
+
+    #[test]
+    fn heal_crit_fix_increases_only_the_converted_portion() {
+        assert_eq!(heal_multiplier_from_damage_multiplier(1500, 500), 1225);
+    }
 }

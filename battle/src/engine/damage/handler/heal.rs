@@ -5,6 +5,7 @@ use crate::engine::{
     skill::{
         buff_act::{is_kind, registry::BuffActKind},
         effect::ParsedBehavior,
+        target::TargetPool,
     },
 };
 
@@ -112,6 +113,7 @@ pub(crate) fn modified(
 pub(super) fn amount(
     source_uid: i64,
     target_uid: i64,
+    pool: &TargetPool,
     managers: &BattleManagers,
     is_crit: bool,
     behavior: &ParsedBehavior,
@@ -132,7 +134,7 @@ pub(super) fn amount(
     Some(if is_crit && !is_full_restore(behavior) {
         scale_permille(
             amount,
-            managers.attribute.get(source_uid, AttrId::CriticalDmg),
+            super::critical::heal_multiplier(source_uid, target_uid, pool, managers),
         )
     } else {
         amount

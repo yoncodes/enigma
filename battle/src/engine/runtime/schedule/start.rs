@@ -160,15 +160,14 @@ pub fn run_round_start_after_ai_split(
     let duration_snapshot = duration_snapshot(managers, &owner_uids);
     let setup_layout =
         crate::engine::fight::versions::round_start_setup_layout(managers.fight_version());
-    let emits_conduit_action_phase_reset = setup_layout
-        == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
-        && !managers.conduit.action_phase_start_commands(1).is_empty();
     let mut fight_steps = DrainResult::default();
     push_cue(
         &mut fight_steps.frames,
         RoundCue::ChangeRound {
-            round: if emits_conduit_action_phase_reset {
-                context.current_round
+            round: if setup_layout
+                == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
+            {
+                context.current_round.saturating_add(1)
             } else {
                 0
             },
@@ -597,7 +596,7 @@ pub fn run_start(
     let version7_opening =
         crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
             == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
-    for (stage, priority) in opening_setup(managers.fight_version()) {
+    for (stage, priority) in START.iter().copied() {
         if stage == SetupStage::RoundStart && !opening_duration_captured {
             opening_duration_snapshot = Some(
                 duration_snapshot(managers, &owner_uids)
@@ -644,7 +643,7 @@ pub fn run_start(
                 version7_opening,
             );
             let reset_ops = if version7_opening {
-                managers.conduit.action_phase_start_commands(1)
+                managers.conduit.opening_action_phase_start_commands(1)
             } else {
                 managers.conduit.opening_reset_commands()
             }
@@ -965,44 +964,6 @@ pub fn run_start(
                 );
             }
         }
-        if stage == SetupStage::AfterRoundStart {
-            let owner_uids = pool
-                .attacker_main
-                .iter()
-                .filter(|entity| managers.hp.current(entity.uid) > 0)
-                .map(|entity| entity.uid)
-                .collect::<Vec<_>>();
-            append(
-                &mut result,
-                drain::run_group_event(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
-                    BattleEvent::Kind(EventKind::RoundStartCard),
-                    drain::ReactionLane::BuffActs,
-                    Some(&owner_uids),
-                )?,
-            );
-            append(
-                &mut result,
-                drain::run_group_event(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
-                    BattleEvent::Kind(EventKind::RoundStartCard),
-                    drain::ReactionLane::Skills,
-                    Some(&owner_uids),
-                )?,
-            );
-            append(
-                &mut result,
-                run_card_energy_allocation(managers, pool, catalog, determinism, context, 1)?,
-            );
-        }
     }
     let mut opening_refill = super::run_opening_hand_refill(
         managers,
@@ -1034,6 +995,42 @@ pub fn run_start(
     );
     append_round_phase(&mut opening_refill, setup_deck_counts);
     append(&mut result, opening_refill);
+    let owner_uids = pool
+        .attacker_main
+        .iter()
+        .filter(|entity| managers.hp.current(entity.uid) > 0)
+        .map(|entity| entity.uid)
+        .collect::<Vec<_>>();
+    append(
+        &mut result,
+        drain::run_group_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundStartCard),
+            drain::ReactionLane::BuffActs,
+            Some(&owner_uids),
+        )?,
+    );
+    append(
+        &mut result,
+        drain::run_group_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundStartCard),
+            drain::ReactionLane::Skills,
+            Some(&owner_uids),
+        )?,
+    );
+    append(
+        &mut result,
+        run_card_energy_allocation(managers, pool, catalog, determinism, context, 1)?,
+    );
     append(
         &mut result,
         drain::run_setup_stage(
