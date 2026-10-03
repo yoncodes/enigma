@@ -323,6 +323,12 @@ fn additional_damage(
         .filter(|additional| additional.spec.can_apply(managers, extra_action))
         .collect::<Vec<_>>();
     planned.extend(execution.activated_additional_damage.iter().cloned());
+    // Damage derived from the resolved hit belongs to that hit's immediate lane. Resolve it
+    // before independently rolled linked hits so each producer consumes its own observation.
+    planned.sort_by_key(|additional| {
+        additional.spec.formula
+            != crate::engine::damage::DamageFormula::ResolvedHitProportionalAdditional
+    });
     planned
 }
 

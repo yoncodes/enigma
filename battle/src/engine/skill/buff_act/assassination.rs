@@ -13,6 +13,10 @@ use crate::engine::{
     },
 };
 
+// Lethal Injury's feature argument is the bonus added by its upgraded form. The mechanic's
+// baseline is Final DMG +5% per 100 Critical Technique, which remains active alongside it.
+const TARGET_ASSASSINATION_BASE_RATE: i32 = 50;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AssassinationModifier {
     pub assassinate: bool,
@@ -67,7 +71,12 @@ pub fn marked_targets(managers: &BattleManagers) -> Vec<(i64, i32)> {
         .into_iter()
         .filter(|feature| feature.amount > 0)
         .filter(|feature| super::is_kind(feature, BuffActKind::BeAttackedAssassinate))
-        .filter_map(|feature| Some((feature.owner_uid, *feature.values.get(1)?)))
+        .filter_map(|feature| {
+            Some((
+                feature.owner_uid,
+                TARGET_ASSASSINATION_BASE_RATE + *feature.values.get(1)?,
+            ))
+        })
         .collect()
 }
 
@@ -244,11 +253,11 @@ mod tests {
         let expected = AssassinationModifier {
             assassinate: true,
             triggered_by_target: true,
-            final_damage_bonus: 282,
+            final_damage_bonus: 432,
         };
         assert_eq!(modifier, expected);
         assert_eq!(
-            target_modifier(&consumed, 10, -1, false, Some(&[(-1, 10)])),
+            target_modifier(&consumed, 10, -1, false, Some(&[(-1, 60)])),
             expected
         );
         assert!(
