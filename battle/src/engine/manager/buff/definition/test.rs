@@ -98,6 +98,11 @@ fn feature_kind_controls_post_apply_uid_reservation() {
     let lucy_upgrade = BuffDefinition::get(30860113).unwrap();
     assert!(lucy_upgrade.uses_child_uid());
     assert!(lucy_upgrade.reserves_child_after_first_apply());
+
+    let shell_stack = BuffDefinition::get(31090111).unwrap();
+    assert!(shell_stack.uses_child_uid());
+    assert!(!shell_stack.reserves_child_after_first_apply());
+    assert!(shell_stack.reserves_child_on_layer_refresh());
 }
 
 #[test]

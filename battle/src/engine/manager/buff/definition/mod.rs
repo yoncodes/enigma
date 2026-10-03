@@ -614,6 +614,10 @@ impl BuffDefinition {
             && !self
                 .features
                 .iter()
+                .any(|feature| feature.kind == Some(BuffActKind::ShellProcess))
+            && !self
+                .features
+                .iter()
                 .any(|feature| feature.kind == Some(BuffActKind::ExtraValueElectricTransform))
             && ((self.has_include_type(BuffIncludeType::Stacked)
                 && !self.is_no_show
@@ -655,7 +659,12 @@ impl BuffDefinition {
     }
 
     pub(super) fn reserves_child_on_layer_refresh(&self) -> bool {
-        self.status != BuffStatus::Special || self.is_layer_type()
+        self.status != BuffStatus::Special
+            || self.is_layer_type()
+            || self
+                .features
+                .iter()
+                .any(|feature| feature.kind == Some(BuffActKind::ShellProcess))
     }
 
     fn is_layer_type(&self) -> bool {
