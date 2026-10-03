@@ -18,7 +18,7 @@ pub fn resolve(feature: &ActiveBuffFeature) -> Option<AdditionalDamageSpec> {
         return None;
     };
     Some(AdditionalDamageSpec {
-        formula: crate::engine::damage::DamageFormula::AdditionalDamage,
+        formula: crate::engine::damage::DamageFormula::ResolvedHitProportionalAdditional,
         rate: *rate,
         secondary_rate: *rate,
         extra_rate: *rate,

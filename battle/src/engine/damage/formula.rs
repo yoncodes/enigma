@@ -2,6 +2,7 @@
 pub enum DamageFormula {
     StandardSkill,
     AdditionalDamage,
+    ResolvedHitProportionalAdditional,
     CreditedSourceAdditional,
     AttributeReplacementAdditional,
     MaxHpAdditionalDamage,
@@ -31,14 +32,16 @@ pub struct DeadlyPoisonFormulaInput {
 impl DamageFormula {
     pub const fn rules(self) -> DamageFormulaRules {
         match self {
-            Self::AdditionalDamage => DamageFormulaRules {
-                applies_career: false,
-                applies_target_base_critical_defense: true,
-                applies_target_buff_critical_defense: true,
-                includes_trigger_history: false,
-                combines_action_with_might: false,
-                nets_final_damage_in_regular: false,
-            },
+            Self::AdditionalDamage | Self::ResolvedHitProportionalAdditional => {
+                DamageFormulaRules {
+                    applies_career: false,
+                    applies_target_base_critical_defense: true,
+                    applies_target_buff_critical_defense: true,
+                    includes_trigger_history: false,
+                    combines_action_with_might: false,
+                    nets_final_damage_in_regular: false,
+                }
+            }
             Self::CreditedSourceAdditional | Self::AttributeReplacementAdditional => {
                 DamageFormulaRules {
                     applies_career: true,

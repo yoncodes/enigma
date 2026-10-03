@@ -2,6 +2,112 @@ use super::*;
 use crate::engine::damage::DamageFormula;
 
 #[test]
+fn performed_extra_actions_add_the_shared_and_specific_action_lanes() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(1),
+                career: Some(1),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                career: Some(1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.attribute.override_sp(
+        1,
+        &HeroSpAttribute {
+            extra_dmg: Some(1_000),
+            rebound_dmg: Some(500),
+            reuse_dmg: Some(200),
+            ..Default::default()
+        },
+    );
+    let amount = |kind, performs_extra_action| {
+        let command = resolve_attack_command(
+            &AttackPlan {
+                source_uid: 1,
+                target_uid: -1,
+                skill_id: 100,
+                rate: 1_000,
+                rate_terms: Vec::new(),
+                attack_attributes: Vec::new(),
+                career_ratio_bonus: 0,
+                attack_career: None,
+                additional_attack_career: None,
+                force_career_restraint: false,
+                critical_multiplier_remainder: 0,
+                is_conduit: false,
+                is_crit: false,
+                assassinate: false,
+                main_target: true,
+                extra_skill_kind: kind,
+                performs_extra_action,
+                additional_enabled: false,
+                additional_is_crit: None,
+            },
+            DamageRuntime {
+                fight_version: 6,
+                pool: &pool,
+                attributes: &managers.attribute,
+                buffs: &managers.buff,
+                target_buffs: &managers.buff,
+                hp: &managers.hp,
+                fields: None,
+                emitter: None,
+                team_inspiration: 0,
+            },
+            CommandOrigin {
+                domain: crate::engine::skill::rule::RuleDomain::Skill,
+                key: crate::engine::skill::rule::DefinitionKey::new(100, "SkillDamage"),
+            },
+        )
+        .unwrap();
+        let HpCommand::Damage(damage) = command else {
+            panic!("expected damage");
+        };
+        damage.amount
+    };
+
+    assert_eq!(
+        amount(
+            crate::engine::skill::condition::extra::ExtraSkillKind::Riposte.id(),
+            true,
+        ),
+        2_500
+    );
+    assert_eq!(
+        amount(
+            crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp.id(),
+            true,
+        ),
+        2_200
+    );
+}
+
+#[test]
 fn additional_damage_ignores_direct_hit_crit_defense_and_career_lanes() {
     crate::test_support::init_config();
     let fight = Fight {

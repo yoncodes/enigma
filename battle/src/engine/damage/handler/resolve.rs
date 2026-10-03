@@ -322,6 +322,52 @@ pub fn resolve_additional_damage_command(
     }))
 }
 
+pub fn resolve_proportional_additional_damage_command(
+    main: HpDamage,
+    rate: i32,
+    main_rate: i32,
+    credited_source_uid: i64,
+    assassinate: bool,
+    origin: CommandOrigin,
+) -> Option<HpCommand> {
+    if main.amount <= 0 || rate <= 0 || main_rate <= 0 || credited_source_uid == 0 {
+        return None;
+    }
+    let amount = (i64::from(main.amount) * i64::from(rate) / i64::from(main_rate))
+        .clamp(0, i64::from(i32::MAX)) as i32;
+    (amount > 0).then_some(HpCommand::Damage(HpDamage {
+        origin,
+        source_uid: credited_source_uid,
+        target_uid: main.target_uid,
+        amount,
+        config_effect: -1,
+        effect_kind: if main.hurt.is_crit {
+            DamageEffectKind::Critical
+        } else {
+            DamageEffectKind::Normal
+        },
+        assassinate,
+        ignore_riposte: main.ignore_riposte,
+        hurt: HurtInfoData {
+            from_uid: credited_source_uid,
+            is_crit: main.hurt.is_crit,
+            career_restraint: main.hurt.career_restraint,
+            reduce_hp: 0,
+            effect_id: 0,
+            skill_id: 0,
+            damage_from: HurtDamageFromType::Additional,
+            buff_act_id: 0,
+            buff_uid: 0,
+            hurt_effect_type: if main.hurt.is_crit {
+                EffectType::Additionaldamagecrit as i32
+            } else {
+                EffectType::Additionaldamage as i32
+            },
+            display_amount: None,
+        },
+    }))
+}
+
 struct ResolvedAdditionalDamage {
     source_uid: i64,
     target_uid: i64,
@@ -826,25 +872,37 @@ pub(super) fn direct_damage(
                 + attack_local_attribute(AttrId::IncantationSkillUltMightMultiplier);
             1000 + incantation_might + ultimate_might * cross_multiplier / 1000
         };
-    let action_attr =
-        match crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind) {
-            Some(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction) => {
-                Some(AttrId::ExtraDmg)
-            }
-            Some(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp) => {
-                Some(AttrId::ReuseDmg)
-            }
-            Some(crate::engine::skill::condition::extra::ExtraSkillKind::Riposte) => {
-                Some(AttrId::ReboundDmg)
-            }
-            _ => None,
-        };
-    let action_bonus = action_attr.map_or(0, |attr_id| {
-        attributes.get(source.uid, attr_id)
-            + attribute_delta(source, attr_id)
-            + attack_attr(attr_id)
-            + attack_local_attribute(attr_id)
-    });
+    let extra_kind =
+        crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind);
+    let specific_action_attr = match extra_kind {
+        Some(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp) => {
+            Some(AttrId::ReuseDmg)
+        }
+        Some(crate::engine::skill::condition::extra::ExtraSkillKind::Riposte) => {
+            Some(AttrId::ReboundDmg)
+        }
+        _ => None,
+    };
+    let uses_shared_extra_damage = performs_extra_action
+        || matches!(
+            extra_kind,
+            Some(
+                crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction
+                    | crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp
+                    | crate::engine::skill::condition::extra::ExtraSkillKind::Riposte
+            )
+        );
+    let action_bonus = uses_shared_extra_damage
+        .then_some(AttrId::ExtraDmg)
+        .into_iter()
+        .chain(specific_action_attr)
+        .map(|attr_id| {
+            attributes.get(source.uid, attr_id)
+                + attribute_delta(source, attr_id)
+                + attack_attr(attr_id)
+                + attack_local_attribute(attr_id)
+        })
+        .sum::<i32>();
     let action_joins_might = formula_rules.combines_action_with_might;
     let target_base_regular = attributes.get(target.uid, AttrId::DmgTakenReduction);
     let target_buff_regular = attribute_delta(target, AttrId::DmgTakenReduction);

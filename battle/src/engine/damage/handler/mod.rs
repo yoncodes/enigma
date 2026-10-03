@@ -34,6 +34,7 @@ pub(crate) use heal::modified as modified_heal;
 pub(crate) use resolve::{
     DamageRequest, DamageRuntime, resolve_additional_damage_command, resolve_attack_command,
     resolve_avoided_attack_command, resolve_configured_replacement_damage_command,
+    resolve_proportional_additional_damage_command,
 };
 use resolve::{DirectOptions, direct_damage};
 
