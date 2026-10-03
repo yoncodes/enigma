@@ -134,3 +134,11 @@ pub fn configured_conduit_skill_ids(
     crate::catalog::configured_conduit_skill_ids(game_data, model_id, skill_level, destiny_stone)
         .map_err(|error| format!("{error:?}"))
 }
+
+pub fn shell_process_spec(game_data: &'static config::GameDB, buff_id: i32) -> Option<(i32, i32)> {
+    let spec = crate::engine::skill::buff_act::shell::resolve_process_spec(
+        crate::catalog::BattleCatalog::new(game_data),
+        buff_id,
+    )?;
+    Some((spec.deployed_buff_id, spec.moxie_delta))
+}

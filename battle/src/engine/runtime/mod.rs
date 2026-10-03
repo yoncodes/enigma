@@ -166,6 +166,7 @@ impl BattleRuntime {
         &mut self,
         hidden: impl IntoIterator<Item = ((i32, i64), bool)>,
         additional: impl IntoIterator<Item = ((i32, i64, i64), bool)>,
+        indirect_heals: impl IntoIterator<Item = (i64, bool)>,
     ) {
         self.determinism.clear_crit_choices();
         for ((skill_id, source_uid), crit) in hidden {
@@ -176,10 +177,15 @@ impl BattleRuntime {
             self.determinism
                 .enqueue_additional_crits(skill_id, source_uid, target_uid, [crit]);
         }
+        self.determinism.enqueue_indirect_heal_crits(indirect_heals);
     }
 
     pub fn seed_random_skills(&mut self, skills: impl IntoIterator<Item = i32>) {
         self.determinism.enqueue_random_skills(skills);
+    }
+
+    pub fn seed_shell_moxie_choices(&mut self, choices: impl IntoIterator<Item = bool>) {
+        self.determinism.replace_shell_moxie_choices(choices);
     }
 
     pub fn conduit_operations(&self) -> Vec<sonettobuf::FightDeviceOper> {

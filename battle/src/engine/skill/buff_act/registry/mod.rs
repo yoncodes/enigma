@@ -228,6 +228,7 @@ pub enum BuffActKind {
     HeatScaleTag,
     HaloBase,
     HeatScaleUseSkill,
+    HealCritFix,
     Injury,
     InjuryBank,
     InjuryLogback,
@@ -850,6 +851,9 @@ buff_act_definitions! {
     (716, "InjuryAbsorb") => InjuryAbsorb, effect_time_subscription: false,
         supports: |args| matches!(args, [value] if (1..=1000).contains(value)),
         state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(716, "InjuryAbsorb"), &[EffectType::Injuryabsorb as i32]));
+    (717, "HealCritFix") => HealCritFix, effect_time_subscription: false,
+        supports: |args| matches!(args, [value] if *value > 0),
+        state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(717, "HealCritFix"), &[]));
     (719, "PowerMaxAdd") => PowerMaxAdd, effect_time_subscription: false,
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         frame: CausingFrame,

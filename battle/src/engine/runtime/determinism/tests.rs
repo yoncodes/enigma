@@ -178,6 +178,15 @@ fn observed_additional_crits_are_consumed_per_target_until_replaced() {
 }
 
 #[test]
+fn observed_indirect_heal_crits_are_owned_by_the_healed_target() {
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_indirect_heal_crits([(10, true), (11, false)]);
+
+    assert!(!determinism.roll_indirect_heal_crit(20, 11, 1000));
+    assert!(determinism.roll_indirect_heal_crit(20, 10, 0));
+}
+
+#[test]
 fn proportional_damage_consumes_its_observation_before_a_rolled_additional_hit() {
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_additional_crits(100, 10, -1, [true, false]);

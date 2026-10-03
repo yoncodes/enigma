@@ -90,20 +90,68 @@ pub fn seed_round_determinism(
         runtime.seed_next_ai_cards(round.ai_use_cards.clone());
     }
     runtime.seed_random_skills(random_skill_choices(catalog, round));
-    let (hidden, additional) = crit_choices(round);
-    runtime.seed_crits(hidden, additional);
+    runtime.seed_shell_moxie_choices(shell_moxie_choices(config::configs::get(), round));
+    let (hidden, additional, indirect_heals) = crit_choices(round);
+    runtime.seed_crits(hidden, additional, indirect_heals);
+}
+
+fn shell_moxie_choices(game_data: &'static config::GameDB, round: &FightRound) -> Vec<bool> {
+    use sonettobuf::effect_type_enum::EffectType;
+
+    fn visit(game_data: &'static config::GameDB, step: &FightStep, choices: &mut Vec<bool>) {
+        let mut pending: Option<(usize, i64, i32)> = None;
+        for effect in &step.act_effect {
+            if let Some(buff) = effect.buff.as_ref()
+                && let Some(buff_id) = buff.buff_id
+                && let Some((deployed_buff_id, moxie_delta)) =
+                    battle::tooling::shell_process_spec(game_data, buff_id)
+                && buff_id == deployed_buff_id
+                && moxie_delta != 0
+                && let Some(source_uid) = buff.from_uid.filter(|uid| *uid != 0)
+            {
+                choices.push(false);
+                pending = Some((choices.len() - 1, source_uid, moxie_delta));
+            }
+            if effect.effect_type == Some(EffectType::Expointchange as i32)
+                && effect.config_effect.unwrap_or_default() == 0
+                && let Some((index, source_uid, moxie_delta)) = pending
+                && effect.target_id == Some(source_uid)
+                && effect.effect_num == Some(moxie_delta)
+            {
+                choices[index] = true;
+                pending = None;
+            }
+            if let Some(child) = effect.fight_step.as_ref() {
+                visit(game_data, child, choices);
+            }
+        }
+    }
+
+    let mut choices = Vec::new();
+    for step in &round.fight_step {
+        visit(game_data, step, &mut choices);
+    }
+    choices
 }
 
 type HiddenCrit = ((i32, i64), bool);
 type AdditionalCrit = ((i32, i64, i64), bool);
+type IndirectHealCrit = (i64, bool);
 
 // Each effect the engine rolls a crit for is rolled under its own step's skill (or buff) and
 // source, in step order. Config effects name the rolling source: skill row damage (-1), healing
 // behaviors 20001/90001, Spirit Shell heals (0), and crit-capable origin damage 30015/60127.
-fn crit_choices(round: &FightRound) -> (Vec<HiddenCrit>, Vec<AdditionalCrit>) {
+fn crit_choices(
+    round: &FightRound,
+) -> (Vec<HiddenCrit>, Vec<AdditionalCrit>, Vec<IndirectHealCrit>) {
     use sonettobuf::effect_type_enum::EffectType;
 
-    fn visit(step: &FightStep, hidden: &mut Vec<HiddenCrit>, additional: &mut Vec<AdditionalCrit>) {
+    fn visit(
+        step: &FightStep,
+        hidden: &mut Vec<HiddenCrit>,
+        additional: &mut Vec<AdditionalCrit>,
+        indirect_heals: &mut Vec<IndirectHealCrit>,
+    ) {
         let key = step
             .act_id
             .filter(|act_id| *act_id > 0)
@@ -126,33 +174,40 @@ fn crit_choices(round: &FightRound) -> (Vec<HiddenCrit>, Vec<AdditionalCrit>) {
                     ));
                 } else {
                     let config_effect = effect.config_effect.unwrap_or_default();
-                    let rolled = crit(EffectType::Damage, EffectType::Crit)
-                        .filter(|_| config_effect == -1)
-                        .or_else(|| {
-                            crit(EffectType::Heal, EffectType::Healcrit)
-                                .filter(|_| matches!(config_effect, 0 | 20001 | 90001))
-                        })
-                        .or_else(|| {
-                            crit(EffectType::Origindamage, EffectType::Origincrit)
-                                .filter(|_| matches!(config_effect, 30015 | 60127))
-                        });
-                    if let Some(is_crit) = rolled {
-                        hidden.push(((act_id, from_id), is_crit));
+                    let heal_crit = crit(EffectType::Heal, EffectType::Healcrit);
+                    if config_effect == 0
+                        && let Some(is_crit) = heal_crit
+                    {
+                        indirect_heals.push((effect.target_id.unwrap_or_default(), is_crit));
+                    } else {
+                        let rolled = crit(EffectType::Damage, EffectType::Crit)
+                            .filter(|_| config_effect == -1)
+                            .or_else(|| {
+                                heal_crit.filter(|_| matches!(config_effect, 20001 | 90001))
+                            })
+                            .or_else(|| {
+                                crit(EffectType::Origindamage, EffectType::Origincrit)
+                                    .filter(|_| matches!(config_effect, 30015 | 60127))
+                            });
+                        if let Some(is_crit) = rolled {
+                            hidden.push(((act_id, from_id), is_crit));
+                        }
                     }
                 }
             }
             if let Some(child) = effect.fight_step.as_ref() {
-                visit(child, hidden, additional);
+                visit(child, hidden, additional, indirect_heals);
             }
         }
     }
 
     let mut hidden = Vec::new();
     let mut additional = Vec::new();
+    let mut indirect_heals = Vec::new();
     for step in &round.fight_step {
-        visit(step, &mut hidden, &mut additional);
+        visit(step, &mut hidden, &mut additional, &mut indirect_heals);
     }
-    (hidden, additional)
+    (hidden, additional, indirect_heals)
 }
 
 fn random_skill_choices(catalog: &SkillEffectCatalog, round: &FightRound) -> Vec<i32> {
@@ -253,7 +308,7 @@ fn opening_hand_rank_choices(
 
 #[cfg(test)]
 mod tests {
-    use sonettobuf::{FightEntityInfo, FightTeam};
+    use sonettobuf::{BuffInfo, FightEntityInfo, FightTeam};
 
     use super::*;
 
@@ -358,13 +413,12 @@ mod tests {
             ..Default::default()
         };
 
-        let (hidden, additional) = crit_choices(&round);
+        let (hidden, additional, indirect_heals) = crit_choices(&round);
 
         assert_eq!(
             hidden,
             vec![
                 ((31090111, 10), true),
-                ((31090112, 20), true),
                 ((31090111, 10), false),
                 ((31090111, 10), false)
             ]
@@ -372,6 +426,46 @@ mod tests {
         assert_eq!(
             additional,
             vec![((31090111, 10, -1), false), ((31090111, 10, -1), true)]
+        );
+        assert_eq!(indirect_heals, vec![(10, true)]);
+    }
+
+    #[test]
+    fn shell_moxie_import_preserves_failed_and_successful_deployments() {
+        crate::init_test_config();
+        use sonettobuf::{ActEffect, effect_type_enum::EffectType};
+
+        let deployed = || ActEffect {
+            effect_type: Some(EffectType::Buffupdate as i32),
+            buff: Some(BuffInfo {
+                buff_id: Some(31090112),
+                from_uid: Some(20),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let round = FightRound {
+            fight_step: vec![FightStep {
+                act_effect: vec![
+                    deployed(),
+                    deployed(),
+                    ActEffect {
+                        effect_type: Some(EffectType::Expointchange as i32),
+                        target_id: Some(20),
+                        effect_num: Some(1),
+                        config_effect: Some(0),
+                        ..Default::default()
+                    },
+                    deployed(),
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            shell_moxie_choices(config::configs::get(), &round),
+            vec![false, true, false]
         );
     }
 }

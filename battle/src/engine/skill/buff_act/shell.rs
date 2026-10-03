@@ -252,7 +252,7 @@ fn process_rule_ops(
     let origin = super::command_origin(subscriber)?;
     match change.kind {
         ShellChangeKind::Deployed => {
-            if !determinism.roll_permille(spec.moxie_chance) || spec.moxie_delta == 0 {
+            if !determinism.roll_shell_moxie(spec.moxie_chance) || spec.moxie_delta == 0 {
                 return Some(Vec::new());
             }
             Some(vec![RuleOp::Command(BattleCommand::ExPoint(
@@ -287,8 +287,7 @@ fn process_rule_ops(
                 .iter()
                 .filter(|ally| managers.hp.current(ally.uid) > 0)
                 .map(|ally| {
-                    let is_crit = determinism.roll_hidden_crit(
-                        subscriber.buff_id,
+                    let is_crit = determinism.roll_indirect_heal_crit(
                         subscriber.owner_uid,
                         ally.uid,
                         damage::crit_chance(subscriber.owner_uid, ally.uid, pool, managers),
@@ -297,9 +296,12 @@ fn process_rule_ops(
                         damage::modified_heal(base, subscriber.owner_uid, ally.uid, managers);
                     if is_crit {
                         amount = amount
-                            * managers
-                                .origin_attribute(subscriber.owner_uid, AttrId::CriticalDmg)
-                                .max(0)
+                            * damage::crit_heal_multiplier(
+                                subscriber.owner_uid,
+                                ally.uid,
+                                pool,
+                                managers,
+                            )
                             / 1000;
                     }
                     crate::engine::manager::hp::HpCommand::Heal(
