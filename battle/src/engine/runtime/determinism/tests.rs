@@ -176,3 +176,13 @@ fn observed_additional_crits_are_consumed_per_target_until_replaced() {
     assert!(!determinism.roll_hidden_crit(100, 10, -1, 0));
     assert!(!determinism.roll_additional_crit(100, 10, 20, -1, 0));
 }
+
+#[test]
+fn proportional_damage_consumes_its_observation_before_a_rolled_additional_hit() {
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_additional_crits(100, 10, -1, [true, false]);
+
+    determinism.consume_additional_crit_observation(100, 10, -1);
+
+    assert!(!determinism.roll_additional_crit(100, 10, 20, -1, 1000));
+}

@@ -1454,11 +1454,17 @@ fn assassination_damage_pair(
         skill_id: SKILL_ID,
     }
     .into();
-    invocation.mode = SkillExecutionMode::Active;
-    invocation.card_index = 0;
+    if deployed_shell {
+        invocation.mode = SkillExecutionMode::Active;
+        invocation.card_index = 0;
+    }
     let mut execution = SkillExecution::new(TargetContext {
         active_skill_assassinate: inherent_assassination,
-        extra_skill_kind: crate::engine::skill::condition::extra::ExtraSkillKind::Riposte.id(),
+        extra_skill_kind: if deployed_shell {
+            crate::engine::skill::condition::extra::ExtraSkillKind::Riposte.id()
+        } else {
+            0
+        },
         ..Default::default()
     });
     execution.configured_targets = Some(vec![-1]);

@@ -296,6 +296,19 @@ impl RoundDeterminism {
             .unwrap_or_else(|| self.roll_crit(skill_id, credited_source_uid, target_uid, chance))
     }
 
+    /// Consumes a captured additional-damage observation for a formula whose critical result is
+    /// inherited from its resolved main hit rather than rolled independently.
+    pub fn consume_additional_crit_observation(
+        &mut self,
+        skill_id: i32,
+        action_source_uid: i64,
+        target_uid: i64,
+    ) {
+        self.additional_crit_choices
+            .get_mut(&(skill_id, action_source_uid, target_uid))
+            .and_then(VecDeque::pop_front);
+    }
+
     pub fn condition_random_roll(&mut self, skill_id: i32, opcode: i32) -> i32 {
         if let Some(index) = self
             .condition_random_choices

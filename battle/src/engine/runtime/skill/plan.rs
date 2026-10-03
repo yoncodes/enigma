@@ -748,6 +748,8 @@ pub(super) fn damage_ops(
                 == crate::engine::damage::DamageFormula::ResolvedHitProportionalAdditional
             {
                 resolved_main_damage.and_then(|main| {
+                    determinism
+                        .consume_additional_crit_observation(skill_id, source_uid, target_uid);
                     damage::resolve_proportional_additional_damage_command(
                         damage::ProportionalAdditionalDamageRequest {
                             main,

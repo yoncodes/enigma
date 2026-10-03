@@ -90,15 +90,6 @@ impl BattleRuntime {
         self.fight.version.unwrap_or_default()
     }
 
-    /// Reports whether this owner contributes assassination damage derived from the resolved hit.
-    /// That damage inherits the main hit's crit result instead of consuming an additional crit roll.
-    pub fn has_proportional_assassination_damage(&self, owner_uid: i64) -> bool {
-        self.managers.buff.has_buff_act_kind(
-            owner_uid,
-            crate::engine::skill::buff_act::registry::BuffActKind::AssassinateCreateAdditionalDamage,
-        )
-    }
-
     /// Preserves the absorb-map schema already established by an authoritative opening round.
     pub fn inherit_absorb_hurt_map_layout(&mut self, round: &FightRound) -> Result<(), String> {
         if let Some(layout) = observed_absorb_hurt_map_layout(round)? {
