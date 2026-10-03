@@ -429,6 +429,8 @@ mod tests {
             source_uid: -1,
             target_uid: 10,
             amount: 20,
+            share_count: 1,
+            damage_from: HurtDamageFromType::Skill,
         };
 
         let pool = TargetPool::from_fight(&fight);
@@ -498,6 +500,7 @@ mod tests {
                 shield_absorbed: 0,
                 career_restraint: false,
                 damage_from,
+                share_count: 0,
                 assassinate: false,
                 ignore_riposte: false,
             });

@@ -322,6 +322,12 @@ impl HpChanges {
 
     pub fn events(&self) -> Vec<BattleEvent> {
         let mut events = Vec::with_capacity(3);
+        let share_count = self
+            .shared_hurt
+            .iter()
+            .flat_map(|shared| &shared.shares)
+            .filter(|share| share.hp.is_some_and(|change| change.delta < 0))
+            .count() as i32;
         if let Some(shared) = &self.shared_hurt {
             events.extend(shared.consumed.events());
             for share in &shared.shares {
@@ -342,6 +348,11 @@ impl HpChanges {
                     source_uid: self.source_uid,
                     target_uid: self.target_uid,
                     amount,
+                    share_count,
+                    damage_from: self
+                        .damage
+                        .map(|damage| damage.hurt.damage_from)
+                        .expect("shared damage event requires parent damage provenance"),
                 });
             }
         }
@@ -393,6 +404,7 @@ impl HpChanges {
                     ),
                 career_restraint: damage.hurt.career_restraint,
                 damage_from: damage.hurt.damage_from,
+                share_count,
                 assassinate: damage.assassinate,
                 ignore_riposte: damage.ignore_riposte,
             }));

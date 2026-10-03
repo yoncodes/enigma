@@ -24,6 +24,7 @@ fn active_hit_deferral_carries_only_its_primary_skill_hp_loss() {
             shield_absorbed: 0,
             career_restraint: false,
             damage_from,
+            share_count: 0,
             assassinate: false,
             ignore_riposte: false,
         })
@@ -50,17 +51,24 @@ fn active_hit_deferral_carries_only_its_primary_skill_hp_loss() {
         effect_hit.clone(),
     ];
 
-    let (immediate, deferred) = split_active_hit_events(
-        events,
+    let groups = grouped_hp_events(
+        &events,
         vec![
             vec![primary_loss.clone(), primary_hit.clone(), death.clone()],
             vec![unrelated_loss.clone()],
             vec![effect_loss.clone(), effect_hit.clone()],
         ],
     );
+    let (immediate, deferred) = split_active_hit_event_groups(groups);
 
-    assert_eq!(immediate, vec![death, unrelated_loss, effect_loss]);
-    assert_eq!(deferred, vec![primary_loss, primary_hit, effect_hit]);
+    assert_eq!(
+        immediate,
+        vec![vec![death], vec![unrelated_loss], vec![effect_loss]]
+    );
+    assert_eq!(
+        deferred,
+        vec![vec![primary_loss, primary_hit], vec![effect_hit]]
+    );
 }
 
 #[test]
@@ -1649,6 +1657,7 @@ fn hit_reactions_follow_owner_skill_order_across_event_kinds() {
             shield_absorbed: 0,
             career_restraint: false,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+            share_count: 0,
             assassinate: false,
             ignore_riposte: false,
         }),

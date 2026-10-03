@@ -104,7 +104,7 @@ mod tests {
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute};
 
     use crate::engine::{
-        event::payload::BattleEvent,
+        event::payload::{BattleEvent, HitEvent},
         manager::{
             BattleManagers,
             hp::{
@@ -246,12 +246,24 @@ mod tests {
                     source_uid,
                     target_uid,
                     amount,
+                    share_count,
                     ..
-                } => Some((source_uid, target_uid, amount)),
+                } => Some((source_uid, target_uid, amount, share_count)),
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(shared, vec![(-1, 10, 1_575)]);
+        assert_eq!(shared, vec![(-1, 10, 1_575, 3)]);
+        assert!(changes.events().iter().any(|event| {
+            matches!(
+                event,
+                BattleEvent::Hit(HitEvent {
+                    target_uid: 10,
+                    damage_from: HurtDamageFromType::Skill,
+                    share_count: 3,
+                    ..
+                })
+            )
+        }));
     }
 
     #[test]
