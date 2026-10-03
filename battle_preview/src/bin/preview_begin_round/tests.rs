@@ -304,7 +304,7 @@ fn captured_116385711_keeps_opening_owner_and_source_threshold_semantics() {
     let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
     let captured: FightRound = serde_json::from_value(value["round"].clone()).unwrap();
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, &path).unwrap();
-    let mut runtime = BattleRuntime::new_with_attributes(
+    let mut runtime = ReplayBattle::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
         ex_attributes,

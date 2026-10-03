@@ -7,7 +7,7 @@ pub struct BuiltFight {
     pub fight: Fight,
     pub ex_attributes: Vec<(i64, sonettobuf::HeroExAttribute)>,
     pub sp_attributes: Vec<(i64, sonettobuf::HeroSpAttribute)>,
-    pub battle_rule_skills: Vec<crate::engine::fight::rules::OwnedBattleSkill>,
+    pub(crate) battle_rule_skills: Vec<crate::engine::fight::rules::OwnedBattleSkill>,
 }
 
 #[derive(Clone, Copy, Default)]

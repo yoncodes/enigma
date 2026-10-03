@@ -1395,7 +1395,7 @@ pub fn configured_conduit_device_id(
         })
 }
 
-pub fn configured_conduit_skill_ids(
+pub(crate) fn configured_conduit_skill_ids(
     game_data: &config::GameDB,
     model_id: i32,
     skill_level: i32,

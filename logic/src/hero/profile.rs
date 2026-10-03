@@ -11,14 +11,14 @@ pub(crate) async fn snapshot_data(db: &SqlitePool, hero: HeroData) -> Result<Her
                 .await?,
         )
     };
-    let stats = battle::engine::entity::stats::Stats::build(&stat_inputs(&hero, equip.as_ref()));
-    Ok(hero.into_proto(stats.base(), stats.ex(), stats.sp()))
+    let (base, ex, sp) = battle::hero::profile_attributes(&stat_inputs(&hero, equip.as_ref()));
+    Ok(hero.into_proto(base, ex, sp))
 }
 
 fn stat_inputs(
     hero: &HeroData,
     equip: Option<&database::models::game::equipment::Equipment>,
-) -> battle::engine::entity::stats::StatInputs {
+) -> battle::hero::StatInputs {
     let record = &hero.record;
     let template = hero
         .talent_templates
@@ -29,7 +29,7 @@ fn stat_inputs(
         .filter(|(_, cubes)| !cubes.is_empty())
         .map(|(_, cubes)| cubes.as_slice())
         .unwrap_or(&hero.talent_cubes);
-    battle::engine::entity::stats::StatInputs {
+    battle::hero::StatInputs {
         hero_id: record.hero_id,
         level: record.level,
         rank: record.rank,

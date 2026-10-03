@@ -59,7 +59,7 @@ fn subtract_costs<T: Eq>(costs: &mut Vec<(T, i32)>, retained: &[(T, i32)]) {
     costs.retain(|(_, amount)| *amount > 0);
 }
 
-pub fn battle_star(runtime: &battle::engine::runtime::BattleRuntime, battle_id: i32) -> i32 {
+pub fn battle_star(runtime: &battle::Battle, battle_id: i32) -> i32 {
     let Some(battle) = configs::get().battle.get(battle_id) else {
         return 1;
     };
