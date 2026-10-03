@@ -1253,8 +1253,7 @@ mod tests {
 
     #[test]
     fn phase_lookahead_propagates_a_conflicting_route() {
-        crate::test_support::init_config();
-        let conditions = parse_conditions(config::configs::get(), "208&210");
+        let conditions = parse_conditions(crate::test_support::game_data(), "208&210");
         let mut slot = SkillEffectSlot::new(
             ParsedBehavior::from_spec(BehaviorSpec::new(1, "AddBuff"), vec![1, 1], Vec::new()),
             TargetRequest::self_only(),
