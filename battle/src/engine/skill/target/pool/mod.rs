@@ -164,7 +164,8 @@ pub struct TargetPool {
     assist_boss_skills: Vec<(i64, Vec<i32>)>,
     reserve_uids: HashSet<i64>,
     virtual_entities: Vec<TargetEntity>,
-    teams: HashMap<i64, i32>,
+    // Roster order, so team-wide owner scopes resolve the same way on every run.
+    teams: Vec<(i64, i32)>,
 }
 
 impl TargetPool {
@@ -185,8 +186,9 @@ impl TargetPool {
         if let Some(team) = &fight.attacker {
             pool.reserve_uids
                 .extend(team.sub_entitys.iter().filter_map(|entity| entity.uid));
-            pool.teams
-                .extend(team_identities(team).filter_map(|entity| entity.uid.map(|uid| (uid, 1))));
+            for uid in team_identities(team).filter_map(|entity| entity.uid) {
+                pool.set_team(uid, 1);
+            }
             pool.attacker_main = alive_uids(catalog, &team.entitys);
             if let Some(uid) = team.assist_boss.as_ref().and_then(|entity| entity.uid) {
                 pool.assist_bosses.insert(1, uid);
@@ -213,8 +215,9 @@ impl TargetPool {
         if let Some(team) = &fight.defender {
             pool.reserve_uids
                 .extend(team.sub_entitys.iter().filter_map(|entity| entity.uid));
-            pool.teams
-                .extend(team_identities(team).filter_map(|entity| entity.uid.map(|uid| (uid, 2))));
+            for uid in team_identities(team).filter_map(|entity| entity.uid) {
+                pool.set_team(uid, 2);
+            }
             pool.defender_main = alive_uids(catalog, &team.entitys);
             if let Some(uid) = team.assist_boss.as_ref().and_then(|entity| entity.uid) {
                 pool.assist_bosses.insert(2, uid);
@@ -241,9 +244,16 @@ impl TargetPool {
         if !pool.attacker_main.is_empty() {
             pool.virtual_entities
                 .push(average_emitter(&pool.attacker_main));
-            pool.teams.insert(crate::engine::manager::emitter::UID, 1);
+            pool.set_team(crate::engine::manager::emitter::UID, 1);
         }
         pool
+    }
+
+    fn set_team(&mut self, uid: i64, team: i32) {
+        match self.teams.iter_mut().find(|(known, _)| *known == uid) {
+            Some((_, known_team)) => *known_team = team,
+            None => self.teams.push((uid, team)),
+        }
     }
 
     pub(crate) fn catalog(&self) -> crate::catalog::BattleCatalog {
@@ -414,7 +424,10 @@ impl TargetPool {
         match uid {
             crate::engine::fight::rules::ATTACKER_SIDE_UID => Some(1),
             crate::engine::fight::rules::DEFENDER_SIDE_UID => Some(2),
-            _ => self.teams.get(&uid).copied(),
+            _ => self
+                .teams
+                .iter()
+                .find_map(|&(known, team)| (known == uid).then_some(team)),
         }
     }
 
@@ -422,7 +435,7 @@ impl TargetPool {
         let mut uids = self
             .teams
             .iter()
-            .filter_map(|(&uid, &entity_team)| (entity_team == team).then_some(uid))
+            .filter_map(|&(uid, entity_team)| (entity_team == team).then_some(uid))
             .collect::<Vec<_>>();
         uids.push(if team == 1 {
             crate::engine::fight::rules::ATTACKER_SIDE_UID

@@ -414,3 +414,38 @@ fn combatant_summon_joins_the_active_team_at_the_allocated_position() {
     assert_eq!(changes.entity.model_id, Some(30111003));
     assert_eq!(fight.defender.unwrap().entitys[1], changes.entity);
 }
+
+#[test]
+fn passive_overrides_follow_roster_order() {
+    let roster = [41, 17, 93, 8, 65, 22, 70, 3];
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: roster
+                .iter()
+                .map(|&uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = EntityManager::seed(&fight);
+    for &uid in roster.iter().rev() {
+        manager.update(FightEntityInfo {
+            uid: Some(uid),
+            passive_skill: vec![uid as i32],
+            ..Default::default()
+        });
+    }
+
+    assert_eq!(
+        manager
+            .passive_overrides()
+            .map(|(uid, _)| uid)
+            .collect::<Vec<_>>(),
+        roster
+    );
+}
