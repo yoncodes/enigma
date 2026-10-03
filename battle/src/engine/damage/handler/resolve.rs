@@ -292,6 +292,7 @@ fn resolve_row_damage_result(
 pub fn resolve_additional_damage_command(
     request: DamageRequest<'_>,
     runtime: DamageRuntime<'_>,
+    formula: DamageFormula,
     attack_replacement: Option<crate::engine::skill::buff_act::AttackReplacement>,
     credited_source_uid: i64,
     assassinate: bool,
@@ -300,6 +301,7 @@ pub fn resolve_additional_damage_command(
     let resolved = resolve_additional_damage_result(
         request,
         runtime,
+        formula,
         attack_replacement,
         credited_source_uid,
     )?;
@@ -330,6 +332,7 @@ struct ResolvedAdditionalDamage {
 fn resolve_additional_damage_result(
     request: DamageRequest<'_>,
     runtime: DamageRuntime<'_>,
+    formula: DamageFormula,
     attack_replacement: Option<crate::engine::skill::buff_act::AttackReplacement>,
     credited_source_uid: i64,
 ) -> Option<ResolvedAdditionalDamage> {
@@ -342,13 +345,25 @@ fn resolve_additional_damage_result(
         !matches!(
             replacement.formula,
             crate::engine::damage::DamageFormula::AdditionalDamage
+                | crate::engine::damage::DamageFormula::CreditedSourceAdditional
                 | crate::engine::damage::DamageFormula::AttributeReplacementAdditional
                 | crate::engine::damage::DamageFormula::MaxHpAdditionalDamage
         )
     }) {
         return None;
     }
-    let amount = additional_replaced_attack_damage_amount(request, runtime, attack_replacement);
+    let amount =
+        additional_replaced_attack_damage_amount(request, runtime, formula, attack_replacement);
+    let source = runtime.pool.entity(credited_source_uid)?;
+    let target = runtime.pool.entity(target_uid)?;
+    let career_restraint = formula.rules().applies_career
+        && (request.force_career_restraint
+            || restrains_target_either(
+                runtime.pool.catalog(),
+                request.attack_career.unwrap_or(source.career),
+                request.additional_attack_career,
+                target,
+            ));
     (amount > 0).then_some(ResolvedAdditionalDamage {
         source_uid: credited_source_uid,
         target_uid,
@@ -356,7 +371,7 @@ fn resolve_additional_damage_result(
         hurt: HurtInfoData {
             from_uid: credited_source_uid,
             is_crit,
-            career_restraint: false,
+            career_restraint,
             reduce_hp: 0,
             effect_id: 0,
             skill_id: 0,
@@ -376,6 +391,7 @@ fn resolve_additional_damage_result(
 fn additional_replaced_attack_damage_amount(
     request: DamageRequest<'_>,
     runtime: DamageRuntime<'_>,
+    formula: DamageFormula,
     attack_replacement: Option<crate::engine::skill::buff_act::AttackReplacement>,
 ) -> i32 {
     let DamageRequest {
@@ -393,7 +409,7 @@ fn additional_replaced_attack_damage_amount(
     let (base_rate, added_rate) = composed_damage_rates(request.rate, request.rate_terms);
     let formula = attack_replacement
         .map(|replacement| replacement.formula)
-        .unwrap_or(DamageFormula::AdditionalDamage);
+        .unwrap_or(formula);
     direct_damage(
         request,
         runtime,

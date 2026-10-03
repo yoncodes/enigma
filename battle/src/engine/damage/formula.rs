@@ -2,6 +2,7 @@
 pub enum DamageFormula {
     StandardSkill,
     AdditionalDamage,
+    CreditedSourceAdditional,
     AttributeReplacementAdditional,
     MaxHpAdditionalDamage,
     AttributeReplacement,
@@ -38,14 +39,16 @@ impl DamageFormula {
                 combines_action_with_might: false,
                 nets_final_damage_in_regular: false,
             },
-            Self::AttributeReplacementAdditional => DamageFormulaRules {
-                applies_career: true,
-                applies_target_base_critical_defense: true,
-                applies_target_buff_critical_defense: true,
-                includes_trigger_history: false,
-                combines_action_with_might: false,
-                nets_final_damage_in_regular: false,
-            },
+            Self::CreditedSourceAdditional | Self::AttributeReplacementAdditional => {
+                DamageFormulaRules {
+                    applies_career: true,
+                    applies_target_base_critical_defense: true,
+                    applies_target_buff_critical_defense: true,
+                    includes_trigger_history: false,
+                    combines_action_with_might: false,
+                    nets_final_damage_in_regular: false,
+                }
+            }
             Self::MaxHpAdditionalDamage => DamageFormulaRules {
                 applies_career: true,
                 applies_target_base_critical_defense: true,
@@ -142,6 +145,11 @@ mod tests {
     #[test]
     fn formula_owns_damage_policy() {
         assert!(!DamageFormula::AdditionalDamage.rules().applies_career);
+        assert!(
+            DamageFormula::CreditedSourceAdditional
+                .rules()
+                .applies_career
+        );
         assert!(
             DamageFormula::AttributeReplacementAdditional
                 .rules()

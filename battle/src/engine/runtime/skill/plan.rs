@@ -811,6 +811,7 @@ pub(super) fn damage_ops(
                     emitter: None,
                     team_inspiration: 0,
                 },
+                additional.formula,
                 additional.attack_replacement(managers),
                 additional.credited_source_uid,
                 assassination.triggered_by_target,
