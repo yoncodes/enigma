@@ -4,9 +4,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use battle::engine::entity::{
-    input::{EquipmentBuildInput, HeroBuildInput},
-    stats::{BattleBalance, Stats},
+use battle::tooling::{
+    damage_tracing_enabled,
+    entity::{BattleBalance, EntityBuilder, EquipmentBuildInput, HeroBuildInput, Stats},
 };
 use sonettobuf::{
     Fight, FightEntityInfo, HeroExAttribute, HeroInfo, HeroInfoListReply, HeroSpAttribute,
@@ -56,8 +56,7 @@ pub fn preview_attributes_with_request(
         if let Some((trial, stats)) = configured_trial(entity)? {
             ex_attributes.push((uid, stats.ex()));
             sp_attributes.push((uid, stats.sp()));
-            if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage)
-            {
+            if damage_tracing_enabled() {
                 eprintln!(
                     "attribute preview uid={uid} hero={} source=configured-trial",
                     trial.model_id.unwrap_or_default(),
@@ -82,7 +81,7 @@ pub fn preview_attributes_with_request(
             |balance| balance.stats_for(&build, &equips),
         );
 
-        if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage) {
+        if damage_tracing_enabled() {
             eprintln!(
                 "attribute preview uid={uid} hero={model_id} source=validated-build build={build:?} stats={stats:?}",
             );
@@ -118,7 +117,7 @@ pub fn loadout_diffs(fight: &Fight, battle_path: &Path) -> anyhow::Result<Vec<St
                 anyhow::anyhow!("loadout preview missing build metadata uid={uid}")
             })?;
             let build = preview_build_input(entity, hero)?;
-            let mut builder = battle::engine::entity::builder::EntityBuilder::new(
+            let mut builder = EntityBuilder::new(
                 build.clone(),
                 entity.position.unwrap_or_default(),
                 entity.team_type.unwrap_or_default(),
@@ -291,16 +290,14 @@ fn request_battle_balance(
         .ok_or_else(|| anyhow::anyhow!("invalid balance config for battle {battle_id}"))
 }
 
-fn configured_trial(
-    entity: &FightEntityInfo,
-) -> anyhow::Result<Option<(FightEntityInfo, battle::engine::entity::stats::Stats)>> {
+fn configured_trial(entity: &FightEntityInfo) -> anyhow::Result<Option<(FightEntityInfo, Stats)>> {
     let Some(trial_id) = entity.trial_id.filter(|trial_id| *trial_id > 0) else {
         return Ok(None);
     };
     let uid = entity
         .uid
         .ok_or_else(|| anyhow::anyhow!("trial {trial_id} is missing attacker uid"))?;
-    let (trial, stats) = battle::engine::entity::builder::EntityBuilder::trial(
+    let (trial, stats) = EntityBuilder::trial(
         trial_id,
         uid,
         entity.position.unwrap_or_default(),
@@ -1176,13 +1173,8 @@ mod tests {
         write_roster(&directory, hero.clone());
         let mut fight = fight(uid);
         let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
-        let built = battle::engine::entity::builder::EntityBuilder::new(
-            preview_build_input(entity, &hero).unwrap(),
-            0,
-            0,
-            false,
-        )
-        .build();
+        let built =
+            EntityBuilder::new(preview_build_input(entity, &hero).unwrap(), 0, 0, false).build();
         entity.skill_group1 = built.skill_group1.clone();
         entity.skill_group2 = built.skill_group2.clone();
         entity.ex_skill = built.ex_skill;
@@ -1209,8 +1201,7 @@ mod tests {
         entity.equips.clear();
         entity.equip_uid = None;
         let directory = test_directory("trial");
-        let (_, expected) =
-            battle::engine::entity::builder::EntityBuilder::trial(trial_id, uid, 0, 0).unwrap();
+        let (_, expected) = EntityBuilder::trial(trial_id, uid, 0, 0).unwrap();
 
         assert_eq!(
             preview_attributes(&fight, &directory.join("BeginRoundReply_1.json")).unwrap(),

@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use battle::engine::runtime::BattleRuntime;
+use battle::tooling::replay::ReplayBattle;
 use battle_preview::{
     array_len_diff_lines, battle_inputs, build_metadata_source, canonical_comparison,
     comparable_json, first_diff_path, loadout_diffs, normalize_live_json, opening_determinism,
@@ -147,12 +147,12 @@ fn generate_reply(
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "capture has no round"))?,
     )?;
     let tower_rule_skills = tower_plan_id(path)
-        .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
+        .map(|plan_id| battle::tooling::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, path)?;
     let loadout = loadout_diffs(&fight, path)?;
     let determinism = opening_determinism(db, &fight, &captured_round);
-    let mut runtime = BattleRuntime::new_with_attributes(
+    let mut runtime = ReplayBattle::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
         ex_attributes,
@@ -164,7 +164,7 @@ fn generate_reply(
         .map_err(io::Error::other)?;
 
     Ok((
-        battle::dungeon::start_reply(&runtime),
+        battle::tooling::start_reply(&runtime),
         runtime.card_info_push(),
         original,
         loadout,

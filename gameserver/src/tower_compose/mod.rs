@@ -126,7 +126,7 @@ pub async fn settle_in_transaction(
     // Live sends the pre-settlement theme snapshot; the committed layer is visible to GetInfo.
     let state =
         tower_compose::get_theme_state_in_transaction(tx, player_id, context.theme_id).await?;
-    let result = if active.runtime.outcome() == battle::engine::runtime::BattleOutcome::Victory {
+    let result = if active.runtime.outcome() == battle::BattleOutcome::Victory {
         tower_compose::complete_layer_in_transaction(
             tx,
             player_id,

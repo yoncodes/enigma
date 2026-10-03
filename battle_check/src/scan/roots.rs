@@ -100,8 +100,8 @@ pub(crate) fn collect_hero_build_roots(
         .collect::<Vec<_>>();
     let mut character_kit_reachable = false;
     for level in levels {
-        match battle::catalog::configured_conduit_skill_ids(db, hero_id, level, destiny_stone)
-            .map_err(|error| anyhow::anyhow!("resolve configured device skills: {error:?}"))?
+        match battle::tooling::configured_conduit_skill_ids(db, hero_id, level, destiny_stone)
+            .map_err(|error| anyhow::anyhow!("resolve configured device skills: {error}"))?
         {
             Some(device_skills) => {
                 for skill_id in device_skills {

@@ -1,8 +1,8 @@
-use battle::engine::{
-    manager::{BattleManagers, card::hand_size},
-    mechanic::card::CardMechanic,
-    runtime::determinism::{HandRankChoice, RoundDeterminism},
-    skill::effect::SkillEffectCatalog,
+use battle::tooling::{
+    opening_hand_size,
+    replay::{HandRankChoice, ReplayBattle, RoundDeterminism},
+    scan::{SkillEffectCatalog, SkillEffectSlot},
+    ultimate_ignores_limit,
 };
 use sonettobuf::{CardInfo, Fight, FightRound, FightStep};
 
@@ -27,8 +27,6 @@ pub fn opening_determinism(
         .flat_map(|team| &team.entitys)
         .filter_map(|entity| Some((entity.uid?, entity.ex_skill?)))
         .collect::<std::collections::HashSet<_>>();
-    let managers =
-        BattleManagers::seeded_with_catalog(battle::catalog::BattleCatalog::new(game_data), fight);
     let reserved_ultimate_slots = draws
         .iter()
         .filter(|card| {
@@ -37,8 +35,9 @@ pub fn opening_determinism(
                 .is_some_and(|identity| ultimate_identities.contains(&identity))
         })
         .filter(|card| {
-            !CardMechanic.ultimate_ignores_limit(
-                &managers,
+            !ultimate_ignores_limit(
+                battle::catalog::BattleCatalog::new(game_data),
+                fight,
                 card.uid.unwrap_or_default(),
                 card.skill_id.unwrap_or_default(),
             )
@@ -53,7 +52,7 @@ pub fn opening_determinism(
                 .is_some_and(|identity| ultimate_identities.contains(&identity))
         })
         .collect::<Vec<CardInfo>>();
-    let player_seed_len = hand_size(fight).saturating_sub(reserved_ultimate_slots);
+    let player_seed_len = opening_hand_size(fight).saturating_sub(reserved_ultimate_slots);
 
     if normal_draws.len() >= player_seed_len {
         determinism.enqueue_opening_seed(
@@ -67,7 +66,7 @@ pub fn opening_determinism(
 }
 
 pub fn seed_round_determinism(
-    runtime: &mut battle::engine::runtime::BattleRuntime,
+    runtime: &mut ReplayBattle,
     catalog: &SkillEffectCatalog,
     round: &FightRound,
 ) {
@@ -209,7 +208,7 @@ fn opening_hand_rank_choices(
             .act_id
             .and_then(|skill_id| catalog.get(skill_id))
             .is_some_and(|effect| {
-                let mode_one = |slot: &battle::engine::skill::effect::SkillEffectSlot| {
+                let mode_one = |slot: &SkillEffectSlot| {
                     matches!(slot.behavior.args.as_slice(), [1, count, 1] if *count > 0)
                 };
                 let mut slots = effect.slots.iter().filter(|slot| {

@@ -1,8 +1,8 @@
 use super::*;
 use sqlx::sqlite::SqlitePoolOptions;
 
-fn runtime(fight: sonettobuf::Fight) -> battle::engine::runtime::BattleRuntime {
-    battle::engine::runtime::BattleRuntime::new(
+fn runtime(fight: sonettobuf::Fight) -> battle::Battle {
+    battle::tooling::unstarted_battle(
         battle::catalog::BattleCatalog::new(config::configs::get()),
         fight,
     )

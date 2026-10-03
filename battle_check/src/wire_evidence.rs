@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use battle::engine::skill::buff_act::{
+use battle::tooling::scan::buff_act::{
     registry as buff_act_registry,
     wire::{self, WirePhase},
 };
