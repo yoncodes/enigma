@@ -90,7 +90,9 @@ pub fn seed_round_determinism(
         runtime.seed_next_ai_cards(round.ai_use_cards.clone());
     }
     runtime.seed_random_skills(random_skill_choices(catalog, round));
-    let (hidden, additional) = crit_choices(round);
+    let (hidden, additional) = crit_choices(round, |owner_uid| {
+        runtime.has_proportional_assassination_damage(owner_uid)
+    });
     runtime.seed_crits(hidden, additional);
 }
 
@@ -100,10 +102,18 @@ type AdditionalCrit = ((i32, i64, i64), bool);
 // Each effect the engine rolls a crit for is rolled under its own step's skill (or buff) and
 // source, in step order. Config effects name the rolling source: skill row damage (-1), healing
 // behaviors 20001/90001, Spirit Shell heals (0), and crit-capable origin damage 30015/60127.
-fn crit_choices(round: &FightRound) -> (Vec<HiddenCrit>, Vec<AdditionalCrit>) {
+fn crit_choices(
+    round: &FightRound,
+    has_proportional_assassination_damage: impl Fn(i64) -> bool,
+) -> (Vec<HiddenCrit>, Vec<AdditionalCrit>) {
     use sonettobuf::effect_type_enum::EffectType;
 
-    fn visit(step: &FightStep, hidden: &mut Vec<HiddenCrit>, additional: &mut Vec<AdditionalCrit>) {
+    fn visit(
+        step: &FightStep,
+        hidden: &mut Vec<HiddenCrit>,
+        additional: &mut Vec<AdditionalCrit>,
+        has_proportional_assassination_damage: &impl Fn(i64) -> bool,
+    ) {
         let key = step
             .act_id
             .filter(|act_id| *act_id > 0)
@@ -120,10 +130,19 @@ fn crit_choices(round: &FightRound) -> (Vec<HiddenCrit>, Vec<AdditionalCrit>) {
                     EffectType::Additionaldamage,
                     EffectType::Additionaldamagecrit,
                 ) {
-                    additional.push((
-                        (act_id, from_id, effect.target_id.unwrap_or_default()),
-                        is_crit,
-                    ));
+                    let deterministic_assassination =
+                        effect.hurt_info.as_ref().is_some_and(|hurt| {
+                            hurt.assassinate.unwrap_or_default()
+                                && hurt
+                                    .from_uid
+                                    .is_some_and(&has_proportional_assassination_damage)
+                        });
+                    if !deterministic_assassination {
+                        additional.push((
+                            (act_id, from_id, effect.target_id.unwrap_or_default()),
+                            is_crit,
+                        ));
+                    }
                 } else {
                     let config_effect = effect.config_effect.unwrap_or_default();
                     let rolled = crit(EffectType::Damage, EffectType::Crit)
@@ -142,7 +161,12 @@ fn crit_choices(round: &FightRound) -> (Vec<HiddenCrit>, Vec<AdditionalCrit>) {
                 }
             }
             if let Some(child) = effect.fight_step.as_ref() {
-                visit(child, hidden, additional);
+                visit(
+                    child,
+                    hidden,
+                    additional,
+                    has_proportional_assassination_damage,
+                );
             }
         }
     }
@@ -150,7 +174,12 @@ fn crit_choices(round: &FightRound) -> (Vec<HiddenCrit>, Vec<AdditionalCrit>) {
     let mut hidden = Vec::new();
     let mut additional = Vec::new();
     for step in &round.fight_step {
-        visit(step, &mut hidden, &mut additional);
+        visit(
+            step,
+            &mut hidden,
+            &mut additional,
+            &has_proportional_assassination_damage,
+        );
     }
     (hidden, additional)
 }
@@ -358,7 +387,7 @@ mod tests {
             ..Default::default()
         };
 
-        let (hidden, additional) = crit_choices(&round);
+        let (hidden, additional) = crit_choices(&round, |_| false);
 
         assert_eq!(
             hidden,
@@ -373,5 +402,37 @@ mod tests {
             additional,
             vec![((31090111, 10, -1), false), ((31090111, 10, -1), true)]
         );
+    }
+
+    #[test]
+    fn proportional_assassination_damage_does_not_consume_additional_crit_rng() {
+        use sonettobuf::{ActEffect, FightHurtInfo, effect_type_enum::EffectType};
+
+        let additional = |source_uid, effect_type| ActEffect {
+            effect_type: Some(effect_type as i32),
+            target_id: Some(-1),
+            hurt_info: Some(FightHurtInfo {
+                from_uid: Some(source_uid),
+                assassinate: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let round = FightRound {
+            fight_step: vec![FightStep {
+                act_id: Some(312301611),
+                from_id: Some(12),
+                act_effect: vec![
+                    additional(10, EffectType::Additionaldamagecrit),
+                    additional(11, EffectType::Additionaldamage),
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let (_, choices) = crit_choices(&round, |owner_uid| owner_uid == 10);
+
+        assert_eq!(choices, vec![((312301611, 12, -1), false)]);
     }
 }

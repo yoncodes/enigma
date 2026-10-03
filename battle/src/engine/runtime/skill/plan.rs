@@ -454,7 +454,6 @@ pub(super) fn damage_ops(
         .unwrap_or_default();
     let main_target = targets.first().copied();
     let extra_action = performs_extra_action(invocation, execution);
-    let forced_critical = field_forces_critical(source_uid, managers, extra_action);
     let additional = additional_damage(source_uid, managers, execution, extra_action)
         .into_iter()
         .filter_map(|additional| {
@@ -611,6 +610,7 @@ pub(super) fn damage_ops(
             );
             if delta != 0 {
                 attack_attributes.push((attr_id, delta));
+                linked_attack_attributes.push((attr_id, delta));
             }
         }
         if index >= base_count + behavior_extra_count
@@ -778,7 +778,7 @@ pub(super) fn damage_ops(
                     additional.credited_source_uid,
                     target_uid,
                     damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
-                ) || forced_critical;
+                );
                 let mut additional_attributes = linked_attack_attributes
                     .iter()
                     .copied()
