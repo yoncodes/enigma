@@ -24,7 +24,10 @@ use crate::engine::{
             ParsedCondition, ParsedConditionKind, lifecycle::LifecycleMode, none::NoneMode,
         },
         effect::{ParsedBehavior, ParsedSkillEffect, SkillEffectSlot},
-        rule::{DefinitionKey, RuleDomain, output::BattleCommand, route::ConditionRoute},
+        rule::{
+            ConfiguredRuleKey, DefinitionKey, RuleDomain, output::BattleCommand,
+            route::ConditionRoute,
+        },
         target::TargetRequest,
     },
 };

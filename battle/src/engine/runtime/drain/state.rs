@@ -113,6 +113,25 @@ impl DrainState {
             .unwrap_or_default()
     }
 
+    pub(super) fn cancel_action(&mut self, action_path: &FramePath) -> Vec<QueuedOp> {
+        self.open_actions.remove(action_path);
+        self.completed_actions.insert(action_path.clone());
+        self.injuries.remove(action_path);
+        self.deaths.remove(action_path);
+        self.target_modifiers.remove(action_path);
+
+        let mut abandoned = self.after_hit.remove(action_path).unwrap_or_default();
+        abandoned.extend(self.after_action.remove(action_path).unwrap_or_default());
+        abandoned.extend(
+            self.after_action_casts
+                .remove(action_path)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(_, queued)| queued),
+        );
+        abandoned
+    }
+
     pub(super) fn open_action(&mut self, action_path: FramePath) {
         if !self.completed_actions.contains(&action_path) {
             self.open_actions.insert(action_path);
