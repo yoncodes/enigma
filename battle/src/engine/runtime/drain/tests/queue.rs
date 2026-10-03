@@ -1608,3 +1608,90 @@ fn an_after_being_attacked_buff_act_runs_with_the_hits_skill_reactions() {
         vec![Some(skill), Some(buff_act(871, "ShellDebuff"))]
     );
 }
+
+#[test]
+fn hit_reactions_follow_owner_skill_order_across_event_kinds() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                passive_skill: vec![109380004, 109320108],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Skill,
+        key: DefinitionKey::new(1, "SkillDamage"),
+    };
+    let events = vec![
+        BattleEvent::HpLost {
+            origin,
+            source_uid: 10,
+            skill_id: 1,
+            target_uid: -1,
+            amount: 100,
+            buff_uid: None,
+        },
+        BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+            origin,
+            source_uid: 10,
+            target_uid: -1,
+            skill_id: 1,
+            amount: 100,
+            shield_absorbed: 0,
+            career_restraint: false,
+            damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+            assassinate: false,
+            ignore_riposte: false,
+        }),
+    ];
+    let queued = |skill_id| QueuedOp {
+        op: RuleOp::Skill(
+            SkillRequest {
+                source_uid: -1,
+                skill_id,
+            }
+            .into(),
+        ),
+        trigger: SkillOpTrigger::Active,
+        skill_execution: None,
+        frame_path: None,
+        parent_path: None,
+        frame_group: None,
+        independent_parent_group: None,
+        frame_owner: Some(FrameOwner::Skill {
+            source_uid: -1,
+            skill_id,
+            card_index: 0,
+            target_uid: None,
+        }),
+        subscriber_owner_uid: Some(-1),
+        caster_frame: None,
+    };
+    let mut batch = ReactionBatch {
+        after_publish: vec![queued(109320108), queued(109380004)],
+        ..Default::default()
+    };
+
+    batch
+        .order_skills(&pool, &managers, &catalog, &events)
+        .unwrap();
+
+    let ordered = batch
+        .after_publish
+        .into_iter()
+        .filter_map(|queued| match queued.frame_owner {
+            Some(FrameOwner::Skill { skill_id, .. }) => Some(skill_id),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(ordered, vec![109380004, 109320108]);
+}

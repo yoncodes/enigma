@@ -307,6 +307,49 @@ impl ReactionBatch {
             },
         )
     }
+
+    fn order_skills(
+        &mut self,
+        pool: &TargetPool,
+        managers: &BattleManagers,
+        catalog: &SkillEffectCatalog,
+        events: &[BattleEvent],
+    ) -> Result<(), DrainError> {
+        let mut order = std::collections::HashMap::new();
+        for subscriber in crate::engine::skill::subscriber::for_compiled_events(
+            pool,
+            managers,
+            catalog,
+            events.iter().flat_map(BattleEvent::subscription_kinds),
+        )?
+        .skills
+        {
+            let next = order.len();
+            order
+                .entry((subscriber.owner_uid, subscriber.skill_id))
+                .or_insert(next);
+        }
+        for lane in [
+            &mut self.before_publish,
+            &mut self.after_publish,
+            &mut self.after_skill,
+            &mut self.after_hit,
+            &mut self.after_action,
+        ] {
+            lane.sort_by_key(|queued| match queued.frame_owner {
+                Some(FrameOwner::Skill {
+                    source_uid,
+                    skill_id,
+                    ..
+                }) => order
+                    .get(&(source_uid, skill_id))
+                    .copied()
+                    .unwrap_or(usize::MAX),
+                _ => usize::MAX,
+            });
+        }
+        Ok(())
+    }
 }
 
 mod entry;
@@ -1112,7 +1155,7 @@ fn drain_queue_with_deferred(
                     .then(|| pending_hits.remove(&frame_path))
                     .flatten();
                 if let Some(hit_events) = released_hit_events.as_ref() {
-                    let hit_reactions = dispatch_event_batch(
+                    let mut hit_reactions = dispatch_event_batch(
                         pool,
                         managers,
                         catalog,
@@ -1128,6 +1171,7 @@ fn drain_queue_with_deferred(
                         None,
                     )?;
                     result.events.extend(hit_events.iter().cloned());
+                    hit_reactions.order_skills(pool, managers, catalog, hit_events)?;
                     let (hit_buff_acts, hit_skills) = hit_reactions.partition_skill_reactions();
                     pending_hit_skills = hit_skills;
                     drain_nested_queue(
@@ -1276,6 +1320,7 @@ fn drain_queue_with_deferred(
                     } else {
                         hit_reactions.after_publish.extend(hit_after_action);
                     }
+                    hit_reactions.order_skills(pool, managers, catalog, hit_events)?;
                     let (hit_buff_acts, hit_skills) = hit_reactions.partition_skill_reactions();
                     let hit_queue = hit_buff_acts
                         .into_ordered()
