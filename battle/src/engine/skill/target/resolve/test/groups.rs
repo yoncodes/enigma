@@ -90,6 +90,42 @@ fn resolves_relative_ally_and_enemy_groups_from_fight() {
 }
 
 #[test]
+fn a_skill_reacting_to_an_attack_keeps_roster_order() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1), entity_at(11, 2), entity_at(12, 3)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let allies = |skill_id| {
+        TargetResolver::resolve_with_managers_and_context(
+            &TargetRequest {
+                code: 101,
+                raw: Vec::new(),
+            },
+            skill_id,
+            10,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext {
+                runtime_target_uid: 11,
+                active_skill_is_attack: true,
+                ..Default::default()
+            },
+        )
+    };
+
+    // 434111 grants a buff after its carrier is attacked; 31090114 is an attack.
+    assert_eq!(allies(434111), vec![10, 11, 12]);
+    assert_eq!(allies(31090114), vec![11, 10, 12]);
+}
+
+#[test]
 fn multi_target_actions_put_the_selected_primary_target_first() {
     let fight = Fight {
         attacker: Some(FightTeam {

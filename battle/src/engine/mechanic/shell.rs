@@ -155,7 +155,7 @@ fn deploy(
             target_uid: source_uid,
             selector: BuffSelector::IdOrType(stock_buff_id),
             amount,
-            depleted: DepletedBuff::Keep,
+            depleted: DepletedBuff::Remove,
         }))?,
         managers.execute_buff(BuffCommand::Grant(BuffGrant {
             origin,
@@ -468,7 +468,7 @@ mod tests {
     }
 
     #[test]
-    fn negative_deploy_amount_moves_all_stock() {
+    fn negative_deploy_amount_moves_all_stock_and_removes_the_spent_stock() {
         crate::test_support::init_config();
         let fight = Fight {
             attacker: Some(FightTeam {
@@ -512,8 +512,15 @@ mod tests {
         .unwrap();
 
         assert_eq!(managers.buff.buff_id_amount(10, 31090117), 0);
+        assert!(!managers.buff.has_buff_id(10, 31090117));
         assert_eq!(managers.buff.buff_id_amount(-1, 31090118), 8);
         assert_eq!(changes.events[0].amount, 8);
+        // With the stock gone, the caster's shells are still found through the deployed ones.
+        assert_eq!(
+            crate::engine::skill::buff_act::shell::caster_shell_spec(&managers, 10)
+                .map(|spec| spec.stock_buff_id),
+            Some(31090117)
+        );
     }
 
     #[test]

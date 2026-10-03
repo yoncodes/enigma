@@ -88,6 +88,27 @@ pub(crate) fn resolve_deployed_buff_id(catalog: BattleCatalog, stock_buff_id: i3
         .map(|spec| spec.deployed_buff_id)
 }
 
+// A fully deployed stock is removed, so the caster's shells are also found through the ones it deployed.
+pub(crate) fn caster_shell_spec(
+    managers: &BattleManagers,
+    caster_uid: i64,
+) -> Option<ShellProcessSpec> {
+    managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .find_map(|feature| {
+            if !super::is_kind(&feature, BuffActKind::ShellProcess) {
+                return None;
+            }
+            let spec = process_spec_from_args(feature.values.get(1..)?)?;
+            let held = feature.owner_uid == caster_uid && feature.buff_id == spec.stock_buff_id;
+            let deployed =
+                feature.source_uid == caster_uid && feature.buff_id == spec.deployed_buff_id;
+            (held || deployed).then_some(spec)
+        })
+}
+
 fn runtime_process_spec(managers: &BattleManagers, buff_id: i32) -> Option<ShellProcessSpec> {
     let catalog = managers
         .buff
@@ -206,10 +227,19 @@ fn process_rule_ops(
     let BattleEvent::ShellChanged(change) = event else {
         return Some(Vec::new());
     };
-    if subscriber.buff_id != spec.stock_buff_id
-        || subscriber.owner_uid != change.source_uid
-        || spec.stock_buff_id != change.stock_buff_id
-    {
+    // Both shell buffs carry this feature; the one that just received the stacks answers, since a
+    // fully deployed stock is removed.
+    let receives = match change.kind {
+        ShellChangeKind::Deployed => {
+            subscriber.buff_id == spec.deployed_buff_id
+                && subscriber.owner_uid == change.target_uid
+                && subscriber.source_uid == change.source_uid
+        }
+        ShellChangeKind::Retrieved => {
+            subscriber.buff_id == spec.stock_buff_id && subscriber.owner_uid == change.source_uid
+        }
+    };
+    if !receives || spec.stock_buff_id != change.stock_buff_id {
         return Some(Vec::new());
     }
     let origin = super::command_origin(subscriber)?;
@@ -222,8 +252,8 @@ fn process_rule_ops(
                 crate::engine::manager::ex_point::ExPointCommand::Change(
                     crate::engine::manager::ex_point::ExPointChange {
                         origin,
-                        source_uid: subscriber.owner_uid,
-                        target_uid: subscriber.owner_uid,
+                        source_uid: change.source_uid,
+                        target_uid: change.source_uid,
                         delta: spec.moxie_delta,
                         config_effect: 0,
                         effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
@@ -640,7 +670,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_process_rolls_the_configured_moxie_gain_from_the_shared_rng() {
+    fn deployed_shell_rolls_the_configured_moxie_gain_from_the_shared_rng() {
         let managers = BattleManagers::default();
         let pool = TargetPool::default();
         let event = BattleEvent::ShellChanged(ShellChangeEvent {
@@ -653,24 +683,29 @@ mod tests {
             transaction_amount: 3,
             settles_transaction: true,
         });
-        let mut determinism = RoundDeterminism::default();
-        determinism.enqueue_permille_rolls([0]);
+        let process = |owner_uid, buff_id| {
+            let mut determinism = RoundDeterminism::default();
+            determinism.enqueue_permille_rolls([0]);
+            rule_ops(
+                &managers,
+                &pool,
+                &mut determinism,
+                &subscriber(
+                    owner_uid,
+                    10,
+                    buff_id,
+                    869,
+                    "ShellProcess",
+                    vec![31090111, 31090112, 200, 1, 102, 300],
+                ),
+                &event,
+            )
+            .unwrap()
+        };
 
-        let ops = rule_ops(
-            &managers,
-            &pool,
-            &mut determinism,
-            &subscriber(
-                10,
-                10,
-                31090111,
-                869,
-                "ShellProcess",
-                vec![31090111, 31090112, 200, 1, 102, 300],
-            ),
-            &event,
-        )
-        .unwrap();
+        // A fully deployed stock is removed, so the shells that received the stacks answer.
+        assert!(process(10, 31090111).is_empty());
+        let ops = process(-1, 31090112);
 
         assert!(matches!(
             ops.as_slice(),

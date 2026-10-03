@@ -299,7 +299,9 @@ impl TargetResolver {
             TargetRule::AlliesWithStatus => allies_by_status(pool, source_uid, request, true),
             TargetRule::AlliesWithoutStatus => allies_by_status(pool, source_uid, request, false),
         };
+        // Only an attack puts its primary target first; a skill reacting to an attack keeps roster order.
         if context.active_skill_is_attack
+            && managers.is_none_or(|managers| managers.catalog().skill_is_attack(skill_id))
             && targets.len() > 1
             && let Some(index) = targets
                 .iter()
@@ -840,20 +842,11 @@ fn enemy_with_most_shell(
     let Some(managers) = managers else {
         return Vec::new();
     };
-    let features = managers.buff.active_features(&managers.hp);
     let deployed_buff_id = (context.shell_deployed_buff_id > 0)
         .then_some(context.shell_deployed_buff_id)
         .or_else(|| {
-            features.iter().find_map(|feature| {
-                (feature.owner_uid == source_uid
-                    && feature.values.get(1) == Some(&feature.buff_id)
-                    && crate::engine::skill::buff_act::is_kind(
-                        feature,
-                        crate::engine::skill::buff_act::registry::BuffActKind::ShellProcess,
-                    ))
-                .then(|| feature.values.get(2).copied())
-                .flatten()
-            })
+            crate::engine::skill::buff_act::shell::caster_shell_spec(managers, source_uid)
+                .map(|spec| spec.deployed_buff_id)
         });
     let Some(deployed_buff_id) = deployed_buff_id else {
         return Vec::new();
