@@ -2077,6 +2077,7 @@ fn proportional_assassination_damage_precedes_independently_rolled_linked_damage
                     attr: Some(HeroAttribute {
                         hp: Some(10_000),
                         attack: Some(1_000),
+                        technic: Some(300),
                         ..Default::default()
                     }),
                     buffs: vec![
@@ -2111,6 +2112,7 @@ fn proportional_assassination_damage_precedes_independently_rolled_linked_damage
                     attr: Some(HeroAttribute {
                         hp: Some(10_000),
                         attack: Some(1_000),
+                        technic: Some(500),
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -2124,6 +2126,7 @@ fn proportional_assassination_damage_precedes_independently_rolled_linked_damage
                 current_hp: Some(100_000),
                 attr: Some(HeroAttribute {
                     hp: Some(100_000),
+                    technic: Some(0),
                     ..Default::default()
                 }),
                 buffs: vec![BuffInfo {
@@ -2175,12 +2178,20 @@ fn proportional_assassination_damage_precedes_independently_rolled_linked_damage
     .additional_damage
     .into_iter()
     .filter_map(|command| match command {
-        HpCommand::Damage(hit) => Some((hit.source_uid, hit.hurt.is_crit)),
+        HpCommand::Damage(hit) => Some((hit.source_uid, hit.hurt.is_crit, hit.amount)),
         _ => None,
     })
     .collect::<Vec<_>>();
 
-    assert_eq!(hits, vec![(10, false), (12, false)]);
+    assert_eq!(
+        hits.iter()
+            .map(|(source_uid, is_crit, _)| (*source_uid, *is_crit))
+            .collect::<Vec<_>>(),
+        vec![(10, false), (12, false)]
+    );
+    // The independently rolled hit belongs to uid 12, so its five complete Technique bands
+    // provide Final DMG +25%; it must not inherit uid 10's +15% modifier.
+    assert_eq!(hits[1].2, 375);
 }
 
 #[test]

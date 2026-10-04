@@ -595,12 +595,6 @@ pub(super) fn damage_ops(
                 crate::engine::entity::attr::AttrId::FinalDmgBonus,
                 assassination.final_damage_bonus,
             ));
-            if assassination.triggered_by_target {
-                linked_attack_attributes.push((
-                    crate::engine::entity::attr::AttrId::FinalDmgBonus,
-                    assassination.final_damage_bonus,
-                ));
-            }
         }
         for attr_id in [
             crate::engine::entity::attr::AttrId::CriticalDmg,
@@ -817,6 +811,22 @@ pub(super) fn damage_ops(
                         crate::engine::entity::attr::AttrId::DmgTakenReduction,
                         incoming_reduction,
                     ));
+                }
+                if assassination.triggered_by_target {
+                    let linked_assassination =
+                        crate::engine::skill::buff_act::assassination::target_modifier(
+                            managers,
+                            additional.credited_source_uid,
+                            target_uid,
+                            false,
+                            execution.assassination_marks_at_action_start.as_deref(),
+                        );
+                    if linked_assassination.final_damage_bonus != 0 {
+                        additional_attributes.push((
+                            crate::engine::entity::attr::AttrId::FinalDmgBonus,
+                            linked_assassination.final_damage_bonus,
+                        ));
+                    }
                 }
                 damage::resolve_additional_damage_command(
                     damage::DamageRequest {

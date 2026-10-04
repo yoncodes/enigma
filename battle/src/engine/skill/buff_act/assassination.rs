@@ -13,8 +13,10 @@ use crate::engine::{
     },
 };
 
-// Lethal Injury's feature argument is the bonus added by its upgraded form. The mechanic's
-// baseline is Final DMG +5% per 100 Critical Technique, which remains active alongside it.
+// Lethal Injury grants Final DMG +5% per 100 Critical Technique when it marks an attack as an
+// Assassination. Its feature argument is the separate +1% bonus for an attack that was already
+// an Assassination; a mark consumed to trigger Assassination cannot also contribute that bonus
+// to the same hit.
 const TARGET_ASSASSINATION_BASE_RATE: i32 = 50;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -71,12 +73,7 @@ pub fn marked_targets(managers: &BattleManagers) -> Vec<(i64, i32)> {
         .into_iter()
         .filter(|feature| feature.amount > 0)
         .filter(|feature| super::is_kind(feature, BuffActKind::BeAttackedAssassinate))
-        .filter_map(|feature| {
-            Some((
-                feature.owner_uid,
-                TARGET_ASSASSINATION_BASE_RATE + *feature.values.get(1)?,
-            ))
-        })
+        .filter_map(|feature| Some((feature.owner_uid, *feature.values.get(1)?)))
         .collect()
 }
 
@@ -118,7 +115,9 @@ pub fn target_modifier(
         triggered_by_target: marked && !already_assassinate,
         final_damage_bonus: i32::from(assassinate)
             * (technique_excess / 100)
-            * (target_rate + source_rate),
+            * (i32::from(marked) * TARGET_ASSASSINATION_BASE_RATE
+                + source_rate
+                + i32::from(already_assassinate) * target_rate),
     }
 }
 
@@ -250,15 +249,23 @@ mod tests {
         consumed.defender.as_mut().unwrap().entitys[0].buffs.clear();
         let consumed = BattleManagers::seeded(&consumed);
 
-        let expected = AssassinationModifier {
+        let triggered = AssassinationModifier {
             assassinate: true,
             triggered_by_target: true,
-            final_damage_bonus: 432,
+            final_damage_bonus: 402,
         };
-        assert_eq!(modifier, expected);
+        assert_eq!(modifier, triggered);
         assert_eq!(
-            target_modifier(&consumed, 10, -1, false, Some(&[(-1, 60)])),
-            expected
+            target_modifier(&consumed, 10, -1, false, Some(&[(-1, 10)])),
+            triggered
+        );
+        assert_eq!(
+            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, None),
+            AssassinationModifier {
+                assassinate: true,
+                triggered_by_target: false,
+                final_damage_bonus: 432,
+            }
         );
         assert!(
             !target_modifier(&BattleManagers::seeded(&fight), 10, -1, false, Some(&[])).assassinate
