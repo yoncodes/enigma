@@ -153,13 +153,7 @@ pub fn rule_ops(
                 return Some(Vec::new());
             }
             let spec = runtime_process_spec(managers, subscriber.buff_id)?;
-            let amount = subscriber
-                .args
-                .first()
-                .copied()
-                .unwrap_or(1)
-                .max(0)
-                .saturating_mul(event_count);
+            let amount = subscriber.args.first().copied().unwrap_or(1).max(0);
             if amount == 0
                 || managers
                     .buff
@@ -168,13 +162,19 @@ pub fn rule_ops(
             {
                 return Some(Vec::new());
             }
-            ShellCommand::Deploy {
-                origin,
-                source_uid: subscriber.owner_uid,
-                target_uid: attacker_uid,
-                stock_buff_id: spec.stock_buff_id,
-                amount,
-            }
+            return Some(
+                (0..event_count)
+                    .map(|_| {
+                        RuleOp::Command(BattleCommand::Shell(ShellCommand::Deploy {
+                            origin,
+                            source_uid: subscriber.owner_uid,
+                            target_uid: attacker_uid,
+                            stock_buff_id: spec.stock_buff_id,
+                            amount,
+                        }))
+                    })
+                    .collect(),
+            );
         }
         BuffActKind::ShellDebuff => {
             let BattleEvent::Hit(hit) = event else {
@@ -452,18 +452,17 @@ mod tests {
         )
         .unwrap();
 
-        assert!(matches!(
-            ops.as_slice(),
-            [RuleOp::Command(BattleCommand::Shell(
-                ShellCommand::Deploy {
-                    source_uid: 10,
-                    target_uid: -1,
-                    stock_buff_id: 31090111,
-                    amount: 3,
-                    ..
-                }
-            ))]
-        ));
+        assert_eq!(ops.len(), 3);
+        assert!(ops.iter().all(|op| matches!(
+            op,
+            RuleOp::Command(BattleCommand::Shell(ShellCommand::Deploy {
+                source_uid: 10,
+                target_uid: -1,
+                stock_buff_id: 31090111,
+                amount: 1,
+                ..
+            }))
+        )));
     }
 
     #[test]
