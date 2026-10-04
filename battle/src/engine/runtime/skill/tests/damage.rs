@@ -693,7 +693,9 @@ fn additional_damage_activation_survives_its_pre_damage_resource_cost() {
         .activated_additional_damage
         .push(activation.additional);
     managers.execute_eureka(command.clone()).unwrap();
-    assert!(plan::additional_damage_activation(&invocation, &managers, &execution).is_empty());
+    let fallback = plan::additional_damage_activation(&invocation, &managers, &execution);
+    assert_eq!(fallback.len(), 1);
+    assert!(fallback[0].buff_act_ops.is_empty());
 
     execution.configured_targets = Some(vec![-1]);
     let mut catalog = SkillEffectCatalog::default();
@@ -2284,6 +2286,8 @@ fn target_actor_critical_penalty_does_not_leak_into_credited_linked_damage() {
         .into();
         let mut execution = SkillExecution::new(TargetContext {
             active_skill_mode: SkillExecutionMode::Nested,
+            extra_skill_kind: crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction
+                .id(),
             ..Default::default()
         });
         execution.configured_targets = Some(vec![-1]);

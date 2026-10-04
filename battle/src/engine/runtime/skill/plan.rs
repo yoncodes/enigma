@@ -299,6 +299,7 @@ pub(super) struct AdditionalDamageActivation {
 pub(super) struct PlannedAdditionalDamage {
     pub(super) feature: ActiveBuffFeature,
     spec: crate::engine::skill::buff_act::additional_damage::AdditionalDamageSpec,
+    uses_extra_lane: bool,
 }
 
 fn additional_damage(
@@ -318,9 +319,12 @@ fn additional_damage(
                 source_uid,
                 source_uid,
             )
-            .map(|(feature, spec)| PlannedAdditionalDamage { feature, spec })
+            .map(|(feature, spec)| PlannedAdditionalDamage {
+                feature,
+                spec,
+                uses_extra_lane: spec.uses_extra_lane(managers, extra_action),
+            })
         })
-        .filter(|additional| additional.spec.can_apply(managers, extra_action))
         .collect::<Vec<_>>();
     planned.extend(execution.activated_additional_damage.iter().cloned());
     // Damage derived from the resolved hit belongs to that hit's immediate lane. Resolve it
@@ -353,10 +357,12 @@ pub(super) fn additional_damage_activation(
     )
     .into_iter()
     .filter_map(|(feature, spec)| {
-        if !spec.can_apply(managers, extra_action) {
-            return None;
-        }
-        let additional = PlannedAdditionalDamage { feature, spec };
+        let uses_extra_lane = spec.uses_extra_lane(managers, extra_action);
+        let additional = PlannedAdditionalDamage {
+            feature,
+            spec,
+            uses_extra_lane,
+        };
         let origin = crate::engine::skill::buff_act::feature_command_origin(&additional.feature)?;
         let temporary_buff =
             (additional.spec.temp_buff_id > 0).then_some((origin, additional.spec.temp_buff_id));
@@ -399,7 +405,7 @@ pub(super) fn additional_damage_activation(
         let cost = crate::engine::skill::buff_act::additional_damage::extra_action_cost_op(
             &additional.feature,
             additional.spec,
-            extra_action,
+            uses_extra_lane,
         );
         let pays_extra_action_cost = cost.is_some();
         buff_act_ops.extend(cost);
@@ -463,8 +469,16 @@ pub(super) fn damage_ops(
     let additional = additional_damage(source_uid, managers, execution, extra_action)
         .into_iter()
         .filter_map(|additional| {
-            crate::engine::skill::buff_act::feature_command_origin(&additional.feature)
-                .map(|origin| (additional.feature, additional.spec, origin))
+            crate::engine::skill::buff_act::feature_command_origin(&additional.feature).map(
+                |origin| {
+                    (
+                        additional.feature,
+                        additional.spec,
+                        additional.uses_extra_lane,
+                        origin,
+                    )
+                },
+            )
         })
         .collect::<Vec<_>>();
     let active_rate_terms =
@@ -750,13 +764,13 @@ pub(super) fn damage_ops(
                 managers, pool, command,
             ));
         }
-        for (_, additional, origin) in &additional {
+        for (_, additional, uses_extra_lane, origin) in &additional {
             if additional.requires_assassination && !assassination.assassinate {
                 continue;
             }
             let rate = additional.rate(
                 additional_target_order.first() == Some(&target_uid),
-                extra_action,
+                *uses_extra_lane,
             );
             let command = if additional.formula
                 == crate::engine::damage::DamageFormula::ResolvedHitProportionalAdditional
