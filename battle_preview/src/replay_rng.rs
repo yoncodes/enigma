@@ -136,7 +136,7 @@ fn shell_moxie_choices(game_data: &'static config::GameDB, round: &FightRound) -
 
 type HiddenCrit = ((i32, i64), bool);
 type AdditionalCrit = ((i32, i64, i64), bool);
-type IndirectHealCrit = (i64, bool);
+type IndirectHealCrit = ((i32, i64, i64), bool);
 
 // Each effect the engine rolls a crit for is rolled under its own step's skill (or buff) and
 // source, in step order. Config effects name the rolling source: skill row damage (-1), healing
@@ -178,7 +178,10 @@ fn crit_choices(
                     if config_effect == 0
                         && let Some(is_crit) = heal_crit
                     {
-                        indirect_heals.push((effect.target_id.unwrap_or_default(), is_crit));
+                        indirect_heals.push((
+                            (act_id, from_id, effect.target_id.unwrap_or_default()),
+                            is_crit,
+                        ));
                     } else {
                         let rolled = crit(EffectType::Damage, EffectType::Crit)
                             .filter(|_| config_effect == -1)
@@ -396,6 +399,7 @@ mod tests {
                 act_effect: vec![
                     // Life loss and plain heals are not crit rolls.
                     effect(EffectType::Damage, 10, 30006),
+                    effect(EffectType::Heal, 10, 0),
                     effect(EffectType::Crit, -1, -1),
                     effect(EffectType::Additionaldamage, -1, -1),
                     ActEffect {
@@ -427,7 +431,10 @@ mod tests {
             additional,
             vec![((31090111, 10, -1), false), ((31090111, 10, -1), true)]
         );
-        assert_eq!(indirect_heals, vec![(10, true)]);
+        assert_eq!(
+            indirect_heals,
+            vec![((31090111, 10, 10), false), ((31090112, 20, 10), true)]
+        );
     }
 
     #[test]

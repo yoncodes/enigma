@@ -55,7 +55,7 @@ pub struct RoundDeterminism {
     card_plays: VecDeque<CardPlayChoice>,
     condition_random_choices: Vec<ConditionRandomChoice>,
     hidden_crit_choices: HashMap<(i32, i64), VecDeque<bool>>,
-    indirect_heal_crit_choices: HashMap<i64, VecDeque<bool>>,
+    indirect_heal_crit_choices: HashMap<(i32, i64, i64), VecDeque<bool>>,
     shell_moxie_choices: VecDeque<bool>,
     additional_crit_choices: HashMap<(i32, i64, i64), VecDeque<bool>>,
     scripted_condition_random: HashSet<(i32, i32)>,
@@ -245,10 +245,13 @@ impl RoundDeterminism {
             .extend(choices);
     }
 
-    pub fn enqueue_indirect_heal_crits(&mut self, choices: impl IntoIterator<Item = (i64, bool)>) {
-        for (target_uid, is_crit) in choices {
+    pub fn enqueue_indirect_heal_crits(
+        &mut self,
+        choices: impl IntoIterator<Item = ((i32, i64, i64), bool)>,
+    ) {
+        for (key, is_crit) in choices {
             self.indirect_heal_crit_choices
-                .entry(target_uid)
+                .entry(key)
                 .or_default()
                 .push_back(is_crit);
         }
@@ -315,14 +318,15 @@ impl RoundDeterminism {
 
     pub fn roll_indirect_heal_crit(
         &mut self,
+        producer_id: i32,
         source_uid: i64,
         target_uid: i64,
         chance: i32,
     ) -> bool {
         self.indirect_heal_crit_choices
-            .get_mut(&target_uid)
+            .get_mut(&(producer_id, source_uid, target_uid))
             .and_then(VecDeque::pop_front)
-            .unwrap_or_else(|| self.roll_crit(0, source_uid, target_uid, chance))
+            .unwrap_or_else(|| self.roll_crit(producer_id, source_uid, target_uid, chance))
     }
 
     pub fn roll_shell_moxie(&mut self, chance: i32) -> bool {

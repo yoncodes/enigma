@@ -166,7 +166,7 @@ impl BattleRuntime {
         &mut self,
         hidden: impl IntoIterator<Item = ((i32, i64), bool)>,
         additional: impl IntoIterator<Item = ((i32, i64, i64), bool)>,
-        indirect_heals: impl IntoIterator<Item = (i64, bool)>,
+        indirect_heals: impl IntoIterator<Item = ((i32, i64, i64), bool)>,
     ) {
         self.determinism.clear_crit_choices();
         for ((skill_id, source_uid), crit) in hidden {

@@ -288,6 +288,7 @@ fn process_rule_ops(
                 .filter(|ally| managers.hp.current(ally.uid) > 0)
                 .map(|ally| {
                     let is_crit = determinism.roll_indirect_heal_crit(
+                        spec.deployed_buff_id,
                         subscriber.owner_uid,
                         ally.uid,
                         damage::crit_chance(subscriber.owner_uid, ally.uid, pool, managers),
@@ -638,11 +639,17 @@ mod tests {
             transaction_amount: 2,
             settles_transaction: true,
         });
+        let mut determinism = RoundDeterminism::default();
+        determinism.enqueue_indirect_heal_crits([
+            ((999, 10, 10), false),
+            ((31090112, 10, 10), true),
+            ((31090112, 10, 11), false),
+        ]);
 
         let ops = rule_ops(
             &managers,
             &pool,
-            &mut RoundDeterminism::default(),
+            &mut determinism,
             &subscriber(
                 10,
                 10,
@@ -664,7 +671,7 @@ mod tests {
                         crate::engine::manager::hp::HpCommand::Heal(
                             crate::engine::manager::hp::HpHeal {
                                 target_uid: 10,
-                                amount: 600,
+                                kind: crate::engine::manager::hp::HpHealKind::Critical,
                                 ..
                             }
                         ),
@@ -672,6 +679,7 @@ mod tests {
                             crate::engine::manager::hp::HpHeal {
                                 target_uid: 11,
                                 amount: 600,
+                                kind: crate::engine::manager::hp::HpHealKind::Normal,
                                 ..
                             }
                         )
