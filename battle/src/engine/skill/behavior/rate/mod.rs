@@ -705,9 +705,10 @@ pub(crate) fn incoming_target_attack_modifiers(
     }
     let mut modifiers = SkillModifiers::default();
     for passive_skill in passive_skills {
-        if crate::engine::skill::buff_act::additional_damage::uses_costed_lane(
+        if crate::engine::skill::condition::extra::skill_kind_from_is_extra(
             context.extra_skill_kind,
-        ) {
+        ) == Some(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction)
+        {
             let attributes = managers
                 .buff
                 .definition_features(passive_skill)

@@ -32,7 +32,7 @@ fn incoming_passive_uses_its_same_id_attack_local_buff_features() {
     };
     let managers = BattleManagers::seeded(&fight);
     let pool = TargetPool::from_fight(&fight);
-    assert_eq!(
+    let modifiers_for = |kind: crate::engine::skill::condition::extra::ExtraSkillKind| {
         incoming_target_attack_modifiers(
             10,
             -1,
@@ -45,16 +45,25 @@ fn incoming_passive_uses_its_same_id_attack_local_buff_features() {
                     active_skill_id: 31050112,
                     active_skill_source_uid: 10,
                     active_skill_mode: crate::engine::skill::action::SkillExecutionMode::Nested,
-                    extra_skill_kind:
-                        crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction.id(),
+                    extra_skill_kind: kind.id(),
                     direct_skill_body: true,
                     ..Default::default()
                 },
             },
             &mut RoundDeterminism::default(),
         )
-        .attack_attributes,
-        vec![(AttrId::CriticalRate, -500), (AttrId::CriticalDmg, -700)]
+        .attack_attributes
+    };
+    let penalty = vec![(AttrId::CriticalRate, -500), (AttrId::CriticalDmg, -700)];
+    assert_eq!(
+        modifiers_for(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction),
+        penalty
+    );
+    assert!(
+        modifiers_for(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp).is_empty()
+    );
+    assert!(
+        modifiers_for(crate::engine::skill::condition::extra::ExtraSkillKind::Riposte).is_empty()
     );
     assert!(
         incoming_target_attack_modifiers(
