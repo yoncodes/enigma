@@ -533,7 +533,8 @@ pub(super) fn damage_ops(
         );
         // Linked hits are owned by their credited source. Keep the triggering action's shared
         // source lane, but do not leak modifiers that the target applies to that action's actor.
-        let mut linked_attack_attributes = target_modifiers.attack_attributes.clone();
+        let linked_modifiers = target_modifiers.clone();
+        let mut linked_attack_attributes = linked_modifiers.attack_attributes.clone();
         let incoming_modifiers = rate::incoming_target_attack_modifiers(
             source_uid,
             target_uid,
@@ -647,8 +648,6 @@ pub(super) fn damage_ops(
         }
         if converted != 0 {
             attack_attributes.push((crate::engine::entity::attr::AttrId::CriticalDmg, converted));
-            linked_attack_attributes
-                .push((crate::engine::entity::attr::AttrId::CriticalDmg, converted));
         }
         let rate_terms = target_modifiers
             .rates
@@ -663,9 +662,18 @@ pub(super) fn damage_ops(
             .chain(active_rate_terms.iter().copied())
             .chain(rend.as_ref().and_then(|rend| rend.rate_term(target_uid)))
             .collect::<Vec<_>>();
-        let linked_rate_terms = rate_terms
+        let linked_rate_terms = linked_modifiers
+            .rates
             .iter()
-            .copied()
+            .filter(|modifier| modifier.target_uid == 0 || modifier.target_uid == target_uid)
+            .map(|modifier| DamageRateTerm {
+                opcode: modifier.opcode,
+                rate: modifier.amount.resolve(&managers.gauge),
+                career_scaled: modifier.career_scaled,
+                composition: modifier.composition,
+            })
+            .chain(active_rate_terms.iter().copied())
+            .chain(rend.as_ref().and_then(|rend| rend.rate_term(target_uid)))
             .filter(|term| {
                 term.composition == crate::engine::damage::DamageRateComposition::ProducerMultiplier
             })
@@ -834,6 +842,32 @@ pub(super) fn damage_ops(
                         ));
                     }
                 }
+                let linked_crit_conversion_rate = linked_modifiers.excess_crit_conversion_rate
+                    + crate::engine::skill::buff_act::crit_rate_alter2::owner_conversion_rate(
+                        additional.credited_source_uid,
+                        &managers.buff,
+                        &managers.hp,
+                    )
+                    + crate::engine::skill::buff_act::crit_rate_alter_by_other_buff::owner_conversion_rate(
+                        additional.credited_source_uid,
+                        &managers.buff,
+                        &managers.hp,
+                    );
+                let linked_excess_crit = damage::excess_crit_rate(
+                    additional.credited_source_uid,
+                    target_uid,
+                    pool,
+                    managers,
+                    &additional_attributes,
+                );
+                let (linked_converted, linked_critical_multiplier_remainder) =
+                    split_excess_crit_conversion(linked_excess_crit, linked_crit_conversion_rate);
+                if linked_converted != 0 {
+                    additional_attributes.push((
+                        crate::engine::entity::attr::AttrId::CriticalDmg,
+                        linked_converted,
+                    ));
+                }
                 damage::resolve_additional_damage_command(
                     damage::DamageRequest {
                         source_uid: additional.credited_source_uid,
@@ -845,11 +879,11 @@ pub(super) fn damage_ops(
                         // hit inherits the triggering attack's regular damage lane, but not its
                         // incantation/ultimate-specific might lane.
                         attack_attributes: &additional_attributes,
-                        career_ratio_bonus: target_modifiers.career_ratio_bonus,
-                        attack_career: target_modifiers.attack_career,
-                        additional_attack_career: target_modifiers.additional_attack_career,
-                        force_career_restraint: target_modifiers.force_career_restraint,
-                        critical_multiplier_remainder,
+                        career_ratio_bonus: linked_modifiers.career_ratio_bonus,
+                        attack_career: linked_modifiers.attack_career,
+                        additional_attack_career: linked_modifiers.additional_attack_career,
+                        force_career_restraint: linked_modifiers.force_career_restraint,
+                        critical_multiplier_remainder: linked_critical_multiplier_remainder,
                         is_conduit: false,
                         is_crit: additional_is_crit,
                         extra_skill_kind: execution.context.extra_skill_kind,

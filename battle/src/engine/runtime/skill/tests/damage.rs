@@ -2203,6 +2203,7 @@ fn target_actor_critical_penalty_does_not_leak_into_credited_linked_damage() {
                 entitys: vec![
                     FightEntityInfo {
                         uid: Some(10),
+                        career: Some(6),
                         current_hp: Some(10_000),
                         attr: Some(HeroAttribute {
                             hp: Some(10_000),
@@ -2248,16 +2249,18 @@ fn target_actor_critical_penalty_does_not_leak_into_credited_linked_damage() {
             defender: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
                     uid: Some(-1),
+                    career: Some(5),
                     current_hp: Some(100_000),
                     attr: Some(HeroAttribute {
                         hp: Some(100_000),
                         technic: Some(0),
                         ..Default::default()
                     }),
-                    passive_skill: with_target_passive
-                        .then_some(109380003)
-                        .into_iter()
-                        .collect(),
+                    passive_skill: if with_target_passive {
+                        vec![109380003, 23390182]
+                    } else {
+                        Vec::new()
+                    },
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -2266,8 +2269,12 @@ fn target_actor_critical_penalty_does_not_leak_into_credited_linked_damage() {
         };
         let managers = BattleManagers::seeded(&fight);
         let pool = TargetPool::from_fight(&fight);
-        const SKILL_ID: i32 = 999_999_007;
-        let mut catalog = SkillEffectCatalog::from_roots(config::configs::get(), [109380003], []);
+        const SKILL_ID: i32 = 31130114;
+        let mut catalog = SkillEffectCatalog::from_roots(
+            config::configs::get(),
+            [109380003, 23390182, SKILL_ID],
+            [],
+        );
         catalog.insert_damage_rate(SKILL_ID, 6_000);
         catalog.insert_logic_target(SKILL_ID, 1);
         let invocation: SkillInvocation = SkillRequest {

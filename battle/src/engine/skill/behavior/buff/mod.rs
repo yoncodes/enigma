@@ -13,7 +13,7 @@ use crate::engine::{
     },
     skill::{
         behavior::{
-            BehaviorOpContext,
+            AttackModifierContext, BehaviorOpContext,
             classify::BehaviorKind,
             registry::{BehaviorHandler, OutputOwner},
         },
@@ -152,6 +152,77 @@ pub(super) fn supports_count_multiplier(behavior: &ParsedBehavior) -> bool {
 }
 
 impl BehaviorHandler for Handler {
+    fn supports_attack_modifier(
+        managers: &crate::engine::manager::BattleManagers,
+        owner_skill_id: i32,
+        behavior: &ParsedBehavior,
+    ) -> bool {
+        behavior.spec.kind == BehaviorKind::AddBuff
+            && !managers.buff.definition_features(owner_skill_id).is_empty()
+    }
+
+    fn has_committed_attack_modifier(
+        managers: &crate::engine::manager::BattleManagers,
+        target_uid: i64,
+        behavior: &ParsedBehavior,
+    ) -> bool {
+        behavior.spec.kind == BehaviorKind::AddBuff
+            && behavior
+                .arg(0)
+                .is_some_and(|buff_id| managers.buff.has_buff_id(target_uid, buff_id))
+    }
+
+    fn collect_attack_modifier(
+        context: AttackModifierContext<'_>,
+        behavior: &ParsedBehavior,
+    ) -> bool {
+        if behavior.spec.kind != BehaviorKind::AddBuff
+            || !behavior.arg(0).is_some_and(|marker_buff_id| {
+                context
+                    .operation
+                    .managers
+                    .buff
+                    .has_buff_id(context.operation.target_uid, marker_buff_id)
+            })
+        {
+            return false;
+        }
+        let mut collected = false;
+        for feature in context
+            .operation
+            .managers
+            .buff
+            .definition_features(context.owner_skill_id)
+        {
+            if !is_kind(&feature, BuffActKind::AttrOnlyCalDamageInExtra) {
+                continue;
+            }
+            let Some(raw_attr) = feature.values.get(1) else {
+                continue;
+            };
+            let Some(attr_id) = crate::engine::entity::attr::AttrId::from_raw(*raw_attr) else {
+                continue;
+            };
+            let delta = crate::engine::skill::buff_act::attack_attribute_delta_for_skill(
+                &feature,
+                attr_id,
+                &context.operation.managers.buff,
+                &context.operation.managers.hp,
+                false,
+                true,
+            );
+            if delta != 0 {
+                context
+                    .operation
+                    .modifiers
+                    .attack_attributes
+                    .push((attr_id, delta));
+                collected = true;
+            }
+        }
+        collected
+    }
+
     fn emit_ops(
         mut context: BehaviorOpContext<'_>,
         behavior: &ParsedBehavior,
