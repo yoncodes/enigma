@@ -1,6 +1,36 @@
 use super::*;
 
 #[test]
+fn damage_observations_use_the_damage_source_over_the_outer_actor() {
+    let damage = |source_uid| sonettobuf::ActEffect {
+        effect_type: Some(sonettobuf::effect_type_enum::EffectType::Additionaldamage as i32),
+        target_id: Some(30),
+        effect_num: Some(100),
+        hurt_info: Some(sonettobuf::FightHurtInfo {
+            from_uid: Some(source_uid),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let round = FightRound {
+        fight_step: vec![FightStep {
+            act_id: Some(40),
+            from_id: Some(10),
+            act_effect: vec![damage(10), damage(20)],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let sources = damage_observations(&round)
+        .into_iter()
+        .map(|(identity, _)| identity.source_uid)
+        .collect::<Vec<_>>();
+
+    assert_eq!(sources, vec![10, 20]);
+}
+
+#[test]
 fn captured_round_continuity_rejects_skips_and_reversals() {
     let previous = FightRound {
         cur_round: Some(1),

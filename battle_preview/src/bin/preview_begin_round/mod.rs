@@ -465,7 +465,11 @@ fn damage_observations(round: &FightRound) -> Vec<(DamageIdentity, (i32, bool))>
                     .then_some((
                         DamageIdentity {
                             skill_id: step.act_id.unwrap_or_default(),
-                            source_uid: step.from_id.unwrap_or_default(),
+                            source_uid: effect
+                                .hurt_info
+                                .as_ref()
+                                .and_then(|info| info.from_uid)
+                                .unwrap_or_else(|| step.from_id.unwrap_or_default()),
                             target_uid: effect.target_id.unwrap_or_default(),
                             effect_type,
                             config_effect: effect.config_effect.unwrap_or_default(),
