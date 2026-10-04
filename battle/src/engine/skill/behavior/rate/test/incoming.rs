@@ -32,12 +32,6 @@ fn incoming_passive_uses_its_same_id_attack_local_buff_features() {
     };
     let managers = BattleManagers::seeded(&fight);
     let pool = TargetPool::from_fight(&fight);
-    let mut regular_fight = fight.clone();
-    regular_fight.attacker.as_mut().unwrap().entitys[0]
-        .buffs
-        .clear();
-    let regular_managers = BattleManagers::seeded(&regular_fight);
-
     assert_eq!(
         incoming_target_attack_modifiers(
             10,
@@ -51,6 +45,8 @@ fn incoming_passive_uses_its_same_id_attack_local_buff_features() {
                     active_skill_id: 31050112,
                     active_skill_source_uid: 10,
                     active_skill_mode: crate::engine::skill::action::SkillExecutionMode::Nested,
+                    extra_skill_kind:
+                        crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction.id(),
                     direct_skill_body: true,
                     ..Default::default()
                 },
@@ -67,7 +63,7 @@ fn incoming_passive_uses_its_same_id_attack_local_buff_features() {
             31050112,
             RateRuntime {
                 effects: &effects,
-                managers: &regular_managers,
+                managers: &managers,
                 pool: &pool,
                 context: TargetContext {
                     active_skill_id: 31050112,

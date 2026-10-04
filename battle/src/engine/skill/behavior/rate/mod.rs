@@ -705,6 +705,19 @@ pub(crate) fn incoming_target_attack_modifiers(
     }
     let mut modifiers = SkillModifiers::default();
     for passive_skill in passive_skills {
+        if crate::engine::skill::buff_act::additional_damage::uses_costed_lane(
+            context.extra_skill_kind,
+        ) {
+            modifiers.attack_attributes.extend(
+                managers
+                    .buff
+                    .definition_features(passive_skill)
+                    .iter()
+                    .filter_map(
+                        crate::engine::skill::buff_act::attr_only_cal_damage_attack::extra_action_attribute,
+                    ),
+            );
+        }
         let Some(effect) = effects.get(passive_skill) else {
             continue;
         };
