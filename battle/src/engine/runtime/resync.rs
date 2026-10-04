@@ -5,8 +5,9 @@ use sonettobuf::{ActEffect, CardInfo, FightRound, FightStep, effect_type_enum::E
 use super::BattleRuntime;
 
 impl BattleRuntime {
-    /// Preview diagnostics only: copies captured HP, ex points, opponent self-owned buffs, and
-    /// the next-round hand into managers so later rounds can replay past an earlier divergence.
+    /// Preview diagnostics only: copies captured HP, ex points, power resources, opponent
+    /// self-owned buffs, and the next-round hand into managers so later rounds can replay past an
+    /// earlier divergence.
     /// Never call this from the game server; resynced rounds are not parity evidence.
     pub fn resync_observed_state(&mut self, captured: &FightRound) -> Result<Vec<String>, String> {
         if self.round_state.is_finish != captured.is_finish.unwrap_or_default() {
@@ -40,6 +41,28 @@ impl BattleRuntime {
                     self.managers.ex_point.resync_current(uid, ex_point);
                     let resynced = self.managers.ex_point.get(uid);
                     changes.push(format!("exPoint uid={uid} {generated}->{resynced}"));
+                }
+            }
+            for power in &info.power_infos {
+                let (Some(power_id), Some(current), Some(max)) =
+                    (power.power_id, power.num, power.max)
+                else {
+                    return Err(format!("captured power state for uid={uid} is incomplete"));
+                };
+                let (before, after) = self
+                    .managers
+                    .eureka
+                    .resync_observed(uid, power_id, current, max)
+                    .ok_or_else(|| {
+                        format!(
+                            "captured power state is invalid uid={uid} powerId={power_id} num={current} max={max}"
+                        )
+                    })?;
+                if before != after {
+                    changes.push(format!(
+                        "power uid={uid} id={power_id} {}/{}->{}/{}",
+                        before.current, before.max, after.current, after.max
+                    ));
                 }
             }
         }
@@ -180,7 +203,9 @@ fn skill_ids(cards: &[CardInfo]) -> Vec<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightExPointInfo, FightStep, FightTeam};
+    use sonettobuf::{
+        BuffInfo, Fight, FightEntityInfo, FightExPointInfo, FightStep, FightTeam, PowerInfo,
+    };
 
     fn runtime() -> BattleRuntime {
         let fight = Fight {
@@ -189,6 +214,11 @@ mod tests {
                     uid: Some(10),
                     current_hp: Some(100),
                     ex_point: Some(1),
+                    power_infos: vec![PowerInfo {
+                        power_id: Some(1),
+                        num: Some(5),
+                        max: Some(8),
+                    }],
                     attr: Some(sonettobuf::HeroAttribute {
                         hp: Some(100),
                         ..Default::default()
@@ -239,6 +269,11 @@ mod tests {
             ex_point_info: vec![FightExPointInfo {
                 uid: Some(10),
                 ex_point: Some(4),
+                power_infos: vec![PowerInfo {
+                    power_id: Some(1),
+                    num: Some(0),
+                    max: Some(8),
+                }],
                 current_hp: Some(60),
                 ..Default::default()
             }],
@@ -272,9 +307,10 @@ mod tests {
 
         let changes = runtime.resync_observed_state(&captured).unwrap();
 
-        assert_eq!(changes.len(), 3);
+        assert_eq!(changes.len(), 4);
         assert_eq!(runtime.managers.hp.current(10), 60);
         assert_eq!(runtime.managers.ex_point.get(10), 4);
+        assert_eq!(runtime.managers.eureka.get(10, 1).current, 0);
         assert_eq!(skill_ids(runtime.card_hand()), vec![1, 2]);
     }
 
