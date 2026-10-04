@@ -13,10 +13,8 @@ use crate::engine::{
     },
 };
 
-// Lethal Injury grants Final DMG +5% per 100 Critical Technique when it marks an attack as an
-// Assassination. Its feature argument is the separate +1% bonus for an attack that was already
-// an Assassination; a mark consumed to trigger Assassination cannot also contribute that bonus
-// to the same hit.
+// Assassination grants Final DMG +5% per 100 excess Critical Technique. A target mark can trigger
+// Assassination and carries its configured additional rate when the attack was already one.
 const TARGET_ASSASSINATION_BASE_RATE: i32 = 50;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -115,7 +113,7 @@ pub fn target_modifier(
         triggered_by_target: marked && !already_assassinate,
         final_damage_bonus: i32::from(assassinate)
             * (technique_excess / 100)
-            * (i32::from(marked) * TARGET_ASSASSINATION_BASE_RATE
+            * (TARGET_ASSASSINATION_BASE_RATE
                 + source_rate
                 + i32::from(already_assassinate) * target_rate),
     }
@@ -392,7 +390,7 @@ mod tests {
             AssassinationModifier {
                 assassinate: true,
                 triggered_by_target: false,
-                final_damage_bonus: 150,
+                final_damage_bonus: 300,
             }
         );
     }
