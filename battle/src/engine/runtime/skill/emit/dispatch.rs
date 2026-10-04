@@ -38,6 +38,26 @@ fn uses_action_targets(slot: &SkillEffectSlot, active_skill_target_condition: bo
             && (slot.condition_target.code == 0 || active_skill_target_condition))
 }
 
+fn default_active_phase(
+    slot: &SkillEffectSlot,
+    definition: &behavior::registry::BehaviorDefinition,
+) -> SkillPhase {
+    let predicate_owned_origin_damage = !slot.conditions.is_empty()
+        && slot
+            .compiled_route
+            .as_ref()
+            .is_ok_and(|route| route.branches.iter().all(|branch| branch.driver.is_none()))
+        && matches!(
+            slot.behavior.spec.kind,
+            BehaviorKind::OriginDamage | BehaviorKind::OriginDamageCanCrit
+        );
+    if predicate_owned_origin_damage {
+        SkillPhase::Immediate
+    } else {
+        definition.phase
+    }
+}
+
 pub(in crate::engine::runtime) fn emit_ops(
     mut invocation: SkillInvocation,
     managers: &BattleManagers,
@@ -342,7 +362,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                         route,
                     })?;
             if if routed_phases.is_empty() {
-                definition.phase != phase
+                default_active_phase(slot, definition) != phase
             } else {
                 !routed_phases.contains(&phase)
             } {
@@ -790,7 +810,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                 })?;
         let runs_in = |phase| {
             if routed_phases.is_empty() {
-                definition.phase == phase
+                default_active_phase(slot, definition) == phase
             } else {
                 routed_phases.contains(&phase)
             }
@@ -1129,7 +1149,7 @@ fn slot_runs_in_phase(
         .map_err(|route| SkillOpError::UncompiledRoute { skill_id, route })?;
     if routed_phases.is_empty() {
         Ok(behavior::registry::find(&slot.behavior)
-            .is_some_and(|definition| definition.phase == phase))
+            .is_some_and(|definition| default_active_phase(slot, definition) == phase))
     } else {
         Ok(routed_phases.contains(&phase))
     }
@@ -1264,5 +1284,34 @@ mod tests {
             slot_runs_in_phase(&slot, SkillPhase::Immediate, 123),
             Err(SkillOpError::UncompiledRoute { skill_id: 123, .. })
         ));
+    }
+
+    #[test]
+    fn predicate_owned_origin_damage_runs_before_row_damage() {
+        crate::test_support::init_config();
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(30014, "OriginDamage"),
+            vec![1, 100, 400],
+            Vec::new(),
+        );
+        let mut slot = SkillEffectSlot::new(behavior, TargetRequest::self_only());
+        slot.conditions = parse_conditions(crate::test_support::game_data(), "19205#109380001");
+        slot.compiled_route =
+            ConditionRoute::compile_for_behavior(&slot.conditions, &slot.behavior.spec);
+        let definition = behavior::registry::find(&slot.behavior)
+            .expect("origin damage behavior must be registered");
+
+        assert_eq!(
+            default_active_phase(&slot, definition),
+            SkillPhase::Immediate
+        );
+
+        slot.conditions = parse_conditions(crate::test_support::game_data(), "2081");
+        slot.compiled_route =
+            ConditionRoute::compile_for_behavior(&slot.conditions, &slot.behavior.spec);
+        assert_eq!(
+            default_active_phase(&slot, definition),
+            SkillPhase::AfterDamage
+        );
     }
 }
