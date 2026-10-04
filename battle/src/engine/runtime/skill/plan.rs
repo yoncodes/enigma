@@ -345,6 +345,17 @@ fn performs_extra_action(invocation: &SkillInvocation, execution: &SkillExecutio
         && invocation.mode == crate::engine::skill::action::SkillExecutionMode::Active)
 }
 
+pub(super) fn linked_shell_attributes(extra_skill_kind: i32) -> (bool, bool) {
+    use crate::engine::skill::condition::extra::ExtraSkillKind;
+
+    match crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind) {
+        Some(ExtraSkillKind::ExtraAction) => (true, true),
+        Some(ExtraSkillKind::FollowUp) => (true, false),
+        Some(ExtraSkillKind::Riposte) => (false, false),
+        _ => (true, false),
+    }
+}
+
 pub(super) fn additional_damage_activation(
     invocation: &SkillInvocation,
     managers: &BattleManagers,
@@ -622,6 +633,8 @@ pub(super) fn damage_ops(
                 assassination.final_damage_bonus,
             ));
         }
+        let (linked_shell_damage, linked_shell_critical) =
+            linked_shell_attributes(execution.context.extra_skill_kind);
         for attr_id in [
             crate::engine::entity::attr::AttrId::CriticalDmg,
             crate::engine::entity::attr::AttrId::DmgBonus,
@@ -636,7 +649,10 @@ pub(super) fn damage_ops(
                 attack_attributes.push((attr_id, delta));
                 // A linked producer shares the triggering action's damage lane, while its
                 // independently rolled critical hit keeps its own critical-damage lane.
-                if attr_id != crate::engine::entity::attr::AttrId::CriticalDmg {
+                if (attr_id == crate::engine::entity::attr::AttrId::DmgBonus && linked_shell_damage)
+                    || (attr_id == crate::engine::entity::attr::AttrId::CriticalDmg
+                        && linked_shell_critical)
+                {
                     linked_attack_attributes.push((attr_id, delta));
                 }
             }
