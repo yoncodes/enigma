@@ -91,7 +91,7 @@ pub fn seed_round_determinism(
     }
     runtime.seed_random_skills(random_skill_choices(catalog, round));
     runtime.seed_shell_moxie_choices(shell_moxie_choices(config::configs::get(), round));
-    let (hidden, additional, indirect_heals) = crit_choices(round);
+    let (hidden, additional, indirect_heals) = crit_choices(config::configs::get(), round);
     runtime.seed_crits(hidden, additional, indirect_heals);
 }
 
@@ -142,11 +142,13 @@ type IndirectHealCrit = ((i32, i64, i64), bool);
 // source, in step order. Config effects name the rolling source: skill row damage (-1), healing
 // behaviors 20001/90001, Spirit Shell heals (0), and crit-capable origin damage 30015/60127.
 fn crit_choices(
+    game_data: &'static config::GameDB,
     round: &FightRound,
 ) -> (Vec<HiddenCrit>, Vec<AdditionalCrit>, Vec<IndirectHealCrit>) {
     use sonettobuf::effect_type_enum::EffectType;
 
     fn visit(
+        game_data: &'static config::GameDB,
         step: &FightStep,
         hidden: &mut Vec<HiddenCrit>,
         additional: &mut Vec<AdditionalCrit>,
@@ -156,7 +158,29 @@ fn crit_choices(
             .act_id
             .filter(|act_id| *act_id > 0)
             .zip(step.from_id.filter(|from_id| *from_id != 0));
+        let mut shell_heal_source = None;
+        let mut shell_healing_started = false;
         for effect in &step.act_effect {
+            let heal_crit = [
+                (EffectType::Heal as i32, false),
+                (EffectType::Healcrit as i32, true),
+            ]
+            .into_iter()
+            .find_map(|(kind, is_crit)| (effect.effect_type == Some(kind)).then_some(is_crit));
+            if shell_healing_started && heal_crit.is_none() {
+                shell_heal_source = None;
+                shell_healing_started = false;
+            }
+            if let Some(buff) = effect.buff.as_ref()
+                && let Some(buff_id) = buff.buff_id
+                && battle::tooling::shell_process_spec(game_data, buff_id)
+                    .is_some_and(|(deployed_buff_id, _)| deployed_buff_id == buff_id)
+                && let Some(source_uid) = buff.from_uid.filter(|uid| *uid != 0)
+            {
+                // Shell healing is projected under the attack that caused retrieval. The
+                // preceding deployed-buff update retains the semantic producer identity.
+                shell_heal_source = Some((buff_id, source_uid));
+            }
             if let Some((act_id, from_id)) = key {
                 let effect_type = effect.effect_type.unwrap_or_default();
                 let crit = |normal: EffectType, crit: EffectType| {
@@ -174,12 +198,22 @@ fn crit_choices(
                     ));
                 } else {
                     let config_effect = effect.config_effect.unwrap_or_default();
-                    let heal_crit = crit(EffectType::Heal, EffectType::Healcrit);
                     if config_effect == 0
                         && let Some(is_crit) = heal_crit
                     {
+                        let (producer_id, source_uid) = match shell_heal_source {
+                            Some(source) => {
+                                shell_healing_started = true;
+                                source
+                            }
+                            None => (act_id, from_id),
+                        };
                         indirect_heals.push((
-                            (act_id, from_id, effect.target_id.unwrap_or_default()),
+                            (
+                                producer_id,
+                                source_uid,
+                                effect.target_id.unwrap_or_default(),
+                            ),
                             is_crit,
                         ));
                     } else {
@@ -199,7 +233,7 @@ fn crit_choices(
                 }
             }
             if let Some(child) = effect.fight_step.as_ref() {
-                visit(child, hidden, additional, indirect_heals);
+                visit(game_data, child, hidden, additional, indirect_heals);
             }
         }
     }
@@ -208,7 +242,13 @@ fn crit_choices(
     let mut additional = Vec::new();
     let mut indirect_heals = Vec::new();
     for step in &round.fight_step {
-        visit(step, &mut hidden, &mut additional, &mut indirect_heals);
+        visit(
+            game_data,
+            step,
+            &mut hidden,
+            &mut additional,
+            &mut indirect_heals,
+        );
     }
     (hidden, additional, indirect_heals)
 }
@@ -378,6 +418,7 @@ mod tests {
 
     #[test]
     fn observed_crits_follow_only_rolled_effects_of_their_own_step_in_order() {
+        crate::init_test_config();
         use sonettobuf::{ActEffect, effect_type_enum::EffectType};
 
         let effect = |effect_type: EffectType, target_id: i64, config_effect: i32| ActEffect {
@@ -387,9 +428,21 @@ mod tests {
             ..Default::default()
         };
         let nested = FightStep {
-            act_id: Some(31090112),
-            from_id: Some(20),
-            act_effect: vec![effect(EffectType::Healcrit, 10, 0)],
+            act_id: Some(999),
+            from_id: Some(30),
+            act_effect: vec![
+                ActEffect {
+                    effect_type: Some(EffectType::Buffupdate as i32),
+                    buff: Some(BuffInfo {
+                        buff_id: Some(31090112),
+                        from_uid: Some(20),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                effect(EffectType::Healcrit, 10, 0),
+                effect(EffectType::Healcrit, 11, 0),
+            ],
             ..Default::default()
         };
         let round = FightRound {
@@ -417,7 +470,7 @@ mod tests {
             ..Default::default()
         };
 
-        let (hidden, additional, indirect_heals) = crit_choices(&round);
+        let (hidden, additional, indirect_heals) = crit_choices(config::configs::get(), &round);
 
         assert_eq!(
             hidden,
@@ -433,7 +486,11 @@ mod tests {
         );
         assert_eq!(
             indirect_heals,
-            vec![((31090111, 10, 10), false), ((31090112, 20, 10), true)]
+            vec![
+                ((31090111, 10, 10), false),
+                ((31090112, 20, 10), true),
+                ((31090112, 20, 11), true),
+            ]
         );
     }
 
