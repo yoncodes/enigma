@@ -103,6 +103,10 @@ fn feature_kind_controls_post_apply_uid_reservation() {
     assert!(shell_stack.uses_child_uid());
     assert!(!shell_stack.reserves_child_after_first_apply());
     assert!(shell_stack.reserves_child_on_layer_refresh());
+
+    let halo = BuffDefinition::get(109320111).unwrap();
+    assert!(halo.uses_child_uid());
+    assert!(!halo.reserves_child_after_first_apply());
 }
 
 #[test]

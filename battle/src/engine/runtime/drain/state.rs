@@ -12,6 +12,8 @@ use super::{DrainBudget, DrainError, QueuedOp};
 #[derive(Default)]
 pub(super) struct DrainState {
     after_hit: HashMap<FramePath, Vec<QueuedOp>>,
+    hit_skills: HashMap<FramePath, Vec<QueuedOp>>,
+    after_hit_skills: HashMap<FramePath, Vec<QueuedOp>>,
     after_action: HashMap<FramePath, Vec<QueuedOp>>,
     // Casts held until their action completes, with the step that cast them.
     after_action_casts: HashMap<FramePath, Vec<(Option<FrameOwner>, QueuedOp)>>,
@@ -78,6 +80,36 @@ impl DrainState {
         action_path.and_then(|path| self.after_hit.remove(path))
     }
 
+    pub(super) fn defer_after_hit_skills(
+        &mut self,
+        action_path: Option<&[usize]>,
+        queued: Vec<QueuedOp>,
+    ) {
+        defer(&mut self.after_hit_skills, action_path, queued);
+    }
+
+    pub(super) fn defer_hit_skills(
+        &mut self,
+        action_path: Option<&[usize]>,
+        queued: Vec<QueuedOp>,
+    ) {
+        defer(&mut self.hit_skills, action_path, queued);
+    }
+
+    pub(super) fn take_hit_skills(
+        &mut self,
+        action_path: Option<&FramePath>,
+    ) -> Option<Vec<QueuedOp>> {
+        action_path.and_then(|path| self.hit_skills.remove(path))
+    }
+
+    pub(super) fn take_after_hit_skills(
+        &mut self,
+        action_path: Option<&FramePath>,
+    ) -> Option<Vec<QueuedOp>> {
+        action_path.and_then(|path| self.after_hit_skills.remove(path))
+    }
+
     pub(super) fn defer_after_action(
         &mut self,
         action_path: Option<&[usize]>,
@@ -121,6 +153,12 @@ impl DrainState {
         self.target_modifiers.remove(action_path);
 
         let mut abandoned = self.after_hit.remove(action_path).unwrap_or_default();
+        abandoned.extend(self.hit_skills.remove(action_path).unwrap_or_default());
+        abandoned.extend(
+            self.after_hit_skills
+                .remove(action_path)
+                .unwrap_or_default(),
+        );
         abandoned.extend(self.after_action.remove(action_path).unwrap_or_default());
         abandoned.extend(
             self.after_action_casts

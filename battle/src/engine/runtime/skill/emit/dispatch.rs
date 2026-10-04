@@ -38,6 +38,21 @@ fn uses_action_targets(slot: &SkillEffectSlot, active_skill_target_condition: bo
             && (slot.condition_target.code == 0 || active_skill_target_condition))
 }
 
+fn selected_target_order(target: SkillTarget, configured_targets: &[i64]) -> Option<Vec<i64>> {
+    let SkillTarget::Explicit(selected) = target else {
+        return None;
+    };
+    let index = configured_targets
+        .iter()
+        .position(|target_uid| *target_uid == selected)?;
+    if index == 0 {
+        return None;
+    }
+    let mut targets = configured_targets.to_vec();
+    targets.swap(0, index);
+    Some(targets)
+}
+
 pub(in crate::engine::runtime) fn emit_ops(
     mut invocation: SkillInvocation,
     managers: &BattleManagers,
@@ -227,7 +242,8 @@ pub(in crate::engine::runtime) fn emit_ops(
                 request.code,
             )
             .map(|choice| choice.additional_targets)
-            .filter(|targets| !targets.is_empty());
+            .filter(|targets| !targets.is_empty())
+            .or_else(|| selected_target_order(invocation.target, &configured_targets));
         if let Some(&main_target) = configured_targets.first() {
             execution.context.runtime_target_uid = main_target;
             execution.primary_target_uid.get_or_insert(main_target);
@@ -578,7 +594,10 @@ pub(in crate::engine::runtime) fn emit_ops(
                 execution.attacked_targets.clone()
             } else if active_phase.is_some()
                 && uses_action_targets
-                && let Some(targets) = &execution.configured_targets
+                && let Some(targets) = execution
+                    .configured_additional_targets
+                    .as_ref()
+                    .or(execution.configured_targets.as_ref())
             {
                 targets.clone()
             } else {

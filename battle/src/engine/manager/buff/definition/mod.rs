@@ -611,10 +611,12 @@ impl BuffDefinition {
     pub(super) fn reserves_child_after_first_apply(&self) -> bool {
         !self.has_include_type(BuffIncludeType::OwnUid)
             && self.has_features
-            && !self
-                .features
-                .iter()
-                .any(|feature| feature.kind == Some(BuffActKind::ShellProcess))
+            && !self.features.iter().any(|feature| {
+                matches!(
+                    feature.kind,
+                    Some(BuffActKind::HaloBase | BuffActKind::ShellProcess)
+                )
+            })
             && !self
                 .features
                 .iter()

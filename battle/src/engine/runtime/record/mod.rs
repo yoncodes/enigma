@@ -304,13 +304,18 @@ pub(crate) fn set_skill_target(
     frames: &mut [SemanticFrame],
     path: &[usize],
     resolved_target_uid: Option<i64>,
+    replace_existing: bool,
 ) {
     let Some(resolved_target_uid) = resolved_target_uid else {
         return;
     };
     match &mut frame_mut(frames, path).owner {
         FrameOwner::Skill { target_uid, .. } | FrameOwner::ConduitSkill { target_uid, .. } => {
-            target_uid.get_or_insert(resolved_target_uid);
+            if replace_existing {
+                *target_uid = Some(resolved_target_uid);
+            } else {
+                target_uid.get_or_insert(resolved_target_uid);
+            }
         }
         _ => {}
     }

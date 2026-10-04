@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn active_hit_deferral_carries_only_its_primary_skill_hp_loss() {
+fn active_hit_deferral_carries_its_primary_skill_hp_transaction() {
     let origin = CommandOrigin {
         domain: RuleDomain::Skill,
         key: DefinitionKey::new(1, "SkillDamage"),
@@ -31,6 +31,14 @@ fn active_hit_deferral_carries_only_its_primary_skill_hp_loss() {
     };
     let primary_loss = hp_loss(1, -1);
     let primary_hit = hit(1, -1, crate::engine::manager::hp::HurtDamageFromType::Skill);
+    let shared = BattleEvent::DamageShared {
+        origin,
+        source_uid: 10,
+        target_uid: -2,
+        amount: 25,
+        share_count: 3,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+    };
     let death = BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
         source_uid: 10,
         target_uid: -1,
@@ -45,6 +53,7 @@ fn active_hit_deferral_carries_only_its_primary_skill_hp_loss() {
     let events = vec![
         primary_loss.clone(),
         primary_hit.clone(),
+        shared.clone(),
         death.clone(),
         unrelated_loss.clone(),
         effect_loss.clone(),
@@ -54,7 +63,12 @@ fn active_hit_deferral_carries_only_its_primary_skill_hp_loss() {
     let groups = grouped_hp_events(
         &events,
         vec![
-            vec![primary_loss.clone(), primary_hit.clone(), death.clone()],
+            vec![
+                primary_loss.clone(),
+                primary_hit.clone(),
+                shared.clone(),
+                death.clone(),
+            ],
             vec![unrelated_loss.clone()],
             vec![effect_loss.clone(), effect_hit.clone()],
         ],
@@ -67,7 +81,7 @@ fn active_hit_deferral_carries_only_its_primary_skill_hp_loss() {
     );
     assert_eq!(
         deferred,
-        vec![vec![primary_loss, primary_hit], vec![effect_hit]]
+        vec![vec![primary_loss, primary_hit, shared], vec![effect_hit]]
     );
 }
 
@@ -1556,7 +1570,7 @@ fn a_skill_cast_by_another_skill_keeps_its_step_without_effects() {
 }
 
 #[test]
-fn an_after_being_attacked_buff_act_runs_with_the_hits_skill_reactions() {
+fn an_after_being_attacked_buff_act_waits_for_the_hit_skills_boundary() {
     fn queued(frame_owner: FrameOwner) -> QueuedOp {
         QueuedOp {
             op: RuleOp::Skill(
@@ -1590,31 +1604,77 @@ fn an_after_being_attacked_buff_act_runs_with_the_hits_skill_reactions() {
         card_index: 0,
         target_uid: None,
     };
-    let batch = ReactionBatch {
+    let mut batch = ReactionBatch {
         after_publish: vec![
             queued(skill.clone()),
             queued(buff_act(721, "DotNoLimit")),
+            queued(buff_act(870, "Shell")),
             queued(buff_act(871, "ShellDebuff")),
         ],
         ..Default::default()
     };
 
-    let (buff_acts, skills) = batch.partition_skill_reactions();
+    defer_after_hit_skill_buff_acts(&mut batch);
 
-    // Spirit Shell: "After being attacked, Fatutu retrieves 1 stack" follows the boss's own
-    // "after being attacked" reactions; a per-hit buff act still runs first.
-    let owners = |batch: &ReactionBatch| {
-        batch
-            .after_publish
+    // Spirit Shell: "After being attacked, Fatutu retrieves 1 stack" waits for every
+    // hit-triggered skill, while an ordinary per-hit buff act remains immediate.
+    let owners = |queued: &[QueuedOp]| {
+        queued
             .iter()
             .map(|queued| queued.frame_owner.clone())
             .collect::<Vec<_>>()
     };
-    assert_eq!(owners(&buff_acts), vec![Some(buff_act(721, "DotNoLimit"))]);
     assert_eq!(
-        owners(&skills),
-        vec![Some(skill), Some(buff_act(871, "ShellDebuff"))]
+        owners(&batch.after_publish),
+        vec![Some(skill), Some(buff_act(721, "DotNoLimit")),]
     );
+    assert_eq!(
+        owners(&batch.after_hit),
+        vec![
+            Some(buff_act(870, "Shell")),
+            Some(buff_act(871, "ShellDebuff"))
+        ]
+    );
+}
+
+#[test]
+fn only_a_shared_primary_hit_waits_for_the_actions_after_hit_skills() {
+    let hit = |share_count| QueuedOp {
+        op: RuleOp::Skill(
+            SkillRequest {
+                source_uid: 10,
+                skill_id: 20,
+            }
+            .into(),
+        ),
+        trigger: SkillOpTrigger::Event(BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+            origin: CommandOrigin {
+                domain: RuleDomain::Skill,
+                key: DefinitionKey::new(20, "SkillDamage"),
+            },
+            source_uid: 10,
+            target_uid: -1,
+            skill_id: 20,
+            amount: 100,
+            shield_absorbed: 0,
+            career_restraint: false,
+            damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+            share_count,
+            assassinate: false,
+            ignore_riposte: false,
+        })),
+        skill_execution: None,
+        frame_path: None,
+        parent_path: None,
+        frame_group: None,
+        independent_parent_group: None,
+        frame_owner: None,
+        subscriber_owner_uid: None,
+        caster_frame: None,
+    };
+
+    assert!(!waits_for_shared_hit_completion(&hit(0)));
+    assert!(waits_for_shared_hit_completion(&hit(3)));
 }
 
 #[test]

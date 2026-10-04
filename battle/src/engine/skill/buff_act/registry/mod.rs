@@ -1110,7 +1110,7 @@ buff_act_definitions! {
         events: [EventKind::ShellDeployed, EventKind::ShellRetrieved], frame: CausingFrame,
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(869, "ShellProcess"), &[EffectType::None as i32]));
-    (870, "Shell") => Shell, event: EventKind::BeAttacked, events: [EventKind::DamageShared], frame: CausingFrame,
+    (870, "Shell") => Shell, event: EventKind::BeAttacked, events: [EventKind::DamageShared], frame: CausingFrame, timing: AfterHitSkills,
         runtime: |context| super::shell::rule_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(870, "Shell"), &[EffectType::None as i32]));
     (871, "ShellDebuff") => ShellDebuff, event: EventKind::BeAttacked, frame: CausingFrame, timing: AfterHitSkills,

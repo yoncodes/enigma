@@ -88,6 +88,7 @@ pub fn run_round_start_split(
     Ok((before, next_round))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_before_ai_round_start(
     managers: &mut BattleManagers,
     pool: &TargetPool,
