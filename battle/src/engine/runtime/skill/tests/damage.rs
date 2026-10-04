@@ -689,9 +689,7 @@ fn additional_damage_activation_survives_its_pre_damage_resource_cost() {
     };
     assert!(activation.skill_ops.is_empty());
     assert_eq!(activation.temporary_buff, None);
-    execution
-        .activated_additional_damage
-        .push(activation.additional);
+    execution.activate_additional_damage(activation.additional);
     managers.execute_eureka(command.clone()).unwrap();
     let fallback = plan::additional_damage_activation(&invocation, &managers, &execution);
     assert_eq!(fallback.len(), 1);
@@ -1131,11 +1129,9 @@ fn linked_damage_uses_its_credited_sources_damage_type() {
         .into();
         let mut execution = SkillExecution::new(TargetContext::default());
         execution.configured_targets = Some(vec![-1]);
-        execution.activated_additional_damage.extend(
-            plan::additional_damage_activation(&invocation, &managers, &execution)
-                .into_iter()
-                .map(|activation| activation.additional),
-        );
+        for activation in plan::additional_damage_activation(&invocation, &managers, &execution) {
+            execution.activate_additional_damage(activation.additional);
+        }
         let damage = plan::damage_ops(
             &invocation,
             &managers,
@@ -1211,11 +1207,9 @@ fn additional_damage_keeps_its_own_target_order_and_critical_targets() {
     let mut execution = SkillExecution::new(TargetContext::default());
     execution.configured_targets = Some(vec![-1, -2]);
     execution.configured_additional_targets = Some(vec![-2, -1]);
-    execution.activated_additional_damage.extend(
-        plan::additional_damage_activation(&invocation, &managers, &execution)
-            .into_iter()
-            .map(|activation| activation.additional),
-    );
+    for activation in plan::additional_damage_activation(&invocation, &managers, &execution) {
+        execution.activate_additional_damage(activation.additional);
+    }
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_skill_target_choices([
         crate::engine::runtime::determinism::SkillTargetChoice {
@@ -1321,11 +1315,9 @@ fn configured_and_active_additional_damage_producers_both_resolve() {
     let activations = plan::additional_damage_activation(&invocation, &managers, &execution);
     assert_eq!(activations.len(), 1);
     assert_eq!(activations[0].additional.feature.buff_id, 31260151);
-    execution.activated_additional_damage.extend(
-        activations
-            .into_iter()
-            .map(|activation| activation.additional),
-    );
+    for activation in activations {
+        execution.activate_additional_damage(activation.additional);
+    }
     managers
         .execute_buff(BuffCommand::Grant(BuffGrant {
             origin: CommandOrigin {
@@ -1466,11 +1458,9 @@ fn assassination_damage_pair(
         ..Default::default()
     });
     execution.configured_targets = Some(vec![-1]);
-    execution.activated_additional_damage.extend(
-        plan::additional_damage_activation(&invocation, &managers, &execution)
-            .into_iter()
-            .map(|activation| activation.additional),
-    );
+    for activation in plan::additional_damage_activation(&invocation, &managers, &execution) {
+        execution.activate_additional_damage(activation.additional);
+    }
 
     let damage = plan::damage_ops(
         &invocation,
@@ -2048,9 +2038,7 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
         let mut execution = SkillExecution::new(TargetContext::default());
         execution.configured_targets = Some(vec![-1]);
         for activation in plan::additional_damage_activation(&invocation, &managers, &execution) {
-            execution
-                .activated_additional_damage
-                .push(activation.additional);
+            execution.activate_additional_damage(activation.additional);
         }
         let ops = plan::damage_ops(
             &invocation,
@@ -2084,7 +2072,7 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
 }
 
 #[test]
-fn proportional_assassination_damage_precedes_independently_rolled_linked_damage() {
+fn resolved_hit_additional_damage_precedes_independent_linked_damage() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -2175,14 +2163,12 @@ fn proportional_assassination_damage_precedes_independently_rolled_linked_damage
     execution.configured_targets = Some(vec![-1]);
     execution.assassination_marks_at_action_start =
         Some(crate::engine::skill::buff_act::assassination::marked_targets(&managers));
-    execution.activated_additional_damage.extend(
-        plan::additional_damage_activation(&invocation, &managers, &execution)
-            .into_iter()
-            .map(|activation| activation.additional),
-    );
+    for activation in plan::additional_damage_activation(&invocation, &managers, &execution) {
+        execution.activate_additional_damage(activation.additional);
+    }
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_hidden_crits(SKILL_ID, 10, [false]);
-    determinism.enqueue_additional_crits(SKILL_ID, 10, -1, [true, false]);
+    determinism.enqueue_additional_crits(SKILL_ID, 10, -1, [false, false]);
 
     let hits = plan::damage_ops(
         &invocation,
@@ -2201,15 +2187,21 @@ fn proportional_assassination_damage_precedes_independently_rolled_linked_damage
     })
     .collect::<Vec<_>>();
 
+    assert_eq!(hits.len(), 2);
+    assert!(hits.iter().all(|(_, is_crit, _)| !is_crit));
     assert_eq!(
         hits.iter()
-            .map(|(source_uid, is_crit, _)| (*source_uid, *is_crit))
+            .map(|(source_uid, _, _)| *source_uid)
             .collect::<Vec<_>>(),
-        vec![(10, true), (12, false)]
+        vec![10, 12]
     );
     // The independently rolled hit belongs to uid 12, so its five complete Technique bands
     // provide Final DMG +25%; it must not inherit uid 10's +15% modifier.
-    assert_eq!(hits[1].2, 375);
+    assert_eq!(
+        hits.iter()
+            .find_map(|(source_uid, _, amount)| (*source_uid == 12).then_some(*amount)),
+        Some(375)
+    );
 }
 
 #[test]
@@ -2307,11 +2299,9 @@ fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
             ..Default::default()
         });
         execution.configured_targets = Some(vec![-1]);
-        execution.activated_additional_damage.extend(
-            plan::additional_damage_activation(&invocation, &managers, &execution)
-                .into_iter()
-                .map(|activation| activation.additional),
-        );
+        for activation in plan::additional_damage_activation(&invocation, &managers, &execution) {
+            execution.activate_additional_damage(activation.additional);
+        }
         let mut determinism = RoundDeterminism::default();
         determinism.enqueue_hidden_crits(SKILL_ID, 10, [true]);
         determinism.enqueue_additional_crits(SKILL_ID, 10, -1, [true]);

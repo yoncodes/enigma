@@ -25,6 +25,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) buff_additions: Vec<(i32, i32)>,
     pub(super) team_injury_count_round: i32,
     team_injury_count_consumed: Option<DefinitionKey>,
+    pub(super) resolved_hit_additional_damage: Vec<PlannedAdditionalDamage>,
     pub(super) activated_additional_damage: Vec<PlannedAdditionalDamage>,
     pub(super) temporary_damage_buffs: Vec<(CommandOrigin, i32)>,
     pub(super) pending_additional_damage: Vec<HpCommand>,
@@ -55,6 +56,7 @@ impl SkillExecution {
             buff_additions: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
+            resolved_hit_additional_damage: Vec::new(),
             activated_additional_damage: Vec::new(),
             temporary_damage_buffs: Vec::new(),
             pending_additional_damage: Vec::new(),
@@ -83,6 +85,7 @@ impl SkillExecution {
             buff_additions: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
+            resolved_hit_additional_damage: Vec::new(),
             activated_additional_damage: Vec::new(),
             temporary_damage_buffs: Vec::new(),
             pending_additional_damage: Vec::new(),
@@ -253,6 +256,27 @@ impl SkillExecution {
             }
         }
     }
+
+    pub(super) fn activate_additional_damage(&mut self, planned: PlannedAdditionalDamage) {
+        if planned.is_resolved_hit_derived() {
+            self.resolved_hit_additional_damage.push(planned);
+        } else {
+            self.activated_additional_damage.push(planned);
+        }
+    }
+
+    pub(super) fn has_activated_additional_damage(
+        &self,
+        candidate: &PlannedAdditionalDamage,
+    ) -> bool {
+        self.resolved_hit_additional_damage
+            .iter()
+            .chain(&self.activated_additional_damage)
+            .any(|planned| {
+                planned.feature.buff_uid == candidate.feature.buff_uid
+                    && planned.feature.buff_id == candidate.feature.buff_id
+            })
+    }
 }
 
 pub(super) fn snapshot_action_start_damage_state(
@@ -302,37 +326,41 @@ pub(super) struct PlannedAdditionalDamage {
     uses_extra_lane: bool,
 }
 
+impl PlannedAdditionalDamage {
+    fn is_resolved_hit_derived(&self) -> bool {
+        self.spec.formula == crate::engine::damage::DamageFormula::ResolvedHitProportionalAdditional
+    }
+}
+
 fn additional_damage(
     source_uid: i64,
     managers: &BattleManagers,
     execution: &SkillExecution,
     extra_action: bool,
 ) -> Vec<PlannedAdditionalDamage> {
-    let mut planned = execution
-        .modifiers
-        .additional_damage
-        .iter()
-        .filter_map(|modifier| {
-            crate::engine::skill::buff_act::additional_damage::configured(
-                managers.catalog(),
-                modifier.buff_id,
-                source_uid,
-                source_uid,
-            )
-            .map(|(feature, spec)| PlannedAdditionalDamage {
-                feature,
-                spec,
-                uses_extra_lane: spec.uses_extra_lane(managers, extra_action),
-            })
-        })
-        .collect::<Vec<_>>();
+    // Damage derived from the resolved main hit stays in that hit's lane. Independently rolled
+    // cast-local and pre-existing linked producers follow it in their own activation order.
+    let mut planned = execution.resolved_hit_additional_damage.clone();
+    planned.extend(
+        execution
+            .modifiers
+            .additional_damage
+            .iter()
+            .filter_map(|modifier| {
+                crate::engine::skill::buff_act::additional_damage::configured(
+                    managers.catalog(),
+                    modifier.buff_id,
+                    source_uid,
+                    source_uid,
+                )
+                .map(|(feature, spec)| PlannedAdditionalDamage {
+                    feature,
+                    spec,
+                    uses_extra_lane: spec.uses_extra_lane(managers, extra_action),
+                })
+            }),
+    );
     planned.extend(execution.activated_additional_damage.iter().cloned());
-    // Damage derived from the resolved hit belongs to that hit's immediate lane. Resolve it
-    // before independently rolled linked hits so each producer consumes its own observation.
-    planned.sort_by_key(|additional| {
-        additional.spec.formula
-            != crate::engine::damage::DamageFormula::ResolvedHitProportionalAdditional
-    });
     planned
 }
 
