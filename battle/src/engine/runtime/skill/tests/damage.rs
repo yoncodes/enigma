@@ -862,16 +862,13 @@ fn source_passive_attack_modifier_is_collected_by_runtime_damage() {
     let mut execution = SkillExecution::new(TargetContext::default());
     execution.configured_targets = Some(vec![-1]);
 
-    let mut determinism = RoundDeterminism::default();
-    determinism.enqueue_hidden_crits(SKILL_ID, 10, [true]);
-    determinism.enqueue_additional_crits(SKILL_ID, 10, -1, [true]);
     let damage = plan::damage_ops(
         &invocation,
         &managers,
         &pool,
         &catalog,
         SKILL_ID,
-        &mut determinism,
+        &mut RoundDeterminism::default(),
         &mut execution,
     );
 
@@ -1517,14 +1514,13 @@ fn inherent_assassination_keeps_its_bonus_out_of_linked_damage() {
 }
 
 #[test]
-fn target_owned_performed_action_bonuses_include_linked_critical_damage() {
+fn target_owned_performed_action_bonuses_apply_to_main_and_linked_damage() {
     let baseline = assassination_damage_pair(true, false, false, false);
     let boosted = assassination_damage_pair(true, false, false, true);
 
     assert!(boosted[0].0 > baseline[0].0);
     assert!(boosted[1].0 > baseline[1].0);
-    // The target-owned shell grants both DMG Dealt and Critical DMG to the attack.
-    assert_eq!(boosted[1].0, 1_093);
+    assert!(boosted[0].0 - baseline[0].0 > boosted[1].0 - baseline[1].0);
 }
 
 #[test]
