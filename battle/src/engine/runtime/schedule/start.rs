@@ -643,7 +643,7 @@ pub fn run_start(
                 version7_opening,
             );
             let reset_ops = if version7_opening {
-                managers.conduit.opening_action_phase_start_commands(1)
+                managers.conduit.action_phase_start_commands(1)
             } else {
                 managers.conduit.opening_reset_commands()
             }
