@@ -658,6 +658,10 @@ impl BuffDefinition {
             .any(|kind| self.has_include_type(kind))
     }
 
+    pub(super) fn merges_timed_layers(&self) -> bool {
+        self.has_include_type(BuffIncludeType::Stacked12)
+    }
+
     pub(super) fn reserves_child_on_layer_refresh(&self) -> bool {
         self.status != BuffStatus::Special
             || self.is_layer_type()
