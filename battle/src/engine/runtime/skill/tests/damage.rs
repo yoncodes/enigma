@@ -2189,7 +2189,7 @@ fn proportional_assassination_damage_precedes_independently_rolled_linked_damage
         hits.iter()
             .map(|(source_uid, is_crit, _)| (*source_uid, *is_crit))
             .collect::<Vec<_>>(),
-        vec![(10, false), (12, false)]
+        vec![(10, true), (12, false)]
     );
     // The independently rolled hit belongs to uid 12, so its five complete Technique bands
     // provide Final DMG +25%; it must not inherit uid 10's +15% modifier.

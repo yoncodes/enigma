@@ -721,45 +721,46 @@ pub(super) fn damage_ops(
                 )
             });
         let main_target = main_target == Some(target_uid);
+        let attack_plan = AttackPlan {
+            source_uid,
+            target_uid,
+            skill_id,
+            rate: catalog.damage_rate(effect_skill_id),
+            rate_terms,
+            attack_attributes: attack_attributes.clone(),
+            career_ratio_bonus: target_modifiers.career_ratio_bonus,
+            attack_career: target_modifiers.attack_career,
+            additional_attack_career: target_modifiers.additional_attack_career,
+            force_career_restraint: target_modifiers.force_career_restraint,
+            critical_multiplier_remainder,
+            is_conduit: managers.conduit.owns_skill(source_uid, skill_id),
+            is_crit,
+            assassinate: assassination.assassinate,
+            main_target,
+            extra_skill_kind: execution.context.extra_skill_kind,
+            performs_extra_action: extra_action,
+            additional_enabled: false,
+            additional_is_crit: None,
+        };
+        let damage_runtime = damage::DamageRuntime {
+            fight_version: managers.fight_version(),
+            pool,
+            attributes: &managers.attribute,
+            buffs: &managers.buff,
+            target_buffs: &managers.buff,
+            hp: &managers.hp,
+            fields: Some((&managers.field, managers.catalog())),
+            emitter: None,
+            team_inspiration: 0,
+        };
+        let main_origin = CommandOrigin {
+            domain: RuleDomain::Skill,
+            key: DefinitionKey::new(skill_id, "SkillDamage"),
+        };
         let mut resolved_main_damage = None;
-        if let Some(mut command) = damage::resolve_attack_command(
-            &AttackPlan {
-                source_uid,
-                target_uid,
-                skill_id,
-                rate: catalog.damage_rate(effect_skill_id),
-                rate_terms,
-                attack_attributes: attack_attributes.clone(),
-                career_ratio_bonus: target_modifiers.career_ratio_bonus,
-                attack_career: target_modifiers.attack_career,
-                additional_attack_career: target_modifiers.additional_attack_career,
-                force_career_restraint: target_modifiers.force_career_restraint,
-                critical_multiplier_remainder,
-                is_conduit: managers.conduit.owns_skill(source_uid, skill_id),
-                is_crit,
-                assassinate: assassination.assassinate,
-                main_target,
-                extra_skill_kind: execution.context.extra_skill_kind,
-                performs_extra_action: extra_action,
-                additional_enabled: false,
-                additional_is_crit: None,
-            },
-            damage::DamageRuntime {
-                fight_version: managers.fight_version(),
-                pool,
-                attributes: &managers.attribute,
-                buffs: &managers.buff,
-                target_buffs: &managers.buff,
-                hp: &managers.hp,
-                fields: Some((&managers.field, managers.catalog())),
-                emitter: None,
-                team_inspiration: 0,
-            },
-            CommandOrigin {
-                domain: RuleDomain::Skill,
-                key: DefinitionKey::new(skill_id, "SkillDamage"),
-            },
-        ) {
+        if let Some(mut command) =
+            damage::resolve_attack_command(&attack_plan, damage_runtime, main_origin)
+        {
             if let HpCommand::Damage(damage) = &mut command {
                 damage.ignore_riposte = target_modifiers.ignore_riposte;
                 resolved_main_damage = Some(*damage);
@@ -780,9 +781,30 @@ pub(super) fn damage_ops(
             let command = if additional.formula
                 == crate::engine::damage::DamageFormula::ResolvedHitProportionalAdditional
             {
-                resolved_main_damage.and_then(|main| {
-                    determinism
-                        .consume_additional_crit_observation(skill_id, source_uid, target_uid);
+                let additional_is_crit = determinism.roll_additional_crit(
+                    skill_id,
+                    source_uid,
+                    additional.credited_source_uid,
+                    target_uid,
+                    damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
+                );
+                let proportional_main = if additional_is_crit == is_crit {
+                    resolved_main_damage
+                } else {
+                    damage::resolve_attack_command(
+                        &AttackPlan {
+                            is_crit: additional_is_crit,
+                            ..attack_plan.clone()
+                        },
+                        damage_runtime,
+                        main_origin,
+                    )
+                    .and_then(|command| match command {
+                        HpCommand::Damage(damage) => Some(damage),
+                        _ => None,
+                    })
+                };
+                proportional_main.and_then(|main| {
                     damage::resolve_proportional_additional_damage_command(
                         damage::ProportionalAdditionalDamageRequest {
                             main,
@@ -790,20 +812,10 @@ pub(super) fn damage_ops(
                             main_rate: catalog.damage_rate(effect_skill_id),
                             credited_source_uid: additional.credited_source_uid,
                             force_career_restraint: target_modifiers.force_career_restraint,
-                            assassinate: assassination.triggered_by_target,
+                            assassinate: assassination.assassinate,
                             origin: *origin,
                         },
-                        damage::DamageRuntime {
-                            fight_version: managers.fight_version(),
-                            pool,
-                            attributes: &managers.attribute,
-                            buffs: &managers.buff,
-                            target_buffs: &managers.buff,
-                            hp: &managers.hp,
-                            fields: Some((&managers.field, managers.catalog())),
-                            emitter: None,
-                            team_inspiration: 0,
-                        },
+                        damage_runtime,
                     )
                 })
             } else {
