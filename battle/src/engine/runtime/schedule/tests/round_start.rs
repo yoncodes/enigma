@@ -509,6 +509,7 @@ fn defender_round_start_expires_the_previous_status_before_alternating_setup() {
         },
         2,
         &[],
+        None,
     )
     .unwrap();
 
@@ -673,9 +674,17 @@ fn change_round_effect_num(round: &DrainResult) -> i32 {
 fn version_seven_change_round_payload_names_the_next_round_without_a_conduit_area() {
     let round = scheduled_round_start(7, None);
     assert_eq!(change_round_effect_num(&round), 4);
-    assert!(round.outcomes.iter().all(|outcome| !matches!(
+    assert!(round.outcomes.iter().any(|outcome| matches!(
         outcome,
-        RuleOutcome::Conduit(crate::engine::manager::conduit::ConduitChange::PowersReset { .. })
+        RuleOutcome::Conduit(
+            crate::engine::manager::conduit::ConduitChange::PowersReset { team: 1 }
+        )
+    )));
+    assert!(round.frames.iter().any(|frame| matches!(
+        frame.owner,
+        crate::engine::runtime::record::FrameOwner::RoundPhase(
+            crate::engine::runtime::record::RoundPhase::ActionPhaseStart { team: 1 }
+        )
     )));
 }
 
@@ -997,6 +1006,7 @@ fn round_start_executes_each_team_at_its_own_turn_boundary() {
         TargetContext::default(),
         1,
         &[],
+        None,
     )
     .unwrap();
     assert_eq!(managers.ex_point.get(10), 0);
@@ -1111,6 +1121,7 @@ fn defender_round_start_late_applies_configured_buffs_before_ai_and_filters_owne
         },
         1,
         &[],
+        None,
     )
     .unwrap();
 
@@ -1282,6 +1293,7 @@ fn defender_round_start_groups_event_subscribers_with_round_start_setup() {
         },
         1,
         &[],
+        None,
     )
     .unwrap();
 

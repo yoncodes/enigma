@@ -63,6 +63,7 @@ pub enum FrameOwner {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RoundPhase {
+    ActionPhaseStart { team: i32 },
     CardRefill,
     RoundStartEvent,
     RoundStartSettlement,

@@ -132,6 +132,7 @@ fn promoted_defender_joins_the_normal_round_start_once() {
         context,
         2,
         &[],
+        None,
     )
     .unwrap();
 
@@ -279,6 +280,7 @@ fn wave_entry_round_start_condition_runs_once_before_the_first_ai_turn() {
         context,
         2,
         &[-3],
+        None,
     )
     .unwrap();
 

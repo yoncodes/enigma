@@ -619,9 +619,12 @@ fn opening_reset_clears_power_and_restarts_each_device() {
 }
 
 #[test]
-fn action_phase_start_commands_require_an_existing_area() {
+fn action_phase_start_always_resets_and_restarts_existing_devices() {
     let mut manager = ConduitManager::default();
-    assert!(manager.action_phase_start_commands(1).is_empty());
+    assert_eq!(
+        manager.action_phase_start_commands(1),
+        vec![ConduitCommand::ResetPowers { team: 1 }]
+    );
 
     manager.areas.insert(
         1,
