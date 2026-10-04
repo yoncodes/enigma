@@ -373,15 +373,20 @@ fn performs_extra_action(invocation: &SkillInvocation, execution: &SkillExecutio
         && invocation.mode == crate::engine::skill::action::SkillExecutionMode::Active)
 }
 
-pub(super) fn linked_shell_attributes(extra_skill_kind: i32) -> (bool, bool) {
+pub(super) fn linked_shell_attributes(
+    extra_skill_kind: i32,
+    uses_extra_lane: bool,
+) -> (bool, bool) {
     use crate::engine::skill::condition::extra::ExtraSkillKind;
 
-    match crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind) {
-        Some(ExtraSkillKind::ExtraAction) => (true, true),
-        Some(ExtraSkillKind::FollowUp) => (true, false),
-        Some(ExtraSkillKind::Riposte) => (false, false),
-        _ => (true, false),
-    }
+    let (damage, critical) =
+        match crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind) {
+            Some(ExtraSkillKind::ExtraAction) => (true, true),
+            Some(ExtraSkillKind::FollowUp) => (true, false),
+            Some(ExtraSkillKind::Riposte) => (false, false),
+            _ => (true, false),
+        };
+    (damage || uses_extra_lane, critical)
 }
 
 pub(super) fn additional_damage_activation(
@@ -662,7 +667,8 @@ pub(super) fn damage_ops(
             ));
         }
         let (linked_shell_damage, linked_shell_critical) =
-            linked_shell_attributes(execution.context.extra_skill_kind);
+            linked_shell_attributes(execution.context.extra_skill_kind, false);
+        let mut target_shell_damage = 0;
         for attr_id in [
             crate::engine::entity::attr::AttrId::CriticalDmg,
             crate::engine::entity::attr::AttrId::DmgBonus,
@@ -675,6 +681,9 @@ pub(super) fn damage_ops(
             );
             if delta != 0 {
                 attack_attributes.push((attr_id, delta));
+                if attr_id == crate::engine::entity::attr::AttrId::DmgBonus {
+                    target_shell_damage = delta;
+                }
                 // A linked producer shares the triggering action's damage lane, while its
                 // independently rolled critical hit keeps its own critical-damage lane.
                 if (attr_id == crate::engine::entity::attr::AttrId::DmgBonus && linked_shell_damage)
@@ -889,6 +898,14 @@ pub(super) fn damage_ops(
                         )
                     })
                     .collect::<Vec<_>>();
+                let (producer_shell_damage, _) =
+                    linked_shell_attributes(execution.context.extra_skill_kind, *uses_extra_lane);
+                if producer_shell_damage && !linked_shell_damage && target_shell_damage != 0 {
+                    additional_attributes.push((
+                        crate::engine::entity::attr::AttrId::DmgBonus,
+                        target_shell_damage,
+                    ));
+                }
                 let additional_damage_type = pool
                     .entity(additional.credited_source_uid)
                     .map(|entity| entity.damage_type)

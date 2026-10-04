@@ -1517,18 +1517,22 @@ fn target_owned_performed_action_bonuses_apply_to_main_and_linked_damage() {
 fn linked_shell_attributes_keep_extra_action_kinds_distinct() {
     use crate::engine::skill::condition::extra::ExtraSkillKind;
 
-    assert_eq!(plan::linked_shell_attributes(0), (true, false));
+    assert_eq!(plan::linked_shell_attributes(0, false), (true, false));
     assert_eq!(
-        plan::linked_shell_attributes(ExtraSkillKind::ExtraAction.id()),
+        plan::linked_shell_attributes(ExtraSkillKind::ExtraAction.id(), false),
         (true, true)
     );
     assert_eq!(
-        plan::linked_shell_attributes(ExtraSkillKind::FollowUp.id()),
+        plan::linked_shell_attributes(ExtraSkillKind::FollowUp.id(), false),
         (true, false)
     );
     assert_eq!(
-        plan::linked_shell_attributes(ExtraSkillKind::Riposte.id()),
+        plan::linked_shell_attributes(ExtraSkillKind::Riposte.id(), false),
         (false, false)
+    );
+    assert_eq!(
+        plan::linked_shell_attributes(ExtraSkillKind::Riposte.id(), true),
+        (true, false)
     );
 }
 
