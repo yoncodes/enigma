@@ -2197,7 +2197,7 @@ fn proportional_assassination_damage_precedes_independently_rolled_linked_damage
 }
 
 #[test]
-fn target_actor_critical_penalty_does_not_leak_into_credited_linked_damage() {
+fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
     crate::test_support::init_config();
     let resolve = |with_target_passive: bool| {
         let fight = Fight {
@@ -2321,7 +2321,7 @@ fn target_actor_critical_penalty_does_not_leak_into_credited_linked_damage() {
     let penalized = resolve(true);
 
     assert!(penalized.0 < baseline.0);
-    assert_eq!(penalized.1, baseline.1);
+    assert!(penalized.1 < baseline.1);
 }
 
 #[test]

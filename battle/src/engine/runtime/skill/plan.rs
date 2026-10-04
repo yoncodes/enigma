@@ -561,6 +561,11 @@ pub(super) fn damage_ops(
             },
             determinism,
         );
+        // Target-owned incoming modifiers describe the triggering action and therefore also
+        // constrain damage credited to another source within that action. The linked hit still
+        // keeps its credited source's own passive and attribute lanes.
+        linked_attack_attributes
+            .extend(incoming_modifiers.shared_attack_attributes.iter().copied());
         target_modifiers.merge(incoming_modifiers);
         execution.team_injury_count_consumed = execution
             .team_injury_count_consumed

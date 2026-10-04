@@ -708,15 +708,16 @@ pub(crate) fn incoming_target_attack_modifiers(
         if crate::engine::skill::buff_act::additional_damage::uses_costed_lane(
             context.extra_skill_kind,
         ) {
-            modifiers.attack_attributes.extend(
-                managers
-                    .buff
-                    .definition_features(passive_skill)
-                    .iter()
-                    .filter_map(
-                        crate::engine::skill::buff_act::attr_only_cal_damage_attack::extra_action_attribute,
-                    ),
-            );
+            let attributes = managers
+                .buff
+                .definition_features(passive_skill)
+                .iter()
+                .filter_map(
+                    crate::engine::skill::buff_act::attr_only_cal_damage_attack::extra_action_attribute,
+                )
+                .collect::<Vec<_>>();
+            modifiers.attack_attributes.extend_from_slice(&attributes);
+            modifiers.shared_attack_attributes.extend(attributes);
         }
         let Some(effect) = effects.get(passive_skill) else {
             continue;
