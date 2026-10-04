@@ -2195,6 +2195,125 @@ fn proportional_assassination_damage_precedes_independently_rolled_linked_damage
 }
 
 #[test]
+fn target_actor_critical_penalty_does_not_leak_into_credited_linked_damage() {
+    crate::test_support::init_config();
+    let resolve = |with_target_passive: bool| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![
+                    FightEntityInfo {
+                        uid: Some(10),
+                        current_hp: Some(10_000),
+                        attr: Some(HeroAttribute {
+                            hp: Some(10_000),
+                            attack: Some(1_000),
+                            technic: Some(300),
+                            ..Default::default()
+                        }),
+                        buffs: vec![
+                            BuffInfo {
+                                uid: Some(20),
+                                buff_id: Some(31050144),
+                                from_uid: Some(12),
+                                ..Default::default()
+                            },
+                            BuffInfo {
+                                uid: Some(21),
+                                buff_id: Some(109380006),
+                                from_uid: Some(-1),
+                                ..Default::default()
+                            },
+                        ],
+                        ..Default::default()
+                    },
+                    FightEntityInfo {
+                        uid: Some(12),
+                        current_hp: Some(10_000),
+                        attr: Some(HeroAttribute {
+                            hp: Some(10_000),
+                            attack: Some(1_000),
+                            technic: Some(500),
+                            ..Default::default()
+                        }),
+                        power_infos: vec![sonettobuf::PowerInfo {
+                            power_id: Some(crate::engine::manager::eureka::EUREKA_RESOURCE_ID),
+                            num: Some(5),
+                            max: Some(5),
+                        }],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(100_000),
+                        technic: Some(0),
+                        ..Default::default()
+                    }),
+                    passive_skill: with_target_passive
+                        .then_some(109380003)
+                        .into_iter()
+                        .collect(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        const SKILL_ID: i32 = 999_999_007;
+        let mut catalog = SkillEffectCatalog::from_roots(config::configs::get(), [109380003], []);
+        catalog.insert_damage_rate(SKILL_ID, 6_000);
+        catalog.insert_logic_target(SKILL_ID, 1);
+        let invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: SKILL_ID,
+        }
+        .into();
+        let mut execution = SkillExecution::new(TargetContext {
+            active_skill_mode: SkillExecutionMode::Nested,
+            ..Default::default()
+        });
+        execution.configured_targets = Some(vec![-1]);
+        execution.activated_additional_damage.extend(
+            plan::additional_damage_activation(&invocation, &managers, &execution)
+                .into_iter()
+                .map(|activation| activation.additional),
+        );
+        let mut determinism = RoundDeterminism::default();
+        determinism.enqueue_hidden_crits(SKILL_ID, 10, [true]);
+        determinism.enqueue_additional_crits(SKILL_ID, 10, -1, [true]);
+        let ops = plan::damage_ops(
+            &invocation,
+            &managers,
+            &pool,
+            &catalog,
+            SKILL_ID,
+            &mut determinism,
+            &mut execution,
+        );
+        let [HpCommand::Damage(main)] = ops.damage.as_slice() else {
+            panic!("expected one main damage command")
+        };
+        let [HpCommand::Damage(linked)] = ops.additional_damage.as_slice() else {
+            panic!("expected one linked damage command")
+        };
+        (main.amount, linked.amount)
+    };
+
+    let baseline = resolve(false);
+    let penalized = resolve(true);
+
+    assert!(penalized.0 < baseline.0);
+    assert_eq!(penalized.1, baseline.1);
+}
+
+#[test]
 fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() {
     crate::test_support::init_config();
     let fight = Fight {

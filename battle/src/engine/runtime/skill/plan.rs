@@ -531,6 +531,9 @@ pub(super) fn damage_ops(
             },
             determinism,
         );
+        // Linked hits are owned by their credited source. Keep the triggering action's shared
+        // source lane, but do not leak modifiers that the target applies to that action's actor.
+        let mut linked_attack_attributes = target_modifiers.attack_attributes.clone();
         let incoming_modifiers = rate::incoming_target_attack_modifiers(
             source_uid,
             target_uid,
@@ -564,8 +567,11 @@ pub(super) fn damage_ops(
                 crate::engine::entity::attr::AttrId::DmgBonus,
                 target_count_damage_bonus,
             ));
+            linked_attack_attributes.push((
+                crate::engine::entity::attr::AttrId::DmgBonus,
+                target_count_damage_bonus,
+            ));
         }
-        let mut linked_attack_attributes = attack_attributes.clone();
         let incoming_reduction =
             crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
                 managers,

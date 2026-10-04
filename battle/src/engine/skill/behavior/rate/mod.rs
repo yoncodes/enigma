@@ -383,7 +383,7 @@ pub struct RateRuntime<'a> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ModifierSide {
     Source,
-    IncomingTarget,
+    IncomingTarget { passive_buff_id: i32 },
 }
 
 fn collect_attack_modifier_slot(
@@ -401,17 +401,25 @@ fn collect_attack_modifier_slot(
         context,
         ..
     } = runtime;
+    let incoming_side = matches!(side, ModifierSide::IncomingTarget { .. });
     let incoming = condition_registry::attack_modifier_side(&slot.conditions)
         == Some(condition_registry::AttackModifierSide::IncomingTarget);
-    if incoming != (side == ModifierSide::IncomingTarget) {
+    if incoming != incoming_side {
         return false;
     }
     let Some(definition) = super::registry::find(&slot.behavior) else {
         return false;
     };
-    let Some(collect) = definition.collect_attack_modifier else {
-        return false;
+    let collect = definition.collect_attack_modifier;
+    let passive_features = match side {
+        ModifierSide::Source => Vec::new(),
+        ModifierSide::IncomingTarget { passive_buff_id } => {
+            managers.buff.definition_features(passive_buff_id)
+        }
     };
+    if collect.is_none() && passive_features.is_empty() {
+        return false;
+    }
     let Ok(route) = slot.compiled_route.as_ref() else {
         return false;
     };
@@ -470,7 +478,14 @@ fn collect_attack_modifier_slot(
             pool,
             context,
         );
-        if fire_count <= 0 {
+        let committed_marker = collect.is_none()
+            && incoming_side
+            && slot.behavior.spec.kind == BehaviorKind::AddBuff
+            && slot
+                .behavior
+                .arg(0)
+                .is_some_and(|buff_id| managers.buff.has_buff_id(context.hit_source_uid, buff_id));
+        if collect.is_none() && !committed_marker || collect.is_some() && fire_count <= 0 {
             continue;
         }
         let targets = TargetResolver::resolve_with_managers_and_context(
@@ -487,43 +502,67 @@ fn collect_attack_modifier_slot(
             .ne(&0)
             .then_some(context.hit_target_uid)
             .or_else(|| (context.runtime_target_uid != 0).then_some(context.runtime_target_uid));
+        let modifier_subject = if incoming_side {
+            (context.hit_source_uid != 0).then_some(context.hit_source_uid)
+        } else {
+            current_hit_target
+        };
         let targets_owner = targets.contains(&owner_uid);
-        let targets_current_hit =
-            current_hit_target.is_some_and(|target_uid| targets.contains(&target_uid));
-        let applies_to_current_attack =
-            targets_owner || (side == ModifierSide::Source && targets_current_hit);
+        let targets_subject =
+            modifier_subject.is_some_and(|target_uid| targets.contains(&target_uid));
+        let applies_to_current_attack = targets_owner || targets_subject;
         if !applies_to_current_attack {
             continue;
         }
-        let modifier_target_uid = if side == ModifierSide::IncomingTarget
-            || (side == ModifierSide::Source && targets_current_hit && !targets_owner)
+        let modifier_target_uid = if incoming_side
+            || (side == ModifierSide::Source && targets_subject && !targets_owner)
         {
-            current_hit_target.unwrap_or_default()
+            modifier_subject.unwrap_or_default()
         } else {
             0
         };
         let mut collected = false;
-        for _ in 0..fire_count {
+        for _ in 0..fire_count.max(i32::from(committed_marker)) {
             let mut target_context = context;
-            collected |= collect(
-                AttackModifierContext {
-                    operation: BehaviorOpContext {
-                        source_uid: owner_uid,
-                        source_team,
-                        target_uid: modifier_target_uid,
-                        active_skill_id,
-                        transfer_count: 1,
-                        event: None,
-                        managers,
-                        pool,
-                        determinism,
-                        modifiers,
-                        target: &mut target_context,
+            if let Some(collect) = collect {
+                collected |= collect(
+                    AttackModifierContext {
+                        operation: BehaviorOpContext {
+                            source_uid: owner_uid,
+                            source_team,
+                            target_uid: modifier_target_uid,
+                            active_skill_id,
+                            transfer_count: 1,
+                            event: None,
+                            managers,
+                            pool,
+                            determinism,
+                            modifiers,
+                            target: &mut target_context,
+                        },
+                        conditions: &conditions,
                     },
-                    conditions: &conditions,
-                },
-                &slot.behavior,
-            );
+                    &slot.behavior,
+                );
+            } else if incoming_side {
+                for feature in &passive_features {
+                    let Some(
+                        crate::engine::skill::buff_act::registry::BuffActKind::AttrOnlyCalDamageInExtra,
+                    ) =
+                        crate::engine::skill::buff_act::feature_kind(feature)
+                    else {
+                        continue;
+                    };
+                    let [_, raw_attr, delta] = feature.values.as_slice() else {
+                        continue;
+                    };
+                    let Some(attr_id) = AttrId::from_raw(*raw_attr) else {
+                        continue;
+                    };
+                    modifiers.attack_attributes.push((attr_id, *delta));
+                    collected = true;
+                }
+            }
         }
         if collected {
             modifiers.consume_team_injury_count_round = modifiers
@@ -688,7 +727,9 @@ pub(crate) fn incoming_target_attack_modifiers(
                     context,
                 },
                 determinism,
-                ModifierSide::IncomingTarget,
+                ModifierSide::IncomingTarget {
+                    passive_buff_id: passive_skill,
+                },
             );
             if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Damage)
                 && (modifiers.attack_attributes.len() > attribute_count_before
