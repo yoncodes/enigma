@@ -176,6 +176,25 @@ fn multi_target_actions_keep_roster_order_independent_of_the_selected_target() {
         ),
         vec![-10, -11, -12]
     );
+
+    assert_eq!(
+        TargetResolver::resolve_primary_candidates(
+            &TargetRequest {
+                code: 202,
+                raw: Vec::new(),
+            },
+            1001,
+            10,
+            &pool,
+            &RoundDeterminism::default(),
+            None,
+            TargetContext {
+                active_skill_is_attack: true,
+                ..Default::default()
+            },
+        ),
+        vec![-10, -11, -12]
+    );
 }
 
 #[test]

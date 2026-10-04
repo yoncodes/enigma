@@ -382,8 +382,16 @@ impl TargetResolver {
                 },
             );
             if let Some(target_uid) = targets
-                .into_iter()
-                .find(|target_uid| pool.entity(*target_uid).is_some())
+                .iter()
+                .copied()
+                .find(|target_uid| {
+                    *target_uid == runtime_target_uid && pool.entity(*target_uid).is_some()
+                })
+                .or_else(|| {
+                    targets
+                        .into_iter()
+                        .find(|target_uid| pool.entity(*target_uid).is_some())
+                })
                 && !resolved.contains(&target_uid)
             {
                 resolved.push(target_uid);
