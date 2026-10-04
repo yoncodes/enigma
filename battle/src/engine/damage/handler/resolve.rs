@@ -61,6 +61,21 @@ pub fn resolve_attack_command(
     runtime: DamageRuntime<'_>,
     origin: CommandOrigin,
 ) -> Option<HpCommand> {
+    resolve_attack_command_with_basis(plan, runtime, origin).map(|resolved| resolved.command)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ResolvedAttackCommand {
+    pub command: HpCommand,
+    pub amount_numerator: i128,
+    pub amount_denominator: i128,
+}
+
+pub fn resolve_attack_command_with_basis(
+    plan: &AttackPlan,
+    runtime: DamageRuntime<'_>,
+    origin: CommandOrigin,
+) -> Option<ResolvedAttackCommand> {
     let resolved = resolve_row_damage_result(
         DamageRequest {
             source_uid: plan.source_uid,
@@ -81,21 +96,25 @@ pub fn resolve_attack_command(
         },
         runtime,
     )?;
-    Some(HpCommand::Damage(HpDamage {
-        origin,
-        source_uid: resolved.source_uid,
-        target_uid: resolved.target_uid,
-        amount: resolved.amount,
-        config_effect: -1,
-        effect_kind: if plan.is_crit {
-            DamageEffectKind::Critical
-        } else {
-            DamageEffectKind::Normal
-        },
-        assassinate: plan.assassinate,
-        ignore_riposte: false,
-        hurt: resolved.hurt,
-    }))
+    Some(ResolvedAttackCommand {
+        amount_numerator: resolved.amount_numerator,
+        amount_denominator: resolved.amount_denominator,
+        command: HpCommand::Damage(HpDamage {
+            origin,
+            source_uid: resolved.source_uid,
+            target_uid: resolved.target_uid,
+            amount: resolved.amount,
+            config_effect: -1,
+            effect_kind: if plan.is_crit {
+                DamageEffectKind::Critical
+            } else {
+                DamageEffectKind::Normal
+            },
+            assassinate: plan.assassinate,
+            ignore_riposte: false,
+            hurt: resolved.hurt,
+        }),
+    })
 }
 
 pub fn resolve_avoided_attack_command(
@@ -200,6 +219,8 @@ struct ResolvedRowDamage {
     source_uid: i64,
     target_uid: i64,
     amount: i32,
+    amount_numerator: i128,
+    amount_denominator: i128,
     hurt: HurtInfoData,
 }
 
@@ -241,7 +262,7 @@ fn resolve_row_damage_result(
         .map(|replacement| replacement.formula)
         .unwrap_or(DamageFormula::StandardSkill);
     let (base_rate, added_rate) = composed_damage_rates(rate, rate_terms);
-    let amount = direct_damage(
+    let damage = direct_damage_trace(
         request,
         runtime,
         source,
@@ -265,10 +286,12 @@ fn resolve_row_damage_result(
             request.additional_attack_career,
             target,
         );
-    (amount > 0).then_some(ResolvedRowDamage {
+    (damage.amount > 0).then_some(ResolvedRowDamage {
         source_uid,
         target_uid,
-        amount,
+        amount: damage.amount,
+        amount_numerator: damage.critical.numerator,
+        amount_denominator: damage.critical.denominator,
         hurt: HurtInfoData {
             from_uid: source_uid,
             is_crit,
@@ -327,6 +350,8 @@ pub struct ProportionalAdditionalDamageRequest {
     pub main: HpDamage,
     pub rate: i32,
     pub main_rate: i32,
+    pub amount_numerator: i128,
+    pub amount_denominator: i128,
     pub credited_source_uid: i64,
     pub force_career_restraint: bool,
     pub assassinate: bool,
@@ -341,16 +366,25 @@ pub fn resolve_proportional_additional_damage_command(
         main,
         rate,
         main_rate,
+        amount_numerator,
+        amount_denominator,
         credited_source_uid,
         force_career_restraint,
         assassinate,
         origin,
     } = request;
-    if main.amount <= 0 || rate <= 0 || main_rate <= 0 || credited_source_uid == 0 {
+    if main.amount <= 0
+        || rate <= 0
+        || main_rate <= 0
+        || amount_numerator <= 0
+        || amount_denominator <= 0
+        || credited_source_uid == 0
+    {
         return None;
     }
-    let amount = (i64::from(main.amount) * i64::from(rate) / i64::from(main_rate))
-        .clamp(0, i64::from(i32::MAX)) as i32;
+    let amount = (amount_numerator.saturating_mul(i128::from(rate))
+        / amount_denominator.saturating_mul(i128::from(main_rate)))
+    .clamp(0, i128::from(i32::MAX)) as i32;
     let credited_source = runtime.pool.entity(credited_source_uid)?;
     let target = runtime.pool.entity(main.target_uid)?;
     let career_restraint = force_career_restraint
@@ -544,6 +578,16 @@ pub(super) fn direct_damage(
     target: &TargetEntity,
     options: DirectOptions,
 ) -> i32 {
+    direct_damage_trace(request, runtime, source, target, options).amount
+}
+
+fn direct_damage_trace(
+    request: DamageRequest<'_>,
+    runtime: DamageRuntime<'_>,
+    source: &TargetEntity,
+    target: &TargetEntity,
+    options: DirectOptions,
+) -> crate::engine::damage::DamageTrace {
     let DamageRequest {
         skill_id,
         rate_terms,
@@ -1020,7 +1064,6 @@ pub(super) fn direct_damage(
             runtime.fight_version,
             critical_multiplier_remainder,
         );
-    let amount = damage_trace.amount;
     if crate::engine::damage::trace::enabled() {
         let local_damage_bonus = source_active_features
             .iter()
@@ -1119,5 +1162,5 @@ pub(super) fn direct_damage(
             attributes.get(source.uid, AttrId::AttackPercent),
         );
     }
-    amount
+    damage_trace
 }
