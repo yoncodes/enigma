@@ -1462,11 +1462,7 @@ fn assassination_damage_pair(
     }
     let mut execution = SkillExecution::new(TargetContext {
         active_skill_assassinate: inherent_assassination,
-        extra_skill_kind: if deployed_shell {
-            crate::engine::skill::condition::extra::ExtraSkillKind::Riposte.id()
-        } else {
-            0
-        },
+        extra_skill_kind: 0,
         ..Default::default()
     });
     execution.configured_targets = Some(vec![-1]);
@@ -1518,12 +1514,13 @@ fn inherent_assassination_keeps_its_bonus_out_of_linked_damage() {
 }
 
 #[test]
-fn target_owned_extra_action_bonuses_apply_to_main_and_linked_damage() {
+fn target_owned_performed_action_bonuses_apply_to_main_and_linked_damage() {
     let baseline = assassination_damage_pair(true, false, false, false);
     let boosted = assassination_damage_pair(true, false, false, true);
 
     assert!(boosted[0].0 > baseline[0].0);
     assert!(boosted[1].0 > baseline[1].0);
+    assert!(boosted[0].0 - baseline[0].0 > boosted[1].0 - baseline[1].0);
 }
 
 #[test]

@@ -629,14 +629,16 @@ pub(super) fn damage_ops(
             let delta = crate::engine::skill::buff_act::target_attack_attribute_delta(
                 managers,
                 target_uid,
-                crate::engine::skill::buff_act::additional_damage::uses_costed_lane(
-                    execution.context.extra_skill_kind,
-                ),
+                extra_action,
                 attr_id,
             );
             if delta != 0 {
                 attack_attributes.push((attr_id, delta));
-                linked_attack_attributes.push((attr_id, delta));
+                // A linked producer shares the triggering action's damage lane, while its
+                // independently rolled critical hit keeps its own critical-damage lane.
+                if attr_id != crate::engine::entity::attr::AttrId::CriticalDmg {
+                    linked_attack_attributes.push((attr_id, delta));
+                }
             }
         }
         if index >= base_count + behavior_extra_count
