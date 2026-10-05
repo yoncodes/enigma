@@ -63,7 +63,7 @@ fn greatest_common_divisor(mut left: i128, mut right: i128) -> i128 {
     left
 }
 
-fn multiply_reduced_fraction(
+pub(crate) fn multiply_reduced_fraction(
     (mut numerator, mut denominator): (i128, i128),
     (mut factor_numerator, mut factor_denominator): (i128, i128),
 ) -> (i128, i128) {

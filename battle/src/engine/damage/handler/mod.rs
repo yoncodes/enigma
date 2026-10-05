@@ -32,8 +32,9 @@ pub(crate) use critical::{
 };
 pub(crate) use heal::{modified as modified_heal, modified_fraction as modified_fractional_heal};
 pub(crate) use resolve::{
-    DamageRequest, DamageRuntime, ProportionalAdditionalDamageRequest,
-    resolve_additional_damage_command, resolve_attack_command, resolve_avoided_attack_command,
+    DamageFraction, DamageRequest, DamageRuntime, ProportionalAdditionalDamageRequest,
+    resolve_additional_damage_command, resolve_attack_command,
+    resolve_attack_command_with_precision, resolve_avoided_attack_command,
     resolve_configured_replacement_damage_command, resolve_proportional_additional_damage_command,
 };
 use resolve::{DirectOptions, direct_damage};

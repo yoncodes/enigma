@@ -851,16 +851,18 @@ pub(super) fn damage_ops(
             key: DefinitionKey::new(skill_id, "SkillDamage"),
         };
         let mut resolved_main_damage = None;
-        if let Some(mut command) =
-            damage::resolve_attack_command(&attack_plan, damage_runtime, main_origin)
+        if let Some(mut resolved) =
+            damage::resolve_attack_command_with_precision(&attack_plan, damage_runtime, main_origin)
         {
-            if let HpCommand::Damage(damage) = &mut command {
+            if let HpCommand::Damage(damage) = &mut resolved.command {
                 damage.ignore_riposte = target_modifiers.ignore_riposte;
-                resolved_main_damage = Some(*damage);
+                resolved_main_damage = Some((*damage, resolved.fraction));
             }
             crit_count += i32::from(is_crit);
             damage_commands.extend(crate::engine::skill::buff_act::absorb_hurt::route(
-                managers, pool, command,
+                managers,
+                pool,
+                resolved.command,
             ));
         }
         for (_, additional, uses_extra_lane, origin) in &additional {
@@ -884,7 +886,7 @@ pub(super) fn damage_ops(
                 let proportional_main = if additional_is_crit == is_crit {
                     resolved_main_damage
                 } else {
-                    damage::resolve_attack_command(
+                    damage::resolve_attack_command_with_precision(
                         &AttackPlan {
                             is_crit: additional_is_crit,
                             ..attack_plan.clone()
@@ -892,15 +894,16 @@ pub(super) fn damage_ops(
                         damage_runtime,
                         main_origin,
                     )
-                    .and_then(|command| match command {
-                        HpCommand::Damage(damage) => Some(damage),
+                    .and_then(|resolved| match resolved.command {
+                        HpCommand::Damage(damage) => Some((damage, resolved.fraction)),
                         _ => None,
                     })
                 };
-                proportional_main.and_then(|main| {
+                proportional_main.and_then(|(main, main_fraction)| {
                     damage::resolve_proportional_additional_damage_command(
                         damage::ProportionalAdditionalDamageRequest {
                             main,
+                            main_fraction: Some(main_fraction),
                             rate,
                             main_rate: catalog.damage_rate(effect_skill_id),
                             credited_source_uid: additional.credited_source_uid,
