@@ -30,7 +30,7 @@ pub(crate) use critical::{
     chance as crit_chance, damage_multiplier as crit_damage_multiplier,
     excess_rate as excess_crit_rate, heal_multiplier as crit_heal_multiplier,
 };
-pub(crate) use heal::modified as modified_heal;
+pub(crate) use heal::{modified as modified_heal, modified_fraction as modified_fractional_heal};
 pub(crate) use resolve::{
     DamageRequest, DamageRuntime, ProportionalAdditionalDamageRequest,
     resolve_additional_damage_command, resolve_attack_command, resolve_attack_command_with_basis,

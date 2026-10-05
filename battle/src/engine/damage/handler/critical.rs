@@ -119,10 +119,9 @@ fn heal_multiplier_from_damage_multiplier(
         CRITICAL_HEAL_CONVERSION,
         1000_i32.saturating_add(critical_portion_bonus),
     );
-    1000_i32.saturating_add(crate::engine::damage::scale_permille(
-        critical_portion,
-        conversion,
-    ))
+    let converted = ((i64::from(critical_portion) * i64::from(conversion) + 500) / 1000)
+        .clamp(0, i64::from(i32::MAX)) as i32;
+    1000_i32.saturating_add(converted)
 }
 
 fn raw_chance(
@@ -207,7 +206,7 @@ mod tests {
     #[test]
     fn critical_healing_converts_thirty_percent_of_the_critical_portion() {
         assert_eq!(heal_multiplier_from_damage_multiplier(1597, 0), 1179);
-        assert_eq!(heal_multiplier_from_damage_multiplier(1669, 0), 1200);
+        assert_eq!(heal_multiplier_from_damage_multiplier(1669, 0), 1201);
     }
 
     #[test]

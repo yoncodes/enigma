@@ -273,12 +273,13 @@ fn process_rule_ops(
                 return Some(Vec::new());
             }
             let attr_id = AttrId::from_raw(spec.heal_attr_id)?;
-            let base = managers
+            let basis = managers
                 .origin_attribute(subscriber.owner_uid, attr_id)
-                .max(0)
-                * spec.heal_rate.max(0)
-                * change.transaction_amount
-                / 1000;
+                .max(0);
+            let base_numerator = i128::from(basis)
+                * i128::from(spec.heal_rate.max(0))
+                * i128::from(change.transaction_amount);
+            let base = (base_numerator / 1000).clamp(0, i128::from(i32::MAX)) as i32;
             if base <= 0 {
                 return Some(Vec::new());
             }
@@ -293,18 +294,19 @@ fn process_rule_ops(
                         ally.uid,
                         damage::crit_chance(subscriber.owner_uid, ally.uid, pool, managers),
                     );
-                    let mut amount =
-                        damage::modified_heal(base, subscriber.owner_uid, ally.uid, managers);
-                    if is_crit {
-                        amount = amount
-                            * damage::crit_heal_multiplier(
-                                subscriber.owner_uid,
-                                ally.uid,
-                                pool,
-                                managers,
-                            )
-                            / 1000;
-                    }
+                    let multiplier = if is_crit {
+                        damage::crit_heal_multiplier(subscriber.owner_uid, ally.uid, pool, managers)
+                    } else {
+                        1000
+                    };
+                    let amount = damage::modified_fractional_heal(
+                        i128::from(base),
+                        1,
+                        subscriber.owner_uid,
+                        ally.uid,
+                        managers,
+                        multiplier,
+                    );
                     crate::engine::manager::hp::HpCommand::Heal(
                         crate::engine::manager::hp::HpHeal {
                             origin,

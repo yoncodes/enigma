@@ -61,6 +61,31 @@ pub(crate) fn modified(
     if base <= 0 {
         return 0;
     }
+    let (healing_done, healing_taken) = modifier_rates(source_uid, target_uid, managers);
+    scale_permille(scale_permille(base, healing_done), healing_taken).max(1)
+}
+
+pub(crate) fn modified_fraction(
+    base_numerator: i128,
+    base_denominator: i128,
+    source_uid: i64,
+    target_uid: i64,
+    managers: &BattleManagers,
+    final_multiplier: i32,
+) -> i32 {
+    if base_numerator <= 0 || base_denominator <= 0 {
+        return 0;
+    }
+    let (healing_done, healing_taken) = modifier_rates(source_uid, target_uid, managers);
+    (base_numerator
+        .saturating_mul(i128::from(healing_done))
+        .saturating_mul(i128::from(healing_taken))
+        .saturating_mul(i128::from(final_multiplier.max(0)))
+        / base_denominator.saturating_mul(1_000_i128.pow(3)))
+    .clamp(1, i128::from(i32::MAX)) as i32
+}
+
+fn modifier_rates(source_uid: i64, target_uid: i64, managers: &BattleManagers) -> (i32, i32) {
     let healing_done = managers.attribute.get(source_uid, AttrId::HealingDone)
         + managers
             .buff
@@ -103,11 +128,10 @@ pub(crate) fn modified(
             })
             .map_or(0, |_| BURN_HEALING_TAKEN);
     let healing_taken = healing_taken.saturating_sub(injury);
-    scale_permille(
-        scale_permille(base, 1000_i32.saturating_add(healing_done)),
-        1000_i32.saturating_add(healing_taken),
+    (
+        1000_i32.saturating_add(healing_done).max(0),
+        1000_i32.saturating_add(healing_taken).max(0),
     )
-    .max(1)
 }
 
 pub(super) fn amount(
@@ -139,4 +163,26 @@ pub(super) fn amount(
     } else {
         amount
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn final_multiplier_combines_with_healing_modifiers_after_the_base_floor() {
+        let mut managers = BattleManagers::default();
+
+        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, 1_000), 733);
+        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, 1_200), 879);
+
+        managers.attribute.override_sp(
+            10,
+            &sonettobuf::HeroSpAttribute {
+                heal: Some(1),
+                ..Default::default()
+            },
+        );
+        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, 1_200), 880);
+    }
 }
