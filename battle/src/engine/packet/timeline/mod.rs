@@ -936,14 +936,31 @@ fn project_change(
             Vec::new()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::ConsumedForEffect => {
-            vec![EffectPacket::card_remove(&changes.consumed_indices)]
+            match changes.consumption_kind {
+                Some(crate::engine::manager::card::CardConsumptionKind::PaperCircle) => {
+                    EffectPacket::paper_circle_card_remove(
+                        changes
+                            .consumed_owner_uid
+                            .ok_or(ProjectionError::Card(changes.kind))?,
+                        &changes.consumed_indices,
+                    )
+                }
+                _ => vec![EffectPacket::card_remove(&changes.consumed_indices)],
+            }
         }
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::GeneratedAdded => changes
-            .operation
-            .clone()
-            .map(CardPacket::from_change)
-            .into_iter()
-            .collect(),
+        BattleChange::Card(changes)
+            if matches!(
+                changes.kind,
+                CardChangeKind::GeneratedAdded | CardChangeKind::OwnedGeneratedAdded
+            ) =>
+        {
+            changes
+                .operation
+                .clone()
+                .map(CardPacket::from_change)
+                .into_iter()
+                .collect()
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::UniversalAdded => changes
             .after
             .iter()

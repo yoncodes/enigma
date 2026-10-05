@@ -1,5 +1,6 @@
 use sonettobuf::{
-    BuffActInfo, BuffInfo, CardInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute, PowerInfo,
+    BuffActInfo, BuffInfo, CardInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute,
+    HeroSpAttribute, PowerInfo,
 };
 
 use crate::engine::{
@@ -89,17 +90,27 @@ fn hero_sp_attributes_project_active_playmode_immunity_until_removed() {
         ..Default::default()
     };
     let mut managers = BattleManagers::seeded(&fight);
+    managers.attribute.override_sp(
+        -1,
+        &HeroSpAttribute {
+            clutch: Some(50),
+            normal_skill_rate: Some(50),
+            ..Default::default()
+        },
+    );
 
-    let projected_play_drop_rate = |managers: &BattleManagers| {
+    let projected_attribute = |managers: &BattleManagers| {
         managers
             .hero_sp_attributes(&fight)
             .into_iter()
             .find(|attribute| attribute.uid == Some(-1))
             .and_then(|attribute| attribute.attribute)
-            .and_then(|attribute| attribute.play_drop_rate)
     };
 
-    assert_eq!(projected_play_drop_rate(&managers), Some(300));
+    let attribute = projected_attribute(&managers).unwrap();
+    assert_eq!(attribute.clutch, Some(50));
+    assert_eq!(attribute.normal_skill_rate, Some(50));
+    assert_eq!(attribute.play_drop_rate, Some(300));
 
     managers
         .execute_buff(BuffCommand::Remove(BuffRemove {
@@ -112,7 +123,10 @@ fn hero_sp_attributes_project_active_playmode_immunity_until_removed() {
         }))
         .unwrap();
 
-    assert_eq!(projected_play_drop_rate(&managers), Some(0));
+    assert_eq!(
+        projected_attribute(&managers).and_then(|attribute| attribute.play_drop_rate),
+        Some(0)
+    );
 }
 
 #[test]
@@ -957,6 +971,20 @@ fn total_and_round_rule_limits_have_distinct_lifetimes() {
     managers.begin_round();
     assert!(managers.can_fire_rule(1, 433011, 1, round_key, 0, 1));
     assert!(managers.can_fire_rule(1, 433011, 2, round_key, 0, 0));
+}
+
+#[test]
+fn action_round_state_preserves_next_round_reaction_usage() {
+    let mut managers = BattleManagers::default();
+    let key = crate::engine::skill::rule::DefinitionKey::new(22209, "BeAttacked");
+
+    managers.mark_rule_fired(-1, 100, 0, key);
+    managers.begin_reaction_round();
+    assert!(managers.can_fire_rule(-1, 100, 0, key, 0, 1));
+
+    managers.mark_rule_fired(-1, 100, 0, key);
+    managers.begin_action_round();
+    assert!(!managers.can_fire_rule(-1, 100, 0, key, 0, 1));
 }
 
 #[test]

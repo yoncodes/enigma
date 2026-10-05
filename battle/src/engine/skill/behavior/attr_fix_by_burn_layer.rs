@@ -169,6 +169,7 @@ mod tests {
                     modifiers: &mut modifiers,
                     target: &mut target,
                 },
+                owner_skill_id: 0,
                 conditions: &[],
             },
             &behavior,

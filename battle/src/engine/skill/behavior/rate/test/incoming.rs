@@ -1,6 +1,115 @@
 use super::*;
 
 #[test]
+fn incoming_extra_action_modifier_requires_target_observation() {
+    crate::test_support::init_config();
+    let effects = SkillEffectCatalog::from_roots(config::configs::get(), [109380003], []);
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1),
+                    buff_id: Some(109380006),
+                    from_uid: Some(-1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                passive_skill: vec![109380003],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let modifiers_for = |kind: crate::engine::skill::condition::extra::ExtraSkillKind,
+                         target_observed_extra_action| {
+        incoming_target_attack_modifiers(
+            10,
+            -1,
+            31050112,
+            RateRuntime {
+                effects: &effects,
+                managers: &managers,
+                pool: &pool,
+                context: TargetContext {
+                    active_skill_id: 31050112,
+                    active_skill_source_uid: 10,
+                    active_skill_mode: crate::engine::skill::action::SkillExecutionMode::Nested,
+                    target_observed_extra_action,
+                    extra_skill_kind: kind.id(),
+                    direct_skill_body: true,
+                    ..Default::default()
+                },
+            },
+            &mut RoundDeterminism::default(),
+        )
+        .attack_attributes
+    };
+    let penalty = vec![(AttrId::CriticalRate, -500), (AttrId::CriticalDmg, -700)];
+    assert_eq!(
+        modifiers_for(
+            crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction,
+            true
+        ),
+        penalty
+    );
+    assert!(
+        modifiers_for(
+            crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction,
+            false
+        )
+        .is_empty()
+    );
+    assert!(
+        modifiers_for(
+            crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp,
+            false
+        )
+        .is_empty()
+    );
+    assert!(
+        modifiers_for(
+            crate::engine::skill::condition::extra::ExtraSkillKind::Riposte,
+            false
+        )
+        .is_empty()
+    );
+    assert!(
+        incoming_target_attack_modifiers(
+            10,
+            -1,
+            31050112,
+            RateRuntime {
+                effects: &effects,
+                managers: &managers,
+                pool: &pool,
+                context: TargetContext {
+                    active_skill_id: 31050112,
+                    active_skill_source_uid: 10,
+                    active_skill_mode: crate::engine::skill::action::SkillExecutionMode::Active,
+                    direct_skill_body: true,
+                    ..Default::default()
+                },
+            },
+            &mut RoundDeterminism::default(),
+        )
+        .attack_attributes
+        .is_empty()
+    );
+}
+
+#[test]
 fn target_missing_hp_scales_only_the_incoming_damage_reduction_lane() {
     crate::test_support::init_config();
     let effects = SkillEffectCatalog::from_roots(config::configs::get(), [342440140], []);

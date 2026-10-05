@@ -138,10 +138,12 @@ impl EffectPacket {
             }
             let wire = changes.refresh_wire.get(index);
             if wire.is_some_and(|wire| wire.echo_before) {
+                let mut echoed = refreshed.before.clone();
+                echoed.duration = refreshed.after.duration;
                 effects.push(Self::buff_update(&BuffUpdateResult {
                     target_uid: refreshed.target_uid,
-                    before: refreshed.before.clone(),
-                    after: refreshed.before.clone(),
+                    before: echoed.clone(),
+                    after: echoed,
                 }));
             }
             effects.push(Self::buff_update(refreshed));

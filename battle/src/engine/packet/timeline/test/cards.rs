@@ -32,6 +32,7 @@ fn card_consumption_projects_its_owned_wire_effect() {
                 },
                 owner_uid: 10,
                 indices: vec![0],
+                kind: crate::engine::manager::card::CardConsumptionKind::Generic,
             },
         ))
         .unwrap();

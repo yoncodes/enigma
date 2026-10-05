@@ -153,13 +153,7 @@ pub fn rule_ops(
                 return Some(Vec::new());
             }
             let spec = runtime_process_spec(managers, subscriber.buff_id)?;
-            let amount = subscriber
-                .args
-                .first()
-                .copied()
-                .unwrap_or(1)
-                .max(0)
-                .saturating_mul(event_count);
+            let amount = subscriber.args.first().copied().unwrap_or(1).max(0);
             if amount == 0
                 || managers
                     .buff
@@ -168,13 +162,19 @@ pub fn rule_ops(
             {
                 return Some(Vec::new());
             }
-            ShellCommand::Deploy {
-                origin,
-                source_uid: subscriber.owner_uid,
-                target_uid: attacker_uid,
-                stock_buff_id: spec.stock_buff_id,
-                amount,
-            }
+            return Some(
+                (0..event_count)
+                    .map(|_| {
+                        RuleOp::Command(BattleCommand::Shell(ShellCommand::Deploy {
+                            origin,
+                            source_uid: subscriber.owner_uid,
+                            target_uid: attacker_uid,
+                            stock_buff_id: spec.stock_buff_id,
+                            amount,
+                        }))
+                    })
+                    .collect(),
+            );
         }
         BuffActKind::ShellDebuff => {
             let BattleEvent::Hit(hit) = event else {
@@ -252,7 +252,7 @@ fn process_rule_ops(
     let origin = super::command_origin(subscriber)?;
     match change.kind {
         ShellChangeKind::Deployed => {
-            if !determinism.roll_permille(spec.moxie_chance) || spec.moxie_delta == 0 {
+            if !determinism.roll_shell_moxie(spec.moxie_chance) || spec.moxie_delta == 0 {
                 return Some(Vec::new());
             }
             Some(vec![RuleOp::Command(BattleCommand::ExPoint(
@@ -273,12 +273,13 @@ fn process_rule_ops(
                 return Some(Vec::new());
             }
             let attr_id = AttrId::from_raw(spec.heal_attr_id)?;
-            let base = managers
+            let basis = managers
                 .origin_attribute(subscriber.owner_uid, attr_id)
-                .max(0)
-                * spec.heal_rate.max(0)
-                * change.transaction_amount
-                / 1000;
+                .max(0);
+            let base_numerator = i128::from(basis)
+                * i128::from(spec.heal_rate.max(0))
+                * i128::from(change.transaction_amount);
+            let base = (base_numerator / 1000).clamp(0, i128::from(i32::MAX)) as i32;
             if base <= 0 {
                 return Some(Vec::new());
             }
@@ -287,21 +288,25 @@ fn process_rule_ops(
                 .iter()
                 .filter(|ally| managers.hp.current(ally.uid) > 0)
                 .map(|ally| {
-                    let is_crit = determinism.roll_hidden_crit(
-                        subscriber.buff_id,
+                    let is_crit = determinism.roll_indirect_heal_crit(
+                        spec.deployed_buff_id,
                         subscriber.owner_uid,
                         ally.uid,
                         damage::crit_chance(subscriber.owner_uid, ally.uid, pool, managers),
                     );
-                    let mut amount =
-                        damage::modified_heal(base, subscriber.owner_uid, ally.uid, managers);
-                    if is_crit {
-                        amount = amount
-                            * managers
-                                .origin_attribute(subscriber.owner_uid, AttrId::CriticalDmg)
-                                .max(0)
-                            / 1000;
-                    }
+                    let multiplier = if is_crit {
+                        damage::crit_heal_multiplier(subscriber.owner_uid, ally.uid, pool, managers)
+                    } else {
+                        damage::CriticalHealMultiplier::IDENTITY
+                    };
+                    let amount = damage::modified_fractional_heal(
+                        i128::from(base),
+                        1,
+                        subscriber.owner_uid,
+                        ally.uid,
+                        managers,
+                        multiplier,
+                    );
                     crate::engine::manager::hp::HpCommand::Heal(
                         crate::engine::manager::hp::HpHeal {
                             origin,
@@ -450,18 +455,17 @@ mod tests {
         )
         .unwrap();
 
-        assert!(matches!(
-            ops.as_slice(),
-            [RuleOp::Command(BattleCommand::Shell(
-                ShellCommand::Deploy {
-                    source_uid: 10,
-                    target_uid: -1,
-                    stock_buff_id: 31090111,
-                    amount: 3,
-                    ..
-                }
-            ))]
-        ));
+        assert_eq!(ops.len(), 3);
+        assert!(ops.iter().all(|op| matches!(
+            op,
+            RuleOp::Command(BattleCommand::Shell(ShellCommand::Deploy {
+                source_uid: 10,
+                target_uid: -1,
+                stock_buff_id: 31090111,
+                amount: 1,
+                ..
+            }))
+        )));
     }
 
     #[test]
@@ -637,11 +641,17 @@ mod tests {
             transaction_amount: 2,
             settles_transaction: true,
         });
+        let mut determinism = RoundDeterminism::default();
+        determinism.enqueue_indirect_heal_crits([
+            ((999, 10, 10), false),
+            ((31090112, 10, 10), true),
+            ((31090112, 10, 11), false),
+        ]);
 
         let ops = rule_ops(
             &managers,
             &pool,
-            &mut RoundDeterminism::default(),
+            &mut determinism,
             &subscriber(
                 10,
                 10,
@@ -663,7 +673,7 @@ mod tests {
                         crate::engine::manager::hp::HpCommand::Heal(
                             crate::engine::manager::hp::HpHeal {
                                 target_uid: 10,
-                                amount: 600,
+                                kind: crate::engine::manager::hp::HpHealKind::Critical,
                                 ..
                             }
                         ),
@@ -671,6 +681,7 @@ mod tests {
                             crate::engine::manager::hp::HpHeal {
                                 target_uid: 11,
                                 amount: 600,
+                                kind: crate::engine::manager::hp::HpHealKind::Normal,
                                 ..
                             }
                         )

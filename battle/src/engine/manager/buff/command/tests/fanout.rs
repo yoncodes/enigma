@@ -314,6 +314,7 @@ fn opposing_team_halo_fanout_uses_the_configured_scope() {
 fn layered_master_halo_refreshes_existing_allied_copies() {
     crate::test_support::init_config();
     let fight = Fight {
+        version: Some(7),
         attacker: Some(FightTeam {
             entitys: [10, 11, 12]
                 .into_iter()
@@ -353,7 +354,17 @@ fn layered_master_halo_refreshes_existing_allied_copies() {
         .iter()
         .map(|added| added.buff.uid.unwrap())
         .collect::<Vec<_>>();
-    let refreshed = manager.execute(&hp, grant(4)).unwrap();
+    let planned = manager.plan(&hp, grant(4)).unwrap();
+    assert_eq!(
+        grant_plan(&planned)
+            .fanout_refreshes
+            .iter()
+            .filter(|refresh| refresh.uid_reservation.is_some())
+            .count(),
+        2,
+        "each refreshed halo child reserves its version-seven UID"
+    );
+    let refreshed = manager.commit(&hp, planned);
 
     assert_eq!(refreshed.change.refreshed[0].before.layer, Some(8));
     assert_eq!(refreshed.change.refreshed[0].after.layer, Some(12));
@@ -394,6 +405,14 @@ fn layered_master_halo_refreshes_existing_allied_copies() {
             .collect::<Vec<_>>()
     );
     assert_eq!(refreshed.events().len(), 3);
+
+    manager.execute(&hp, grant(99)).unwrap();
+    let capped = manager.plan(&hp, grant(4)).unwrap();
+    assert!(grant_plan(&capped).layer_refresh_uid.is_some());
+    assert_eq!(grant_plan(&capped).silent_refresh_uids.len(), 2);
+    let capped = manager.commit(&hp, capped);
+    assert!(capped.change.refreshed.is_empty());
+    assert!(capped.fanout.is_empty());
 }
 
 #[test]
@@ -451,6 +470,48 @@ fn identical_indefinite_halo_grant_keeps_master_and_children() {
     assert!(manager.has_buff_id(10, 31050141));
     assert!(manager.has_buff_id(10, 31050144));
     assert!(manager.has_buff_id(11, 31050144));
+}
+
+#[test]
+fn halo_layer_refresh_reserves_its_observed_uid() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    let mut hp = HpManager::default();
+    manager.seed(&fight);
+    hp.seed(&fight);
+    let grant = || {
+        BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: -1,
+            target_uid: -1,
+            buff_id: 109320111,
+            amount: Some(99),
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })
+    };
+
+    manager.execute(&hp, grant()).unwrap();
+    let plan = manager.plan(&hp, grant()).unwrap();
+
+    assert_eq!(grant_plan(&plan).action, GrantAction::RefreshLayer);
+    assert!(grant_plan(&plan).layer_refresh_uid.is_some());
 }
 
 #[test]

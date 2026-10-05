@@ -14,12 +14,37 @@ fn resolved_skill_target_does_not_replace_the_invocation_target() {
         FrameTrigger::Active,
     );
 
-    set_skill_target(&mut frames, &skill, Some(10));
+    set_skill_target(&mut frames, &skill, Some(10), false);
 
     assert!(matches!(
         frames[0].owner,
         FrameOwner::Skill {
             target_uid: Some(30),
+            ..
+        }
+    ));
+}
+
+#[test]
+fn resolved_damage_target_replaces_the_selected_action_target() {
+    let mut frames = Vec::new();
+    let skill = push_root(
+        &mut frames,
+        FrameOwner::Skill {
+            source_uid: 10,
+            skill_id: 20,
+            card_index: 0,
+            target_uid: Some(30),
+        },
+        FrameTrigger::Active,
+    );
+
+    set_skill_target(&mut frames, &skill, Some(10), true);
+
+    assert!(matches!(
+        frames[0].owner,
+        FrameOwner::Skill {
+            target_uid: Some(10),
             ..
         }
     ));
@@ -238,8 +263,8 @@ fn conduit_child_target_updates_both_anchors_without_replacing_them() {
         FrameTrigger::Active,
     );
 
-    set_skill_target(&mut frames, &child, Some(20));
-    set_skill_target(&mut frames, &child, Some(30));
+    set_skill_target(&mut frames, &child, Some(20), false);
+    set_skill_target(&mut frames, &child, Some(30), false);
 
     assert!(matches!(
         frames[0].owner,

@@ -52,14 +52,14 @@ impl AdditionalDamageSpec {
         }
     }
 
-    pub fn can_apply(self, managers: &BattleManagers, extra_action: bool) -> bool {
-        !extra_action
-            || self.extra_eureka_cost == 0
-            || managers
-                .eureka
-                .get(self.credited_source_uid, self.power_id)
-                .current
-                >= self.extra_eureka_cost
+    pub fn uses_extra_lane(self, managers: &BattleManagers, extra_action: bool) -> bool {
+        extra_action
+            && (self.extra_eureka_cost == 0
+                || managers
+                    .eureka
+                    .get(self.credited_source_uid, self.power_id)
+                    .current
+                    >= self.extra_eureka_cost)
     }
 
     pub fn attack_replacement(self, managers: &BattleManagers) -> Option<super::AttackReplacement> {
@@ -106,9 +106,9 @@ pub fn resolve(feature: &ActiveBuffFeature) -> Option<AdditionalDamageSpec> {
 pub fn extra_action_cost_op(
     feature: &ActiveBuffFeature,
     additional: AdditionalDamageSpec,
-    extra_action: bool,
+    uses_extra_lane: bool,
 ) -> Option<RuleOp> {
-    if !extra_action || additional.extra_eureka_cost <= 0 || additional.power_id <= 0 {
+    if !uses_extra_lane || additional.extra_eureka_cost <= 0 || additional.power_id <= 0 {
         return None;
     }
     let origin = super::feature_command_origin(feature)?;
@@ -178,6 +178,30 @@ pub fn active_features(
 mod tests {
     use super::*;
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute};
+
+    #[test]
+    fn unaffordable_extra_action_keeps_the_normal_attack_lane() {
+        let additional = AdditionalDamageSpec {
+            formula: crate::engine::damage::DamageFormula::CreditedSourceAdditional,
+            rate: 300,
+            secondary_rate: 150,
+            extra_rate: 600,
+            extra_secondary_rate: 300,
+            temp_buff_id: 0,
+            remove_buff_id: 0,
+            credited_source_uid: 20,
+            extra_eureka_cost: 2,
+            power_id: 1,
+            source_count_cost: 0,
+            requires_assassination: false,
+        };
+        let managers = BattleManagers::default();
+
+        let uses_extra_lane = additional.uses_extra_lane(&managers, true);
+
+        assert!(!uses_extra_lane);
+        assert_eq!(additional.rate(true, uses_extra_lane), 300);
+    }
 
     #[test]
     fn costed_lane_includes_ripostes_without_collapsing_reinforced_skills() {

@@ -40,6 +40,18 @@ pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId) -> i32 {
     }
 }
 
+pub fn extra_action_attribute(feature: &ActiveBuffFeature) -> Option<(AttrId, i32)> {
+    matches!(
+        super::feature_kind(feature),
+        Some(super::registry::BuffActKind::AttrOnlyCalDamageInExtra)
+    )
+    .then_some(())?;
+    let raw_attr = *feature.values.get(1)?;
+    let attr_id = AttrId::from_raw(raw_attr)?;
+    let delta = attribute_delta(feature, attr_id);
+    (delta != 0).then_some((attr_id, delta))
+}
+
 pub fn consumes_after_attack(feature: &ActiveBuffFeature) -> bool {
     match super::feature_kind(feature) {
         Some(super::registry::BuffActKind::AttrOnlyCalDamageBeAttackedType) => {
@@ -201,6 +213,10 @@ mod tests {
                 true,
             ),
             200
+        );
+        assert_eq!(
+            extra_action_attribute(&extra_action),
+            Some((AttrId::DmgBonus, 200))
         );
     }
 

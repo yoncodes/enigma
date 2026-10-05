@@ -159,7 +159,9 @@ impl BuffPolicy {
         let match_existing = if type_family_match {
             ExistingBuffMatch::SharedTypeFamily
         } else if storage == BuffStorage::SeparateCopies
-            || (storage == BuffStorage::Layered && definition.duration > 0)
+            || (storage == BuffStorage::Layered
+                && definition.duration > 0
+                && !definition.merges_timed_layers())
         {
             ExistingBuffMatch::SameIdAndDuration
         } else {

@@ -23,6 +23,25 @@ fn clear_universal_card_is_owned_by_the_player_team() {
 }
 
 #[test]
+fn paper_circle_card_removal_tracks_each_live_hand_position() {
+    let effects = EffectPacket::paper_circle_card_remove(10, &[3, 4, 7]);
+
+    assert_eq!(effects.len(), 3);
+    assert!(effects.iter().all(|effect| {
+        effect.target_id == Some(10)
+            && effect.effect_type == Some(EffectType::Zxqremovecard as i32)
+            && effect.reserve_str.is_none()
+    }));
+    assert_eq!(
+        effects
+            .iter()
+            .filter_map(|effect| effect.effect_num)
+            .collect::<Vec<_>>(),
+        vec![4, 4, 6]
+    );
+}
+
+#[test]
 fn special_moxie_cap_projects_the_captured_snapshot() {
     let effect = EffectPacket::ex_point_max(ExPointMaxApplyResult {
         target_uid: -1,
@@ -160,7 +179,7 @@ fn crit_is_encoded_by_effect_type() {
 
 #[test]
 fn career_restraint_projection_follows_damage_origin() {
-    let project = |damage_from, career_restraint| {
+    let project = |damage_from, career_restraint, effect_id, skill_id| {
         EffectPacket::hp_with_hurt_info_layout(
             HpChange {
                 target_uid: 1,
@@ -174,8 +193,8 @@ fn career_restraint_projection_follows_damage_origin() {
                     is_crit: false,
                     career_restraint,
                     reduce_hp: -3,
-                    effect_id: 0,
-                    skill_id: 0,
+                    effect_id,
+                    skill_id,
                     damage_from,
                     buff_act_id: 0,
                     buff_uid: 0,
@@ -194,10 +213,15 @@ fn career_restraint_projection_follows_damage_origin() {
         .career_restraint
     };
 
-    assert_eq!(project(HurtDamageFromType::SkillEffect, true), None);
-    assert_eq!(project(HurtDamageFromType::Buff, true), None);
-    assert_eq!(project(HurtDamageFromType::Skill, false), Some(false));
-    assert_eq!(project(HurtDamageFromType::Skill, true), Some(true));
+    assert_eq!(project(HurtDamageFromType::SkillEffect, true, 1, 1), None);
+    assert_eq!(project(HurtDamageFromType::Buff, true, 1, 1), None);
+    assert_eq!(project(HurtDamageFromType::ShareHurt, true, 1, 1), None);
+    assert_eq!(
+        project(HurtDamageFromType::ShareHurt, false, 0, 0),
+        Some(false)
+    );
+    assert_eq!(project(HurtDamageFromType::Skill, false, 0, 0), Some(false));
+    assert_eq!(project(HurtDamageFromType::Skill, true, 0, 0), Some(true));
 }
 
 #[test]
@@ -349,6 +373,7 @@ fn assassinate_is_carried_by_the_damage_change() {
         AbsorbHurtMapLayout::default(),
     );
 
+    assert_eq!(effect.effect_num1, Some(1));
     assert_eq!(effect.hurt_info.unwrap().assassinate, Some(true));
 }
 
@@ -474,6 +499,152 @@ fn duration_only_refresh_does_not_emit_an_attribute_marker() {
 
     assert_eq!(
         effects
+            .iter()
+            .map(|effect| effect.effect_type)
+            .collect::<Vec<_>>(),
+        vec![Some(EffectType::Buffupdate as i32)]
+    );
+}
+
+#[test]
+fn capped_timed_layer_refresh_echoes_fresh_duration_and_attribute_marker() {
+    use crate::engine::{
+        manager::{
+            buff::{BuffCommand, BuffConsume, BuffGrant, BuffManager, BuffSelector, DepletedBuff},
+            hp::HpManager,
+        },
+        skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
+    };
+    use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
+
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(40),
+                    buff_id: Some(434121),
+                    from_uid: Some(10),
+                    layer: Some(12),
+                    duration: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+    let mut buffs = BuffManager::default();
+    buffs.seed(&fight);
+    let changes = buffs
+        .execute(
+            &hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 434121,
+                amount: Some(6),
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+
+    let effects = EffectPacket::recorded_buff_changes(&changes);
+
+    assert_eq!(
+        effects
+            .iter()
+            .map(|effect| (
+                effect.effect_type,
+                effect.buff.as_ref().and_then(|buff| buff.duration)
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (Some(EffectType::Buffupdate as i32), Some(3)),
+            (Some(EffectType::Buffupdate as i32), Some(3)),
+            (Some(EffectType::Attr as i32), None),
+        ]
+    );
+
+    let unchanged = buffs
+        .execute(
+            &hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 434121,
+                amount: Some(6),
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+    assert_eq!(
+        EffectPacket::recorded_buff_changes(&unchanged)
+            .iter()
+            .map(|effect| effect.effect_type)
+            .collect::<Vec<_>>(),
+        vec![
+            Some(EffectType::Buffupdate as i32),
+            Some(EffectType::Buffupdate as i32),
+            Some(EffectType::Attr as i32),
+        ]
+    );
+
+    let persistent_fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(41),
+                    buff_id: Some(433911),
+                    from_uid: Some(10),
+                    layer: Some(3),
+                    duration: Some(0),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut persistent_hp = HpManager::default();
+    persistent_hp.seed(&persistent_fight);
+    let mut persistent_buffs = BuffManager::default();
+    persistent_buffs.seed(&persistent_fight);
+    let decrement = persistent_buffs
+        .execute(
+            &persistent_hp,
+            BuffCommand::Consume(BuffConsume {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(50014, "DelBuffLayer"),
+                },
+                target_uid: 10,
+                selector: BuffSelector::ExactId(433911),
+                amount: 1,
+                depleted: DepletedBuff::Keep,
+            }),
+        )
+        .unwrap();
+    assert_eq!(
+        EffectPacket::recorded_buff_changes(&decrement)
             .iter()
             .map(|effect| effect.effect_type)
             .collect::<Vec<_>>(),

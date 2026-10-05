@@ -328,6 +328,8 @@ fn dissolve_reports_its_own_snapshot_after_an_unrelated_card_operation() {
             origin: ORIGIN,
             target_uid: 10,
             skill_id: 200,
+            hero_id: None,
+            team_type: 0,
         }))
         .unwrap();
 
@@ -385,6 +387,8 @@ fn generated_card_keeps_add_hand_semantics() {
             origin: ORIGIN,
             target_uid: 10,
             skill_id: 999,
+            hero_id: None,
+            team_type: 0,
         }))
         .unwrap();
 
@@ -395,6 +399,31 @@ fn generated_card_keeps_add_hand_semantics() {
         added.operation,
         Some(CardChange::AddHand { target_uid: 10, card })
             if card.skill_id == Some(999)
+    ));
+}
+
+#[test]
+fn owned_generated_card_keeps_its_owner_and_team_semantics() {
+    let mut manager = CardManager::default();
+
+    let added = manager
+        .execute_command(CardCommand::AddGenerated(CardAddGenerated {
+            origin: ORIGIN,
+            target_uid: 10,
+            skill_id: 999,
+            hero_id: Some(3124),
+            team_type: 1,
+        }))
+        .unwrap();
+
+    assert_eq!(added.kind, CardChangeKind::OwnedGeneratedAdded);
+    assert_eq!(manager.hand()[0].hero_id, Some(3124));
+    assert_eq!(manager.hand()[0].temp_card, Some(false));
+    assert_eq!(manager.hand()[0].card_type, None);
+    assert!(matches!(
+        added.operation,
+        Some(CardChange::OwnedAddHand { card, team_type: 1 })
+            if card.hero_id == Some(3124) && card.skill_id == Some(999)
     ));
 }
 
@@ -704,6 +733,7 @@ fn effect_consumption_removes_only_planned_owner_skill_cards() {
             origin: ORIGIN,
             owner_uid: 10,
             indices: vec![0, 2],
+            kind: CardConsumptionKind::Generic,
         }))
         .unwrap();
 

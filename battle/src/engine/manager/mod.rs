@@ -1127,8 +1127,16 @@ impl BattleManagers {
     }
 
     pub fn begin_round(&mut self) {
+        self.begin_reaction_round();
+        self.begin_action_round();
+    }
+
+    pub(crate) fn begin_reaction_round(&mut self) {
         self.round_rule_fires.clear();
         self.buff_act_fires.clear();
+    }
+
+    pub(crate) fn begin_action_round(&mut self) {
         self.card.begin_round();
         self.hp.begin_round();
         self.injury.begin_round();
@@ -1321,13 +1329,26 @@ impl BattleManagers {
                     self.catalog().monster_resistances(entity.model_id?),
                     fight_version,
                 );
-                attribute.play_drop_rate = Some(
-                    attribute.play_drop_rate.unwrap_or_default()
-                        + self.buff.attribute_delta(
-                            uid,
-                            crate::engine::entity::attr::AttrId::PlaymodeDmgImmunity,
-                        ),
-                );
+                use crate::engine::entity::attr::AttrId;
+                attribute.revive = Some(self.origin_attribute(uid, AttrId::DmgHeal));
+                attribute.heal = Some(self.origin_attribute(uid, AttrId::HealingDone));
+                attribute.absorb = Some(self.origin_attribute(uid, AttrId::LeechRate));
+                attribute.defense_ignore = Some(self.origin_attribute(uid, AttrId::Penetration));
+                attribute.clutch = Some(self.origin_attribute(uid, AttrId::UltimateMight));
+                attribute.final_add_dmg = Some(self.origin_attribute(uid, AttrId::FinalDmgBonus));
+                attribute.final_drop_dmg =
+                    Some(self.origin_attribute(uid, AttrId::FinalDmgReduction));
+                attribute.normal_skill_rate =
+                    Some(self.origin_attribute(uid, AttrId::IncantationMight));
+                attribute.play_add_rate =
+                    Some(self.origin_attribute(uid, AttrId::PlaymodeDmgIncrease));
+                attribute.play_drop_rate =
+                    Some(self.origin_attribute(uid, AttrId::PlaymodeDmgImmunity));
+                attribute.rebound_dmg = Some(self.origin_attribute(uid, AttrId::ReboundDmg));
+                attribute.extra_dmg = Some(self.origin_attribute(uid, AttrId::ExtraDmg));
+                attribute.reuse_dmg = Some(self.origin_attribute(uid, AttrId::ReuseDmg));
+                attribute.device_skill_rate =
+                    (fight_version == 7).then(|| self.origin_attribute(uid, AttrId::ConduitMight));
                 Some(FightHeroSpAttributeInfo {
                     uid: Some(uid),
                     attribute: Some(attribute),

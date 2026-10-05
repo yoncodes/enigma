@@ -114,7 +114,7 @@ impl ConditionRoute {
                 }),
             });
         let predicate_only = driver.is_none()
-            && definition.is_some_and(|definition| definition.collect_attack_modifier.is_some())
+            && definition.is_some_and(|definition| definition.attack_modifier_only)
             && registry::attack_modifier_side(conditions).is_some();
         Self::compile_with_driver(conditions, driver, predicate_only)
     }

@@ -176,3 +176,34 @@ fn observed_additional_crits_are_consumed_per_target_until_replaced() {
     assert!(!determinism.roll_hidden_crit(100, 10, -1, 0));
     assert!(!determinism.roll_additional_crit(100, 10, 20, -1, 0));
 }
+
+#[test]
+fn observed_indirect_heal_crits_are_owned_by_producer_source_and_target() {
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_indirect_heal_crits([((31090112, 20, 10), true), ((999, 20, 10), false)]);
+
+    assert!(!determinism.roll_indirect_heal_crit(999, 20, 10, 1000));
+    assert!(determinism.roll_indirect_heal_crit(31090112, 20, 10, 0));
+}
+
+#[test]
+fn indirect_heal_fallback_uses_the_producers_critical_stream() {
+    let mut expected = RoundDeterminism::with_seed(7);
+    let expected = expected.roll_crit(31090112, 20, 10, 500);
+    let mut actual = RoundDeterminism::with_seed(7);
+
+    assert_eq!(
+        actual.roll_indirect_heal_crit(31090112, 20, 10, 500),
+        expected
+    );
+}
+
+#[test]
+fn proportional_damage_consumes_its_observation_before_a_rolled_additional_hit() {
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_additional_crits(100, 10, -1, [true, false]);
+
+    determinism.consume_additional_crit_observation(100, 10, -1);
+
+    assert!(!determinism.roll_additional_crit(100, 10, 20, -1, 1000));
+}

@@ -64,6 +64,7 @@ pub struct BehaviorOpContext<'a> {
 
 pub struct AttackModifierContext<'a> {
     pub operation: BehaviorOpContext<'a>,
+    pub owner_skill_id: i32,
     pub conditions: &'a [crate::engine::skill::condition::ParsedCondition],
 }
 

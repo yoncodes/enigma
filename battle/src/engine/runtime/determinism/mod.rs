@@ -55,6 +55,8 @@ pub struct RoundDeterminism {
     card_plays: VecDeque<CardPlayChoice>,
     condition_random_choices: Vec<ConditionRandomChoice>,
     hidden_crit_choices: HashMap<(i32, i64), VecDeque<bool>>,
+    indirect_heal_crit_choices: HashMap<(i32, i64, i64), VecDeque<bool>>,
+    shell_moxie_choices: VecDeque<bool>,
     additional_crit_choices: HashMap<(i32, i64, i64), VecDeque<bool>>,
     scripted_condition_random: HashSet<(i32, i32)>,
     next_ai_card_snapshots: VecDeque<Vec<CardInfo>>,
@@ -243,9 +245,27 @@ impl RoundDeterminism {
             .extend(choices);
     }
 
+    pub fn enqueue_indirect_heal_crits(
+        &mut self,
+        choices: impl IntoIterator<Item = ((i32, i64, i64), bool)>,
+    ) {
+        for (key, is_crit) in choices {
+            self.indirect_heal_crit_choices
+                .entry(key)
+                .or_default()
+                .push_back(is_crit);
+        }
+    }
+
     pub fn clear_crit_choices(&mut self) {
         self.hidden_crit_choices.clear();
+        self.indirect_heal_crit_choices.clear();
         self.additional_crit_choices.clear();
+    }
+
+    pub fn replace_shell_moxie_choices(&mut self, choices: impl IntoIterator<Item = bool>) {
+        self.shell_moxie_choices.clear();
+        self.shell_moxie_choices.extend(choices);
     }
 
     pub fn enqueue_skill_target_choices(
@@ -294,6 +314,38 @@ impl RoundDeterminism {
             .get_mut(&(skill_id, action_source_uid, target_uid))
             .and_then(VecDeque::pop_front)
             .unwrap_or_else(|| self.roll_crit(skill_id, credited_source_uid, target_uid, chance))
+    }
+
+    pub fn roll_indirect_heal_crit(
+        &mut self,
+        producer_id: i32,
+        source_uid: i64,
+        target_uid: i64,
+        chance: i32,
+    ) -> bool {
+        self.indirect_heal_crit_choices
+            .get_mut(&(producer_id, source_uid, target_uid))
+            .and_then(VecDeque::pop_front)
+            .unwrap_or_else(|| self.roll_crit(producer_id, source_uid, target_uid, chance))
+    }
+
+    pub fn roll_shell_moxie(&mut self, chance: i32) -> bool {
+        self.shell_moxie_choices
+            .pop_front()
+            .unwrap_or_else(|| self.roll_permille(chance))
+    }
+
+    /// Consumes a captured additional-damage observation for a formula whose critical result is
+    /// inherited from its resolved main hit rather than rolled independently.
+    pub fn consume_additional_crit_observation(
+        &mut self,
+        skill_id: i32,
+        action_source_uid: i64,
+        target_uid: i64,
+    ) {
+        self.additional_crit_choices
+            .get_mut(&(skill_id, action_source_uid, target_uid))
+            .and_then(VecDeque::pop_front);
     }
 
     pub fn condition_random_roll(&mut self, skill_id: i32, opcode: i32) -> i32 {

@@ -724,6 +724,7 @@ fn round_start_generated_card_is_committed_after_the_before_cards_snapshot() {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
+                model_id: Some(3124),
                 current_hp: Some(100),
                 ex_point: Some(10),
                 ex_point_type: Some(3),

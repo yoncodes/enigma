@@ -89,6 +89,24 @@ impl EffectPacket {
         }
     }
 
+    pub fn paper_circle_card_remove(owner_uid: i64, indices: &[usize]) -> Vec<ActEffect> {
+        indices
+            .iter()
+            .enumerate()
+            .map(|(removed, index)| ActEffect {
+                target_id: Some(owner_uid),
+                effect_type: Some(EffectType::Zxqremovecard as i32),
+                effect_num: Some((index + 1).saturating_sub(removed) as i32),
+                config_effect: Some(0),
+                buff_act_id: Some(0),
+                reserve_id: Some(0),
+                team_type: Some(1),
+                effect_num1: Some(0),
+                ..Default::default()
+            })
+            .collect()
+    }
+
     pub fn card_hand_limit(target_uid: i64, limit: i32, config_effect: i32) -> ActEffect {
         ActEffect {
             target_id: Some(target_uid),

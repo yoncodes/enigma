@@ -104,7 +104,7 @@ pub(super) fn dispatch_event_groups(
     let mut state = EventBatchState::default();
     let mut reactions = ReactionBatch::default();
     for events in event_groups {
-        reactions.append(dispatch_event_batch_inner(
+        let mut group = dispatch_event_batch_inner(
             pool,
             managers,
             catalog,
@@ -120,7 +120,9 @@ pub(super) fn dispatch_event_groups(
             publication_phase,
             owner_uids,
             &mut state,
-        )?);
+        )?;
+        group.order_skills(pool, managers, catalog, events)?;
+        reactions.append(group);
     }
     Ok(reactions)
 }
@@ -285,6 +287,7 @@ fn dispatch_event_batch_inner(
             Some(publication_phase),
         )?;
         retain_event_multiplicity(&mut dispatched, event, &mut state.fired_once_per_target);
+        defer_after_hit_skill_buff_acts(&mut dispatched);
         reactions.before_publish.extend(dispatched.before_publish);
         reactions.after_publish.extend(dispatched.after_publish);
         reactions.after_skill.extend(dispatched.after_skill);
@@ -297,6 +300,50 @@ fn dispatch_event_batch_inner(
     plan_raw_gauge_contributions(managers, &mut reactions.after_hit)?;
     plan_raw_gauge_contributions(managers, &mut reactions.after_action)?;
     Ok(reactions)
+}
+
+pub(super) fn defer_after_hit_skill_buff_acts(reactions: &mut ReactionBatch) {
+    let mut deferred = Vec::new();
+    for lane in [
+        &mut reactions.before_publish,
+        &mut reactions.after_publish,
+        &mut reactions.after_skill,
+        &mut reactions.after_action,
+    ] {
+        let (mut lane_deferred, immediate): (Vec<_>, Vec<_>) = std::mem::take(lane)
+            .into_iter()
+            .partition(waits_for_hit_skills);
+        *lane = immediate;
+        deferred.append(&mut lane_deferred);
+    }
+    reactions.after_hit.extend(deferred);
+}
+
+pub(super) fn waits_for_hit_skills(queued: &QueuedOp) -> bool {
+    matches!(
+        &queued.frame_owner,
+        Some(FrameOwner::BuffAct { key, .. })
+            if crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)
+                .is_some_and(|definition| {
+                    matches!(
+                        definition.runtime.execution_timing,
+                        crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::AfterHitSkills
+                            | crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::BeforeAfterHitObservers
+                    )
+                })
+    )
+}
+
+pub(super) fn runs_before_after_hit_observers(queued: &QueuedOp) -> bool {
+    matches!(
+        &queued.frame_owner,
+        Some(FrameOwner::BuffAct { key, .. })
+            if crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)
+                .is_some_and(|definition| {
+                    definition.runtime.execution_timing
+                        == crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::BeforeAfterHitObservers
+                })
+    )
 }
 
 type OncePerTargetKey = (

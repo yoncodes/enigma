@@ -386,24 +386,35 @@ enum ModifierSide {
     IncomingTarget,
 }
 
+#[derive(Clone, Copy)]
+struct ModifierOwner {
+    uid: i64,
+    skill_id: i32,
+}
+
 fn collect_attack_modifier_slot(
     modifiers: &mut crate::engine::skill::action::SkillModifiers,
-    owner_uid: i64,
+    owner: ModifierOwner,
     active_skill_id: i32,
     slot: &SkillEffectSlot,
     runtime: RateRuntime<'_>,
     determinism: &mut RoundDeterminism,
     side: ModifierSide,
 ) -> bool {
+    let ModifierOwner {
+        uid: owner_uid,
+        skill_id: owner_skill_id,
+    } = owner;
     let RateRuntime {
         managers,
         pool,
         context,
         ..
     } = runtime;
+    let incoming_side = side == ModifierSide::IncomingTarget;
     let incoming = condition_registry::attack_modifier_side(&slot.conditions)
         == Some(condition_registry::AttackModifierSide::IncomingTarget);
-    if incoming != (side == ModifierSide::IncomingTarget) {
+    if incoming != incoming_side {
         return false;
     }
     let Some(definition) = super::registry::find(&slot.behavior) else {
@@ -412,6 +423,12 @@ fn collect_attack_modifier_slot(
     let Some(collect) = definition.collect_attack_modifier else {
         return false;
     };
+    if definition
+        .supports_attack_modifier
+        .is_some_and(|supports| !supports(managers, owner_skill_id, &slot.behavior))
+    {
+        return false;
+    }
     let Ok(route) = slot.compiled_route.as_ref() else {
         return false;
     };
@@ -470,7 +487,17 @@ fn collect_attack_modifier_slot(
             pool,
             context,
         );
-        if fire_count <= 0 {
+        let collect_count =
+            if let Some(has_committed) = definition.collect_attack_modifier_from_committed_state {
+                i32::from(has_committed(
+                    managers,
+                    context.hit_source_uid,
+                    &slot.behavior,
+                ))
+            } else {
+                fire_count.max(0)
+            };
+        if collect_count == 0 {
             continue;
         }
         let targets = TargetResolver::resolve_with_managers_and_context(
@@ -487,23 +514,27 @@ fn collect_attack_modifier_slot(
             .ne(&0)
             .then_some(context.hit_target_uid)
             .or_else(|| (context.runtime_target_uid != 0).then_some(context.runtime_target_uid));
+        let modifier_subject = if incoming_side {
+            (context.hit_source_uid != 0).then_some(context.hit_source_uid)
+        } else {
+            current_hit_target
+        };
         let targets_owner = targets.contains(&owner_uid);
-        let targets_current_hit =
-            current_hit_target.is_some_and(|target_uid| targets.contains(&target_uid));
-        let applies_to_current_attack =
-            targets_owner || (side == ModifierSide::Source && targets_current_hit);
+        let targets_subject =
+            modifier_subject.is_some_and(|target_uid| targets.contains(&target_uid));
+        let applies_to_current_attack = targets_owner || targets_subject;
         if !applies_to_current_attack {
             continue;
         }
-        let modifier_target_uid = if side == ModifierSide::IncomingTarget
-            || (side == ModifierSide::Source && targets_current_hit && !targets_owner)
+        let modifier_target_uid = if incoming_side
+            || (side == ModifierSide::Source && targets_subject && !targets_owner)
         {
-            current_hit_target.unwrap_or_default()
+            modifier_subject.unwrap_or_default()
         } else {
             0
         };
         let mut collected = false;
-        for _ in 0..fire_count {
+        for _ in 0..collect_count {
             let mut target_context = context;
             collected |= collect(
                 AttackModifierContext {
@@ -520,6 +551,7 @@ fn collect_attack_modifier_slot(
                         modifiers,
                         target: &mut target_context,
                     },
+                    owner_skill_id,
                     conditions: &conditions,
                 },
                 &slot.behavior,
@@ -593,7 +625,10 @@ pub fn emit_passive_attack_attributes(
             let career_ratio_before = modifiers.career_ratio_bonus;
             collect_attack_modifier_slot(
                 modifiers,
-                source_uid,
+                ModifierOwner {
+                    uid: source_uid,
+                    skill_id: *passive_skill,
+                },
                 active_skill_id,
                 slot,
                 runtime,
@@ -670,6 +705,18 @@ pub(crate) fn incoming_target_attack_modifiers(
     }
     let mut modifiers = SkillModifiers::default();
     for passive_skill in passive_skills {
+        if context.target_observed_extra_action {
+            let attributes = managers
+                .buff
+                .definition_features(passive_skill)
+                .iter()
+                .filter_map(
+                    crate::engine::skill::buff_act::attr_only_cal_damage_attack::extra_action_attribute,
+                )
+                .collect::<Vec<_>>();
+            modifiers.attack_attributes.extend_from_slice(&attributes);
+            modifiers.shared_attack_attributes.extend(attributes);
+        }
         let Some(effect) = effects.get(passive_skill) else {
             continue;
         };
@@ -678,7 +725,10 @@ pub(crate) fn incoming_target_attack_modifiers(
             let career_ratio_before = modifiers.career_ratio_bonus;
             collect_attack_modifier_slot(
                 &mut modifiers,
-                target_uid,
+                ModifierOwner {
+                    uid: target_uid,
+                    skill_id: passive_skill,
+                },
                 active_skill_id,
                 slot,
                 RateRuntime {

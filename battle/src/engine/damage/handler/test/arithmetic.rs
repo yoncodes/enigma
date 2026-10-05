@@ -100,6 +100,7 @@ fn burn_reduces_ordinary_healing_but_not_full_restores() {
         ..Default::default()
     };
     let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
     managers.attribute.override_sp(
         10,
         &HeroSpAttribute {
@@ -116,19 +117,19 @@ fn burn_reduces_ordinary_healing_but_not_full_restores() {
     let partial = ParsedBehavior::new(20001, "Heal", vec![1, AttrId::Hp.id(), 500]);
 
     assert_eq!(
-        super::heal::amount(10, -1, &managers, false, &full_from_source),
+        super::heal::amount(10, -1, &pool, &managers, false, &full_from_source),
         Some(1_000)
     );
     assert_eq!(
-        super::heal::amount(10, -1, &managers, false, &full_from_target),
+        super::heal::amount(10, -1, &pool, &managers, false, &full_from_target),
         Some(1_000)
     );
     assert_eq!(
-        super::heal::amount(10, -1, &managers, true, &full_from_target),
+        super::heal::amount(10, -1, &pool, &managers, true, &full_from_target),
         Some(1_000)
     );
     assert_eq!(
-        super::heal::amount(10, -1, &managers, false, &partial),
+        super::heal::amount(10, -1, &pool, &managers, false, &partial),
         Some(637)
     );
 }

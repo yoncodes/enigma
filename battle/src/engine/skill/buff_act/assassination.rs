@@ -13,6 +13,10 @@ use crate::engine::{
     },
 };
 
+// Assassination grants Final DMG +5% per 100 excess Critical Technique. A target mark can trigger
+// Assassination and carries its configured additional rate when the attack was already one.
+const TARGET_ASSASSINATION_BASE_RATE: i32 = 50;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AssassinationModifier {
     pub assassinate: bool,
@@ -109,7 +113,9 @@ pub fn target_modifier(
         triggered_by_target: marked && !already_assassinate,
         final_damage_bonus: i32::from(assassinate)
             * (technique_excess / 100)
-            * (target_rate + source_rate),
+            * (TARGET_ASSASSINATION_BASE_RATE
+                + source_rate
+                + i32::from(already_assassinate) * target_rate),
     }
 }
 
@@ -241,15 +247,23 @@ mod tests {
         consumed.defender.as_mut().unwrap().entitys[0].buffs.clear();
         let consumed = BattleManagers::seeded(&consumed);
 
-        let expected = AssassinationModifier {
+        let triggered = AssassinationModifier {
             assassinate: true,
             triggered_by_target: true,
-            final_damage_bonus: 282,
+            final_damage_bonus: 402,
         };
-        assert_eq!(modifier, expected);
+        assert_eq!(modifier, triggered);
         assert_eq!(
             target_modifier(&consumed, 10, -1, false, Some(&[(-1, 10)])),
-            expected
+            triggered
+        );
+        assert_eq!(
+            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, None),
+            AssassinationModifier {
+                assassinate: true,
+                triggered_by_target: false,
+                final_damage_bonus: 432,
+            }
         );
         assert!(
             !target_modifier(&BattleManagers::seeded(&fight), 10, -1, false, Some(&[])).assassinate
@@ -376,7 +390,7 @@ mod tests {
             AssassinationModifier {
                 assassinate: true,
                 triggered_by_target: false,
-                final_damage_bonus: 150,
+                final_damage_bonus: 300,
             }
         );
     }

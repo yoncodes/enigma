@@ -14,6 +14,10 @@ pub enum CardChange {
         target_uid: i64,
         card: CardInfo,
     },
+    OwnedAddHand {
+        card: CardInfo,
+        team_type: i32,
+    },
     SpCardAdd {
         target_uid: i64,
         skill_id: i32,

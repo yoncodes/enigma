@@ -61,6 +61,7 @@ pub fn run_round_start_split(
         context,
         team_type,
         &[],
+        None,
     )?;
     let base_hand_size = crate::engine::manager::card::start::hand_size_from_count(
         pool.attacker_main
@@ -87,6 +88,7 @@ pub fn run_round_start_split(
     Ok((before, next_round))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_before_ai_round_start(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -95,6 +97,7 @@ pub fn run_before_ai_round_start(
     context: TargetContext,
     _team_type: i32,
     wave_entry_condition_uids: &[i64],
+    action_phase_team: Option<i32>,
 ) -> Result<DrainResult, DrainError> {
     let mut owner_uids = pool
         .defender_main
@@ -103,8 +106,9 @@ pub fn run_before_ai_round_start(
         .map(|entity| entity.uid)
         .collect::<Vec<_>>();
     owner_uids.extend(pool.assist_boss(crate::engine::fight::rules::DEFENDER_SIDE_UID));
+    let duration_snapshot = duration_snapshot(managers, &owner_uids);
     let setup_owner_uids = round_start_setup_owner_uids(&owner_uids, 2);
-    let (mut result, pending_settlement) = run_round_start_before_duration(
+    let (mut result, pending_settlement, split_losses) = run_round_start_before_duration(
         managers,
         pool,
         catalog,
@@ -114,11 +118,20 @@ pub fn run_before_ai_round_start(
         &owner_uids,
         false,
         wave_entry_condition_uids,
+        action_phase_team.is_some(),
     )?;
     debug_assert!(pending_settlement.capacity_groups.is_empty());
-    append(
-        &mut result,
-        drain::run_setup_stage_for_owners(
+    debug_assert!(split_losses.frames.is_empty());
+    if let Some(team) = action_phase_team {
+        let duration = drain::run(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            round_start_duration_rules(&duration_snapshot),
+        )?;
+        let late_setup = drain::run_setup_stage_for_owners(
             managers,
             pool,
             catalog,
@@ -127,8 +140,30 @@ pub fn run_before_ai_round_start(
             SetupStage::RoundStartLate,
             0,
             &setup_owner_uids,
-        )?,
-    );
+        )?;
+        let mut action_phase = begin_round_phase(RoundPhase::ActionPhaseStart { team });
+        append_round_phase(&mut action_phase, duration);
+        append_round_phase(&mut action_phase, late_setup);
+        append_round_phase(
+            &mut action_phase,
+            run_action_phase_start(managers, pool, catalog, determinism, context, team)?,
+        );
+        append(&mut result, action_phase);
+    } else {
+        append(
+            &mut result,
+            drain::run_setup_stage_for_owners(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                SetupStage::RoundStartLate,
+                0,
+                &setup_owner_uids,
+            )?,
+        );
+    }
     Ok(result)
 }
 
@@ -149,6 +184,9 @@ pub fn run_round_start_after_ai_split(
     ),
     DrainError,
 > {
+    // These mechanics are the first actions of the next round, even though they are projected in
+    // the preceding BeginRound reply. Their reactions use the next round's fresh quotas.
+    managers.begin_reaction_round();
     let mut owner_uids = pool
         .attacker_main
         .iter()
@@ -160,14 +198,13 @@ pub fn run_round_start_after_ai_split(
     let duration_snapshot = duration_snapshot(managers, &owner_uids);
     let setup_layout =
         crate::engine::fight::versions::round_start_setup_layout(managers.fight_version());
-    let emits_conduit_action_phase_reset = setup_layout
-        == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
-        && !managers.conduit.action_phase_start_commands(1).is_empty();
     let mut fight_steps = DrainResult::default();
     push_cue(
         &mut fight_steps.frames,
         RoundCue::ChangeRound {
-            round: if emits_conduit_action_phase_reset {
+            round: if setup_layout
+                == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
+            {
                 context.current_round
             } else {
                 0
@@ -191,7 +228,7 @@ pub fn run_round_start_after_ai_split(
             )?,
         );
     }
-    let (before_duration, settlement_plan) = run_round_start_before_duration(
+    let (before_duration, settlement_plan, split_losses) = run_round_start_before_duration(
         managers,
         pool,
         catalog,
@@ -201,13 +238,22 @@ pub fn run_round_start_after_ai_split(
         &owner_uids,
         true,
         &[],
+        false,
     )?;
     append(&mut fight_steps, before_duration);
-    append(
-        &mut fight_steps,
-        run_round_start_damage_heal_settlement(managers, pool, catalog, determinism, context)?,
-    );
+    let version_seven =
+        setup_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
+    let split_losses = if version_seven {
+        split_losses
+    } else {
+        append(&mut fight_steps, split_losses);
+        DrainResult::default()
+    };
+    let damage_heal_settlement =
+        run_round_start_damage_heal_settlement(managers, pool, catalog, determinism, context)?;
+    append(&mut fight_steps, damage_heal_settlement);
     let mut settlement = begin_round_phase(RoundPhase::RoundStartSettlement);
+    append_round_phase(&mut settlement, split_losses);
     append_round_phase(
         &mut settlement,
         drain::run_buff_act_setup_stage_for_owners(
@@ -233,15 +279,17 @@ pub fn run_round_start_after_ai_split(
             settlement_plan,
         )?,
     );
-    let duration = drain::run(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        round_start_duration_rules(&duration_snapshot),
-    )?;
-    append_round_phase(&mut settlement, duration);
+    if setup_layout != Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) {
+        let duration = drain::run(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            round_start_duration_rules(&duration_snapshot),
+        )?;
+        append_round_phase(&mut settlement, duration);
+    }
     let event_setup = drain::run_setup_schedule_for_owners_in_round_phase(
         managers,
         pool,
@@ -274,63 +322,99 @@ pub fn run_round_start_after_ai_split(
         ROUND_START_SETTLEMENT_SETUP,
     )?;
     append_round_phase(&mut settlement, settlement_setup);
-    append(&mut fight_steps, settlement);
     let sync_schedule = match setup_layout {
         Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) => {
             ROUND_START_VERSION7_SYNC_SETUP
         }
         _ => ROUND_START_VERSION6_SYNC_SETUP,
     };
-    let mut sync_setup = begin_round_phase(RoundPhase::RoundStartSync);
-    append_round_phase(
-        &mut sync_setup,
-        drain::run_setup_schedule_in_owner_order_round_phase(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            sync_schedule,
-            &setup_owner_uids,
-        )?,
-    );
-    append(&mut fight_steps, sync_setup);
-    append(
-        &mut fight_steps,
-        drain::run_setup_stage_for_owners(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            SetupStage::RoundStartLate,
-            0,
-            &setup_owner_uids,
-        )?,
-    );
+    let sync_setup = drain::run_setup_schedule_in_owner_order_round_phase(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        sync_schedule,
+        &setup_owner_uids,
+    )?;
+    let sync_phase = if version_seven {
+        // Version seven commits synchronization inside the same start-of-round settlement.
+        append_round_phase(&mut settlement, sync_setup);
+        None
+    } else {
+        let mut sync_phase = begin_round_phase(RoundPhase::RoundStartSync);
+        append_round_phase(&mut sync_phase, sync_setup);
+        Some(sync_phase)
+    };
+    let deferred_duration =
+        if setup_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) {
+            drain::run(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                round_start_duration_rules(&duration_snapshot),
+            )?
+        } else {
+            DrainResult::default()
+        };
+    let late_setup = drain::run_setup_stage_for_owners(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        SetupStage::RoundStartLate,
+        0,
+        &setup_owner_uids,
+    )?;
     let defeated_defenders = pool
         .defender_all
         .iter()
         .filter(|entity| managers.hp.current(entity.uid) <= 0)
         .map(|entity| entity.uid)
         .collect::<Vec<_>>();
-    append(
-        &mut fight_steps,
-        run_entity_card_cleanup(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            defeated_defenders,
-        )?,
-    );
+    let card_cleanup = run_entity_card_cleanup(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        defeated_defenders,
+    )?;
     if setup_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) {
-        append(
-            &mut fight_steps,
+        append_round_phase(&mut settlement, deferred_duration);
+        append_round_phase(&mut settlement, late_setup);
+        append_round_phase(&mut settlement, card_cleanup);
+        append_round_phase(
+            &mut settlement,
             run_action_phase_start(managers, pool, catalog, determinism, context, 1)?,
         );
+        append(&mut fight_steps, settlement);
+    } else {
+        append(&mut fight_steps, settlement);
+        append(
+            &mut fight_steps,
+            sync_phase.expect("non-version-seven round start has a synchronization phase"),
+        );
+        append(&mut fight_steps, late_setup);
+        append(&mut fight_steps, card_cleanup);
     }
+    let hand_snapshot = managers.card.hand().to_vec();
+    let after_round_start = drain::run_setup_stage(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        SetupStage::AfterRoundStart,
+        0,
+    )?;
+    // Captured hands place the round-start refill ahead of cards generated at round start.
+    let refill_start = managers.card.refilled().len();
+    let round_start_refill =
+        run_round_start_refill(managers, pool, catalog, determinism, context, hand_size, 1)?;
     push_cue(
         &mut fight_steps.frames,
         RoundCue::DeckCount {
@@ -338,33 +422,10 @@ pub fn run_round_start_after_ai_split(
             team_type: 1,
         },
     );
-    let hand_snapshot = managers.card.hand().to_vec();
     let mut next_round_begin_steps = DrainResult::default();
     push_cue(&mut next_round_begin_steps.frames, RoundCue::DealCard1);
-    push_cue(
-        &mut next_round_begin_steps.frames,
-        RoundCue::LayerHaloSync {
-            buffs: managers.buff.layer_halo_sync(),
-        },
-    );
-    append(
-        &mut next_round_begin_steps,
-        drain::run_setup_stage(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            SetupStage::AfterRoundStart,
-            0,
-        )?,
-    );
-    // Captured hands place the round-start refill ahead of cards generated at round start.
-    let refill_start = managers.card.refilled().len();
-    append(
-        &mut next_round_begin_steps,
-        run_round_start_refill(managers, pool, catalog, determinism, context, hand_size, 1)?,
-    );
+    append(&mut next_round_begin_steps, after_round_start);
+    append(&mut next_round_begin_steps, round_start_refill);
     let mut dealt_cards = managers.card.refilled()[refill_start..].to_vec();
     append(
         &mut next_round_begin_steps,
@@ -421,6 +482,12 @@ pub fn run_round_start_after_ai_split(
             )?,
         );
     }
+    push_cue(
+        &mut next_round_begin_steps.frames,
+        RoundCue::LayerHaloSync {
+            buffs: managers.buff.layer_halo_sync(),
+        },
+    );
     let team_cards = crate::engine::mechanic::card::CardMechanic.special_team_cards(
         pool,
         managers,
@@ -597,7 +664,7 @@ pub fn run_start(
     let version7_opening =
         crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
             == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
-    for (stage, priority) in opening_setup(managers.fight_version()) {
+    for (stage, priority) in START.iter().copied() {
         if stage == SetupStage::RoundStart && !opening_duration_captured {
             opening_duration_snapshot = Some(
                 duration_snapshot(managers, &owner_uids)
@@ -965,44 +1032,6 @@ pub fn run_start(
                 );
             }
         }
-        if stage == SetupStage::AfterRoundStart {
-            let owner_uids = pool
-                .attacker_main
-                .iter()
-                .filter(|entity| managers.hp.current(entity.uid) > 0)
-                .map(|entity| entity.uid)
-                .collect::<Vec<_>>();
-            append(
-                &mut result,
-                drain::run_group_event(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
-                    BattleEvent::Kind(EventKind::RoundStartCard),
-                    drain::ReactionLane::BuffActs,
-                    Some(&owner_uids),
-                )?,
-            );
-            append(
-                &mut result,
-                drain::run_group_event(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
-                    BattleEvent::Kind(EventKind::RoundStartCard),
-                    drain::ReactionLane::Skills,
-                    Some(&owner_uids),
-                )?,
-            );
-            append(
-                &mut result,
-                run_card_energy_allocation(managers, pool, catalog, determinism, context, 1)?,
-            );
-        }
     }
     let mut opening_refill = super::run_opening_hand_refill(
         managers,
@@ -1034,6 +1063,42 @@ pub fn run_start(
     );
     append_round_phase(&mut opening_refill, setup_deck_counts);
     append(&mut result, opening_refill);
+    let owner_uids = pool
+        .attacker_main
+        .iter()
+        .filter(|entity| managers.hp.current(entity.uid) > 0)
+        .map(|entity| entity.uid)
+        .collect::<Vec<_>>();
+    append(
+        &mut result,
+        drain::run_group_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundStartCard),
+            drain::ReactionLane::BuffActs,
+            Some(&owner_uids),
+        )?,
+    );
+    append(
+        &mut result,
+        drain::run_group_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundStartCard),
+            drain::ReactionLane::Skills,
+            Some(&owner_uids),
+        )?,
+    );
+    append(
+        &mut result,
+        run_card_energy_allocation(managers, pool, catalog, determinism, context, 1)?,
+    );
     append(
         &mut result,
         drain::run_setup_stage(
@@ -1091,7 +1156,8 @@ fn run_round_start_before_duration(
     owner_uids: &[i64],
     split_settlement: bool,
     wave_entry_condition_uids: &[i64],
-) -> Result<(DrainResult, RoundStartSettlementPlan), DrainError> {
+    defer_round_start_duration: bool,
+) -> Result<(DrainResult, RoundStartSettlementPlan, DrainResult), DrainError> {
     let duration_snapshot = duration_snapshot(managers, owner_uids);
     let setup_owner_uids = round_start_setup_owner_uids(owner_uids, team);
     let field_ops = managers
@@ -1180,8 +1246,7 @@ fn run_round_start_before_duration(
         Some(owner_uids),
     )?;
     if split_settlement {
-        append(&mut result, losses);
-        return Ok((result, settlement_plan));
+        return Ok((result, settlement_plan, losses));
     }
     let mut round_start_event = begin_round_start_event();
     append_round_phase(&mut round_start_event, losses);
@@ -1197,17 +1262,19 @@ fn run_round_start_before_duration(
             settlement_plan,
         )?,
     );
-    append_round_phase(
-        &mut round_start_event,
-        drain::run(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            round_start_duration_rules(&duration_snapshot),
-        )?,
-    );
+    if !defer_round_start_duration {
+        append_round_phase(
+            &mut round_start_event,
+            drain::run(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                round_start_duration_rules(&duration_snapshot),
+            )?,
+        );
+    }
     append_round_phase(
         &mut round_start_event,
         drain::run_setup_schedule_for_owners_in_round_phase(
@@ -1221,7 +1288,11 @@ fn run_round_start_before_duration(
         )?,
     );
     append(&mut result, round_start_event);
-    Ok((result, RoundStartSettlementPlan::default()))
+    Ok((
+        result,
+        RoundStartSettlementPlan::default(),
+        DrainResult::default(),
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -174,7 +174,7 @@ impl TargetResolver {
             );
         }
 
-        let mut targets = match rule {
+        let targets = match rule {
             TargetRule::Logic => {
                 logic_target(source_uid, skill_id, pool, determinism, managers, context)
             }
@@ -299,17 +299,6 @@ impl TargetResolver {
             TargetRule::AlliesWithStatus => allies_by_status(pool, source_uid, request, true),
             TargetRule::AlliesWithoutStatus => allies_by_status(pool, source_uid, request, false),
         };
-        // Only an attack puts its primary target first; a skill reacting to an attack keeps roster order.
-        if context.active_skill_is_attack
-            && managers.is_none_or(|managers| managers.catalog().skill_is_attack(skill_id))
-            && targets.len() > 1
-            && let Some(index) = targets
-                .iter()
-                .position(|uid| *uid == context.runtime_target_uid)
-        {
-            let primary = targets.remove(index);
-            targets.insert(0, primary);
-        }
         if let Some(captured) = determinism.take_skill_targets(skill_id, source_uid, request.code)
             && captured != targets
         {
@@ -393,8 +382,16 @@ impl TargetResolver {
                 },
             );
             if let Some(target_uid) = targets
-                .into_iter()
-                .find(|target_uid| pool.entity(*target_uid).is_some())
+                .iter()
+                .copied()
+                .find(|target_uid| {
+                    *target_uid == runtime_target_uid && pool.entity(*target_uid).is_some()
+                })
+                .or_else(|| {
+                    targets
+                        .into_iter()
+                        .find(|target_uid| pool.entity(*target_uid).is_some())
+                })
                 && !resolved.contains(&target_uid)
             {
                 resolved.push(target_uid);
@@ -614,6 +611,10 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         4101 => TargetRule::EnemiesWithMonsterLabel(101),
         _ => return None,
     })
+}
+
+pub(crate) fn frame_anchor_for_rule(code: i32, source_uid: i64) -> Option<i64> {
+    matches!(target_rule(code), Some(TargetRule::OtherAllies)).then_some(source_uid)
 }
 
 fn allies_by_status(

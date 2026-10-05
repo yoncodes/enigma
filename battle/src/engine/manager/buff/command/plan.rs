@@ -1,5 +1,7 @@
 use super::*;
 
+const PROVOKE_REAPPLY_UID_RESERVATIONS: i32 = 1;
+
 impl BuffManager {
     #[cfg(test)]
     pub(super) fn plan(
@@ -757,6 +759,16 @@ impl BuffManager {
                 action
             }
         };
+        let replaces_applier_provoke = action == GrantAction::Add
+            && policy.storage == BuffStorage::SeparateCopies
+            && definition.features().iter().any(|feature| {
+                feature.kind == Some(crate::engine::skill::buff_act::registry::BuffActKind::Provoke)
+            })
+            && self.buffs.iter().any(|active| {
+                active.owner_uid == route.target_uid
+                    && active.buff.buff_id == Some(route.buff_id)
+                    && active.buff.from_uid == Some(route.source_uid)
+            });
         let capacity_eviction_uids = if matches!(action, GrantAction::Add) {
             let (limit, mut uids) = if let Some(capacity) = policy.shared_group_capacity {
                 (
@@ -914,27 +926,39 @@ impl BuffManager {
         let partially_capped_layer_refresh = layer_refresh.is_some_and(|refresh| {
             self.partially_caps_layer_refresh(route, &definition, &policy, args, refresh)
         });
-        let layer_refresh_uid =
-            (matches!(
-                layer_refresh,
-                Some(LayerRefreshPlan::PromoteRestored { .. })
-            ) || (matches!(layer_refresh, Some(LayerRefreshPlan::Update { .. }))
-                && (policy.uid.reserve_on_layer_refresh || partially_capped_layer_refresh))
-                || (action == GrantAction::RefreshLayer
-                    && matches!(layer_refresh, Some(LayerRefreshPlan::NoChange))
-                    && definition.is_stackable_type()
-                    && self.transaction_has_stack_progress(route.buff_id)))
-            .then(|| {
-                super::uid_policy::plan(
-                    self,
-                    route,
-                    &definition,
-                    policy.uid.allocation.uses_child_for_apply(args),
-                    0,
-                    uid_reserve_before,
-                )
-            });
-        let fanout_refreshes = match layer_refresh {
+        let halo_refresh = action == GrantAction::RefreshLayer
+            && !crate::engine::buff::halo::carriers(self.catalog(), route.buff_id).is_empty();
+        let capped_halo_refresh =
+            halo_refresh && matches!(layer_refresh, Some(LayerRefreshPlan::NoChange));
+        let layer_refresh_uid = (matches!(
+            layer_refresh,
+            Some(LayerRefreshPlan::PromoteRestored { .. })
+        ) || (matches!(
+            layer_refresh,
+            Some(LayerRefreshPlan::Update { .. })
+        ) && (policy.uid.reserve_on_layer_refresh
+            || partially_capped_layer_refresh
+            || halo_refresh))
+            || (action == GrantAction::RefreshLayer
+                && matches!(layer_refresh, Some(LayerRefreshPlan::NoChange))
+                && (halo_refresh
+                    || definition.is_stackable_type()
+                        && (self.shared_uid_lane
+                            || self.transaction_has_stack_progress(route.buff_id))))
+            || (self.shared_uid_lane
+                && matches!(layer_refresh, Some(LayerRefreshPlan::Echo { .. }))
+                && !self.transaction_has_capped_stack_attempt(route.target_uid, route.buff_id)))
+        .then(|| {
+            super::uid_policy::plan(
+                self,
+                route,
+                &definition,
+                policy.uid.allocation.uses_child_for_apply(args),
+                0,
+                uid_reserve_before,
+            )
+        });
+        let mut fanout_refreshes = match layer_refresh {
             Some(LayerRefreshPlan::Update {
                 buff_uid,
                 next_layer,
@@ -983,6 +1007,49 @@ impl BuffManager {
                 .unwrap_or_default(),
             _ => Vec::new(),
         };
+        if self.shared_uid_lane
+            && crate::engine::buff::halo::has_layer_master(self.catalog(), route.buff_id)
+        {
+            let reservations = super::uid_policy::children_after_sequence(
+                self,
+                route.target_uid,
+                0,
+                layer_refresh_uid,
+                (0..fanout_refreshes.len()).fold(0_i32, |count, _| count.saturating_add(1)),
+            );
+            for (refresh, reservation) in fanout_refreshes.iter_mut().zip(reservations) {
+                refresh.uid_reservation = Some(reservation);
+            }
+        }
+        let silent_refresh_uids = if self.shared_uid_lane && capped_halo_refresh {
+            let count = self
+                .buffs
+                .iter()
+                .find(|active| {
+                    active.owner_uid == route.target_uid
+                        && active.buff.buff_id == Some(route.buff_id)
+                })
+                .and_then(|active| {
+                    Some(self.fanout_refresh_specs(
+                        hp,
+                        route.target_uid,
+                        route.buff_id,
+                        active.buff.uid?,
+                        active.buff.layer.unwrap_or(stack_layer),
+                        active.buff.duration.unwrap_or(policy.lifetime.duration),
+                    ))
+                })
+                .map_or(0, |refreshes| refreshes.len() as i32);
+            super::uid_policy::children_after_sequence(
+                self,
+                route.target_uid,
+                0,
+                layer_refresh_uid,
+                count,
+            )
+        } else {
+            Vec::new()
+        };
         let reserve_after_add = repeated_stack
             || (action == GrantAction::Add
                 && policy.uid.reserve_after_first_apply
@@ -997,7 +1064,12 @@ impl BuffManager {
                     .chain(uid)
                     .chain(fanout.iter().map(|plan| plan.uid))
                     .chain(refresh_uids.iter().copied()),
-                policy.uid.normal_reservations_after_first_apply,
+                policy.uid.normal_reservations_after_first_apply
+                    + if replaces_applier_provoke {
+                        PROVOKE_REAPPLY_UID_RESERVATIONS
+                    } else {
+                        0
+                    },
             )
         } else {
             Vec::new()
@@ -1029,6 +1101,16 @@ impl BuffManager {
             self.buffs
                 .iter()
                 .filter(|active| policy.matches(active, route))
+                .filter_map(|active| active.buff.uid)
+                .collect()
+        } else if replaces_applier_provoke {
+            self.buffs
+                .iter()
+                .filter(|active| {
+                    active.owner_uid == route.target_uid
+                        && active.buff.buff_id == Some(route.buff_id)
+                        && active.buff.from_uid == Some(route.source_uid)
+                })
                 .filter_map(|active| active.buff.uid)
                 .collect()
         } else {
@@ -1072,6 +1154,7 @@ impl BuffManager {
             uid,
             refresh_uids,
             layer_refresh_uid,
+            silent_refresh_uids,
             layer_refresh,
             fanout,
             fanout_refreshes,
@@ -1126,7 +1209,7 @@ impl BuffManager {
                 |progress| progress >= threshold,
             );
             if reached {
-                plan.transition = Some(Box::new(projected.plan_replace_ids(
+                plan.transition = Some(Box::new(self.plan_stack_transition(
                     hp,
                     route.source_uid,
                     route.target_uid,
@@ -1137,6 +1220,43 @@ impl BuffManager {
             }
         }
         Ok(plan)
+    }
+
+    fn plan_stack_transition(
+        &self,
+        hp: &HpManager,
+        source_uid: i64,
+        target_uid: i64,
+        source_buff_id: i32,
+        replacement_buff_id: i32,
+        inputs: GrantInputs,
+    ) -> Result<ReplacePlan, BuffCommandError> {
+        let grant = self.plan_grant_with_source_attack(
+            hp,
+            GrantRequest {
+                source_uid,
+                target_uid,
+                buff_id: replacement_buff_id,
+                input: GrantInput::UnconditionalLayer(0),
+                occurrences: 1,
+                child_uid_reservations: 0,
+                force_normal_uid: false,
+            },
+            inputs,
+        )?;
+        let removed_uids = self
+            .buffs
+            .iter()
+            .filter(|active| {
+                active.owner_uid == target_uid && active.buff.buff_id == Some(source_buff_id)
+            })
+            .filter_map(|active| active.buff.uid)
+            .collect();
+        Ok(ReplacePlan {
+            target_uid,
+            removed_uids,
+            grant,
+        })
     }
 
     fn plan_consume(
