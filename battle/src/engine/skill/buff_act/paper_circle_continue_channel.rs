@@ -28,10 +28,12 @@ pub fn rule_ops(
     match event {
         BattleEvent::Kind(EventKind::RoundEnd) => {
             let skill_id = referenced_skill(&subscriber.raw)?;
-            let mut ops = vec![RuleOp::Skill(SkillInvocation::from(SkillRequest {
+            let mut invocation = SkillInvocation::from(SkillRequest {
                 source_uid: subscriber.owner_uid,
                 skill_id,
-            }))];
+            });
+            invocation.target_observed_extra_action = Some(false);
+            let mut ops = vec![RuleOp::Skill(invocation)];
             if channel_ending(managers, subscriber.owner_uid, subscriber.buff_uid) {
                 ops.extend(channel_end_moxie(managers, subscriber));
                 ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(
@@ -92,6 +94,7 @@ pub fn setup_rule_ops(
         .into();
         invocation.target = SkillTarget::LogicRule(target_rule);
         invocation.mode = SkillExecutionMode::Active;
+        invocation.target_observed_extra_action = Some(false);
         RuleOp::Skill(invocation)
     }));
     Some(ops)

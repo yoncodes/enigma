@@ -110,6 +110,11 @@ pub(in crate::engine::runtime) fn emit_ops(
     let effect = catalog
         .get(effect_skill_id)
         .ok_or(SkillOpError::MissingSkill(effect_skill_id))?;
+    execution.context.target_observed_extra_action =
+        invocation.target_observed_extra_action.unwrap_or(
+            invocation.extra_skill_kind
+                == Some(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction),
+        );
     invocation.mode = action_mode(invocation.mode, invocation.extra_skill_kind);
     if (invocation.condition_key.is_some() || invocation.condition_slot.is_some())
         && matches!(trigger, SkillOpTrigger::Active)

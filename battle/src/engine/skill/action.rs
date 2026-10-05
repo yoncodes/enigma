@@ -137,6 +137,9 @@ pub struct SkillInvocation {
     pub phase: Option<SkillPhase>,
     pub target: SkillTarget,
     pub extra_skill_kind: Option<crate::engine::skill::condition::extra::ExtraSkillKind>,
+    /// Whether target-owned "when the attacker performs an extra action" rules observe this cast.
+    /// Defaults to the configured extra-skill kind when the producer does not override it.
+    pub target_observed_extra_action: Option<bool>,
     pub rate_modifier: Option<SkillRateModifier>,
     pub trigger: SkillTrigger,
     pub mode: SkillExecutionMode,
@@ -158,6 +161,7 @@ impl From<SkillRequest> for SkillInvocation {
             phase: None,
             target: SkillTarget::Configured,
             extra_skill_kind: None,
+            target_observed_extra_action: None,
             rate_modifier: None,
             trigger: SkillTrigger::None,
             mode: SkillExecutionMode::Nested,
@@ -188,6 +192,7 @@ mod invocation_tests {
             phase: Some(SkillPhase::AfterDamage),
             target: SkillTarget::Explicit(-1),
             extra_skill_kind: Some(ExtraSkillKind::FollowUp),
+            target_observed_extra_action: None,
             rate_modifier: None,
             trigger: SkillTrigger::Explicit(30),
             mode: SkillExecutionMode::Nested,

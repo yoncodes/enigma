@@ -96,6 +96,7 @@ pub struct TargetContext {
     pub active_skill_effect_tag: i32,
     pub active_skill_assassinate: bool,
     pub active_skill_mode: SkillExecutionMode,
+    pub target_observed_extra_action: bool,
     pub extra_skill_kind: i32,
     pub damage_target_count_kind: i32,
     pub additional_skill_target_count: i32,

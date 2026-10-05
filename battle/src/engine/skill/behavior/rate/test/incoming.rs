@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn incoming_passive_uses_its_same_id_attack_local_buff_features() {
+fn incoming_extra_action_modifier_requires_target_observation() {
     crate::test_support::init_config();
     let effects = SkillEffectCatalog::from_roots(config::configs::get(), [109380003], []);
     let fight = Fight {
@@ -32,7 +32,8 @@ fn incoming_passive_uses_its_same_id_attack_local_buff_features() {
     };
     let managers = BattleManagers::seeded(&fight);
     let pool = TargetPool::from_fight(&fight);
-    let modifiers_for = |kind: crate::engine::skill::condition::extra::ExtraSkillKind| {
+    let modifiers_for = |kind: crate::engine::skill::condition::extra::ExtraSkillKind,
+                         target_observed_extra_action| {
         incoming_target_attack_modifiers(
             10,
             -1,
@@ -45,6 +46,7 @@ fn incoming_passive_uses_its_same_id_attack_local_buff_features() {
                     active_skill_id: 31050112,
                     active_skill_source_uid: 10,
                     active_skill_mode: crate::engine::skill::action::SkillExecutionMode::Nested,
+                    target_observed_extra_action,
                     extra_skill_kind: kind.id(),
                     direct_skill_body: true,
                     ..Default::default()
@@ -56,14 +58,32 @@ fn incoming_passive_uses_its_same_id_attack_local_buff_features() {
     };
     let penalty = vec![(AttrId::CriticalRate, -500), (AttrId::CriticalDmg, -700)];
     assert_eq!(
-        modifiers_for(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction),
+        modifiers_for(
+            crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction,
+            true
+        ),
         penalty
     );
     assert!(
-        modifiers_for(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp).is_empty()
+        modifiers_for(
+            crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction,
+            false
+        )
+        .is_empty()
     );
     assert!(
-        modifiers_for(crate::engine::skill::condition::extra::ExtraSkillKind::Riposte).is_empty()
+        modifiers_for(
+            crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp,
+            false
+        )
+        .is_empty()
+    );
+    assert!(
+        modifiers_for(
+            crate::engine::skill::condition::extra::ExtraSkillKind::Riposte,
+            false
+        )
+        .is_empty()
     );
     assert!(
         incoming_target_attack_modifiers(

@@ -645,9 +645,11 @@ fn recover_power_and_cast_cards_consumes_only_the_casters_incantations() {
             && first.plan.skill_id == 31050152
             && first.target == SkillTarget::LogicRule(210)
             && first.mode == SkillExecutionMode::Active
+            && first.target_observed_extra_action == Some(false)
             && second.plan.skill_id == 31050152
             && second.target == SkillTarget::LogicRule(210)
             && second.mode == SkillExecutionMode::Active
+            && second.target_observed_extra_action == Some(false)
     ));
 }
 

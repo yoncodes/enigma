@@ -369,6 +369,8 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                 .into();
                 invocation.target = SkillTarget::LogicRule(*target_rule);
                 invocation.mode = SkillExecutionMode::Active;
+                invocation.target_observed_extra_action =
+                    Some(context.target.target_observed_extra_action);
                 RuleOp::Skill(invocation)
             }));
             Some(ops)
