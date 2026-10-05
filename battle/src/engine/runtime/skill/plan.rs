@@ -389,6 +389,33 @@ pub(super) fn linked_shell_attributes(
     (damage || uses_extra_lane, critical)
 }
 
+pub(super) fn owned_linked_attack_attributes(
+    local: &[(crate::engine::entity::attr::AttrId, i32)],
+    shared: &[(crate::engine::entity::attr::AttrId, i32)],
+    action_source_uid: i64,
+    credited_source_uid: i64,
+) -> Vec<(crate::engine::entity::attr::AttrId, i32)> {
+    local
+        .iter()
+        .copied()
+        .filter(|(attr, _)| {
+            *attr != crate::engine::entity::attr::AttrId::CriticalDmg
+                || credited_source_uid == action_source_uid
+        })
+        .chain(shared.iter().copied())
+        .filter(|(attr, _)| {
+            !matches!(
+                attr,
+                crate::engine::entity::attr::AttrId::UltimateMight
+                    | crate::engine::entity::attr::AttrId::IncantationMight
+                    | crate::engine::entity::attr::AttrId::UltimateMightMultiplier
+                    | crate::engine::entity::attr::AttrId::IncantationSkillUltMightMultiplier
+                    | crate::engine::entity::attr::AttrId::IncantationMightMultiplier
+            )
+        })
+        .collect()
+}
+
 pub(super) fn additional_damage_activation(
     invocation: &SkillInvocation,
     managers: &BattleManagers,
@@ -480,6 +507,16 @@ pub(super) fn damage_ops(
 ) -> DamageOps {
     let source_uid = invocation.plan.source_uid;
     let skill_id = invocation.plan.skill_id;
+    let skill_model_id = managers.catalog().skill_hero_id(skill_id);
+    let action_owner_uid = pool
+        .allies(source_uid)
+        .iter()
+        .find(|entity| {
+            skill_model_id == Some(entity.model_id)
+                || pool.skill_slot(managers, entity.uid, skill_id) >= 0
+        })
+        .map(|entity| entity.uid)
+        .unwrap_or(source_uid);
     let rend = crate::engine::skill::buff_act::emitter_rend_target::resolve(
         managers,
         pool,
@@ -608,8 +645,7 @@ pub(super) fn damage_ops(
         // Target-owned incoming modifiers describe the triggering action and therefore also
         // constrain damage credited to another source within that action. The linked hit still
         // keeps its credited source's own passive and attribute lanes.
-        linked_attack_attributes
-            .extend(incoming_modifiers.shared_attack_attributes.iter().copied());
+        let shared_linked_attack_attributes = incoming_modifiers.shared_attack_attributes.clone();
         target_modifiers.merge(incoming_modifiers);
         execution.team_injury_count_consumed = execution
             .team_injury_count_consumed
@@ -881,20 +917,12 @@ pub(super) fn damage_ops(
                     target_uid,
                     damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
                 );
-                let mut additional_attributes = linked_attack_attributes
-                    .iter()
-                    .copied()
-                    .filter(|(attr, _)| {
-                        !matches!(
-                            attr,
-                            crate::engine::entity::attr::AttrId::UltimateMight
-                                | crate::engine::entity::attr::AttrId::IncantationMight
-                                | crate::engine::entity::attr::AttrId::UltimateMightMultiplier
-                                | crate::engine::entity::attr::AttrId::IncantationSkillUltMightMultiplier
-                                | crate::engine::entity::attr::AttrId::IncantationMightMultiplier
-                        )
-                    })
-                    .collect::<Vec<_>>();
+                let mut additional_attributes = owned_linked_attack_attributes(
+                    &linked_attack_attributes,
+                    &shared_linked_attack_attributes,
+                    action_owner_uid,
+                    additional.credited_source_uid,
+                );
                 let (producer_shell_damage, _) =
                     linked_shell_attributes(execution.context.extra_skill_kind, *uses_extra_lane);
                 if producer_shell_damage && !linked_shell_damage && target_shell_damage != 0 {

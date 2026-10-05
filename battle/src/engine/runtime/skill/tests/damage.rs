@@ -1514,6 +1514,29 @@ fn target_owned_performed_action_bonuses_apply_to_main_and_linked_damage() {
 }
 
 #[test]
+fn linked_attack_attributes_keep_critical_damage_source_owned() {
+    let local = vec![
+        (AttrId::DmgBonus, 200),
+        (AttrId::CriticalDmg, 500),
+        (AttrId::IncantationMight, 300),
+    ];
+    let shared = vec![(AttrId::CriticalDmg, -700)];
+
+    assert_eq!(
+        plan::owned_linked_attack_attributes(&local, &shared, 10, 10),
+        vec![
+            (AttrId::DmgBonus, 200),
+            (AttrId::CriticalDmg, 500),
+            (AttrId::CriticalDmg, -700)
+        ]
+    );
+    assert_eq!(
+        plan::owned_linked_attack_attributes(&local, &shared, 10, 11),
+        vec![(AttrId::DmgBonus, 200), (AttrId::CriticalDmg, -700)]
+    );
+}
+
+#[test]
 fn linked_shell_attributes_keep_extra_action_kinds_distinct() {
     use crate::engine::skill::condition::extra::ExtraSkillKind;
 
