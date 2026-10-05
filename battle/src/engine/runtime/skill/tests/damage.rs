@@ -1514,7 +1514,7 @@ fn target_owned_performed_action_bonuses_apply_to_main_and_linked_damage() {
 }
 
 #[test]
-fn linked_attack_attributes_keep_critical_damage_source_owned() {
+fn linked_attack_attributes_distinguish_natural_and_producer_forced_critical() {
     let local = vec![
         (AttrId::DmgBonus, 200),
         (AttrId::CriticalDmg, 500),
@@ -1523,7 +1523,7 @@ fn linked_attack_attributes_keep_critical_damage_source_owned() {
     let shared = vec![(AttrId::CriticalDmg, -700)];
 
     assert_eq!(
-        plan::owned_linked_attack_attributes(&local, &shared, 10, 10),
+        plan::owned_linked_attack_attributes(&local, &shared, 10, 10, false),
         vec![
             (AttrId::DmgBonus, 200),
             (AttrId::CriticalDmg, 500),
@@ -1531,8 +1531,16 @@ fn linked_attack_attributes_keep_critical_damage_source_owned() {
         ]
     );
     assert_eq!(
-        plan::owned_linked_attack_attributes(&local, &shared, 10, 11),
+        plan::owned_linked_attack_attributes(&local, &shared, 10, 11, false),
         vec![(AttrId::DmgBonus, 200), (AttrId::CriticalDmg, -700)]
+    );
+    assert_eq!(
+        plan::owned_linked_attack_attributes(&local, &shared, 10, 11, true),
+        vec![
+            (AttrId::DmgBonus, 200),
+            (AttrId::CriticalDmg, 500),
+            (AttrId::CriticalDmg, -700)
+        ]
     );
 }
 

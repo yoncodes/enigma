@@ -394,6 +394,7 @@ pub(super) fn owned_linked_attack_attributes(
     shared: &[(crate::engine::entity::attr::AttrId, i32)],
     action_source_uid: i64,
     credited_source_uid: i64,
+    inherit_action_critical_damage: bool,
 ) -> Vec<(crate::engine::entity::attr::AttrId, i32)> {
     local
         .iter()
@@ -401,6 +402,7 @@ pub(super) fn owned_linked_attack_attributes(
         .filter(|(attr, _)| {
             *attr != crate::engine::entity::attr::AttrId::CriticalDmg
                 || credited_source_uid == action_source_uid
+                || inherit_action_critical_damage
         })
         .chain(shared.iter().copied())
         .filter(|(attr, _)| {
@@ -922,6 +924,10 @@ pub(super) fn damage_ops(
                     &shared_linked_attack_attributes,
                     action_owner_uid,
                     additional.credited_source_uid,
+                    // A naturally rolled linked critical remains part of the triggering
+                    // attack and inherits its temporary critical-damage lane. A field that
+                    // forces the producer's critical owns that lane instead.
+                    !field_forces_critical(additional.credited_source_uid, managers, extra_action),
                 );
                 let (producer_shell_damage, _) =
                     linked_shell_attributes(execution.context.extra_skill_kind, *uses_extra_lane);
