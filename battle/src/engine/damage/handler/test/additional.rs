@@ -408,8 +408,6 @@ fn proportional_additional_damage_uses_the_credited_sources_career() {
             main,
             rate: 1_250,
             main_rate: 6_000,
-            amount_numerator: i128::from(main.amount),
-            amount_denominator: 1,
             credited_source_uid: 2,
             force_career_restraint: false,
             assassinate: false,
