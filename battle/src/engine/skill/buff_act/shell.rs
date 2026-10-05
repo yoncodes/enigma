@@ -297,7 +297,7 @@ fn process_rule_ops(
                     let multiplier = if is_crit {
                         damage::crit_heal_multiplier(subscriber.owner_uid, ally.uid, pool, managers)
                     } else {
-                        1000
+                        damage::CriticalHealMultiplier::IDENTITY
                     };
                     let amount = damage::modified_fractional_heal(
                         i128::from(base),

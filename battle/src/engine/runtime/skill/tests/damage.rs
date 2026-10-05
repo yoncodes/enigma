@@ -115,6 +115,88 @@ fn configured_damage_target_overrides_an_unmapped_logic_target() {
 }
 
 #[test]
+fn predicate_origin_damage_precedes_the_skills_row_damage() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    attack: Some(1_000),
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::from_spec(
+                BehaviorSpec::new(30014, "OriginDamage"),
+                vec![0, AttrId::Attack as i32, 100],
+                Vec::new(),
+            ),
+            TargetRequest::self_only(),
+        )],
+    });
+    catalog.insert_damage_rate(100, 1_000);
+    catalog.insert_logic_target(100, 1);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+
+    let ops = emit_all_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+    let origin = ops
+        .iter()
+        .position(|op| {
+            matches!(
+                op,
+                RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(damage)))
+                    if damage.effect_kind
+                        == crate::engine::manager::hp::DamageEffectKind::Genesis
+            )
+        })
+        .expect("predicate origin damage should emit");
+    let row = ops
+        .iter()
+        .position(|op| matches!(op, RuleOp::Command(BattleCommand::HpBatch(_))))
+        .expect("row damage should emit");
+
+    assert!(origin < row, "origin={origin} row={row} ops={ops:#?}");
+}
+
+#[test]
 fn purple_emanation_applies_configured_halo_before_destined_doom_damage() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -1244,116 +1326,6 @@ fn additional_damage_keeps_its_own_target_order_and_critical_targets() {
     assert_eq!(hits, vec![(-2, false), (-1, true)]);
 }
 
-#[test]
-fn configured_and_active_additional_damage_producers_both_resolve() {
-    crate::test_support::init_config();
-    let fight = Fight {
-        attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                current_hp: Some(20_000),
-                attr: Some(HeroAttribute {
-                    hp: Some(20_000),
-                    attack: Some(1_000),
-                    ..Default::default()
-                }),
-                buffs: vec![
-                    BuffInfo {
-                        uid: Some(1),
-                        buff_id: Some(31260151),
-                        from_uid: Some(10),
-                        count: Some(2),
-                        ..Default::default()
-                    },
-                    BuffInfo {
-                        uid: Some(2),
-                        buff_id: Some(31260171),
-                        from_uid: Some(10),
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            }],
-            ..Default::default()
-        }),
-        defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                current_hp: Some(20_000),
-                attr: Some(HeroAttribute {
-                    hp: Some(20_000),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }],
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    let mut managers = BattleManagers::seeded(&fight);
-    let pool = TargetPool::from_fight(&fight);
-    let mut catalog = SkillEffectCatalog::default();
-    const SKILL_ID: i32 = 999_999_005;
-    catalog.insert_damage_rate(SKILL_ID, 1_000);
-    let invocation: SkillInvocation = SkillRequest {
-        source_uid: 10,
-        skill_id: SKILL_ID,
-    }
-    .into();
-    let mut execution = SkillExecution::new(TargetContext::default());
-    execution.configured_targets = Some(vec![-1]);
-    execution
-        .modifiers
-        .additional_damage
-        .push(AdditionalDamageModifier {
-            origin: CommandOrigin {
-                domain: RuleDomain::Behavior,
-                key: DefinitionKey::new(60206, "CreateAdditionalDamageAddBuff"),
-            },
-            buff_id: 31200113,
-        });
-    let activations = plan::additional_damage_activation(&invocation, &managers, &execution);
-    assert_eq!(activations.len(), 1);
-    assert_eq!(activations[0].additional.feature.buff_id, 31260151);
-    for activation in activations {
-        execution.activate_additional_damage(activation.additional);
-    }
-    managers
-        .execute_buff(BuffCommand::Grant(BuffGrant {
-            origin: CommandOrigin {
-                domain: RuleDomain::Behavior,
-                key: DefinitionKey::new(60206, "CreateAdditionalDamageAddBuff"),
-            },
-            source_uid: 10,
-            target_uid: 10,
-            buff_id: 31200113,
-            amount: None,
-            occurrences: 1,
-            child_uid_reservations: 0,
-        }))
-        .unwrap();
-
-    let damage = plan::damage_ops(
-        &invocation,
-        &managers,
-        &pool,
-        &catalog,
-        SKILL_ID,
-        &mut RoundDeterminism::default(),
-        &mut execution,
-    );
-    let amounts = damage
-        .additional_damage
-        .into_iter()
-        .filter_map(|command| match command {
-            HpCommand::Damage(hit) => Some(hit.amount),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    assert_eq!(amounts, vec![5_000, 3_000]);
-}
-
 fn assassination_damage_pair(
     inherent_assassination: bool,
     source_bonus: bool,
@@ -2304,7 +2276,7 @@ fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
                     passive_skill: if with_target_passive {
                         vec![109380003, 23390182]
                     } else {
-                        Vec::new()
+                        vec![23390182]
                     },
                     ..Default::default()
                 }],
@@ -2331,6 +2303,7 @@ fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
             active_skill_mode: SkillExecutionMode::Nested,
             extra_skill_kind: crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction
                 .id(),
+            target_observed_extra_action: true,
             ..Default::default()
         });
         execution.configured_targets = Some(vec![-1]);

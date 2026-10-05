@@ -251,7 +251,7 @@ fn captured_version7_conduit_sentinel_keeps_activation_sequence() {
         ]
     );
 
-    fn child_of<'a>(step: &'a FightStep, parent_id: i32, child_id: i32) -> Option<&'a FightStep> {
+    fn child_of(step: &FightStep, parent_id: i32, child_id: i32) -> Option<&FightStep> {
         if step.act_id == Some(parent_id) {
             return step.act_effect.iter().find_map(|effect| {
                 effect
@@ -330,10 +330,11 @@ fn captured_116385711_keeps_opening_owner_and_source_threshold_semantics() {
     let db = init_config().unwrap();
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures/battles/battle72/BeginRoundReply_1.json");
-    let value = captured_start_reply(&path).unwrap();
+    let value = read_start_reply(&path).unwrap();
     let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
     let captured: FightRound = serde_json::from_value(value["round"].clone()).unwrap();
-    let (ex_attributes, sp_attributes) = preview_attributes(&fight, &path).unwrap();
+    let (ex_attributes, sp_attributes) =
+        preview_attributes_with_request(&fight, &path, None).unwrap();
     let mut runtime = ReplayBattle::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
@@ -341,7 +342,7 @@ fn captured_116385711_keeps_opening_owner_and_source_threshold_semantics() {
         sp_attributes,
     );
     runtime.start_round().unwrap();
-    let generated = battle::dungeon::start_reply(&runtime).round.unwrap();
+    let generated = battle::tooling::start_reply(&runtime).round.unwrap();
 
     assert_eq!(generated.fight_step.len(), captured.fight_step.len());
     assert!(
@@ -449,8 +450,8 @@ fn generated_round_ignores_captured_card_metadata() {
 fn reads_dungeon_and_tower_start_reply_envelopes() {
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/battles");
 
-    let dungeon = captured_start_reply(&fixtures.join("battle69/BeginRoundReply_1.json"));
-    let tower = captured_start_reply(&fixtures.join("battle74/BeginRoundReply_1.json"));
+    let dungeon = read_start_reply(&fixtures.join("battle69/BeginRoundReply_1.json"));
+    let tower = read_start_reply(&fixtures.join("battle74/BeginRoundReply_1.json"));
 
     assert!(dungeon.unwrap().get("fight").is_some());
     assert!(tower.unwrap().get("fight").is_some());

@@ -613,6 +613,10 @@ fn target_rule(code: i32) -> Option<TargetRule> {
     })
 }
 
+pub(crate) fn frame_anchor_for_rule(code: i32, source_uid: i64) -> Option<i64> {
+    matches!(target_rule(code), Some(TargetRule::OtherAllies)).then_some(source_uid)
+}
+
 fn allies_by_status(
     pool: &TargetPool,
     source_uid: i64,

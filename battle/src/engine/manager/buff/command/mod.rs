@@ -630,6 +630,7 @@ pub(super) struct GrantPlan {
     uid: Option<UidAllocationPlan>,
     refresh_uids: Vec<UidAllocationPlan>,
     layer_refresh_uid: Option<UidAllocationPlan>,
+    silent_refresh_uids: Vec<UidAllocationPlan>,
     layer_refresh: Option<LayerRefreshPlan>,
     fanout: Vec<PlannedFanout>,
     fanout_refreshes: Vec<PlannedFanoutRefresh>,

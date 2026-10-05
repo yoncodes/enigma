@@ -354,14 +354,22 @@ mod tests {
             Vec::new(),
             Vec::new(),
         );
+        let add_buff_power_use = crate::engine::skill::effect::ParsedBehavior::from_spec(
+            BehaviorSpec::new(2, "AddBuffPowerUse"),
+            Vec::new(),
+            Vec::new(),
+        );
         let attr_fix = crate::engine::skill::effect::ParsedBehavior::from_spec(
             BehaviorSpec::new(10004, "AttrFix"),
             Vec::new(),
             Vec::new(),
         );
 
-        assert!(crate::engine::skill::behavior::runs_after_row_damage(
+        assert!(!crate::engine::skill::behavior::runs_after_row_damage(
             &add_buff
+        ));
+        assert!(crate::engine::skill::behavior::runs_after_row_damage(
+            &add_buff_power_use
         ));
         assert!(!crate::engine::skill::behavior::runs_after_row_damage(
             &attr_fix

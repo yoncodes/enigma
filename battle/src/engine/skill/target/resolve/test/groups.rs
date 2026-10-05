@@ -1,6 +1,12 @@
 use super::*;
 
 #[test]
+fn other_allies_anchor_their_shared_skill_frame_to_the_caster() {
+    assert_eq!(frame_anchor_for_rule(102, 10), Some(10));
+    assert_eq!(frame_anchor_for_rule(103, 10), None);
+}
+
+#[test]
 fn resolves_relative_ally_and_enemy_groups_from_fight() {
     let fight = Fight {
         attacker: Some(FightTeam {

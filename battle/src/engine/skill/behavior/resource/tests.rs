@@ -37,6 +37,41 @@ fn barcarola_resources_require_one_nonzero_configured_delta() {
 }
 
 #[test]
+fn synchronization_gain_uses_the_resource_wire_identity() {
+    let managers = BattleManagers::default();
+    let pool = crate::engine::skill::target::TargetPool::default();
+    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let mut behavior = ParsedBehavior::new(100014, "EzioAddSynchronization", vec![5]);
+    behavior.config_effect = 100014;
+
+    let ops = rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 312301611,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .expect("the exact synchronization behavior emits its resource change");
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(change)))]
+            if change.delta == 5 && change.config_effect == 0
+    ));
+}
+
+#[test]
 fn exact_red_or_blue_behavior_updates_its_registered_carrier() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -1873,7 +1908,7 @@ fn crit_power_progress_counts_a_critical_incantation_once_per_action() {
 }
 
 #[test]
-fn average_life_redistributes_team_hp_by_max_hp_ratio() {
+fn average_life_uses_the_mean_of_each_ally_hp_ratio() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![
@@ -1938,5 +1973,18 @@ fn average_life_redistributes_team_hp_by_max_hp_ratio() {
             _ => panic!("expected current-HP set command"),
         })
         .collect::<Vec<_>>();
-    assert_eq!(values, vec![(10, 50), (11, 150)]);
+    assert_eq!(values, vec![(10, 66), (11, 200)]);
+}
+
+#[test]
+fn average_life_preserves_capture_precision_across_unequal_max_hp() {
+    assert_eq!(
+        super::average_life_values(&[
+            (1, 8016, 12730),
+            (2, 8302, 13310),
+            (3, 6413, 11274),
+            (4, 7982, 12990),
+        ]),
+        Some(vec![(1, 7754), (2, 8108), (3, 6867), (4, 7913)])
+    );
 }

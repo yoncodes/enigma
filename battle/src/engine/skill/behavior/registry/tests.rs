@@ -755,6 +755,7 @@ fn readiness_requires_and_runs_the_exact_argument_validator() {
     let shield = find(&valid).unwrap();
     let add_buff = find_key(1, "AddBuff").unwrap();
 
+    assert_eq!(add_buff.phase, BehaviorPhase::Immediate);
     assert!(shield.supports.is_some_and(|supports| supports(&valid)));
     assert!(!shield.supports.is_some_and(|supports| supports(&malformed)));
     assert!(

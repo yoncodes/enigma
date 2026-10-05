@@ -1012,7 +1012,16 @@ pub(in crate::engine::runtime) fn emit_ops(
         });
     }
 
-    if publishes_lifecycle && active_phase == Some(SkillPhase::HitPassives) {
+    if publishes_lifecycle && active_phase == Some(SkillPhase::AdditionalDamage) && has_row_damage {
+        outputs.push(phase_completed_op(
+            &invocation,
+            managers,
+            catalog,
+            pool,
+            execution,
+            SkillPhase::AdditionalDamage,
+        ));
+    } else if publishes_lifecycle && active_phase == Some(SkillPhase::HitPassives) {
         outputs.push(phase_completed_op(
             &invocation,
             managers,

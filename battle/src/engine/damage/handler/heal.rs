@@ -71,18 +71,13 @@ pub(crate) fn modified_fraction(
     source_uid: i64,
     target_uid: i64,
     managers: &BattleManagers,
-    final_multiplier: i32,
+    final_multiplier: super::critical::CriticalHealMultiplier,
 ) -> i32 {
     if base_numerator <= 0 || base_denominator <= 0 {
         return 0;
     }
-    let (healing_done, healing_taken) = modifier_rates(source_uid, target_uid, managers);
-    (base_numerator
-        .saturating_mul(i128::from(healing_done))
-        .saturating_mul(i128::from(healing_taken))
-        .saturating_mul(i128::from(final_multiplier.max(0)))
-        / base_denominator.saturating_mul(1_000_i128.pow(3)))
-    .clamp(1, i128::from(i32::MAX)) as i32
+    let base = (base_numerator / base_denominator).clamp(1, i128::from(i32::MAX)) as i32;
+    final_multiplier.apply(modified(base, source_uid, target_uid, managers))
 }
 
 fn modifier_rates(source_uid: i64, target_uid: i64, managers: &BattleManagers) -> (i32, i32) {
@@ -156,10 +151,7 @@ pub(super) fn amount(
         behavior.args.first().copied()?
     };
     Some(if is_crit && !is_full_restore(behavior) {
-        scale_permille(
-            amount,
-            super::critical::heal_multiplier(source_uid, target_uid, pool, managers),
-        )
+        super::critical::heal_multiplier(source_uid, target_uid, pool, managers).apply(amount)
     } else {
         amount
     })
@@ -170,11 +162,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn final_multiplier_combines_with_healing_modifiers_after_the_base_floor() {
+    fn healing_modifiers_settle_before_the_final_multiplier() {
         let mut managers = BattleManagers::default();
 
-        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, 1_000), 733);
-        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, 1_200), 879);
+        assert_eq!(
+            modified_fraction(
+                733,
+                1,
+                10,
+                11,
+                &managers,
+                super::super::critical::CriticalHealMultiplier::IDENTITY,
+            ),
+            733
+        );
+        let boosted = super::super::critical::CriticalHealMultiplier::from_permille(1_200);
+        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, boosted), 879);
 
         managers.attribute.override_sp(
             10,
@@ -183,6 +186,6 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, 1_200), 880);
+        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, boosted), 879);
     }
 }

@@ -1,4 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use crate::engine::{
     manager::hp::DeathTransition,
@@ -12,11 +16,14 @@ use super::{DrainBudget, DrainError, QueuedOp};
 #[derive(Default)]
 pub(super) struct DrainState {
     after_hit: HashMap<FramePath, Vec<QueuedOp>>,
+    hit_passive_skills: HashMap<FramePath, Vec<QueuedOp>>,
     hit_skills: HashMap<FramePath, Vec<QueuedOp>>,
     after_hit_skills: HashMap<FramePath, Vec<QueuedOp>>,
     after_action: HashMap<FramePath, Vec<QueuedOp>>,
     // Casts held until their action completes, with the step that cast them.
     after_action_casts: HashMap<FramePath, Vec<(Option<FrameOwner>, QueuedOp)>>,
+    // Casts released after a reaction action inherit that reaction's frame once it materializes.
+    after_reaction_casts: HashMap<usize, Vec<(Option<FrameOwner>, QueuedOp)>>,
     // Actions that will publish ActionCompleted and have not yet done so.
     open_actions: HashSet<FramePath>,
     completed_actions: HashSet<FramePath>,
@@ -96,6 +103,21 @@ impl DrainState {
         defer(&mut self.hit_skills, action_path, queued);
     }
 
+    pub(super) fn defer_hit_passive_skills(
+        &mut self,
+        action_path: Option<&[usize]>,
+        queued: Vec<QueuedOp>,
+    ) {
+        defer(&mut self.hit_passive_skills, action_path, queued);
+    }
+
+    pub(super) fn take_hit_passive_skills(
+        &mut self,
+        action_path: Option<&FramePath>,
+    ) -> Option<Vec<QueuedOp>> {
+        action_path.and_then(|path| self.hit_passive_skills.remove(path))
+    }
+
     pub(super) fn take_hit_skills(
         &mut self,
         action_path: Option<&FramePath>,
@@ -145,6 +167,26 @@ impl DrainState {
             .unwrap_or_default()
     }
 
+    pub(super) fn defer_after_reaction_casts(
+        &mut self,
+        group: &Rc<RefCell<Option<FramePath>>>,
+        casts: Vec<(Option<FrameOwner>, QueuedOp)>,
+    ) {
+        self.after_reaction_casts
+            .entry(Rc::as_ptr(group) as usize)
+            .or_default()
+            .extend(casts);
+    }
+
+    pub(super) fn take_after_reaction_casts(
+        &mut self,
+        group: &Rc<RefCell<Option<FramePath>>>,
+    ) -> Vec<(Option<FrameOwner>, QueuedOp)> {
+        self.after_reaction_casts
+            .remove(&(Rc::as_ptr(group) as usize))
+            .unwrap_or_default()
+    }
+
     pub(super) fn cancel_action(&mut self, action_path: &FramePath) -> Vec<QueuedOp> {
         self.open_actions.remove(action_path);
         self.completed_actions.insert(action_path.clone());
@@ -153,6 +195,11 @@ impl DrainState {
         self.target_modifiers.remove(action_path);
 
         let mut abandoned = self.after_hit.remove(action_path).unwrap_or_default();
+        abandoned.extend(
+            self.hit_passive_skills
+                .remove(action_path)
+                .unwrap_or_default(),
+        );
         abandoned.extend(self.hit_skills.remove(action_path).unwrap_or_default());
         abandoned.extend(
             self.after_hit_skills

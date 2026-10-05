@@ -37,6 +37,21 @@ fn halo_fanout_keeps_add_markers_from_non_halo_features() {
 }
 
 #[test]
+fn layer_master_halo_refresh_repeats_its_wire_marker() {
+    crate::test_support::init_config();
+
+    assert_eq!(
+        BuffDefinition::get(312411442)
+            .unwrap()
+            .wire_markers(crate::engine::skill::buff_act::wire::WirePhase::Refresh),
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Layermasterhalo as i32,
+            sonettobuf::effect_type_enum::EffectType::Attr as i32,
+        ]
+    );
+}
+
+#[test]
 fn initializes_common_params_for_stateful_buff_acts() {
     crate::test_support::init_config();
 
@@ -103,6 +118,11 @@ fn feature_kind_controls_post_apply_uid_reservation() {
     assert!(shell_stack.uses_child_uid());
     assert!(!shell_stack.reserves_child_after_first_apply());
     assert!(shell_stack.reserves_child_on_layer_refresh());
+
+    let replacement_stack = BuffDefinition::get(2295013).unwrap();
+    assert!(replacement_stack.uses_child_uid());
+    assert!(!replacement_stack.reserves_child_after_first_apply());
+    assert!(replacement_stack.reserves_child_on_layer_refresh());
 
     let halo = BuffDefinition::get(109320111).unwrap();
     assert!(halo.uses_child_uid());

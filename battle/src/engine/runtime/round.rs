@@ -149,7 +149,9 @@ impl BattleRuntime {
         }
         self.round_state.before_cards2.clear();
         self.round_state.team_a_cards2.clear();
-        self.managers.begin_round();
+        // Next-round start mechanics ran at the end of the preceding command and already own
+        // this round's reaction quotas. Reset the remaining per-action manager state here.
+        self.managers.begin_action_round();
         let current_card_skills = self
             .managers
             .card

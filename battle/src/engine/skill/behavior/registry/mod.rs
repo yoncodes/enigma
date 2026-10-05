@@ -595,7 +595,7 @@ behavior_definitions! {
     [60112] "AddTargetBuffByPoison" => super::buff::Handler, AddTargetBuffByPoison, AfterDamage, destination;
     [60142] "ConsumePowerAddBuff" => super::buff::Handler, ConsumePowerAddBuff, Immediate, destination, super::buff::supports_consume_power_add_buff;
     [60150] "ConsumePowerAddMultiBuff1" => super::buff::Handler, ConsumePowerAddMultiBuff1, Immediate, destination, super::buff::supports_consume_power_add_multi_buff;
-    [1] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_modifier, arguments::at_least_one;
+    [1] "AddBuff" => super::buff::Handler, AddBuff, Immediate, aggregated_modifier, arguments::at_least_one;
     [2] "AddBuffPowerUse" => super::buff::Handler, AddBuffPowerUse, AfterDamage, aggregated_destination, arguments::at_least_one;
     [1210001] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination;
     [1210002] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination;
@@ -708,8 +708,8 @@ behavior_definitions! {
     [60271] "SetExtraType" => super::general::SetExtraTypeHandler, SetExtraType, Immediate, destination, super::general::supports_extra_type;
     [10006] "Damage" => crate::engine::damage::handler::Handler, Damage, Immediate, destination, crate::engine::damage::handler::supports_attribute_damage;
     [10008] "Damage2" => crate::engine::damage::handler::Handler, Damage2, Immediate, plain;
-    [30014] "OriginDamage" => crate::engine::damage::handler::Handler, OriginDamage, AfterDamage, destination, crate::engine::damage::handler::supports_origin_damage;
-    [30015] "OriginDamageCanCrit" => crate::engine::damage::handler::Handler, OriginDamageCanCrit, AfterDamage, destination, crate::engine::damage::handler::supports_origin_damage;
+    [30014] "OriginDamage" => crate::engine::damage::handler::Handler, OriginDamage, Immediate, destination, crate::engine::damage::handler::supports_origin_damage;
+    [30015] "OriginDamageCanCrit" => crate::engine::damage::handler::Handler, OriginDamageCanCrit, Immediate, destination, crate::engine::damage::handler::supports_origin_damage;
     [60146] "OriginDamageByTeamAttr" => crate::engine::damage::handler::Handler, OriginDamageByTeamAttr, AfterDamage, plain, crate::engine::damage::handler::supports_team_attr_damage;
     [60127] "OriginDamageByAttrAndBuffGroupSize" => crate::engine::damage::handler::Handler, OriginDamageByAttrAndBuffGroupSize, AfterDamage, plain;
     [60282] "ButterflyDamage" => crate::engine::damage::handler::Handler, ButterflyDamage, AfterDamage, destination, crate::engine::damage::handler::supports_butterfly_damage;

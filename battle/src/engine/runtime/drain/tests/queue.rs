@@ -900,6 +900,114 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
     );
 }
 
+#[test]
+fn shell_necklace_cast_releases_inside_the_following_riposte() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                passive_skill: vec![31090144],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31090111),
+                    from_uid: Some(10),
+                    layer: Some(15),
+                    ..Default::default()
+                }],
+                ..entity(10)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                entity(-1),
+                FightEntityInfo {
+                    buffs: vec![BuffInfo {
+                        uid: Some(30),
+                        buff_id: Some(2292031),
+                        from_uid: Some(-2),
+                        duration: Some(3),
+                        ..Default::default()
+                    }],
+                    ..entity(-2)
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 31090144, 312301621], []);
+    crate::engine::mechanic::shell::execute(
+        &mut managers,
+        ShellCommand::AccumulateAndUseSkill {
+            rule: ConfiguredRuleKey::new(31090144, 2, DefinitionKey::new(60135, "ShellUseSkill")),
+            source_uid: 10,
+            target_uid: -1,
+            threshold: 7,
+            delta: 6,
+            skill_id: 31090114,
+        },
+    )
+    .unwrap();
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(31090111))
+        .expect("the attack projects a step");
+    let children = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .collect::<Vec<_>>();
+    let riposte = children
+        .iter()
+        .find(|step| step.act_id == Some(2292031))
+        .expect("the attack causes the ally riposte");
+    assert!(!children.iter().any(|step| step.act_id == Some(31090144)));
+    assert!(riposte.act_effect.iter().any(|effect| {
+        effect.fight_step.as_ref().is_some_and(|step| {
+            step.act_effect.iter().any(|effect| {
+                effect
+                    .fight_step
+                    .as_ref()
+                    .is_some_and(|step| step.act_id == Some(31090144))
+            })
+        })
+    }));
+}
+
 fn direct_use_passive(
     skill_id: i32,
     condition: i32,
@@ -1566,6 +1674,7 @@ fn a_skill_cast_by_another_skill_keeps_its_step_without_effects() {
         .filter_map(|effect| effect.fight_step.as_ref())
         .find(|step| step.act_id == Some(435221))
         .expect("the cast skill keeps its step");
+    assert_eq!((cast.from_id, cast.to_id), (Some(10), Some(10)));
     assert!(cast.act_effect.is_empty());
 }
 
@@ -1635,10 +1744,17 @@ fn an_after_being_attacked_buff_act_waits_for_the_hit_skills_boundary() {
             Some(buff_act(871, "ShellDebuff"))
         ]
     );
+    assert!(!runs_before_after_hit_observers(&queued(buff_act(
+        870, "Shell"
+    ))));
+    assert!(runs_before_after_hit_observers(&queued(buff_act(
+        871,
+        "ShellDebuff"
+    ))));
 }
 
 #[test]
-fn only_a_shared_primary_hit_waits_for_the_actions_after_hit_skills() {
+fn shared_primary_skill_events_wait_for_the_actions_after_hit_skills() {
     let hit = |share_count| QueuedOp {
         op: RuleOp::Skill(
             SkillRequest {
@@ -1675,6 +1791,25 @@ fn only_a_shared_primary_hit_waits_for_the_actions_after_hit_skills() {
 
     assert!(!waits_for_shared_hit_completion(&hit(0)));
     assert!(waits_for_shared_hit_completion(&hit(3)));
+    let mut shared = hit(0);
+    shared.trigger = SkillOpTrigger::Event(BattleEvent::DamageShared {
+        origin: CommandOrigin {
+            domain: RuleDomain::BuffAct,
+            key: DefinitionKey::new(872, "ShareHurt"),
+        },
+        source_uid: 10,
+        target_uid: -1,
+        amount: 100,
+        share_count: 3,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::SkillEffect,
+    });
+    assert!(!waits_for_shared_hit_completion(&shared));
+    if let SkillOpTrigger::Event(BattleEvent::DamageShared { damage_from, .. }) =
+        &mut shared.trigger
+    {
+        *damage_from = crate::engine::manager::hp::HurtDamageFromType::Skill;
+    }
+    assert!(waits_for_shared_hit_completion(&shared));
 }
 
 #[test]

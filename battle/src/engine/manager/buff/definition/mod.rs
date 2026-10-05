@@ -614,7 +614,11 @@ impl BuffDefinition {
             && !self.features.iter().any(|feature| {
                 matches!(
                     feature.kind,
-                    Some(BuffActKind::HaloBase | BuffActKind::ShellProcess)
+                    Some(
+                        BuffActKind::BuffReplace
+                            | BuffActKind::HaloBase
+                            | BuffActKind::ShellProcess
+                    )
                 )
             })
             && !self
@@ -667,10 +671,12 @@ impl BuffDefinition {
     pub(super) fn reserves_child_on_layer_refresh(&self) -> bool {
         self.status != BuffStatus::Special
             || self.is_layer_type()
-            || self
-                .features
-                .iter()
-                .any(|feature| feature.kind == Some(BuffActKind::ShellProcess))
+            || self.features.iter().any(|feature| {
+                matches!(
+                    feature.kind,
+                    Some(BuffActKind::BuffReplace | BuffActKind::ShellProcess)
+                )
+            })
     }
 
     fn is_layer_type(&self) -> bool {

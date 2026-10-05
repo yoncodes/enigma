@@ -182,25 +182,30 @@ fn ezio_reuse_ops(card_index: i32, is_attack: bool) -> (Vec<RuleOp>, ParsedBehav
 }
 
 #[test]
-fn target_buff_follow_up_consumes_the_mark_before_invocation() {
+fn target_buff_follow_up_consumes_the_mark_after_invocation() {
     let (ops, behavior) = ezio_reuse_ops(1, true);
 
     assert!(matches!(
         ops.as_slice(),
         [
+            RuleOp::Skill(invocation),
             RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
                 target_uid: -1,
                 selector: BuffSelector::ExactId(229701),
                 amount: 1,
                 ..
-            }))),
-            RuleOp::Skill(invocation)
+            })))
         ] if invocation.plan.source_uid == 10
             && invocation.plan.skill_id == 312301711
             && invocation.target == crate::engine::skill::action::SkillTarget::Explicit(-1)
             && invocation.extra_skill_kind == Some(ExtraSkillKind::FollowUp)
             && invocation.mode == crate::engine::skill::action::SkillExecutionMode::Active
     ));
+    assert_eq!(Handler::output_owner(&behavior, &ops[0], 0), None);
+    assert_eq!(
+        Handler::output_owner(&behavior, &ops[1], 1),
+        Some(super::super::registry::OutputOwner::Parent)
+    );
     let references = references(&behavior);
     assert_eq!(references.buffs, vec![229701]);
     assert_eq!(references.skills, vec![312301711]);
@@ -879,7 +884,7 @@ fn repeat_previous_skill_uses_the_event_actor_skill_and_target() {
 }
 
 #[test]
-fn direct_use_skill_no_act_preserves_the_trigger_target() {
+fn direct_use_skill_no_act_uses_its_configured_target() {
     let behavior = ParsedBehavior::new(50012, "DirectUseSkillNoAct", vec![434725, 1]);
     let managers = crate::engine::manager::BattleManagers::default();
     let pool = TargetPool::default();
@@ -913,7 +918,7 @@ fn direct_use_skill_no_act_preserves_the_trigger_target() {
         [RuleOp::Skill(invocation)]
             if invocation.plan.skill_id == 434725
                 && invocation.target
-                    == crate::engine::skill::action::SkillTarget::Explicit(10)
+                    == crate::engine::skill::action::SkillTarget::Explicit(20)
     ));
 }
 

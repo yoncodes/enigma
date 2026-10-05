@@ -671,9 +671,9 @@ fn change_round_effect_num(round: &DrainResult) -> i32 {
 }
 
 #[test]
-fn version_seven_change_round_payload_names_the_next_round_without_a_conduit_area() {
+fn version_seven_change_round_payload_names_the_active_round_without_a_conduit_area() {
     let round = scheduled_round_start(7, None);
-    assert_eq!(change_round_effect_num(&round), 4);
+    assert_eq!(change_round_effect_num(&round), 3);
     assert!(round.outcomes.iter().any(|outcome| matches!(
         outcome,
         RuleOutcome::Conduit(
@@ -683,7 +683,7 @@ fn version_seven_change_round_payload_names_the_next_round_without_a_conduit_are
     assert!(round.frames.iter().any(|frame| matches!(
         frame.owner,
         crate::engine::runtime::record::FrameOwner::RoundPhase(
-            crate::engine::runtime::record::RoundPhase::ActionPhaseStart { team: 1 }
+            crate::engine::runtime::record::RoundPhase::RoundStartSettlement
         )
     )));
 }
@@ -699,9 +699,9 @@ fn change_round_payload_is_zero_when_the_layout_does_not_reset_conduit_power() {
 }
 
 #[test]
-fn version_seven_change_round_payload_names_the_next_round_with_a_conduit_area() {
+fn version_seven_change_round_payload_names_the_active_round_with_a_conduit_area() {
     let round = scheduled_round_start(7, Some(3149));
-    assert_eq!(change_round_effect_num(&round), 4);
+    assert_eq!(change_round_effect_num(&round), 3);
     let conduit_changes = round
         .outcomes
         .iter()
@@ -777,6 +777,40 @@ fn round_start_excludes_before_ap_resolution_from_its_phase_buckets() {
     )
     .unwrap();
     assert_eq!(managers.ex_point.get(10), 2);
+    fn contains_ex_point_change(frame: &crate::engine::runtime::record::SemanticFrame) -> bool {
+        frame.items.iter().any(|item| match item {
+            crate::engine::runtime::record::FrameItem::Change(change) => {
+                matches!(
+                    change.as_ref(),
+                    crate::engine::runtime::change::BattleChange::ExPoint(_)
+                )
+            }
+            crate::engine::runtime::record::FrameItem::Child(child) => {
+                contains_ex_point_change(child)
+            }
+            crate::engine::runtime::record::FrameItem::Cue(_) => false,
+        })
+    }
+    let after_round_start = next_round_begin_steps
+        .frames
+        .iter()
+        .position(contains_ex_point_change)
+        .expect("after-round-start change is recorded");
+    let layer_halo_sync = next_round_begin_steps
+        .frames
+        .iter()
+        .position(|frame| {
+            frame.items.iter().any(|item| {
+                matches!(
+                    item,
+                    crate::engine::runtime::record::FrameItem::Cue(
+                        crate::engine::runtime::record::RoundCue::LayerHaloSync { .. }
+                    )
+                )
+            })
+        })
+        .expect("layer-halo synchronization is recorded");
+    assert!(after_round_start < layer_halo_sync);
     let fight_steps = crate::engine::packet::timeline::project(&fight_steps.frames).unwrap();
     let next_round_begin_steps =
         crate::engine::packet::timeline::project(&next_round_begin_steps.frames).unwrap();
@@ -853,6 +887,7 @@ fn round_start_generated_cards_exist_before_card_energy_allocation() {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
+                model_id: Some(3124),
                 current_hp: Some(100),
                 ex_point: Some(10),
                 ex_point_type: Some(3),

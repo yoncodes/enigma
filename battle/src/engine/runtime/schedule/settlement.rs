@@ -468,7 +468,16 @@ pub fn run_entity_settlement(
                 ))],
             )?,
         };
-        append(&mut result, next);
+        if side == SettlementSide::Defender
+            && matches!(
+                step,
+                SettlementStep::OwnerEvent(EventKind::RoundEndEntitySettlement)
+            )
+        {
+            append_round_phase(&mut result, next);
+        } else {
+            append(&mut result, next);
+        }
     }
     Ok(EntitySettlement {
         output: result,

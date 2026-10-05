@@ -5,7 +5,7 @@ use crate::engine::{
     manager::{
         BattleManagers,
         buff::{ActiveBuffFeature, BuffCommand, BuffRemove, BuffRemoveSelector},
-        card::{CardCommand, CardConsumeForEffect},
+        card::{CardCommand, CardConsumeForEffect, CardConsumptionKind},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
         ex_point::{ExPointChange, ExPointCommand},
     },
@@ -83,6 +83,7 @@ pub fn setup_rule_ops(
                 origin,
                 owner_uid,
                 indices: cards.iter().map(|(index, _)| *index).collect(),
+                kind: CardConsumptionKind::PaperCircle,
             }),
         )));
     }

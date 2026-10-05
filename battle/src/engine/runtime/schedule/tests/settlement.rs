@@ -883,6 +883,58 @@ fn defender_after_settlement_runs_its_registered_passive_skill() {
 }
 
 #[test]
+fn defender_entity_settlement_nests_its_periodic_passive() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                passive_skill: vec![109380006],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    let result = run_entity_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        &[-1],
+        SettlementSide::Defender,
+    )
+    .unwrap();
+    let steps = crate::engine::packet::timeline::project(&result.output.frames).unwrap();
+
+    fn contains_skill(step: &sonettobuf::FightStep, skill_id: i32) -> bool {
+        step.act_id == Some(skill_id)
+            || step.act_effect.iter().any(|effect| {
+                effect
+                    .fight_step
+                    .as_ref()
+                    .is_some_and(|nested| contains_skill(nested, skill_id))
+            })
+    }
+
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].act_id, Some(0));
+    assert!(contains_skill(&steps[0], 109380006));
+    assert!(managers.buff.has_buff_id(-1, 109320106));
+}
+
+#[test]
 fn special_count_channel_casts_once_then_deletes_its_carrier() {
     init_config();
     let entity = |uid, team_type, model_id, buffs| FightEntityInfo {

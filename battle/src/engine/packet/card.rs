@@ -39,6 +39,9 @@ impl CardPacket {
             } => Self::card_deck_num(deck_num, team_type),
             CardChange::CardsPush { cards, team_type } => Self::cards_push(cards, team_type),
             CardChange::AddHand { target_uid, card } => Self::add_hand_card(target_uid, card),
+            CardChange::OwnedAddHand { card, team_type } => {
+                Self::configured_skill3_card(card, team_type)
+            }
             CardChange::SpCardAdd {
                 target_uid,
                 skill_id,
@@ -482,6 +485,30 @@ mod tests {
         );
         assert_eq!(card.hero_id, Some(3124));
         assert_eq!(card.energy, Some(0));
+    }
+
+    #[test]
+    fn owned_generated_card_projects_as_a_normal_single_card() {
+        let effect = CardPacket::from_change(CardChange::OwnedAddHand {
+            card: CardInfo {
+                uid: Some(237352626),
+                skill_id: Some(312451031),
+                temp_card: Some(false),
+                hero_id: Some(3124),
+                ..Default::default()
+            },
+            team_type: 1,
+        });
+
+        assert_eq!(effect.target_id, Some(237352626));
+        assert_eq!(effect.effect_type, Some(EffectType::Addhandcard as i32));
+        assert_eq!(effect.effect_num, Some(0));
+        assert_eq!(effect.team_type, Some(1));
+        assert!(effect.card_info_list.is_empty());
+        let card = effect.card_info.unwrap();
+        assert_eq!(card.hero_id, Some(3124));
+        assert_eq!(card.temp_card, Some(false));
+        assert_eq!(card.card_type, Some(0));
     }
 
     #[test]

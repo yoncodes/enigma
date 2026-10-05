@@ -8,7 +8,11 @@ use crate::engine::{
     },
     runtime::determinism::RoundDeterminism,
     skill::{
-        behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
+        behavior::{
+            BehaviorOpContext,
+            classify::BehaviorKind,
+            registry::{BehaviorHandler, OutputOwner},
+        },
         condition::extra::{ExtraSkillKind, skill_kind_from_is_extra},
         effect::ParsedBehavior,
         rule::{
@@ -196,6 +200,7 @@ impl BehaviorHandler for Handler {
                 invocation.extra_skill_kind = Some(ExtraSkillKind::FollowUp);
                 invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
                 Some(vec![
+                    RuleOp::Skill(invocation),
                     RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
                         origin,
                         target_uid: context.target_uid,
@@ -203,7 +208,6 @@ impl BehaviorHandler for Handler {
                         amount: *amount,
                         depleted: DepletedBuff::Remove,
                     }))),
-                    RuleOp::Skill(invocation),
                 ])
             }
             BehaviorKind::RemoveBuffUseSkill => {
@@ -548,6 +552,12 @@ impl BehaviorHandler for Handler {
         }
     }
 
+    fn output_owner(behavior: &ParsedBehavior, op: &RuleOp, _index: usize) -> Option<OutputOwner> {
+        (behavior.spec.kind == BehaviorKind::ConsumeTargetBuffUseSkill
+            && matches!(op, RuleOp::Command(BattleCommand::Buff(_))))
+        .then_some(OutputOwner::Parent)
+    }
+
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
         references(behavior)
     }
@@ -740,13 +750,7 @@ fn direct_no_action_skill(
             skill_id: behavior.arg(0)?,
         }
         .into();
-    invocation.target = crate::engine::skill::action::SkillTarget::Explicit(
-        if context.target.runtime_target_uid != 0 {
-            context.target.runtime_target_uid
-        } else {
-            context.target_uid
-        },
-    );
+    invocation.target = crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
     Some(vec![RuleOp::Skill(invocation)])
 }
 

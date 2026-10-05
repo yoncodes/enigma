@@ -2,7 +2,7 @@ use crate::engine::{
     entity::attr::AttrId,
     manager::{
         buff::{BuffCommand, BuffConsume, BuffGrant, BuffSelector, DepletedBuff},
-        card::{CardCommand, CardConsumeForEffect},
+        card::{CardCommand, CardConsumeForEffect, CardConsumptionKind},
         conduit::{
             ConduitCommand, ConduitCounterChange, ConduitCounterKind, ConduitPowerChange,
             ConduitPowerChangeKind,
@@ -33,6 +33,40 @@ use crate::engine::manager::BattleManagers;
 use sonettobuf::effect_type_enum::EffectType;
 
 pub(super) struct Handler;
+
+fn greatest_common_divisor(mut left: i128, mut right: i128) -> i128 {
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
+    left
+}
+
+fn average_life_values(values: &[(i64, i32, i32)]) -> Option<Vec<(i64, i32)>> {
+    let mut numerator = 0_i128;
+    let mut denominator = 1_i128;
+    for &(_, current, maximum) in values {
+        if current < 0 || maximum <= 0 {
+            return None;
+        }
+        let maximum = i128::from(maximum);
+        let common = greatest_common_divisor(denominator, maximum);
+        numerator = numerator
+            .checked_mul(maximum / common)?
+            .checked_add(i128::from(current).checked_mul(denominator / common)?)?;
+        denominator = denominator.checked_mul(maximum / common)?;
+        let reduce = greatest_common_divisor(numerator, denominator);
+        numerator /= reduce;
+        denominator /= reduce;
+    }
+    let denominator = denominator.checked_mul(values.len() as i128)?;
+    values
+        .iter()
+        .map(|&(uid, _, maximum)| {
+            let value = i128::from(maximum).checked_mul(numerator)? / denominator;
+            Some((uid, value.clamp(0, i128::from(i32::MAX)) as i32))
+        })
+        .collect()
+}
 
 pub(super) fn supports_recover_power_and_cast_cards(behavior: &ParsedBehavior) -> bool {
     matches!(
@@ -216,7 +250,7 @@ impl BehaviorHandler for Handler {
 pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
     let origin = super::command_origin(behavior)?;
     let ex_point_config_effect = match behavior.spec.kind {
-        BehaviorKind::AddConduitExPoint => 0,
+        BehaviorKind::AddConduitExPoint | BehaviorKind::AddSynchronization => 0,
         _ => behavior.config_effect,
     };
     let ex_point = |target_uid, delta| {
@@ -303,27 +337,27 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                 return None;
             };
             let allies = context.pool.allies(context.source_uid);
-            let total_max = allies
+            let values = allies
                 .iter()
-                .map(|ally| context.managers.hp.max(ally.uid) as i64)
-                .sum::<i64>();
-            let total_current = allies
-                .iter()
-                .map(|ally| context.managers.hp.current(ally.uid) as i64)
-                .sum::<i64>();
-            if total_max <= 0 {
+                .map(|ally| {
+                    (
+                        ally.uid,
+                        context.managers.hp.current(ally.uid),
+                        context.managers.hp.max(ally.uid),
+                    )
+                })
+                .collect::<Vec<_>>();
+            if values.is_empty() {
                 return Some(Vec::new());
             }
             Some(
-                allies
-                    .iter()
-                    .map(|ally| {
-                        let value = (context.managers.hp.max(ally.uid) as i64 * total_current
-                            / total_max) as i32;
+                average_life_values(&values)?
+                    .into_iter()
+                    .map(|(target_uid, value)| {
                         RuleOp::Command(BattleCommand::Hp(HpCommand::SetCurrent(CurrentHpSet {
                             origin,
                             source_uid: context.source_uid,
-                            target_uid: ally.uid,
+                            target_uid,
                             value,
                             config_effect: behavior.config_effect,
                             effect_type: EffectType::Averagelife as i32,
@@ -358,6 +392,7 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                         origin,
                         owner_uid: context.target_uid,
                         indices: cards.iter().map(|(index, _)| *index).collect(),
+                        kind: CardConsumptionKind::PaperCircle,
                     }),
                 )));
             }

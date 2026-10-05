@@ -325,8 +325,23 @@ pub(super) fn waits_for_hit_skills(queued: &QueuedOp) -> bool {
         Some(FrameOwner::BuffAct { key, .. })
             if crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)
                 .is_some_and(|definition| {
+                    matches!(
+                        definition.runtime.execution_timing,
+                        crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::AfterHitSkills
+                            | crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::BeforeAfterHitObservers
+                    )
+                })
+    )
+}
+
+pub(super) fn runs_before_after_hit_observers(queued: &QueuedOp) -> bool {
+    matches!(
+        &queued.frame_owner,
+        Some(FrameOwner::BuffAct { key, .. })
+            if crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)
+                .is_some_and(|definition| {
                     definition.runtime.execution_timing
-                        == crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::AfterHitSkills
+                        == crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::BeforeAfterHitObservers
                 })
     )
 }

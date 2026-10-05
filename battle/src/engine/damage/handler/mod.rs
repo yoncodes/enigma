@@ -27,7 +27,7 @@ mod resolve;
 use affinity::{critical_technique_bonus, regular_multiplier};
 pub(crate) use affinity::{restrains_target, restrains_target_either};
 pub(crate) use critical::{
-    chance as crit_chance, damage_multiplier as crit_damage_multiplier,
+    CriticalHealMultiplier, chance as crit_chance, damage_multiplier as crit_damage_multiplier,
     excess_rate as excess_crit_rate, heal_multiplier as crit_heal_multiplier,
 };
 pub(crate) use heal::{modified as modified_heal, modified_fraction as modified_fractional_heal};
