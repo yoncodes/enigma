@@ -715,6 +715,9 @@ impl BuffManager {
     ) -> Vec<BuffFanoutResult> {
         let mut groups = Vec::<BuffFanoutResult>::new();
         for plan in plans {
+            if let Some(reservation) = plan.uid_reservation {
+                uid_policy::commit(self, plan.spec.route.target_uid, reservation);
+            }
             let Some(update) = self.update(
                 plan.spec.route.target_uid,
                 plan.buff_uid,

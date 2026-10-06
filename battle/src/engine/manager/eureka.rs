@@ -274,6 +274,24 @@ impl EurekaManager {
         state.current = value.clamp(0, state.max.max(0));
     }
 
+    pub(crate) fn resync_observed(
+        &mut self,
+        uid: i64,
+        power_id: i32,
+        current: i32,
+        max: i32,
+    ) -> Option<(EurekaState, EurekaState)> {
+        if !self.owners.contains(&uid) || power_id <= 0 || max < 0 || !(0..=max).contains(&current)
+        {
+            return None;
+        }
+        let before = self.get(uid, power_id);
+        let after = EurekaState { current, max };
+        self.states.insert((uid, power_id), after);
+        self.round_changes.remove(&(uid, power_id));
+        Some((before, after))
+    }
+
     pub fn add_max(&mut self, uid: i64, power_id: i32, delta: i32) -> EurekaMaxApplyResult {
         let state = self.states.entry((uid, power_id)).or_default();
         let before = state.max;

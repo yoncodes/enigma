@@ -1,6 +1,36 @@
 use super::*;
 
 #[test]
+fn damage_observations_use_the_damage_source_over_the_outer_actor() {
+    let damage = |source_uid| sonettobuf::ActEffect {
+        effect_type: Some(sonettobuf::effect_type_enum::EffectType::Additionaldamage as i32),
+        target_id: Some(30),
+        effect_num: Some(100),
+        hurt_info: Some(sonettobuf::FightHurtInfo {
+            from_uid: Some(source_uid),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let round = FightRound {
+        fight_step: vec![FightStep {
+            act_id: Some(40),
+            from_id: Some(10),
+            act_effect: vec![damage(10), damage(20)],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let sources = damage_observations(&round)
+        .into_iter()
+        .map(|(identity, _)| identity.source_uid)
+        .collect::<Vec<_>>();
+
+    assert_eq!(sources, vec![10, 20]);
+}
+
+#[test]
 fn captured_round_continuity_rejects_skips_and_reversals() {
     let previous = FightRound {
         cur_round: Some(1),
@@ -221,7 +251,7 @@ fn captured_version7_conduit_sentinel_keeps_activation_sequence() {
         ]
     );
 
-    fn child_of<'a>(step: &'a FightStep, parent_id: i32, child_id: i32) -> Option<&'a FightStep> {
+    fn child_of(step: &FightStep, parent_id: i32, child_id: i32) -> Option<&FightStep> {
         if step.act_id == Some(parent_id) {
             return step.act_effect.iter().find_map(|effect| {
                 effect
@@ -300,18 +330,19 @@ fn captured_116385711_keeps_opening_owner_and_source_threshold_semantics() {
     let db = init_config().unwrap();
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures/battles/battle72/BeginRoundReply_1.json");
-    let value = captured_start_reply(&path).unwrap();
+    let value = read_start_reply(&path).unwrap();
     let fight: Fight = serde_json::from_value(value["fight"].clone()).unwrap();
     let captured: FightRound = serde_json::from_value(value["round"].clone()).unwrap();
-    let (ex_attributes, sp_attributes) = preview_attributes(&fight, &path).unwrap();
-    let mut runtime = BattleRuntime::new_with_attributes(
+    let (ex_attributes, sp_attributes) =
+        preview_attributes_with_request(&fight, &path, None).unwrap();
+    let mut runtime = ReplayBattle::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
         ex_attributes,
         sp_attributes,
     );
     runtime.start_round().unwrap();
-    let generated = battle::dungeon::start_reply(&runtime).round.unwrap();
+    let generated = battle::tooling::start_reply(&runtime).round.unwrap();
 
     assert_eq!(generated.fight_step.len(), captured.fight_step.len());
     assert!(
@@ -419,8 +450,8 @@ fn generated_round_ignores_captured_card_metadata() {
 fn reads_dungeon_and_tower_start_reply_envelopes() {
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/battles");
 
-    let dungeon = captured_start_reply(&fixtures.join("battle69/BeginRoundReply_1.json"));
-    let tower = captured_start_reply(&fixtures.join("battle74/BeginRoundReply_1.json"));
+    let dungeon = read_start_reply(&fixtures.join("battle69/BeginRoundReply_1.json"));
+    let tower = read_start_reply(&fixtures.join("battle74/BeginRoundReply_1.json"));
 
     assert!(dungeon.unwrap().get("fight").is_some());
     assert!(tower.unwrap().get("fight").is_some());

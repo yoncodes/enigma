@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn active_hit_deferral_carries_only_its_primary_skill_hp_loss() {
+fn active_hit_deferral_carries_its_primary_skill_hp_transaction() {
     let origin = CommandOrigin {
         domain: RuleDomain::Skill,
         key: DefinitionKey::new(1, "SkillDamage"),
@@ -24,12 +24,21 @@ fn active_hit_deferral_carries_only_its_primary_skill_hp_loss() {
             shield_absorbed: 0,
             career_restraint: false,
             damage_from,
+            share_count: 0,
             assassinate: false,
             ignore_riposte: false,
         })
     };
     let primary_loss = hp_loss(1, -1);
     let primary_hit = hit(1, -1, crate::engine::manager::hp::HurtDamageFromType::Skill);
+    let shared = BattleEvent::DamageShared {
+        origin,
+        source_uid: 10,
+        target_uid: -2,
+        amount: 25,
+        share_count: 3,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+    };
     let death = BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
         source_uid: 10,
         target_uid: -1,
@@ -44,23 +53,36 @@ fn active_hit_deferral_carries_only_its_primary_skill_hp_loss() {
     let events = vec![
         primary_loss.clone(),
         primary_hit.clone(),
+        shared.clone(),
         death.clone(),
         unrelated_loss.clone(),
         effect_loss.clone(),
         effect_hit.clone(),
     ];
 
-    let (immediate, deferred) = split_active_hit_events(
-        events,
+    let groups = grouped_hp_events(
+        &events,
         vec![
-            vec![primary_loss.clone(), primary_hit.clone(), death.clone()],
+            vec![
+                primary_loss.clone(),
+                primary_hit.clone(),
+                shared.clone(),
+                death.clone(),
+            ],
             vec![unrelated_loss.clone()],
             vec![effect_loss.clone(), effect_hit.clone()],
         ],
     );
+    let (immediate, deferred) = split_active_hit_event_groups(groups);
 
-    assert_eq!(immediate, vec![death, unrelated_loss, effect_loss]);
-    assert_eq!(deferred, vec![primary_loss, primary_hit, effect_hit]);
+    assert_eq!(
+        immediate,
+        vec![vec![death], vec![unrelated_loss], vec![effect_loss]]
+    );
+    assert_eq!(
+        deferred,
+        vec![vec![primary_loss, primary_hit, shared], vec![effect_hit]]
+    );
 }
 
 #[test]
@@ -431,10 +453,7 @@ fn manager_followup_runs_the_skill_emitted_after_shell_progress() {
         TargetContext::default(),
         [RuleOp::Command(BattleCommand::Shell(
             ShellCommand::AccumulateAndUseSkill {
-                origin: CommandOrigin {
-                    domain: RuleDomain::Behavior,
-                    key: DefinitionKey::new(60135, "ShellUseSkill"),
-                },
+                rule: ConfiguredRuleKey::new(200, 1, DefinitionKey::new(60135, "ShellUseSkill")),
                 source_uid: 10,
                 target_uid: -1,
                 threshold: 5,
@@ -478,6 +497,8 @@ fn dead_entity_cannot_execute_an_already_queued_active_skill() {
         ..Default::default()
     });
     let mut managers = BattleManagers::seeded(&fight);
+    let held_rule = ConfiguredRuleKey::new(200, 1, DefinitionKey::new(60135, "ShellUseSkill"));
+    assert!(managers.advance_configured_rule_progress_until_cast(10, held_rule, 1, 1));
     let mut catalog = SkillEffectCatalog::default();
     catalog.insert(ParsedSkillEffect {
         skill_id: 200,
@@ -489,6 +510,7 @@ fn dead_entity_cannot_execute_an_already_queued_active_skill() {
     }
     .into();
     invocation.mode = SkillExecutionMode::Active;
+    invocation.release_progress = Some(held_rule);
 
     let result = run(
         &mut managers,
@@ -502,6 +524,7 @@ fn dead_entity_cannot_execute_an_already_queued_active_skill() {
 
     assert!(result.events.is_empty());
     assert!(result.frames.is_empty());
+    assert!(managers.advance_configured_rule_progress_until_cast(10, held_rule, 1, 1));
 }
 
 #[test]
@@ -823,10 +846,7 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
     crate::engine::mechanic::shell::execute(
         &mut managers,
         ShellCommand::AccumulateAndUseSkill {
-            origin: CommandOrigin {
-                domain: RuleDomain::Behavior,
-                key: DefinitionKey::new(60135, "ShellUseSkill"),
-            },
+            rule: ConfiguredRuleKey::new(31090144, 2, DefinitionKey::new(60135, "ShellUseSkill")),
             source_uid: 10,
             target_uid: -1,
             threshold: 7,
@@ -878,6 +898,114 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
             .filter_map(|effect| effect.fight_step.as_ref())
             .any(|step| step.act_id == Some(31090114))
     );
+}
+
+#[test]
+fn shell_necklace_cast_releases_inside_the_following_riposte() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                passive_skill: vec![31090144],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31090111),
+                    from_uid: Some(10),
+                    layer: Some(15),
+                    ..Default::default()
+                }],
+                ..entity(10)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                entity(-1),
+                FightEntityInfo {
+                    buffs: vec![BuffInfo {
+                        uid: Some(30),
+                        buff_id: Some(2292031),
+                        from_uid: Some(-2),
+                        duration: Some(3),
+                        ..Default::default()
+                    }],
+                    ..entity(-2)
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 31090144, 312301621], []);
+    crate::engine::mechanic::shell::execute(
+        &mut managers,
+        ShellCommand::AccumulateAndUseSkill {
+            rule: ConfiguredRuleKey::new(31090144, 2, DefinitionKey::new(60135, "ShellUseSkill")),
+            source_uid: 10,
+            target_uid: -1,
+            threshold: 7,
+            delta: 6,
+            skill_id: 31090114,
+        },
+    )
+    .unwrap();
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31090111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    let attack = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(31090111))
+        .expect("the attack projects a step");
+    let children = attack
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .collect::<Vec<_>>();
+    let riposte = children
+        .iter()
+        .find(|step| step.act_id == Some(2292031))
+        .expect("the attack causes the ally riposte");
+    assert!(!children.iter().any(|step| step.act_id == Some(31090144)));
+    assert!(riposte.act_effect.iter().any(|effect| {
+        effect.fight_step.as_ref().is_some_and(|step| {
+            step.act_effect.iter().any(|effect| {
+                effect
+                    .fight_step
+                    .as_ref()
+                    .is_some_and(|step| step.act_id == Some(31090144))
+            })
+        })
+    }));
 }
 
 fn direct_use_passive(
@@ -1546,11 +1674,12 @@ fn a_skill_cast_by_another_skill_keeps_its_step_without_effects() {
         .filter_map(|effect| effect.fight_step.as_ref())
         .find(|step| step.act_id == Some(435221))
         .expect("the cast skill keeps its step");
+    assert_eq!((cast.from_id, cast.to_id), (Some(10), Some(10)));
     assert!(cast.act_effect.is_empty());
 }
 
 #[test]
-fn an_after_being_attacked_buff_act_runs_with_the_hits_skill_reactions() {
+fn an_after_being_attacked_buff_act_waits_for_the_hit_skills_boundary() {
     fn queued(frame_owner: FrameOwner) -> QueuedOp {
         QueuedOp {
             op: RuleOp::Skill(
@@ -1584,29 +1713,189 @@ fn an_after_being_attacked_buff_act_runs_with_the_hits_skill_reactions() {
         card_index: 0,
         target_uid: None,
     };
-    let batch = ReactionBatch {
+    let mut batch = ReactionBatch {
         after_publish: vec![
             queued(skill.clone()),
             queued(buff_act(721, "DotNoLimit")),
+            queued(buff_act(870, "Shell")),
             queued(buff_act(871, "ShellDebuff")),
         ],
         ..Default::default()
     };
 
-    let (buff_acts, skills) = batch.partition_skill_reactions();
+    defer_after_hit_skill_buff_acts(&mut batch);
 
-    // Spirit Shell: "After being attacked, Fatutu retrieves 1 stack" follows the boss's own
-    // "after being attacked" reactions; a per-hit buff act still runs first.
-    let owners = |batch: &ReactionBatch| {
-        batch
-            .after_publish
+    // Spirit Shell: "After being attacked, Fatutu retrieves 1 stack" waits for every
+    // hit-triggered skill, while an ordinary per-hit buff act remains immediate.
+    let owners = |queued: &[QueuedOp]| {
+        queued
             .iter()
             .map(|queued| queued.frame_owner.clone())
             .collect::<Vec<_>>()
     };
-    assert_eq!(owners(&buff_acts), vec![Some(buff_act(721, "DotNoLimit"))]);
     assert_eq!(
-        owners(&skills),
-        vec![Some(skill), Some(buff_act(871, "ShellDebuff"))]
+        owners(&batch.after_publish),
+        vec![Some(skill), Some(buff_act(721, "DotNoLimit")),]
     );
+    assert_eq!(
+        owners(&batch.after_hit),
+        vec![
+            Some(buff_act(870, "Shell")),
+            Some(buff_act(871, "ShellDebuff"))
+        ]
+    );
+    assert!(!runs_before_after_hit_observers(&queued(buff_act(
+        870, "Shell"
+    ))));
+    assert!(runs_before_after_hit_observers(&queued(buff_act(
+        871,
+        "ShellDebuff"
+    ))));
+}
+
+#[test]
+fn shared_primary_skill_events_wait_for_the_actions_after_hit_skills() {
+    let hit = |share_count| QueuedOp {
+        op: RuleOp::Skill(
+            SkillRequest {
+                source_uid: 10,
+                skill_id: 20,
+            }
+            .into(),
+        ),
+        trigger: SkillOpTrigger::Event(BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+            origin: CommandOrigin {
+                domain: RuleDomain::Skill,
+                key: DefinitionKey::new(20, "SkillDamage"),
+            },
+            source_uid: 10,
+            target_uid: -1,
+            skill_id: 20,
+            amount: 100,
+            shield_absorbed: 0,
+            career_restraint: false,
+            damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+            share_count,
+            assassinate: false,
+            ignore_riposte: false,
+        })),
+        skill_execution: None,
+        frame_path: None,
+        parent_path: None,
+        frame_group: None,
+        independent_parent_group: None,
+        frame_owner: None,
+        subscriber_owner_uid: None,
+        caster_frame: None,
+    };
+
+    assert!(!waits_for_shared_hit_completion(&hit(0)));
+    assert!(waits_for_shared_hit_completion(&hit(3)));
+    let mut shared = hit(0);
+    shared.trigger = SkillOpTrigger::Event(BattleEvent::DamageShared {
+        origin: CommandOrigin {
+            domain: RuleDomain::BuffAct,
+            key: DefinitionKey::new(872, "ShareHurt"),
+        },
+        source_uid: 10,
+        target_uid: -1,
+        amount: 100,
+        share_count: 3,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::SkillEffect,
+    });
+    assert!(!waits_for_shared_hit_completion(&shared));
+    if let SkillOpTrigger::Event(BattleEvent::DamageShared { damage_from, .. }) =
+        &mut shared.trigger
+    {
+        *damage_from = crate::engine::manager::hp::HurtDamageFromType::Skill;
+    }
+    assert!(waits_for_shared_hit_completion(&shared));
+}
+
+#[test]
+fn hit_reactions_follow_owner_skill_order_across_event_kinds() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                passive_skill: vec![109380004, 109320108],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Skill,
+        key: DefinitionKey::new(1, "SkillDamage"),
+    };
+    let events = vec![
+        BattleEvent::HpLost {
+            origin,
+            source_uid: 10,
+            skill_id: 1,
+            target_uid: -1,
+            amount: 100,
+            buff_uid: None,
+        },
+        BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+            origin,
+            source_uid: 10,
+            target_uid: -1,
+            skill_id: 1,
+            amount: 100,
+            shield_absorbed: 0,
+            career_restraint: false,
+            damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+            share_count: 0,
+            assassinate: false,
+            ignore_riposte: false,
+        }),
+    ];
+    let queued = |skill_id| QueuedOp {
+        op: RuleOp::Skill(
+            SkillRequest {
+                source_uid: -1,
+                skill_id,
+            }
+            .into(),
+        ),
+        trigger: SkillOpTrigger::Active,
+        skill_execution: None,
+        frame_path: None,
+        parent_path: None,
+        frame_group: None,
+        independent_parent_group: None,
+        frame_owner: Some(FrameOwner::Skill {
+            source_uid: -1,
+            skill_id,
+            card_index: 0,
+            target_uid: None,
+        }),
+        subscriber_owner_uid: Some(-1),
+        caster_frame: None,
+    };
+    let mut batch = ReactionBatch {
+        after_publish: vec![queued(109320108), queued(109380004)],
+        ..Default::default()
+    };
+
+    batch
+        .order_skills(&pool, &managers, &catalog, &events)
+        .unwrap();
+
+    let ordered = batch
+        .after_publish
+        .into_iter()
+        .filter_map(|queued| match queued.frame_owner {
+            Some(FrameOwner::Skill { skill_id, .. }) => Some(skill_id),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(ordered, vec![109380004, 109320108]);
 }

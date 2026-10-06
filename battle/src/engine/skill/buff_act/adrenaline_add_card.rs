@@ -65,6 +65,8 @@ pub fn rule_ops(
             origin,
             target_uid: subscriber.owner_uid,
             skill_id,
+            hero_id: Some(managers.entity.model_id(subscriber.owner_uid)?),
+            team_type: subscriber.team_type,
         })
     } else {
         CardCommand::AddTemporary(CardAddTemporary {
@@ -279,6 +281,8 @@ mod tests {
                     CardAddGenerated {
                         target_uid: 10,
                         skill_id: 312451031,
+                        hero_id: Some(3124),
+                        team_type: 1,
                         ..
                     }
                 )))
@@ -292,7 +296,18 @@ mod tests {
             unreachable!()
         };
         managers.execute_buff(command.clone()).unwrap();
+        let RuleOp::Command(BattleCommand::Card(command)) = &terminal[2] else {
+            unreachable!()
+        };
+        let changes = managers.execute_card(command.clone()).unwrap();
         assert_eq!(managers.ex_point.get(10), 0);
         assert_eq!(managers.buff.act_value(20, 10001), 0);
+        assert_eq!(
+            changes.kind,
+            crate::engine::manager::card::CardChangeKind::OwnedGeneratedAdded
+        );
+        let card = changes.added.unwrap();
+        assert_eq!(card.hero_id, Some(3124));
+        assert_eq!(card.temp_card, Some(false));
     }
 }

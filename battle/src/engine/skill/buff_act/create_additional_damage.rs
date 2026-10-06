@@ -20,7 +20,7 @@ pub fn resolve(feature: &ActiveBuffFeature) -> Option<AdditionalDamageSpec> {
         return None;
     };
     Some(AdditionalDamageSpec {
-        formula: crate::engine::damage::DamageFormula::AdditionalDamage,
+        formula: crate::engine::damage::DamageFormula::CreditedSourceAdditional,
         rate: *rate,
         secondary_rate: *secondary_rate,
         extra_rate: *extra_rate,
@@ -57,5 +57,9 @@ mod tests {
         };
 
         assert_eq!(resolve(&feature).unwrap().credited_source_uid, 20);
+        assert_eq!(
+            resolve(&feature).unwrap().formula,
+            crate::engine::damage::DamageFormula::CreditedSourceAdditional
+        );
     }
 }

@@ -1,7 +1,7 @@
 use super::*;
 
-fn runtime(fight: sonettobuf::Fight) -> battle::engine::runtime::BattleRuntime {
-    battle::engine::runtime::BattleRuntime::new(
+fn runtime(fight: sonettobuf::Fight) -> battle::Battle {
+    battle::tooling::unstarted_battle(
         battle::catalog::BattleCatalog::new(config::configs::get()),
         fight,
     )
@@ -1601,49 +1601,55 @@ async fn point_reward_claim_uses_shared_progress_and_is_idempotent() {
 
 #[tokio::test]
 async fn incomplete_act128_settlement_persists_score_without_dungeon_completion() {
-    fn runtime_with_score() -> ::battle::engine::runtime::BattleRuntime {
-        use ::battle::engine::manager::card::{CardOpType, CardSetup};
+    fn runtime_with_score() -> ::battle::Battle {
+        use ::battle::tooling::{
+            into_battle,
+            replay::{CardOpType, CardSetup, ReplayBattle},
+        };
         use sonettobuf::{
             BeginRoundOper, BeginRoundRequest, CardInfo, Fight, FightEntityInfo, FightTeam,
         };
 
-        let mut runtime = runtime(Fight {
-            episode_id: Some(13500420),
-            battle_id: Some(118353100),
-            version: Some(7),
-            cur_round: Some(19),
-            attacker: Some(FightTeam {
-                entitys: vec![FightEntityInfo {
-                    uid: Some(10),
-                    model_id: Some(3023),
-                    team_type: Some(1),
-                    current_hp: Some(1_000_000),
-                    skill_group1: vec![30230111],
-                    attr: Some(sonettobuf::HeroAttribute {
-                        hp: Some(1_000_000),
-                        attack: Some(1_000),
+        let mut runtime = ReplayBattle::new(
+            ::battle::catalog::BattleCatalog::new(config::configs::get()),
+            Fight {
+                episode_id: Some(13500420),
+                battle_id: Some(118353100),
+                version: Some(7),
+                cur_round: Some(19),
+                attacker: Some(FightTeam {
+                    entitys: vec![FightEntityInfo {
+                        uid: Some(10),
+                        model_id: Some(3023),
+                        team_type: Some(1),
+                        current_hp: Some(1_000_000),
+                        skill_group1: vec![30230111],
+                        attr: Some(sonettobuf::HeroAttribute {
+                            hp: Some(1_000_000),
+                            attack: Some(1_000),
+                            ..Default::default()
+                        }),
                         ..Default::default()
-                    }),
+                    }],
                     ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            defender: Some(FightTeam {
-                entitys: vec![FightEntityInfo {
-                    uid: Some(-1),
-                    model_id: Some(118353111),
-                    team_type: Some(2),
-                    current_hp: Some(1_000_000),
-                    attr: Some(sonettobuf::HeroAttribute {
-                        hp: Some(1_000_000),
+                }),
+                defender: Some(FightTeam {
+                    entitys: vec![FightEntityInfo {
+                        uid: Some(-1),
+                        model_id: Some(118353111),
+                        team_type: Some(2),
+                        current_hp: Some(1_000_000),
+                        attr: Some(sonettobuf::HeroAttribute {
+                            hp: Some(1_000_000),
+                            ..Default::default()
+                        }),
                         ..Default::default()
-                    }),
+                    }],
                     ..Default::default()
-                }],
+                }),
                 ..Default::default()
-            }),
-            ..Default::default()
-        });
+            },
+        );
         runtime
             .build_start_steps(CardSetup {
                 hand: vec![CardInfo {
@@ -1669,16 +1675,9 @@ async fn incomplete_act128_settlement_persists_score_without_dungeon_completion(
             .unwrap();
         assert_eq!(round.is_finish, Some(true));
         assert_eq!(runtime.reconnect_state().0.is_finish, Some(true));
-        assert_eq!(
-            runtime.outcome(),
-            ::battle::engine::runtime::BattleOutcome::OutOfRounds
-        );
-        assert!(
-            runtime
-                .indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore)
-                > 0
-        );
-        runtime
+        assert_eq!(runtime.outcome(), ::battle::BattleOutcome::OutOfRounds);
+        assert!(runtime.activity_score() > 0);
+        into_battle(runtime)
     }
 
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1712,8 +1711,7 @@ async fn incomplete_act128_settlement_persists_score_without_dungeon_completion(
     .unwrap();
 
     let runtime = runtime_with_score();
-    let expected_score =
-        runtime.indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore);
+    let expected_score = runtime.activity_score();
     let active = ActiveBattle {
         fight_id: Some(fight_id),
         chapter_id: 128003,
@@ -1757,8 +1755,7 @@ async fn incomplete_act128_settlement_persists_score_without_dungeon_completion(
     .await
     .unwrap();
     let abort_runtime = runtime_with_score();
-    let abort_expected_score = abort_runtime
-        .indicator_total(::battle::engine::manager::indicator::IndicatorId::BossRushScore);
+    let abort_expected_score = abort_runtime.activity_score();
     let abort = ActiveBattle {
         fight_id: Some(abort_fight_id),
         chapter_id: 128003,

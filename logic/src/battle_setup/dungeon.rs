@@ -1,7 +1,7 @@
 use anyhow::{Result, ensure};
-use battle::{
-    dungeon::{BattleFighter, BattleRoster, BattleRosterPlan, BuiltFight, FightOptions},
-    engine::entity::input::{EquipmentBuildInput, HeroBuildInput},
+use battle::dungeon::{
+    BattleFighter, BattleRoster, BattleRosterPlan, BuiltFight, EquipmentBuildInput, FightOptions,
+    HeroBuildInput,
 };
 use database::models::game::{
     equipment::{Equipment, EquipmentModel, UserEquipmentModel},

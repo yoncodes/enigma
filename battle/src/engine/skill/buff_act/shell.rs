@@ -88,6 +88,27 @@ pub(crate) fn resolve_deployed_buff_id(catalog: BattleCatalog, stock_buff_id: i3
         .map(|spec| spec.deployed_buff_id)
 }
 
+// A fully deployed stock is removed, so the caster's shells are also found through the ones it deployed.
+pub(crate) fn caster_shell_spec(
+    managers: &BattleManagers,
+    caster_uid: i64,
+) -> Option<ShellProcessSpec> {
+    managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .find_map(|feature| {
+            if !super::is_kind(&feature, BuffActKind::ShellProcess) {
+                return None;
+            }
+            let spec = process_spec_from_args(feature.values.get(1..)?)?;
+            let held = feature.owner_uid == caster_uid && feature.buff_id == spec.stock_buff_id;
+            let deployed =
+                feature.source_uid == caster_uid && feature.buff_id == spec.deployed_buff_id;
+            (held || deployed).then_some(spec)
+        })
+}
+
 fn runtime_process_spec(managers: &BattleManagers, buff_id: i32) -> Option<ShellProcessSpec> {
     let catalog = managers
         .buff
@@ -110,21 +131,22 @@ pub fn rule_ops(
         }
         BuffActKind::Shell => {
             // "After being attacked or sharing damage": a skill or skill-effect hit, or a ShareHurt share.
-            let (attacker_uid, target_uid, damage) = match event {
+            let (attacker_uid, target_uid, damage, event_count) = match event {
                 BattleEvent::Hit(hit)
                     if matches!(
                         hit.damage_from,
                         HurtDamageFromType::Skill | HurtDamageFromType::SkillEffect
                     ) =>
                 {
-                    (hit.source_uid, hit.target_uid, hit.amount)
+                    (hit.source_uid, hit.target_uid, hit.amount, 1)
                 }
                 BattleEvent::DamageShared {
                     source_uid,
                     target_uid,
                     amount,
+                    share_count,
                     ..
-                } => (*source_uid, *target_uid, *amount),
+                } => (*source_uid, *target_uid, *amount, (*share_count).max(1)),
                 _ => return Some(Vec::new()),
             };
             if target_uid != subscriber.owner_uid || damage <= 0 {
@@ -140,13 +162,19 @@ pub fn rule_ops(
             {
                 return Some(Vec::new());
             }
-            ShellCommand::Deploy {
-                origin,
-                source_uid: subscriber.owner_uid,
-                target_uid: attacker_uid,
-                stock_buff_id: spec.stock_buff_id,
-                amount,
-            }
+            return Some(
+                (0..event_count)
+                    .map(|_| {
+                        RuleOp::Command(BattleCommand::Shell(ShellCommand::Deploy {
+                            origin,
+                            source_uid: subscriber.owner_uid,
+                            target_uid: attacker_uid,
+                            stock_buff_id: spec.stock_buff_id,
+                            amount,
+                        }))
+                    })
+                    .collect(),
+            );
         }
         BuffActKind::ShellDebuff => {
             let BattleEvent::Hit(hit) = event else {
@@ -206,24 +234,33 @@ fn process_rule_ops(
     let BattleEvent::ShellChanged(change) = event else {
         return Some(Vec::new());
     };
-    if subscriber.buff_id != spec.stock_buff_id
-        || subscriber.owner_uid != change.source_uid
-        || spec.stock_buff_id != change.stock_buff_id
-    {
+    // Both shell buffs carry this feature; the one that just received the stacks answers, since a
+    // fully deployed stock is removed.
+    let receives = match change.kind {
+        ShellChangeKind::Deployed => {
+            subscriber.buff_id == spec.deployed_buff_id
+                && subscriber.owner_uid == change.target_uid
+                && subscriber.source_uid == change.source_uid
+        }
+        ShellChangeKind::Retrieved => {
+            subscriber.buff_id == spec.stock_buff_id && subscriber.owner_uid == change.source_uid
+        }
+    };
+    if !receives || spec.stock_buff_id != change.stock_buff_id {
         return Some(Vec::new());
     }
     let origin = super::command_origin(subscriber)?;
     match change.kind {
         ShellChangeKind::Deployed => {
-            if !determinism.roll_permille(spec.moxie_chance) || spec.moxie_delta == 0 {
+            if !determinism.roll_shell_moxie(spec.moxie_chance) || spec.moxie_delta == 0 {
                 return Some(Vec::new());
             }
             Some(vec![RuleOp::Command(BattleCommand::ExPoint(
                 crate::engine::manager::ex_point::ExPointCommand::Change(
                     crate::engine::manager::ex_point::ExPointChange {
                         origin,
-                        source_uid: subscriber.owner_uid,
-                        target_uid: subscriber.owner_uid,
+                        source_uid: change.source_uid,
+                        target_uid: change.source_uid,
                         delta: spec.moxie_delta,
                         config_effect: 0,
                         effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
@@ -236,12 +273,13 @@ fn process_rule_ops(
                 return Some(Vec::new());
             }
             let attr_id = AttrId::from_raw(spec.heal_attr_id)?;
-            let base = managers
+            let basis = managers
                 .origin_attribute(subscriber.owner_uid, attr_id)
-                .max(0)
-                * spec.heal_rate.max(0)
-                * change.transaction_amount
-                / 1000;
+                .max(0);
+            let base_numerator = i128::from(basis)
+                * i128::from(spec.heal_rate.max(0))
+                * i128::from(change.transaction_amount);
+            let base = (base_numerator / 1000).clamp(0, i128::from(i32::MAX)) as i32;
             if base <= 0 {
                 return Some(Vec::new());
             }
@@ -250,21 +288,25 @@ fn process_rule_ops(
                 .iter()
                 .filter(|ally| managers.hp.current(ally.uid) > 0)
                 .map(|ally| {
-                    let is_crit = determinism.roll_hidden_crit(
-                        subscriber.buff_id,
+                    let is_crit = determinism.roll_indirect_heal_crit(
+                        spec.deployed_buff_id,
                         subscriber.owner_uid,
                         ally.uid,
                         damage::crit_chance(subscriber.owner_uid, ally.uid, pool, managers),
                     );
-                    let mut amount =
-                        damage::modified_heal(base, subscriber.owner_uid, ally.uid, managers);
-                    if is_crit {
-                        amount = amount
-                            * managers
-                                .origin_attribute(subscriber.owner_uid, AttrId::CriticalDmg)
-                                .max(0)
-                            / 1000;
-                    }
+                    let multiplier = if is_crit {
+                        damage::crit_heal_multiplier(subscriber.owner_uid, ally.uid, pool, managers)
+                    } else {
+                        damage::CriticalHealMultiplier::IDENTITY
+                    };
+                    let amount = damage::modified_fractional_heal(
+                        i128::from(base),
+                        1,
+                        subscriber.owner_uid,
+                        ally.uid,
+                        managers,
+                        multiplier,
+                    );
                     crate::engine::manager::hp::HpCommand::Heal(
                         crate::engine::manager::hp::HpHeal {
                             origin,
@@ -363,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn stock_shell_moves_one_layer_to_the_attacker_after_shared_damage() {
+    fn stock_shell_preserves_shared_damage_cardinality() {
         crate::test_support::init_config();
         let fight = Fight {
             attacker: Some(FightTeam {
@@ -399,6 +441,8 @@ mod tests {
             source_uid: -1,
             target_uid: 10,
             amount: 20,
+            share_count: 3,
+            damage_from: HurtDamageFromType::Skill,
         };
 
         let pool = TargetPool::from_fight(&fight);
@@ -411,18 +455,17 @@ mod tests {
         )
         .unwrap();
 
-        assert!(matches!(
-            ops.as_slice(),
-            [RuleOp::Command(BattleCommand::Shell(
-                ShellCommand::Deploy {
-                    source_uid: 10,
-                    target_uid: -1,
-                    stock_buff_id: 31090111,
-                    amount: 1,
-                    ..
-                }
-            ))]
-        ));
+        assert_eq!(ops.len(), 3);
+        assert!(ops.iter().all(|op| matches!(
+            op,
+            RuleOp::Command(BattleCommand::Shell(ShellCommand::Deploy {
+                source_uid: 10,
+                target_uid: -1,
+                stock_buff_id: 31090111,
+                amount: 1,
+                ..
+            }))
+        )));
     }
 
     #[test]
@@ -468,6 +511,7 @@ mod tests {
                 shield_absorbed: 0,
                 career_restraint: false,
                 damage_from,
+                share_count: 0,
                 assassinate: false,
                 ignore_riposte: false,
             });
@@ -597,11 +641,17 @@ mod tests {
             transaction_amount: 2,
             settles_transaction: true,
         });
+        let mut determinism = RoundDeterminism::default();
+        determinism.enqueue_indirect_heal_crits([
+            ((999, 10, 10), false),
+            ((31090112, 10, 10), true),
+            ((31090112, 10, 11), false),
+        ]);
 
         let ops = rule_ops(
             &managers,
             &pool,
-            &mut RoundDeterminism::default(),
+            &mut determinism,
             &subscriber(
                 10,
                 10,
@@ -623,7 +673,7 @@ mod tests {
                         crate::engine::manager::hp::HpCommand::Heal(
                             crate::engine::manager::hp::HpHeal {
                                 target_uid: 10,
-                                amount: 600,
+                                kind: crate::engine::manager::hp::HpHealKind::Critical,
                                 ..
                             }
                         ),
@@ -631,6 +681,7 @@ mod tests {
                             crate::engine::manager::hp::HpHeal {
                                 target_uid: 11,
                                 amount: 600,
+                                kind: crate::engine::manager::hp::HpHealKind::Normal,
                                 ..
                             }
                         )
@@ -640,7 +691,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_process_rolls_the_configured_moxie_gain_from_the_shared_rng() {
+    fn deployed_shell_rolls_the_configured_moxie_gain_from_the_shared_rng() {
         let managers = BattleManagers::default();
         let pool = TargetPool::default();
         let event = BattleEvent::ShellChanged(ShellChangeEvent {
@@ -653,24 +704,29 @@ mod tests {
             transaction_amount: 3,
             settles_transaction: true,
         });
-        let mut determinism = RoundDeterminism::default();
-        determinism.enqueue_permille_rolls([0]);
+        let process = |owner_uid, buff_id| {
+            let mut determinism = RoundDeterminism::default();
+            determinism.enqueue_permille_rolls([0]);
+            rule_ops(
+                &managers,
+                &pool,
+                &mut determinism,
+                &subscriber(
+                    owner_uid,
+                    10,
+                    buff_id,
+                    869,
+                    "ShellProcess",
+                    vec![31090111, 31090112, 200, 1, 102, 300],
+                ),
+                &event,
+            )
+            .unwrap()
+        };
 
-        let ops = rule_ops(
-            &managers,
-            &pool,
-            &mut determinism,
-            &subscriber(
-                10,
-                10,
-                31090111,
-                869,
-                "ShellProcess",
-                vec![31090111, 31090112, 200, 1, 102, 300],
-            ),
-            &event,
-        )
-        .unwrap();
+        // A fully deployed stock is removed, so the shells that received the stacks answer.
+        assert!(process(10, 31090111).is_empty());
+        let ops = process(-1, 31090112);
 
         assert!(matches!(
             ops.as_slice(),

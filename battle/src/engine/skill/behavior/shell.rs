@@ -44,20 +44,11 @@ impl BehaviorHandler for Handler {
                 }
             }
             BehaviorKind::ShellRecycle if behavior.args.is_empty() => {
-                let stock_buff_id = context
-                    .managers
-                    .buff
-                    .active_features(&context.managers.hp)
-                    .into_iter()
-                    .find(|feature| {
-                        feature.owner_uid == context.source_uid
-                            && crate::engine::skill::buff_act::is_kind(
-                                feature,
-                                crate::engine::skill::buff_act::registry::BuffActKind::ShellProcess,
-                            )
-                            && feature.values.get(1) == Some(&feature.buff_id)
-                    })?
-                    .buff_id;
+                let stock_buff_id = crate::engine::skill::buff_act::shell::caster_shell_spec(
+                    context.managers,
+                    context.source_uid,
+                )?
+                .stock_buff_id;
                 ShellCommand::RetrieveAll {
                     origin,
                     source_uid: context.source_uid,
@@ -72,7 +63,11 @@ impl BehaviorHandler for Handler {
                     return Some(Vec::new());
                 }
                 ShellCommand::AccumulateAndUseSkill {
-                    origin,
+                    rule: crate::engine::skill::rule::ConfiguredRuleKey::new(
+                        behavior.effect_id,
+                        behavior.slot,
+                        origin.key,
+                    ),
                     source_uid: context.source_uid,
                     target_uid: context.target_uid,
                     threshold: *threshold,

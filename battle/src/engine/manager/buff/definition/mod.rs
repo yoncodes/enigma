@@ -611,6 +611,16 @@ impl BuffDefinition {
     pub(super) fn reserves_child_after_first_apply(&self) -> bool {
         !self.has_include_type(BuffIncludeType::OwnUid)
             && self.has_features
+            && !self.features.iter().any(|feature| {
+                matches!(
+                    feature.kind,
+                    Some(
+                        BuffActKind::BuffReplace
+                            | BuffActKind::HaloBase
+                            | BuffActKind::ShellProcess
+                    )
+                )
+            })
             && !self
                 .features
                 .iter()
@@ -654,8 +664,19 @@ impl BuffDefinition {
             .any(|kind| self.has_include_type(kind))
     }
 
+    pub(super) fn merges_timed_layers(&self) -> bool {
+        self.has_include_type(BuffIncludeType::Stacked12)
+    }
+
     pub(super) fn reserves_child_on_layer_refresh(&self) -> bool {
-        self.status != BuffStatus::Special || self.is_layer_type()
+        self.status != BuffStatus::Special
+            || self.is_layer_type()
+            || self.features.iter().any(|feature| {
+                matches!(
+                    feature.kind,
+                    Some(BuffActKind::BuffReplace | BuffActKind::ShellProcess)
+                )
+            })
     }
 
     fn is_layer_type(&self) -> bool {

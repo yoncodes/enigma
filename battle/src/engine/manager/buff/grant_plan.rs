@@ -70,6 +70,7 @@ pub(super) struct PlannedFanoutRefresh {
     pub(super) buff_uid: i64,
     pub(super) carrier_buff_uid: i64,
     pub(super) carrier_buff_id: i32,
+    pub(super) uid_reservation: Option<UidAllocationPlan>,
 }
 
 impl BuffManager {
@@ -556,6 +557,7 @@ impl BuffManager {
                     buff_uid,
                     carrier_buff_uid,
                     carrier_buff_id,
+                    uid_reservation: None,
                 });
             }
         }

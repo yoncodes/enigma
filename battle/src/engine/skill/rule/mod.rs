@@ -9,6 +9,24 @@ pub struct DefinitionKey {
     pub type_name: &'static str,
 }
 
+/// Stable identity of one configured rule occurrence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ConfiguredRuleKey {
+    pub effect_id: i32,
+    pub slot: u8,
+    pub definition: DefinitionKey,
+}
+
+impl ConfiguredRuleKey {
+    pub const fn new(effect_id: i32, slot: u8, definition: DefinitionKey) -> Self {
+        Self {
+            effect_id,
+            slot,
+            definition,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RuleDomain {
     Skill,

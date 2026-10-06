@@ -346,6 +346,41 @@ fn stack_transition_is_part_of_the_grant_plan() {
 }
 
 #[test]
+fn stack_transition_replaces_the_state_before_the_triggering_stack() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1_145),
+                    buff_id: Some(2295013),
+                    from_uid: Some(10),
+                    layer: Some(7),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    let changes = manager
+        .execute(&HpManager::default(), grant(10, 2295013))
+        .unwrap();
+
+    assert_eq!(changes.change.removed[0].buff.layer, Some(7));
+    let replacement = changes.change.added.unwrap().buff;
+    assert_eq!(replacement.buff_id, Some(2295023));
+    assert_eq!(replacement.layer, Some(0));
+}
+
+#[test]
 fn single_instance_transition_counts_reapplications_per_target() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {

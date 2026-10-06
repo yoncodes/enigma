@@ -83,6 +83,11 @@ impl BuffChanges {
                 );
                 let markers = if !has_add
                     && (refresh_increases_effect_value(refresh)
+                        || (refresh.before.layer == refresh.after.layer
+                            && refresh.before.layer.unwrap_or_default() > 0
+                            && definition.as_ref().is_some_and(|definition| {
+                                definition.emits_existing_layer_on_refresh()
+                            }))
                         || definition
                             .as_ref()
                             .is_some_and(BuffDefinition::refreshes_unchanged))

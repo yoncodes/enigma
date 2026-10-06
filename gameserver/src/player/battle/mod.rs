@@ -171,8 +171,8 @@ pub struct Act229BattleContext {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Default)]
-/// Session and persistence wrapper around the authoritative `BattleRuntime`.
+#[derive(Debug, Clone)]
+/// Session and persistence wrapper around the authoritative battle simulation.
 /// Gameplay semantics stay in `battle`; this type supplies inputs and records server metadata.
 pub struct ActiveBattle {
     pub tower_type: Option<i32>,
@@ -185,7 +185,7 @@ pub struct ActiveBattle {
     pub team_level: Option<i32>,
     pub assist_boss_level: Option<i32>,
     pub battle_id: i32,
-    pub runtime: ::battle::engine::runtime::BattleRuntime,
+    pub runtime: ::battle::Battle,
     pub fight_group: Option<sonettobuf::FightGroup>,
     pub fight_id: Option<i64>,
     pub is_replay: Option<bool>,
@@ -201,9 +201,41 @@ pub struct ActiveBattle {
     pub(crate) pending_cloth_skill_opers: Vec<UseClothSkillRequest>,
 }
 
+#[cfg(test)]
+impl Default for ActiveBattle {
+    fn default() -> Self {
+        Self {
+            tower_type: None,
+            tower_id: None,
+            layer_id: None,
+            episode_id: 0,
+            chapter_id: 0,
+            difficulty: None,
+            talent_plan_id: None,
+            team_level: None,
+            assist_boss_level: None,
+            battle_id: 0,
+            runtime: ::battle::tooling::into_battle(Default::default()),
+            fight_group: None,
+            fight_id: None,
+            is_replay: None,
+            replay_episode_id: None,
+            multiplication: None,
+            params: None,
+            ai_deck: Vec::new(),
+            seed: 0,
+            start_request: None,
+            tower_context: None,
+            act229_context: None,
+            rounds: Vec::new(),
+            pending_cloth_skill_opers: Vec::new(),
+        }
+    }
+}
+
 impl ActiveBattle {
     pub fn is_victory(&self) -> bool {
-        self.runtime.outcome() == ::battle::engine::runtime::BattleOutcome::Victory
+        self.runtime.outcome() == ::battle::BattleOutcome::Victory
     }
 
     pub fn current_round(&self) -> i32 {
@@ -412,18 +444,12 @@ impl ActiveBattle {
         let assist_boss_level = attacker
             .and_then(|team| team.assist_boss.as_ref())
             .and_then(|boss| boss.level);
-        let mut runtime = ::battle::engine::runtime::BattleRuntime::new_with_attributes(
+        let runtime = ::battle::Battle::start(
             ::battle::catalog::BattleCatalog::new(config::configs::get()),
-            built.fight,
-            built.ex_attributes,
-            built.sp_attributes,
-        );
-        runtime.extend_battle_rule_skills(built.battle_rule_skills);
-        runtime
-            .start_round_with_determinism(
-                ::battle::engine::runtime::determinism::RoundDeterminism::with_seed(seed),
-            )
-            .map_err(AppError::Custom)?;
+            built,
+            seed,
+        )
+        .map_err(AppError::Custom)?;
 
         Ok(Self {
             tower_type: tower_context.map(|context| context.tower_type),
@@ -438,15 +464,18 @@ impl ActiveBattle {
             fight_group: Some(fight_group),
             fight_id: None,
             is_replay: Some(use_record),
+            replay_episode_id: None,
             multiplication: request.multiplication,
             params: request.params.clone(),
+            ai_deck: Vec::new(),
             team_level,
             assist_boss_level,
             seed,
             start_request: Some(request),
             tower_context,
             act229_context,
-            ..Default::default()
+            rounds: Vec::new(),
+            pending_cloth_skill_opers: Vec::new(),
         })
     }
 

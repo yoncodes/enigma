@@ -445,6 +445,7 @@ fn received_skill_rank_applies_only_its_configured_extra_burn() {
                 shield_absorbed: 0,
                 career_restraint: false,
                 damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+                share_count: 0,
                 assassinate: false,
                 ignore_riposte: false,
             }),
@@ -1275,6 +1276,7 @@ fn reactive_skill_frame_targets_the_other_team_of_a_hit() {
         shield_absorbed: 0,
         career_restraint: false,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+        share_count: 0,
         assassinate: false,
         ignore_riposte: false,
     });
@@ -1329,6 +1331,7 @@ fn attack_consumption_keeps_first_hit_entity_order() {
             shield_absorbed: 0,
             career_restraint: false,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+            share_count: 0,
             assassinate: false,
             ignore_riposte: false,
         })
@@ -1397,6 +1400,7 @@ fn damage_based_rebound_routes_once_and_removes_the_counter() {
         shield_absorbed: 0,
         career_restraint: false,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+        share_count: 0,
         assassinate: false,
         ignore_riposte: false,
     });
@@ -1452,6 +1456,374 @@ fn damage_based_rebound_routes_once_and_removes_the_counter() {
     }
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     assert!(steps.iter().any(contains_rebound_marker));
+}
+
+#[test]
+fn exact_event_aliases_fire_independently_per_hp_transaction() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    passive_skill: vec![434111],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Skill,
+        key: DefinitionKey::new(1, "Damage"),
+    };
+    let transaction = || {
+        vec![
+            BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+                origin,
+                source_uid: -1,
+                target_uid: 10,
+                skill_id: 1,
+                amount: 100,
+                shield_absorbed: 0,
+                career_restraint: false,
+                damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+                share_count: 3,
+                assassinate: false,
+                ignore_riposte: false,
+            }),
+            BattleEvent::DamageShared {
+                origin,
+                source_uid: -1,
+                target_uid: 11,
+                amount: 25,
+                share_count: 3,
+                damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+            },
+        ]
+    };
+    let mut frames = Vec::new();
+    let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
+    let reactions = dispatch_event_groups(
+        &pool,
+        &managers,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        &[transaction(), transaction()],
+        &root,
+        &root,
+        Some(&root),
+        Some((-1, 1, Some(10))),
+        true,
+        true,
+        crate::engine::event::subscription::PublicationPhase::AfterPublish,
+        None,
+    )
+    .unwrap();
+
+    let casts = reactions
+        .into_ordered()
+        .into_iter()
+        .filter(|queued| {
+            matches!(
+                queued.op,
+                RuleOp::Skill(SkillInvocation {
+                    plan: SkillRequest {
+                        skill_id: 434111,
+                        ..
+                    },
+                    ..
+                })
+            )
+        })
+        .count();
+    assert_eq!(casts, 4);
+}
+
+#[test]
+fn shared_damage_reaction_transfers_the_number_of_share_recipients() {
+    crate::test_support::init_config();
+    let entity = |uid, passive_skill| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(1_000),
+        attr: Some(HeroAttribute {
+            hp: Some(1_000),
+            ..Default::default()
+        }),
+        passive_skill,
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, vec![434111]), entity(11, Vec::new())],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, Vec::new())],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::DamageShared {
+            origin: CommandOrigin {
+                domain: RuleDomain::BuffAct,
+                key: DefinitionKey::new(872, "ShareHurt"),
+            },
+            source_uid: -1,
+            target_uid: 10,
+            amount: 300,
+            share_count: 3,
+            damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(managers.buff.buff_id_amount(10, 434121), 3);
+    assert_eq!(managers.buff.buff_id_amount(11, 434121), 3);
+
+    let mut attacked_managers = BattleManagers::seeded(&fight);
+    run_event(
+        &mut attacked_managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+            origin: CommandOrigin {
+                domain: RuleDomain::Skill,
+                key: DefinitionKey::new(1, "SkillDamage"),
+            },
+            source_uid: -1,
+            target_uid: 10,
+            skill_id: 1,
+            amount: 100,
+            shield_absorbed: 0,
+            career_restraint: false,
+            damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+            share_count: 3,
+            assassinate: false,
+            ignore_riposte: false,
+        }),
+    )
+    .unwrap();
+    assert_eq!(attacked_managers.buff.buff_id_amount(10, 434121), 3);
+    assert_eq!(attacked_managers.buff.buff_id_amount(11, 434121), 3);
+
+    let mut genesis_managers = BattleManagers::seeded(&fight);
+    run_event(
+        &mut genesis_managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::DamageShared {
+            origin: CommandOrigin {
+                domain: RuleDomain::BuffAct,
+                key: DefinitionKey::new(30014, "OriginDamage"),
+            },
+            source_uid: -1,
+            target_uid: 10,
+            amount: 300,
+            share_count: 3,
+            damage_from: crate::engine::manager::hp::HurtDamageFromType::SkillEffect,
+        },
+    )
+    .unwrap();
+    assert_eq!(genesis_managers.buff.buff_id_amount(10, 434121), 0);
+    assert_eq!(genesis_managers.buff.buff_id_amount(11, 434121), 0);
+}
+
+#[test]
+fn shared_hit_pipeline_triggers_holder_reactions_for_share_and_hit() {
+    crate::test_support::init_config();
+    let entity = |position, uid, passive_skill, buffs| FightEntityInfo {
+        uid: Some(uid),
+        position: Some(position),
+        team_type: Some(1),
+        current_hp: Some(10_000),
+        attr: Some(HeroAttribute {
+            hp: Some(10_000),
+            ..Default::default()
+        }),
+        passive_skill,
+        buffs,
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(
+                    1,
+                    10,
+                    vec![434111],
+                    vec![BuffInfo {
+                        uid: Some(50),
+                        buff_id: Some(31090121),
+                        from_uid: Some(13),
+                        layer: Some(3),
+                        ..Default::default()
+                    }],
+                ),
+                entity(2, 11, Vec::new(), Vec::new()),
+                entity(3, 12, Vec::new(), Vec::new()),
+                entity(4, 13, Vec::new(), Vec::new()),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                position: Some(1),
+                team_type: Some(2),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    run_command_group(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Command(BattleCommand::Hp(
+            crate::engine::manager::hp::HpCommand::Damage(crate::engine::manager::hp::HpDamage {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Skill,
+                    key: DefinitionKey::new(1, "SkillDamage"),
+                },
+                source_uid: -1,
+                target_uid: 10,
+                amount: 2_102,
+                config_effect: -1,
+                effect_kind: crate::engine::manager::hp::DamageEffectKind::Normal,
+                assassinate: false,
+                ignore_riposte: false,
+                hurt: crate::engine::manager::hp::HurtInfoData {
+                    from_uid: -1,
+                    is_crit: false,
+                    career_restraint: false,
+                    reduce_hp: 0,
+                    effect_id: 0,
+                    skill_id: 1,
+                    damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+                    buff_act_id: 0,
+                    buff_uid: 0,
+                    hurt_effect_type: sonettobuf::effect_type_enum::EffectType::Damage as i32,
+                    display_amount: None,
+                },
+            }),
+        ))],
+    )
+    .unwrap();
+    for uid in [10, 11, 12, 13] {
+        assert_eq!(managers.buff.buff_id_amount(uid, 434121), 6);
+    }
+}
+
+#[test]
+fn carrier_death_pipeline_returns_deployed_shells_to_the_caster() {
+    crate::test_support::init_config();
+    let mut fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(10_000),
+                passive_skill: vec![31090141],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(10_000),
+                buffs: vec![BuffInfo {
+                    uid: Some(52),
+                    buff_id: Some(31090112),
+                    layer: Some(3),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    fight.attacker.as_mut().unwrap().entitys[0].current_hp = Some(0);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
+            source_uid: -1,
+            target_uid: 10,
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(managers.buff.buff_id_amount(-1, 31090112), 0);
+    assert_eq!(managers.buff.buff_id_amount(10, 31090111), 3);
 }
 
 #[test]
@@ -1967,6 +2339,7 @@ fn target_attacked_passive_and_be_attacked_buff_act_share_one_hit_payload() {
         shield_absorbed: 0,
         career_restraint: false,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
+        share_count: 0,
         assassinate: false,
         ignore_riposte: false,
     });

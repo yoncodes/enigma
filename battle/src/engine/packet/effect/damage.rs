@@ -51,7 +51,7 @@ impl EffectPacket {
             buff_act_id: Some(0),
             reserve_id: Some(0),
             team_type: Some(0),
-            effect_num1: Some(0),
+            effect_num1: Some(i32::from(change.assassinate)),
             hurt_info: change.hurt.map(|hurt| {
                 Self::hurt_info(
                     change,
@@ -162,6 +162,7 @@ impl EffectPacket {
             reduce_hp: Some(hurt.reduce_hp),
             career_restraint: match hurt.damage_from {
                 HurtDamageFromType::SkillEffect | HurtDamageFromType::Buff => None,
+                HurtDamageFromType::ShareHurt if hurt.effect_id != 0 || hurt.skill_id != 0 => None,
                 _ => Some(hurt.career_restraint),
             },
             assassinate: Some(change.assassinate),

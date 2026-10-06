@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use battle::engine::skill::effect::SkillEffectCatalog;
+use battle::tooling::scan::SkillEffectCatalog;
 
 mod battle_report;
 mod coverage;

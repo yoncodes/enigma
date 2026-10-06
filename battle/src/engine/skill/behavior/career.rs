@@ -109,6 +109,7 @@ mod tests {
                     modifiers: &mut modifiers,
                     target: &mut target,
                 },
+                owner_skill_id: 0,
                 conditions: &[],
             },
             &ParsedBehavior::new(100036, "SkillChangeAttackCareer", vec![1]),

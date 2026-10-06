@@ -137,10 +137,15 @@ pub struct SkillInvocation {
     pub phase: Option<SkillPhase>,
     pub target: SkillTarget,
     pub extra_skill_kind: Option<crate::engine::skill::condition::extra::ExtraSkillKind>,
+    /// Whether target-owned "when the attacker performs an extra action" rules observe this cast.
+    /// Defaults to the configured extra-skill kind when the producer does not override it.
+    pub target_observed_extra_action: Option<bool>,
     pub rate_modifier: Option<SkillRateModifier>,
     pub trigger: SkillTrigger,
     pub mode: SkillExecutionMode,
     pub start: SkillStart,
+    /// Exact rule whose progress resumes when this cast starts.
+    pub release_progress: Option<super::rule::ConfiguredRuleKey>,
     pub card_enchants: Vec<i32>,
     pub recorded_skill: Option<SkillRequest>,
 }
@@ -156,10 +161,12 @@ impl From<SkillRequest> for SkillInvocation {
             phase: None,
             target: SkillTarget::Configured,
             extra_skill_kind: None,
+            target_observed_extra_action: None,
             rate_modifier: None,
             trigger: SkillTrigger::None,
             mode: SkillExecutionMode::Nested,
             start: SkillStart::Immediate,
+            release_progress: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
         }
@@ -185,10 +192,12 @@ mod invocation_tests {
             phase: Some(SkillPhase::AfterDamage),
             target: SkillTarget::Explicit(-1),
             extra_skill_kind: Some(ExtraSkillKind::FollowUp),
+            target_observed_extra_action: None,
             rate_modifier: None,
             trigger: SkillTrigger::Explicit(30),
             mode: SkillExecutionMode::Nested,
             start: SkillStart::Immediate,
+            release_progress: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
         };
@@ -342,6 +351,7 @@ pub struct PostImmediateTargetBuffModifier {
 pub struct SkillModifiers {
     pub rates: Vec<SkillRateModifier>,
     pub attack_attributes: Vec<(AttrId, i32)>,
+    pub shared_attack_attributes: Vec<(AttrId, i32)>,
     pub redirected_damage_targets: Vec<i64>,
     pub force_critical: bool,
     pub ignore_riposte: bool,
@@ -359,6 +369,8 @@ impl SkillModifiers {
     pub(crate) fn merge(&mut self, mut other: Self) {
         self.rates.append(&mut other.rates);
         self.attack_attributes.append(&mut other.attack_attributes);
+        self.shared_attack_attributes
+            .append(&mut other.shared_attack_attributes);
         for target_uid in other.redirected_damage_targets {
             if !self.redirected_damage_targets.contains(&target_uid) {
                 self.redirected_damage_targets.push(target_uid);

@@ -922,14 +922,17 @@ pub fn calculated_attack_attribute_delta_for_skill(
                 feature, attr_id, attributes, buffs, hp,
             );
         }
-        Some(registry::BuffActKind::FixTempAttrByBuffLayer) => {
+        Some(
+            registry::BuffActKind::FixTempAttrByBuffLayer
+            | registry::BuffActKind::AttrOnlyCalDamageInExtra,
+        ) if performs_extra_action => {
             return attack_attribute_delta_for_skill(
                 feature,
                 attr_id,
                 buffs,
                 hp,
                 is_big_skill,
-                performs_extra_action,
+                true,
             );
         }
         _ => {}

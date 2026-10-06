@@ -451,6 +451,42 @@ fn timed_layer_grants_only_merge_with_an_instance_at_the_fresh_duration() {
 }
 
 #[test]
+fn refreshing_a_stacked_timed_attribute_merges_the_held_instance() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(434121),
+                    duration: Some(2),
+                    uid: Some(40),
+                    from_uid: Some(10),
+                    layer: Some(6),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    let refreshed =
+        manager.add_replacing_excluded_with_layer_specified(&hp, 10, 10, 434121, 6, true);
+
+    assert!(refreshed.added.is_none());
+    assert_eq!(refreshed.refreshed.len(), 1);
+    assert_eq!(refreshed.refreshed[0].after.uid, Some(40));
+    assert_eq!(refreshed.refreshed[0].after.layer, Some(12));
+    assert_eq!(refreshed.refreshed[0].after.duration, Some(3));
+    assert_eq!(manager.active_for(10).count(), 1);
+}
+
+#[test]
 fn include_type_two_timed_grant_prolongs_the_held_copy() {
     init_config();
     let hp = HpManager::default();

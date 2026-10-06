@@ -177,6 +177,7 @@ pub(super) fn consume_card_grant_ops(
             origin,
             owner_uid: context.source_uid,
             indices: plan.iter().map(|(index, _)| *index).collect(),
+            kind: crate::engine::manager::card::CardConsumptionKind::Generic,
         }),
     ))];
     if amount > 0 {

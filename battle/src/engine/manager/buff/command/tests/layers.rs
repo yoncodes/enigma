@@ -136,6 +136,108 @@ fn layered_refresh_plans_update_and_capped_noop() {
 }
 
 #[test]
+fn version_seven_capped_layer_refresh_consumes_its_attempt_uid() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(1, "AddBuff"),
+    };
+    let grant = |amount| {
+        BuffCommand::Grant(BuffGrant {
+            origin,
+            source_uid: 10,
+            target_uid: 10,
+            buff_id: 90071,
+            amount: Some(amount),
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })
+    };
+
+    manager.execute(&HpManager::default(), grant(30)).unwrap();
+    let capped = manager.plan(&HpManager::default(), grant(2)).unwrap();
+    assert_eq!(grant_plan(&capped).layer_refresh_uid.unwrap().uid, 1003);
+    manager.commit(&HpManager::default(), capped);
+
+    let next = manager.add(&HpManager::default(), 10, 10, 101, 0).unwrap();
+    assert_eq!(next.buff.uid, Some(1005));
+}
+
+#[test]
+fn version_seven_reserves_only_the_first_capped_attempt_per_carrier_in_a_transaction() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: (10..14)
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1100 + uid),
+                        buff_id: Some(434121),
+                        from_uid: Some(13),
+                        layer: Some(12),
+                        duration: Some(3),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let grant = |target_uid| {
+        BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: 13,
+            target_uid,
+            buff_id: 434121,
+            amount: Some(1),
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })
+    };
+
+    manager.begin_transaction();
+    for target_uid in 10..14 {
+        let plan = manager
+            .plan(&HpManager::default(), grant(target_uid))
+            .unwrap();
+        assert!(grant_plan(&plan).layer_refresh_uid.is_some());
+        manager.commit(&HpManager::default(), plan);
+    }
+    for target_uid in 10..14 {
+        let plan = manager
+            .plan(&HpManager::default(), grant(target_uid))
+            .unwrap();
+        assert!(grant_plan(&plan).layer_refresh_uid.is_none());
+        manager.commit(&HpManager::default(), plan);
+    }
+    manager.end_transaction();
+}
+
+#[test]
 fn configured_max_layer_modifier_raises_its_target_buff_cap_for_allies() {
     crate::test_support::init_config();
     let fight = Fight {

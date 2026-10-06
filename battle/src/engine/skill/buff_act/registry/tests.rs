@@ -26,6 +26,14 @@ fn registry_requires_exact_id_and_type() {
         &[sonettobuf::effect_type_enum::EffectType::Injuryabsorb as i32]
     );
     assert_eq!(
+        find(717, "HealCritFix").unwrap().kind,
+        BuffActKind::HealCritFix
+    );
+    assert_eq!(
+        destination(717, "HealCritFix", &[500]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert_eq!(
         find(1137, "EntityExSkillNotCalSize").unwrap().kind,
         BuffActKind::EntityExSkillNotCalSize
     );

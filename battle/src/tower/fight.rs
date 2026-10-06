@@ -42,7 +42,7 @@ pub fn system_plan_talents(
         .collect()
 }
 
-pub fn system_plan_rule_skills(
+pub(crate) fn system_plan_rule_skills(
     tables: &config::GameDB,
     fight: &sonettobuf::Fight,
     plan_id: i32,

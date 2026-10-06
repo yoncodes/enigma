@@ -56,11 +56,30 @@ pub struct DamageRuntime<'a> {
     pub team_inspiration: i32,
 }
 
+#[derive(Clone, Copy)]
+pub struct DamageFraction {
+    pub numerator: i128,
+    pub denominator: i128,
+}
+
+pub struct ResolvedAttack {
+    pub command: HpCommand,
+    pub fraction: DamageFraction,
+}
+
 pub fn resolve_attack_command(
     plan: &AttackPlan,
     runtime: DamageRuntime<'_>,
     origin: CommandOrigin,
 ) -> Option<HpCommand> {
+    resolve_attack_command_with_precision(plan, runtime, origin).map(|resolved| resolved.command)
+}
+
+pub fn resolve_attack_command_with_precision(
+    plan: &AttackPlan,
+    runtime: DamageRuntime<'_>,
+    origin: CommandOrigin,
+) -> Option<ResolvedAttack> {
     let resolved = resolve_row_damage_result(
         DamageRequest {
             source_uid: plan.source_uid,
@@ -81,7 +100,7 @@ pub fn resolve_attack_command(
         },
         runtime,
     )?;
-    Some(HpCommand::Damage(HpDamage {
+    let command = HpCommand::Damage(HpDamage {
         origin,
         source_uid: resolved.source_uid,
         target_uid: resolved.target_uid,
@@ -95,7 +114,11 @@ pub fn resolve_attack_command(
         assassinate: plan.assassinate,
         ignore_riposte: false,
         hurt: resolved.hurt,
-    }))
+    });
+    Some(ResolvedAttack {
+        command,
+        fraction: resolved.fraction,
+    })
 }
 
 pub fn resolve_avoided_attack_command(
@@ -200,6 +223,7 @@ struct ResolvedRowDamage {
     source_uid: i64,
     target_uid: i64,
     amount: i32,
+    fraction: DamageFraction,
     hurt: HurtInfoData,
 }
 
@@ -241,7 +265,7 @@ fn resolve_row_damage_result(
         .map(|replacement| replacement.formula)
         .unwrap_or(DamageFormula::StandardSkill);
     let (base_rate, added_rate) = composed_damage_rates(rate, rate_terms);
-    let amount = direct_damage(
+    let damage = direct_damage_trace(
         request,
         runtime,
         source,
@@ -265,10 +289,14 @@ fn resolve_row_damage_result(
             request.additional_attack_career,
             target,
         );
-    (amount > 0).then_some(ResolvedRowDamage {
+    (damage.amount > 0).then_some(ResolvedRowDamage {
         source_uid,
         target_uid,
-        amount,
+        amount: damage.amount,
+        fraction: DamageFraction {
+            numerator: damage.critical.numerator,
+            denominator: damage.critical.denominator,
+        },
         hurt: HurtInfoData {
             from_uid: source_uid,
             is_crit,
@@ -292,6 +320,7 @@ fn resolve_row_damage_result(
 pub fn resolve_additional_damage_command(
     request: DamageRequest<'_>,
     runtime: DamageRuntime<'_>,
+    formula: DamageFormula,
     attack_replacement: Option<crate::engine::skill::buff_act::AttackReplacement>,
     credited_source_uid: i64,
     assassinate: bool,
@@ -300,6 +329,7 @@ pub fn resolve_additional_damage_command(
     let resolved = resolve_additional_damage_result(
         request,
         runtime,
+        formula,
         attack_replacement,
         credited_source_uid,
     )?;
@@ -320,6 +350,88 @@ pub fn resolve_additional_damage_command(
     }))
 }
 
+#[derive(Clone, Copy)]
+pub struct ProportionalAdditionalDamageRequest {
+    pub main: HpDamage,
+    pub main_fraction: Option<DamageFraction>,
+    pub rate: i32,
+    pub main_rate: i32,
+    pub credited_source_uid: i64,
+    pub force_career_restraint: bool,
+    pub assassinate: bool,
+    pub origin: CommandOrigin,
+}
+
+pub fn resolve_proportional_additional_damage_command(
+    request: ProportionalAdditionalDamageRequest,
+    runtime: DamageRuntime<'_>,
+) -> Option<HpCommand> {
+    let ProportionalAdditionalDamageRequest {
+        main,
+        main_fraction,
+        rate,
+        main_rate,
+        credited_source_uid,
+        force_career_restraint,
+        assassinate,
+        origin,
+    } = request;
+    if main.amount <= 0 || rate <= 0 || main_rate <= 0 || credited_source_uid == 0 {
+        return None;
+    }
+    let amount = if let Some(fraction) = main_fraction {
+        let (numerator, denominator) = crate::engine::damage::pipeline::multiply_reduced_fraction(
+            (fraction.numerator, fraction.denominator),
+            (i128::from(rate), i128::from(main_rate)),
+        );
+        (numerator / denominator).clamp(0, i128::from(i32::MAX)) as i32
+    } else {
+        (i64::from(main.amount) * i64::from(rate) / i64::from(main_rate))
+            .clamp(0, i64::from(i32::MAX)) as i32
+    };
+    let credited_source = runtime.pool.entity(credited_source_uid)?;
+    let target = runtime.pool.entity(main.target_uid)?;
+    let career_restraint = force_career_restraint
+        || runtime
+            .buffs
+            .active_features(runtime.hp)
+            .iter()
+            .filter(|feature| feature.owner_uid == credited_source_uid)
+            .any(crate::engine::skill::buff_act::forces_career_restraint)
+        || restrains_target_either(runtime.pool.catalog(), credited_source.career, None, target);
+    (amount > 0).then_some(HpCommand::Damage(HpDamage {
+        origin,
+        source_uid: credited_source_uid,
+        target_uid: main.target_uid,
+        amount,
+        config_effect: -1,
+        effect_kind: if main.hurt.is_crit {
+            DamageEffectKind::Critical
+        } else {
+            DamageEffectKind::Normal
+        },
+        assassinate,
+        ignore_riposte: main.ignore_riposte,
+        hurt: HurtInfoData {
+            from_uid: credited_source_uid,
+            is_crit: main.hurt.is_crit,
+            career_restraint,
+            reduce_hp: 0,
+            effect_id: 0,
+            skill_id: 0,
+            damage_from: HurtDamageFromType::Additional,
+            buff_act_id: 0,
+            buff_uid: 0,
+            hurt_effect_type: if main.hurt.is_crit {
+                EffectType::Additionaldamagecrit as i32
+            } else {
+                EffectType::Additionaldamage as i32
+            },
+            display_amount: None,
+        },
+    }))
+}
+
 struct ResolvedAdditionalDamage {
     source_uid: i64,
     target_uid: i64,
@@ -330,6 +442,7 @@ struct ResolvedAdditionalDamage {
 fn resolve_additional_damage_result(
     request: DamageRequest<'_>,
     runtime: DamageRuntime<'_>,
+    formula: DamageFormula,
     attack_replacement: Option<crate::engine::skill::buff_act::AttackReplacement>,
     credited_source_uid: i64,
 ) -> Option<ResolvedAdditionalDamage> {
@@ -342,13 +455,25 @@ fn resolve_additional_damage_result(
         !matches!(
             replacement.formula,
             crate::engine::damage::DamageFormula::AdditionalDamage
+                | crate::engine::damage::DamageFormula::CreditedSourceAdditional
                 | crate::engine::damage::DamageFormula::AttributeReplacementAdditional
                 | crate::engine::damage::DamageFormula::MaxHpAdditionalDamage
         )
     }) {
         return None;
     }
-    let amount = additional_replaced_attack_damage_amount(request, runtime, attack_replacement);
+    let amount =
+        additional_replaced_attack_damage_amount(request, runtime, formula, attack_replacement);
+    let source = runtime.pool.entity(credited_source_uid)?;
+    let target = runtime.pool.entity(target_uid)?;
+    let career_restraint = formula.rules().applies_career
+        && (request.force_career_restraint
+            || restrains_target_either(
+                runtime.pool.catalog(),
+                request.attack_career.unwrap_or(source.career),
+                request.additional_attack_career,
+                target,
+            ));
     (amount > 0).then_some(ResolvedAdditionalDamage {
         source_uid: credited_source_uid,
         target_uid,
@@ -356,7 +481,7 @@ fn resolve_additional_damage_result(
         hurt: HurtInfoData {
             from_uid: credited_source_uid,
             is_crit,
-            career_restraint: false,
+            career_restraint,
             reduce_hp: 0,
             effect_id: 0,
             skill_id: 0,
@@ -376,6 +501,7 @@ fn resolve_additional_damage_result(
 fn additional_replaced_attack_damage_amount(
     request: DamageRequest<'_>,
     runtime: DamageRuntime<'_>,
+    formula: DamageFormula,
     attack_replacement: Option<crate::engine::skill::buff_act::AttackReplacement>,
 ) -> i32 {
     let DamageRequest {
@@ -393,7 +519,7 @@ fn additional_replaced_attack_damage_amount(
     let (base_rate, added_rate) = composed_damage_rates(request.rate, request.rate_terms);
     let formula = attack_replacement
         .map(|replacement| replacement.formula)
-        .unwrap_or(DamageFormula::AdditionalDamage);
+        .unwrap_or(formula);
     direct_damage(
         request,
         runtime,
@@ -456,6 +582,16 @@ pub(super) fn direct_damage(
     target: &TargetEntity,
     options: DirectOptions,
 ) -> i32 {
+    direct_damage_trace(request, runtime, source, target, options).amount
+}
+
+fn direct_damage_trace(
+    request: DamageRequest<'_>,
+    runtime: DamageRuntime<'_>,
+    source: &TargetEntity,
+    target: &TargetEntity,
+    options: DirectOptions,
+) -> crate::engine::damage::DamageTrace {
     let DamageRequest {
         skill_id,
         rate_terms,
@@ -810,25 +946,37 @@ pub(super) fn direct_damage(
                 + attack_local_attribute(AttrId::IncantationSkillUltMightMultiplier);
             1000 + incantation_might + ultimate_might * cross_multiplier / 1000
         };
-    let action_attr =
-        match crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind) {
-            Some(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction) => {
-                Some(AttrId::ExtraDmg)
-            }
-            Some(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp) => {
-                Some(AttrId::ReuseDmg)
-            }
-            Some(crate::engine::skill::condition::extra::ExtraSkillKind::Riposte) => {
-                Some(AttrId::ReboundDmg)
-            }
-            _ => None,
-        };
-    let action_bonus = action_attr.map_or(0, |attr_id| {
-        attributes.get(source.uid, attr_id)
-            + attribute_delta(source, attr_id)
-            + attack_attr(attr_id)
-            + attack_local_attribute(attr_id)
-    });
+    let extra_kind =
+        crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind);
+    let specific_action_attr = match extra_kind {
+        Some(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp) => {
+            Some(AttrId::ReuseDmg)
+        }
+        Some(crate::engine::skill::condition::extra::ExtraSkillKind::Riposte) => {
+            Some(AttrId::ReboundDmg)
+        }
+        _ => None,
+    };
+    let uses_shared_extra_damage = performs_extra_action
+        || matches!(
+            extra_kind,
+            Some(
+                crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction
+                    | crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp
+                    | crate::engine::skill::condition::extra::ExtraSkillKind::Riposte
+            )
+        );
+    let action_bonus = uses_shared_extra_damage
+        .then_some(AttrId::ExtraDmg)
+        .into_iter()
+        .chain(specific_action_attr)
+        .map(|attr_id| {
+            attributes.get(source.uid, attr_id)
+                + attribute_delta(source, attr_id)
+                + attack_attr(attr_id)
+                + attack_local_attribute(attr_id)
+        })
+        .sum::<i32>();
     let action_joins_might = formula_rules.combines_action_with_might;
     let target_base_regular = attributes.get(target.uid, AttrId::DmgTakenReduction);
     let target_buff_regular = attribute_delta(target, AttrId::DmgTakenReduction);
@@ -920,7 +1068,6 @@ pub(super) fn direct_damage(
             runtime.fight_version,
             critical_multiplier_remainder,
         );
-    let amount = damage_trace.amount;
     if crate::engine::damage::trace::enabled() {
         let local_damage_bonus = source_active_features
             .iter()
@@ -1019,5 +1166,5 @@ pub(super) fn direct_damage(
             attributes.get(source.uid, AttrId::AttackPercent),
         );
     }
-    amount
+    damage_trace
 }

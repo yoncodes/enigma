@@ -1,6 +1,79 @@
 use super::*;
 
 #[test]
+fn mass_action_behaviors_prioritize_the_selected_target() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(10_000),
+        attr: Some(HeroAttribute {
+            hp: Some(10_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10), entity(20), entity(30), entity(40)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                model_id: Some(109380001),
+                ..entity(-1)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: -1,
+        skill_id: 109380001,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(40);
+    let mut execution = SkillExecution::new(TargetContext::default());
+    let mut grants = Vec::new();
+
+    loop {
+        let emission = emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            &mut execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap();
+        grants.extend(
+            emission
+                .ops
+                .iter()
+                .filter_map(|emission| match &emission.op {
+                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))
+                        if grant.buff_id == 109380001 =>
+                    {
+                        Some(grant.target_uid)
+                    }
+                    _ => None,
+                }),
+        );
+        let Some(continuation) = emission.continuation else {
+            break;
+        };
+        invocation = continuation;
+    }
+
+    assert_eq!(grants, vec![40, 20, 30, 10]);
+}
+
+#[test]
 fn committed_conduit_hit_satisfies_attack_conditions() {
     let fight = Fight {
         attacker: Some(FightTeam {

@@ -174,7 +174,7 @@ impl TargetResolver {
             );
         }
 
-        let mut targets = match rule {
+        let targets = match rule {
             TargetRule::Logic => {
                 logic_target(source_uid, skill_id, pool, determinism, managers, context)
             }
@@ -299,15 +299,6 @@ impl TargetResolver {
             TargetRule::AlliesWithStatus => allies_by_status(pool, source_uid, request, true),
             TargetRule::AlliesWithoutStatus => allies_by_status(pool, source_uid, request, false),
         };
-        if context.active_skill_is_attack
-            && targets.len() > 1
-            && let Some(index) = targets
-                .iter()
-                .position(|uid| *uid == context.runtime_target_uid)
-        {
-            let primary = targets.remove(index);
-            targets.insert(0, primary);
-        }
         if let Some(captured) = determinism.take_skill_targets(skill_id, source_uid, request.code)
             && captured != targets
         {
@@ -391,8 +382,16 @@ impl TargetResolver {
                 },
             );
             if let Some(target_uid) = targets
-                .into_iter()
-                .find(|target_uid| pool.entity(*target_uid).is_some())
+                .iter()
+                .copied()
+                .find(|target_uid| {
+                    *target_uid == runtime_target_uid && pool.entity(*target_uid).is_some()
+                })
+                .or_else(|| {
+                    targets
+                        .into_iter()
+                        .find(|target_uid| pool.entity(*target_uid).is_some())
+                })
                 && !resolved.contains(&target_uid)
             {
                 resolved.push(target_uid);
@@ -614,6 +613,10 @@ fn target_rule(code: i32) -> Option<TargetRule> {
     })
 }
 
+pub(crate) fn frame_anchor_for_rule(code: i32, source_uid: i64) -> Option<i64> {
+    matches!(target_rule(code), Some(TargetRule::OtherAllies)).then_some(source_uid)
+}
+
 fn allies_by_status(
     pool: &TargetPool,
     source_uid: i64,
@@ -792,15 +795,23 @@ fn random_ally_by_rng(entities: &[TargetEntity], determinism: &mut RoundDetermin
 fn lowest_hp_percentage(entities: &[TargetEntity]) -> Vec<i64> {
     entities
         .iter()
-        .min_by_key(|entity| {
-            (
-                entity.current_hp * 10000 / entity.max_hp.max(1),
-                entity.position,
-                entity.uid,
-            )
+        .min_by(|left, right| {
+            compare_hp_percentage(left.current_hp, left.max_hp, right.current_hp, right.max_hp)
+                .then_with(|| left.position.cmp(&right.position))
+                .then_with(|| left.uid.cmp(&right.uid))
         })
         .map(|entity| vec![entity.uid])
         .unwrap_or_default()
+}
+
+fn compare_hp_percentage(
+    left_current: i32,
+    left_max: i32,
+    right_current: i32,
+    right_max: i32,
+) -> std::cmp::Ordering {
+    (i64::from(left_current) * i64::from(right_max.max(1)))
+        .cmp(&(i64::from(right_current) * i64::from(left_max.max(1))))
 }
 
 fn lowest_hp(entities: &[TargetEntity]) -> Vec<i64> {
@@ -840,20 +851,11 @@ fn enemy_with_most_shell(
     let Some(managers) = managers else {
         return Vec::new();
     };
-    let features = managers.buff.active_features(&managers.hp);
     let deployed_buff_id = (context.shell_deployed_buff_id > 0)
         .then_some(context.shell_deployed_buff_id)
         .or_else(|| {
-            features.iter().find_map(|feature| {
-                (feature.owner_uid == source_uid
-                    && feature.values.get(1) == Some(&feature.buff_id)
-                    && crate::engine::skill::buff_act::is_kind(
-                        feature,
-                        crate::engine::skill::buff_act::registry::BuffActKind::ShellProcess,
-                    ))
-                .then(|| feature.values.get(2).copied())
-                .flatten()
-            })
+            crate::engine::skill::buff_act::shell::caster_shell_spec(managers, source_uid)
+                .map(|spec| spec.deployed_buff_id)
         });
     let Some(deployed_buff_id) = deployed_buff_id else {
         return Vec::new();
@@ -904,15 +906,22 @@ fn highest_ex_point(
 fn highest_hp(entities: &[TargetEntity], managers: Option<&BattleManagers>) -> Vec<i64> {
     entities
         .iter()
-        .min_by_key(|entity| {
-            let current_hp = managers
-                .map(|managers| managers.hp.current(entity.uid))
-                .unwrap_or(entity.current_hp);
-            let max_hp = managers
-                .map(|managers| managers.hp.max(entity.uid))
-                .unwrap_or(entity.max_hp)
-                .max(1);
-            (-(current_hp * 10000 / max_hp), entity.position, entity.uid)
+        .min_by(|left, right| {
+            let left_current = managers
+                .map(|managers| managers.hp.current(left.uid))
+                .unwrap_or(left.current_hp);
+            let left_max = managers
+                .map(|managers| managers.hp.max(left.uid))
+                .unwrap_or(left.max_hp);
+            let right_current = managers
+                .map(|managers| managers.hp.current(right.uid))
+                .unwrap_or(right.current_hp);
+            let right_max = managers
+                .map(|managers| managers.hp.max(right.uid))
+                .unwrap_or(right.max_hp);
+            compare_hp_percentage(right_current, right_max, left_current, left_max)
+                .then_with(|| left.position.cmp(&right.position))
+                .then_with(|| left.uid.cmp(&right.uid))
         })
         .map(|entity| vec![entity.uid])
         .unwrap_or_default()

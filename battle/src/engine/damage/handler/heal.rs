@@ -5,6 +5,7 @@ use crate::engine::{
     skill::{
         buff_act::{is_kind, registry::BuffActKind},
         effect::ParsedBehavior,
+        target::TargetPool,
     },
 };
 
@@ -60,6 +61,26 @@ pub(crate) fn modified(
     if base <= 0 {
         return 0;
     }
+    let (healing_done, healing_taken) = modifier_rates(source_uid, target_uid, managers);
+    scale_permille(scale_permille(base, healing_done), healing_taken).max(1)
+}
+
+pub(crate) fn modified_fraction(
+    base_numerator: i128,
+    base_denominator: i128,
+    source_uid: i64,
+    target_uid: i64,
+    managers: &BattleManagers,
+    final_multiplier: super::critical::CriticalHealMultiplier,
+) -> i32 {
+    if base_numerator <= 0 || base_denominator <= 0 {
+        return 0;
+    }
+    let base = (base_numerator / base_denominator).clamp(1, i128::from(i32::MAX)) as i32;
+    final_multiplier.apply(modified(base, source_uid, target_uid, managers))
+}
+
+fn modifier_rates(source_uid: i64, target_uid: i64, managers: &BattleManagers) -> (i32, i32) {
     let healing_done = managers.attribute.get(source_uid, AttrId::HealingDone)
         + managers
             .buff
@@ -102,16 +123,16 @@ pub(crate) fn modified(
             })
             .map_or(0, |_| BURN_HEALING_TAKEN);
     let healing_taken = healing_taken.saturating_sub(injury);
-    scale_permille(
-        scale_permille(base, 1000_i32.saturating_add(healing_done)),
-        1000_i32.saturating_add(healing_taken),
+    (
+        1000_i32.saturating_add(healing_done).max(0),
+        1000_i32.saturating_add(healing_taken).max(0),
     )
-    .max(1)
 }
 
 pub(super) fn amount(
     source_uid: i64,
     target_uid: i64,
+    pool: &TargetPool,
     managers: &BattleManagers,
     is_crit: bool,
     behavior: &ParsedBehavior,
@@ -130,11 +151,41 @@ pub(super) fn amount(
         behavior.args.first().copied()?
     };
     Some(if is_crit && !is_full_restore(behavior) {
-        scale_permille(
-            amount,
-            managers.attribute.get(source_uid, AttrId::CriticalDmg),
-        )
+        super::critical::heal_multiplier(source_uid, target_uid, pool, managers).apply(amount)
     } else {
         amount
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn healing_modifiers_settle_before_the_final_multiplier() {
+        let mut managers = BattleManagers::default();
+
+        assert_eq!(
+            modified_fraction(
+                733,
+                1,
+                10,
+                11,
+                &managers,
+                super::super::critical::CriticalHealMultiplier::IDENTITY,
+            ),
+            733
+        );
+        let boosted = super::super::critical::CriticalHealMultiplier::from_permille(1_200);
+        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, boosted), 879);
+
+        managers.attribute.override_sp(
+            10,
+            &sonettobuf::HeroSpAttribute {
+                heal: Some(1),
+                ..Default::default()
+            },
+        );
+        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, boosted), 879);
+    }
 }

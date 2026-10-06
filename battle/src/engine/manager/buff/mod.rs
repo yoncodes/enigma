@@ -14,6 +14,7 @@ mod grant_plan;
 mod lifecycle;
 mod query;
 mod result;
+mod resync;
 mod rules;
 mod state;
 mod status;
@@ -111,6 +112,7 @@ impl Default for BuffManager {
 struct BuffTransactionState {
     depth: usize,
     progressed_stack_buff_ids: HashSet<i32>,
+    capped_stack_attempts: HashSet<(i64, i32)>,
 }
 
 impl BuffManager {
@@ -161,6 +163,7 @@ impl BuffManager {
     pub(crate) fn begin_transaction(&mut self) {
         if self.transaction.depth == 0 {
             self.transaction.progressed_stack_buff_ids.clear();
+            self.transaction.capped_stack_attempts.clear();
         }
         self.transaction.depth += 1;
     }
@@ -170,6 +173,7 @@ impl BuffManager {
         self.transaction.depth = self.transaction.depth.saturating_sub(1);
         if self.transaction.depth == 0 {
             self.transaction.progressed_stack_buff_ids.clear();
+            self.transaction.capped_stack_attempts.clear();
         }
     }
 
@@ -184,6 +188,22 @@ impl BuffManager {
     fn record_transaction_stack_progress(&mut self, buff_id: i32) {
         if self.transaction.depth > 0 {
             self.transaction.progressed_stack_buff_ids.insert(buff_id);
+        }
+    }
+
+    fn transaction_has_capped_stack_attempt(&self, owner_uid: i64, buff_id: i32) -> bool {
+        self.transaction.depth > 0
+            && self
+                .transaction
+                .capped_stack_attempts
+                .contains(&(owner_uid, buff_id))
+    }
+
+    fn record_transaction_capped_stack_attempt(&mut self, owner_uid: i64, buff_id: i32) {
+        if self.transaction.depth > 0 {
+            self.transaction
+                .capped_stack_attempts
+                .insert((owner_uid, buff_id));
         }
     }
 }

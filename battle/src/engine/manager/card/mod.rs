@@ -17,14 +17,14 @@ pub use change::CardChange;
 pub use command::{
     CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardActionQueue, CardAddCrystal, CardAddGenerated,
     CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
-    CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardDeckRankUpRange,
-    CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange, CardHandLimitChange,
-    CardInvalidatePlayed, CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPlay,
-    CardQueueUse, CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel,
-    CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveAiOwner, CardRemoveOwner,
-    CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability,
-    CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp,
-    QueuedUseCard, TemporaryCardKind,
+    CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardConsumptionKind,
+    CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange,
+    CardHandLimitChange, CardInvalidatePlayed, CardMarkTemporary, CardOpeningDraw,
+    CardOwnerRemoval, CardPlay, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
+    CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue,
+    CardRemoveAiOwner, CardRemoveOwner, CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards,
+    CardSetUltimateAvailability, CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange,
+    QueuedCardRankUp, QueuedUseCard, TemporaryCardKind,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;

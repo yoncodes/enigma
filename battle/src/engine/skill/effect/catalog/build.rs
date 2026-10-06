@@ -287,7 +287,7 @@ impl SkillEffectCatalog {
             if behavior.trim().is_empty() {
                 continue;
             }
-            if let Some(slot) = parse_slot(
+            if let Some(mut slot) = parse_slot(
                 db,
                 RawSlot {
                     behavior,
@@ -299,6 +299,8 @@ impl SkillEffectCatalog {
                     round_limit,
                 },
             ) {
+                slot.behavior.effect_id = row.id;
+                slot.behavior.slot = index as u8 + 1;
                 if let Some(definition) =
                     crate::engine::skill::behavior::registry::find(&slot.behavior)
                 {

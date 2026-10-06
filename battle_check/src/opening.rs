@@ -1,7 +1,7 @@
 use std::io;
 
 use anyhow::{Context, Result};
-use battle::{catalog::BattleCatalog, engine::runtime::BattleRuntime};
+use battle::{catalog::BattleCatalog, tooling::replay::ReplayBattle};
 use sonettobuf::{CardInfo, FightGroup};
 
 pub(crate) fn print(db: &'static config::GameDB, episode_id: i32) -> Result<()> {
@@ -28,7 +28,7 @@ fn run(db: &'static config::GameDB, episode_id: i32) -> Result<()> {
         battle::dungeon::FightOptions::default(),
         None,
     )?;
-    let mut runtime = BattleRuntime::new(BattleCatalog::new(db), built.fight);
+    let mut runtime = ReplayBattle::new(BattleCatalog::new(db), built.fight);
     let round = runtime.start_round().map_err(anyhow::Error::msg)?;
     let push = runtime.card_info_push();
 

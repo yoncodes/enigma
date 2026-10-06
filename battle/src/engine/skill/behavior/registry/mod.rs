@@ -77,6 +77,11 @@ pub struct BehaviorDefinition {
     pub emit_ops: for<'a> fn(BehaviorOpContext<'a>, &ParsedBehavior) -> Option<Vec<RuleOp>>,
     pub collect_attack_modifier:
         Option<for<'a> fn(AttackModifierContext<'a>, &ParsedBehavior) -> bool>,
+    pub attack_modifier_only: bool,
+    pub supports_attack_modifier:
+        Option<fn(&crate::engine::manager::BattleManagers, i32, &ParsedBehavior) -> bool>,
+    pub collect_attack_modifier_from_committed_state:
+        Option<fn(&crate::engine::manager::BattleManagers, i64, &ParsedBehavior) -> bool>,
     pub collect_round_modifier: Option<fn(&ParsedBehavior) -> Option<RoundModifiers>>,
     pub round_modifier_only: bool,
     pub collect_queue_preparation: Option<QueuePreparationCollector>,
@@ -122,6 +127,22 @@ pub trait BehaviorHandler {
         Self::emit_ops(context.operation, behavior).is_some()
     }
 
+    fn supports_attack_modifier(
+        _: &crate::engine::manager::BattleManagers,
+        _: i32,
+        _: &ParsedBehavior,
+    ) -> bool {
+        true
+    }
+
+    fn has_committed_attack_modifier(
+        _: &crate::engine::manager::BattleManagers,
+        _: i64,
+        _: &ParsedBehavior,
+    ) -> bool {
+        false
+    }
+
     fn collect_round_modifier(_: &ParsedBehavior) -> Option<RoundModifiers> {
         None
     }
@@ -155,6 +176,9 @@ pub const fn definition<H: BehaviorHandler>(
         phase,
         emit_ops: H::emit_ops,
         collect_attack_modifier: None,
+        attack_modifier_only: false,
+        supports_attack_modifier: None,
+        collect_attack_modifier_from_committed_state: None,
         collect_round_modifier: None,
         round_modifier_only: false,
         collect_queue_preparation: None,
@@ -349,6 +373,7 @@ pub const fn modifier_definition<H: BehaviorHandler>(
     BehaviorDefinition {
         destination: true,
         collect_attack_modifier: Some(H::collect_attack_modifier),
+        attack_modifier_only: true,
         ..definition::<H>(opcode, type_name, kind, phase)
     }
 }
@@ -388,6 +413,22 @@ pub const fn aggregated_destination_definition<H: BehaviorHandler>(
 ) -> BehaviorDefinition {
     BehaviorDefinition {
         destination: true,
+        fire_count_mode: FireCountMode::Transfer,
+        ..definition::<H>(opcode, type_name, kind, phase)
+    }
+}
+
+pub const fn aggregated_modifier_definition<H: BehaviorHandler>(
+    opcode: i32,
+    type_name: &'static str,
+    kind: BehaviorKind,
+    phase: BehaviorPhase,
+) -> BehaviorDefinition {
+    BehaviorDefinition {
+        destination: true,
+        collect_attack_modifier: Some(H::collect_attack_modifier),
+        supports_attack_modifier: Some(H::supports_attack_modifier),
+        collect_attack_modifier_from_committed_state: Some(H::has_committed_attack_modifier),
         fire_count_mode: FireCountMode::Transfer,
         ..definition::<H>(opcode, type_name, kind, phase)
     }
@@ -468,6 +509,9 @@ macro_rules! behavior_definitions {
     };
     (@definition aggregated_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::aggregated_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
+    };
+    (@definition aggregated_modifier, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
+        $crate::engine::skill::behavior::registry::aggregated_modifier_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
     };
 }
 
@@ -551,7 +595,7 @@ behavior_definitions! {
     [60112] "AddTargetBuffByPoison" => super::buff::Handler, AddTargetBuffByPoison, AfterDamage, destination;
     [60142] "ConsumePowerAddBuff" => super::buff::Handler, ConsumePowerAddBuff, Immediate, destination, super::buff::supports_consume_power_add_buff;
     [60150] "ConsumePowerAddMultiBuff1" => super::buff::Handler, ConsumePowerAddMultiBuff1, Immediate, destination, super::buff::supports_consume_power_add_multi_buff;
-    [1] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination, arguments::at_least_one;
+    [1] "AddBuff" => super::buff::Handler, AddBuff, Immediate, aggregated_modifier, arguments::at_least_one;
     [2] "AddBuffPowerUse" => super::buff::Handler, AddBuffPowerUse, AfterDamage, aggregated_destination, arguments::at_least_one;
     [1210001] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination;
     [1210002] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination;
@@ -664,8 +708,8 @@ behavior_definitions! {
     [60271] "SetExtraType" => super::general::SetExtraTypeHandler, SetExtraType, Immediate, destination, super::general::supports_extra_type;
     [10006] "Damage" => crate::engine::damage::handler::Handler, Damage, Immediate, destination, crate::engine::damage::handler::supports_attribute_damage;
     [10008] "Damage2" => crate::engine::damage::handler::Handler, Damage2, Immediate, plain;
-    [30014] "OriginDamage" => crate::engine::damage::handler::Handler, OriginDamage, AfterDamage, destination, crate::engine::damage::handler::supports_origin_damage;
-    [30015] "OriginDamageCanCrit" => crate::engine::damage::handler::Handler, OriginDamageCanCrit, AfterDamage, destination, crate::engine::damage::handler::supports_origin_damage;
+    [30014] "OriginDamage" => crate::engine::damage::handler::Handler, OriginDamage, Immediate, destination, crate::engine::damage::handler::supports_origin_damage;
+    [30015] "OriginDamageCanCrit" => crate::engine::damage::handler::Handler, OriginDamageCanCrit, Immediate, destination, crate::engine::damage::handler::supports_origin_damage;
     [60146] "OriginDamageByTeamAttr" => crate::engine::damage::handler::Handler, OriginDamageByTeamAttr, AfterDamage, plain, crate::engine::damage::handler::supports_team_attr_damage;
     [60127] "OriginDamageByAttrAndBuffGroupSize" => crate::engine::damage::handler::Handler, OriginDamageByAttrAndBuffGroupSize, AfterDamage, plain;
     [60282] "ButterflyDamage" => crate::engine::damage::handler::Handler, ButterflyDamage, AfterDamage, destination, crate::engine::damage::handler::supports_butterfly_damage;

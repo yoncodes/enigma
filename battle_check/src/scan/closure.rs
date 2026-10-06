@@ -374,7 +374,7 @@ fn scan_buff(
             }
             if policy.lifetime.duration > 0
                 && !handler_owns_duration
-                && !battle::engine::skill::buff_act::effect_time::supports_duration_policy(
+                && !battle::tooling::scan::buff_act::effect_time::supports_duration_policy(
                     policy.lifetime.take_stage,
                 )
             {
@@ -607,9 +607,9 @@ pub(super) fn malformed_buff_act_error(
 }
 
 pub(super) fn buff_act_capability(
-    destination: Option<battle::engine::skill::buff_act::registry::BuffActDestination>,
+    destination: Option<battle::tooling::scan::buff_act::registry::BuffActDestination>,
 ) -> Option<&'static str> {
-    use battle::engine::skill::buff_act::registry::BuffActDestination;
+    use battle::tooling::scan::buff_act::registry::BuffActDestination;
 
     destination.map(|destination| match destination {
         BuffActDestination::Runtime => "subscriber",

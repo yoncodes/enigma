@@ -59,10 +59,9 @@ pub async fn abort_dungeon_updates(
 
 pub fn completed_end_fight(active: &ActiveBattle) -> EndFightPush {
     let result = match active.runtime.outcome() {
-        battle::engine::runtime::BattleOutcome::Victory => FightResult::Succ,
-        battle::engine::runtime::BattleOutcome::OutOfRounds => FightResult::OutOfRoundFail,
-        battle::engine::runtime::BattleOutcome::Defeat
-        | battle::engine::runtime::BattleOutcome::Unfinished => FightResult::Fail,
+        battle::BattleOutcome::Victory => FightResult::Succ,
+        battle::BattleOutcome::OutOfRounds => FightResult::OutOfRoundFail,
+        battle::BattleOutcome::Defeat | battle::BattleOutcome::Unfinished => FightResult::Fail,
     };
     end_fight(active, result)
 }

@@ -18,13 +18,14 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) configured_targets: Option<Vec<i64>>,
     pub(super) configured_additional_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
-    pub(super) marked_targets: Option<Vec<(i64, i32)>>,
+    pub(super) assassination_marks_at_action_start: Option<Vec<(i64, i32)>>,
     pub(super) injured_allies: Vec<i64>,
     pub(super) affected_targets: Vec<i64>,
     pub(super) attacked_targets: Vec<i64>,
     pub(super) buff_additions: Vec<(i32, i32)>,
     pub(super) team_injury_count_round: i32,
     team_injury_count_consumed: Option<DefinitionKey>,
+    pub(super) resolved_hit_additional_damage: Vec<PlannedAdditionalDamage>,
     pub(super) activated_additional_damage: Vec<PlannedAdditionalDamage>,
     pub(super) temporary_damage_buffs: Vec<(CommandOrigin, i32)>,
     pub(super) pending_additional_damage: Vec<HpCommand>,
@@ -48,13 +49,14 @@ impl SkillExecution {
             configured_targets: None,
             configured_additional_targets: None,
             planned_crits: None,
-            marked_targets: None,
+            assassination_marks_at_action_start: None,
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
             buff_additions: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
+            resolved_hit_additional_damage: Vec::new(),
             activated_additional_damage: Vec::new(),
             temporary_damage_buffs: Vec::new(),
             pending_additional_damage: Vec::new(),
@@ -76,13 +78,14 @@ impl SkillExecution {
             configured_targets: None,
             configured_additional_targets: None,
             planned_crits: None,
-            marked_targets: None,
+            assassination_marks_at_action_start: None,
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
             buff_additions: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
+            resolved_hit_additional_damage: Vec::new(),
             activated_additional_damage: Vec::new(),
             temporary_damage_buffs: Vec::new(),
             pending_additional_damage: Vec::new(),
@@ -253,6 +256,38 @@ impl SkillExecution {
             }
         }
     }
+
+    pub(super) fn activate_additional_damage(&mut self, planned: PlannedAdditionalDamage) {
+        if planned.is_resolved_hit_derived() {
+            self.resolved_hit_additional_damage.push(planned);
+        } else {
+            self.activated_additional_damage.push(planned);
+        }
+    }
+
+    pub(super) fn has_activated_additional_damage(
+        &self,
+        candidate: &PlannedAdditionalDamage,
+    ) -> bool {
+        self.resolved_hit_additional_damage
+            .iter()
+            .chain(&self.activated_additional_damage)
+            .any(|planned| {
+                planned.feature.buff_uid == candidate.feature.buff_uid
+                    && planned.feature.buff_id == candidate.feature.buff_id
+            })
+    }
+}
+
+pub(super) fn snapshot_action_start_damage_state(
+    managers: &BattleManagers,
+    execution: &mut SkillExecution,
+) {
+    execution
+        .assassination_marks_at_action_start
+        .get_or_insert_with(|| {
+            crate::engine::skill::buff_act::assassination::marked_targets(managers)
+        });
 }
 
 fn hp_command_target(command: HpCommand) -> i64 {
@@ -288,6 +323,13 @@ pub(super) struct AdditionalDamageActivation {
 pub(super) struct PlannedAdditionalDamage {
     pub(super) feature: ActiveBuffFeature,
     spec: crate::engine::skill::buff_act::additional_damage::AdditionalDamageSpec,
+    uses_extra_lane: bool,
+}
+
+impl PlannedAdditionalDamage {
+    fn is_resolved_hit_derived(&self) -> bool {
+        self.spec.formula == crate::engine::damage::DamageFormula::ResolvedHitProportionalAdditional
+    }
 }
 
 fn additional_damage(
@@ -296,21 +338,28 @@ fn additional_damage(
     execution: &SkillExecution,
     extra_action: bool,
 ) -> Vec<PlannedAdditionalDamage> {
-    let mut planned = execution
-        .modifiers
-        .additional_damage
-        .iter()
-        .filter_map(|modifier| {
-            crate::engine::skill::buff_act::additional_damage::configured(
-                managers.catalog(),
-                modifier.buff_id,
-                source_uid,
-                source_uid,
-            )
-            .map(|(feature, spec)| PlannedAdditionalDamage { feature, spec })
-        })
-        .filter(|additional| additional.spec.can_apply(managers, extra_action))
-        .collect::<Vec<_>>();
+    // Damage derived from the resolved main hit stays in that hit's lane. Independently rolled
+    // cast-local and pre-existing linked producers follow it in their own activation order.
+    let mut planned = execution.resolved_hit_additional_damage.clone();
+    planned.extend(
+        execution
+            .modifiers
+            .additional_damage
+            .iter()
+            .filter_map(|modifier| {
+                crate::engine::skill::buff_act::additional_damage::configured(
+                    managers.catalog(),
+                    modifier.buff_id,
+                    source_uid,
+                    source_uid,
+                )
+                .map(|(feature, spec)| PlannedAdditionalDamage {
+                    feature,
+                    spec,
+                    uses_extra_lane: spec.uses_extra_lane(managers, extra_action),
+                })
+            }),
+    );
     planned.extend(execution.activated_additional_damage.iter().cloned());
     planned
 }
@@ -322,6 +371,51 @@ fn performs_extra_action(invocation: &SkillInvocation, execution: &SkillExecutio
         execution.context.extra_skill_kind,
     ) || (invocation.card_index == 0
         && invocation.mode == crate::engine::skill::action::SkillExecutionMode::Active)
+}
+
+pub(super) fn linked_shell_attributes(
+    extra_skill_kind: i32,
+    uses_extra_lane: bool,
+) -> (bool, bool) {
+    use crate::engine::skill::condition::extra::ExtraSkillKind;
+
+    let (damage, critical) =
+        match crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind) {
+            Some(ExtraSkillKind::ExtraAction) => (true, true),
+            Some(ExtraSkillKind::FollowUp) => (true, false),
+            Some(ExtraSkillKind::Riposte) => (false, false),
+            _ => (true, false),
+        };
+    (damage || uses_extra_lane, critical)
+}
+
+pub(super) fn owned_linked_attack_attributes(
+    local: &[(crate::engine::entity::attr::AttrId, i32)],
+    shared: &[(crate::engine::entity::attr::AttrId, i32)],
+    action_source_uid: i64,
+    credited_source_uid: i64,
+    inherit_action_critical_damage: bool,
+) -> Vec<(crate::engine::entity::attr::AttrId, i32)> {
+    local
+        .iter()
+        .copied()
+        .filter(|(attr, _)| {
+            *attr != crate::engine::entity::attr::AttrId::CriticalDmg
+                || credited_source_uid == action_source_uid
+                || inherit_action_critical_damage
+        })
+        .chain(shared.iter().copied())
+        .filter(|(attr, _)| {
+            !matches!(
+                attr,
+                crate::engine::entity::attr::AttrId::UltimateMight
+                    | crate::engine::entity::attr::AttrId::IncantationMight
+                    | crate::engine::entity::attr::AttrId::UltimateMightMultiplier
+                    | crate::engine::entity::attr::AttrId::IncantationSkillUltMightMultiplier
+                    | crate::engine::entity::attr::AttrId::IncantationMightMultiplier
+            )
+        })
+        .collect()
 }
 
 pub(super) fn additional_damage_activation(
@@ -336,10 +430,12 @@ pub(super) fn additional_damage_activation(
     )
     .into_iter()
     .filter_map(|(feature, spec)| {
-        if !spec.can_apply(managers, extra_action) {
-            return None;
-        }
-        let additional = PlannedAdditionalDamage { feature, spec };
+        let uses_extra_lane = spec.uses_extra_lane(managers, extra_action);
+        let additional = PlannedAdditionalDamage {
+            feature,
+            spec,
+            uses_extra_lane,
+        };
         let origin = crate::engine::skill::buff_act::feature_command_origin(&additional.feature)?;
         let temporary_buff =
             (additional.spec.temp_buff_id > 0).then_some((origin, additional.spec.temp_buff_id));
@@ -382,7 +478,7 @@ pub(super) fn additional_damage_activation(
         let cost = crate::engine::skill::buff_act::additional_damage::extra_action_cost_op(
             &additional.feature,
             additional.spec,
-            extra_action,
+            uses_extra_lane,
         );
         let pays_extra_action_cost = cost.is_some();
         buff_act_ops.extend(cost);
@@ -413,6 +509,16 @@ pub(super) fn damage_ops(
 ) -> DamageOps {
     let source_uid = invocation.plan.source_uid;
     let skill_id = invocation.plan.skill_id;
+    let skill_model_id = managers.catalog().skill_hero_id(skill_id);
+    let action_owner_uid = pool
+        .allies(source_uid)
+        .iter()
+        .find(|entity| {
+            skill_model_id == Some(entity.model_id)
+                || pool.skill_slot(managers, entity.uid, skill_id) >= 0
+        })
+        .map(|entity| entity.uid)
+        .unwrap_or(source_uid);
     let rend = crate::engine::skill::buff_act::emitter_rend_target::resolve(
         managers,
         pool,
@@ -443,12 +549,19 @@ pub(super) fn damage_ops(
         .unwrap_or_default();
     let main_target = targets.first().copied();
     let extra_action = performs_extra_action(invocation, execution);
-    let forced_critical = field_forces_critical(source_uid, managers, extra_action);
     let additional = additional_damage(source_uid, managers, execution, extra_action)
         .into_iter()
         .filter_map(|additional| {
-            crate::engine::skill::buff_act::feature_command_origin(&additional.feature)
-                .map(|origin| (additional.feature, additional.spec, origin))
+            crate::engine::skill::buff_act::feature_command_origin(&additional.feature).map(
+                |origin| {
+                    (
+                        additional.feature,
+                        additional.spec,
+                        additional.uses_extra_lane,
+                        origin,
+                    )
+                },
+            )
         })
         .collect::<Vec<_>>();
     let active_rate_terms =
@@ -515,6 +628,10 @@ pub(super) fn damage_ops(
             },
             determinism,
         );
+        // Linked hits are owned by their credited source. Keep the triggering action's shared
+        // source lane, but do not leak modifiers that the target applies to that action's actor.
+        let linked_modifiers = target_modifiers.clone();
+        let mut linked_attack_attributes = linked_modifiers.attack_attributes.clone();
         let incoming_modifiers = rate::incoming_target_attack_modifiers(
             source_uid,
             target_uid,
@@ -527,6 +644,9 @@ pub(super) fn damage_ops(
             },
             determinism,
         );
+        // Target-owned incoming attributes describe the triggering attack. They constrain every
+        // hit in that attack, including damage credited to a linked producer.
+        let shared_linked_attack_attributes = incoming_modifiers.attack_attributes.clone();
         target_modifiers.merge(incoming_modifiers);
         execution.team_injury_count_consumed = execution
             .team_injury_count_consumed
@@ -548,8 +668,11 @@ pub(super) fn damage_ops(
                 crate::engine::entity::attr::AttrId::DmgBonus,
                 target_count_damage_bonus,
             ));
+            linked_attack_attributes.push((
+                crate::engine::entity::attr::AttrId::DmgBonus,
+                target_count_damage_bonus,
+            ));
         }
-        let mut linked_attack_attributes = attack_attributes.clone();
         let incoming_reduction =
             crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
                 managers,
@@ -571,7 +694,7 @@ pub(super) fn damage_ops(
             source_uid,
             target_uid,
             inherent_assassinate,
-            execution.marked_targets.as_deref(),
+            execution.assassination_marks_at_action_start.as_deref(),
         );
         execution.context.active_skill_assassinate |= assassination.assassinate;
         if assassination.final_damage_bonus != 0 {
@@ -579,13 +702,10 @@ pub(super) fn damage_ops(
                 crate::engine::entity::attr::AttrId::FinalDmgBonus,
                 assassination.final_damage_bonus,
             ));
-            if assassination.triggered_by_target {
-                linked_attack_attributes.push((
-                    crate::engine::entity::attr::AttrId::FinalDmgBonus,
-                    assassination.final_damage_bonus,
-                ));
-            }
         }
+        let (linked_shell_damage, linked_shell_critical) =
+            linked_shell_attributes(execution.context.extra_skill_kind, false);
+        let mut target_shell_damage = 0;
         for attr_id in [
             crate::engine::entity::attr::AttrId::CriticalDmg,
             crate::engine::entity::attr::AttrId::DmgBonus,
@@ -593,13 +713,22 @@ pub(super) fn damage_ops(
             let delta = crate::engine::skill::buff_act::target_attack_attribute_delta(
                 managers,
                 target_uid,
-                crate::engine::skill::buff_act::additional_damage::uses_costed_lane(
-                    execution.context.extra_skill_kind,
-                ),
+                extra_action,
                 attr_id,
             );
             if delta != 0 {
                 attack_attributes.push((attr_id, delta));
+                if attr_id == crate::engine::entity::attr::AttrId::DmgBonus {
+                    target_shell_damage = delta;
+                }
+                // A linked producer shares the triggering action's damage lane, while its
+                // independently rolled critical hit keeps its own critical-damage lane.
+                if (attr_id == crate::engine::entity::attr::AttrId::DmgBonus && linked_shell_damage)
+                    || (attr_id == crate::engine::entity::attr::AttrId::CriticalDmg
+                        && linked_shell_critical)
+                {
+                    linked_attack_attributes.push((attr_id, delta));
+                }
             }
         }
         if index >= base_count + behavior_extra_count
@@ -630,8 +759,6 @@ pub(super) fn damage_ops(
         }
         if converted != 0 {
             attack_attributes.push((crate::engine::entity::attr::AttrId::CriticalDmg, converted));
-            linked_attack_attributes
-                .push((crate::engine::entity::attr::AttrId::CriticalDmg, converted));
         }
         let rate_terms = target_modifiers
             .rates
@@ -646,9 +773,18 @@ pub(super) fn damage_ops(
             .chain(active_rate_terms.iter().copied())
             .chain(rend.as_ref().and_then(|rend| rend.rate_term(target_uid)))
             .collect::<Vec<_>>();
-        let linked_rate_terms = rate_terms
+        let linked_rate_terms = linked_modifiers
+            .rates
             .iter()
-            .copied()
+            .filter(|modifier| modifier.target_uid == 0 || modifier.target_uid == target_uid)
+            .map(|modifier| DamageRateTerm {
+                opcode: modifier.opcode,
+                rate: modifier.amount.resolve(&managers.gauge),
+                career_scaled: modifier.career_scaled,
+                composition: modifier.composition,
+            })
+            .chain(active_rate_terms.iter().copied())
+            .chain(rend.as_ref().and_then(|rend| rend.rate_term(target_uid)))
             .filter(|term| {
                 term.composition == crate::engine::damage::DamageRateComposition::ProducerMultiplier
             })
@@ -677,134 +813,231 @@ pub(super) fn damage_ops(
                 )
             });
         let main_target = main_target == Some(target_uid);
-        if let Some(mut command) = damage::resolve_attack_command(
-            &AttackPlan {
-                source_uid,
-                target_uid,
-                skill_id,
-                rate: catalog.damage_rate(effect_skill_id),
-                rate_terms,
-                attack_attributes: attack_attributes.clone(),
-                career_ratio_bonus: target_modifiers.career_ratio_bonus,
-                attack_career: target_modifiers.attack_career,
-                additional_attack_career: target_modifiers.additional_attack_career,
-                force_career_restraint: target_modifiers.force_career_restraint,
-                critical_multiplier_remainder,
-                is_conduit: managers.conduit.owns_skill(source_uid, skill_id),
-                is_crit,
-                assassinate: assassination.assassinate,
-                main_target,
-                extra_skill_kind: execution.context.extra_skill_kind,
-                performs_extra_action: extra_action,
-                additional_enabled: false,
-                additional_is_crit: None,
-            },
-            damage::DamageRuntime {
-                fight_version: managers.fight_version(),
-                pool,
-                attributes: &managers.attribute,
-                buffs: &managers.buff,
-                target_buffs: &managers.buff,
-                hp: &managers.hp,
-                fields: Some((&managers.field, managers.catalog())),
-                emitter: None,
-                team_inspiration: 0,
-            },
-            CommandOrigin {
-                domain: RuleDomain::Skill,
-                key: DefinitionKey::new(skill_id, "SkillDamage"),
-            },
-        ) {
-            if let HpCommand::Damage(damage) = &mut command {
+        let attack_plan = AttackPlan {
+            source_uid,
+            target_uid,
+            skill_id,
+            rate: catalog.damage_rate(effect_skill_id),
+            rate_terms,
+            attack_attributes: attack_attributes.clone(),
+            career_ratio_bonus: target_modifiers.career_ratio_bonus,
+            attack_career: target_modifiers.attack_career,
+            additional_attack_career: target_modifiers.additional_attack_career,
+            force_career_restraint: target_modifiers.force_career_restraint,
+            critical_multiplier_remainder,
+            is_conduit: managers.conduit.owns_skill(source_uid, skill_id),
+            is_crit,
+            assassinate: assassination.assassinate,
+            main_target,
+            extra_skill_kind: execution.context.extra_skill_kind,
+            performs_extra_action: extra_action,
+            additional_enabled: false,
+            additional_is_crit: None,
+        };
+        let damage_runtime = damage::DamageRuntime {
+            fight_version: managers.fight_version(),
+            pool,
+            attributes: &managers.attribute,
+            buffs: &managers.buff,
+            target_buffs: &managers.buff,
+            hp: &managers.hp,
+            fields: Some((&managers.field, managers.catalog())),
+            emitter: None,
+            team_inspiration: 0,
+        };
+        let main_origin = CommandOrigin {
+            domain: RuleDomain::Skill,
+            key: DefinitionKey::new(skill_id, "SkillDamage"),
+        };
+        let mut resolved_main_damage = None;
+        if let Some(mut resolved) =
+            damage::resolve_attack_command_with_precision(&attack_plan, damage_runtime, main_origin)
+        {
+            if let HpCommand::Damage(damage) = &mut resolved.command {
                 damage.ignore_riposte = target_modifiers.ignore_riposte;
+                resolved_main_damage = Some((*damage, resolved.fraction));
             }
             crit_count += i32::from(is_crit);
             damage_commands.extend(crate::engine::skill::buff_act::absorb_hurt::route(
-                managers, pool, command,
+                managers,
+                pool,
+                resolved.command,
             ));
         }
-        for (_, additional, origin) in &additional {
+        for (_, additional, uses_extra_lane, origin) in &additional {
             if additional.requires_assassination && !assassination.assassinate {
                 continue;
             }
-            let additional_is_crit = determinism.roll_additional_crit(
-                skill_id,
-                source_uid,
-                additional.credited_source_uid,
-                target_uid,
-                damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
-            ) || forced_critical;
-            let mut additional_attributes = linked_attack_attributes
-                .iter()
-                .copied()
-                .filter(|(attr, _)| {
-                    !matches!(
-                    attr,
-                    crate::engine::entity::attr::AttrId::UltimateMight
-                        | crate::engine::entity::attr::AttrId::IncantationMight
-                        | crate::engine::entity::attr::AttrId::UltimateMightMultiplier
-                        | crate::engine::entity::attr::AttrId::IncantationSkillUltMightMultiplier
-                        | crate::engine::entity::attr::AttrId::IncantationMightMultiplier
-                )
-                })
-                .collect::<Vec<_>>();
-            let additional_damage_type = pool
-                .entity(additional.credited_source_uid)
-                .map(|entity| entity.damage_type)
-                .unwrap_or_default();
-            let incoming_reduction =
-                crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
-                    managers,
-                    target_uid,
-                    additional_damage_type,
-                    crate::engine::entity::attr::AttrId::DmgTakenReduction,
-                );
-            if incoming_reduction != 0 {
-                additional_attributes.push((
-                    crate::engine::entity::attr::AttrId::DmgTakenReduction,
-                    incoming_reduction,
-                ));
-            }
-            if let Some(mut command) = damage::resolve_additional_damage_command(
-                damage::DamageRequest {
-                    source_uid: additional.credited_source_uid,
-                    target_uid,
+            let rate = additional.rate(
+                additional_target_order.first() == Some(&target_uid),
+                *uses_extra_lane,
+            );
+            let command = if additional.formula
+                == crate::engine::damage::DamageFormula::ResolvedHitProportionalAdditional
+            {
+                let additional_is_crit = determinism.roll_additional_crit(
                     skill_id,
-                    rate: additional.rate(
-                        additional_target_order.first() == Some(&target_uid),
-                        extra_action,
-                    ),
-                    rate_terms: &linked_rate_terms,
-                    // The credited source owns base ATK/crit and persistent buffs. The linked
-                    // hit inherits the triggering attack's regular damage lane, but not its
-                    // incantation/ultimate-specific might lane.
-                    attack_attributes: &additional_attributes,
-                    career_ratio_bonus: target_modifiers.career_ratio_bonus,
-                    attack_career: target_modifiers.attack_career,
-                    additional_attack_career: target_modifiers.additional_attack_career,
-                    force_career_restraint: target_modifiers.force_career_restraint,
-                    critical_multiplier_remainder,
-                    is_conduit: false,
-                    is_crit: additional_is_crit,
-                    extra_skill_kind: execution.context.extra_skill_kind,
-                    performs_extra_action: extra_action,
-                },
-                damage::DamageRuntime {
-                    fight_version: managers.fight_version(),
+                    source_uid,
+                    additional.credited_source_uid,
+                    target_uid,
+                    damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
+                );
+                let proportional_main = if additional_is_crit == is_crit {
+                    resolved_main_damage
+                } else {
+                    damage::resolve_attack_command_with_precision(
+                        &AttackPlan {
+                            is_crit: additional_is_crit,
+                            ..attack_plan.clone()
+                        },
+                        damage_runtime,
+                        main_origin,
+                    )
+                    .and_then(|resolved| match resolved.command {
+                        HpCommand::Damage(damage) => Some((damage, resolved.fraction)),
+                        _ => None,
+                    })
+                };
+                proportional_main.and_then(|(main, main_fraction)| {
+                    damage::resolve_proportional_additional_damage_command(
+                        damage::ProportionalAdditionalDamageRequest {
+                            main,
+                            main_fraction: Some(main_fraction),
+                            rate,
+                            main_rate: catalog.damage_rate(effect_skill_id),
+                            credited_source_uid: additional.credited_source_uid,
+                            force_career_restraint: target_modifiers.force_career_restraint,
+                            assassinate: assassination.assassinate,
+                            origin: *origin,
+                        },
+                        damage_runtime,
+                    )
+                })
+            } else {
+                let additional_is_crit = determinism.roll_additional_crit(
+                    skill_id,
+                    source_uid,
+                    additional.credited_source_uid,
+                    target_uid,
+                    damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
+                );
+                let mut additional_attributes = owned_linked_attack_attributes(
+                    &linked_attack_attributes,
+                    &shared_linked_attack_attributes,
+                    action_owner_uid,
+                    additional.credited_source_uid,
+                    // A naturally rolled linked critical remains part of the triggering
+                    // attack and inherits its temporary critical-damage lane. A field that
+                    // forces the producer's critical owns that lane instead.
+                    !field_forces_critical(additional.credited_source_uid, managers, extra_action),
+                );
+                let (producer_shell_damage, _) =
+                    linked_shell_attributes(execution.context.extra_skill_kind, *uses_extra_lane);
+                if producer_shell_damage && !linked_shell_damage && target_shell_damage != 0 {
+                    additional_attributes.push((
+                        crate::engine::entity::attr::AttrId::DmgBonus,
+                        target_shell_damage,
+                    ));
+                }
+                let additional_damage_type = pool
+                    .entity(additional.credited_source_uid)
+                    .map(|entity| entity.damage_type)
+                    .unwrap_or_default();
+                let incoming_reduction =
+                    crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
+                        managers,
+                        target_uid,
+                        additional_damage_type,
+                        crate::engine::entity::attr::AttrId::DmgTakenReduction,
+                    );
+                if incoming_reduction != 0 {
+                    additional_attributes.push((
+                        crate::engine::entity::attr::AttrId::DmgTakenReduction,
+                        incoming_reduction,
+                    ));
+                }
+                if assassination.triggered_by_target {
+                    let linked_assassination =
+                        crate::engine::skill::buff_act::assassination::target_modifier(
+                            managers,
+                            additional.credited_source_uid,
+                            target_uid,
+                            false,
+                            execution.assassination_marks_at_action_start.as_deref(),
+                        );
+                    if linked_assassination.final_damage_bonus != 0 {
+                        additional_attributes.push((
+                            crate::engine::entity::attr::AttrId::FinalDmgBonus,
+                            linked_assassination.final_damage_bonus,
+                        ));
+                    }
+                }
+                let linked_crit_conversion_rate = linked_modifiers.excess_crit_conversion_rate
+                    + crate::engine::skill::buff_act::crit_rate_alter2::owner_conversion_rate(
+                        additional.credited_source_uid,
+                        &managers.buff,
+                        &managers.hp,
+                    )
+                    + crate::engine::skill::buff_act::crit_rate_alter_by_other_buff::owner_conversion_rate(
+                        additional.credited_source_uid,
+                        &managers.buff,
+                        &managers.hp,
+                    );
+                let linked_excess_crit = damage::excess_crit_rate(
+                    additional.credited_source_uid,
+                    target_uid,
                     pool,
-                    attributes: &managers.attribute,
-                    buffs: &managers.buff,
-                    target_buffs: &managers.buff,
-                    hp: &managers.hp,
-                    fields: Some((&managers.field, managers.catalog())),
-                    emitter: None,
-                    team_inspiration: 0,
-                },
-                additional.attack_replacement(managers),
-                additional.credited_source_uid,
-                assassination.triggered_by_target,
-                *origin,
-            ) {
+                    managers,
+                    &additional_attributes,
+                );
+                let (linked_converted, linked_critical_multiplier_remainder) =
+                    split_excess_crit_conversion(linked_excess_crit, linked_crit_conversion_rate);
+                if linked_converted != 0 {
+                    additional_attributes.push((
+                        crate::engine::entity::attr::AttrId::CriticalDmg,
+                        linked_converted,
+                    ));
+                }
+                damage::resolve_additional_damage_command(
+                    damage::DamageRequest {
+                        source_uid: additional.credited_source_uid,
+                        target_uid,
+                        skill_id,
+                        rate,
+                        rate_terms: &linked_rate_terms,
+                        // The credited source owns base ATK/crit and persistent buffs. The linked
+                        // hit inherits the triggering attack's regular damage lane, but not its
+                        // incantation/ultimate-specific might lane.
+                        attack_attributes: &additional_attributes,
+                        career_ratio_bonus: linked_modifiers.career_ratio_bonus,
+                        attack_career: linked_modifiers.attack_career,
+                        additional_attack_career: linked_modifiers.additional_attack_career,
+                        force_career_restraint: linked_modifiers.force_career_restraint,
+                        critical_multiplier_remainder: linked_critical_multiplier_remainder,
+                        is_conduit: false,
+                        is_crit: additional_is_crit,
+                        extra_skill_kind: execution.context.extra_skill_kind,
+                        performs_extra_action: extra_action,
+                    },
+                    damage::DamageRuntime {
+                        fight_version: managers.fight_version(),
+                        pool,
+                        attributes: &managers.attribute,
+                        buffs: &managers.buff,
+                        target_buffs: &managers.buff,
+                        hp: &managers.hp,
+                        fields: Some((&managers.field, managers.catalog())),
+                        emitter: None,
+                        team_inspiration: 0,
+                    },
+                    additional.formula,
+                    additional.attack_replacement(managers),
+                    additional.credited_source_uid,
+                    assassination.triggered_by_target,
+                    *origin,
+                )
+            };
+            if let Some(mut command) = command {
                 if let HpCommand::Damage(damage) = &mut command {
                     damage.ignore_riposte = target_modifiers.ignore_riposte;
                 }

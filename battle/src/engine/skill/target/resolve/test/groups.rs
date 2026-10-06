@@ -1,6 +1,12 @@
 use super::*;
 
 #[test]
+fn other_allies_anchor_their_shared_skill_frame_to_the_caster() {
+    assert_eq!(frame_anchor_for_rule(102, 10), Some(10));
+    assert_eq!(frame_anchor_for_rule(103, 10), None);
+}
+
+#[test]
 fn resolves_relative_ally_and_enemy_groups_from_fight() {
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -90,7 +96,43 @@ fn resolves_relative_ally_and_enemy_groups_from_fight() {
 }
 
 #[test]
-fn multi_target_actions_put_the_selected_primary_target_first() {
+fn group_targets_keep_roster_order_for_attacks_and_reactions() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1), entity_at(11, 2), entity_at(12, 3)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let allies = |skill_id| {
+        TargetResolver::resolve_with_managers_and_context(
+            &TargetRequest {
+                code: 101,
+                raw: Vec::new(),
+            },
+            skill_id,
+            10,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext {
+                runtime_target_uid: 11,
+                active_skill_is_attack: true,
+                ..Default::default()
+            },
+        )
+    };
+
+    // 434111 grants a buff after its carrier is attacked; 31090114 is an attack.
+    assert_eq!(allies(434111), vec![10, 11, 12]);
+    assert_eq!(allies(31090114), vec![10, 11, 12]);
+}
+
+#[test]
+fn multi_target_actions_keep_roster_order_independent_of_the_selected_target() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![entity_at(10, 1)],
@@ -120,7 +162,7 @@ fn multi_target_actions_put_the_selected_primary_target_first() {
                 ..Default::default()
             },
         ),
-        vec![-11, -10, -12]
+        vec![-10, -11, -12]
     );
 
     assert_eq!(
@@ -135,6 +177,25 @@ fn multi_target_actions_put_the_selected_primary_target_first() {
             &mut RoundDeterminism::default(),
             TargetContext {
                 runtime_target_uid: -11,
+                ..Default::default()
+            },
+        ),
+        vec![-10, -11, -12]
+    );
+
+    assert_eq!(
+        TargetResolver::resolve_primary_candidates(
+            &TargetRequest {
+                code: 202,
+                raw: Vec::new(),
+            },
+            1001,
+            10,
+            &pool,
+            &RoundDeterminism::default(),
+            None,
+            TargetContext {
+                active_skill_is_attack: true,
                 ..Default::default()
             },
         ),

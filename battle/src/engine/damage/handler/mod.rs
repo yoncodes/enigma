@@ -27,13 +27,15 @@ mod resolve;
 use affinity::{critical_technique_bonus, regular_multiplier};
 pub(crate) use affinity::{restrains_target, restrains_target_either};
 pub(crate) use critical::{
-    chance as crit_chance, damage_multiplier as crit_damage_multiplier,
-    excess_rate as excess_crit_rate,
+    CriticalHealMultiplier, chance as crit_chance, damage_multiplier as crit_damage_multiplier,
+    excess_rate as excess_crit_rate, heal_multiplier as crit_heal_multiplier,
 };
-pub(crate) use heal::modified as modified_heal;
+pub(crate) use heal::{modified as modified_heal, modified_fraction as modified_fractional_heal};
 pub(crate) use resolve::{
-    DamageRequest, DamageRuntime, resolve_additional_damage_command, resolve_attack_command,
-    resolve_avoided_attack_command, resolve_configured_replacement_damage_command,
+    DamageFraction, DamageRequest, DamageRuntime, ProportionalAdditionalDamageRequest,
+    resolve_additional_damage_command, resolve_attack_command,
+    resolve_attack_command_with_precision, resolve_avoided_attack_command,
+    resolve_configured_replacement_damage_command, resolve_proportional_additional_damage_command,
 };
 use resolve::{DirectOptions, direct_damage};
 
@@ -127,17 +129,24 @@ impl BehaviorHandler for Handler {
                         target_uid,
                         crit_chance(source_uid, target_uid, context.pool, context.managers),
                     );
-                return heal::amount(source_uid, target_uid, context.managers, is_crit, behavior)
-                    .map(|amount| {
-                        heal(
-                            amount,
-                            if is_crit {
-                                HpHealKind::Critical
-                            } else {
-                                HpHealKind::Normal
-                            },
-                        )
-                    });
+                return heal::amount(
+                    source_uid,
+                    target_uid,
+                    context.pool,
+                    context.managers,
+                    is_crit,
+                    behavior,
+                )
+                .map(|amount| {
+                    heal(
+                        amount,
+                        if is_crit {
+                            HpHealKind::Critical
+                        } else {
+                            HpHealKind::Normal
+                        },
+                    )
+                });
             }
             (20016, BehaviorKind::HealCantCrit) => {
                 return heal::attribute_amount(

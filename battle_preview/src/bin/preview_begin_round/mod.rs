@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use battle::engine::{runtime::BattleRuntime, skill::effect::catalog};
+use battle::tooling::{damage_tracing_enabled, replay::ReplayBattle, scan::effect_catalog};
 use battle_preview::{
     array_len_diff_lines, begin_round_inputs, build_metadata_source, canonical_comparison,
     expand_compressed_fight_steps, first_diff_path, normalize_live_json, opening_determinism,
@@ -148,7 +148,7 @@ fn report_input(
     };
     let original_text = fs::read_to_string(input)?;
     let original = captured_original(input)?;
-    if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage) {
+    if damage_tracing_enabled() {
         report_damage_comparison(&generated_round, &captured_round(input)?);
     }
     let generated = BeginRoundReply {
@@ -247,7 +247,7 @@ struct ReplayRun {
     build: &'static str,
 }
 
-/// Replays captured requests through `BattleRuntime` from the captured start-state fixture,
+/// Replays captured requests through `ReplayBattle` from the captured start-state fixture,
 /// once, through the round at `path`. Later captured replies are comparison evidence; with
 /// `resync` they also reset observed HP, ex points, and the hand between rounds so later
 /// rounds can run past an earlier divergence. The first failing round ends the replay.
@@ -277,10 +277,10 @@ fn replay_rounds(
         .start_request
         .as_deref()
         .and_then(tower_plan_id_from_request)
-        .map(|plan_id| battle::tower::system_plan_rule_skills(db, &fight, plan_id))
+        .map(|plan_id| battle::tooling::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
     let opening_determinism = opening_determinism(db, &fight, &captured_start_round);
-    let mut runtime = BattleRuntime::new_with_attributes(
+    let mut runtime = ReplayBattle::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
         ex_attributes,
@@ -293,7 +293,7 @@ fn replay_rounds(
     let start_round = runtime
         .start_round_with_determinism(opening_determinism)
         .map_err(io::Error::other)?;
-    if battle::engine::diagnostics::enabled(battle::engine::diagnostics::TraceArea::Damage) {
+    if damage_tracing_enabled() {
         eprintln!("  start-round damage:");
         report_damage_comparison(&start_round, &captured_start_round);
     }
@@ -336,7 +336,7 @@ fn replay_rounds(
             }
         };
         report_rule_issues(&captured);
-        seed_round_determinism(&mut runtime, catalog::global(), &captured);
+        seed_round_determinism(&mut runtime, effect_catalog::global(), &captured);
         let result = runtime.advance_round(request);
         let failed = result.is_err();
         run.outcomes.push(RoundOutcome {
@@ -363,7 +363,7 @@ fn replay_rounds(
 }
 
 fn resync_round(
-    runtime: &mut BattleRuntime,
+    runtime: &mut ReplayBattle,
     index: i32,
     captured: &FightRound,
 ) -> anyhow::Result<bool> {
@@ -376,7 +376,7 @@ fn resync_round(
     Ok(!changes.is_empty())
 }
 
-fn replay_cloth_input(inputs: &[PathBuf], runtime: &mut BattleRuntime) -> anyhow::Result<()> {
+fn replay_cloth_input(inputs: &[PathBuf], runtime: &mut ReplayBattle) -> anyhow::Result<()> {
     for input in inputs {
         let mut request: serde_json::Value = serde_json::from_str(&fs::read_to_string(input)?)?;
         normalize_live_json(&mut request);
@@ -422,7 +422,7 @@ fn report_rule_issues(round: &FightRound) {
     skill_ids.dedup();
 
     for skill_id in skill_ids {
-        for issue in catalog::global().issues(skill_id) {
+        for issue in effect_catalog::global().issues(skill_id) {
             eprintln!(
                 "  unsupported rule: skill={skill_id} effect={} slot={} opcode={:?} type={:?} reason={:?} raw={:?}",
                 issue.effect_id, issue.slot, issue.opcode, issue.type_name, issue.reason, issue.raw,
@@ -465,7 +465,11 @@ fn damage_observations(round: &FightRound) -> Vec<(DamageIdentity, (i32, bool))>
                     .then_some((
                         DamageIdentity {
                             skill_id: step.act_id.unwrap_or_default(),
-                            source_uid: step.from_id.unwrap_or_default(),
+                            source_uid: effect
+                                .hurt_info
+                                .as_ref()
+                                .and_then(|info| info.from_uid)
+                                .unwrap_or_else(|| step.from_id.unwrap_or_default()),
                             target_uid: effect.target_id.unwrap_or_default(),
                             effect_type,
                             config_effect: effect.config_effect.unwrap_or_default(),

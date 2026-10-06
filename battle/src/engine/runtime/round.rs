@@ -149,7 +149,9 @@ impl BattleRuntime {
         }
         self.round_state.before_cards2.clear();
         self.round_state.team_a_cards2.clear();
-        self.managers.begin_round();
+        // Next-round start mechanics ran at the end of the preceding command and already own
+        // this round's reaction quotas. Reset the remaining per-action manager state here.
+        self.managers.begin_action_round();
         let current_card_skills = self
             .managers
             .card
@@ -408,21 +410,6 @@ impl BattleRuntime {
             self.round_state.team_a_cards2 = round_field_cards(self.managers.card.refilled());
         }
         if runs_phase_two {
-            if uses_action_phase_power_clear && !wave_defeated_after_attacker_settlement {
-                fight_steps.extend(project_result(
-                    schedule::run_action_phase_start(
-                        &mut self.managers,
-                        &pool,
-                        catalog,
-                        &mut self.determinism,
-                        context,
-                        2,
-                    )
-                    .map_err(|error| format!("{error:?}"))?,
-                    fight_version,
-                    absorb_hurt_map_layout,
-                )?);
-            }
             let wave_entry_condition_uids = std::mem::take(&mut self.wave_entry_condition_uids);
             fight_steps.extend(project_result(
                 schedule::run_before_ai_round_start(
@@ -433,6 +420,8 @@ impl BattleRuntime {
                     context,
                     1,
                     &wave_entry_condition_uids,
+                    (uses_action_phase_power_clear && !wave_defeated_after_attacker_settlement)
+                        .then_some(2),
                 )
                 .map_err(|error| format!("{error:?}"))?,
                 fight_version,

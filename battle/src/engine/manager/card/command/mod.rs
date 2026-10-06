@@ -46,6 +46,8 @@ pub struct CardAddGenerated {
     pub origin: CommandOrigin,
     pub target_uid: i64,
     pub skill_id: i32,
+    pub hero_id: Option<i32>,
+    pub team_type: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -320,6 +322,14 @@ pub struct CardConsumeForEffect {
     pub origin: CommandOrigin,
     pub owner_uid: i64,
     pub indices: Vec<usize>,
+    pub kind: CardConsumptionKind,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CardConsumptionKind {
+    #[default]
+    Generic,
+    PaperCircle,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -431,6 +441,7 @@ pub enum CardChangeKind {
     Moved,
     Dissolved,
     GeneratedAdded,
+    OwnedGeneratedAdded,
     UniversalAdded,
     RedealtKeepRanks,
     GenericTemporaryAdded,
@@ -487,6 +498,8 @@ pub struct CardChanges {
     pub queued_use_card: Option<QueuedUseCard>,
     pub rank_results: Vec<CardRankResult>,
     pub consumed_indices: Vec<usize>,
+    pub consumed_owner_uid: Option<i64>,
+    pub consumption_kind: Option<CardConsumptionKind>,
     pub entity: Option<FightEntityInfo>,
     pub hand_limit: Option<(i64, i32)>,
     pub owner_removal: Option<CardOwnerRemoval>,
@@ -538,6 +551,8 @@ pub(super) fn execute(
     let mut queued_use_card = None;
     let mut rank_results = Vec::new();
     let mut consumed_indices = Vec::new();
+    let mut consumed_owner_uid = None;
+    let mut consumption_kind = None;
     let mut hand_limit = None;
     let mut owner_removal = None;
     let mut ai_queue = None;
@@ -578,6 +593,8 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             consumed_indices = consume.indices;
+            consumed_owner_uid = Some(consume.owner_uid);
+            consumption_kind = Some(consume.kind);
             (
                 Some(consume.origin),
                 CardChangeKind::ConsumedForEffect,
@@ -635,6 +652,11 @@ pub(super) fn execute(
             )
         }
         CardCommand::AddGenerated(add) => {
+            let owned = match (add.hero_id, add.team_type) {
+                (None, 0) => false,
+                (Some(hero_id), team_type) if hero_id > 0 && team_type != 0 => true,
+                _ => return Err(CardCommandError::InvalidCommand),
+            };
             if add.target_uid == 0 || add.skill_id <= 0 {
                 return Err(CardCommandError::InvalidCommand);
             }
@@ -643,17 +665,29 @@ pub(super) fn execute(
                 CardInfo {
                     uid: Some(add.target_uid),
                     skill_id: Some(add.skill_id),
+                    hero_id: add.hero_id,
                     temp_card: Some(false),
                     ..Default::default()
                 },
             );
-            operation = Some(CardChange::AddHand {
-                target_uid: add.target_uid,
-                card: card.clone(),
+            operation = Some(if owned {
+                CardChange::OwnedAddHand {
+                    card: card.clone(),
+                    team_type: add.team_type,
+                }
+            } else {
+                CardChange::AddHand {
+                    target_uid: add.target_uid,
+                    card: card.clone(),
+                }
             });
             (
                 Some(add.origin),
-                CardChangeKind::GeneratedAdded,
+                if owned {
+                    CardChangeKind::OwnedGeneratedAdded
+                } else {
+                    CardChangeKind::GeneratedAdded
+                },
                 Some(card),
                 None,
                 Vec::new(),
@@ -1396,6 +1430,8 @@ pub(super) fn execute(
         queued_use_card,
         rank_results,
         consumed_indices,
+        consumed_owner_uid,
+        consumption_kind,
         entity: None,
         hand_limit,
         owner_removal,

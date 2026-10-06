@@ -85,6 +85,50 @@ fn queued_buff_act_feature_op(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub(super) fn dispatch_event_groups(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    event_groups: &[Vec<BattleEvent>],
+    parent_path: &[usize],
+    reuse_path: &[usize],
+    action_path: Option<&[usize]>,
+    current_skill: Option<(i64, i32, Option<i64>)>,
+    include_attack_consumption: bool,
+    execute_unscoped_after_action: bool,
+    publication_phase: crate::engine::event::subscription::PublicationPhase,
+    owner_uids: Option<&[i64]>,
+) -> Result<ReactionBatch, DrainError> {
+    let all_events = event_groups.iter().flatten().cloned().collect::<Vec<_>>();
+    let mut state = EventBatchState::default();
+    let mut reactions = ReactionBatch::default();
+    for events in event_groups {
+        let mut group = dispatch_event_batch_inner(
+            pool,
+            managers,
+            catalog,
+            determinism,
+            events,
+            &all_events,
+            parent_path,
+            reuse_path,
+            action_path,
+            current_skill,
+            include_attack_consumption,
+            execute_unscoped_after_action,
+            publication_phase,
+            owner_uids,
+            &mut state,
+        )?;
+        group.order_skills(pool, managers, catalog, events)?;
+        reactions.append(group);
+    }
+    Ok(reactions)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 pub(super) fn dispatch_event_batch(
     pool: &TargetPool,
     managers: &BattleManagers,
@@ -100,23 +144,64 @@ pub(super) fn dispatch_event_batch(
     publication_phase: crate::engine::event::subscription::PublicationPhase,
     owner_uids: Option<&[i64]>,
 ) -> Result<ReactionBatch, DrainError> {
+    dispatch_event_batch_inner(
+        pool,
+        managers,
+        catalog,
+        determinism,
+        events,
+        events,
+        parent_path,
+        reuse_path,
+        action_path,
+        current_skill,
+        include_attack_consumption,
+        execute_unscoped_after_action,
+        publication_phase,
+        owner_uids,
+        &mut EventBatchState::default(),
+    )
+}
+
+#[derive(Default)]
+struct EventBatchState {
+    queued_attack_consumption: bool,
+    fired_once_per_target: std::collections::HashSet<OncePerTargetKey>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn dispatch_event_batch_inner(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    events: &[BattleEvent],
+    attack_events: &[BattleEvent],
+    parent_path: &[usize],
+    reuse_path: &[usize],
+    action_path: Option<&[usize]>,
+    current_skill: Option<(i64, i32, Option<i64>)>,
+    include_attack_consumption: bool,
+    execute_unscoped_after_action: bool,
+    publication_phase: crate::engine::event::subscription::PublicationPhase,
+    owner_uids: Option<&[i64]>,
+    state: &mut EventBatchState,
+) -> Result<ReactionBatch, DrainError> {
     let scoped_owner_uids = terminal_owner_scope(pool, managers, owner_uids);
     let owner_uids = scoped_owner_uids.as_deref();
     let current_skill_target = current_skill.and_then(|(_, _, target_uid)| target_uid);
     let after_publish =
         publication_phase == crate::engine::event::subscription::PublicationPhase::AfterPublish;
     let attack_sources = if include_attack_consumption && after_publish {
-        ordered_hit_entities(events, |hit| hit.source_uid)
+        ordered_hit_entities(attack_events, |hit| hit.source_uid)
     } else {
         Vec::new()
     };
     let attacked_targets = if include_attack_consumption && after_publish {
-        ordered_hit_entities(events, |hit| hit.target_uid)
+        ordered_hit_entities(attack_events, |hit| hit.target_uid)
     } else {
         Vec::new()
     };
-    let mut queued_attack_consumption = false;
-    let mut fired_once_per_target = std::collections::HashSet::new();
     let mut reactions = ReactionBatch::default();
     for event in events {
         if after_publish
@@ -129,7 +214,8 @@ pub(super) fn dispatch_event_batch(
         {
             reactions.after_publish.push(sync);
         }
-        if after_publish && !queued_attack_consumption && matches!(event, BattleEvent::Hit(_)) {
+        if after_publish && !state.queued_attack_consumption && matches!(event, BattleEvent::Hit(_))
+        {
             for source_uid in attack_sources
                 .iter()
                 .filter(|uid| owner_uids.is_none_or(|owners| owners.contains(uid)))
@@ -151,7 +237,7 @@ pub(super) fn dispatch_event_batch(
                 .iter()
                 .filter(|uid| owner_uids.is_none_or(|owners| owners.contains(uid)))
             {
-                let damage_types = events
+                let damage_types = attack_events
                     .iter()
                     .filter_map(|event| match event {
                         BattleEvent::Hit(hit) if hit.target_uid == *target_uid => {
@@ -175,7 +261,7 @@ pub(super) fn dispatch_event_batch(
                     )?);
                 }
             }
-            queued_attack_consumption = true;
+            state.queued_attack_consumption = true;
         }
         let reentry_skill = current_skill.filter(|_| {
             matches!(
@@ -200,7 +286,8 @@ pub(super) fn dispatch_event_batch(
             execute_unscoped_after_action,
             Some(publication_phase),
         )?;
-        retain_event_multiplicity(&mut dispatched, event, &mut fired_once_per_target);
+        retain_event_multiplicity(&mut dispatched, event, &mut state.fired_once_per_target);
+        defer_after_hit_skill_buff_acts(&mut dispatched);
         reactions.before_publish.extend(dispatched.before_publish);
         reactions.after_publish.extend(dispatched.after_publish);
         reactions.after_skill.extend(dispatched.after_skill);
@@ -213,6 +300,50 @@ pub(super) fn dispatch_event_batch(
     plan_raw_gauge_contributions(managers, &mut reactions.after_hit)?;
     plan_raw_gauge_contributions(managers, &mut reactions.after_action)?;
     Ok(reactions)
+}
+
+pub(super) fn defer_after_hit_skill_buff_acts(reactions: &mut ReactionBatch) {
+    let mut deferred = Vec::new();
+    for lane in [
+        &mut reactions.before_publish,
+        &mut reactions.after_publish,
+        &mut reactions.after_skill,
+        &mut reactions.after_action,
+    ] {
+        let (mut lane_deferred, immediate): (Vec<_>, Vec<_>) = std::mem::take(lane)
+            .into_iter()
+            .partition(waits_for_hit_skills);
+        *lane = immediate;
+        deferred.append(&mut lane_deferred);
+    }
+    reactions.after_hit.extend(deferred);
+}
+
+pub(super) fn waits_for_hit_skills(queued: &QueuedOp) -> bool {
+    matches!(
+        &queued.frame_owner,
+        Some(FrameOwner::BuffAct { key, .. })
+            if crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)
+                .is_some_and(|definition| {
+                    matches!(
+                        definition.runtime.execution_timing,
+                        crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::AfterHitSkills
+                            | crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::BeforeAfterHitObservers
+                    )
+                })
+    )
+}
+
+pub(super) fn runs_before_after_hit_observers(queued: &QueuedOp) -> bool {
+    matches!(
+        &queued.frame_owner,
+        Some(FrameOwner::BuffAct { key, .. })
+            if crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)
+                .is_some_and(|definition| {
+                    definition.runtime.execution_timing
+                        == crate::engine::skill::buff_act::registry::RuntimeExecutionTiming::BeforeAfterHitObservers
+                })
+    )
 }
 
 type OncePerTargetKey = (
@@ -1041,6 +1172,11 @@ pub(super) fn reaction_counterparty(
             ..
         } => (*source_uid, *target_uid),
         BattleEvent::Hit(hit) => (hit.source_uid, hit.target_uid),
+        BattleEvent::DamageShared {
+            source_uid,
+            target_uid,
+            ..
+        } => (*source_uid, *target_uid),
         BattleEvent::EntityDied(death) => (death.source_uid, death.target_uid),
         BattleEvent::ExPointChanged(change) | BattleEvent::ExPointOverflow(change) => {
             (change.source_uid, change.target_uid)

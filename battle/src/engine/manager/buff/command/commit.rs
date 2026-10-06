@@ -340,7 +340,9 @@ impl BuffManager {
         hp: &HpManager,
         plan: GrantPlan,
     ) -> BuffReplaceResult {
-        let transition = plan.transition.clone();
+        if let Some(transition) = plan.transition {
+            return self.commit_replace_plan(hp, *transition);
+        }
         let initial_act_info_markers = plan
             .initial_act_info_markers
             .clone()
@@ -348,6 +350,8 @@ impl BuffManager {
         let records_transaction_stack_progress = plan.definition.is_stackable_type()
             && (matches!(plan.layer_refresh, Some(LayerRefreshPlan::Update { .. }))
                 || matches!(plan.action, GrantAction::Reject(_)));
+        let records_capped_stack_attempt =
+            matches!(plan.layer_refresh, Some(LayerRefreshPlan::Echo { .. }));
         let mut immunity_change = plan
             .immunity_action
             .map(|(owner_uid, action)| self.commit_consume_action(owner_uid, action))
@@ -379,6 +383,9 @@ impl BuffManager {
         let layer_refresh_uid = plan
             .layer_refresh_uid
             .map(|uid| super::uid_policy::commit(self, plan.route.target_uid, uid));
+        for uid in &plan.silent_refresh_uids {
+            super::uid_policy::commit(self, plan.route.target_uid, *uid);
+        }
         let mut change = self.commit_grant_action(
             hp,
             plan.route,
@@ -402,6 +409,9 @@ impl BuffManager {
             .extend(self.commit_fanout_refreshes(&plan.fanout_refreshes));
         if records_transaction_stack_progress {
             self.record_transaction_stack_progress(plan.route.buff_id);
+        }
+        if records_capped_stack_attempt {
+            self.record_transaction_capped_stack_attempt(plan.route.target_uid, plan.route.buff_id);
         }
         change.refreshed.splice(0..0, immunity_change.refreshed);
         if (plan.initial_params.is_some() || plan.initial_act_info.is_some())
@@ -453,31 +463,6 @@ impl BuffManager {
                 super::uid_policy::commit(self, plan.route.target_uid, uid);
             }
         }
-        if let Some(transition) = transition {
-            let source_uids = transition.removed_uids.clone();
-            let transient_source_uid = plan
-                .transition_progress
-                .and_then(|_| change.added.as_ref()?.buff.uid);
-            let mut transitioned = self.commit_replace_plan(hp, *transition);
-            if transitioned.added.is_some() {
-                change.refreshed.retain(|refresh| {
-                    refresh
-                        .after
-                        .uid
-                        .is_none_or(|uid| !source_uids.contains(&uid))
-                });
-                if let Some(transient_source_uid) = transient_source_uid {
-                    transitioned
-                        .removed
-                        .retain(|removed| removed.buff.uid != Some(transient_source_uid));
-                }
-                change.removed.extend(transitioned.removed);
-                change.refreshed.extend(transitioned.refreshed);
-                change.added = transitioned.added;
-                change.rejected = transitioned.rejected;
-                change.fanout.extend(transitioned.fanout);
-            }
-        }
         change
     }
 
@@ -485,9 +470,6 @@ impl BuffManager {
         let mut removed = Vec::new();
         for buff_uid in plan.removed_uids {
             removed.extend(self.delete(plan.target_uid, buff_uid));
-        }
-        if removed.is_empty() {
-            return BuffReplaceResult::default();
         }
         let mut change = self.commit_grant_plan(hp, plan.grant);
         change.removed.splice(0..0, removed);
