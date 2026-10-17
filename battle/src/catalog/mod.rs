@@ -638,11 +638,12 @@ impl BattleCatalog {
         if model_id <= 0 || trial.hero_id != model_id {
             return None;
         }
-        if configured_conduit_device_id(
+        if configured_conduit_device_id_for_rank(
             self.game_data,
             trial.hero_id,
             trial.ex_skill_lv,
             trial.facets_id,
+            trial.facetslevel,
         )
         .is_some()
         {
@@ -1204,11 +1205,12 @@ pub(crate) fn configured_device_card_weights(
     game_data: &config::GameDB,
     entity: &sonettobuf::FightEntityInfo,
 ) -> Vec<(i32, usize)> {
-    let Some(device_id) = configured_conduit_device_id(
+    let Some(device_id) = configured_conduit_device_id_for_rank(
         game_data,
         entity.model_id.unwrap_or_default(),
         entity.ex_skill_level.unwrap_or_default(),
         entity.destiny_stone.unwrap_or_default(),
+        entity.destiny_rank.unwrap_or_default(),
     ) else {
         return Vec::new();
     };
@@ -1366,9 +1368,14 @@ pub(crate) fn configured_conduit_device(
     let model_id = entity.model_id.unwrap_or_default();
     let skill_level = entity.ex_skill_level.unwrap_or_default();
     let destiny_stone = entity.destiny_stone.unwrap_or_default();
-    let Some(device_id) =
-        configured_conduit_device_id(game_data, model_id, skill_level, destiny_stone)
-    else {
+    let destiny_rank = entity.destiny_rank.unwrap_or_default();
+    let Some(device_id) = configured_conduit_device_id_for_rank(
+        game_data,
+        model_id,
+        skill_level,
+        destiny_stone,
+        destiny_rank,
+    ) else {
         return Ok(None);
     };
     Ok(Some(parse_configured_conduit_device(game_data, device_id)?))
@@ -1380,6 +1387,37 @@ pub fn configured_conduit_device_id(
     skill_level: i32,
     destiny_stone: i32,
 ) -> Option<i32> {
+    configured_destiny_ex_level_device_id(game_data, destiny_stone, skill_level)
+        .or_else(|| configured_character_device_id(game_data, model_id, skill_level))
+}
+
+pub fn configured_conduit_device_id_for_rank(
+    game_data: &config::GameDB,
+    model_id: i32,
+    skill_level: i32,
+    destiny_stone: i32,
+    destiny_rank: i32,
+) -> Option<i32> {
+    let facet = game_data.character_destiny_facets.iter().find(|row| {
+        destiny_stone > 0 && row.facets_id == destiny_stone && row.level == destiny_rank
+    });
+    facet
+        .and_then(|facet| {
+            let exchanged = if facet.ex_level_exchange {
+                configured_destiny_ex_level_device_id(game_data, destiny_stone, skill_level)
+            } else {
+                None
+            };
+            exchanged.or_else(|| configured_facet_device_id(&facet.device_add, skill_level))
+        })
+        .or_else(|| configured_character_device_id(game_data, model_id, skill_level))
+}
+
+fn configured_destiny_ex_level_device_id(
+    game_data: &config::GameDB,
+    destiny_stone: i32,
+    skill_level: i32,
+) -> Option<i32> {
     game_data
         .destiny_facets_ex_level
         .iter()
@@ -1388,14 +1426,19 @@ pub fn configured_conduit_device_id(
         })
         .map(|row| row.device_id)
         .filter(|device_id| *device_id != 0)
-        .or_else(|| {
-            game_data
-                .skill_ex_level
-                .iter()
-                .find(|row| row.hero_id == model_id && row.skill_level == skill_level)
-                .map(|row| row.device_id)
-                .filter(|device_id| *device_id != 0)
-        })
+}
+
+fn configured_character_device_id(
+    game_data: &config::GameDB,
+    model_id: i32,
+    skill_level: i32,
+) -> Option<i32> {
+    game_data
+        .skill_ex_level
+        .iter()
+        .find(|row| row.hero_id == model_id && row.skill_level == skill_level)
+        .map(|row| row.device_id)
+        .filter(|device_id| *device_id != 0)
         .or_else(|| {
             game_data
                 .character
@@ -1405,15 +1448,55 @@ pub fn configured_conduit_device_id(
         })
 }
 
+fn configured_facet_device_id(spec: &str, skill_level: i32) -> Option<i32> {
+    spec.split('|').find_map(|entry| {
+        let (level, device_id) = entry.split_once('#')?;
+        if level.parse::<i32>().ok()? != skill_level {
+            return None;
+        }
+        device_id
+            .parse::<i32>()
+            .ok()
+            .filter(|device_id| *device_id != 0)
+    })
+}
+
 pub(crate) fn configured_conduit_skill_ids(
     game_data: &config::GameDB,
     model_id: i32,
     skill_level: i32,
     destiny_stone: i32,
 ) -> Result<Option<Vec<i32>>, crate::engine::manager::conduit::ConduitError> {
-    let Some(device_id) =
-        configured_conduit_device_id(game_data, model_id, skill_level, destiny_stone)
-    else {
+    configured_conduit_skill_ids_from_device(
+        configured_conduit_device_id(game_data, model_id, skill_level, destiny_stone),
+        game_data,
+    )
+}
+
+pub(crate) fn configured_conduit_skill_ids_for_rank(
+    game_data: &config::GameDB,
+    model_id: i32,
+    skill_level: i32,
+    destiny_stone: i32,
+    destiny_rank: i32,
+) -> Result<Option<Vec<i32>>, crate::engine::manager::conduit::ConduitError> {
+    configured_conduit_skill_ids_from_device(
+        configured_conduit_device_id_for_rank(
+            game_data,
+            model_id,
+            skill_level,
+            destiny_stone,
+            destiny_rank,
+        ),
+        game_data,
+    )
+}
+
+fn configured_conduit_skill_ids_from_device(
+    device_id: Option<i32>,
+    game_data: &config::GameDB,
+) -> Result<Option<Vec<i32>>, crate::engine::manager::conduit::ConduitError> {
+    let Some(device_id) = device_id else {
         return Ok(None);
     };
     Ok(Some(

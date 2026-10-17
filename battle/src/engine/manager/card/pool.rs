@@ -232,6 +232,7 @@ mod tests {
                         model_id: Some(3025),
                         ex_skill_level: Some(3),
                         destiny_stone: Some(302502),
+                        destiny_rank: Some(4),
                         ..Default::default()
                     },
                 ],

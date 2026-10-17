@@ -198,6 +198,26 @@ fn device_owned_roots_cover_every_device_tier() {
 }
 
 #[test]
+fn selected_destiny_device_roots_follow_the_selected_rank() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut skills = VecDeque::new();
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    collect_hero_build_roots(3025, None, Some((302502, 1)), db, &mut skills, &mut report).unwrap();
+
+    let ids = skills
+        .into_iter()
+        .map(|pending| pending.id)
+        .collect::<Vec<_>>();
+    assert!(ids.contains(&302501112));
+    assert!(!ids.contains(&302503112));
+}
+
+#[test]
 fn non_device_max_roots_keep_character_groups_and_ultimate() {
     crate::init_config().unwrap();
     let db = config::get();

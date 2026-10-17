@@ -97,7 +97,7 @@ fn configured_seed_uses_selected_destiny_device_from_entity_loadout() {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 model_id: Some(3025),
-                ex_skill_level: Some(2),
+                ex_skill_level: Some(0),
                 destiny_stone: Some(302502),
                 destiny_rank: Some(4),
                 ..Default::default()
@@ -119,11 +119,11 @@ fn configured_seed_uses_selected_destiny_device_from_entity_loadout() {
             .into_iter()
             .map(|skill| skill.skill_id)
             .collect::<Vec<_>>(),
-        vec![302524112]
+        vec![302503112]
     );
     assert_eq!(
         manager.skill_ids().collect::<Vec<_>>(),
-        vec![302524112, 302514212, 302504312]
+        vec![302503112, 302503212, 302504312]
     );
 }
 
