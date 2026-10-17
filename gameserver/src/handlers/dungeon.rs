@@ -531,6 +531,7 @@ pub async fn on_fight_end_fight(
     let mut compose_push = None;
     let mut dungeon_settlement = None;
     let mut refund_settlement = None;
+    let mut act128_score_updates = None;
     let mut act229_finish = None;
     if let Some(active) = active.as_ref() {
         let is_abort = msg.is_abort.unwrap_or(false);
@@ -567,6 +568,10 @@ pub async fn on_fight_end_fight(
             ctx.player_mut()?.battle.complete_active(record.pending);
             dungeon_settlement = Some((settlement, active.chapter_id, active.episode_id));
         } else if is_abort || !won {
+            if !is_abort {
+                act128_score_updates =
+                    dungeon::act128_score_dungeon_updates(ctx.state.db, player_id, active).await?;
+            }
             let mut settlement = if is_abort {
                 dungeon::settle_refund(ctx.state.db, player_id, active, false).await?
             } else {
@@ -604,6 +609,12 @@ pub async fn on_fight_end_fight(
     }
     if let Some(settlement) = refund_settlement {
         send_refund(ctx, player_id, settlement).await?;
+    }
+    if let Some((dungeon_update, end_dungeon)) = act128_score_updates {
+        ctx.notify(CmdId::DungeonUpdatePushCmd, dungeon_update)
+            .await?;
+        ctx.notify(CmdId::DungeonEndDungeonPushCmd, end_dungeon)
+            .await?;
     }
     if let Some(finish) = act229_finish {
         ctx.notify(CmdId::Act229BattleFinishPushCmd, finish).await?;
@@ -714,6 +725,8 @@ pub async fn on_dungeon_end_dungeon(
             )
             .await?;
         } else {
+            let score_updates =
+                dungeon::act128_score_dungeon_updates(ctx.state.db, player_id, active).await?;
             let mut refund = dungeon::settle_failed(ctx.state.db, player_id, active, true).await?;
             ctx.player_mut()?.battle.clear_active();
             if let Some(compose) = refund.compose_push.take() {
@@ -721,6 +734,12 @@ pub async fn on_dungeon_end_dungeon(
                     .await?;
             }
             send_refund(ctx, player_id, refund).await?;
+            if let Some((dungeon_update, end_dungeon)) = score_updates {
+                ctx.notify(CmdId::DungeonUpdatePushCmd, dungeon_update)
+                    .await?;
+                ctx.notify(CmdId::DungeonEndDungeonPushCmd, end_dungeon)
+                    .await?;
+            }
             push::send_end_fight_push(ctx, dungeon::completed_end_fight(active)).await?;
         }
     }
