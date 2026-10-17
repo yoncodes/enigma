@@ -199,12 +199,12 @@ fn device_overflow_is_banked_before_applied_harmonization_is_recorded() {
 }
 
 #[test]
-fn conduit_unique_does_not_require_full_personal_device_power() {
+fn conduit_unique_requires_full_personal_device_power() {
     init_config();
-    let fight = fight(10);
+    let fight = fight(99);
     let (pool, mut managers, mut catalog) = selected_unique_device(&fight);
 
-    run_conduit_phase(
+    let error = match run_conduit_phase(
         managers.catalog(),
         &fight,
         &mut managers,
@@ -213,14 +213,24 @@ fn conduit_unique_does_not_require_full_personal_device_power() {
         &mut RoundDeterminism::default(),
         TargetContext::default(),
         &operation(),
-    )
-    .unwrap();
+    ) {
+        Ok(_) => panic!("an underfilled personal device gauge authorized its unique skill"),
+        Err(error) => error,
+    };
 
-    assert_eq!(managers.ex_point.get(10), 10);
+    assert_eq!(
+        error,
+        DrainError::InsufficientUltimateResource {
+            owner_uid: 10,
+            skill_id: 31495151,
+            required: 100,
+            current: 99,
+        }
+    );
 }
 
 #[test]
-fn conduit_unique_does_not_spend_personal_device_power_before_casting() {
+fn conduit_unique_spends_personal_device_power_before_casting() {
     init_config();
     let fight = fight(100);
     let (pool, mut managers, mut catalog) = selected_unique_device(&fight);
@@ -249,11 +259,16 @@ fn conduit_unique_does_not_spend_personal_device_power_before_casting() {
             })
         })
         .unwrap();
-    let spend = action.act_effect.iter().position(|effect| {
-        effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
-            && effect.target_id == Some(10)
-            && effect.effect_num == Some(-100)
-    });
+    let spend = action
+        .act_effect
+        .iter()
+        .position(|effect| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
+                && effect.target_id == Some(10)
+                && effect.effect_num == Some(-100)
+        })
+        .unwrap();
     let skill = action
         .act_effect
         .iter()
@@ -264,8 +279,7 @@ fn conduit_unique_does_not_spend_personal_device_power_before_casting() {
                 .is_some_and(|skill| skill.act_id == Some(31495151))
         })
         .unwrap();
-    assert!(spend.is_none());
-    assert_eq!(managers.ex_point.get(10), 100);
+    assert!(spend < skill);
     assert_eq!(action.card_index, Some(1));
     assert_eq!(action.support_hero_id, Some(1));
     assert_eq!(
@@ -295,7 +309,7 @@ fn consumed_energy_reactions_follow_the_twins_unique_skill() {
     };
     let mut twins = entity(10, 3149, 100_000, 1);
     twins.ex_skill = Some(31490151);
-    twins.ex_point = Some(10);
+    twins.ex_point = Some(100);
     twins.ex_point_type =
         Some(crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire());
     twins.passive_skill = vec![31490191];
