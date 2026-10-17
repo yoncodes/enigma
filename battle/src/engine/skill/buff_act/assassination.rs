@@ -153,7 +153,7 @@ pub fn rule_ops(
                 target_uid: subscriber.owner_uid,
                 selector: BuffSelector::Uid(subscriber.buff_uid),
                 amount: *amount,
-                depleted: DepletedBuff::Remove,
+                depleted: DepletedBuff::RemoveWithZeroLayer,
             }),
         ))]);
     }
@@ -320,24 +320,27 @@ mod tests {
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
         };
-        let consumes = |stacks, event| {
+        let consume = |stacks, event| {
             rule_ops(&catalog, &lethal_injury(stacks), &event)
                 .unwrap()
-                .iter()
-                .any(|op| {
-                    matches!(
-                        op,
-                        RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(_)))
-                    )
+                .into_iter()
+                .find_map(|op| match op {
+                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(consume))) => {
+                        Some(consume)
+                    }
+                    _ => None,
                 })
         };
         let starts = |skill_id| BattleEvent::SkillEffectStarted(action(skill_id));
 
-        assert!(consumes(1, starts(312431212)));
-        assert!(!consumes(0, starts(312431212)));
-        assert!(!consumes(1, starts(435221)));
+        assert_eq!(
+            consume(1, starts(312431212)).unwrap().depleted,
+            DepletedBuff::RemoveWithZeroLayer
+        );
+        assert!(consume(0, starts(312431212)).is_none());
+        assert!(consume(1, starts(435221)).is_none());
         // Not after the attack's own start effects.
-        assert!(!consumes(1, BattleEvent::SkillAction(action(312431212))));
+        assert!(consume(1, BattleEvent::SkillAction(action(312431212))).is_none());
     }
 
     #[test]
