@@ -80,6 +80,7 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
         attr: Some(HeroAttribute {
             hp: Some(100_000),
             attack: Some(1_000),
+            technic: Some(if uid > 0 { 1_000 } else { 0 }),
             ..Default::default()
         }),
         ..Default::default()
@@ -123,15 +124,12 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
             .events
             .iter()
             .enumerate()
-            .filter(|(_, event)| {
-                matches!(
-                    event,
-                    crate::engine::event::payload::BattleEvent::SkillAction(action)
-                        if action.skill_id == 312451011
-                            && action.phase == crate::engine::skill::action::SkillPhase::Immediate
-                )
+            .filter_map(|(index, event)| {
+                let crate::engine::event::payload::BattleEvent::Hit(hit) = event else {
+                    return None;
+                };
+                (hit.skill_id == 312451011).then_some((index, hit.assassinate, hit.resolved_damage))
             })
-            .map(|(index, _)| index)
             .collect::<Vec<_>>();
         // The recast follows the mass attack's completion and its ally-action reactions.
         let completed = result.events.iter().position(|event| {
@@ -144,9 +142,9 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
         assert!(
             kicks
                 .iter()
-                .all(|kick| completed.is_some_and(|completed| completed < *kick))
+                .all(|(kick, _, _)| completed.is_some_and(|completed| completed < *kick))
         );
-        kicks.len()
+        kicks
     };
     let kick_gash = BuffInfo {
         uid: Some(30),
@@ -162,9 +160,22 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
         ..kick_gash.clone()
     };
 
-    assert_eq!(sparta_kicks(Vec::new()), 0);
-    assert_eq!(sparta_kicks(vec![kick_gash.clone()]), 1);
-    assert_eq!(sparta_kicks(vec![kick_gash, arrow_gash]), 2);
+    assert!(sparta_kicks(Vec::new()).is_empty());
+    let generated = sparta_kicks(vec![kick_gash.clone()]);
+    assert_eq!(generated.len(), 1);
+    assert!(generated[0].1);
+    let preexisting = sparta_kicks(vec![
+        kick_gash.clone(),
+        BuffInfo {
+            uid: Some(32),
+            buff_id: Some(31240121),
+            from_uid: Some(10),
+            layer: Some(1),
+            ..Default::default()
+        },
+    ]);
+    assert_eq!(preexisting[0].2, generated[0].2);
+    assert_eq!(sparta_kicks(vec![kick_gash, arrow_gash]).len(), 2);
 }
 
 #[test]

@@ -14,7 +14,7 @@ use crate::engine::{
 };
 
 // Assassination grants Final DMG +5% per 100 excess Critical Technique. A target mark can trigger
-// Assassination and carries its configured additional rate when the attack was already one.
+// Assassination; its configured rate applies only when the incoming attack already was one.
 const TARGET_ASSASSINATION_BASE_RATE: i32 = 50;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -81,22 +81,29 @@ pub fn target_modifier(
     target_uid: i64,
     already_assassinate: bool,
     marks_at_action_start: Option<&[(i64, i32)]>,
+    rate_marks_at_action_start: Option<&[(i64, i32)]>,
 ) -> AssassinationModifier {
     let features = managers.buff.active_features(&managers.hp);
-    let live_marks;
+    let live_marks = marked_targets(managers);
     let marks = match marks_at_action_start {
         Some(marks) => marks,
-        None => {
-            live_marks = marked_targets(managers);
-            &live_marks
-        }
+        None => &live_marks,
     };
-    let (marked, target_rate) = marks
-        .iter()
-        .filter(|(owner_uid, _)| *owner_uid == target_uid)
-        .fold((false, 0), |(_, rate), (_, mark_rate)| {
-            (true, rate.max(*mark_rate))
-        });
+    let rate_marks = match rate_marks_at_action_start {
+        Some(marks) => marks,
+        None => &live_marks,
+    };
+    let marked = marks.iter().any(|(owner_uid, _)| *owner_uid == target_uid);
+    let target_rate = if already_assassinate {
+        rate_marks
+            .iter()
+            .filter(|(owner_uid, _)| *owner_uid == target_uid)
+            .map(|(_, mark_rate)| *mark_rate)
+            .max()
+            .unwrap_or_default()
+    } else {
+        0
+    };
     let assassinate = already_assassinate || marked;
     let source_rate = features
         .iter()
@@ -113,9 +120,7 @@ pub fn target_modifier(
         triggered_by_target: marked && !already_assassinate,
         final_damage_bonus: i32::from(assassinate)
             * (technique_excess / 100)
-            * (TARGET_ASSASSINATION_BASE_RATE
-                + source_rate
-                + i32::from(already_assassinate) * target_rate),
+            * (TARGET_ASSASSINATION_BASE_RATE + source_rate + target_rate),
     }
 }
 
@@ -241,7 +246,7 @@ mod tests {
             ..Default::default()
         };
 
-        let modifier = target_modifier(&BattleManagers::seeded(&fight), 10, -1, false, None);
+        let modifier = target_modifier(&BattleManagers::seeded(&fight), 10, -1, false, None, None);
         // The attack consumed the last stack as it started; the start-of-action mark still counts.
         let mut consumed = fight.clone();
         consumed.defender.as_mut().unwrap().entitys[0].buffs.clear();
@@ -254,20 +259,39 @@ mod tests {
         };
         assert_eq!(modifier, triggered);
         assert_eq!(
-            target_modifier(&consumed, 10, -1, false, Some(&[(-1, 10)])),
+            target_modifier(
+                &consumed,
+                10,
+                -1,
+                false,
+                Some(&[(-1, 10)]),
+                Some(&[(-1, 10)]),
+            ),
             triggered
         );
         assert_eq!(
-            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, None),
+            target_modifier(
+                &BattleManagers::seeded(&fight),
+                10,
+                -1,
+                false,
+                Some(&[(-1, 10)]),
+                Some(&[]),
+            ),
+            AssassinationModifier {
+                final_damage_bonus: 402,
+                ..triggered
+            }
+        );
+        assert_eq!(
+            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, None, None,),
             AssassinationModifier {
                 assassinate: true,
                 triggered_by_target: false,
                 final_damage_bonus: 432,
             }
         );
-        assert!(
-            !target_modifier(&BattleManagers::seeded(&fight), 10, -1, false, Some(&[])).assassinate
-        );
+        assert!(!target_modifier(&consumed, 10, -1, false, Some(&[]), Some(&[])).assassinate);
     }
 
     #[test]
@@ -393,7 +417,7 @@ mod tests {
         };
 
         assert_eq!(
-            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, None),
+            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, None, None,),
             AssassinationModifier {
                 assassinate: true,
                 triggered_by_target: false,

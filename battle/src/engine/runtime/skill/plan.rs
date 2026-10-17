@@ -22,6 +22,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) additional_damage_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
     pub(super) assassination_marks_at_action_start: Option<Vec<(i64, i32)>>,
+    assassination_rate_marks_at_action_start: Option<Vec<(i64, i32)>>,
     pub(super) injured_allies: Vec<i64>,
     pub(super) affected_targets: Vec<i64>,
     pub(super) attacked_targets: Vec<i64>,
@@ -48,6 +49,11 @@ pub(in crate::engine::runtime) struct SkillExecution {
 }
 
 impl SkillExecution {
+    pub(in crate::engine::runtime) fn inherit_assassination_rate_marks(&mut self, parent: &Self) {
+        self.assassination_rate_marks_at_action_start
+            .clone_from(&parent.assassination_rate_marks_at_action_start);
+    }
+
     pub(in crate::engine::runtime) fn set_causing_skill_target(&mut self, target_uid: i64) {
         self.context.causing_skill_target_uid = target_uid;
     }
@@ -102,6 +108,7 @@ impl SkillExecution {
             additional_damage_targets: None,
             planned_crits: None,
             assassination_marks_at_action_start: None,
+            assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
@@ -135,6 +142,7 @@ impl SkillExecution {
             additional_damage_targets: None,
             planned_crits: None,
             assassination_marks_at_action_start: None,
+            assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
@@ -370,6 +378,14 @@ pub(super) fn snapshot_action_start_damage_state(
         .assassination_marks_at_action_start
         .get_or_insert_with(|| {
             crate::engine::skill::buff_act::assassination::marked_targets(managers)
+        });
+    execution
+        .assassination_rate_marks_at_action_start
+        .get_or_insert_with(|| {
+            execution
+                .assassination_marks_at_action_start
+                .clone()
+                .unwrap_or_default()
         });
 }
 
@@ -803,6 +819,9 @@ pub(super) fn damage_ops(
             target_uid,
             inherent_assassinate,
             execution.assassination_marks_at_action_start.as_deref(),
+            execution
+                .assassination_rate_marks_at_action_start
+                .as_deref(),
         );
         execution.context.active_skill_assassinate |= assassination.assassinate;
         if assassination.final_damage_bonus != 0 {
@@ -1056,6 +1075,9 @@ pub(super) fn damage_ops(
                             target_uid,
                             false,
                             execution.assassination_marks_at_action_start.as_deref(),
+                            execution
+                                .assassination_rate_marks_at_action_start
+                                .as_deref(),
                         );
                     if linked_assassination.final_damage_bonus != 0 {
                         additional_attributes.push((
