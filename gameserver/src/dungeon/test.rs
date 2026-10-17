@@ -74,7 +74,7 @@ fn act128_runtime_with_score(
             deck_num: 0,
         })
         .unwrap();
-    let round = runtime
+    runtime
         .advance_round(BeginRoundRequest {
             opers: vec![BeginRoundOper {
                 oper_type: Some(CardOpType::PlayCard.id()),
@@ -85,7 +85,6 @@ fn act128_runtime_with_score(
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(round.is_finish, Some(true));
     assert!(runtime.activity_score() > 0);
     into_battle(runtime)
 }
@@ -1898,7 +1897,7 @@ async fn incomplete_act128_settlement_persists_score_without_dungeon_completion(
 }
 
 #[tokio::test]
-async fn act128_failed_end_routes_emit_the_current_run_score() {
+async fn act128_end_routes_emit_the_current_run_score() {
     use crate::{
         handlers::dungeon::{on_dungeon_end_dungeon, on_fight_end_fight},
         net::{
@@ -1920,7 +1919,12 @@ async fn act128_failed_end_routes_emit_the_current_run_score() {
         .activity128_battle(13500416, 109380001)
         .unwrap();
 
-    for (player_id, dungeon_route) in [(37, false), (38, true)] {
+    for (player_id, dungeon_route, is_abort) in [
+        (37, false, false),
+        (38, true, false),
+        (41, false, true),
+        (42, true, true),
+    ] {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         database::run_migrations(&pool).await.unwrap();
         sqlx::query(
@@ -1956,8 +1960,21 @@ async fn act128_failed_end_routes_emit_the_current_run_score() {
         )
         .await
         .unwrap();
-        let runtime = act128_runtime_with_score(13500416, 109380001, 109380001, 19, 1_000_000);
-        assert_eq!(runtime.outcome(), ::battle::BattleOutcome::OutOfRounds);
+        let runtime = act128_runtime_with_score(
+            13500416,
+            109380001,
+            109380001,
+            if is_abort { 1 } else { 19 },
+            1_000_000,
+        );
+        assert_eq!(
+            runtime.outcome(),
+            if is_abort {
+                ::battle::BattleOutcome::Unfinished
+            } else {
+                ::battle::BattleOutcome::OutOfRounds
+            }
+        );
         let run_score = runtime.activity_score();
         let prior_score = 37;
         let mut tx = pool.begin().await.unwrap();
@@ -1989,7 +2006,7 @@ async fn act128_failed_end_routes_emit_the_current_run_score() {
         let mut data = Vec::new();
         if dungeon_route {
             EndDungeonRequest {
-                is_abort: Some(false),
+                is_abort: Some(is_abort),
                 ..Default::default()
             }
             .encode(&mut data)
@@ -2007,7 +2024,7 @@ async fn act128_failed_end_routes_emit_the_current_run_score() {
             .unwrap();
         } else {
             EndFightRequest {
-                is_abort: Some(false),
+                is_abort: Some(is_abort),
             }
             .encode(&mut data)
             .unwrap();

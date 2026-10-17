@@ -444,7 +444,7 @@ impl EntityBuilder {
     }
 }
 
-fn parse_power_specs(spec: &str) -> Vec<(i32, i32)> {
+pub(crate) fn parse_power_specs(spec: &str) -> Vec<(i32, i32)> {
     spec.split('|')
         .filter_map(|entry| {
             let (power_id, max) = entry.trim().split_once('#')?;

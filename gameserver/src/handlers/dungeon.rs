@@ -568,10 +568,8 @@ pub async fn on_fight_end_fight(
             ctx.player_mut()?.battle.complete_active(record.pending);
             dungeon_settlement = Some((settlement, active.chapter_id, active.episode_id));
         } else if is_abort || !won {
-            if !is_abort {
-                act128_score_updates =
-                    dungeon::act128_score_dungeon_updates(ctx.state.db, player_id, active).await?;
-            }
+            act128_score_updates =
+                dungeon::act128_score_dungeon_updates(ctx.state.db, player_id, active).await?;
             let mut settlement = if is_abort {
                 dungeon::settle_refund(ctx.state.db, player_id, active, false).await?
             } else {
@@ -679,7 +677,11 @@ pub async fn on_dungeon_end_dungeon(
         if msg.is_abort.unwrap_or(false) {
             let tower_push = tower::abort_finish_push(ctx.state.db, player_id, active).await?;
             let (dungeon_update, end_dungeon) =
-                dungeon::abort_dungeon_updates(ctx.state.db, player_id, active).await?;
+                match dungeon::act128_score_dungeon_updates(ctx.state.db, player_id, active).await?
+                {
+                    Some(updates) => updates,
+                    None => dungeon::abort_dungeon_updates(ctx.state.db, player_id, active).await?,
+                };
             let refund = dungeon::settle_refund(ctx.state.db, player_id, active, false).await?;
             ctx.player_mut()?.battle.clear_active();
             send_refund(ctx, player_id, refund).await?;
