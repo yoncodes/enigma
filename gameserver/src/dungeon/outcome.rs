@@ -8,6 +8,24 @@ pub enum FightResult {
     OutOfRoundFail = 2,
 }
 
+pub fn act128_score_extra(active: &ActiveBattle) -> Option<String> {
+    configs::get().activity128_battle(active.episode_id, active.battle_id)?;
+    Some(serde_json::json!({ "score": active.runtime.activity_score() }).to_string())
+}
+
+pub async fn act128_score_dungeon_updates(
+    db: &SqlitePool,
+    player_id: i64,
+    active: &ActiveBattle,
+) -> Result<Option<(DungeonUpdatePush, EndDungeonPush)>, AppError> {
+    let Some(extra) = act128_score_extra(active) else {
+        return Ok(None);
+    };
+    let (update, mut end) = abort_dungeon_updates(db, player_id, active).await?;
+    end.extra_str = Some(extra);
+    Ok(Some((update, end)))
+}
+
 pub fn end_fight(active: &ActiveBattle, result: FightResult) -> EndFightPush {
     EndFightPush {
         record: Some(FightRecord {
