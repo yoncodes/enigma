@@ -191,6 +191,7 @@ fn target_buff_follow_up_consumes_the_mark_after_invocation() {
                 target_uid: -1,
                 selector: BuffSelector::ExactId(229701),
                 amount: 1,
+                depleted: DepletedBuff::RemoveWithZeroLayer,
                 ..
             })))
         ] if invocation.plan.source_uid == 10

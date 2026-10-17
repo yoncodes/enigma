@@ -206,7 +206,7 @@ impl BehaviorHandler for Handler {
                         target_uid: context.target_uid,
                         selector: BuffSelector::ExactId(*buff_id),
                         amount: *amount,
-                        depleted: DepletedBuff::Remove,
+                        depleted: DepletedBuff::RemoveWithZeroLayer,
                     }))),
                 ])
             }
