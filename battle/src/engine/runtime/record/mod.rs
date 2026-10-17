@@ -325,6 +325,16 @@ pub(crate) fn active_skill_scope_path(
     action
 }
 
+pub(crate) fn active_skill_target_uid(frames: &[SemanticFrame], path: &[usize]) -> Option<i64> {
+    let action = active_skill_scope_path(frames, path)?;
+    match owner_at_path(frames, &action) {
+        FrameOwner::Skill { target_uid, .. } | FrameOwner::ConduitSkill { target_uid, .. } => {
+            *target_uid
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn set_skill_target(
     frames: &mut [SemanticFrame],
     path: &[usize],

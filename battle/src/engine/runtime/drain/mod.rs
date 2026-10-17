@@ -12,8 +12,9 @@ use crate::engine::{
         executor::{RuleExecutionError, RuleOutcome, execute_rule_op_with},
         record::{
             FrameOwner, FramePath, FrameTrigger, RoundCue, RoundPhase, SemanticFrame, SetupSide,
-            active_skill_scope_path, entity_entry_halo_scope_path, event_scope_path, owner_at_path,
-            push_change, push_child, push_cue, push_frame_child, push_root, set_skill_target,
+            active_skill_scope_path, active_skill_target_uid, entity_entry_halo_scope_path,
+            event_scope_path, owner_at_path, push_change, push_child, push_cue, push_frame_child,
+            push_root, set_skill_target,
         },
         skill::{self, SkillExecution, SkillOpError, SkillOpTrigger},
     },
@@ -1035,6 +1036,11 @@ fn drain_queue_with_deferred(
                     }
                 }
                 let mut execution = skill_execution.unwrap_or_else(|| SkillExecution::new(context));
+                if matches!(trigger, SkillOpTrigger::Event(_)) {
+                    execution.set_causing_skill_target(
+                        active_skill_target_uid(&result.frames, &frame_path).unwrap_or_default(),
+                    );
+                }
                 if matches!(trigger, SkillOpTrigger::Active)
                     && let Some(additional_count) = state.take_target_modifier(&frame_path)
                 {

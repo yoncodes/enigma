@@ -356,10 +356,14 @@ impl TargetResolver {
         };
         if rule == TargetRule::EnemiesIncludingSpecial
             && context.active_skill_is_attack
-            && managers.is_none_or(|managers| managers.catalog().skill_is_attack(skill_id))
-            && let Some(index) = targets
-                .iter()
-                .position(|uid| *uid == context.runtime_target_uid)
+            && (context.causing_skill_target_uid != 0
+                || managers.is_none_or(|managers| managers.catalog().skill_is_attack(skill_id)))
+            && let priority_uid = if context.causing_skill_target_uid != 0 {
+                context.causing_skill_target_uid
+            } else {
+                context.runtime_target_uid
+            }
+            && let Some(index) = targets.iter().position(|uid| *uid == priority_uid)
         {
             let primary = targets.remove(index);
             targets.insert(0, primary);

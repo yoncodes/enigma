@@ -32,6 +32,46 @@ fn selected_attack_without_client_input_uses_the_first_enemy() {
 }
 
 #[test]
+fn mass_enemy_target_prioritizes_the_causing_skill_target() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1), entity_at(11, 2), entity_at(12, 3)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity_at(-1, 1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    assert!(!managers.catalog().skill_is_attack(109380004));
+
+    assert_eq!(
+        TargetResolver::resolve_with_managers_and_context(
+            &TargetRequest {
+                code: 202,
+                raw: Vec::new(),
+            },
+            109380004,
+            -1,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext {
+                runtime_target_uid: -1,
+                causing_skill_target_uid: 11,
+                active_skill_is_attack: true,
+                ..Default::default()
+            },
+        ),
+        vec![11, 10, 12]
+    );
+}
+
+#[test]
 fn selected_attack_rejects_an_ally_without_changing_non_attack_selection() {
     let fight = Fight {
         attacker: Some(FightTeam {

@@ -48,6 +48,10 @@ pub(in crate::engine::runtime) struct SkillExecution {
 }
 
 impl SkillExecution {
+    pub(in crate::engine::runtime) fn set_causing_skill_target(&mut self, target_uid: i64) {
+        self.context.causing_skill_target_uid = target_uid;
+    }
+
     pub(in crate::engine::runtime) fn preserves_selected_frame_target(
         &self,
         target: SkillTarget,
