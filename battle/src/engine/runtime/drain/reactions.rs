@@ -136,6 +136,7 @@ pub(super) fn dispatch_event_groups(
     pending_deaths: Option<&[crate::engine::manager::hp::PendingDeath]>,
 ) -> Result<ReactionBatch, DrainError> {
     let all_events = event_groups.iter().flatten().cloned().collect::<Vec<_>>();
+    let shared_damage_counts = drain_state.record_action_shared_damage(action_path, &all_events);
     let mut state = EventBatchState {
         batch_id: drain_state.next_event_batch_id(),
         ..Default::default()
@@ -167,6 +168,7 @@ pub(super) fn dispatch_event_groups(
             &mut state,
             fired_once_per_action,
         )?;
+        apply_shared_damage_count(&mut group, &shared_damage_counts);
         if publication_phase == crate::engine::event::subscription::PublicationPhase::AfterPublish
             && lane.is_none()
             && let Some(pending_deaths) = pending_deaths
@@ -220,6 +222,7 @@ pub(super) fn dispatch_event_batch(
     publication_phase: crate::engine::event::subscription::PublicationPhase,
     owner_uids: Option<&[i64]>,
 ) -> Result<ReactionBatch, DrainError> {
+    let shared_damage_counts = DrainState::default().record_action_shared_damage(None, events);
     let mut reactions = dispatch_event_batch_inner(
         pool,
         managers,
@@ -240,6 +243,7 @@ pub(super) fn dispatch_event_batch(
         &mut EventBatchState::default(),
         &mut std::collections::HashSet::new(),
     )?;
+    apply_shared_damage_count(&mut reactions, &shared_damage_counts);
     reactions.assign_subscriber_death_groups(action_path);
     Ok(reactions)
 }
@@ -390,6 +394,29 @@ fn dispatch_event_batch_inner(
         reactions.append(dispatched);
     }
     Ok(reactions)
+}
+
+fn apply_shared_damage_count(
+    reactions: &mut ReactionBatch,
+    counts: &std::collections::HashMap<i64, i32>,
+) {
+    for queued in reactions.queued_mut() {
+        let RuleOp::Skill(invocation) = &queued.op else {
+            continue;
+        };
+        if invocation.condition_key != Some(DefinitionKey::new(695213, "ShareDamage")) {
+            continue;
+        }
+        let SkillOpTrigger::Event(BattleEvent::DamageShared { share_count, .. }) =
+            &mut queued.trigger
+        else {
+            continue;
+        };
+        *share_count = counts
+            .get(&invocation.plan.source_uid)
+            .copied()
+            .unwrap_or(*share_count);
+    }
 }
 
 pub(super) fn ordered_hit_entities(

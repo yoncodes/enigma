@@ -5,7 +5,8 @@ use std::{
 };
 
 use crate::engine::{
-    manager::hp::PendingDeath,
+    event::payload::BattleEvent,
+    manager::hp::{HurtDamageFromType, PendingDeath},
     runtime::record::{FrameOwner, FramePath},
     skill::{rule::DefinitionKey, target::TargetContext},
 };
@@ -47,6 +48,7 @@ pub(super) struct DrainState {
     open_actions: HashSet<FramePath>,
     completed_actions: HashSet<FramePath>,
     action_reactions: HashMap<FramePath, HashSet<ActionReactionKey>>,
+    action_shared_damage: HashMap<FramePath, HashMap<i64, [i32; 2]>>,
     action_skill_reaction_frames: HashMap<(FramePath, i64, i32), FramePath>,
     event_batch_reactions: HashMap<u64, HashSet<ActionReactionKey>>,
     next_event_batch_id: u64,
@@ -215,6 +217,7 @@ impl DrainState {
         self.open_actions.remove(action_path);
         self.completed_actions.insert(action_path.clone());
         self.action_reactions.remove(action_path);
+        self.action_shared_damage.remove(action_path);
         self.after_action_casts
             .remove(action_path)
             .unwrap_or_default()
@@ -364,6 +367,7 @@ impl DrainState {
         self.deaths.remove(action_path);
         self.target_modifiers.remove(action_path);
         self.action_reactions.remove(action_path);
+        self.action_shared_damage.remove(action_path);
         for link in self
             .claimed_action_links
             .remove(action_path)
@@ -420,6 +424,45 @@ impl DrainState {
         self.action_reactions
             .entry(action_path.to_vec())
             .or_default()
+    }
+
+    pub(super) fn record_action_shared_damage(
+        &mut self,
+        action_path: Option<&[usize]>,
+        events: &[BattleEvent],
+    ) -> HashMap<i64, i32> {
+        let mut local = HashMap::new();
+        let counts = if let Some(action_path) = action_path {
+            self.action_shared_damage
+                .entry(action_path.to_vec())
+                .or_default()
+        } else {
+            &mut local
+        };
+        for event in events {
+            let BattleEvent::DamageShared {
+                participant_uids,
+                share_count,
+                damage_from,
+                ..
+            } = event
+            else {
+                continue;
+            };
+            let lane = match damage_from {
+                HurtDamageFromType::Skill => 0,
+                HurtDamageFromType::SkillEffect => 1,
+                _ => continue,
+            };
+            for owner_uid in participant_uids {
+                let owner = counts.entry(*owner_uid).or_insert([0, 0]);
+                owner[lane] = owner[lane].max(*share_count);
+            }
+        }
+        counts
+            .iter()
+            .map(|(owner_uid, lanes)| (*owner_uid, lanes.iter().sum()))
+            .collect()
     }
 
     pub(super) fn next_event_batch_id(&mut self) -> u64 {

@@ -105,3 +105,37 @@ fn shared_damage_reaction_transfers_the_number_of_share_recipients() {
     assert_eq!(genesis_managers.buff.buff_id_amount(10, 434121), 0);
     assert_eq!(genesis_managers.buff.buff_id_amount(11, 434121), 0);
 }
+
+#[test]
+fn shared_damage_batch_counts_each_attack_damage_lane_once() {
+    let event = |damage_from| BattleEvent::DamageShared {
+        origin: CommandOrigin {
+            domain: RuleDomain::BuffAct,
+            key: DefinitionKey::new(872, "ShareHurt"),
+        },
+        source_uid: -1,
+        target_uid: 10,
+        participant_uids: vec![10, 11, 12],
+        amount: 300,
+        share_count: 3,
+        damage_from,
+    };
+    let genesis = [
+        event(crate::engine::manager::hp::HurtDamageFromType::SkillEffect),
+        event(crate::engine::manager::hp::HurtDamageFromType::SkillEffect),
+    ];
+    let skill = [
+        event(crate::engine::manager::hp::HurtDamageFromType::Skill),
+        event(crate::engine::manager::hp::HurtDamageFromType::Skill),
+    ];
+    let mut state = DrainState::default();
+
+    assert_eq!(
+        state.record_action_shared_damage(Some(&[1]), &genesis),
+        std::collections::HashMap::from([(10, 3), (11, 3), (12, 3)])
+    );
+    assert_eq!(
+        state.record_action_shared_damage(Some(&[1]), &skill),
+        std::collections::HashMap::from([(10, 6), (11, 6), (12, 6)])
+    );
+}

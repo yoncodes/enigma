@@ -384,6 +384,19 @@ struct ReactionBatch {
 pub use crate::engine::event::dispatcher::ReactionLane;
 
 impl ReactionBatch {
+    fn queued_mut(&mut self) -> impl Iterator<Item = &mut QueuedOp> {
+        self.before_publish
+            .iter_mut()
+            .chain(&mut self.after_publish)
+            .chain(&mut self.after_settlement)
+            .chain(&mut self.after_skill)
+            .chain(&mut self.after_hit)
+            .chain(&mut self.before_after_hit_observers)
+            .chain(&mut self.after_hit_skills)
+            .chain(&mut self.shared_hit_skills)
+            .chain(&mut self.after_action)
+    }
+
     fn append(&mut self, mut other: Self) {
         self.before_publish.append(&mut other.before_publish);
         self.after_publish.append(&mut other.after_publish);
