@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn compatible_drivers_keep_the_first_exact_key() {
+    fn pre_effect_power_compare_owns_compatible_immediate_conditions() {
         init_config();
         let conditions = parse_conditions(config::configs::get(), "66203#1#0&180203#1#1#2");
 
@@ -442,8 +442,8 @@ mod tests {
         assert_eq!(
             route.branches[0].driver,
             Some(ConditionDriver::Trigger(ConditionTrigger {
-                key: crate::engine::skill::rule::DefinitionKey::new(66203, "UseSpecificSkill"),
-                event: EventKind::SkillAction,
+                key: crate::engine::skill::rule::DefinitionKey::new(180203, "PowerCompare"),
+                event: EventKind::SkillEffectStarted,
                 phase: Some(SkillPhase::Immediate),
             }))
         );

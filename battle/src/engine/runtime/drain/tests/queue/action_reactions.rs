@@ -224,6 +224,89 @@ fn a_riposte_completes_as_an_ally_action() {
 }
 
 #[test]
+fn power_compare_observes_an_extra_action_before_its_force_field_cost() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                passive_skill: vec![31050143],
+                power_infos: vec![PowerInfo {
+                    power_id: Some(EUREKA_RESOURCE_ID),
+                    num: Some(2),
+                    max: Some(7),
+                }],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31050146),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..entity(10)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31050151, 31050143], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 31050151,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-1);
+
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+    let hit = result
+        .events
+        .iter()
+        .position(|event| matches!(event, BattleEvent::Hit(hit) if hit.skill_id == 31050151))
+        .expect("extra action hit");
+    let recovered = result
+        .events
+        .iter()
+        .position(|event| {
+            matches!(
+                event,
+                BattleEvent::EurekaChanged(change)
+                    if change.target_uid == 10 && change.applied_delta == 2
+            )
+        })
+        .expect("post-hit Eureka recovery");
+
+    assert!(hit < recovered);
+    assert!(!result.events.iter().any(|event| matches!(
+        event,
+        BattleEvent::BuffAdded(buff) if buff.target_uid == 10 && buff.buff_id == 31050151
+    )));
+}
+
+#[test]
 fn flutterpage_gust_frame_follows_ally_action_target() {
     fn run(target_uid: i64) -> (i64, bool) {
         crate::test_support::init_config();
