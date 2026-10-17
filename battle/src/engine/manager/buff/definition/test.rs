@@ -77,6 +77,18 @@ fn command_refresh_markers_keep_their_registered_owner() {
             ),
         vec![sonettobuf::effect_type_enum::EffectType::None as i32]
     );
+    assert_eq!(
+        BuffDefinition::get(109_380_007)
+            .unwrap()
+            .command_refresh_wire_markers(
+                Some(crate::engine::event::kind::EventKind::BuffChanged,)
+            ),
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Attr as i32,
+            sonettobuf::effect_type_enum::EffectType::Attr as i32,
+            sonettobuf::effect_type_enum::EffectType::Realharmfix as i32,
+        ]
+    );
 }
 
 #[test]

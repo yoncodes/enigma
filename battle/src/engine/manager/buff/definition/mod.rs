@@ -291,6 +291,7 @@ impl BuffDefinition {
         transaction_event: Option<crate::engine::event::kind::EventKind>,
     ) -> Vec<i32> {
         let phase = crate::engine::skill::buff_act::wire::WirePhase::Refresh;
+        let command_owns_attribute_markers = self.command_owns_attribute_refresh_markers();
         if self.features.iter().any(|feature| {
             feature.arguments_supported
                 && feature.initial_state.is_some()
@@ -304,7 +305,7 @@ impl BuffDefinition {
             .iter()
             .filter(|feature| {
                 !mutates_max_hp(feature)
-                    && !transaction_event.is_some_and(|event| {
+                    && (!transaction_event.is_some_and(|event| {
                         feature.values.first().copied().is_some_and(|act_id| {
                             crate::engine::skill::buff_act::registry::find(
                                 act_id,
@@ -324,7 +325,8 @@ impl BuffDefinition {
                                         == crate::engine::event::subscription::PublicationPhase::AfterPublish
                             })
                         })
-                    })
+                    }) || (command_owns_attribute_markers
+                        && feature.kind == Some(BuffActKind::Attr)))
             })
             .flat_map(|feature| {
                 feature
@@ -333,6 +335,13 @@ impl BuffDefinition {
                     .flat_map(move |definition| definition.markers(phase).iter().copied())
             })
             .collect()
+    }
+
+    pub(super) fn command_owns_attribute_refresh_markers(&self) -> bool {
+        self.features
+            .iter()
+            .any(|feature| feature.kind == Some(BuffActKind::RealHarmFix))
+            && !self.features.iter().any(mutates_max_hp)
     }
 
     pub(super) fn projects_initial_state_on_refresh(&self, act_id: i32) -> bool {

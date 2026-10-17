@@ -108,6 +108,11 @@ impl BuffManager {
         })
     }
 
+    pub(crate) fn command_owns_attribute_refresh_markers(&self, buff_id: i32) -> bool {
+        super::BuffDefinition::configured(self.catalog().game_data(), buff_id)
+            .is_some_and(|definition| definition.command_owns_attribute_refresh_markers())
+    }
+
     pub(crate) fn has_status(&self, owner_uid: i64, status: BuffStatus) -> bool {
         self.buffs.iter().any(|active| {
             active.owner_uid == owner_uid

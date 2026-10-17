@@ -50,12 +50,18 @@ pub fn transaction_rule_ops(
     managers: &BattleManagers,
     event: &crate::engine::event::payload::BattleEvent,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
+    let command_owns_markers = match event {
+        crate::engine::event::payload::BattleEvent::BuffChanged(change) => managers
+            .buff
+            .command_owns_attribute_refresh_markers(change.buff_id),
+        _ => false,
+    };
     super::attribute_transaction_rule_ops_with_refresh_marker_ownership(
         managers,
         event,
         BuffActKind::Attr,
         max_hp_rule_op,
-        true,
+        !command_owns_markers,
     )
 }
 
