@@ -237,7 +237,7 @@ fn decoded_card_commands_share_the_command_only_player_schedule() {
 }
 
 #[test]
-fn playing_a_card_does_not_compose_the_remaining_hand() {
+fn playing_a_card_composes_adjacent_remaining_cards() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -301,7 +301,7 @@ fn playing_a_card_does_not_compose_the_remaining_hand() {
                 recorded_skill: None,
             },
             RoundCommand::PlayCard {
-                card_index: 2,
+                card_index: 1,
                 target_uid: Some(-1),
                 chosen_skill_id: None,
                 recorded_skill: None,
@@ -319,7 +319,7 @@ fn playing_a_card_does_not_compose_the_remaining_hand() {
             .iter()
             .filter_map(|card| card.skill_id)
             .collect::<Vec<_>>(),
-        vec![30280121, 30280121]
+        vec![30280122]
     );
 }
 
