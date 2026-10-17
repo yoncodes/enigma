@@ -938,13 +938,17 @@ fn drain_queue_with_deferred(
                 }
 
                 let parent_path = match caster_frame {
-                    Some(caster) => Some(ensure_frame(
-                        &mut result.frames,
-                        None,
-                        parent_path.as_deref(),
-                        caster,
-                        &trigger,
-                    )),
+                    Some(caster) => {
+                        let caster =
+                            retarget_caster_frame(&result.frames, parent_path.as_deref(), caster);
+                        Some(ensure_frame(
+                            &mut result.frames,
+                            None,
+                            parent_path.as_deref(),
+                            caster,
+                            &trigger,
+                        ))
+                    }
                     None => parent_path,
                 };
                 // A skill emitted by a buff act remains nested under that buff-act
@@ -2578,6 +2582,19 @@ fn casting_reaction(
             owner @ FrameOwner::Skill { .. } => Some(owner.clone()),
             _ => None,
         })
+}
+
+fn retarget_caster_frame(
+    frames: &[SemanticFrame],
+    parent_path: Option<&[usize]>,
+    mut caster: FrameOwner,
+) -> FrameOwner {
+    if let Some(target) = parent_path.and_then(|path| active_skill_target_uid(frames, path))
+        && let FrameOwner::Skill { target_uid, .. } = &mut caster
+    {
+        *target_uid = Some(target);
+    }
+    caster
 }
 
 fn ally_action_reaction_group(queued: &QueuedOp) -> Option<Rc<RefCell<Option<FramePath>>>> {

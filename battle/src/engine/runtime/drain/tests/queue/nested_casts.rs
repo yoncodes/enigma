@@ -413,6 +413,37 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
 }
 
 #[test]
+fn deferred_caster_frame_targets_the_action_it_joins() {
+    let mut frames = Vec::new();
+    let action = push_root(
+        &mut frames,
+        FrameOwner::Skill {
+            source_uid: 12,
+            skill_id: 200,
+            card_index: 0,
+            target_uid: Some(-1),
+        },
+        FrameTrigger::Active,
+    );
+    let caster = FrameOwner::Skill {
+        source_uid: 10,
+        skill_id: 100,
+        card_index: 0,
+        target_uid: Some(11),
+    };
+
+    assert_eq!(
+        retarget_caster_frame(&frames, Some(&action), caster),
+        FrameOwner::Skill {
+            source_uid: 10,
+            skill_id: 100,
+            card_index: 0,
+            target_uid: Some(-1),
+        }
+    );
+}
+
+#[test]
 fn shell_necklace_cast_releases_inside_the_following_riposte() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {
