@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn provoke_redirects_only_single_target_attacks_to_the_buff_source() {
+fn provoke_redirects_single_target_attacks_to_the_buff_source() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -64,6 +64,53 @@ fn provoke_redirects_only_single_target_attacks_to_the_buff_source() {
             },
         ),
         vec![11]
+    );
+}
+
+#[test]
+fn provoke_makes_its_source_the_primary_multi_target_attack_target() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1), entity_at(11, 2), entity_at(12, 3)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                position: Some(1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(229103),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    assert_eq!(
+        TargetResolver::resolve_action_targets(
+            &TargetRequest {
+                code: 202,
+                raw: Vec::new(),
+            },
+            109380001,
+            -1,
+            &TargetPool::from_fight(&fight),
+            &mut RoundDeterminism::default(),
+            None,
+            TargetContext {
+                runtime_target_uid: 11,
+                active_skill_is_attack: true,
+                ..Default::default()
+            },
+        ),
+        vec![10, 11, 12]
     );
 }
 

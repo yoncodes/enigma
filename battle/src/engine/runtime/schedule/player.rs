@@ -1146,6 +1146,13 @@ pub(super) fn run_active_action(
         skill.mode = crate::engine::skill::action::SkillExecutionMode::Active;
     }
     let source_uid = skill.plan.source_uid;
+    if let Some(target_uid) = crate::engine::skill::target::resolve::provoke_target(
+        source_uid,
+        pool,
+        catalog.is_attack(skill.plan.skill_id),
+    ) {
+        skill.target = crate::engine::skill::action::SkillTarget::Explicit(target_uid);
+    }
     let is_ultimate = pool.entity(source_uid).is_some_and(|entity| {
         crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
             managers,

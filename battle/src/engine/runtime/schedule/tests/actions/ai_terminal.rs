@@ -90,6 +90,80 @@ fn ai_self_target_skills_ignore_the_selected_opponent() {
 }
 
 #[test]
+fn ai_actions_see_provoke_added_after_the_target_pool_was_built() {
+    init_config();
+    let entity = |uid, team_type, position| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team_type),
+        position: Some(position),
+        current_hp: Some(10_000),
+        attr: Some(HeroAttribute {
+            hp: Some(10_000),
+            attack: Some(1_000),
+            defense: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, 1), entity(11, 1, 2), entity(12, 1, 3)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+            crate::engine::manager::buff::BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: -1,
+                buff_id: 229103,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            },
+        ))
+        .unwrap();
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 999,
+        slots: Vec::new(),
+    });
+    catalog.insert_damage_rate(999, 1_000);
+    catalog.insert_logic_target(999, 202);
+
+    let result = run_ai_actions(
+        &fight,
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [AiSkillChoice {
+            source_uid: -1,
+            skill_id: 999,
+            target_uid: 11,
+        }],
+        &[],
+    )
+    .unwrap();
+
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let skill = steps.iter().find(|step| step.act_id == Some(999)).unwrap();
+    assert_eq!(skill.to_id, Some(10));
+}
+
+#[test]
 fn missing_allied_monster_is_resummoned_after_active_skill_damage() {
     init_config();
     let entity = |uid, team_type, model_id, position, current_hp| FightEntityInfo {
