@@ -12,6 +12,8 @@ enum IndicatorOperation {
 #[repr(i32)]
 pub enum IndicatorId {
     BossRushScore = 4,
+    ZongMaoTechniqueScore = 6,
+    Rouge2Boss = 168,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,13 +37,22 @@ impl IndicatorManager {
         }
         let total = self.totals.entry(command.indicator_id).or_default();
         *total = total.saturating_add(i64::from(command.amount));
+        let effect_num = match command.indicator_id {
+            id if id == IndicatorId::BossRushScore as i32
+                || id == IndicatorId::ZongMaoTechniqueScore as i32
+                || id == IndicatorId::Rouge2Boss as i32 =>
+            {
+                command.amount
+            }
+            _ => (*total).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+        };
         self.activity_score = self
             .activity_score
             .saturating_add(i64::from(command.amount));
         Some(EffectMarker {
             target_uid: i64::from(command.indicator_id),
             effect_type: sonettobuf::effect_type_enum::EffectType::Indicatorchange as i32,
-            effect_num: command.amount,
+            effect_num,
             effect_num1: Some(1),
             config_effect: command.config_effect,
             reserve_id: None,
@@ -106,21 +117,45 @@ mod tests {
     }
 
     #[test]
-    fn configured_indicator_change_updates_and_emits_the_named_indicator() {
-        let mut manager = IndicatorManager::default();
-        let marker = manager
-            .add(IndicatorCommand {
-                indicator_id: 6,
-                amount: 500_000,
-                config_effect: 60016,
-            })
-            .unwrap();
+    fn configured_score_indicators_emit_the_delta() {
+        for indicator_id in [
+            IndicatorId::BossRushScore,
+            IndicatorId::ZongMaoTechniqueScore,
+            IndicatorId::Rouge2Boss,
+        ] {
+            let mut manager = IndicatorManager::default();
+            for _ in 0..2 {
+                let marker = manager
+                    .add(IndicatorCommand {
+                        indicator_id: indicator_id as i32,
+                        amount: 500_000,
+                        config_effect: 60016,
+                    })
+                    .unwrap();
+                assert_eq!(marker.target_uid, indicator_id as i64);
+                assert_eq!(marker.effect_num, 500_000);
+                assert_eq!(marker.effect_num1, Some(1));
+                assert_eq!(marker.config_effect, 60016);
+            }
+            assert_eq!(manager.totals.get(&(indicator_id as i32)), Some(&1_000_000));
+            assert_eq!(manager.activity_score(), 1_000_000);
+        }
+    }
 
-        assert_eq!(marker.target_uid, 6);
-        assert_eq!(marker.effect_num, 500_000);
-        assert_eq!(marker.effect_num1, Some(1));
-        assert_eq!(marker.config_effect, 60016);
-        assert_eq!(manager.totals.get(&6), Some(&500_000));
-        assert_eq!(manager.activity_score(), 500_000);
+    #[test]
+    fn configured_ordinary_indicator_emits_the_committed_total() {
+        let mut manager = IndicatorManager::default();
+        for amount in [3_000, 2_000] {
+            let marker = manager
+                .add(IndicatorCommand {
+                    indicator_id: 3203,
+                    amount,
+                    config_effect: 60016,
+                })
+                .unwrap();
+            assert_eq!(marker.effect_num, manager.totals[&3203] as i32);
+        }
+
+        assert_eq!(manager.totals.get(&3203), Some(&5_000));
     }
 }
