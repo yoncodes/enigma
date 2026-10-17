@@ -50,18 +50,21 @@ pub fn transaction_rule_ops(
     managers: &BattleManagers,
     event: &crate::engine::event::payload::BattleEvent,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
-    let command_owns_markers = match event {
-        crate::engine::event::payload::BattleEvent::BuffChanged(change) => managers
-            .buff
-            .command_owns_attribute_refresh_markers(change.buff_id),
-        _ => false,
+    let owns_refresh_markers = match event {
+        crate::engine::event::payload::BattleEvent::BuffChanged(change) => {
+            change.after_amount > change.before_amount
+                && !managers
+                    .buff
+                    .command_owns_attribute_refresh_markers(change.buff_id)
+        }
+        _ => true,
     };
     super::attribute_transaction_rule_ops_with_refresh_marker_ownership(
         managers,
         event,
         BuffActKind::Attr,
         max_hp_rule_op,
-        !command_owns_markers,
+        owns_refresh_markers,
     )
 }
 
@@ -143,6 +146,43 @@ mod tests {
     fn aggregate_rate_keeps_fractional_progress_between_stacks() {
         assert_eq!(scaled_hp(18_148, 150) - scaled_hp(18_148, 120), 545);
         assert_eq!(scaled_hp(18_148, 120) - scaled_hp(18_148, 90), 544);
+    }
+
+    #[test]
+    fn consumed_attribute_stack_does_not_emit_a_refresh_marker() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(1_000),
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(433911),
+                        from_uid: Some(10),
+                        layer: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let event = BattleEvent::BuffChanged(crate::engine::event::payload::BuffChangeEvent {
+            source_uid: 10,
+            target_uid: 10,
+            buff_uid: 20,
+            buff_id: 433911,
+            before_amount: 2,
+            after_amount: 1,
+            act_id: 0,
+            act_value: 0,
+            duration_expired: false,
+        });
+
+        assert!(transaction_rule_ops(&managers, &event).is_empty());
     }
 
     #[test]
