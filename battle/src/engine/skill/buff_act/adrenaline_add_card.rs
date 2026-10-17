@@ -30,55 +30,61 @@ pub fn rule_ops(
             .act_value(subscriber.buff_uid, subscriber.key.definition.opcode),
     )
     .ok()?;
-    let (&threshold, &skill_id) = thresholds.get(progress).zip(skill_ids.get(progress))?;
-    if managers.ex_point.get(subscriber.owner_uid) < threshold {
-        return Some(Vec::new());
-    }
+    thresholds.get(progress).zip(skill_ids.get(progress))?;
+    let adrenaline = managers.ex_point.get(subscriber.owner_uid);
     let origin = super::command_origin(subscriber)?;
-    let terminal = progress + 1 == thresholds.len();
-    let mut ops = Vec::with_capacity(3);
-    if terminal {
-        ops.push(RuleOp::Command(BattleCommand::ExPoint(
-            ExPointCommand::Set(ExPointSet {
+    let hero_id = managers.entity.model_id(subscriber.owner_uid)?;
+    let mut ops = Vec::with_capacity((thresholds.len() - progress) * 2);
+    for (index, (&threshold, &skill_id)) in
+        thresholds.iter().zip(skill_ids).enumerate().skip(progress)
+    {
+        if adrenaline < threshold {
+            break;
+        }
+        let terminal = index + 1 == thresholds.len();
+        if terminal {
+            ops.push(RuleOp::Command(BattleCommand::ExPoint(
+                ExPointCommand::Set(ExPointSet {
+                    origin,
+                    source_uid: subscriber.owner_uid,
+                    target_uid: subscriber.owner_uid,
+                    value: 0,
+                    config_effect: 0,
+                    effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+                }),
+            )));
+        }
+        if index > 0 || !terminal {
+            ops.push(RuleOp::Command(BattleCommand::Buff(
+                BuffCommand::AccumulateActValue(BuffAccumulateActValue {
+                    origin,
+                    target_uid: subscriber.owner_uid,
+                    buff_uid: subscriber.buff_uid,
+                    act_id: subscriber.key.definition.opcode,
+                    delta: if terminal { -(index as i32) } else { 1 },
+                }),
+            )));
+        }
+        ops.push(RuleOp::Command(BattleCommand::Card(if terminal {
+            CardCommand::AddGenerated(CardAddGenerated {
                 origin,
-                source_uid: subscriber.owner_uid,
                 target_uid: subscriber.owner_uid,
-                value: 0,
-                config_effect: 0,
-                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-            }),
-        )));
-    }
-    if progress > 0 || !terminal {
-        ops.push(RuleOp::Command(BattleCommand::Buff(
-            BuffCommand::AccumulateActValue(BuffAccumulateActValue {
+                skill_id,
+                hero_id: Some(hero_id),
+                team_type: subscriber.team_type,
+            })
+        } else {
+            CardCommand::AddTemporary(CardAddTemporary {
                 origin,
                 target_uid: subscriber.owner_uid,
-                buff_uid: subscriber.buff_uid,
-                act_id: subscriber.key.definition.opcode,
-                delta: if terminal { -(progress as i32) } else { 1 },
-            }),
-        )));
+                skill_id,
+                hero_id: Some(hero_id),
+                reserve_id: 0,
+                team_type: subscriber.team_type,
+                kind: TemporaryCardKind::ConfiguredSkill3,
+            })
+        })));
     }
-    ops.push(RuleOp::Command(BattleCommand::Card(if terminal {
-        CardCommand::AddGenerated(CardAddGenerated {
-            origin,
-            target_uid: subscriber.owner_uid,
-            skill_id,
-            hero_id: Some(managers.entity.model_id(subscriber.owner_uid)?),
-            team_type: subscriber.team_type,
-        })
-    } else {
-        CardCommand::AddTemporary(CardAddTemporary {
-            origin,
-            target_uid: subscriber.owner_uid,
-            skill_id,
-            hero_id: Some(managers.entity.model_id(subscriber.owner_uid)?),
-            reserve_id: 0,
-            team_type: subscriber.team_type,
-            kind: TemporaryCardKind::ConfiguredSkill3,
-        })
-    })));
     Some(ops)
 }
 
@@ -169,7 +175,7 @@ mod tests {
                     uid: Some(10),
                     model_id: Some(3124),
                     current_hp: Some(100),
-                    ex_point: Some(2),
+                    ex_point: Some(6),
                     ex_point_type: Some(3),
                     buffs: vec![BuffInfo {
                         uid: Some(20),
@@ -205,9 +211,9 @@ mod tests {
         let mut managers = BattleManagers::seeded(&fight);
         let origin = super::super::command_origin(&subscriber).unwrap();
 
-        let first = rule_ops(&managers, &subscriber, &event).unwrap();
+        let crossed = rule_ops(&managers, &subscriber, &event).unwrap();
         assert!(matches!(
-            first.as_slice(),
+            crossed.as_slice(),
             [
                 RuleOp::Command(BattleCommand::Buff(BuffCommand::AccumulateActValue(
                     BuffAccumulateActValue { delta: 1, .. }
@@ -219,39 +225,25 @@ mod tests {
                         kind: TemporaryCardKind::ConfiguredSkill3,
                         ..
                     }
+                ))),
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::AccumulateActValue(
+                    BuffAccumulateActValue { delta: 1, .. }
+                ))),
+                RuleOp::Command(BattleCommand::Card(CardCommand::AddTemporary(
+                    CardAddTemporary {
+                        skill_id: 312451023,
+                        hero_id: Some(3124),
+                        kind: TemporaryCardKind::ConfiguredSkill3,
+                        ..
+                    }
                 )))
             ]
         ));
-        let RuleOp::Command(BattleCommand::Buff(command)) = &first[0] else {
-            unreachable!()
-        };
-        managers.execute_buff(command.clone()).unwrap();
-        assert!(rule_ops(&managers, &subscriber, &event).unwrap().is_empty());
-        managers
-            .execute_ex_point(ExPointCommand::Set(ExPointSet {
-                origin,
-                source_uid: 10,
-                target_uid: 10,
-                value: 6,
-                config_effect: 0,
-                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-            }))
-            .unwrap();
-
-        let second = rule_ops(&managers, &subscriber, &event).unwrap();
-        assert!(matches!(
-            second.last(),
-            Some(RuleOp::Command(BattleCommand::Card(
-                CardCommand::AddTemporary(CardAddTemporary {
-                    skill_id: 312451023,
-                    ..
-                })
-            )))
-        ));
-        let RuleOp::Command(BattleCommand::Buff(command)) = &second[0] else {
-            unreachable!()
-        };
-        managers.execute_buff(command.clone()).unwrap();
+        for op in &crossed {
+            if let RuleOp::Command(BattleCommand::Buff(command)) = op {
+                managers.execute_buff(command.clone()).unwrap();
+            }
+        }
         assert!(rule_ops(&managers, &subscriber, &event).unwrap().is_empty());
         managers
             .execute_ex_point(ExPointCommand::Set(ExPointSet {
