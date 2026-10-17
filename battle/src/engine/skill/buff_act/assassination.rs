@@ -152,7 +152,7 @@ pub fn rule_ops(
                 origin: super::command_origin(subscriber)?,
                 target_uid: subscriber.owner_uid,
                 selector: BuffSelector::Uid(subscriber.buff_uid),
-                amount: *amount,
+                amount: amount.saturating_mul(action.rank.max(1)),
                 depleted: DepletedBuff::RemoveWithZeroLayer,
             }),
         ))]);
@@ -273,8 +273,11 @@ mod tests {
     #[test]
     fn only_damaging_attacks_on_a_marked_target_consume_lethal_injury_as_they_start() {
         crate::test_support::init_config();
-        let catalog =
-            SkillEffectCatalog::from_roots(config::configs::get(), [312431212, 435221], []);
+        let catalog = SkillEffectCatalog::from_roots(
+            config::configs::get(),
+            [312431212, 312431222, 435221],
+            [],
+        );
         let lethal_injury = |stacks| BuffActSubscriber {
             owner_uid: -1,
             source_uid: 10,
@@ -293,7 +296,7 @@ mod tests {
             args: vec![10, 1, 312401451, 31240121],
             raw: "10004#10#1#312401451,31240121".to_owned(),
         };
-        let action = |skill_id| crate::engine::skill::action::SkillActionEvent {
+        let action = |skill_id, rank| crate::engine::skill::action::SkillActionEvent {
             source_uid: 11,
             skill_id,
             target_uid: -1,
@@ -302,7 +305,7 @@ mod tests {
             phase: crate::engine::skill::action::SkillPhase::Immediate,
             skill_slot: 0,
             is_attack: true,
-            rank: 1,
+            rank,
             skill_type: 1,
             effect_tag: 1,
             assassinate: false,
@@ -331,16 +334,17 @@ mod tests {
                     _ => None,
                 })
         };
-        let starts = |skill_id| BattleEvent::SkillEffectStarted(action(skill_id));
+        let starts = |skill_id, rank| BattleEvent::SkillEffectStarted(action(skill_id, rank));
 
         assert_eq!(
-            consume(1, starts(312431212)).unwrap().depleted,
+            consume(1, starts(312431212, 1)).unwrap().depleted,
             DepletedBuff::RemoveWithZeroLayer
         );
-        assert!(consume(0, starts(312431212)).is_none());
-        assert!(consume(1, starts(435221)).is_none());
+        assert_eq!(consume(2, starts(312431222, 2)).unwrap().amount, 2);
+        assert!(consume(0, starts(312431212, 1)).is_none());
+        assert!(consume(1, starts(435221, 1)).is_none());
         // Not after the attack's own start effects.
-        assert!(consume(1, BattleEvent::SkillAction(action(312431212))).is_none());
+        assert!(consume(1, BattleEvent::SkillAction(action(312431212, 1))).is_none());
     }
 
     #[test]
