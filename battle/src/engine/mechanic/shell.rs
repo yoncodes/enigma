@@ -155,7 +155,7 @@ fn deploy(
             target_uid: source_uid,
             selector: BuffSelector::IdOrType(stock_buff_id),
             amount,
-            depleted: DepletedBuff::Remove,
+            depleted: DepletedBuff::RemoveWithZeroLayer,
         }))?,
         managers.execute_buff(BuffCommand::Grant(BuffGrant {
             origin,
@@ -261,7 +261,7 @@ fn retrieve(
             target_uid,
             selector: BuffSelector::IdOrType(deployed_buff_id),
             amount,
-            depleted: DepletedBuff::Remove,
+            depleted: DepletedBuff::RemoveWithZeroLayer,
         }))?,
         managers.execute_buff(BuffCommand::Grant(BuffGrant {
             origin,
@@ -514,6 +514,7 @@ mod tests {
         assert_eq!(managers.buff.buff_id_amount(10, 31090117), 0);
         assert!(!managers.buff.has_buff_id(10, 31090117));
         assert_eq!(managers.buff.buff_id_amount(-1, 31090118), 8);
+        assert_eq!(changes.buffs[0].change.removed[0].buff.layer, Some(0));
         assert_eq!(changes.events[0].amount, 8);
         // With the stock gone, the caster's shells are still found through the deployed ones.
         assert_eq!(
@@ -567,6 +568,8 @@ mod tests {
         assert_eq!(managers.buff.buff_id_amount(-1, 31090112), 0);
         assert_eq!(managers.buff.buff_id_amount(-2, 31090112), 0);
         assert_eq!(managers.buff.buff_id_amount(10, 31090111), 13);
+        assert_eq!(changes.buffs[0].change.removed[0].buff.layer, Some(0));
+        assert_eq!(changes.buffs[2].change.removed[0].buff.layer, Some(0));
         assert_eq!(changes.buffs.len(), 4);
         assert_eq!(changes.events.len(), 2);
         assert_eq!(changes.events[0].kind, ShellChangeKind::Retrieved);
