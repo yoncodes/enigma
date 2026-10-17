@@ -708,15 +708,17 @@ fn normalizes_card_skill_rank() {
 fn resolves_device_card_weights_from_the_selected_device() {
     crate::test_support::init_config();
     let catalog = BattleCatalog::new(crate::test_support::game_data());
-    let entity = |model_id, ex_skill_level, destiny_stone| sonettobuf::FightEntityInfo {
-        model_id: Some(model_id),
-        ex_skill_level: Some(ex_skill_level),
-        destiny_stone: Some(destiny_stone),
-        ..Default::default()
-    };
+    let entity =
+        |model_id, ex_skill_level, destiny_stone, destiny_rank| sonettobuf::FightEntityInfo {
+            model_id: Some(model_id),
+            ex_skill_level: Some(ex_skill_level),
+            destiny_stone: Some(destiny_stone),
+            destiny_rank: Some(destiny_rank),
+            ..Default::default()
+        };
 
     assert_eq!(
-        catalog.device_card_weights(&entity(3_149, 0, 0)),
+        catalog.device_card_weights(&entity(3_149, 0, 0, 0)),
         vec![
             (31_446_011, 2),
             (31_446_012, 2),
@@ -727,14 +729,33 @@ fn resolves_device_card_weights_from_the_selected_device() {
         ]
     );
     assert_eq!(
-        catalog.device_card_weights(&entity(3_144, 1, 0)),
+        catalog.device_card_weights(&entity(3_144, 1, 0, 0)),
         vec![(31_446_011, 2), (31_446_012, 2), (31_447_001, 1)]
     );
     assert_eq!(
-        catalog.device_card_weights(&entity(3_025, 3, 302_502)),
+        catalog.device_card_weights(&entity(3_025, 3, 302_502, 4)),
         vec![(31_446_021, 3), (31_446_022, 1), (31_447_002, 1)]
     );
-    assert!(catalog.device_card_weights(&entity(-1, 0, 0)).is_empty());
+    assert!(catalog.device_card_weights(&entity(-1, 0, 0, 0)).is_empty());
+}
+
+#[test]
+fn resolves_selected_destiny_device_by_rank_and_skill_level() {
+    crate::test_support::init_config();
+    let game = crate::test_support::game_data();
+
+    assert_eq!(
+        configured_conduit_device_id_for_rank(game, 3025, 1, 302502, 1),
+        Some(30250211)
+    );
+    assert_eq!(
+        configured_conduit_device_id_for_rank(game, 3025, 0, 302502, 4),
+        Some(30250204)
+    );
+    assert_eq!(
+        configured_conduit_device_id_for_rank(game, 3025, 2, 302502, 4),
+        Some(30250224)
+    );
 }
 
 #[test]

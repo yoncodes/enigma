@@ -151,6 +151,23 @@ pub fn configured_conduit_skill_ids(
         .map_err(|error| format!("{error:?}"))
 }
 
+pub fn configured_conduit_skill_ids_for_rank(
+    game_data: &config::GameDB,
+    model_id: i32,
+    skill_level: i32,
+    destiny_stone: i32,
+    destiny_rank: i32,
+) -> Result<Option<Vec<i32>>, String> {
+    crate::catalog::configured_conduit_skill_ids_for_rank(
+        game_data,
+        model_id,
+        skill_level,
+        destiny_stone,
+        destiny_rank,
+    )
+    .map_err(|error| format!("{error:?}"))
+}
+
 pub fn shell_process_spec(game_data: &'static config::GameDB, buff_id: i32) -> Option<(i32, i32)> {
     let spec = crate::engine::skill::buff_act::shell::resolve_process_spec(
         crate::catalog::BattleCatalog::new(game_data),
