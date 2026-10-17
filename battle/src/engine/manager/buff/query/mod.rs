@@ -100,6 +100,14 @@ impl BuffManager {
             .collect()
     }
 
+    pub(crate) fn is_fanout_instance(&self, owner_uid: i64, buff_uid: i64) -> bool {
+        self.buffs.iter().any(|active| {
+            active.owner_uid == owner_uid
+                && active.buff.uid == Some(buff_uid)
+                && active.fanout_emitter_uid.is_some()
+        })
+    }
+
     pub(crate) fn has_status(&self, owner_uid: i64, status: BuffStatus) -> bool {
         self.buffs.iter().any(|active| {
             active.owner_uid == owner_uid

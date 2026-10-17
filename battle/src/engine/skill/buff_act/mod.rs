@@ -339,7 +339,11 @@ fn attribute_transaction_rule_ops_with_refresh_marker_ownership(
         .flat_map(|(feature, amount_delta)| {
             let op = rule_op(managers, &feature, amount_delta);
             let owns_marker = op.is_some()
-                || (owns_refresh_markers && matches!(event, BattleEvent::BuffChanged(_)));
+                || (owns_refresh_markers
+                    && matches!(event, BattleEvent::BuffChanged(_))
+                    && !managers
+                        .buff
+                        .is_fanout_instance(feature.owner_uid, feature.buff_uid));
             if !owns_marker {
                 return Vec::new();
             }
