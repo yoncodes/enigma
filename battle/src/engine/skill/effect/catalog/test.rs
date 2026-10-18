@@ -510,6 +510,28 @@ fn alternative_opcodes_share_one_event_lane_inside_their_parent_slot() {
 }
 
 #[test]
+fn alternative_hp_threshold_routes_share_their_configured_limit_owner() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+
+    for effect_id in [109320108, 118353131, 103360262, 109360007] {
+        let effect = catalog.get(effect_id).unwrap();
+        for buff_id in [109320114, 109320109, 109320110] {
+            let owners = effect
+                .slots
+                .iter()
+                .enumerate()
+                .filter(|(_, slot)| slot.behavior.arg(0) == Some(buff_id))
+                .map(|(slot_index, _)| catalog.rule_limit_owner(effect_id, slot_index))
+                .collect::<Vec<_>>();
+
+            assert_eq!(owners.len(), 3);
+            assert!(owners.iter().all(|owner| *owner == owners[0]));
+        }
+    }
+}
+
+#[test]
 fn sentience_threshold_routes_all_transformation_steps_to_round_end() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());

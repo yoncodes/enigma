@@ -1099,8 +1099,7 @@ fn drain_queue_with_deferred(
                     managers.mark_rule_fired(
                         invocation.plan.source_uid,
                         invocation.plan.skill_id,
-                        slot_index,
-                        condition_key,
+                        catalog.rule_limit_owner(invocation.plan.skill_id, slot_index),
                     );
                     mark_reaction_fired(state, &invocation, slot_index, condition_key);
                 }

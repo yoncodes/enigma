@@ -541,12 +541,11 @@ pub(in crate::engine::runtime) fn emit_ops(
         {
             continue;
         }
-        if condition_key.is_some_and(|condition_key| {
+        if condition_key.is_some_and(|_| {
             !managers.can_fire_rule(
                 invocation.plan.source_uid,
                 invocation.plan.skill_id,
-                slot_index,
-                condition_key,
+                catalog.rule_limit_owner(invocation.plan.skill_id, slot_index),
                 slot.limit,
                 slot.round_limit,
             )

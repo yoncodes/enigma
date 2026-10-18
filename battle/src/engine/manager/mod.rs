@@ -80,8 +80,8 @@ pub struct BattleManagers {
     pub toughness: toughness::ToughnessManager,
     pub wave: wave::WaveManager,
     configured_rule_progress: configured_rule_progress::ConfiguredRuleProgressManager,
-    rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
-    round_rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
+    rule_fires: HashMap<(i64, i32, crate::engine::skill::effect::RuleLimitOwner), i32>,
+    round_rule_fires: HashMap<(i64, i32, crate::engine::skill::effect::RuleLimitOwner), i32>,
     buff_act_fires: HashMap<(i64, i64, crate::engine::skill::rule::DefinitionKey), i32>,
     rule_progress: HashMap<(i64, i64, crate::engine::skill::rule::DefinitionKey, i32), i32>,
 }
@@ -1360,29 +1360,27 @@ impl BattleManagers {
         }))
     }
 
-    pub fn can_fire_rule(
+    pub(crate) fn can_fire_rule(
         &self,
         owner_uid: i64,
         skill_id: i32,
-        slot_index: usize,
-        condition_key: crate::engine::skill::rule::DefinitionKey,
+        limit_owner: crate::engine::skill::effect::RuleLimitOwner,
         limit: i32,
         round_limit: i32,
     ) -> bool {
-        let key = (owner_uid, skill_id, slot_index, condition_key);
+        let key = (owner_uid, skill_id, limit_owner);
         (limit <= 0 || self.rule_fires.get(&key).copied().unwrap_or_default() < limit)
             && (round_limit <= 0
                 || self.round_rule_fires.get(&key).copied().unwrap_or_default() < round_limit)
     }
 
-    pub fn mark_rule_fired(
+    pub(crate) fn mark_rule_fired(
         &mut self,
         owner_uid: i64,
         skill_id: i32,
-        slot_index: usize,
-        condition_key: crate::engine::skill::rule::DefinitionKey,
+        limit_owner: crate::engine::skill::effect::RuleLimitOwner,
     ) {
-        let key = (owner_uid, skill_id, slot_index, condition_key);
+        let key = (owner_uid, skill_id, limit_owner);
         *self.rule_fires.entry(key).or_default() += 1;
         *self.round_rule_fires.entry(key).or_default() += 1;
     }

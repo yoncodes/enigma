@@ -523,35 +523,41 @@ fn synchronization_reconnect_state_is_projected_from_ex_point_manager() {
 #[test]
 fn total_and_round_rule_limits_have_distinct_lifetimes() {
     let mut managers = BattleManagers::default();
-    let key = crate::engine::skill::rule::DefinitionKey::new(629210, "TeammateInjuryCount");
+    let owner = crate::engine::skill::effect::RuleLimitOwner::from_slot(0);
 
-    assert!(managers.can_fire_rule(1, 433011, 0, key, 1, 0));
-    managers.mark_rule_fired(1, 433011, 0, key);
-    assert!(!managers.can_fire_rule(1, 433011, 0, key, 1, 0));
+    assert!(managers.can_fire_rule(1, 433011, owner, 1, 0));
+    managers.mark_rule_fired(1, 433011, owner);
+    assert!(!managers.can_fire_rule(1, 433011, owner, 1, 0));
     managers.begin_round();
-    assert!(!managers.can_fire_rule(1, 433011, 0, key, 1, 0));
+    assert!(!managers.can_fire_rule(1, 433011, owner, 1, 0));
 
-    let round_key = crate::engine::skill::rule::DefinitionKey::new(629210, "DifferentCondition");
-    assert!(managers.can_fire_rule(1, 433011, 1, round_key, 0, 1));
-    managers.mark_rule_fired(1, 433011, 1, round_key);
-    assert!(!managers.can_fire_rule(1, 433011, 1, round_key, 0, 1));
+    let round_owner = crate::engine::skill::effect::RuleLimitOwner::from_slot(1);
+    assert!(managers.can_fire_rule(1, 433011, round_owner, 0, 1));
+    managers.mark_rule_fired(1, 433011, round_owner);
+    assert!(!managers.can_fire_rule(1, 433011, round_owner, 0, 1));
     managers.begin_round();
-    assert!(managers.can_fire_rule(1, 433011, 1, round_key, 0, 1));
-    assert!(managers.can_fire_rule(1, 433011, 2, round_key, 0, 0));
+    assert!(managers.can_fire_rule(1, 433011, round_owner, 0, 1));
+    assert!(managers.can_fire_rule(
+        1,
+        433011,
+        crate::engine::skill::effect::RuleLimitOwner::from_slot(2),
+        0,
+        0
+    ));
 }
 
 #[test]
 fn action_round_state_preserves_next_round_reaction_usage() {
     let mut managers = BattleManagers::default();
-    let key = crate::engine::skill::rule::DefinitionKey::new(22209, "BeAttacked");
+    let owner = crate::engine::skill::effect::RuleLimitOwner::from_slot(0);
 
-    managers.mark_rule_fired(-1, 100, 0, key);
+    managers.mark_rule_fired(-1, 100, owner);
     managers.begin_reaction_round();
-    assert!(managers.can_fire_rule(-1, 100, 0, key, 0, 1));
+    assert!(managers.can_fire_rule(-1, 100, owner, 0, 1));
 
-    managers.mark_rule_fired(-1, 100, 0, key);
+    managers.mark_rule_fired(-1, 100, owner);
     managers.begin_action_round();
-    assert!(!managers.can_fire_rule(-1, 100, 0, key, 0, 1));
+    assert!(!managers.can_fire_rule(-1, 100, owner, 0, 1));
 }
 
 #[test]

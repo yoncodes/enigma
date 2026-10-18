@@ -84,8 +84,7 @@ fn lucy_entity_defeat_follow_up_respects_its_configured_round_limit() {
             managers.can_fire_rule(
                 10,
                 passive_skill,
-                slot_index,
-                subscriber.key.definition,
+                catalog.rule_limit_owner(passive_skill, slot_index),
                 slot.limit,
                 slot.round_limit,
             )

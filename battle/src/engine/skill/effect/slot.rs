@@ -18,6 +18,15 @@ pub struct ParsedSkillEffect {
     pub slots: Vec<SkillEffectSlot>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct RuleLimitOwner(usize);
+
+impl RuleLimitOwner {
+    pub const fn from_slot(slot_index: usize) -> Self {
+        Self(slot_index)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillEffectSlot {
     pub behavior: ParsedBehavior,

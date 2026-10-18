@@ -795,6 +795,19 @@ fn hit_damage_buff_acts_settle_before_hp_threshold_reactions() {
     )
     .unwrap();
 
+    assert_eq!(
+        result
+            .events
+            .iter()
+            .filter(|event| matches!(
+                event,
+                crate::engine::event::payload::BattleEvent::BuffAdded(buff)
+                    if buff.buff_id == 109320114
+            ))
+            .count(),
+        1
+    );
+
     fn collect(step: &sonettobuf::FightStep, found: &mut Vec<i32>) {
         if let Some(act_id @ (312451021 | 312451011 | 312451031 | 109320108)) = step.act_id {
             found.push(act_id);
