@@ -65,7 +65,6 @@ fn performed_extra_actions_add_the_shared_and_specific_action_lanes() {
                 main_target: true,
                 extra_skill_kind: kind,
                 performs_extra_action,
-                unpaid_extra_action_cost_fields: Vec::new(),
                 additional_enabled: false,
                 additional_is_crit: None,
             },
@@ -185,7 +184,6 @@ fn additional_damage_ignores_direct_hit_crit_defense_and_career_lanes() {
             is_crit: true,
             extra_skill_kind: 0,
             performs_extra_action: false,
-            unpaid_extra_action_cost_fields: &[],
         },
         runtime,
         DamageFormula::AdditionalDamage,
@@ -231,7 +229,6 @@ fn additional_damage_ignores_direct_hit_crit_defense_and_career_lanes() {
             is_crit: false,
             extra_skill_kind: 1,
             performs_extra_action: false,
-            unpaid_extra_action_cost_fields: &[],
         },
         DamageRuntime {
             fight_version: 6,
@@ -318,7 +315,6 @@ fn credited_source_additional_damage_uses_the_sources_career() {
             is_crit: false,
             extra_skill_kind: 0,
             performs_extra_action: false,
-            unpaid_extra_action_cost_fields: &[],
         },
         DamageRuntime {
             fight_version: 6,
@@ -576,7 +572,6 @@ fn career_ratio_fix_extends_the_existing_advantage_lane() {
         main_target: true,
         extra_skill_kind: 0,
         performs_extra_action: false,
-        unpaid_extra_action_cost_fields: Vec::new(),
         additional_enabled: false,
         additional_is_crit: None,
     };

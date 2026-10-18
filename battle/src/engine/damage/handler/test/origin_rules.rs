@@ -150,7 +150,6 @@ fn origin_damage_by_buff_group_counts_instances_and_genesis_modifiers() {
                 pool: &pool,
                 skill_id: 0,
                 performs_extra_action: false,
-                unpaid_extra_action_cost_fields: &[],
             },
             &[],
             false,
@@ -195,7 +194,6 @@ fn team_attribute_origin_damage_sums_each_main_allys_current_missing_hp() {
                 pool: &pool,
                 skill_id: 0,
                 performs_extra_action: false,
-                unpaid_extra_action_cost_fields: &[],
             },
             &behavior,
         ),
@@ -278,38 +276,6 @@ fn extra_action_origin_damage_uses_its_exact_critical_formula() {
         ),
         "{ops:#?}"
     );
-
-    modifiers.unpaid_extra_action_cost_fields = vec![(31050186, 10)];
-    let ops = crate::engine::skill::behavior::rule_ops(
-        BehaviorOpContext {
-            source_uid: 10,
-            source_team: 1,
-            target_uid: -1,
-            active_skill_id: 100,
-            transfer_count: 1,
-            event: None,
-            managers: &managers,
-            pool: &pool,
-            determinism: &mut determinism,
-            modifiers: &mut modifiers,
-            target: &mut target,
-        },
-        &behavior,
-    )
-    .unwrap();
-    assert!(
-        matches!(
-            ops.as_slice(),
-            [RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
-                HpLoss {
-                    amount: 1750,
-                    hurt: Some(HurtInfoData { is_crit: true, .. }),
-                    ..
-                }
-            )))]
-        ),
-        "{ops:#?}"
-    );
 }
 
 #[test]
@@ -349,7 +315,6 @@ fn direct_damage_uses_manager_combat_stats_instead_of_stale_pool_values() {
             main_target: true,
             extra_skill_kind: 0,
             performs_extra_action: false,
-            unpaid_extra_action_cost_fields: Vec::new(),
             additional_enabled: false,
             additional_is_crit: None,
         },

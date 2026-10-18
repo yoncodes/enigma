@@ -42,7 +42,6 @@ pub struct DamageRequest<'a> {
     pub is_crit: bool,
     pub extra_skill_kind: i32,
     pub performs_extra_action: bool,
-    pub unpaid_extra_action_cost_fields: &'a [(i32, i64)],
 }
 
 #[derive(Clone, Copy)]
@@ -99,7 +98,6 @@ pub fn resolve_attack_command_with_precision(
             is_crit: plan.is_crit,
             extra_skill_kind: plan.extra_skill_kind,
             performs_extra_action: plan.performs_extra_action,
-            unpaid_extra_action_cost_fields: &plan.unpaid_extra_action_cost_fields,
         },
         runtime,
     )?;
@@ -617,7 +615,6 @@ fn direct_damage_trace(
         is_crit,
         extra_skill_kind,
         performs_extra_action,
-        unpaid_extra_action_cost_fields,
         ..
     } = request;
     let DamageRuntime {
@@ -831,7 +828,6 @@ fn direct_damage_trace(
                     is_ultimate,
                     extra_action,
                     performs_extra_action,
-                    unpaid_extra_action_cost_fields,
                 )
             })
             .sum::<i32>()
@@ -1091,7 +1087,6 @@ fn direct_damage_trace(
                         is_ultimate,
                         extra_action,
                         performs_extra_action,
-                        unpaid_extra_action_cost_fields,
                     );
                 (delta != 0).then_some((feature.buff_id, feature.act_type.as_str(), delta))
             })

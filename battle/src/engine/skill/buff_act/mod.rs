@@ -952,14 +952,10 @@ pub fn calculated_attack_attribute_delta_for_skill(
     is_big_skill: bool,
     extra_action: bool,
     performs_extra_action: bool,
-    unpaid_extra_action_cost_fields: &[(i32, i64)],
 ) -> i32 {
     // Gust Force Field bonuses share the field's own "performs an extra action" clause.
     match feature_kind(feature) {
         Some(registry::BuffActKind::MustCritAndFixTempAttr) if performs_extra_action => {
-            if unpaid_extra_action_cost_fields.contains(&(feature.buff_id, feature.source_uid)) {
-                return 0;
-            }
             return must_crit_and_fix_temp_attr::attribute_delta(
                 feature, attr_id, attributes, buffs, hp,
             );

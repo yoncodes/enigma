@@ -187,7 +187,6 @@ fn emit_ops(
                 is_crit,
                 extra_skill_kind: context.target.extra_skill_kind,
                 performs_extra_action: extra_action,
-                unpaid_extra_action_cost_fields: &modifiers.unpaid_extra_action_cost_fields,
             },
             runtime,
             replacement_buff_id,

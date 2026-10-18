@@ -13,7 +13,6 @@ pub(super) struct OriginRuntime<'a> {
     pub pool: &'a TargetPool,
     pub skill_id: i32,
     pub performs_extra_action: bool,
-    pub unpaid_extra_action_cost_fields: &'a [(i32, i64)],
 }
 
 pub(super) fn amount(
@@ -200,7 +199,6 @@ fn genesis_multiplier(
                     runtime.pool.catalog().skill_is_big(runtime.skill_id),
                     false,
                     true,
-                    runtime.unpaid_extra_action_cost_fields,
                 )
             })
             .sum::<i32>()

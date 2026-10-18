@@ -334,24 +334,10 @@ impl SkillExecution {
     }
 
     pub(super) fn activate_additional_damage(&mut self, planned: LinkedDamagePlan) {
-        self.record_unpaid_extra_action_cost_field(&planned);
         if planned.is_resolved_hit_derived() {
             self.resolved_hit_additional_damage.push(planned);
         } else {
             self.activated_additional_damage.push(planned);
-        }
-    }
-
-    pub(super) fn record_unpaid_extra_action_cost_field(&mut self, planned: &LinkedDamagePlan) {
-        let field = (planned.feature.buff_id, planned.feature.source_uid);
-        if planned.spec.extra_eureka_cost > 0
-            && !planned.uses_extra_lane
-            && !self
-                .modifiers
-                .unpaid_extra_action_cost_fields
-                .contains(&field)
-        {
-            self.modifiers.unpaid_extra_action_cost_fields.push(field);
         }
     }
 
@@ -363,10 +349,6 @@ impl SkillExecution {
                 planned.feature.buff_uid == candidate.feature.buff_uid
                     && planned.feature.buff_id == candidate.feature.buff_id
             })
-    }
-
-    pub(super) fn unpaid_extra_action_cost_fields(&self) -> Vec<(i32, i64)> {
-        self.modifiers.unpaid_extra_action_cost_fields.clone()
     }
 }
 
@@ -936,7 +918,6 @@ pub(super) fn damage_ops(
                 )
             });
         let main_target = main_target == Some(target_uid);
-        let unpaid_extra_action_cost_fields = execution.unpaid_extra_action_cost_fields();
         let attack_plan = AttackPlan {
             source_uid,
             target_uid,
@@ -955,7 +936,6 @@ pub(super) fn damage_ops(
             main_target,
             extra_skill_kind: execution.context.extra_skill_kind,
             performs_extra_action: extra_action,
-            unpaid_extra_action_cost_fields,
             additional_enabled: false,
             additional_is_crit: None,
         };
@@ -1132,8 +1112,6 @@ pub(super) fn damage_ops(
                         is_crit: additional_is_crit,
                         extra_skill_kind: execution.context.extra_skill_kind,
                         performs_extra_action: extra_action,
-                        unpaid_extra_action_cost_fields: &attack_plan
-                            .unpaid_extra_action_cost_fields,
                     },
                     damage::DamageRuntime {
                         fight_version: managers.fight_version(),

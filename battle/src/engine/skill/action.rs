@@ -395,7 +395,6 @@ pub struct SkillModifiers {
     pub additional_attack_career: Option<i32>,
     pub force_career_restraint: bool,
     pub additional_damage: Vec<AdditionalDamageModifier>,
-    pub unpaid_extra_action_cost_fields: Vec<(i32, i64)>,
     pub post_immediate_target_buffs: Vec<PostImmediateTargetBuffModifier>,
     pub consume_team_injury_count_round: Option<DefinitionKey>,
 }
@@ -421,11 +420,6 @@ impl SkillModifiers {
             .or(other.additional_attack_career);
         self.force_career_restraint |= other.force_career_restraint;
         self.additional_damage.append(&mut other.additional_damage);
-        for field in other.unpaid_extra_action_cost_fields {
-            if !self.unpaid_extra_action_cost_fields.contains(&field) {
-                self.unpaid_extra_action_cost_fields.push(field);
-            }
-        }
         self.post_immediate_target_buffs
             .append(&mut other.post_immediate_target_buffs);
         self.consume_team_injury_count_round = self

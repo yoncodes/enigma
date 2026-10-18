@@ -355,7 +355,6 @@ pub(in crate::engine::runtime) fn emit_ops(
     if active_phase == Some(SkillPhase::Immediate) && !execution.opening_effects_emitted {
         execution.opening_effects_emitted = true;
         for activation in plan::LinkedDamagePlan::activations(&invocation, managers, execution) {
-            execution.record_unpaid_extra_action_cost_field(&activation.additional);
             if has_row_damage && activation.pays_extra_action_cost {
                 outputs.extend(emit_additional_damage_activation(
                     &invocation,

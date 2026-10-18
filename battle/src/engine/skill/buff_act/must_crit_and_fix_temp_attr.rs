@@ -146,9 +146,8 @@ mod tests {
                 false,
                 false,
                 true,
-                &[(31050186, 20)],
             ),
-            0
+            300
         );
         assert!(forces_critical(&features, 10, true));
 

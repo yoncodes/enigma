@@ -220,9 +220,6 @@ impl BehaviorHandler for Handler {
                         pool: context.pool,
                         skill_id: context.active_skill_id,
                         performs_extra_action,
-                        unpaid_extra_action_cost_fields: &context
-                            .modifiers
-                            .unpaid_extra_action_cost_fields,
                     },
                     &context.modifiers.attack_attributes,
                     is_crit,
@@ -288,9 +285,6 @@ impl BehaviorHandler for Handler {
                         pool: context.pool,
                         skill_id: context.active_skill_id,
                         performs_extra_action,
-                        unpaid_extra_action_cost_fields: &context
-                            .modifiers
-                            .unpaid_extra_action_cost_fields,
                     },
                     &context.modifiers.attack_attributes,
                     is_crit,
@@ -335,9 +329,6 @@ impl BehaviorHandler for Handler {
                         pool: context.pool,
                         skill_id: context.active_skill_id,
                         performs_extra_action,
-                        unpaid_extra_action_cost_fields: &context
-                            .modifiers
-                            .unpaid_extra_action_cost_fields,
                     },
                     behavior,
                 )?;
@@ -568,9 +559,6 @@ impl BehaviorHandler for Handler {
                         is_crit,
                         extra_skill_kind: context.target.extra_skill_kind,
                         performs_extra_action,
-                        unpaid_extra_action_cost_fields: &context
-                            .modifiers
-                            .unpaid_extra_action_cost_fields,
                     },
                     DamageRuntime {
                         fight_version: context.managers.fight_version(),
@@ -650,9 +638,6 @@ impl BehaviorHandler for Handler {
                     pool: context.pool,
                     skill_id: context.active_skill_id,
                     performs_extra_action,
-                    unpaid_extra_action_cost_fields: &context
-                        .modifiers
-                        .unpaid_extra_action_cost_fields,
                 },
                 &context.modifiers.attack_attributes,
                 false,

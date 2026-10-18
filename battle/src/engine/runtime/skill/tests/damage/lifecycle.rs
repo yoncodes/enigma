@@ -403,24 +403,6 @@ fn an_action_not_played_from_a_card_pays_the_extra_action_eureka_cost() {
     // Paper Parade: "When an ally performs an extra action: Consume 2 of Flutterpage's Eureka".
     assert!(pays_eureka(0));
     assert!(!pays_eureka(1));
-
-    let mut without_eureka = fight;
-    without_eureka.attacker.as_mut().unwrap().entitys[0].power_infos[0].num = Some(0);
-    let managers = BattleManagers::seeded(&without_eureka);
-    let mut invocation: SkillInvocation = SkillRequest {
-        source_uid: 10,
-        skill_id: 100,
-    }
-    .into();
-    invocation.mode = SkillExecutionMode::Active;
-    let mut execution = SkillExecution::new(TargetContext::default());
-    for activation in plan::LinkedDamagePlan::activations(&invocation, &managers, &execution) {
-        execution.activate_additional_damage(activation.additional);
-    }
-    assert_eq!(
-        execution.unpaid_extra_action_cost_fields(),
-        vec![(31050145, 10)]
-    );
 }
 
 #[test]

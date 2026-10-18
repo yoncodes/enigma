@@ -391,7 +391,6 @@ mod tests {
                         main_target: true,
                         extra_skill_kind: 0,
                         performs_extra_action: false,
-                        unpaid_extra_action_cost_fields: Vec::new(),
                         additional_enabled: false,
                         additional_is_crit: None,
                     },

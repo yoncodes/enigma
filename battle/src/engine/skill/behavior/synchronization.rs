@@ -174,10 +174,6 @@ fn damage_rule_ops(
                 context.target.active_skill_mode,
                 context.target.extra_skill_kind,
             ),
-            unpaid_extra_action_cost_fields: context
-                .modifiers
-                .unpaid_extra_action_cost_fields
-                .clone(),
             additional_enabled: false,
             additional_is_crit: None,
         },

@@ -132,7 +132,6 @@ mod tests {
                 false,
                 false,
                 true,
-                &[(31050145, 10)],
             ),
             320
         );

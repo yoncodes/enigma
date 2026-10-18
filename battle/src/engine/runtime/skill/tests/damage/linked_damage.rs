@@ -499,7 +499,7 @@ fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() 
     )));
     let (unpaid_ops, unpaid_additional, unpaid_main) = damage_phase(0, 0);
     assert!(unpaid_main.hurt.is_crit);
-    assert!(paid_main.amount > unpaid_main.amount);
+    assert_eq!(paid_main.amount, unpaid_main.amount);
     assert!(
         !unpaid_ops
             .iter()
@@ -522,7 +522,7 @@ fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() 
 }
 
 #[test]
-fn unpaid_force_field_is_known_before_immediate_origin_damage() {
+fn unpaid_force_field_keeps_its_immediate_origin_damage_bonus() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -611,7 +611,7 @@ fn unpaid_force_field_is_known_before_immediate_origin_damage() {
     assert!(ops.iter().any(|op| matches!(
         op,
         RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(HpLoss {
-            amount: 1_750,
+            amount: 2_275,
             hurt: Some(hurt),
             ..
         }))) if hurt.is_crit
