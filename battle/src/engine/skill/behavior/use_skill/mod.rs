@@ -62,8 +62,8 @@ pub(super) fn supports_consume_buff_use_skill3(behavior: &ParsedBehavior) -> boo
 }
 
 pub(super) fn supports_consume_target_buff_use_skill(behavior: &ParsedBehavior) -> bool {
-    matches!(behavior.args.as_slice(), [buff_id, amount, skill_id]
-        if *buff_id > 0 && *amount > 0 && *skill_id > 0)
+    matches!(behavior.args.as_slice(), [buff_id, 1, skill_id]
+        if *buff_id > 0 && *skill_id > 0)
 }
 
 pub(super) fn supports_remove_buff_use_skill(behavior: &ParsedBehavior) -> bool {
@@ -171,23 +171,41 @@ impl BehaviorHandler for Handler {
                 let [buff_id, amount, skill_id] = behavior.args.as_slice() else {
                     return None;
                 };
-                // "When other allies cast an incantation actively, Ezio consumes 1 stack ... on the
-                // main target": a played attack card, not a cast by a skill or a buff on allies.
+                // "When other allies cast an incantation actively": a played attack incantation,
+                // while the consumed mark owns the follow-up's enemy target.
                 if !matches!(
                     context.event,
                     Some(crate::engine::event::payload::BattleEvent::AllyAction(action))
-                        if action.card_index > 0 && action.is_attack
+                        if action.card_index > 0
+                            && action.is_attack
+                            && action.mode
+                                == crate::engine::skill::action::SkillExecutionMode::Active
+                            && action.source_uid != context.source_uid
                 ) {
                     return Some(Vec::new());
                 }
-                if context
+                let target_uid = if context
                     .managers
                     .buff
                     .buff_id_amount(context.target_uid, *buff_id)
-                    < *amount
+                    >= *amount
                 {
-                    return Some(Vec::new());
-                }
+                    context.target_uid
+                } else {
+                    let mut targets = context
+                        .pool
+                        .enemies(context.source_uid, true)
+                        .iter()
+                        .map(|target| target.uid)
+                        .filter(|target_uid| {
+                            context.managers.buff.buff_id_amount(*target_uid, *buff_id) >= *amount
+                        });
+                    match (targets.next(), targets.next()) {
+                        (Some(target_uid), None) => target_uid,
+                        (None, _) => return Some(Vec::new()),
+                        (Some(_), Some(_)) => return None,
+                    }
+                };
                 let origin = super::command_origin(behavior)?;
                 let mut invocation: crate::engine::skill::action::SkillInvocation =
                     crate::engine::skill::action::SkillRequest {
@@ -195,15 +213,14 @@ impl BehaviorHandler for Handler {
                         skill_id: *skill_id,
                     }
                     .into();
-                invocation.target =
-                    crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
+                invocation.target = crate::engine::skill::action::SkillTarget::Explicit(target_uid);
                 invocation.extra_skill_kind = Some(ExtraSkillKind::FollowUp);
                 invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
                 Some(vec![
                     RuleOp::Skill(invocation),
                     RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
                         origin,
-                        target_uid: context.target_uid,
+                        target_uid,
                         selector: BuffSelector::ExactId(*buff_id),
                         amount: *amount,
                         depleted: DepletedBuff::RemoveWithZeroLayer,

@@ -111,8 +111,43 @@ fn consume_buff_use_skill_settles_exact_buff_after_extra_action() {
     ));
 }
 
-fn ezio_reuse_ops(card_index: i32, is_attack: bool) -> (Vec<RuleOp>, ParsedBehavior) {
+fn ezio_reuse_ops(
+    source_uid: i64,
+    card_index: i32,
+    is_attack: bool,
+    target_uid: i64,
+    mode: crate::engine::skill::action::SkillExecutionMode,
+    second_marked_enemy: bool,
+) -> (Option<Vec<RuleOp>>, ParsedBehavior) {
     crate::test_support::init_config();
+    let mut enemies = vec![FightEntityInfo {
+        uid: Some(-1),
+        position: Some(1),
+        team_type: Some(2),
+        current_hp: Some(100),
+        buffs: vec![BuffInfo {
+            uid: Some(20),
+            buff_id: Some(229701),
+            layer: Some(2),
+            ..Default::default()
+        }],
+        ..Default::default()
+    }];
+    if second_marked_enemy {
+        enemies.push(FightEntityInfo {
+            uid: Some(-2),
+            position: Some(2),
+            team_type: Some(2),
+            current_hp: Some(100),
+            buffs: vec![BuffInfo {
+                uid: Some(21),
+                buff_id: Some(229701),
+                layer: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+    }
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -124,18 +159,7 @@ fn ezio_reuse_ops(card_index: i32, is_attack: bool) -> (Vec<RuleOp>, ParsedBehav
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                team_type: Some(2),
-                current_hp: Some(100),
-                buffs: vec![BuffInfo {
-                    uid: Some(20),
-                    buff_id: Some(229701),
-                    layer: Some(2),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }],
+            entitys: enemies,
             ..Default::default()
         }),
         ..Default::default()
@@ -153,9 +177,10 @@ fn ezio_reuse_ops(card_index: i32, is_attack: bool) -> (Vec<RuleOp>, ParsedBehav
 
     let ally_action = crate::engine::event::payload::BattleEvent::AllyAction(
         crate::engine::skill::action::ActionEvent {
-            source_uid: 11,
+            source_uid,
             card_index,
             is_attack,
+            mode,
             ..Default::default()
         },
     );
@@ -163,7 +188,7 @@ fn ezio_reuse_ops(card_index: i32, is_attack: bool) -> (Vec<RuleOp>, ParsedBehav
         BehaviorOpContext {
             source_uid: 10,
             source_team: 1,
-            target_uid: -1,
+            target_uid,
             active_skill_id: 0,
             transfer_count: 1,
             event: Some(&ally_action),
@@ -174,14 +199,21 @@ fn ezio_reuse_ops(card_index: i32, is_attack: bool) -> (Vec<RuleOp>, ParsedBehav
             target: &mut target,
         },
         &behavior,
-    )
-    .unwrap();
+    );
     (ops, behavior)
 }
 
 #[test]
 fn target_buff_follow_up_consumes_the_mark_after_invocation() {
-    let (ops, behavior) = ezio_reuse_ops(1, true);
+    let (ops, behavior) = ezio_reuse_ops(
+        11,
+        1,
+        true,
+        -1,
+        crate::engine::skill::action::SkillExecutionMode::Active,
+        false,
+    );
+    let ops = ops.unwrap();
 
     assert!(matches!(
         ops.as_slice(),
@@ -211,11 +243,84 @@ fn target_buff_follow_up_consumes_the_mark_after_invocation() {
 }
 
 #[test]
-fn target_buff_follow_up_ignores_skill_casts_and_buff_cards() {
-    // "When other allies cast an incantation actively": a skill's own cast is not a played card.
-    assert!(ezio_reuse_ops(0, true).0.is_empty());
-    // A mass buff's main target is an ally, never a marked enemy.
-    assert!(ezio_reuse_ops(1, false).0.is_empty());
+fn target_buff_follow_up_uses_the_marked_enemy_for_an_ally_attack() {
+    let (ops, _) = ezio_reuse_ops(
+        11,
+        1,
+        true,
+        11,
+        crate::engine::skill::action::SkillExecutionMode::Active,
+        false,
+    );
+    let ops = ops.unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [
+            RuleOp::Skill(invocation),
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                target_uid: -1,
+                ..
+            })))
+        ] if invocation.target == crate::engine::skill::action::SkillTarget::Explicit(-1)
+    ));
+}
+
+#[test]
+fn target_buff_follow_up_ignores_ineligible_ally_actions() {
+    use crate::engine::skill::action::SkillExecutionMode;
+
+    assert!(
+        ezio_reuse_ops(11, 0, true, -1, SkillExecutionMode::Nested, false)
+            .0
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        ezio_reuse_ops(11, 1, false, 11, SkillExecutionMode::Active, false)
+            .0
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        ezio_reuse_ops(10, 1, true, -1, SkillExecutionMode::Active, false)
+            .0
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        ezio_reuse_ops(11, 1, true, -1, SkillExecutionMode::DeviceCard, false)
+            .0
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn target_buff_follow_up_rejects_an_ambiguous_marked_enemy() {
+    assert!(
+        ezio_reuse_ops(
+            11,
+            1,
+            true,
+            11,
+            crate::engine::skill::action::SkillExecutionMode::Active,
+            true,
+        )
+        .0
+        .is_none()
+    );
+}
+
+#[test]
+fn target_buff_follow_up_rejects_unproven_multi_stack_variants() {
+    let behavior = ParsedBehavior::from_spec(
+        BehaviorSpec::new(100007, "EzioReuse"),
+        vec![90071, 10, 30030111],
+        Vec::new(),
+    );
+
+    assert!(!supports_consume_target_buff_use_skill(&behavior));
 }
 
 #[test]
