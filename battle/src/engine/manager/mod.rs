@@ -3,6 +3,7 @@ pub mod battle_rule;
 pub mod buff;
 pub mod card;
 pub mod conduit;
+mod configured_rule_progress;
 pub mod contract;
 pub mod emanation;
 pub mod emitter;
@@ -78,15 +79,11 @@ pub struct BattleManagers {
     pub summon: SummonManager,
     pub toughness: toughness::ToughnessManager,
     pub wave: wave::WaveManager,
+    configured_rule_progress: configured_rule_progress::ConfiguredRuleProgressManager,
     rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
     round_rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
     buff_act_fires: HashMap<(i64, i64, crate::engine::skill::rule::DefinitionKey), i32>,
     rule_progress: HashMap<(i64, i64, crate::engine::skill::rule::DefinitionKey, i32), i32>,
-    configured_rule_progress:
-        HashMap<(i64, crate::engine::skill::rule::ConfiguredRuleKey, i32), i32>,
-    // Progress that triggered a cast stays paused until that cast starts or is canceled.
-    held_rule_progress:
-        std::collections::HashSet<(i64, crate::engine::skill::rule::ConfiguredRuleKey)>,
 }
 
 struct HpPlan {
@@ -1424,9 +1421,11 @@ impl BattleManagers {
     pub(crate) fn begin_reaction_round(&mut self) {
         self.round_rule_fires.clear();
         self.buff_act_fires.clear();
+        self.configured_rule_progress.begin_round_start();
     }
 
     pub(crate) fn begin_action_round(&mut self) {
+        self.configured_rule_progress.begin_action_round();
         self.card.begin_round();
         self.hp.begin_round();
         self.injury.begin_round();
@@ -1442,20 +1441,8 @@ impl BattleManagers {
         threshold: i32,
         delta: i32,
     ) -> bool {
-        if threshold <= 0 || delta <= 0 || self.held_rule_progress.contains(&(owner_uid, key)) {
-            return false;
-        }
-        let progress = self
-            .configured_rule_progress
-            .entry((owner_uid, key, threshold))
-            .or_default();
-        *progress = progress.saturating_add(delta);
-        if *progress < threshold {
-            return false;
-        }
-        *progress = 0;
-        self.held_rule_progress.insert((owner_uid, key));
-        true
+        self.configured_rule_progress
+            .advance_until_cast(owner_uid, key, threshold, delta)
     }
 
     pub fn release_held_rule_progress(
@@ -1463,7 +1450,7 @@ impl BattleManagers {
         owner_uid: i64,
         key: crate::engine::skill::rule::ConfiguredRuleKey,
     ) {
-        self.held_rule_progress.remove(&(owner_uid, key));
+        self.configured_rule_progress.release(owner_uid, key);
     }
 
     pub fn advance_rule_progress(
