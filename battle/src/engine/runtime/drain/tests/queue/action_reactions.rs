@@ -732,7 +732,7 @@ fn a_skill_cast_by_another_skill_keeps_its_step_without_effects() {
 }
 
 #[test]
-fn hit_damage_buff_acts_settle_before_hp_threshold_reactions() {
+fn hit_damage_reactions_settle_before_hp_threshold_and_after_hit_observers() {
     crate::test_support::init_config();
     let entity = |uid, attack, hp| FightEntityInfo {
         uid: Some(uid),
@@ -753,7 +753,11 @@ fn hit_damage_buff_acts_settle_before_hp_threshold_reactions() {
     };
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![entity(10, 1_000, 100_000), entity(11, 1_000, 100_000)],
+            entitys: vec![
+                entity(10, 1_000, 100_000),
+                entity(11, 1_000, 100_000),
+                entity(12, 1_000, 100_000),
+            ],
             ..Default::default()
         }),
         defender: Some(FightTeam {
@@ -765,6 +769,13 @@ fn hit_damage_buff_acts_settle_before_hp_threshold_reactions() {
                     dot(32, 312451011),
                     dot(33, 312451031),
                     dot(34, 312451011),
+                    BuffInfo {
+                        uid: Some(35),
+                        buff_id: Some(31090112),
+                        from_uid: Some(12),
+                        layer: Some(15),
+                        ..Default::default()
+                    },
                 ],
                 ..entity(-1, 1_000, 97_900)
             }],
@@ -812,12 +823,13 @@ fn hit_damage_buff_acts_settle_before_hp_threshold_reactions() {
         if let Some(act_id @ (312451021 | 312451011 | 312451031 | 109320108)) = step.act_id {
             found.push(act_id);
         }
-        for child in step
-            .act_effect
-            .iter()
-            .filter_map(|effect| effect.fight_step.as_ref())
-        {
-            collect(child, found);
+        for effect in &step.act_effect {
+            if effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(31090112) {
+                found.push(31090112);
+            }
+            if let Some(child) = &effect.fight_step {
+                collect(child, found);
+            }
         }
     }
     let mut found = Vec::new();
@@ -828,7 +840,7 @@ fn hit_damage_buff_acts_settle_before_hp_threshold_reactions() {
     assert_eq!(
         found,
         vec![
-            312451021, 312451011, 312451011, 312451031, 312451011, 109320108,
+            312451021, 312451011, 312451011, 312451031, 312451011, 109320108, 31090112,
         ]
     );
 }
