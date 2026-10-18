@@ -176,6 +176,8 @@ pub struct SkillInvocation {
     pub start: SkillStart,
     /// Exact rule whose progress resumes when this cast starts.
     pub release_progress: Option<super::rule::ConfiguredRuleKey>,
+    /// Hand settlement owned by this generated action's completion.
+    pub action_hand_settlement: Option<CommandOrigin>,
     pub card_enchants: Vec<i32>,
     pub recorded_skill: Option<SkillRequest>,
 }
@@ -199,6 +201,7 @@ impl From<SkillRequest> for SkillInvocation {
             mode: SkillExecutionMode::Nested,
             start: SkillStart::Immediate,
             release_progress: None,
+            action_hand_settlement: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
         }
@@ -232,6 +235,7 @@ mod invocation_tests {
             mode: SkillExecutionMode::Nested,
             start: SkillStart::Immediate,
             release_progress: None,
+            action_hand_settlement: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
         };

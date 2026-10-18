@@ -1219,6 +1219,14 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
     }
     if continuation.is_none() && invocation.mode.completes_action() {
+        if let Some(origin) = invocation.action_hand_settlement {
+            outputs.push(SkillEmissionOp {
+                op: RuleOp::ActionHandSettlement { origin },
+                owner: behavior::registry::OutputOwner::Skill,
+                consequence: ConsequencePolicy::Default,
+                frame_owner: None,
+            });
+        }
         outputs.push(SkillEmissionOp {
             op: RuleOp::SkillLifecycle(
                 crate::engine::skill::action::SkillLifecycle::ActionCompleted(

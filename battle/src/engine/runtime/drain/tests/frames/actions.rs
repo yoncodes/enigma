@@ -1,6 +1,138 @@
 use super::*;
 
 #[test]
+fn recover_power_generated_action_settles_consumed_hand_once() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    skill_group1: vec![100, 101],
+                    power_infos: vec![PowerInfo {
+                        power_id: Some(EUREKA_RESOURCE_ID),
+                        num: Some(0),
+                        max: Some(5),
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    current_hp: Some(100),
+                    ex_point: Some(0),
+                    ex_point_max: Some(5),
+                    skill_group1: vec![200, 201],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![
+                CardInfo {
+                    uid: Some(20),
+                    skill_id: Some(200),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(100),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(20),
+                    skill_id: Some(200),
+                    ..Default::default()
+                },
+            ],
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        }))
+        .unwrap();
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 500,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::new(60125, "RecoverPowerAndDelCardsUseSkill", vec![300, 210]),
+            TargetRequest::self_only(),
+        )],
+    });
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 300,
+        slots: Vec::new(),
+    });
+
+    let result = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(SkillInvocation {
+            mode: SkillExecutionMode::Active,
+            ..SkillRequest {
+                source_uid: 10,
+                skill_id: 500,
+            }
+            .into()
+        })],
+    )
+    .unwrap();
+
+    assert_eq!(managers.card.hand().len(), 1);
+    assert_eq!(managers.card.hand()[0].skill_id, Some(201));
+    assert_eq!(managers.ex_point.get(20), 1);
+    assert_eq!(
+        result
+            .outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, RuleOutcome::ActionHandSettlement(_)))
+            .count(),
+        1
+    );
+    assert!(result.outcomes.windows(2).any(|outcomes| matches!(
+        outcomes,
+        [
+            RuleOutcome::ActionHandSettlement(_),
+            RuleOutcome::SkillLifecycle(
+                crate::engine::skill::action::SkillLifecycle::ActionCompleted(action)
+            )
+        ] if action.skill_id == 300
+    )));
+    fn generated_skill_frame(frame: &SemanticFrame) -> Option<&SemanticFrame> {
+        if matches!(frame.owner, FrameOwner::Skill { skill_id: 300, .. }) {
+            return Some(frame);
+        }
+        frame.items.iter().find_map(|item| match item {
+            FrameItem::Child(child) => generated_skill_frame(child),
+            _ => None,
+        })
+    }
+    let frame = result
+        .frames
+        .iter()
+        .find_map(generated_skill_frame)
+        .expect("generated action owns a skill frame");
+    assert!(frame.items.windows(2).any(|items| {
+        matches!(items[0], FrameItem::Change(ref change) if matches!(change.as_ref(), BattleChange::ExPoint(_)))
+            && matches!(items[1], FrameItem::Change(ref change) if matches!(change.as_ref(), BattleChange::Card(changes) if changes.kind == CardChangeKind::Composed))
+    }));
+}
+
+#[test]
 fn owner_event_runs_only_the_selected_side() {
     let entity = |uid| FightEntityInfo {
         uid: Some(uid),

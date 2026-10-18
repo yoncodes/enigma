@@ -1292,6 +1292,7 @@ fn drain_queue_with_deferred(
             mut command @ (RuleOp::Command(_)
             | RuleOp::Publish(_)
             | RuleOp::SkillLifecycle(_)
+            | RuleOp::ActionHandSettlement { .. }
             | RuleOp::DeathSettlement(_)
             | RuleOp::BeginSkillAction { .. }
             | RuleOp::BuffFeatureMarker { .. }

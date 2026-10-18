@@ -33,6 +33,11 @@ use crate::engine::{
     },
 };
 
+pub(crate) struct ActionHandSettlement {
+    composition: CardChanges,
+    rewards: Vec<ExPointChanges>,
+}
+
 pub(crate) enum RuleOutcome {
     PublishedEvent,
     SkillLifecycle(crate::engine::skill::action::SkillLifecycle),
@@ -41,6 +46,7 @@ pub(crate) enum RuleOutcome {
         lifecycle: crate::engine::skill::action::SkillLifecycle,
         cost: ExPointChanges,
     },
+    ActionHandSettlement(Box<ActionHandSettlement>),
     Buff(Box<BuffChanges>),
     BuffBatch(Vec<BuffChanges>),
     BuffFeatureMarker(crate::engine::manager::buff::BuffMarkerResult),
@@ -229,6 +235,15 @@ impl RuleOutcome {
                 BattleChange::SkillLifecycle(lifecycle.clone()),
                 BattleChange::ExPoint(*cost),
             ],
+            Self::ActionHandSettlement(settlement) => settlement
+                .rewards
+                .iter()
+                .copied()
+                .map(BattleChange::ExPoint)
+                .chain(std::iter::once(BattleChange::Card(Box::new(
+                    settlement.composition.clone(),
+                ))))
+                .collect(),
             Self::Buff(change) => std::iter::once(BattleChange::Buff(change.clone()))
                 .chain(
                     change
@@ -760,6 +775,55 @@ pub(crate) fn execute_rule_op_with(
         RuleOp::Command(BattleCommand::EntitySkill(command)) => {
             managers.execute_entity_skill(command)?;
             Ok(RuleOutcome::StateChanged)
+        }
+        RuleOp::ActionHandSettlement { origin } => {
+            let composition = managers.execute_card(
+                crate::engine::manager::card::CardCommand::ComposeAdjacent { origin },
+            )?;
+            for event in composition.events() {
+                events.push(event);
+            }
+            let reward_owners = composition
+                .composed_owners
+                .iter()
+                .copied()
+                .filter(|owner_uid| managers.ex_point.gains_composition_ex_point(*owner_uid))
+                .fold(Vec::<(i64, i32)>::new(), |mut rewards, owner_uid| {
+                    if let Some((_, delta)) = rewards.iter_mut().find(|(uid, _)| *uid == owner_uid)
+                    {
+                        *delta = delta.saturating_add(1);
+                    } else {
+                        rewards.push((owner_uid, 1));
+                    }
+                    rewards
+                });
+            let mut rewards = Vec::with_capacity(reward_owners.len());
+            for (owner_uid, delta) in reward_owners {
+                let changes = managers.execute_ex_point_rolled(
+                    crate::engine::manager::ex_point::ExPointCommand::Change(
+                        crate::engine::manager::ex_point::ExPointChange {
+                            origin,
+                            source_uid: owner_uid,
+                            target_uid: owner_uid,
+                            delta,
+                            config_effect: 0,
+                            effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange
+                                as i32,
+                        },
+                    ),
+                    determinism,
+                )?;
+                for event in changes.events() {
+                    events.push(event);
+                }
+                rewards.push(changes);
+            }
+            Ok(RuleOutcome::ActionHandSettlement(Box::new(
+                ActionHandSettlement {
+                    composition,
+                    rewards,
+                },
+            )))
         }
         RuleOp::Command(BattleCommand::Card(command)) => {
             let changes = managers.execute_card(command)?;

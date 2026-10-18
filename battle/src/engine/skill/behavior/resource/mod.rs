@@ -416,7 +416,7 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                     }),
                 )));
             }
-            ops.extend(cards.into_iter().map(|_| {
+            ops.extend(cards.into_iter().enumerate().map(|(index, _)| {
                 let mut invocation: SkillInvocation = SkillRequest {
                     source_uid: context.target_uid,
                     skill_id: *skill_id,
@@ -426,6 +426,7 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                 invocation.mode = SkillExecutionMode::Active;
                 invocation.target_observed_extra_action =
                     Some(context.target.target_observed_extra_action);
+                invocation.action_hand_settlement = (index == 0).then_some(origin);
                 RuleOp::Skill(invocation)
             }));
             Some(ops)

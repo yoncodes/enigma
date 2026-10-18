@@ -106,6 +106,9 @@ pub enum RuleOp {
     Publish(crate::engine::event::payload::BattleEvent),
     Skill(SkillInvocation),
     SkillLifecycle(SkillLifecycle),
+    ActionHandSettlement {
+        origin: crate::engine::skill::rule::CommandOrigin,
+    },
     ImmediateReservePromotion,
     DeathSettlement(crate::engine::manager::hp::DeathTransition),
     DeathEventGroupComplete(crate::engine::manager::hp::PendingDeath),
