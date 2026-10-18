@@ -466,20 +466,6 @@ fn additional_damage_main_target(
 }
 
 impl LinkedDamagePlan {
-    pub(super) fn shell_attributes(extra_skill_kind: i32, uses_extra_lane: bool) -> (bool, bool) {
-        use crate::engine::skill::condition::extra::ExtraSkillKind;
-
-        let (damage, critical) =
-            match crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind)
-            {
-                Some(ExtraSkillKind::ExtraAction) => (true, true),
-                Some(ExtraSkillKind::FollowUp) => (true, false),
-                Some(ExtraSkillKind::Riposte) => (false, false),
-                _ => (true, false),
-            };
-        (damage || uses_extra_lane, critical)
-    }
-
     pub(super) fn attack_attributes(
         local: &[(crate::engine::entity::attr::AttrId, i32)],
         shared: &[(crate::engine::entity::attr::AttrId, i32)],
@@ -812,8 +798,6 @@ pub(super) fn damage_ops(
                 assassination.final_damage_bonus,
             ));
         }
-        let (_, linked_shell_critical) =
-            LinkedDamagePlan::shell_attributes(execution.context.extra_skill_kind, false);
         for attr_id in [
             crate::engine::entity::attr::AttrId::CriticalDmg,
             crate::engine::entity::attr::AttrId::DmgBonus,
@@ -828,10 +812,10 @@ pub(super) fn damage_ops(
                 attack_attributes.push((attr_id, delta));
                 // A linked producer shares the triggering action's damage lane, while its
                 // independently rolled critical hit keeps its own critical-damage lane.
-                if attr_id == crate::engine::entity::attr::AttrId::DmgBonus
-                    || (attr_id == crate::engine::entity::attr::AttrId::CriticalDmg
-                        && linked_shell_critical)
-                {
+                if crate::engine::skill::buff_act::shell::linked_damage_inherits_attribute(
+                    execution.context.extra_skill_kind,
+                    attr_id,
+                ) {
                     linked_attack_attributes.push((attr_id, delta));
                 }
             }

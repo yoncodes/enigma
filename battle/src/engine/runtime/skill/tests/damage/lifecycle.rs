@@ -1,32 +1,6 @@
 use super::*;
 
 #[test]
-fn linked_shell_attributes_keep_extra_action_kinds_distinct() {
-    use crate::engine::skill::condition::extra::ExtraSkillKind;
-
-    assert_eq!(
-        plan::LinkedDamagePlan::shell_attributes(0, false),
-        (true, false)
-    );
-    assert_eq!(
-        plan::LinkedDamagePlan::shell_attributes(ExtraSkillKind::ExtraAction.id(), false),
-        (true, true)
-    );
-    assert_eq!(
-        plan::LinkedDamagePlan::shell_attributes(ExtraSkillKind::FollowUp.id(), false),
-        (true, false)
-    );
-    assert_eq!(
-        plan::LinkedDamagePlan::shell_attributes(ExtraSkillKind::Riposte.id(), false),
-        (false, false)
-    );
-    assert_eq!(
-        plan::LinkedDamagePlan::shell_attributes(ExtraSkillKind::Riposte.id(), true),
-        (true, false)
-    );
-}
-
-#[test]
 fn before_crit_modifier_uses_the_same_planned_outcome_as_damage() {
     crate::test_support::init_config();
     let fight = Fight {

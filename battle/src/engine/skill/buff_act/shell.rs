@@ -347,6 +347,15 @@ pub fn extra_action_attribute_delta(
         .unwrap_or_default()
 }
 
+pub(crate) fn linked_damage_inherits_attribute(extra_skill_kind: i32, attr_id: AttrId) -> bool {
+    attr_id == AttrId::DmgBonus
+        || (attr_id == AttrId::CriticalDmg
+            && matches!(
+                crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind),
+                Some(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction)
+            ))
+}
+
 #[cfg(test)]
 mod tests {
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute};
@@ -597,6 +606,35 @@ mod tests {
             240
         );
         assert_eq!(extra_action_attribute_delta(&feature, AttrId::Attack), 0);
+    }
+
+    #[test]
+    fn linked_shell_attributes_keep_critical_damage_on_extra_actions() {
+        use crate::engine::skill::condition::extra::ExtraSkillKind;
+
+        for kind in [
+            0,
+            ExtraSkillKind::ExtraAction.id(),
+            ExtraSkillKind::FollowUp.id(),
+            ExtraSkillKind::Riposte.id(),
+        ] {
+            assert!(linked_damage_inherits_attribute(kind, AttrId::DmgBonus));
+        }
+        assert!(linked_damage_inherits_attribute(
+            ExtraSkillKind::ExtraAction.id(),
+            AttrId::CriticalDmg,
+        ));
+        for kind in [
+            0,
+            ExtraSkillKind::FollowUp.id(),
+            ExtraSkillKind::Riposte.id(),
+        ] {
+            assert!(!linked_damage_inherits_attribute(kind, AttrId::CriticalDmg,));
+        }
+        assert!(!linked_damage_inherits_attribute(
+            ExtraSkillKind::ExtraAction.id(),
+            AttrId::Attack,
+        ));
     }
 
     #[test]
