@@ -211,8 +211,23 @@ mod tests {
                 false,
                 false,
                 true,
+                true,
             ),
             200
+        );
+        assert_eq!(
+            super::super::calculated_attack_attribute_delta_for_skill(
+                &extra_action,
+                AttrId::DmgBonus,
+                &managers.attribute,
+                &managers.buff,
+                &managers.hp,
+                false,
+                true,
+                false,
+                false,
+            ),
+            0
         );
         assert_eq!(
             extra_action_attribute(&extra_action),

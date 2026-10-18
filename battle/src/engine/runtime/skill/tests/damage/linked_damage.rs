@@ -237,9 +237,9 @@ fn linked_damage_main_rate_follows_the_explicit_action_target() {
 }
 
 #[test]
-fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
+fn extra_action_penalties_follow_their_target_and_source_owners() {
     crate::test_support::init_config();
-    let resolve = |with_target_passive: bool| {
+    let resolve = |with_target_passive: bool, with_source_penalty: bool| {
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![
@@ -266,7 +266,15 @@ fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
                                 from_uid: Some(-1),
                                 ..Default::default()
                             },
-                        ],
+                        ]
+                        .into_iter()
+                        .chain(with_source_penalty.then_some(BuffInfo {
+                            uid: Some(22),
+                            buff_id: Some(109380002),
+                            from_uid: Some(-1),
+                            ..Default::default()
+                        }))
+                        .collect(),
                         ..Default::default()
                     },
                     FightEntityInfo {
@@ -283,6 +291,15 @@ fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
                             num: Some(5),
                             max: Some(5),
                         }],
+                        buffs: with_source_penalty
+                            .then_some(BuffInfo {
+                                uid: Some(23),
+                                buff_id: Some(109380002),
+                                from_uid: Some(-1),
+                                ..Default::default()
+                            })
+                            .into_iter()
+                            .collect(),
                         ..Default::default()
                     },
                 ],
@@ -356,11 +373,14 @@ fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
         (main.amount, linked.amount)
     };
 
-    let baseline = resolve(false);
-    let penalized = resolve(true);
+    let baseline = resolve(false, false);
+    let target_penalized = resolve(true, false);
+    let source_penalized = resolve(false, true);
 
-    assert!(penalized.0 < baseline.0);
-    assert!(penalized.1 < baseline.1);
+    assert!(target_penalized.0 < baseline.0);
+    assert!(target_penalized.1 < baseline.1);
+    assert!(source_penalized.0 < baseline.0);
+    assert_eq!(source_penalized.1, baseline.1);
 }
 
 #[test]

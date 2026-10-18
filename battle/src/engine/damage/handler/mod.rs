@@ -542,6 +542,7 @@ impl BehaviorHandler for Handler {
                 let amount = direct_damage(
                     DamageRequest {
                         source_uid,
+                        action_owner_uid: source_uid,
                         target_uid,
                         skill_id: context.active_skill_id,
                         rate,

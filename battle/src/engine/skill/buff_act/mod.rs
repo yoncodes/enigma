@@ -952,6 +952,7 @@ pub fn calculated_attack_attribute_delta_for_skill(
     is_big_skill: bool,
     extra_action: bool,
     performs_extra_action: bool,
+    source_performs_extra_action: bool,
 ) -> i32 {
     // Gust Force Field bonuses share the field's own "performs an extra action" clause.
     match feature_kind(feature) {
@@ -970,15 +971,12 @@ pub fn calculated_attack_attribute_delta_for_skill(
                 true,
             );
         }
-        Some(registry::BuffActKind::AttrOnlyCalDamageInExtra) if performs_extra_action => {
-            return attack_attribute_delta_for_skill(
-                feature,
-                attr_id,
-                buffs,
-                hp,
-                is_big_skill,
-                true,
-            );
+        Some(registry::BuffActKind::AttrOnlyCalDamageInExtra) => {
+            return if source_performs_extra_action {
+                attack_attribute_delta_for_skill(feature, attr_id, buffs, hp, is_big_skill, true)
+            } else {
+                0
+            };
         }
         _ => {}
     }

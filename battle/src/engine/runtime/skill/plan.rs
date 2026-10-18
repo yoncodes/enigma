@@ -1095,6 +1095,7 @@ pub(super) fn damage_ops(
                 damage::resolve_additional_damage_command(
                     damage::DamageRequest {
                         source_uid: additional.credited_source_uid,
+                        action_owner_uid,
                         target_uid,
                         skill_id,
                         rate,
@@ -1290,23 +1291,11 @@ pub(super) fn forces_critical(
     managers: &BattleManagers,
     execution: &SkillExecution,
 ) -> bool {
-    field_forces_critical(
+    crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::active_forces_critical(
         invocation.plan.source_uid,
         managers,
         performs_extra_action(invocation, execution),
     )
-}
-
-// Gust Force Field: "The extra action is always a critical hit".
-fn field_forces_critical(source_uid: i64, managers: &BattleManagers, extra_action: bool) -> bool {
-    extra_action && {
-        let active_features = managers.buff.active_features(&managers.hp);
-        crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::forces_critical(
-            &active_features,
-            source_uid,
-            true,
-        )
-    }
 }
 
 fn planned_crit_chance(
@@ -1318,7 +1307,11 @@ fn planned_crit_chance(
     extra_action: bool,
 ) -> i32 {
     if execution.modifiers.force_critical
-        || field_forces_critical(source_uid, managers, extra_action)
+        || crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::active_forces_critical(
+            source_uid,
+            managers,
+            extra_action,
+        )
     {
         return 1000;
     }

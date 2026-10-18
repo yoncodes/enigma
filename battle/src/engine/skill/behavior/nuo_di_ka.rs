@@ -170,6 +170,7 @@ fn emit_ops(
         let command = resolve_configured_replacement_damage_command(
             DamageRequest {
                 source_uid: context.source_uid,
+                action_owner_uid: context.source_uid,
                 target_uid,
                 skill_id: context.active_skill_id,
                 rate,

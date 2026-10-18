@@ -27,6 +27,7 @@ use super::{
 #[derive(Clone, Copy)]
 pub struct DamageRequest<'a> {
     pub source_uid: i64,
+    pub action_owner_uid: i64,
     pub target_uid: i64,
     pub skill_id: i32,
     pub rate: i32,
@@ -84,6 +85,7 @@ pub fn resolve_attack_command_with_precision(
     let resolved = resolve_row_damage_result(
         DamageRequest {
             source_uid: plan.source_uid,
+            action_owner_uid: plan.source_uid,
             target_uid: plan.target_uid,
             skill_id: plan.skill_id,
             rate: plan.rate,
@@ -615,6 +617,7 @@ fn direct_damage_trace(
         is_crit,
         extra_skill_kind,
         performs_extra_action,
+        action_owner_uid,
         ..
     } = request;
     let DamageRuntime {
@@ -814,6 +817,7 @@ fn direct_damage_trace(
     let extra_action =
         crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind)
             .is_some_and(|kind| kind.is_extra_action());
+    let source_performs_extra_action = performs_extra_action && action_owner_uid == source.uid;
     let attack_local_attribute = |attr_id| {
         source_active_features
             .iter()
@@ -828,6 +832,7 @@ fn direct_damage_trace(
                     is_ultimate,
                     extra_action,
                     performs_extra_action,
+                    source_performs_extra_action,
                 )
             })
             .sum::<i32>()
@@ -1087,6 +1092,7 @@ fn direct_damage_trace(
                         is_ultimate,
                         extra_action,
                         performs_extra_action,
+                        source_performs_extra_action,
                     );
                 (delta != 0).then_some((feature.buff_id, feature.act_type.as_str(), delta))
             })

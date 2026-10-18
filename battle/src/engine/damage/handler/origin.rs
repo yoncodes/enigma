@@ -199,6 +199,7 @@ fn genesis_multiplier(
                     runtime.pool.catalog().skill_is_big(runtime.skill_id),
                     false,
                     true,
+                    true,
                 )
             })
             .sum::<i32>()

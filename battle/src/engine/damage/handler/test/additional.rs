@@ -170,6 +170,7 @@ fn additional_damage_ignores_direct_hit_crit_defense_and_career_lanes() {
     let command = resolve_additional_damage_command(
         DamageRequest {
             source_uid: 1,
+            action_owner_uid: 1,
             target_uid: -1,
             skill_id: 100,
             rate: 1_000,
@@ -215,6 +216,7 @@ fn additional_damage_ignores_direct_hit_crit_defense_and_career_lanes() {
     let command = resolve_additional_damage_command(
         DamageRequest {
             source_uid: 1,
+            action_owner_uid: 1,
             target_uid: -1,
             skill_id: 100,
             rate: 1_000,
@@ -301,6 +303,7 @@ fn credited_source_additional_damage_uses_the_sources_career() {
     let command = resolve_additional_damage_command(
         DamageRequest {
             source_uid: 1,
+            action_owner_uid: 1,
             target_uid: -1,
             skill_id: 100,
             rate: 1_000,

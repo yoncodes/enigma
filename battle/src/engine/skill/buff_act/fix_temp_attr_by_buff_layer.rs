@@ -132,6 +132,7 @@ mod tests {
                 false,
                 false,
                 true,
+                true,
             ),
             320
         );
