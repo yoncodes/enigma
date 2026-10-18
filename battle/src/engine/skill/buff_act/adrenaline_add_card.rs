@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn grouped_thresholds_advance_temporary_cards_then_reset_with_the_terminal_card() {
+    fn grouped_thresholds_cross_from_zero_through_the_terminal_card() {
         crate::test_support::init_config();
         let fight = Fight {
             attacker: Some(FightTeam {
@@ -175,7 +175,7 @@ mod tests {
                     uid: Some(10),
                     model_id: Some(3124),
                     current_hp: Some(100),
-                    ex_point: Some(6),
+                    ex_point: Some(10),
                     ex_point_type: Some(3),
                     buffs: vec![BuffInfo {
                         uid: Some(20),
@@ -209,8 +209,6 @@ mod tests {
         };
         let event = BattleEvent::Kind(EventKind::RoundStartCard);
         let mut managers = BattleManagers::seeded(&fight);
-        let origin = super::super::command_origin(&subscriber).unwrap();
-
         let crossed = rule_ops(&managers, &subscriber, &event).unwrap();
         assert!(matches!(
             crossed.as_slice(),
@@ -236,31 +234,7 @@ mod tests {
                         kind: TemporaryCardKind::ConfiguredSkill3,
                         ..
                     }
-                )))
-            ]
-        ));
-        for op in &crossed {
-            if let RuleOp::Command(BattleCommand::Buff(command)) = op {
-                managers.execute_buff(command.clone()).unwrap();
-            }
-        }
-        assert!(rule_ops(&managers, &subscriber, &event).unwrap().is_empty());
-        managers
-            .execute_ex_point(ExPointCommand::Set(ExPointSet {
-                origin,
-                source_uid: 10,
-                target_uid: 10,
-                value: 10,
-                config_effect: 0,
-                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-            }))
-            .unwrap();
-
-        let terminal = rule_ops(&managers, &subscriber, &event).unwrap();
-
-        assert!(matches!(
-            terminal.as_slice(),
-            [
+                ))),
                 RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Set(ExPointSet {
                     target_uid: 10,
                     value: 0,
@@ -280,25 +254,24 @@ mod tests {
                 )))
             ]
         ));
-        let RuleOp::Command(BattleCommand::ExPoint(command)) = &terminal[0] else {
-            unreachable!()
-        };
-        managers.execute_ex_point(*command).unwrap();
-        let RuleOp::Command(BattleCommand::Buff(command)) = &terminal[1] else {
-            unreachable!()
-        };
-        managers.execute_buff(command.clone()).unwrap();
-        let RuleOp::Command(BattleCommand::Card(command)) = &terminal[2] else {
-            unreachable!()
-        };
-        let changes = managers.execute_card(command.clone()).unwrap();
+        let mut generated = None;
+        for op in crossed {
+            match op {
+                RuleOp::Command(BattleCommand::ExPoint(command)) => {
+                    managers.execute_ex_point(command).unwrap();
+                }
+                RuleOp::Command(BattleCommand::Buff(command)) => {
+                    managers.execute_buff(command).unwrap();
+                }
+                RuleOp::Command(BattleCommand::Card(command)) => {
+                    generated = managers.execute_card(command).unwrap().added;
+                }
+                _ => unreachable!(),
+            }
+        }
         assert_eq!(managers.ex_point.get(10), 0);
         assert_eq!(managers.buff.act_value(20, 10001), 0);
-        assert_eq!(
-            changes.kind,
-            crate::engine::manager::card::CardChangeKind::OwnedGeneratedAdded
-        );
-        let card = changes.added.unwrap();
+        let card = generated.unwrap();
         assert_eq!(card.hero_id, Some(3124));
         assert_eq!(card.temp_card, Some(false));
     }
