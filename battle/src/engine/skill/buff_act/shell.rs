@@ -443,6 +443,7 @@ mod tests {
             participant_uids: vec![10, 11, 12],
             amount: 20,
             share_count: 3,
+            action_share_count: 6,
             damage_from: HurtDamageFromType::Skill,
         };
 

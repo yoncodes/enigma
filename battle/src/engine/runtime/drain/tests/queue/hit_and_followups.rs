@@ -39,6 +39,7 @@ fn active_hit_deferral_carries_its_primary_skill_hp_transaction() {
         participant_uids: vec![-2, -3, -4],
         amount: 25,
         share_count: 3,
+        action_share_count: 3,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
     };
     let death = BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {

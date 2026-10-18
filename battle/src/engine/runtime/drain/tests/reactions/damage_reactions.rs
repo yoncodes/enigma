@@ -838,6 +838,7 @@ fn shared_damage_subscription_carries_event_batch_ownership() {
                 participant_uids: vec![10, 11, 12],
                 amount: 25,
                 share_count: 3,
+                action_share_count: 3,
                 damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
             },
         ]

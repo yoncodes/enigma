@@ -222,6 +222,7 @@ pub enum BattleEvent {
         participant_uids: Vec<i64>,
         amount: i32,
         share_count: i32,
+        action_share_count: i32,
         damage_from: crate::engine::manager::hp::HurtDamageFromType,
     },
     HpHealed {

@@ -429,8 +429,8 @@ impl DrainState {
     pub(super) fn record_action_shared_damage(
         &mut self,
         action_path: Option<&[usize]>,
-        events: &[BattleEvent],
-    ) -> HashMap<i64, i32> {
+        events: &mut [BattleEvent],
+    ) {
         let mut local = HashMap::new();
         let counts = if let Some(action_path) = action_path {
             self.action_shared_damage
@@ -439,7 +439,7 @@ impl DrainState {
         } else {
             &mut local
         };
-        for event in events {
+        for event in events.iter() {
             let BattleEvent::DamageShared {
                 participant_uids,
                 share_count,
@@ -459,10 +459,22 @@ impl DrainState {
                 owner[lane] = owner[lane].max(*share_count);
             }
         }
-        counts
-            .iter()
-            .map(|(owner_uid, lanes)| (*owner_uid, lanes.iter().sum()))
-            .collect()
+        for event in events {
+            let BattleEvent::DamageShared {
+                participant_uids,
+                action_share_count,
+                ..
+            } = event
+            else {
+                continue;
+            };
+            *action_share_count = participant_uids
+                .iter()
+                .filter_map(|owner_uid| counts.get(owner_uid))
+                .map(|lanes| lanes.iter().sum())
+                .max()
+                .unwrap_or(*action_share_count);
+        }
     }
 
     pub(super) fn next_event_batch_id(&mut self) -> u64 {

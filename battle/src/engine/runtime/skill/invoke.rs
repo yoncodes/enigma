@@ -127,7 +127,7 @@ pub(super) fn apply_event_context(
         BattleEvent::DamageShared {
             target_uid,
             participant_uids,
-            share_count,
+            action_share_count,
             damage_from,
             ..
         } => {
@@ -138,7 +138,7 @@ pub(super) fn apply_event_context(
                 } else {
                     0
                 };
-            context.damage_shared_count = *share_count;
+            context.damage_shared_count = *action_share_count;
             context.hit_damage_from = Some(*damage_from);
         }
         BattleEvent::HpLost { target_uid, .. } | BattleEvent::HpHealed { target_uid, .. } => {

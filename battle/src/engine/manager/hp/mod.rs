@@ -374,6 +374,7 @@ impl HpChanges {
                         .collect(),
                     amount,
                     share_count,
+                    action_share_count: share_count,
                     damage_from: self
                         .damage
                         .map(|damage| damage.hurt.damage_from)

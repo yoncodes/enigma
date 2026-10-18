@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn shared_damage_reaction_transfers_the_number_of_share_recipients() {
+fn shared_damage_reaction_uses_the_action_share_count() {
     crate::test_support::init_config();
     let entity = |uid, passive_skill| FightEntityInfo {
         uid: Some(uid),
@@ -44,13 +44,14 @@ fn shared_damage_reaction_transfers_the_number_of_share_recipients() {
             participant_uids: vec![10, 11, 12],
             amount: 300,
             share_count: 3,
+            action_share_count: 6,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
         },
     )
     .unwrap();
 
-    assert_eq!(managers.buff.buff_id_amount(10, 434121), 3);
-    assert_eq!(managers.buff.buff_id_amount(11, 434121), 3);
+    assert_eq!(managers.buff.buff_id_amount(10, 434121), 6);
+    assert_eq!(managers.buff.buff_id_amount(11, 434121), 6);
 
     let mut attacked_managers = BattleManagers::seeded(&fight);
     run_event(
@@ -98,6 +99,7 @@ fn shared_damage_reaction_transfers_the_number_of_share_recipients() {
             participant_uids: vec![10, 11, 12],
             amount: 300,
             share_count: 3,
+            action_share_count: 3,
             damage_from: crate::engine::manager::hp::HurtDamageFromType::SkillEffect,
         },
     )
@@ -118,6 +120,7 @@ fn shared_damage_batch_counts_each_attack_damage_lane_once() {
         participant_uids: vec![10, 11, 12],
         amount: 300,
         share_count: 3,
+        action_share_count: 3,
         damage_from,
     };
     let genesis = [
@@ -130,12 +133,24 @@ fn shared_damage_batch_counts_each_attack_damage_lane_once() {
     ];
     let mut state = DrainState::default();
 
-    assert_eq!(
-        state.record_action_shared_damage(Some(&[1]), &genesis),
-        std::collections::HashMap::from([(10, 3), (11, 3), (12, 3)])
-    );
-    assert_eq!(
-        state.record_action_shared_damage(Some(&[1]), &skill),
-        std::collections::HashMap::from([(10, 6), (11, 6), (12, 6)])
-    );
+    let mut genesis = genesis;
+    state.record_action_shared_damage(Some(&[1]), &mut genesis);
+    assert!(genesis.iter().all(|event| matches!(
+        event,
+        BattleEvent::DamageShared {
+            action_share_count: 3,
+            ..
+        }
+    )));
+
+    let mut skill = skill;
+    state.record_action_shared_damage(Some(&[1]), &mut skill);
+    assert!(skill.iter().all(|event| matches!(
+        event,
+        BattleEvent::DamageShared {
+            share_count: 3,
+            action_share_count: 6,
+            ..
+        }
+    )));
 }
