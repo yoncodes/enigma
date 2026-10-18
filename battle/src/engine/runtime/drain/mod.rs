@@ -1178,7 +1178,9 @@ fn drain_queue_with_deferred(
                         RuleOp::Skill(child) => {
                             let after_current_action = child.start.waits_for_current_action();
                             let mut child_execution = SkillExecution::new(context);
-                            child_execution.inherit_assassination_rate_marks(&execution);
+                            if !after_current_action {
+                                child_execution.inherit_assassination_marks(&execution);
+                            }
                             let mut queued = QueuedOp {
                                 op: RuleOp::Skill(child),
                                 trigger: SkillOpTrigger::Active,

@@ -21,8 +21,9 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) configured_targets: Option<Vec<i64>>,
     pub(super) additional_damage_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
-    pub(super) assassination_marks_at_action_start: Option<Vec<(i64, i32)>>,
-    assassination_rate_marks_at_action_start: Option<Vec<(i64, i32)>>,
+    pub(super) assassination_marks_at_action_start:
+        Option<Vec<crate::engine::skill::buff_act::assassination::TargetMark>>,
+    pub(super) assassination_rate_marks_at_action_start: Option<Vec<(i64, i32)>>,
     pub(super) injured_allies: Vec<i64>,
     pub(super) affected_targets: Vec<i64>,
     pub(super) attacked_targets: Vec<i64>,
@@ -49,9 +50,9 @@ pub(in crate::engine::runtime) struct SkillExecution {
 }
 
 impl SkillExecution {
-    pub(in crate::engine::runtime) fn inherit_assassination_rate_marks(&mut self, parent: &Self) {
-        self.assassination_rate_marks_at_action_start
-            .clone_from(&parent.assassination_rate_marks_at_action_start);
+    pub(in crate::engine::runtime) fn inherit_assassination_marks(&mut self, parent: &Self) {
+        self.assassination_marks_at_action_start
+            .clone_from(&parent.assassination_marks_at_action_start);
     }
 
     pub(in crate::engine::runtime) fn set_causing_skill_target(&mut self, target_uid: i64) {
@@ -354,21 +355,33 @@ impl SkillExecution {
 
 pub(super) fn snapshot_action_start_damage_state(
     managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    skill_id: i32,
     execution: &mut SkillExecution,
-) {
+) -> Result<(), super::SkillOpError> {
     execution
         .assassination_marks_at_action_start
         .get_or_insert_with(|| {
             crate::engine::skill::buff_act::assassination::marked_targets(managers)
         });
-    execution
-        .assassination_rate_marks_at_action_start
-        .get_or_insert_with(|| {
+    execution.assassination_rate_marks_at_action_start = Some(
+        crate::engine::skill::buff_act::assassination::rate_marks_for_skill(
             execution
                 .assassination_marks_at_action_start
-                .clone()
-                .unwrap_or_default()
-        });
+                .as_deref()
+                .unwrap_or_default(),
+            catalog,
+            skill_id,
+        )
+        .map_err(|error| {
+            super::SkillOpError::UnsupportedAssassinationReactionCardinality {
+                skill_id: error.skill_id,
+                buff_id: error.buff_id,
+                count: error.count,
+            }
+        })?,
+    );
+    Ok(())
 }
 
 fn hp_command_target(command: HpCommand) -> i64 {

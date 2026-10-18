@@ -310,7 +310,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                 invocation.mode,
             ),
         );
-        plan::snapshot_action_start_damage_state(managers, execution);
+        plan::snapshot_action_start_damage_state(managers, catalog, effect_skill_id, execution)?;
         // The caster's and its targets' reactions to the action starting run before its own effects.
         let effect_started_owners = std::iter::once(invocation.plan.source_uid)
             .chain(execution.affected_targets.iter().copied())

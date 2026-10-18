@@ -1,6 +1,46 @@
 use super::*;
 
 #[test]
+fn nested_assassination_cast_derives_its_own_reaction_cardinality() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31240121),
+                    from_uid: Some(10),
+                    layer: Some(3),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31243121, 312431212], []);
+    let mut parent = SkillExecution::new(TargetContext::default());
+    plan::snapshot_action_start_damage_state(&managers, &catalog, 31243121, &mut parent).unwrap();
+    assert_eq!(
+        parent.assassination_rate_marks_at_action_start,
+        Some(vec![])
+    );
+
+    let consumed = BattleManagers::seeded(&Fight::default());
+    let mut child = SkillExecution::new(TargetContext::default());
+    child.inherit_assassination_marks(&parent);
+    plan::snapshot_action_start_damage_state(&consumed, &catalog, 312431212, &mut child).unwrap();
+    assert_eq!(
+        child.assassination_rate_marks_at_action_start,
+        Some(vec![(-1, 10)])
+    );
+}
+
+#[test]
 fn resolved_hit_additional_damage_precedes_independent_linked_damage() {
     crate::test_support::init_config();
     let fight = Fight {
