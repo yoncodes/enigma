@@ -6,6 +6,7 @@ use crate::engine::{
         buff::{BuffCommand, BuffConsume, BuffGrant, BuffSelector, DepletedBuff},
     },
     skill::{
+        behavior::classify::BehaviorKind,
         buff_act::registry::BuffActKind,
         effect::SkillEffectCatalog,
         rule::output::{BattleCommand, RuleOp},
@@ -152,12 +153,27 @@ pub fn rule_ops(
         {
             return Some(Vec::new());
         }
+        // Separate configured mark applications each trigger this reaction; their layer amounts do not.
+        let reaction_count = catalog
+            .get(action.skill_id)
+            .map(|effect| {
+                effect
+                    .slots
+                    .iter()
+                    .filter(|slot| {
+                        slot.behavior.spec.kind == BehaviorKind::AddBuff
+                            && slot.behavior.arg(0) == Some(subscriber.buff_id)
+                    })
+                    .count()
+            })
+            .unwrap_or_default()
+            .max(1);
         return Some(vec![RuleOp::Command(BattleCommand::Buff(
             BuffCommand::Consume(BuffConsume {
                 origin: super::command_origin(subscriber)?,
                 target_uid: subscriber.owner_uid,
                 selector: BuffSelector::Uid(subscriber.buff_uid),
-                amount: amount.saturating_mul(action.rank.max(1)),
+                amount: amount.saturating_mul(i32::try_from(reaction_count).unwrap_or(i32::MAX)),
                 depleted: DepletedBuff::RemoveWithZeroLayer,
             }),
         ))]);
@@ -299,7 +315,7 @@ mod tests {
         crate::test_support::init_config();
         let catalog = SkillEffectCatalog::from_roots(
             config::configs::get(),
-            [312431212, 312431222, 435221],
+            [31243122, 312431212, 312431222, 435221],
             [],
         );
         let lethal_injury = |stacks| BuffActSubscriber {
@@ -364,7 +380,9 @@ mod tests {
             consume(1, starts(312431212, 1)).unwrap().depleted,
             DepletedBuff::RemoveWithZeroLayer
         );
+        assert_eq!(consume(3, starts(312431212, 1)).unwrap().amount, 2);
         assert_eq!(consume(2, starts(312431222, 2)).unwrap().amount, 2);
+        assert_eq!(consume(2, starts(31243122, 2)).unwrap().amount, 1);
         assert!(consume(0, starts(312431212, 1)).is_none());
         assert!(consume(1, starts(435221, 1)).is_none());
         // Not after the attack's own start effects.
