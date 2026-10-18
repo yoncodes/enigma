@@ -10,6 +10,9 @@ use sonettobuf::{
 };
 
 pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    if ctx.logged_in {
+        return Err(AppError::InvalidRequest);
+    }
     let login = session::parse_login_request(&req.data)?;
     let db = ctx.state.db;
 
@@ -29,8 +32,7 @@ pub async fn on_login(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<
     ctx.send_raw_reply_fixed(CmdId::LoginCmd, payload, 0, req.up_tag)
         .await?;
 
-    ctx.register();
-    drop(registration);
+    ctx.register_with_session_lock(registration);
     let critter_infos = ctx
         .player()?
         .critter

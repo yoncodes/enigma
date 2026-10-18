@@ -47,7 +47,11 @@ pub async fn handle_client(socket: TcpStream, state: &'static AppState) -> anyho
 
     let saved_player_id = if let Ok(player) = ctx.player() {
         let player_id = player.id;
-        let _session = ctx.state.lock_session(player_id).await;
+        let session_lock = ctx.take_session_lock();
+        let _session = match session_lock {
+            Some(lock) => lock,
+            None => ctx.state.lock_session(player_id).await,
+        };
         if ctx.state.is_current_session(player_id, &ctx.outbound) {
             if let Err(e) =
                 database::db::game::power_maker::record_logout(ctx.state.db, player_id).await
@@ -61,6 +65,7 @@ pub async fn handle_client(socket: TcpStream, state: &'static AppState) -> anyho
             if let Err(e) = ctx.save_player().await {
                 tracing::error!("Failed to save player state for {}: {}", player_id, e);
             }
+            ctx.park_active_battle();
             ctx.state
                 .unregister_session_if_current(player_id, &ctx.outbound);
             Some(player_id)

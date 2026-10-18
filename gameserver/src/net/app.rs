@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
 
 use crate::net::outbound::CommandPacket;
+use crate::player::BattleState;
 
 #[cfg(test)]
 pub(crate) fn init_test_server_config() {
@@ -17,6 +18,7 @@ pub struct AppState {
     pub tables: &'static config::GameDB,
     sessions: dashmap::DashMap<i64, mpsc::Sender<CommandPacket>>,
     session_locks: dashmap::DashMap<i64, Arc<Mutex<()>>>,
+    parked_battles: dashmap::DashMap<i64, BattleState>,
 }
 
 #[allow(dead_code)]
@@ -30,6 +32,7 @@ impl AppState {
             tables,
             sessions: dashmap::DashMap::new(),
             session_locks: dashmap::DashMap::new(),
+            parked_battles: dashmap::DashMap::new(),
         }
     }
 
@@ -46,6 +49,21 @@ impl AppState {
 
     pub fn register_session(&self, player_id: i64, outbound: mpsc::Sender<CommandPacket>) {
         self.sessions.insert(player_id, outbound);
+        self.parked_battles.remove(&player_id);
+    }
+
+    pub fn parked_battle(&self, player_id: i64) -> Option<BattleState> {
+        self.parked_battles
+            .get(&player_id)
+            .map(|battle| battle.clone())
+    }
+
+    pub fn park_battle(&self, player_id: i64, battle: BattleState) {
+        if battle.has_active() {
+            self.parked_battles.insert(player_id, battle);
+        } else {
+            self.parked_battles.remove(&player_id);
+        }
     }
 
     pub async fn lock_session(&self, player_id: i64) -> tokio::sync::OwnedMutexGuard<()> {
