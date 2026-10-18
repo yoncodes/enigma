@@ -444,7 +444,7 @@ fn deferred_caster_frame_targets_the_action_it_joins() {
     };
 
     assert_eq!(
-        retarget_caster_frame(&frames, Some(&action), caster),
+        join_caster_to_action(&frames, &action, caster),
         FrameOwner::Skill {
             source_uid: 10,
             skill_id: 100,
