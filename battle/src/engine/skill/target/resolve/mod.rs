@@ -980,9 +980,9 @@ fn enemy_with_most_shell(
     enemies
         .iter()
         .filter(|enemy| managers.hp.current(enemy.uid) > 0)
-        .filter_map(|enemy| {
+        .map(|enemy| {
             let amount = managers.buff.buff_id_amount(enemy.uid, deployed_buff_id);
-            (amount > 0).then_some((enemy, amount))
+            (enemy, amount)
         })
         .min_by_key(|(enemy, amount)| (-*amount, enemy.position, enemy.uid))
         .map(|(enemy, _)| vec![enemy.uid])

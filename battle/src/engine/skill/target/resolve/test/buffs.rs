@@ -198,6 +198,56 @@ fn shell_target_235_selects_the_enemy_with_most_configured_shell() {
 }
 
 #[test]
+fn shell_target_235_still_selects_an_enemy_when_none_have_shell() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                team_type: Some(1),
+                buffs: vec![BuffInfo {
+                    uid: Some(52),
+                    buff_id: Some(31090111),
+                    layer: Some(8),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                team_type: Some(2),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+
+    assert_eq!(
+        TargetResolver::resolve_with_managers_and_context(
+            &TargetRequest {
+                code: 235,
+                raw: Vec::new(),
+            },
+            31090174,
+            10,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext::default(),
+        ),
+        vec![-1]
+    );
+}
+
+#[test]
 fn target_244_selects_the_enemy_with_most_queued_attack_incantations() {
     init_config();
     let fight = Fight {
