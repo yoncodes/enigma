@@ -991,17 +991,22 @@ fn direct_damage_trace(
     let target_regular = target_base_regular
         + target_buff_regular
         + attack_attribute_delta(AttrId::DmgTakenReduction);
-    let playmode_rate = attributes.get(source.uid, AttrId::PlaymodeDmgIncrease)
+    let playmode_increase = attributes.get(source.uid, AttrId::PlaymodeDmgIncrease)
         + attribute_delta(source, AttrId::PlaymodeDmgIncrease)
         + attack_attribute_delta(AttrId::PlaymodeDmgIncrease)
-        + attack_local_attribute(AttrId::PlaymodeDmgIncrease)
-        - attributes.get(target.uid, AttrId::PlaymodeDmgImmunity)
-        - attribute_delta(target, AttrId::PlaymodeDmgImmunity)
-        - attack_attribute_delta(AttrId::PlaymodeDmgImmunity);
+        + attack_local_attribute(AttrId::PlaymodeDmgIncrease);
+    let playmode_immunity = attributes.get(target.uid, AttrId::PlaymodeDmgImmunity)
+        + attribute_delta(target, AttrId::PlaymodeDmgImmunity)
+        + attack_attribute_delta(AttrId::PlaymodeDmgImmunity);
     let final_delta = attribute_delta(source, AttrId::FinalDmgBonus)
         + attack_attribute_delta(AttrId::FinalDmgBonus)
         - attribute_delta(target, AttrId::FinalDmgReduction)
-        + playmode_rate;
+        + playmode_increase;
+    let final_delta = (((1_000_i64 + i64::from(final_delta))
+        * (1_000_i64 - i64::from(playmode_immunity))
+        / 1_000)
+        - 1_000)
+        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     let (regular_final_delta, separate_final_delta) = formula.split_final_damage(final_delta);
     let regular = regular_multiplier(
         source_regular + if action_joins_might { 0 } else { action_bonus } + regular_final_delta,

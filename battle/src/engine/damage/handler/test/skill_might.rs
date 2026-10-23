@@ -159,9 +159,16 @@ fn playmode_attack_attributes_use_the_final_damage_lane() {
         key: crate::engine::skill::rule::DefinitionKey::new(10004, "AttrFix"),
     };
 
-    for attack_attributes in [
-        vec![(AttrId::PlaymodeDmgIncrease, -150)],
-        vec![(AttrId::PlaymodeDmgImmunity, 150)],
+    for (attack_attributes, expected) in [
+        (vec![(AttrId::PlaymodeDmgIncrease, -150)], 765),
+        (vec![(AttrId::PlaymodeDmgImmunity, 150)], 765),
+        (
+            vec![
+                (AttrId::FinalDmgBonus, 330),
+                (AttrId::PlaymodeDmgImmunity, 200),
+            ],
+            957,
+        ),
     ] {
         let command = resolve_attack_command(
             &AttackPlan {
@@ -202,7 +209,7 @@ fn playmode_attack_attributes_use_the_final_damage_lane() {
 
         assert!(matches!(
             command,
-            HpCommand::Damage(HpDamage { amount: 765, .. })
+            HpCommand::Damage(HpDamage { amount, .. }) if amount == expected
         ));
     }
 }
