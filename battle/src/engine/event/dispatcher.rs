@@ -492,6 +492,17 @@ fn retain_observing_subscribers(
     determinism: &crate::engine::runtime::determinism::RoundDeterminism,
     event: &BattleEvent,
 ) {
+    subscribers.skills.retain(|subscriber| {
+        crate::engine::skill::condition::registry::find_key(
+            subscriber.key.definition.opcode,
+            subscriber.key.definition.type_name,
+        )
+        .is_none_or(|definition| {
+            definition.reaction_observer_scope
+                != crate::engine::skill::condition::registry::ReactionObserverScope::EventTarget
+                || event.target_uid() == Some(subscriber.owner_uid)
+        })
+    });
     if let Some(action) = event.skill_action_event() {
         subscribers.skills.retain(|subscriber| {
             skill_subscriber_observes_action(pool, subscriber, action)

@@ -190,6 +190,15 @@ fn captured_mane_conditions_keep_their_exact_routes() {
         status_count.reaction_timing.resolve(Default::default()),
         ReactionTiming::AfterSharedHit
     );
+    let hurt_skill = find_key(501209, "UseHurtSkill").unwrap();
+    assert_eq!(
+        hurt_skill.reaction_multiplicity,
+        ReactionMultiplicity::OncePerAction
+    );
+    assert_eq!(
+        hurt_skill.reaction_observer_scope,
+        ReactionObserverScope::EventTarget
+    );
 
     assert_eq!(
         parse(89304, "ExpointMoreThan", &["3".into()]),

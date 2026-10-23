@@ -703,7 +703,7 @@ condition_definitions! {
     [501203] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [501201] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [501208] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
-    [501209] "UseHurtSkill" => active_skill::hurt_skill, after_shared_hit(event_trigger(EventKind::TargetAttacked, None));
+    [501209] "UseHurtSkill" => active_skill::hurt_skill, once_per_action(event_target_observes(after_shared_hit(event_trigger(EventKind::TargetAttacked, None))));
     [501210] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [501212] "UseHurtSkill" => active_skill::hurt_skill, predicate(&[]);
     [507201] "UseSkillId" => active_skill::skill_id, event_trigger(EventKind::SkillAction, None);
