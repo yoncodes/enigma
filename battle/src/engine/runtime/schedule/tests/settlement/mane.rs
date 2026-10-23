@@ -193,6 +193,87 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
 }
 
 #[test]
+fn attacker_settlement_groups_duration_expiry_before_owner_reactions() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![433911],
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(109380002),
+                        duration: Some(1),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(21),
+                        buff_id: Some(433911),
+                        layer: Some(3),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    let result = run_entity_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[10],
+        SettlementSide::Attacker,
+    )
+    .unwrap();
+
+    assert!(managers.buff.snapshot(10, 20).is_none());
+    assert_eq!(managers.buff.buff_id_amount(10, 433911), 2);
+    assert_eq!(
+        result
+            .output
+            .frames
+            .iter()
+            .filter(|frame| matches!(
+                frame.owner,
+                FrameOwner::RoundPhase(RoundPhase::EntitySettlement)
+            ))
+            .count(),
+        1
+    );
+    let steps =
+        crate::engine::packet::timeline::project_for_version(&result.output.frames, 7).unwrap();
+
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]
+            .act_effect
+            .iter()
+            .map(|effect| effect.effect_type.unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+            sonettobuf::effect_type_enum::EffectType::Fightstep as i32,
+        ]
+    );
+}
+
+#[test]
 fn defender_round_end_keeps_buff_acts_and_owner_passives_in_one_frame() {
     init_config();
     let burn = |uid| BuffInfo {

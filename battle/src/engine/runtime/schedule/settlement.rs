@@ -14,8 +14,8 @@ enum SettlementStep {
 }
 
 const ATTACKER_SETTLEMENT: &[SettlementStep] = &[
-    SettlementStep::OwnerEvent(EventKind::RoundEndEntitySettlement),
     SettlementStep::Settlement,
+    SettlementStep::OwnerEvent(EventKind::RoundEndEntitySettlement),
     SettlementStep::OwnerEvent(EventKind::RoundEndAfterSettlement),
     SettlementStep::ResetEureka,
 ];
@@ -519,12 +519,10 @@ pub fn run_entity_settlement(
                 ))],
             )?,
         };
-        if side == SettlementSide::Defender
-            && matches!(
-                step,
-                SettlementStep::OwnerEvent(EventKind::RoundEndEntitySettlement)
-            )
-        {
+        if matches!(
+            step,
+            SettlementStep::OwnerEvent(EventKind::RoundEndEntitySettlement)
+        ) {
             append_round_phase(&mut result, next);
         } else {
             append(&mut result, next);
