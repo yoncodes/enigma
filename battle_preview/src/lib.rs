@@ -15,7 +15,7 @@ pub use attributes::{
 };
 pub use compression::expand_compressed_fight_steps;
 pub use normalize::normalize_live_json;
-pub use replay_rng::{opening_determinism, seed_round_determinism};
+pub use replay_rng::{opening_determinism, seed_action_determinism, seed_round_determinism};
 
 #[cfg(test)]
 pub(crate) fn init_test_config() {

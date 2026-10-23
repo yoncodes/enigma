@@ -13,7 +13,8 @@ use battle_preview::{
     array_len_diff_lines, begin_round_inputs, build_metadata_source, canonical_comparison,
     expand_compressed_fight_steps, first_diff_path, normalize_live_json, opening_determinism,
     preview_attributes_with_request, preview_output_text, render_json_with_capture_conventions,
-    seed_round_determinism, tower_plan_id_from_request, value_at_diff_path,
+    seed_action_determinism, seed_round_determinism, tower_plan_id_from_request,
+    value_at_diff_path,
 };
 use sonettobuf::{BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep};
 
@@ -404,10 +405,12 @@ fn replay_cloth_input(
             serde_json::from_str(&fs::read_to_string(&input.request)?)?;
         normalize_live_json(&mut request);
         let request = serde_json::from_value(request)?;
-        if let Some(reply) = input.reply.as_deref()
-            && let Some(cards) = captured_cloth_redeal(reply)?
-        {
-            seed_observed_redeal(runtime, &cards).map_err(io::Error::other)?;
+        if let Some(reply) = input.reply.as_deref() {
+            let captured = captured_cloth_round(reply)?;
+            seed_action_determinism(runtime, effect_catalog::global(), &captured);
+            if let Some(cards) = captured_cloth_redeal(&captured) {
+                seed_observed_redeal(runtime, &cards).map_err(io::Error::other)?;
+            }
         }
         runtime.use_cloth_skill(request).ok_or_else(|| {
             io::Error::other(format!("invalid cloth input: {}", input.request.display()))
@@ -416,22 +419,26 @@ fn replay_cloth_input(
     Ok(())
 }
 
-fn captured_cloth_redeal(path: &Path) -> anyhow::Result<Option<Vec<sonettobuf::CardInfo>>> {
+fn captured_cloth_round(path: &Path) -> anyhow::Result<FightRound> {
     let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
     normalize_live_json(&mut value);
     let reply: sonettobuf::UseClothSkillReply = serde_json::from_value(value)?;
-    Ok(reply.round.and_then(|round| {
-        nested_steps(&round).find_map(|step| {
-            step.act_effect
-                .iter()
-                .find(|effect| {
-                    effect.effect_type
-                        == Some(sonettobuf::effect_type_enum::EffectType::Afterredealcard as i32)
-                        && !effect.card_info_list.is_empty()
-                })
-                .map(|effect| effect.card_info_list.clone())
-        })
-    }))
+    reply
+        .round
+        .ok_or_else(|| anyhow::anyhow!("{} has no cloth round", path.display()))
+}
+
+fn captured_cloth_redeal(round: &FightRound) -> Option<Vec<sonettobuf::CardInfo>> {
+    nested_steps(round).find_map(|step| {
+        step.act_effect
+            .iter()
+            .find(|effect| {
+                effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Afterredealcard as i32)
+                    && !effect.card_info_list.is_empty()
+            })
+            .map(|effect| effect.card_info_list.clone())
+    })
 }
 
 fn cloth_input_paths(parent: &Path, round_index: i32) -> io::Result<Vec<PathBuf>> {
