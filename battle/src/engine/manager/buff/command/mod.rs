@@ -333,7 +333,7 @@ impl BuffDurationAdvance {
     pub fn for_event(event: &BattleEvent) -> Vec<Self> {
         let (take_stages, owner_uid) = match event {
             BattleEvent::SkillAction(action) => (
-                crate::engine::skill::buff_act::effect_time::duration_stage_for_skill_phase(
+                crate::engine::skill::buff_act::effect_time::duration_stage_after_skill_phase(
                     action.phase,
                 )
                 .into_iter()

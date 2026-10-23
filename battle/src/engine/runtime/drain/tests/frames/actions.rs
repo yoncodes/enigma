@@ -452,6 +452,9 @@ fn after_hit_settles_the_acting_owners_take_stage_buff() {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 current_hp: Some(100),
+                ex_point_type: Some(4),
+                ex_point: Some(0),
+                ex_point_max: Some(100),
                 buffs: vec![BuffInfo {
                     buff_id: Some(31260211),
                     uid: Some(2),
@@ -468,9 +471,24 @@ fn after_hit_settles_the_acting_owners_take_stage_buff() {
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
     let mut catalog = SkillEffectCatalog::default();
+    let mut after_hit = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(60292, "AddDeviceExPoint"),
+            vec![7],
+            Vec::new(),
+        ),
+        TargetRequest::self_only(),
+    );
+    after_hit.conditions = vec![ParsedCondition {
+        opcode: 210,
+        type_name: "None".to_owned(),
+        kind: ParsedConditionKind::None(NoneMode::SkillActionAfterHit),
+        raw_args: Vec::new(),
+    }];
+    after_hit.compiled_route = ConditionRoute::compile(&after_hit.conditions);
     catalog.insert(ParsedSkillEffect {
         skill_id: 100,
-        slots: Vec::new(),
+        slots: vec![after_hit],
     });
 
     let result = run(
@@ -495,6 +513,31 @@ fn after_hit_settles_the_acting_owners_take_stage_buff() {
         RuleOutcome::Buff(changes)
             if changes.change.removed.iter().any(|removed| removed.buff.uid == Some(2))
     )));
+    let removed = result
+        .outcomes
+        .iter()
+        .position(|outcome| {
+            matches!(
+                outcome,
+                RuleOutcome::Buff(changes)
+                    if changes.change.removed.iter().any(|removed| removed.buff.uid == Some(2))
+            )
+        })
+        .unwrap();
+    let resource = result
+        .outcomes
+        .iter()
+        .position(|outcome| {
+            matches!(
+                outcome,
+                RuleOutcome::ExPoint(crate::engine::manager::ex_point::ExPointChanges::Value {
+                    change,
+                    ..
+                }) if change.applied_delta == 7
+            )
+        })
+        .unwrap();
+    assert!(removed < resource);
 }
 
 #[test]
