@@ -347,19 +347,24 @@ impl BuffManager {
                     remove.origin.key.opcode,
                     false,
                     false,
+                    false,
                 )?),
             ),
             BuffCommand::RemoveAfterTrigger(remove) => (
                 remove.origin,
-                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, false)?),
+                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, false, false)?),
+            ),
+            BuffCommand::CompleteSelection(remove) => (
+                remove.origin,
+                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, false, true)?),
             ),
             BuffCommand::Deactivate(remove) => (
                 remove.origin,
-                BuffPlanAction::Remove(self.plan_remove(remove, 0, true, false)?),
+                BuffPlanAction::Remove(self.plan_remove(remove, 0, true, false, false)?),
             ),
             BuffCommand::ExpireAction(remove) => (
                 remove.origin,
-                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, true)?),
+                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, true, false)?),
             ),
             BuffCommand::Dispel(dispel) => (
                 dispel.origin,
@@ -1483,6 +1488,7 @@ impl BuffManager {
         config_effect: i32,
         clear_amount: bool,
         clear_count: bool,
+        clear_duration: bool,
     ) -> Result<RemovePlan, BuffCommandError> {
         let valid = match remove.selector {
             BuffRemoveSelector::Uid(buff_uid) => buff_uid > 0,
@@ -1515,6 +1521,7 @@ impl BuffManager {
             config_effect,
             clear_amount,
             clear_count,
+            clear_duration,
         })
     }
 
@@ -1549,6 +1556,7 @@ impl BuffManager {
             config_effect: dispel.origin.key.opcode,
             clear_amount: false,
             clear_count: false,
+            clear_duration: false,
         })
     }
 

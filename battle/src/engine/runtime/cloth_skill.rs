@@ -338,6 +338,21 @@ impl BattleRuntime {
                         team_type: feature.team_type,
                     },
                 ));
+                let completed = self
+                    .managers
+                    .execute_buff(
+                        crate::engine::manager::buff::BuffCommand::CompleteSelection(
+                            crate::engine::manager::buff::BuffRemove {
+                                origin,
+                                target_uid: owner_uid,
+                                selector: crate::engine::manager::buff::BuffRemoveSelector::Uid(
+                                    feature.buff_uid,
+                                ),
+                            },
+                        ),
+                    )
+                    .ok()?;
+                changes.push(change::BattleChange::Buff(Box::new(completed)));
                 project_changes(changes, fight_version, absorb_hurt_map_layout)
                     .inspect_err(
                         |error| tracing::warn!(%error, "conduit selection projection failed"),

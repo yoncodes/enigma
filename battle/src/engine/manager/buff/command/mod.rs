@@ -363,6 +363,7 @@ pub enum BuffCommand {
     Replace(BuffReplace),
     Remove(BuffRemove),
     RemoveAfterTrigger(BuffRemove),
+    CompleteSelection(BuffRemove),
     Deactivate(BuffRemove),
     ExpireAction(BuffRemove),
     Dispel(BuffDispel),
@@ -621,6 +622,7 @@ struct RemovePlan {
     config_effect: i32,
     clear_amount: bool,
     clear_count: bool,
+    clear_duration: bool,
 }
 
 #[derive(Debug, Clone)]

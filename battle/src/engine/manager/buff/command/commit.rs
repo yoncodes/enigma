@@ -90,6 +90,11 @@ impl BuffManager {
                                     result.buff.count = Some(0);
                                 }
                             }
+                            if plan.clear_duration {
+                                for result in &mut removed {
+                                    result.buff.duration = Some(0);
+                                }
+                            }
                             removed
                         })
                         .collect(),

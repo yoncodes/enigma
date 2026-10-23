@@ -323,6 +323,7 @@ fn conduit_selection_adds_the_configured_precast_and_commits_the_choice() {
                     uid: Some(1146),
                     buff_id: Some(31490013),
                     from_uid: Some(10),
+                    duration: Some(1),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -368,6 +369,25 @@ fn conduit_selection_adds_the_configured_precast_and_commits_the_choice() {
                         ]
             })
     }));
+    let selection_update = effects
+        .iter()
+        .position(|effect| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Buffactinfoupdate as i32)
+        })
+        .unwrap();
+    let carrier_delete = effects
+        .iter()
+        .position(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Buffdel as i32)
+                && effect
+                    .buff
+                    .as_ref()
+                    .is_some_and(|buff| buff.uid == Some(1146) && buff.duration == Some(0))
+        })
+        .unwrap();
+    assert!(selection_update < carrier_delete);
+    assert!(runtime.managers.buff.snapshot(10, 1146).is_none());
     assert!(
         runtime
             .use_cloth_skill(UseClothSkillRequest {
