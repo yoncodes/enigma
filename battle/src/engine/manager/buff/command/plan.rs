@@ -612,13 +612,18 @@ impl BuffManager {
                     return Err(BuffCommandError::InvalidDurationAdvance);
                 }
                 let plans = if let Some(buff_uids) = &advance.buff_uids {
-                    self.plan_duration_advances_for_snapshot(
+                    self.plan_duration_advances_for_snapshot_scoped(
                         advance.take_stage,
                         &advance.owner_uids,
                         buff_uids,
+                        advance.scope,
                     )
                 } else {
-                    self.plan_duration_advances(advance.take_stage, &advance.owner_uids)
+                    self.plan_duration_advances_scoped(
+                        advance.take_stage,
+                        &advance.owner_uids,
+                        advance.scope,
+                    )
                 };
                 (advance.origin, BuffPlanAction::AdvanceDuration(plans))
             }

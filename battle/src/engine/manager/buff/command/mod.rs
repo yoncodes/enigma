@@ -293,6 +293,7 @@ pub struct BuffDurationAdvance {
     pub take_stage: i32,
     pub owner_uids: Vec<i64>,
     pub buff_uids: Option<Vec<i64>>,
+    pub scope: crate::engine::skill::buff_act::effect_time::DurationBuffScope,
 }
 
 const ROUND_START_DURATION_SYNC_KEY: crate::engine::skill::rule::DefinitionKey =
@@ -327,19 +328,27 @@ impl BuffDurationAdvance {
             take_stage,
             owner_uids,
             buff_uids,
+            scope: Default::default(),
         })
     }
 
     pub fn for_event(event: &BattleEvent) -> Vec<Self> {
+        if let BattleEvent::SkillAction(action) = event {
+            return crate::engine::skill::buff_act::effect_time::duration_stage_after_skill_action(
+                action.phase,
+                action.is_attack,
+                action.mode,
+            )
+            .and_then(|(take_stage, scope)| {
+                Self::new(take_stage, vec![action.source_uid], None).map(|mut advance| {
+                    advance.scope = scope;
+                    advance
+                })
+            })
+            .into_iter()
+            .collect();
+        }
         let (take_stages, owner_uid) = match event {
-            BattleEvent::SkillAction(action) => (
-                crate::engine::skill::buff_act::effect_time::duration_stage_after_skill_phase(
-                    action.phase,
-                )
-                .into_iter()
-                .collect::<Vec<_>>(),
-                action.source_uid,
-            ),
             BattleEvent::AllyAction(action) => (
                 crate::engine::skill::buff_act::effect_time::duration_stages_for_event(
                     crate::engine::event::kind::EventKind::AllyAction,

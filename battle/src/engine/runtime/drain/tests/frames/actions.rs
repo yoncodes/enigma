@@ -543,7 +543,7 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
 }
 
 #[test]
-fn after_hit_settles_the_acting_owners_take_stage_buff() {
+fn non_attack_device_after_hit_behaviors_run_before_take_stage_buff_settles() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -554,7 +554,7 @@ fn after_hit_settles_the_acting_owners_take_stage_buff() {
                 ex_point: Some(0),
                 ex_point_max: Some(100),
                 buffs: vec![BuffInfo {
-                    buff_id: Some(31260211),
+                    buff_id: Some(103374322),
                     uid: Some(2),
                     from_uid: Some(10),
                     duration: Some(1),
@@ -585,7 +585,7 @@ fn after_hit_settles_the_acting_owners_take_stage_buff() {
     }];
     after_hit.compiled_route = ConditionRoute::compile(&after_hit.conditions);
     catalog.insert(ParsedSkillEffect {
-        skill_id: 100,
+        skill_id: 31490111,
         slots: vec![after_hit],
     });
 
@@ -595,13 +595,14 @@ fn after_hit_settles_the_acting_owners_take_stage_buff() {
         &catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        [RuleOp::Skill(
-            SkillRequest {
+        [RuleOp::Skill(SkillInvocation {
+            mode: crate::engine::skill::action::SkillExecutionMode::Device,
+            ..SkillRequest {
                 source_uid: 10,
-                skill_id: 100,
+                skill_id: 31490111,
             }
-            .into(),
-        )],
+            .into()
+        })],
     )
     .unwrap();
 
@@ -635,7 +636,7 @@ fn after_hit_settles_the_acting_owners_take_stage_buff() {
             )
         })
         .unwrap();
-    assert!(removed < resource);
+    assert!(resource < removed);
 }
 
 #[test]
