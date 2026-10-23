@@ -182,7 +182,10 @@ pub fn rule_ops(
             };
             if hit.target_uid != subscriber.owner_uid
                 || hit.amount <= 0
-                || hit.damage_from != HurtDamageFromType::Skill
+                || !matches!(
+                    hit.damage_from,
+                    HurtDamageFromType::Skill | HurtDamageFromType::SkillEffect
+                )
             {
                 return Some(Vec::new());
             }
@@ -541,6 +544,44 @@ mod tests {
         // "After being attacked": an attack's additional skill-effect damage is still the attack.
         assert_eq!(deploys(HurtDamageFromType::SkillEffect), 1);
         assert_eq!(deploys(HurtDamageFromType::Buff), 0);
+    }
+
+    #[test]
+    fn deployed_shell_retrieves_after_a_skill_effect_hit_but_not_after_buff_damage() {
+        crate::test_support::init_config();
+        let managers = BattleManagers::default();
+        let pool = TargetPool::default();
+        let retrieves = |damage_from| {
+            let event = BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Skill,
+                    key: DefinitionKey::new(100002, "EzioBigSkillTyp2"),
+                },
+                source_uid: 10,
+                target_uid: -1,
+                skill_id: 312301333,
+                amount: 20,
+                resolved_damage: 20,
+                shield_absorbed: 0,
+                career_restraint: false,
+                damage_from,
+                share_count: 0,
+                assassinate: true,
+                ignore_riposte: false,
+            });
+            rule_ops(
+                &managers,
+                &pool,
+                &mut RoundDeterminism::default(),
+                &subscriber(-1, 10, 31090112, 871, "ShellDebuff", vec![1]),
+                &event,
+            )
+            .unwrap()
+            .len()
+        };
+
+        assert_eq!(retrieves(HurtDamageFromType::SkillEffect), 1);
+        assert_eq!(retrieves(HurtDamageFromType::Buff), 0);
     }
 
     #[test]
