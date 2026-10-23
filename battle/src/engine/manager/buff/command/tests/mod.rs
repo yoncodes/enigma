@@ -22,6 +22,7 @@ fn grant_plan(plan: &BuffPlan) -> &GrantPlan {
         | BuffPlanAction::AddSpecialCount(_)
         | BuffPlanAction::ReserveChildUids(_)
         | BuffPlanAction::ReserveNormalUids(_)
+        | BuffPlanAction::CompleteTaggedGroup(_)
         | BuffPlanAction::ReserveGrantUid(_)
         | BuffPlanAction::FanoutEntryHalos(_)
         | BuffPlanAction::AdvanceDuration(_)

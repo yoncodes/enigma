@@ -5,7 +5,7 @@ use crate::engine::{
             BuffAmount, BuffChangeDuration, BuffChildUidReservation, BuffCommand, BuffConsume,
             BuffConvert, BuffDispel, BuffGrant, BuffGrantChild, BuffRefreshDurationBySelector,
             BuffRemove, BuffRemoveSelector, BuffReplace, BuffSelector, BuffSetAmount, BuffSetState,
-            BuffStatus, CommandOrigin, DepletedBuff,
+            BuffStatus, BuffTaggedGroupCompletion, CommandOrigin, DepletedBuff,
         },
         card::{CardCommand, CardConsumeForEffect},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
@@ -57,6 +57,7 @@ pub(super) use dispel::{
 };
 use distribute::*;
 pub use grant::random_buff_pool;
+pub(crate) use grant::tagged_group_completion;
 use grant::{grant_command, random_pool_grant_commands};
 use layer::*;
 use poison::*;

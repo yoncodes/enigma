@@ -251,6 +251,14 @@ pub struct BuffNormalUidReservation {
     pub count: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuffTaggedGroupCompletion {
+    pub origin: CommandOrigin,
+    pub source_uid: i64,
+    pub target_uids: Vec<i64>,
+    pub buff_id: i32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuffGrantUidReservation {
     pub origin: CommandOrigin,
@@ -387,6 +395,7 @@ pub enum BuffCommand {
     AddSpecialCount(BuffSpecialCount),
     ReserveChildUids(BuffChildUidReservation),
     ReserveNormalUids(BuffNormalUidReservation),
+    CompleteTaggedGroup(BuffTaggedGroupCompletion),
     ReserveGrantUid(BuffGrantUidReservation),
     FanoutEntryHalos(BuffEntryHaloFanout),
     AdvanceDuration(BuffDurationAdvance),
@@ -434,9 +443,9 @@ impl BuffPlan {
 
     pub(crate) fn planned_reservation_uids(&self) -> Option<Vec<i64>> {
         let plan = match &self.action {
-            BuffPlanAction::ReserveChildUids(plan) | BuffPlanAction::ReserveNormalUids(plan) => {
-                plan
-            }
+            BuffPlanAction::ReserveChildUids(plan)
+            | BuffPlanAction::ReserveNormalUids(plan)
+            | BuffPlanAction::CompleteTaggedGroup(plan) => plan,
             _ => return None,
         };
         Some(plan.uids.iter().map(|uid| uid.uid).collect())
@@ -595,6 +604,7 @@ enum BuffPlanAction {
     AddSpecialCount(SpecialCountPlan),
     ReserveChildUids(UidReservationPlan),
     ReserveNormalUids(UidReservationPlan),
+    CompleteTaggedGroup(UidReservationPlan),
     ReserveGrantUid(GrantUidReservationPlan),
     FanoutEntryHalos(Vec<PlannedEntryHaloFanout>),
     AdvanceDuration(Vec<super::lifecycle::BuffDurationPlan>),

@@ -541,6 +541,31 @@ impl BuffManager {
                     }),
                 )
             }
+            BuffCommand::CompleteTaggedGroup(completion) => {
+                if completion.source_uid == 0
+                    || completion.buff_id <= 0
+                    || completion.target_uids.len() <= 1
+                    || completion.target_uids.contains(&0)
+                {
+                    return Err(BuffCommandError::InvalidUidReservation);
+                }
+                let completed = self.shared_uid_lane
+                    && completion
+                        .target_uids
+                        .iter()
+                        .all(|uid| self.has_buff_id(*uid, completion.buff_id));
+                (
+                    completion.origin,
+                    BuffPlanAction::CompleteTaggedGroup(UidReservationPlan {
+                        target_uid: completion.source_uid,
+                        uids: if completed {
+                            super::uid_policy::reservations(self, completion.source_uid, 1, 0)
+                        } else {
+                            Vec::new()
+                        },
+                    }),
+                )
+            }
             BuffCommand::ReserveGrantUid(reservation) => {
                 if reservation.target_uid == 0 || reservation.buff_id <= 0 {
                     return Err(BuffCommandError::InvalidUidReservation);

@@ -109,6 +109,79 @@ fn normal_uid_reservation_advances_the_shared_lane_before_the_next_grant() {
     assert_eq!(cooldown.buff.uid, Some(1150));
 }
 
+fn tagged_group_fight(version: i32, complete: bool) -> Fight {
+    Fight {
+        version: Some(version),
+        attacker: Some(FightTeam {
+            entitys: (10..14)
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    buffs: (complete || uid != 13)
+                        .then_some(vec![BuffInfo {
+                            uid: Some(1124 + (uid - 10) * 2),
+                            buff_id: Some(31450132),
+                            from_uid: Some(10),
+                            ..Default::default()
+                        }])
+                        .unwrap_or_default(),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+fn tagged_group_completion(manager: &BuffManager) -> BuffPlan {
+    manager
+        .plan(
+            &HpManager::default(),
+            BuffCommand::CompleteTaggedGroup(BuffTaggedGroupCompletion {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uids: vec![10, 11, 12, 13],
+                buff_id: 31450132,
+            }),
+        )
+        .unwrap()
+}
+
+#[test]
+fn tagged_group_completion_reserves_only_after_every_member_received_the_buff() {
+    crate::test_support::init_config();
+    let mut complete = BuffManager::default();
+    complete.seed(&tagged_group_fight(7, true));
+    assert_eq!(
+        tagged_group_completion(&complete).planned_reservation_uids(),
+        Some(vec![1132])
+    );
+
+    let mut incomplete = BuffManager::default();
+    incomplete.seed(&tagged_group_fight(7, false));
+    assert_eq!(
+        tagged_group_completion(&incomplete).planned_reservation_uids(),
+        Some(Vec::new())
+    );
+}
+
+#[test]
+fn tagged_group_completion_does_not_change_split_uid_lanes() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&tagged_group_fight(6, true));
+
+    assert_eq!(
+        tagged_group_completion(&manager).planned_reservation_uids(),
+        Some(Vec::new())
+    );
+}
+
 fn death_refresh_manager() -> BuffManager {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();

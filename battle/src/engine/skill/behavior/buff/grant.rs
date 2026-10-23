@@ -1,5 +1,33 @@
 use super::*;
 
+pub(crate) fn tagged_group_completion(
+    managers: &BattleManagers,
+    source_uid: i64,
+    target: &TargetRequest,
+    target_uids: &[i64],
+    behavior: &ParsedBehavior,
+) -> Option<BuffCommand> {
+    let buff_id = behavior.arg(0)?;
+    if behavior.spec.kind != BehaviorKind::AddBuff
+        || target.code != 132
+        || target.raw.as_slice() != [131]
+        || target_uids.len() <= 1
+        || target_uids
+            .iter()
+            .any(|uid| managers.buff.has_buff_id(*uid, buff_id))
+    {
+        return None;
+    }
+    Some(BuffCommand::CompleteTaggedGroup(
+        BuffTaggedGroupCompletion {
+            origin: command_origin(behavior)?,
+            source_uid,
+            target_uids: target_uids.to_vec(),
+            buff_id,
+        },
+    ))
+}
+
 pub(super) fn grant_command(
     source_uid: i64,
     target_uid: i64,
@@ -121,4 +149,45 @@ fn resolve_random_buff_pool(
         return None;
     }
     catalog.buff_pool(behavior.arg(0)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tagged_multi_target_buff_application_owns_one_completion_uid() {
+        crate::test_support::init_config();
+        let behavior = ParsedBehavior::new(1, "AddBuff", vec![31450132]);
+        let tagged_allies = TargetRequest {
+            code: 132,
+            raw: vec![131],
+        };
+
+        let managers = BattleManagers::default();
+        assert!(matches!(
+            tagged_group_completion(&managers, 10, &tagged_allies, &[10, 11, 12, 13], &behavior),
+            Some(BuffCommand::CompleteTaggedGroup(
+                BuffTaggedGroupCompletion {
+                    source_uid: 10,
+                    buff_id: 31450132,
+                    ..
+                }
+            ))
+        ));
+        assert!(tagged_group_completion(&managers, 10, &tagged_allies, &[10], &behavior).is_none());
+        assert!(
+            tagged_group_completion(
+                &managers,
+                10,
+                &TargetRequest {
+                    code: 132,
+                    raw: vec![114],
+                },
+                &[10, 11, 12, 13],
+                &behavior,
+            )
+            .is_none()
+        );
+    }
 }

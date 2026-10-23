@@ -742,7 +742,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
         let outputs_before = outputs.len();
         let target_count = targets.len();
-        for (target_index, target_uid) in targets.into_iter().enumerate().skip(resume_target) {
+        for (target_index, target_uid) in targets.iter().copied().enumerate().skip(resume_target) {
             let target_outputs_before = outputs.len();
             if !has_row_damage && target_uid != 0 {
                 execution.primary_target_uid.get_or_insert(target_uid);
@@ -815,6 +815,28 @@ pub(in crate::engine::runtime) fn emit_ops(
                     target_uid: execution.primary_target_uid,
                 });
             }
+        }
+        if outputs.len() > outputs_before
+            && let Some(command) = behavior::buff::tagged_group_completion(
+                managers,
+                invocation.plan.source_uid,
+                &slot.target,
+                &targets,
+                &slot.behavior,
+            )
+        {
+            outputs.push(SkillEmissionOp {
+                op: RuleOp::Command(BattleCommand::Buff(command)),
+                owner: definition.output_owner.resolve(
+                    match trigger {
+                        SkillOpTrigger::Event(event) => Some(event.kind()),
+                        _ => None,
+                    },
+                    matches!(trigger, SkillOpTrigger::Setup { .. }),
+                ),
+                consequence,
+                frame_owner: None,
+            });
         }
         if let Some(child_skill_kind) = child_skill_kind {
             for emission in outputs.iter_mut().skip(outputs_before) {
