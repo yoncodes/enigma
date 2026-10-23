@@ -240,10 +240,10 @@ fn buff_owned_charge_starts_at_zero_on_its_carrier() {
 fn conduit_selection_initial_state_advertises_configured_options() {
     crate::test_support::init_config();
 
-    let markers = BuffDefinition::get(31490013)
-        .unwrap()
-        .initial_wire_states(10, 1146, 1, 1000);
+    let selection = BuffDefinition::get(31490013).unwrap();
+    let markers = selection.initial_wire_states(10, 1146, 1, 1000);
 
+    assert_eq!(selection.normal_reservations_before_add(), 1);
     assert_eq!(markers.len(), 1);
     assert_eq!(markers[0].act_id, 10030);
     assert_eq!(

@@ -859,9 +859,14 @@ impl BuffManager {
                     ))?;
         }
         let uid_reserve_before = reserve_before;
-        let normal_reserve_before = if action == GrantAction::ReplaceExisting
-            || (readds_prior_instance && !unconditional)
-        {
+        let normal_reserve_before = if action == GrantAction::Add {
+            policy.uid.normal_reservations_before_add
+                + if readds_prior_instance && !unconditional {
+                    policy.uid.normal_reservations_before_reapply
+                } else {
+                    0
+                }
+        } else if action == GrantAction::ReplaceExisting {
             policy.uid.normal_reservations_before_reapply
         } else if action == GrantAction::KeepExisting && policy.uid.reserve_normal_on_kept_reapply {
             1

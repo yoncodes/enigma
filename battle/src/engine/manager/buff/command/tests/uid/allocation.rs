@@ -57,6 +57,42 @@ fn ordinary_grant_keeps_origin_and_uses_manager_uid_policy() {
 }
 
 #[test]
+fn conduit_selection_reserves_one_normal_uid_before_its_carrier() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1144),
+                    buff_id: Some(31490003),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    let selection = manager
+        .add(&HpManager::default(), 10, 10, 31490002, 0)
+        .unwrap();
+    let cooldown = manager
+        .add(&HpManager::default(), 10, 10, 31490014, 0)
+        .unwrap();
+
+    assert_eq!(selection.buff.uid, Some(1148));
+    assert_eq!(cooldown.buff.uid, Some(1150));
+}
+
+#[test]
 fn attacker_assist_uses_its_resolved_team_uid_lane() {
     crate::test_support::init_config();
     let fight = Fight {

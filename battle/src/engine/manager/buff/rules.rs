@@ -77,6 +77,7 @@ pub struct SharedGroupCapacity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuffUidPolicy {
     pub allocation: UidAllocationPolicy,
+    pub normal_reservations_before_add: i32,
     pub normal_reservations_before_reapply: i32,
     pub normal_reservations_after_first_apply: i32,
     pub reserve_normal_on_kept_reapply: bool,
@@ -209,6 +210,7 @@ impl BuffPolicy {
                 } else {
                     UidAllocationPolicy::Normal
                 },
+                normal_reservations_before_add: definition.normal_reservations_before_add(),
                 normal_reservations_before_reapply: definition.normal_reservations_before_reapply(),
                 normal_reservations_after_first_apply: definition
                     .normal_reservations_after_first_apply(),
