@@ -177,6 +177,7 @@ pub(super) fn replace_buff_ops(
             target_uid: context.target_uid,
             sources: vec![BuffSelector::IdOrType(*source_buff_id)],
             replacement_id_or_type: *replacement_buff_id,
+            child_uid_reservations: 0,
         }),
     ))])
 }
@@ -202,6 +203,7 @@ pub(super) fn remove_buff_to_add_buff_ops(
             target_uid: context.target_uid,
             sources: vec![BuffSelector::IdOrType(*source_buff_id)],
             replacement_id_or_type: *replacement_buff_id,
+            child_uid_reservations: 0,
         }),
     ))])
 }

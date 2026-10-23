@@ -150,6 +150,7 @@ pub struct BuffReplace {
     pub target_uid: i64,
     pub sources: Vec<BuffSelector>,
     pub replacement_id_or_type: i32,
+    pub child_uid_reservations: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

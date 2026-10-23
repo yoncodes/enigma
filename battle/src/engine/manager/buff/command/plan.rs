@@ -1355,25 +1355,10 @@ impl BuffManager {
                 _ => Err(BuffCommandError::InvalidReplace),
             })
             .collect::<Result<Vec<_>, _>>()?;
-        self.plan_replace_ids(
-            hp,
-            replace.source_uid,
-            replace.target_uid,
-            &source_ids_or_types,
-            replace.replacement_id_or_type,
-            inputs,
-        )
-    }
-
-    fn plan_replace_ids(
-        &self,
-        hp: &HpManager,
-        source_uid: i64,
-        target_uid: i64,
-        source_ids_or_types: &[i32],
-        replacement_id_or_type: i32,
-        inputs: GrantInputs,
-    ) -> Result<ReplacePlan, BuffCommandError> {
+        let source_uid = replace.source_uid;
+        let target_uid = replace.target_uid;
+        let replacement_id_or_type = replace.replacement_id_or_type;
+        let child_uid_reservations = replace.child_uid_reservations;
         if target_uid == 0
             || source_ids_or_types.is_empty()
             || source_ids_or_types.iter().any(|source| *source <= 0)
@@ -1412,10 +1397,10 @@ impl BuffManager {
         let policy = BuffPolicy::configured(self.catalog().game_data(), replacement_id_or_type)
             .map_err(BuffCommandError::InvalidPolicy)?;
         let excluded_uids = self.exclusion_uids(target_uid, &policy);
-        let child_uid_reservations = excluded_uids
-            .len()
-            .try_into()
-            .map_err(|_| BuffCommandError::InvalidReplace)?;
+        let child_uid_reservations = u32::try_from(excluded_uids.len())
+            .ok()
+            .and_then(|excluded| excluded.checked_add(child_uid_reservations))
+            .ok_or(BuffCommandError::InvalidReplace)?;
         let mut replacement_state = self.clone();
         for buff_uid in &removed_uids {
             replacement_state.delete(target_uid, *buff_uid);
