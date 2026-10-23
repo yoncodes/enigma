@@ -647,18 +647,21 @@ fn attack_consumption_waits_for_hit_reactions() {
     assert!(reactions.after_publish.is_empty());
     assert_eq!(
         reactions
-            .after_hit
+            .before_after_hit_observers
             .iter()
             .filter(|queued| !matches!(queued.op, RuleOp::SubscriberGroupComplete))
             .count(),
         1
     );
     assert!(matches!(
-        reactions.after_hit[0].op,
+        reactions.before_after_hit_observers[0].op,
         RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(_)))
     ));
     assert!(matches!(
-        reactions.after_hit.last().map(|queued| &queued.op),
+        reactions
+            .before_after_hit_observers
+            .last()
+            .map(|queued| &queued.op),
         Some(RuleOp::SubscriberGroupComplete)
     ));
 }

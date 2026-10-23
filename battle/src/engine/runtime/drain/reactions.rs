@@ -381,12 +381,9 @@ fn dispatch_event_batch_inner(
                     *source_uid,
                     current_skill.is_some_and(|(_, skill_id, _)| catalog.is_big_skill(skill_id)),
                 ) {
-                    reactions.after_hit.push(queued_buff_act_feature_op(
-                        feature,
-                        op,
-                        event,
-                        parent_path,
-                    )?);
+                    reactions
+                        .before_after_hit_observers
+                        .push(queued_buff_act_feature_op(feature, op, event, parent_path)?);
                 }
             }
             for target_uid in attacked_targets

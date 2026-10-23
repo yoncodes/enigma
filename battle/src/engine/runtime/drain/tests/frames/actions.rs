@@ -445,6 +445,104 @@ fn active_skill_commits_immediate_ops_and_keeps_cast_state() {
 }
 
 #[test]
+fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                attr: Some(HeroAttribute {
+                    hp: Some(100),
+                    attack: Some(100),
+                    ..Default::default()
+                }),
+                buffs: vec![BuffInfo {
+                    uid: Some(30),
+                    buff_id: Some(430111),
+                    from_uid: Some(10),
+                    count: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::from_spec(
+                BehaviorSpec::new(30015, "OriginDamageCanCrit"),
+                vec![0, AttrId::CurrentHp as i32, 1_000],
+                Vec::new(),
+            ),
+            TargetRequest::self_only(),
+        )],
+    });
+    catalog.insert_damage_rate(100, 1_000);
+    catalog.insert_logic_target(100, 1);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+
+    let result = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(invocation)],
+    )
+    .unwrap();
+
+    assert!(managers.buff.snapshot(10, 30).is_none());
+    let removal = result
+        .outcomes
+        .iter()
+        .position(|outcome| {
+            matches!(
+                outcome,
+                RuleOutcome::Buff(changes)
+                    if changes.change.removed.iter().any(|removed| removed.buff.uid == Some(30))
+            )
+        })
+        .unwrap();
+    let after_hit = result
+        .outcomes
+        .iter()
+        .position(|outcome| {
+            matches!(
+                outcome,
+                RuleOutcome::SkillLifecycle(
+                    crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action)
+                ) if action.phase == crate::engine::skill::action::SkillPhase::AfterHit
+            )
+        })
+        .unwrap();
+    assert!(removal < after_hit);
+}
+
+#[test]
 fn after_hit_settles_the_acting_owners_take_stage_buff() {
     crate::test_support::init_config();
     let fight = Fight {
