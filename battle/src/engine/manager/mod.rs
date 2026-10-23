@@ -1081,11 +1081,26 @@ impl BattleManagers {
         self.gauge.execute_command(command)
     }
 
-    pub(crate) fn execute_raw_gauge_batch(
+    pub(crate) fn start_raw_gauge_batch(
         &mut self,
+        id: gauge::GaugeBatchId,
         commands: Vec<gauge::GaugeCommand>,
-    ) -> Result<Vec<gauge::GaugeChange>, gauge::GaugeCommandError> {
-        self.gauge.execute_raw_batch(commands)
+    ) -> Result<gauge::GaugeChange, gauge::GaugeCommandError> {
+        self.gauge.start_raw_batch(id, commands)
+    }
+
+    pub(crate) fn continue_raw_gauge_batch(
+        &mut self,
+        id: gauge::GaugeBatchId,
+    ) -> Result<gauge::GaugeChange, gauge::GaugeCommandError> {
+        self.gauge.continue_raw_batch(id)
+    }
+
+    pub(crate) fn commit_raw_gauge_batch(
+        &mut self,
+        id: gauge::GaugeBatchId,
+    ) -> Result<gauge::GaugeBatchChanges, gauge::GaugeCommandError> {
+        self.gauge.commit_raw_batch(id)
     }
 
     pub(crate) fn execute_emitter(

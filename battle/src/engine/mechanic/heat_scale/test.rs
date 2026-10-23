@@ -90,11 +90,13 @@ fn intermezzo_restores_and_clears_every_stored_value() {
         [
             RuleOp::Command(BattleCommand::Buff(BuffCommand::SetInternalState(first))),
             RuleOp::BuffActInfoMarker(first_marker),
+            RuleOp::Command(BattleCommand::StartRawGaugeBatch(batch, commands)),
             RuleOp::Command(BattleCommand::Buff(BuffCommand::SetInternalState(second))),
             RuleOp::BuffActInfoMarker(second_marker),
+            RuleOp::Command(BattleCommand::ContinueRawGaugeBatch(continued)),
             RuleOp::Command(BattleCommand::Buff(BuffCommand::SetInternalState(third))),
             RuleOp::BuffActInfoMarker(third_marker),
-            RuleOp::Command(BattleCommand::RawGaugeBatch(commands))
+            RuleOp::Command(BattleCommand::CommitRawGaugeBatch(committed))
         ] if first.buff_uid == 21
             && first.act_info.as_ref().is_some_and(|info| info[0].param == [0])
             && first_marker.buff_uid == 21
@@ -107,6 +109,8 @@ fn intermezzo_restores_and_clears_every_stored_value() {
             && third.act_info.as_ref().is_some_and(|info| info[0].param == [0])
             && third_marker.buff_uid == 23
             && third_marker.params == [0]
+            && batch == continued
+            && batch == committed
             && matches!(commands.as_slice(), [
                 GaugeCommand {
                     operation: GaugeOperation::AccumulateRawValue { amount: 945, .. },
@@ -128,8 +132,14 @@ fn intermezzo_restores_and_clears_every_stored_value() {
             RuleOp::Command(BattleCommand::Gauge(command)) => {
                 managers.execute_gauge(command).unwrap();
             }
-            RuleOp::Command(BattleCommand::RawGaugeBatch(commands)) => {
-                managers.execute_raw_gauge_batch(commands).unwrap();
+            RuleOp::Command(BattleCommand::StartRawGaugeBatch(id, commands)) => {
+                managers.start_raw_gauge_batch(id, commands).unwrap();
+            }
+            RuleOp::Command(BattleCommand::ContinueRawGaugeBatch(id)) => {
+                managers.continue_raw_gauge_batch(id).unwrap();
+            }
+            RuleOp::Command(BattleCommand::CommitRawGaugeBatch(id)) => {
+                managers.commit_raw_gauge_batch(id).unwrap();
             }
             _ => {}
         }
@@ -231,15 +241,19 @@ fn intermezzo_preserves_sub_stack_raw_progress() {
     )
     .unwrap();
 
-    assert!(ops.iter().any(|op| matches!(
-        op,
-        RuleOp::Command(BattleCommand::RawGaugeBatch(commands))
-            if matches!(commands.as_slice(), [GaugeCommand {
+    assert!(matches!(
+        ops.as_slice(),
+        [
+            RuleOp::Command(BattleCommand::Buff(_)),
+            RuleOp::BuffActInfoMarker(_),
+            RuleOp::Command(BattleCommand::StartRawGaugeBatch(started, commands)),
+            RuleOp::Command(BattleCommand::CommitRawGaugeBatch(committed)),
+        ] if started == committed && matches!(commands.as_slice(), [GaugeCommand {
                 operation: GaugeOperation::AccumulateRawValue { amount: 973, .. },
                 raw_delta: Some(973),
                 ..
             }])
-    )));
+    ));
     for op in ops {
         match op {
             RuleOp::Command(BattleCommand::Buff(command)) => {
@@ -248,8 +262,14 @@ fn intermezzo_preserves_sub_stack_raw_progress() {
             RuleOp::Command(BattleCommand::Gauge(command)) => {
                 managers.execute_gauge(command).unwrap();
             }
-            RuleOp::Command(BattleCommand::RawGaugeBatch(commands)) => {
-                managers.execute_raw_gauge_batch(commands).unwrap();
+            RuleOp::Command(BattleCommand::StartRawGaugeBatch(id, commands)) => {
+                managers.start_raw_gauge_batch(id, commands).unwrap();
+            }
+            RuleOp::Command(BattleCommand::ContinueRawGaugeBatch(id)) => {
+                managers.continue_raw_gauge_batch(id).unwrap();
+            }
+            RuleOp::Command(BattleCommand::CommitRawGaugeBatch(id)) => {
+                managers.commit_raw_gauge_batch(id).unwrap();
             }
             _ => {}
         }

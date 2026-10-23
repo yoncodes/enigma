@@ -5,7 +5,7 @@ use crate::engine::{
         BattleManagers,
         buff::{ActiveBuffFeature, BuffActInfoMarkerResult, BuffCommand, BuffSetState},
         card::CardCommand,
-        gauge::{GaugeCommand, GaugeKind, GaugeOperation},
+        gauge::{GaugeBatchId, GaugeCommand, GaugeKind, GaugeOperation},
     },
     skill::{
         behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
@@ -61,8 +61,40 @@ impl BehaviorHandler for Handler {
                 return Some(Vec::new());
             }
             let gauge_key = super::lingering_glow::key(context.source_team);
+            let gauge_origin = super::super::skill::behavior::command_origin(behavior)?;
+            let batch_id = contributions.iter().find(|(_, _, _, raw, _)| *raw > 0).map(
+                |(feature, _, _, _, _)| {
+                    GaugeBatchId::new(
+                        gauge_origin,
+                        gauge_key,
+                        context.source_uid,
+                        feature.buff_uid,
+                    )
+                },
+            );
+            let mut gauge_commands = Some(
+                contributions
+                    .iter()
+                    .filter(|(_, _, _, raw, _)| *raw > 0)
+                    .map(|(_, act_id, _, raw, _)| {
+                        GaugeCommand::new(
+                            gauge_origin,
+                            gauge_key,
+                            GaugeOperation::AccumulateRawValue {
+                                amount: *raw,
+                                stream: *act_id,
+                            },
+                        )
+                        .attributed_to(
+                            context.source_uid,
+                            GaugeKind::LingeringGlow.shared_pool_config_effect(),
+                        )
+                        .with_raw_delta(*raw)
+                    })
+                    .collect::<Vec<_>>(),
+            );
             let mut ops = Vec::new();
-            let mut gauge_commands = Vec::new();
+            let mut batch_started = false;
             for (feature, act_id, mut buff, raw, origin) in contributions {
                 let info = buff
                     .act_info
@@ -91,25 +123,16 @@ impl BehaviorHandler for Handler {
                 if raw == 0 {
                     continue;
                 }
-                gauge_commands.push(
-                    GaugeCommand::new(
-                        super::super::skill::behavior::command_origin(behavior)?,
-                        gauge_key,
-                        GaugeOperation::AccumulateRawValue {
-                            amount: raw,
-                            stream: act_id,
-                        },
-                    )
-                    .attributed_to(
-                        context.source_uid,
-                        GaugeKind::LingeringGlow.shared_pool_config_effect(),
-                    )
-                    .with_raw_delta(raw),
-                );
+                ops.push(RuleOp::Command(if batch_started {
+                    BattleCommand::ContinueRawGaugeBatch(batch_id?)
+                } else {
+                    batch_started = true;
+                    BattleCommand::StartRawGaugeBatch(batch_id?, gauge_commands.take()?)
+                }));
             }
-            if !gauge_commands.is_empty() {
-                ops.push(RuleOp::Command(BattleCommand::RawGaugeBatch(
-                    gauge_commands,
+            if batch_started {
+                ops.push(RuleOp::Command(BattleCommand::CommitRawGaugeBatch(
+                    batch_id?,
                 )));
             }
             return Some(ops);

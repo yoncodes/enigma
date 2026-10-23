@@ -12,7 +12,7 @@ use crate::engine::{
         ex_point::{ExPointChanges, ExPointCommandError},
         field::{FieldChange, FieldCommandError},
         fight_progress::{FightProgressChange, FightProgressError, FightProgressValueChange},
-        gauge::{GaugeChange, GaugeCommandError},
+        gauge::{GaugeBatchChanges, GaugeChange, GaugeCommandError},
         hp::HpChanges,
         shield::{ShieldChanges, ShieldCommandError},
         summon::{SummonChanges, SummonCommandError},
@@ -66,7 +66,8 @@ pub(crate) enum RuleOutcome {
     ExPoint(ExPointChanges),
     Eureka(EurekaChanges),
     Gauge(GaugeChange),
-    RawGaugeBatch(Vec<GaugeChange>),
+    RawGaugeContribution,
+    RawGaugeBatch(GaugeBatchChanges),
     BloodtitheSpend(Box<crate::engine::mechanic::bloodtithe::spend::SpendChanges>),
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaChange),
     Emitter(EmitterChange),
@@ -317,9 +318,8 @@ impl RuleOutcome {
             Self::ExPoint(change) => vec![BattleChange::ExPoint(*change)],
             Self::Eureka(change) => vec![BattleChange::Eureka(change.clone())],
             Self::Gauge(change) => vec![BattleChange::Gauge(*change)],
-            Self::RawGaugeBatch(changes) => {
-                changes.iter().copied().map(BattleChange::Gauge).collect()
-            }
+            Self::RawGaugeContribution => Vec::new(),
+            Self::RawGaugeBatch(changes) => vec![BattleChange::Gauge(changes.combined)],
             Self::BloodtitheSpend(_) => Vec::new(),
             Self::NuoDiKa(change) => vec![BattleChange::NuoDiKa(*change)],
             Self::Emitter(change) => vec![BattleChange::Emitter(*change)],
@@ -714,13 +714,23 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::Gauge(change))
         }
-        RuleOp::Command(BattleCommand::RawGaugeBatch(commands)) => {
-            let changes = managers.execute_raw_gauge_batch(commands)?;
-            for event in changes.iter().flat_map(|change| change.events()) {
+        RuleOp::Command(BattleCommand::StartRawGaugeBatch(id, commands)) => {
+            let change = managers.start_raw_gauge_batch(id, commands)?;
+            for event in change.events() {
                 events.push(event);
             }
-            Ok(RuleOutcome::RawGaugeBatch(changes))
+            Ok(RuleOutcome::RawGaugeContribution)
         }
+        RuleOp::Command(BattleCommand::ContinueRawGaugeBatch(id)) => {
+            let change = managers.continue_raw_gauge_batch(id)?;
+            for event in change.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::RawGaugeContribution)
+        }
+        RuleOp::Command(BattleCommand::CommitRawGaugeBatch(id)) => Ok(RuleOutcome::RawGaugeBatch(
+            managers.commit_raw_gauge_batch(id)?,
+        )),
         RuleOp::Command(BattleCommand::BloodtitheSpend(command)) => {
             let Some(changes) =
                 crate::engine::mechanic::bloodtithe::spend::execute(managers, command)?

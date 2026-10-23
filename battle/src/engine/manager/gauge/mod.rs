@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use crate::engine::{
     event::payload::{BattleEvent, GaugeChangeEvent},
@@ -160,6 +160,41 @@ pub struct GaugeChange {
     pub enabled_after: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GaugeBatchChanges {
+    pub combined: GaugeChange,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GaugeBatchId {
+    pub origin: CommandOrigin,
+    pub key: GaugeKey,
+    pub source_uid: i64,
+    pub discriminator: i64,
+}
+
+impl GaugeBatchId {
+    pub const fn new(
+        origin: CommandOrigin,
+        key: GaugeKey,
+        source_uid: i64,
+        discriminator: i64,
+    ) -> Self {
+        Self {
+            origin,
+            key,
+            source_uid,
+            discriminator,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PendingRawGaugeBatch {
+    remaining: VecDeque<(GaugeCommand, i32)>,
+    contributions: Vec<GaugeChange>,
+}
+
 impl GaugeChange {
     pub fn events(self) -> Vec<BattleEvent> {
         let changed = self.enabled_before != self.enabled_after
@@ -209,6 +244,7 @@ pub struct GaugeManager {
     positive_gains: HashMap<GaugeKey, i32>,
     positive_raw_gains: HashMap<GaugeKey, i32>,
     consumed_raw_progress: HashMap<(GaugeKey, i64, i32), i32>,
+    pending_raw_batches: HashMap<GaugeBatchId, PendingRawGaugeBatch>,
     positive_gain_round_start: HashMap<GaugeKey, i32>,
     positive_threshold_crossings_paid_this_round: HashMap<(GaugeKey, i64, i32), i32>,
 }
@@ -435,6 +471,13 @@ impl GaugeManager {
         &mut self,
         command: GaugeCommand,
     ) -> Result<GaugeChange, GaugeCommandError> {
+        if self
+            .pending_raw_batches
+            .keys()
+            .any(|batch| batch.key == command.key)
+        {
+            return Err(GaugeCommandError::InvalidCommand);
+        }
         match command.operation {
             GaugeOperation::Enable { max } => {
                 if max.is_some_and(|value| value < 0) {
@@ -696,18 +739,39 @@ impl GaugeManager {
         }
     }
 
-    pub(crate) fn execute_raw_batch(
+    pub(crate) fn start_raw_batch(
         &mut self,
+        id: GaugeBatchId,
         commands: Vec<GaugeCommand>,
-    ) -> Result<Vec<GaugeChange>, GaugeCommandError> {
-        let Some(key) = commands.first().map(|command| command.key) else {
+    ) -> Result<GaugeChange, GaugeCommandError> {
+        if self.pending_raw_batches.contains_key(&id)
+            || self
+                .pending_raw_batches
+                .keys()
+                .any(|pending| pending.key == id.key)
+        {
+            return Err(GaugeCommandError::InvalidCommand);
+        }
+        let Some(first_command) = commands.first().copied() else {
             return Err(GaugeCommandError::InvalidCommand);
         };
+        if id.origin != first_command.origin
+            || id.key != first_command.key
+            || id.source_uid != first_command.source_uid
+            || id.discriminator == 0
+        {
+            return Err(GaugeCommandError::InvalidCommand);
+        }
         let raw_amounts = commands
             .iter()
             .map(|command| match command.operation {
                 GaugeOperation::AccumulateRawValue { amount, .. }
-                    if command.key == key && amount > 0 =>
+                    if command.key == first_command.key
+                        && command.origin == first_command.origin
+                        && command.source_uid == first_command.source_uid
+                        && command.source_skill_id == first_command.source_skill_id
+                        && command.config_effect == first_command.config_effect
+                        && amount > 0 =>
                 {
                     Ok(amount)
                 }
@@ -715,16 +779,87 @@ impl GaugeManager {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let deltas = self
-            .plan_raw_contributions(key, &raw_amounts)
+            .plan_raw_contributions(first_command.key, &raw_amounts)
             .ok_or(GaugeCommandError::InvalidCommand)?;
-        commands
-            .into_iter()
-            .zip(raw_amounts)
-            .zip(deltas)
-            .map(|((command, raw_amount), value_delta)| {
-                self.change_value(command.with_raw_delta(raw_amount), value_delta, true)
-            })
-            .collect()
+        self.pending_raw_batches.insert(
+            id,
+            PendingRawGaugeBatch {
+                remaining: commands
+                    .into_iter()
+                    .zip(raw_amounts)
+                    .zip(deltas)
+                    .map(|((command, raw_amount), value_delta)| {
+                        (command.with_raw_delta(raw_amount), value_delta)
+                    })
+                    .collect(),
+                contributions: Vec::new(),
+            },
+        );
+        self.continue_raw_batch(id)
+    }
+
+    pub(crate) fn continue_raw_batch(
+        &mut self,
+        id: GaugeBatchId,
+    ) -> Result<GaugeChange, GaugeCommandError> {
+        let (command, value_delta) = self
+            .pending_raw_batches
+            .get(&id)
+            .and_then(|batch| batch.remaining.front().copied())
+            .ok_or(GaugeCommandError::InvalidCommand)?;
+        let change = self.change_value(command, value_delta, true)?;
+        let batch = self
+            .pending_raw_batches
+            .get_mut(&id)
+            .ok_or(GaugeCommandError::InvalidCommand)?;
+        batch.remaining.pop_front();
+        batch.contributions.push(change);
+        Ok(change)
+    }
+
+    pub(crate) fn commit_raw_batch(
+        &mut self,
+        id: GaugeBatchId,
+    ) -> Result<GaugeBatchChanges, GaugeCommandError> {
+        if self
+            .pending_raw_batches
+            .get(&id)
+            .is_none_or(|batch| !batch.remaining.is_empty())
+        {
+            return Err(GaugeCommandError::InvalidCommand);
+        }
+        let batch = self
+            .pending_raw_batches
+            .remove(&id)
+            .ok_or(GaugeCommandError::InvalidCommand)?;
+        let first = batch
+            .contributions
+            .first()
+            .copied()
+            .ok_or(GaugeCommandError::InvalidCommand)?;
+        let last = batch.contributions.last().copied().unwrap_or(first);
+        let applied_delta = batch.contributions.iter().fold(0_i32, |total, change| {
+            total.saturating_add(change.applied_delta)
+        });
+        let combined = GaugeChange {
+            before: first.before,
+            requested_delta: batch.contributions.iter().fold(0_i32, |total, change| {
+                total.saturating_add(change.requested_delta)
+            }),
+            applied_delta,
+            after: first.before.saturating_add(applied_delta),
+            overflow: batch
+                .contributions
+                .iter()
+                .fold(0_i32, |total, change| total.saturating_add(change.overflow)),
+            progress_raw_delta: batch.contributions.iter().fold(0_i32, |total, change| {
+                total.saturating_add(change.progress_raw_delta)
+            }),
+            after_max: last.after_max,
+            enabled_after: last.enabled_after,
+            ..first
+        };
+        Ok(GaugeBatchChanges { combined })
     }
 
     fn change_value(

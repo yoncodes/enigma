@@ -62,7 +62,7 @@ pub struct RuleDescriptor {
     pub key: DefinitionKey,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CommandOrigin {
     pub domain: RuleDomain,
     pub key: DefinitionKey,

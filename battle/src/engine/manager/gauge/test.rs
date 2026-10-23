@@ -22,6 +22,9 @@ const ORIGIN: CommandOrigin = CommandOrigin {
     domain: RuleDomain::BuffAct,
     key: DefinitionKey::new(953, "BloodPoolTag"),
 };
+const BATCH: GaugeBatchId = GaugeBatchId::new(ORIGIN, KEY, 0, 1);
+const OTHER_BATCH: GaugeBatchId = GaugeBatchId::new(ORIGIN, KEY, 0, 2);
+const MISMATCHED_BATCH: GaugeBatchId = GaugeBatchId::new(ORIGIN, KEY, 1, 1);
 
 #[test]
 fn enable_change_clamp_and_disable_share_one_owner() {
@@ -343,7 +346,7 @@ fn raw_contribution_plan_assigns_fractional_remainder_in_input_order() {
 }
 
 #[test]
-fn raw_batch_commits_fractional_remainder_in_input_order() {
+fn raw_batch_owns_one_change_and_each_contribution_event() {
     let mut manager = GaugeManager::default();
     manager
         .execute_command(GaugeCommand::new(
@@ -363,34 +366,53 @@ fn raw_batch_commits_fractional_remainder_in_input_order() {
         ))
         .unwrap();
 
-    let changes = manager
-        .execute_raw_batch(vec![
-            GaugeCommand::new(
-                ORIGIN,
-                KEY,
-                GaugeOperation::AccumulateRawValue {
-                    amount: 1_666,
-                    stream: 771,
-                },
-            ),
-            GaugeCommand::new(
-                ORIGIN,
-                KEY,
-                GaugeOperation::AccumulateRawValue {
-                    amount: 1_666,
-                    stream: 771,
-                },
-            ),
-        ])
-        .unwrap();
-
+    let commands = vec![
+        GaugeCommand::new(
+            ORIGIN,
+            KEY,
+            GaugeOperation::AccumulateRawValue {
+                amount: 1_666,
+                stream: 771,
+            },
+        ),
+        GaugeCommand::new(
+            ORIGIN,
+            KEY,
+            GaugeOperation::AccumulateRawValue {
+                amount: 1_666,
+                stream: 771,
+            },
+        ),
+    ];
     assert_eq!(
-        changes
-            .iter()
-            .map(|change| change.applied_delta)
-            .collect::<Vec<_>>(),
-        vec![2, 1]
+        manager.start_raw_batch(MISMATCHED_BATCH, commands.clone()),
+        Err(GaugeCommandError::InvalidCommand)
     );
+    let first = manager.start_raw_batch(BATCH, commands).unwrap();
+    assert_eq!(
+        manager.continue_raw_batch(OTHER_BATCH),
+        Err(GaugeCommandError::InvalidCommand)
+    );
+    assert_eq!(
+        manager.commit_raw_batch(OTHER_BATCH),
+        Err(GaugeCommandError::InvalidCommand)
+    );
+    assert_eq!(
+        manager.execute_command(GaugeCommand::new(
+            ORIGIN,
+            KEY,
+            GaugeOperation::ChangeValue { delta: 5 },
+        )),
+        Err(GaugeCommandError::InvalidCommand)
+    );
+    let second = manager.continue_raw_batch(BATCH).unwrap();
+    let changes = manager.commit_raw_batch(BATCH).unwrap();
+
+    assert_eq!([first.applied_delta, second.applied_delta], [2, 1]);
+    assert_eq!(changes.combined.before, 34);
+    assert_eq!(changes.combined.applied_delta, 3);
+    assert_eq!(changes.combined.after, 37);
+    assert_eq!(first.events().len() + second.events().len(), 2);
     assert_eq!(manager.raw_value(KEY), Some(37_395));
 }
 
