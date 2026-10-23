@@ -671,10 +671,7 @@ impl BuffManager {
             active.effective
                 && active.owner_uid == uid
                 && active.definition.as_ref().is_some_and(|definition| {
-                    definition.is_visible()
-                        && status_ids
-                            .iter()
-                            .any(|status_id| definition.matches_type_category(*status_id))
+                    definition.is_visible() && status_ids.contains(&definition.status_id)
                 })
         }) {
             if !type_ids.contains(&active.type_id) {

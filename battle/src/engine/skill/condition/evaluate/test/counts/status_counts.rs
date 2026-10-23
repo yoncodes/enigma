@@ -207,6 +207,46 @@ fn target_status_type_count_repeats_once_per_distinct_type() {
 }
 
 #[test]
+fn visible_status_ceiling_excludes_indirect_type_membership() {
+    init_config();
+    let buffs = [
+        31450171, 31450141, 31450143, 30250001, 31440116, 31450111, 31450132,
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, buff_id)| BuffInfo {
+        buff_id: Some(buff_id),
+        uid: Some(index as i64 + 1),
+        from_uid: Some(10),
+        ..Default::default()
+    })
+    .collect();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+
+    assert_eq!(managers.buff.visible_buff_status_type_count(10, &[1, 5]), 5);
+    assert!(conditions_match(
+        &[exact_condition(43203, "HasTypeBuffLessThan", &["6", "1,5"],)],
+        10,
+        &[10],
+        Some(&managers),
+        &TargetPool::from_fight(&fight),
+        TargetContext::default(),
+    ));
+}
+
+#[test]
 fn bullet_count_repeats_per_distinct_effective_type() {
     init_config();
     let fight = Fight {
