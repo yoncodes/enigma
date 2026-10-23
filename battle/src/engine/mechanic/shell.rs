@@ -326,7 +326,10 @@ fn accumulate_and_use_skill(
                 }
                 .into();
             invocation.target = crate::engine::skill::action::SkillTarget::Explicit(target_uid);
-            // Unmendable Cracks follows the triggering action's ally-action reactions.
+            invocation.extra_skill_kind =
+                Some(crate::engine::skill::condition::extra::ExtraSkillKind::Attached);
+            invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+            // Unmendable Cracks is an attached ally action, not a separate extra action.
             invocation.start = crate::engine::skill::action::SkillStart::AfterCurrentActionReaction;
             invocation.release_progress = Some(rule);
             invocation

@@ -196,18 +196,31 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
             entitys: vec![
                 FightEntityInfo {
                     passive_skill: vec![31090144],
-                    buffs: vec![BuffInfo {
-                        uid: Some(20),
-                        buff_id: Some(31090111),
-                        from_uid: Some(10),
-                        layer: Some(15),
-                        ..Default::default()
-                    }],
+                    buffs: vec![
+                        BuffInfo {
+                            uid: Some(20),
+                            buff_id: Some(31090111),
+                            from_uid: Some(10),
+                            layer: Some(15),
+                            ..Default::default()
+                        },
+                        BuffInfo {
+                            uid: Some(21),
+                            buff_id: Some(31050146),
+                            from_uid: Some(11),
+                            ..Default::default()
+                        },
+                    ],
                     ..entity(10)
                 },
                 // Flutterpage gains Gust after any ally takes an action.
                 FightEntityInfo {
                     passive_skill: vec![31050141],
+                    power_infos: vec![sonettobuf::PowerInfo {
+                        power_id: Some(crate::engine::manager::eureka::EUREKA_RESOURCE_ID),
+                        num: Some(2),
+                        max: Some(5),
+                    }],
                     ..entity(11)
                 },
             ],
@@ -243,6 +256,7 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
     .into();
     invocation.target = SkillTarget::Explicit(11);
     invocation.mode = SkillExecutionMode::Active;
+    invocation.card_index = 1;
 
     let result = run_action(
         &mut managers,
@@ -262,6 +276,7 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
         .expect("the attack projects a step");
     assert_eq!(attack.to_id, Some(11));
     assert!(managers.hp.current(-1) < 100_000);
+    assert_eq!(managers.eureka.get(11, 1).current, 2);
     assert!(managers.buff.buff_id_amount(-1, 31090112) > 0);
     assert_eq!(managers.buff.buff_id_amount(11, 31090112), 0);
     let children = attack
@@ -277,12 +292,19 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
     assert!(ally_reaction < children.len() - 1);
     assert_eq!(last_child.act_id, Some(31090144));
     assert_eq!(last_child.to_id, Some(11));
+    let attached = last_child
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .find(|step| step.act_id == Some(31090114) && step.to_id == Some(-1))
+        .expect("the shell cast stays attached to its triggering action");
     assert!(
-        last_child
+        attached
             .act_effect
             .iter()
             .filter_map(|effect| effect.fight_step.as_ref())
-            .any(|step| step.act_id == Some(31090114) && step.to_id == Some(-1))
+            .any(|step| step.act_id == Some(31050141)),
+        "the attached cast still publishes its own ally action"
     );
 }
 
