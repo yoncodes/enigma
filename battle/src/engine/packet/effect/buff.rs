@@ -261,10 +261,6 @@ impl EffectPacket {
     }
 
     pub fn buff_delete(change: &BuffRemoveResult) -> ActEffect {
-        let mut buff = change.buff.clone();
-        if !change.depleted {
-            buff.duration = Some(0);
-        }
         ActEffect {
             target_id: Some(change.target_uid),
             effect_type: Some(if change.effective {
@@ -278,7 +274,7 @@ impl EffectPacket {
             reserve_id: Some(0),
             team_type: Some(0),
             effect_num1: Some(0),
-            buff: Some(buff),
+            buff: Some(change.buff.clone()),
             ..Default::default()
         }
     }

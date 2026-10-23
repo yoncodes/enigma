@@ -420,7 +420,7 @@ fn ordinary_ex_point_spend_is_a_change_not_a_buff_act_delete() {
 }
 
 #[test]
-fn buff_update_and_delete_use_snapshot_without_scalar_buff_id() {
+fn buff_update_and_delete_preserve_manager_snapshot_without_scalar_buff_id() {
     use crate::engine::manager::buff::{BuffRemoveResult, BuffUpdateResult};
     use sonettobuf::BuffInfo;
 
@@ -431,6 +431,7 @@ fn buff_update_and_delete_use_snapshot_without_scalar_buff_id() {
         ..Default::default()
     };
     let after = BuffInfo {
+        duration: Some(1),
         layer: Some(3),
         ..before.clone()
     };
@@ -457,7 +458,7 @@ fn buff_update_and_delete_use_snapshot_without_scalar_buff_id() {
     assert_eq!(update[0].buff.as_ref().unwrap().buff_id, Some(101));
     assert_eq!(delete[0].effect_type, Some(EffectType::Buffdel as i32));
     assert_eq!(delete[0].effect_num1, Some(0));
-    assert_eq!(delete[0].buff.as_ref().unwrap().duration, Some(0));
+    assert_eq!(delete[0].buff.as_ref().unwrap().duration, Some(1));
 
     let depleted = EffectPacket::buff_delete(&BuffRemoveResult {
         target_uid: 10,
