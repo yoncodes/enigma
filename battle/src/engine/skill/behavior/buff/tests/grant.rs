@@ -1,6 +1,121 @@
 use super::*;
 
 #[test]
+fn synchronization_buff_restarts_its_configured_action_cycle() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ex_point_type: Some(2),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: crate::engine::skill::rule::DefinitionKey::new(100000, "EzioProps"),
+    };
+    managers
+        .execute_ex_point(
+            crate::engine::manager::ex_point::ExPointCommand::ConfigureSynchronization(
+                crate::engine::manager::ex_point::ExPointConfigureSynchronization {
+                    origin,
+                    target_uid: 10,
+                    definition: crate::engine::manager::ex_point::SynchronizationDefinition::new(
+                        [312301323, 312301333, 312301343],
+                        4,
+                        100,
+                    )
+                    .unwrap(),
+                },
+            ),
+        )
+        .unwrap();
+    managers
+        .execute_ex_point(crate::engine::manager::ex_point::ExPointCommand::Set(
+            crate::engine::manager::ex_point::ExPointSet {
+                origin,
+                source_uid: 10,
+                target_uid: 10,
+                value: 100,
+                config_effect: 0,
+                effect_type: 0,
+            },
+        ))
+        .unwrap();
+    managers
+        .execute_ex_point(
+            crate::engine::manager::ex_point::ExPointCommand::RecordSynchronizationAction(
+                crate::engine::manager::ex_point::ExPointRecordSynchronizationAction {
+                    origin,
+                    target_uid: 10,
+                    action_target_uid: -1,
+                    damage: 123,
+                },
+            ),
+        )
+        .unwrap();
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let ops = super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 312301403,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &ParsedBehavior::new(1, "AddBuff", vec![229100]),
+    )
+    .unwrap();
+
+    let [
+        RuleOp::Command(BattleCommand::ExPoint(restart)),
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantStateful(grant))),
+    ] = ops.as_slice()
+    else {
+        panic!("expected one cycle restart and one stateful grant");
+    };
+    assert_eq!(grant.params.as_deref(), Some("10000#4,0,0"));
+    managers.execute_ex_point(*restart).unwrap();
+    let added = managers
+        .execute_buff(BuffCommand::GrantStateful(grant.clone()))
+        .unwrap()
+        .change
+        .added
+        .unwrap();
+    assert_eq!(
+        managers.ex_point.synchronization_progress(10),
+        Some(crate::engine::manager::ex_point::SynchronizationProgress::default())
+    );
+    assert_eq!(managers.ex_point.get(10), 100);
+    assert_eq!(added.buff.act_common_params.as_deref(), Some("10000#4,0,0"));
+}
+
+#[test]
 fn source_relative_buff_keeps_emit_time_snapshot_across_queued_targets() {
     crate::test_support::init_config();
     let fight = Fight {

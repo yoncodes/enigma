@@ -453,15 +453,17 @@ fn defender_action_phase_fight_progress_gate_keeps_its_exact_route_and_payload_o
 }
 
 #[test]
-fn synchronization_reaction_owns_its_independent_self_targeted_frame() {
+fn synchronization_runs_in_its_captured_round_start_stage() {
     let definition = find_key(1008101, "Synchronization").unwrap();
 
-    assert_eq!(definition.dependencies, &[EventKind::ExPointChanged]);
     assert_eq!(
-        definition.reaction_frame_scope,
-        ReactionFrameScope::IndependentOutsideAction
+        definition.role,
+        ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 101,
+        }
     );
-    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert!(definition.dependencies.is_empty());
 }
 
 #[test]

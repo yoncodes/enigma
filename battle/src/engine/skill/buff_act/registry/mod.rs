@@ -1064,7 +1064,7 @@ buff_act_definitions! {
     (10001, "AdrenalineAddCard") => AdrenalineAddCard,
         runtime: |context| super::adrenaline_add_card::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::adrenaline_add_card::supports, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10001, "AdrenalineAddCard"), &[EffectType::None as i32]));
-    (10000, "EzioBigSkill") => EzioBigSkill, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10000, "EzioBigSkill"), &[]));
+    (10000, "EzioBigSkill") => EzioBigSkill, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10000, "EzioBigSkill"), &[EffectType::None as i32]));
     (10002, "AttrByHeroId") => AttrByHeroId, effect_time_subscription: false,
         supports: |args| matches!(args, [raw_attr, _, model_ids @ ..]
             if crate::engine::entity::attr::AttrId::from_raw(*raw_attr).is_some()

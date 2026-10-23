@@ -3,8 +3,8 @@ use crate::engine::{
     manager::{
         buff::{BuffCommand, BuffRemove, BuffRemoveSelector, BuffSetState},
         ex_point::{
-            ExPointCommand, ExPointConfigureSynchronization, ExPointRecordSynchronizationAction,
-            SynchronizationDefinition,
+            ExPointCommand, ExPointCompleteSynchronization, ExPointConfigureSynchronization,
+            ExPointRecordSynchronizationAction, SynchronizationDefinition,
         },
     },
     skill::{
@@ -220,6 +220,12 @@ fn damage_rule_ops(
                 selector: BuffRemoveSelector::Uid(buff_uid),
             },
         ))));
+        ops.push(RuleOp::Command(BattleCommand::ExPoint(
+            ExPointCommand::CompleteSynchronization(ExPointCompleteSynchronization {
+                origin,
+                target_uid: context.source_uid,
+            }),
+        )));
     }
     Some(ops)
 }

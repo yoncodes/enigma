@@ -233,56 +233,6 @@ impl BuffManager {
         entity.buffs = self.active_for(uid).cloned().collect();
     }
 
-    pub(crate) fn project_synchronization(
-        &self,
-        entity: &mut FightEntityInfo,
-        progress: crate::engine::manager::ex_point::SynchronizationProgress,
-    ) {
-        let Some(owner_uid) = entity.uid else { return };
-        let Some((buff_uid, act_id, _)) = self.buff_act_carrier(
-            owner_uid,
-            crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
-        ) else {
-            return;
-        };
-        let Ok(target_uid) = i32::try_from(progress.target_uid) else {
-            return;
-        };
-        let params = vec![
-            progress.completed_actions.saturating_add(1),
-            progress.total_damage,
-            target_uid,
-        ];
-        let Some(buff) = entity
-            .buffs
-            .iter_mut()
-            .find(|buff| buff.uid == Some(buff_uid))
-        else {
-            return;
-        };
-        buff.act_common_params = Some(format!(
-            "{act_id}#{}",
-            params
-                .iter()
-                .map(i32::to_string)
-                .collect::<Vec<_>>()
-                .join(",")
-        ));
-        if let Some(info) = buff
-            .act_info
-            .iter_mut()
-            .find(|info| info.act_id == Some(act_id))
-        {
-            info.param = params;
-        } else {
-            buff.act_info.push(BuffActInfo {
-                act_id: Some(act_id),
-                param: params,
-                str_param: Some(String::new()),
-            });
-        }
-    }
-
     pub(crate) fn plan_round_start_duration_sync(
         &self,
         owner_uids: &[i64],

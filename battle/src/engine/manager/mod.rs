@@ -934,6 +934,8 @@ impl BattleManagers {
             ex_point::ExPointCommand::Set(change) => Some(change.target_uid),
             ex_point::ExPointCommand::ChangeMax(_)
             | ex_point::ExPointCommand::ConfigureSynchronization(_)
+            | ex_point::ExPointCommand::RestartSynchronization(_)
+            | ex_point::ExPointCommand::CompleteSynchronization(_)
             | ex_point::ExPointCommand::RecordSynchronizationAction(_) => None,
         };
         let gain_allowed = target_uid.is_none_or(|target_uid| {
@@ -1589,9 +1591,6 @@ impl BattleManagers {
         self.ex_point.sync_entity_configured(self.catalog(), entity);
         entity.ex_skill_point_change =
             Some(crate::engine::mechanic::card::CardMechanic.ultimate_cost_offset(self, uid));
-        if let Some(progress) = self.ex_point.synchronization_progress(uid) {
-            self.buff.project_synchronization(entity, progress);
-        }
     }
 
     fn project_primary_attributes(&self, entity: &mut FightEntityInfo) {

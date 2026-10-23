@@ -72,7 +72,7 @@ fn nautika_uses_rank_replaced_faith_cap() {
 }
 
 #[test]
-fn synchronization_definition_is_owned_by_the_resource_manager() {
+fn synchronization_lifecycle_is_owned_by_the_resource_manager() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -108,6 +108,20 @@ fn synchronization_definition_is_owned_by_the_resource_manager() {
         domain: RuleDomain::Behavior,
         key: DefinitionKey::new(100022, "EzioBigSkillCheckTimes"),
     };
+    manager
+        .execute_command(
+            ExPointCommand::Set(ExPointSet {
+                origin,
+                source_uid: 1,
+                target_uid: 1,
+                value: 100,
+                config_effect: 0,
+                effect_type: 0,
+            }),
+            true,
+            true,
+        )
+        .unwrap();
     for damage in [120, 180] {
         manager
             .execute_command(
@@ -130,6 +144,36 @@ fn synchronization_definition_is_owned_by_the_resource_manager() {
             total_damage: 300,
         })
     );
+
+    let restarted = manager
+        .execute_command(
+            ExPointCommand::RestartSynchronization(ExPointRestartSynchronization {
+                origin,
+                target_uid: 1,
+            }),
+            true,
+            true,
+        )
+        .unwrap();
+    assert_eq!(manager.get(1), 100);
+    assert_eq!(
+        manager.synchronization_progress(1),
+        Some(SynchronizationProgress::default())
+    );
+    assert!(restarted.events().is_empty());
+
+    let completed = manager
+        .execute_command(
+            ExPointCommand::CompleteSynchronization(ExPointCompleteSynchronization {
+                origin,
+                target_uid: 1,
+            }),
+            true,
+            true,
+        )
+        .unwrap();
+    assert_eq!(manager.get(1), 0);
+    assert!(completed.events().is_empty());
 }
 
 #[test]

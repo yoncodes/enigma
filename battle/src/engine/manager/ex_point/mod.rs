@@ -209,6 +209,18 @@ pub struct ExPointConfigureSynchronization {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExPointRestartSynchronization {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExPointCompleteSynchronization {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExPointRecordSynchronizationAction {
     pub origin: CommandOrigin,
     pub target_uid: i64,
@@ -234,6 +246,8 @@ pub enum ExPointCommand {
     Set(ExPointSet),
     ChangeMax(ExPointMaxChange),
     ConfigureSynchronization(ExPointConfigureSynchronization),
+    RestartSynchronization(ExPointRestartSynchronization),
+    CompleteSynchronization(ExPointCompleteSynchronization),
     RecordSynchronizationAction(ExPointRecordSynchronizationAction),
 }
 
@@ -255,6 +269,14 @@ pub enum ExPointChanges {
         origin: CommandOrigin,
         target_uid: i64,
         definition: SynchronizationDefinition,
+    },
+    SynchronizationRestarted {
+        origin: CommandOrigin,
+        target_uid: i64,
+    },
+    SynchronizationCompleted {
+        origin: CommandOrigin,
+        target_uid: i64,
     },
     SynchronizationAdvanced {
         origin: CommandOrigin,
@@ -326,6 +348,42 @@ impl ExPointManager {
                 origin: configure.origin,
                 target_uid: configure.target_uid,
                 definition: configure.definition,
+            });
+        }
+        if let ExPointCommand::RestartSynchronization(restart) = command {
+            if !self.synchronization.contains_key(&restart.target_uid) {
+                return Err(ExPointCommandError::InvalidCommand);
+            }
+            let state = self
+                .states
+                .get(&restart.target_uid)
+                .ok_or(ExPointCommandError::MissingTarget(restart.target_uid))?;
+            if ExPointKind::from_wire(state.kind) != ExPointKind::Synchronization {
+                return Err(ExPointCommandError::InvalidCommand);
+            }
+            self.synchronization_progress
+                .insert(restart.target_uid, SynchronizationProgress::default());
+            return Ok(ExPointChanges::SynchronizationRestarted {
+                origin: restart.origin,
+                target_uid: restart.target_uid,
+            });
+        }
+        if let ExPointCommand::CompleteSynchronization(complete) = command {
+            if !self.synchronization.contains_key(&complete.target_uid) {
+                return Err(ExPointCommandError::InvalidCommand);
+            }
+            let state = self
+                .states
+                .get_mut(&complete.target_uid)
+                .ok_or(ExPointCommandError::MissingTarget(complete.target_uid))?;
+            if ExPointKind::from_wire(state.kind) != ExPointKind::Synchronization {
+                return Err(ExPointCommandError::InvalidCommand);
+            }
+            state.current = 0;
+            state.recent_decrement = 0;
+            return Ok(ExPointChanges::SynchronizationCompleted {
+                origin: complete.origin,
+                target_uid: complete.target_uid,
             });
         }
         if let ExPointCommand::RecordSynchronizationAction(record) = command {
@@ -420,6 +478,8 @@ impl ExPointManager {
                 ),
                 ExPointCommand::ChangeMax(_) => unreachable!(),
                 ExPointCommand::ConfigureSynchronization(_) => unreachable!(),
+                ExPointCommand::RestartSynchronization(_) => unreachable!(),
+                ExPointCommand::CompleteSynchronization(_) => unreachable!(),
                 ExPointCommand::RecordSynchronizationAction(_) => unreachable!(),
             };
         if target_uid == 0 || (!set && value == 0) || (set && value < 0) {

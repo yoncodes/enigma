@@ -464,7 +464,7 @@ fn buff_commands_do_not_mutate_the_separately_owned_eureka_cap() {
 }
 
 #[test]
-fn synchronization_reconnect_state_is_projected_from_ex_point_manager() {
+fn synchronization_reconnect_state_stays_owned_by_buff_manager() {
     crate::test_support::init_config();
     let mut fight = Fight {
         attacker: Some(FightTeam {
@@ -476,6 +476,7 @@ fn synchronization_reconnect_state_is_projected_from_ex_point_manager() {
                     uid: Some(1),
                     buff_id: Some(229100),
                     from_uid: Some(10),
+                    act_common_params: Some("10000#4,0,0".into()),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -498,6 +499,15 @@ fn synchronization_reconnect_state_is_projected_from_ex_point_manager() {
             },
         ))
         .unwrap();
+
+    managers.sync_entities(&mut fight);
+    assert_eq!(
+        fight.attacker.as_ref().unwrap().entitys[0].buffs[0]
+            .act_common_params
+            .as_deref(),
+        Some("10000#4,0,0")
+    );
+
     managers
         .execute_ex_point(ExPointCommand::RecordSynchronizationAction(
             ExPointRecordSynchronizationAction {
@@ -508,16 +518,23 @@ fn synchronization_reconnect_state_is_projected_from_ex_point_manager() {
             },
         ))
         .unwrap();
+    managers
+        .execute_buff(BuffCommand::SetState(
+            crate::engine::manager::buff::BuffSetState {
+                origin,
+                target_uid: 10,
+                buff_uid: 1,
+                ex_info: None,
+                params: Some("10000#3,123,-1".into()),
+                act_info: None,
+            },
+        ))
+        .unwrap();
 
     managers.sync_entities(&mut fight);
 
     let buff = &fight.attacker.as_ref().unwrap().entitys[0].buffs[0];
-    assert_eq!(buff.act_common_params.as_deref(), Some("10000#2,123,-1"));
-    assert!(
-        buff.act_info
-            .iter()
-            .any(|info| { info.act_id == Some(10000) && info.param == [2, 123, -1] })
-    );
+    assert_eq!(buff.act_common_params.as_deref(), Some("10000#3,123,-1"));
 }
 
 #[test]

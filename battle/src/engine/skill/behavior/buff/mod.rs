@@ -223,6 +223,7 @@ impl BehaviorHandler for Handler {
             }
             BehaviorKind::AddBuff | BehaviorKind::AddBuffPowerUse | BehaviorKind::AddBuffRound2 => {
                 shield_grant_ops(&context, behavior)
+                    .or_else(|| synchronization_cycle_grant_ops(&context, behavior))
                     .or_else(|| heat_scale_snapshot_grant_ops(&context, behavior))
                     .or_else(|| team_energy_snapshot_grant_ops(&context, behavior))
                     .or_else(|| source_relative_attribute_snapshot_grant_ops(&context, behavior))
