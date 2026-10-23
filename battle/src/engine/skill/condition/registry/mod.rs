@@ -122,7 +122,7 @@ pub enum AttackModifierSide {
 pub enum SkillActionTriggerPolicy {
     #[default]
     Default,
-    AttackOnly,
+    AttackOnlyWithDeviceObservers(&'static [i32]),
     InitialCriticalFollowUp,
 }
 
@@ -158,13 +158,27 @@ impl ReactionTimingPolicy {
 impl SkillActionTriggerPolicy {
     pub const fn child_skill_kind(self) -> Option<extra::ExtraSkillKind> {
         match self {
-            Self::Default | Self::AttackOnly => None,
+            Self::Default | Self::AttackOnlyWithDeviceObservers(_) => None,
             Self::InitialCriticalFollowUp => Some(extra::ExtraSkillKind::FollowUp),
         }
     }
 
-    pub const fn requires_attack(self) -> bool {
-        matches!(self, Self::AttackOnly)
+    pub fn rejects_action(
+        self,
+        observer_skill_id: i32,
+        is_attack: bool,
+        mode: crate::engine::skill::action::SkillExecutionMode,
+    ) -> bool {
+        match self {
+            Self::AttackOnlyWithDeviceObservers(device_observers) => {
+                !is_attack
+                    && (!matches!(
+                        mode,
+                        crate::engine::skill::action::SkillExecutionMode::Device
+                    ) || !device_observers.contains(&observer_skill_id))
+            }
+            Self::Default | Self::InitialCriticalFollowUp => false,
+        }
     }
 
     pub const fn rejects_extra_skill(self, extra_skill_kind: i32) -> bool {
@@ -386,8 +400,12 @@ pub const fn initial_critical_follow_up(mut metadata: ConditionMetadata) -> Cond
     metadata
 }
 
-pub const fn attack_only(mut metadata: ConditionMetadata) -> ConditionMetadata {
-    metadata.skill_action_trigger = SkillActionTriggerPolicy::AttackOnly;
+pub const fn attack_only_with_device_observers(
+    mut metadata: ConditionMetadata,
+    observer_skill_ids: &'static [i32],
+) -> ConditionMetadata {
+    metadata.skill_action_trigger =
+        SkillActionTriggerPolicy::AttackOnlyWithDeviceObservers(observer_skill_ids);
     metadata
 }
 
@@ -671,7 +689,7 @@ condition_definitions! {
     [51102] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [51103] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::RoundStart, 1, &[]);
     [511201] "HasTypeBuffIdsMoreThan" => buff::buff_status_at_least, predicate(&[EventKind::BuffChanged]);
-    [42203] "HasTypeBuffMoreThan" => buff::visible_stacked_status_types_at_least, attack_only(event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate)));
+    [42203] "HasTypeBuffMoreThan" => buff::visible_stacked_status_types_at_least, attack_only_with_device_observers(event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate)), &[103374322]);
     [42209] "HasTypeBuffMoreThan" => buff::visible_stacked_status_types_at_least, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
     [43203] "HasTypeBuffLessThan" => buff::visible_buff_status_types_less_than, predicate(&[]);
     [42208] "HasTypeBuffMoreThan" => buff::buff_status_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));

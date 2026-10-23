@@ -351,11 +351,11 @@ fn active_skill_status_thresholds_preserve_strictness() {
             phase: Some(SkillPhase::Immediate),
         }
     );
-    assert!(
+    assert_eq!(
         find_key(42203, "HasTypeBuffMoreThan")
             .unwrap()
-            .skill_action_trigger
-            .requires_attack()
+            .skill_action_trigger,
+        SkillActionTriggerPolicy::AttackOnlyWithDeviceObservers(&[103374322])
     );
     assert_eq!(
         find_key(43203, "HasTypeBuffLessThan").unwrap().role,
