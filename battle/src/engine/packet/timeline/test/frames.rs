@@ -40,14 +40,16 @@ fn attr_max_hp_change(
 #[test]
 fn attr_max_hp_wire_follows_applier_and_real_current_hp_changes() {
     let cases = [
-        (10, 10, 100, 120, 20, vec![108, 109, 108, 109]),
-        (20, 10, 100, 120, 20, vec![108, 109]),
-        (10, 10, 100, 80, -20, vec![108, 109, 108]),
-        (20, 10, 100, 80, -20, vec![108]),
-        (10, 10, 50, 50, -20, vec![108, 108]),
+        (10, 10, 100, 120, 20, vec![108, 109, 108, 109], 0),
+        (20, 10, 100, 120, 20, vec![108, 109], 0),
+        (10, 10, 100, 80, -20, vec![108, 109, 108], 0),
+        (20, 10, 100, 80, -20, vec![108], 100),
+        (10, 10, 50, 50, -20, vec![108, 108], 0),
     ];
 
-    for (source_uid, target_uid, before_current, after_current, delta, expected) in cases {
+    for (source_uid, target_uid, before_current, after_current, delta, expected, buff_act_id) in
+        cases
+    {
         let effects = project_change_for_test(&attr_max_hp_change(
             source_uid,
             target_uid,
@@ -71,7 +73,7 @@ fn attr_max_hp_wire_follows_applier_and_real_current_hp_changes() {
         );
         assert!(effects.iter().all(|effect| {
             effect.effect_type != Some(EffectType::Maxhpchange as i32)
-                || effect.buff_act_id == Some(0)
+                || effect.buff_act_id == Some(buff_act_id)
         }));
     }
 }

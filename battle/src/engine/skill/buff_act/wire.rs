@@ -25,7 +25,7 @@ pub struct BuffActWireDefinition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MaxHpWireRule {
     Fixed { repeats: u8, buff_act_id: i32 },
-    Attr,
+    Attr { buff_act_id: i32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,7 +53,7 @@ impl MaxHpWireRule {
                 current_hp_repeats: repeats,
                 buff_act_id,
             },
-            Self::Attr => {
+            Self::Attr { buff_act_id } => {
                 let max_hp_repeats = if source_uid == target_uid { 2 } else { 1 };
                 let current_hp_repeats =
                     if before_current == after_current || (delta < 0 && source_uid != target_uid) {
@@ -66,7 +66,11 @@ impl MaxHpWireRule {
                 MaxHpWirePlan {
                     max_hp_repeats,
                     current_hp_repeats,
-                    buff_act_id: 0,
+                    buff_act_id: if delta < 0 && source_uid != target_uid {
+                        buff_act_id
+                    } else {
+                        0
+                    },
                 }
             }
         }
@@ -173,7 +177,9 @@ impl BuffActWireDefinition {
     }
 
     pub const fn with_attr_max_hp(mut self) -> Self {
-        self.max_hp = Some(MaxHpWireRule::Attr);
+        self.max_hp = Some(MaxHpWireRule::Attr {
+            buff_act_id: self.key.opcode,
+        });
         self
     }
 
