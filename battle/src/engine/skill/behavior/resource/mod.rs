@@ -611,6 +611,7 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                     origin,
                     source_uid: context.source_uid,
                     team: context.source_team,
+                    skill_id: context.active_skill_id,
                     kind: ConduitCounterKind::from_config(*kind)?,
                     delta: *delta,
                 }),

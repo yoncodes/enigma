@@ -147,6 +147,7 @@ pub struct ConduitCounterChange {
     pub origin: CommandOrigin,
     pub source_uid: i64,
     pub team: i32,
+    pub skill_id: i32,
     pub kind: ConduitCounterKind,
     pub delta: i32,
 }
@@ -267,6 +268,7 @@ pub enum ConduitError {
 #[derive(Debug, Clone, Copy)]
 struct PendingActivation {
     event: crate::engine::event::payload::ConduitActivatedEvent,
+    committed_cost: i32,
     cost_committed: bool,
 }
 
@@ -546,7 +548,7 @@ impl ConduitChange {
             ),
             _ => return Vec::new(),
         };
-        (spent > 0)
+        (activation_cost > 0)
             .then_some(
                 crate::engine::event::payload::BattleEvent::ConduitActivated(
                     crate::engine::event::payload::ConduitActivatedEvent {

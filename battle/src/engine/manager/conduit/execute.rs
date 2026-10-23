@@ -133,6 +133,7 @@ impl ConduitManager {
                             activation_cost: skill.cost_value,
                             spent,
                         },
+                        committed_cost: skill.cost_value,
                         cost_committed: false,
                     },
                 );
@@ -163,12 +164,12 @@ impl ConduitManager {
                     .consumed_this_round
                     .entry((activation.team, activation.power_id))
                     .or_default();
-                *consumed = consumed.saturating_add(activation.activation_cost);
+                *consumed = consumed.saturating_add(pending.committed_cost);
                 let accumulated = self
                     .counters_this_round
                     .entry((activation.team, ConduitCounterKind::EnergyAccumulation))
                     .or_default();
-                *accumulated = accumulated.saturating_add(activation.activation_cost);
+                *accumulated = accumulated.saturating_add(pending.committed_cost);
                 self.pending_activations
                     .get_mut(&(source_uid, skill_id))
                     .expect("the checked activation remains pending")
@@ -178,7 +179,7 @@ impl ConduitManager {
                     team: activation.team,
                     skill_id,
                     power_id: activation.power_id,
-                    activation_cost: activation.activation_cost,
+                    activation_cost: pending.committed_cost,
                     consumed_this_round: *accumulated,
                 })
             }
@@ -285,14 +286,23 @@ impl ConduitManager {
                     .or_default();
                 let before = *counter;
                 *counter = counter.saturating_add(change.delta).max(0);
+                let after = *counter;
+                if change.kind == ConduitCounterKind::EnergyAccumulation
+                    && let Some(pending) = self
+                        .pending_activations
+                        .get_mut(&(change.source_uid, change.skill_id))
+                        .filter(|pending| pending.event.activation_cost == 0)
+                {
+                    pending.event.activation_cost = before;
+                }
                 Ok(ConduitChange::CounterChanged {
                     origin: change.origin,
                     source_uid: change.source_uid,
                     team: change.team,
                     kind: change.kind,
                     requested_delta: change.delta,
-                    applied_delta: *counter - before,
-                    after: *counter,
+                    applied_delta: after - before,
+                    after,
                 })
             }
             ConduitCommand::ClearPowers {

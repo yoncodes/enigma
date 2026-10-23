@@ -65,6 +65,7 @@ fn conduit_counter_repeats_are_team_scoped_capped_and_reset() {
                 origin,
                 source_uid,
                 team,
+                skill_id: 0,
                 kind,
                 delta,
             }))
