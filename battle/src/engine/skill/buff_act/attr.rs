@@ -186,6 +186,25 @@ mod tests {
     }
 
     #[test]
+    fn source_snapshot_refresh_owns_its_attribute_marker_decision() {
+        crate::test_support::init_config();
+        let managers = BattleManagers::default();
+        let event = BattleEvent::BuffChanged(crate::engine::event::payload::BuffChangeEvent {
+            source_uid: 10,
+            target_uid: 11,
+            buff_uid: 20,
+            buff_id: 31450111,
+            before_amount: 1,
+            after_amount: 2,
+            act_id: 0,
+            act_value: 0,
+            duration_expired: false,
+        });
+
+        assert!(transaction_rule_ops(&managers, &event).is_empty());
+    }
+
+    #[test]
     fn halo_children_leave_refresh_marker_ownership_to_their_fanout() {
         crate::test_support::init_config();
         let fight = Fight {

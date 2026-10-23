@@ -261,13 +261,7 @@ impl BuffDefinition {
         phase: crate::engine::skill::buff_act::wire::WirePhase,
     ) -> Vec<i32> {
         if phase == crate::engine::skill::buff_act::wire::WirePhase::Refresh
-            && self.features.iter().any(|feature| {
-                feature.arguments_supported
-                    && feature.initial_state.is_some()
-                    && feature
-                        .wire
-                        .is_some_and(|wire| wire.projects_initial_state_on_refresh)
-            })
+            && self.has_initial_state_refresh_projection()
         {
             return Vec::new();
         }
@@ -292,13 +286,7 @@ impl BuffDefinition {
     ) -> Vec<i32> {
         let phase = crate::engine::skill::buff_act::wire::WirePhase::Refresh;
         let command_owns_attribute_markers = self.command_owns_attribute_refresh_markers();
-        if self.features.iter().any(|feature| {
-            feature.arguments_supported
-                && feature.initial_state.is_some()
-                && feature
-                    .wire
-                    .is_some_and(|wire| wire.projects_initial_state_on_refresh)
-        }) {
+        if self.has_initial_state_refresh_projection() {
             return Vec::new();
         }
         self.features
@@ -338,10 +326,22 @@ impl BuffDefinition {
     }
 
     pub(super) fn command_owns_attribute_refresh_markers(&self) -> bool {
-        self.features
-            .iter()
-            .any(|feature| feature.kind == Some(BuffActKind::RealHarmFix))
-            && !self.features.iter().any(mutates_max_hp)
+        self.has_initial_state_refresh_projection()
+            || (self
+                .features
+                .iter()
+                .any(|feature| feature.kind == Some(BuffActKind::RealHarmFix))
+                && !self.features.iter().any(mutates_max_hp))
+    }
+
+    fn has_initial_state_refresh_projection(&self) -> bool {
+        self.features.iter().any(|feature| {
+            feature.arguments_supported
+                && feature.initial_state.is_some()
+                && feature
+                    .wire
+                    .is_some_and(|wire| wire.projects_initial_state_on_refresh)
+        })
     }
 
     pub(super) fn projects_initial_state_on_refresh(&self, act_id: i32) -> bool {
