@@ -458,14 +458,7 @@ impl LinkedDamagePlan {
     }
 }
 
-// "When an ally performs an extra action": follow-ups, ripostes and unowned generated actions;
-// producers can keep a cast attached to the action that caused it.
 fn performs_extra_action(invocation: &SkillInvocation, execution: &SkillExecution) -> bool {
-    if invocation.extra_skill_kind
-        == Some(crate::engine::skill::condition::extra::ExtraSkillKind::Attached)
-    {
-        return false;
-    }
     crate::engine::skill::action::performs_extra_action(
         invocation.card_index,
         invocation.mode,

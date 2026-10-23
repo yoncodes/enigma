@@ -195,7 +195,7 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
         attacker: Some(FightTeam {
             entitys: vec![
                 FightEntityInfo {
-                    passive_skill: vec![31090144],
+                    passive_skill: vec![31090144, 434111],
                     buffs: vec![
                         BuffInfo {
                             uid: Some(20),
@@ -206,8 +206,14 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
                         },
                         BuffInfo {
                             uid: Some(21),
-                            buff_id: Some(31050146),
+                            buff_id: Some(31050145),
                             from_uid: Some(11),
+                            ..Default::default()
+                        },
+                        BuffInfo {
+                            uid: Some(22),
+                            buff_id: Some(109380006),
+                            from_uid: Some(-1),
                             ..Default::default()
                         },
                     ],
@@ -227,15 +233,21 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![entity(-1)],
+            entitys: vec![FightEntityInfo {
+                passive_skill: vec![109380003],
+                ..entity(-1)
+            }],
             ..Default::default()
         }),
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
-    let catalog =
-        SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 31090144, 31050141], []);
+    let catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        [31090111, 31090144, 31050141, 434111, 109380003],
+        [],
+    );
     // Six deployments or retrievals so far; the attack's deployment is the seventh.
     crate::engine::mechanic::shell::execute(
         &mut managers,
@@ -258,11 +270,13 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
     invocation.mode = SkillExecutionMode::Active;
     invocation.card_index = 1;
 
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_hidden_crits(31090114, 10, [true]);
     let result = run_action(
         &mut managers,
         &pool,
         &catalog,
-        &mut RoundDeterminism::default(),
+        &mut determinism,
         TargetContext::default(),
         [],
         invocation,
@@ -276,7 +290,7 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
         .expect("the attack projects a step");
     assert_eq!(attack.to_id, Some(11));
     assert!(managers.hp.current(-1) < 100_000);
-    assert_eq!(managers.eureka.get(11, 1).current, 2);
+    assert_eq!(managers.eureka.get(11, 1).current, 0);
     assert!(managers.buff.buff_id_amount(-1, 31090112) > 0);
     assert_eq!(managers.buff.buff_id_amount(11, 31090112), 0);
     let children = attack
@@ -298,6 +312,16 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
         .filter_map(|effect| effect.fight_step.as_ref())
         .find(|step| step.act_id == Some(31090114) && step.to_id == Some(-1))
         .expect("the shell cast stays attached to its triggering action");
+    let direct_hit = attached
+        .act_effect
+        .iter()
+        .find(|effect| effect.hurt_info.is_some())
+        .expect("the attached cast deals direct damage");
+    assert_eq!(
+        direct_hit.effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Crit as i32)
+    );
+    assert_eq!(direct_hit.effect_num, Some(1_614));
     assert!(
         attached
             .act_effect
@@ -305,6 +329,30 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
             .filter_map(|effect| effect.fight_step.as_ref())
             .any(|step| step.act_id == Some(31050141)),
         "the attached cast still publishes its own ally action"
+    );
+    assert!(
+        attached
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.act_id == Some(31050145)),
+        "the attached extra action activates Wave of Sheets"
+    );
+    assert!(
+        attached
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.act_id == Some(434111)),
+        "the attached cast keeps its configured extra-skill kind"
+    );
+    assert!(
+        attached
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .all(|step| step.act_id != Some(109380003)),
+        "the attached cast is not a player-selected active attack"
     );
 }
 

@@ -2,7 +2,6 @@ use crate::engine::skill::condition::parse::{ParsedConditionKind, parse_i32_list
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExtraSkillKind {
-    Attached,
     ExtraAction,
     FollowUp,
     Riposte,
@@ -13,7 +12,6 @@ pub enum ExtraSkillKind {
 impl ExtraSkillKind {
     pub const fn id(self) -> i32 {
         match self {
-            Self::Attached => 0,
             Self::ExtraAction => 1,
             Self::FollowUp => 2,
             Self::Riposte => 3,
@@ -67,7 +65,6 @@ mod tests {
     #[test]
     fn is_extra_keeps_action_followup_and_riposte_distinct() {
         assert_eq!(skill_kind_from_is_extra(0), None);
-        assert!(!ExtraSkillKind::Attached.is_extra_action());
         assert_eq!(
             skill_kind_from_is_extra(1),
             Some(ExtraSkillKind::ExtraAction)
