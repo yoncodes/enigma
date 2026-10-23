@@ -453,6 +453,18 @@ fn defender_action_phase_fight_progress_gate_keeps_its_exact_route_and_payload_o
 }
 
 #[test]
+fn synchronization_reaction_owns_its_independent_self_targeted_frame() {
+    let definition = find_key(1008101, "Synchronization").unwrap();
+
+    assert_eq!(definition.dependencies, &[EventKind::ExPointChanged]);
+    assert_eq!(
+        definition.reaction_frame_scope,
+        ReactionFrameScope::IndependentOutsideAction
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+}
+
+#[test]
 fn active_team_status_type_count_keeps_its_exact_predicate_route() {
     let definition = find_key(539203, "PerSelfTeamTypeType2BuffTypeIdNum").unwrap();
 

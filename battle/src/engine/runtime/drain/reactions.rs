@@ -989,7 +989,17 @@ fn queued_reaction_pass(
                 invocation.reaction_batch_id = Some(*batch_id);
                 invocation.reaction_action_path = action_path.clone();
             }
-            let frame_scope = definition.reaction_frame_scope;
+            let frame_scope = match (definition.reaction_frame_scope, action_path) {
+                (
+                    crate::engine::skill::condition::registry::ReactionFrameScope::IndependentOutsideAction,
+                    None,
+                ) => crate::engine::skill::condition::registry::ReactionFrameScope::Independent,
+                (
+                    crate::engine::skill::condition::registry::ReactionFrameScope::IndependentOutsideAction,
+                    Some(_),
+                ) => crate::engine::skill::condition::registry::ReactionFrameScope::Subscriber,
+                (scope, _) => scope,
+            };
             let frame_source_uid = match definition.reaction_frame_source {
                 crate::engine::skill::condition::registry::ReactionFrameSource::Subscriber => {
                     subscriber.owner_uid
@@ -1031,6 +1041,9 @@ fn queued_reaction_pass(
                 }
                 crate::engine::skill::condition::registry::ReactionFrameScope::Subscriber => {
                     (None, parent_path.map(|path| path.to_vec()))
+                }
+                crate::engine::skill::condition::registry::ReactionFrameScope::IndependentOutsideAction => {
+                    unreachable!("contextual frame scope was resolved above")
                 }
             };
             let frame_group = matches!(

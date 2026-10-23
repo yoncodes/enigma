@@ -101,6 +101,7 @@ pub enum ReactionFrameScope {
     Causing,
     EventSibling,
     Independent,
+    IndependentOutsideAction,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -464,6 +465,13 @@ pub const fn in_causing_frame(mut metadata: ConditionMetadata) -> ConditionMetad
 
 pub const fn in_independent_frame(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_frame_scope = ReactionFrameScope::Independent;
+    metadata
+}
+
+pub const fn in_independent_frame_outside_action(
+    mut metadata: ConditionMetadata,
+) -> ConditionMetadata {
+    metadata.reaction_frame_scope = ReactionFrameScope::IndependentOutsideAction;
     metadata
 }
 
@@ -871,7 +879,7 @@ condition_definitions! {
     [180106] "PowerCompare" => resource::power_compare, setup_route(SetupStage::CardSetup, 0, &[]);
     [89210] "ExpointMoreThan" => resource::ex_point_at_least, predicate(&[EventKind::ExPointChanged]);
     [89304] "ExpointMoreThan" => resource::ex_point_at_least, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
-    [1008101] "Synchronization" => resource::synchronization, predicate(&[EventKind::ExPointChanged]);
+    [1008101] "Synchronization" => resource::synchronization, reaction_targets_owner(in_independent_frame_outside_action(predicate(&[EventKind::ExPointChanged])));
     [526203, 526210] "ExpointLessThan" => resource::ex_point_at_most, predicate(&[EventKind::ExPointChanged]);
     [544100] "NotInMagicCircleId" => magic_circle::absent, setup_route(SetupStage::RoundStartCondition, 100, &[EventKind::FieldChanged]);
     [542103, 542104] "InMagicCircleId" => magic_circle::present, setup_route(SetupStage::RoundStart, 1, &[EventKind::FieldChanged]);
