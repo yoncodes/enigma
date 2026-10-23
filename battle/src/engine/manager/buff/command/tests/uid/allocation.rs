@@ -92,6 +92,116 @@ fn conduit_selection_reserves_one_normal_uid_before_its_carrier() {
     assert_eq!(cooldown.buff.uid, Some(1150));
 }
 
+fn death_refresh_manager() -> BuffManager {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(1108),
+                        buff_id: Some(103374115),
+                        from_uid: Some(10),
+                        layer: Some(2),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(1154),
+                        buff_id: Some(101),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    manager
+}
+
+fn death_refresh_command() -> BuffCommand {
+    BuffCommand::GrantOnDeath(BuffGrant {
+        origin: CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(1, "AddBuff"),
+        },
+        source_uid: 10,
+        target_uid: 10,
+        buff_id: 103374115,
+        amount: None,
+        occurrences: 1,
+        child_uid_reservations: 0,
+    })
+}
+
+#[test]
+fn death_triggered_layer_refresh_reserves_its_trigger_child_uid() {
+    let mut manager = death_refresh_manager();
+
+    let plan = manager
+        .plan(&HpManager::default(), death_refresh_command())
+        .unwrap();
+    let grant = grant_plan(&plan);
+
+    assert_eq!(
+        grant
+            .pre_add_uids
+            .iter()
+            .map(|plan| plan.uid)
+            .collect::<Vec<_>>(),
+        vec![1155]
+    );
+    assert_eq!(grant.layer_refresh_uid.unwrap().uid, 1156);
+    manager.commit(&HpManager::default(), plan);
+    let following = manager
+        .add(&HpManager::default(), 10, 10, 70015, 0)
+        .unwrap();
+    assert_eq!(following.buff.uid, Some(1158));
+}
+
+#[test]
+fn death_triggered_layer_refresh_reuses_an_existing_child_sequence() {
+    let mut manager = death_refresh_manager();
+    let child = manager
+        .execute(
+            &HpManager::default(),
+            BuffCommand::GrantUsingChildUid(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 70014,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+    assert_eq!(child.change.added.unwrap().buff.uid, Some(1155));
+
+    let plan = manager
+        .plan(&HpManager::default(), death_refresh_command())
+        .unwrap();
+    let grant = grant_plan(&plan);
+
+    assert!(grant.pre_add_uids.is_empty());
+    assert_eq!(grant.layer_refresh_uid.unwrap().uid, 1156);
+    manager.commit(&HpManager::default(), plan);
+    let following = manager
+        .add(&HpManager::default(), 10, 10, 70015, 0)
+        .unwrap();
+    assert_eq!(following.buff.uid, Some(1158));
+}
+
 #[test]
 fn attacker_assist_uses_its_resolved_team_uid_lane() {
     crate::test_support::init_config();

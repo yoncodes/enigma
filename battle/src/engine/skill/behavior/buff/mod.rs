@@ -232,6 +232,7 @@ impl BehaviorHandler for Handler {
                             context.source_uid,
                             context.target_uid,
                             context.transfer_count.max(0) as u32,
+                            context.event,
                             behavior,
                         )
                         .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
@@ -345,6 +346,7 @@ fn add_buff_from_skill_additions_ops(
         context.source_uid,
         context.target_uid,
         count as u32,
+        context.event,
         behavior,
     )
     .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])

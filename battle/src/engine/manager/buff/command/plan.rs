@@ -29,6 +29,22 @@ impl BuffManager {
                     inputs,
                 )?)),
             ),
+            BuffCommand::GrantOnDeath(grant) => {
+                let mut request = GrantRequest::from(&grant);
+                let mut plan = self.plan_grant_with_source_attack(hp, request, inputs)?;
+                if plan.action == GrantAction::RefreshLayer
+                    && !super::uid_policy::last_was_child(self, grant.target_uid)
+                {
+                    request.child_uid_reservations = request
+                        .child_uid_reservations
+                        .checked_add(1)
+                        .ok_or(BuffCommandError::UnsupportedOccurrences(
+                            request.child_uid_reservations,
+                        ))?;
+                    plan = self.plan_grant_with_source_attack(hp, request, inputs)?;
+                }
+                (grant.origin, BuffPlanAction::Grant(Box::new(plan)))
+            }
             BuffCommand::GrantRelated(related) => {
                 let grant = related.grant;
                 let (input, force_normal_uid) = match related.relation {

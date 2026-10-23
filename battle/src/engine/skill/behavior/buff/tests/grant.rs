@@ -1,6 +1,68 @@
 use super::*;
 
 #[test]
+fn add_buff_marks_death_triggered_grants_for_manager_uid_ownership() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let event = crate::engine::event::payload::BattleEvent::EntityDied(
+        crate::engine::event::payload::EntityDiedEvent {
+            source_uid: 10,
+            target_uid: -2,
+        },
+    );
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+
+    let ops = super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: -1,
+            source_team: 2,
+            target_uid: -1,
+            active_skill_id: 103374115,
+            transfer_count: 1,
+            event: Some(&event),
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &ParsedBehavior::new(1, "AddBuff", vec![103374115]),
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantOnDeath(
+            grant
+        )))] if grant.buff_id == 103374115
+    ));
+}
+
+#[test]
 fn synchronization_buff_restarts_its_configured_action_cycle() {
     crate::test_support::init_config();
     let fight = Fight {

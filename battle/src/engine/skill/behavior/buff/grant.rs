@@ -4,9 +4,11 @@ pub(super) fn grant_command(
     source_uid: i64,
     target_uid: i64,
     occurrences: u32,
+    event: Option<&crate::engine::event::payload::BattleEvent>,
     behavior: &ParsedBehavior,
 ) -> Option<BuffCommand> {
     let definition = super::registry::find(behavior)?;
+    let buff_id = behavior.arg(0)?;
     matches!(
         definition.kind,
         BehaviorKind::AddBuff
@@ -15,18 +17,28 @@ pub(super) fn grant_command(
             | BehaviorKind::AddBuffRound2
             | BehaviorKind::AddBuffBySkillBuffAdditions
     )
-    .then_some(BuffCommand::Grant(BuffGrant {
+    .then(|| BuffGrant {
         origin: CommandOrigin {
             domain: RuleDomain::Behavior,
             key: definition.key,
         },
         source_uid,
         target_uid,
-        buff_id: behavior.arg(0)?,
+        buff_id,
         amount: behavior.arg(1),
         occurrences,
         child_uid_reservations: 0,
-    }))
+    })
+    .map(|grant| {
+        if matches!(
+            event,
+            Some(crate::engine::event::payload::BattleEvent::EntityDied(_))
+        ) {
+            BuffCommand::GrantOnDeath(grant)
+        } else {
+            BuffCommand::Grant(grant)
+        }
+    })
 }
 
 pub(super) fn random_pool_grant_commands(

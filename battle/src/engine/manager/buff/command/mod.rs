@@ -344,6 +344,7 @@ impl BuffDurationAdvance {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuffCommand {
     Grant(BuffGrant),
+    GrantOnDeath(BuffGrant),
     GrantRelated(RelatedBuffGrant),
     GrantIndependent(BuffGrant),
     Accumulate(BuffGrant),

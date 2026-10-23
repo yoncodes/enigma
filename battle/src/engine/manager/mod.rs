@@ -279,6 +279,7 @@ impl BattleManagers {
     ) -> Result<BuffChanges, BuffCommandError> {
         let resist_roll = match &command {
             BuffCommand::Grant(grant)
+            | BuffCommand::GrantOnDeath(grant)
             | BuffCommand::GrantRelated(buff::RelatedBuffGrant { grant, .. })
             | BuffCommand::GrantIndependent(grant)
             | BuffCommand::Accumulate(grant)
@@ -327,6 +328,7 @@ impl BattleManagers {
     ) -> Result<BuffPlan, BuffCommandError> {
         let source_uid = match &command {
             BuffCommand::Grant(grant)
+            | BuffCommand::GrantOnDeath(grant)
             | BuffCommand::GrantRelated(buff::RelatedBuffGrant { grant, .. })
             | BuffCommand::GrantIndependent(grant)
             | BuffCommand::Accumulate(grant)
