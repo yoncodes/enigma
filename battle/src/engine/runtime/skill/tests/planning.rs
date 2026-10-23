@@ -246,6 +246,107 @@ fn active_modifier_inheriting_its_condition_target_counts_each_target_separately
 }
 
 #[test]
+fn active_logic_target_modifier_is_deferred_and_collected_per_hit() {
+    crate::test_support::init_config();
+    let buffs = |ids: &[i32], uid_offset| {
+        ids.iter()
+            .enumerate()
+            .map(|(index, buff_id)| BuffInfo {
+                uid: Some(index as i64 + uid_offset),
+                buff_id: Some(*buff_id),
+                ..Default::default()
+            })
+            .collect()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(10_000),
+                    buffs: buffs(&[31450171], 1),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    current_hp: Some(10_000),
+                    buffs: buffs(
+                        &[31450171, 31440116, 31450111, 31450132, 30250003, 30250001],
+                        10,
+                    ),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: -1,
+        skill_id: 103374113,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(10);
+    let mut execution = SkillExecution::new(TargetContext::default());
+
+    emit_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        &mut execution,
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+
+    assert!(execution.modifiers.rates.is_empty());
+    let collect_for = |target_uid| {
+        let mut modifiers = execution.modifiers.clone();
+        crate::engine::skill::behavior::rate::emit_active_target_attack_attributes(
+            &mut modifiers,
+            -1,
+            103374113,
+            103374113,
+            crate::engine::skill::behavior::rate::RateRuntime {
+                effects: &catalog,
+                managers: &managers,
+                pool: &pool,
+                context: TargetContext {
+                    active_skill_id: 103374113,
+                    active_skill_source_uid: -1,
+                    active_skill_is_attack: true,
+                    logic_target: 202,
+                    hit_source_uid: -1,
+                    hit_target_uid: target_uid,
+                    runtime_target_uid: target_uid,
+                    ..Default::default()
+                },
+            },
+            &mut RoundDeterminism::default(),
+        );
+        modifiers.rates
+    };
+
+    assert!(collect_for(10).is_empty());
+    let high_status_rates = collect_for(11);
+    assert_eq!(high_status_rates.len(), 1);
+    assert_eq!(high_status_rates[0].fixed_value(), Some(-1_000));
+}
+
+#[test]
 fn buff_feature_event_preserves_the_exact_act_identity() {
     let mut context = TargetContext::default();
     apply_event_context(

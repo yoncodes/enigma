@@ -395,6 +395,10 @@ enum ModifierSide {
     IncomingTarget,
 }
 
+pub(crate) fn collects_attack_modifier_per_hit(slot: &SkillEffectSlot) -> bool {
+    slot.target_from_condition || (!slot.conditions.is_empty() && slot.condition_target.code == 0)
+}
+
 #[derive(Clone, Copy)]
 struct ModifierOwner {
     uid: i64,
@@ -509,6 +513,10 @@ fn collect_attack_modifier_slot(
         let condition_targets =
             if condition_registry::conditions_use_active_skill_target_group(&conditions) {
                 targets.clone()
+            } else if slot.condition_target.code == 0
+                && let Some(current_hit_target) = current_hit_target
+            {
+                vec![current_hit_target]
             } else if slot.target_from_condition && targets_subject {
                 vec![modifier_subject.unwrap_or_default()]
             } else {
@@ -692,7 +700,7 @@ pub fn emit_active_target_attack_attributes(
     for slot in effect
         .slots
         .iter()
-        .filter(|slot| slot.target_from_condition)
+        .filter(|slot| collects_attack_modifier_per_hit(slot))
     {
         collect_attack_modifier_slot(
             modifiers,
