@@ -224,6 +224,7 @@ pub struct MaxHpAdjust {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HpCommand {
     Damage(HpDamage),
+    SettleAccumulatedDamage(HpDamage),
     Lose(HpLoss),
     Kill(HpKill),
     Heal(HpHeal),
@@ -273,6 +274,7 @@ pub struct HpChanges {
     pub source_uid: i64,
     pub target_uid: i64,
     pub damage: Option<DamageRecord>,
+    pub publishes_hit: bool,
     pub fake_hp_consumed: Option<FakeHpConsumption>,
     pub team_shared_shield_absorbed: Option<TeamSharedShieldAbsorption>,
     pub team_shared_shield_removed: Option<crate::engine::manager::buff::BuffChanges>,
@@ -406,7 +408,8 @@ impl HpChanges {
             });
         }
         if let Some(damage) = self.damage.filter(|damage| {
-            damage.effect_kind != DamageEffectKind::Avoided
+            self.publishes_hit
+                && damage.effect_kind != DamageEffectKind::Avoided
                 && damage.hurt.damage_from != HurtDamageFromType::Buff
         }) {
             events.push(BattleEvent::Hit(HitEvent {
@@ -768,6 +771,7 @@ impl HpManager {
             source_uid,
             target_uid,
             damage: None,
+            publishes_hit: !matches!(command, HpCommand::SettleAccumulatedDamage(_)),
             fake_hp_consumed: None,
             team_shared_shield_absorbed: None,
             team_shared_shield_removed: None,
@@ -781,7 +785,7 @@ impl HpManager {
             death: None,
         };
         match command {
-            HpCommand::Damage(value) => {
+            HpCommand::Damage(value) | HpCommand::SettleAccumulatedDamage(value) => {
                 changes.damage = Some(DamageRecord {
                     amount: value.amount,
                     config_effect: value.config_effect,
@@ -923,7 +927,7 @@ impl HpManager {
 
     fn command_context(command: HpCommand) -> (CommandOrigin, i64, i64, bool) {
         match command {
-            HpCommand::Damage(value) => (
+            HpCommand::Damage(value) | HpCommand::SettleAccumulatedDamage(value) => (
                 value.origin,
                 value.source_uid,
                 value.target_uid,

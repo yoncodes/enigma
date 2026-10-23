@@ -620,6 +620,16 @@ fn project_change(
         BattleChange::ExPoint(ExPointChanges::Max { change, .. }) if change.applied_delta != 0 => {
             vec![EffectPacket::ex_point_max(*change)]
         }
+        BattleChange::ExPoint(ExPointChanges::SynchronizationDamageRecorded {
+            action_target_uid,
+            damage,
+            ..
+        }) => vec![EffectPacket::synchronization_damage(
+            *action_target_uid,
+            *damage,
+            hurt_info_layout,
+            absorb_map_layout,
+        )],
         BattleChange::ExPoint(_) => Vec::new(),
         BattleChange::Eureka(EurekaChanges::Changed { change, .. })
             if change.applied_delta != 0 =>

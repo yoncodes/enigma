@@ -728,9 +728,9 @@ behavior_definitions! {
     [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, destination;
     [60195] "ElectricTransform" => super::electric::Handler, ElectricTransform, Immediate, destination, super::electric::supports;
     [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, owner_destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(0, "None"), stage: SetupStage::Unconditional, priority: 0 }), super::synchronization::supports_props;
-    [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterDamage, destination, super::synchronization::supports_big_skill_rate;
-    [100002] "EzioBigSkillTyp2" => super::synchronization::Handler, EzioBigSkillType2, AfterDamage, destination, super::synchronization::supports_big_skill_rate;
-    [100003] "EzioBigSkillEnd" => super::synchronization::Handler, EzioBigSkillEnd, AfterDamage, destination, super::synchronization::supports_big_skill_end;
+    [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterHit, destination, super::synchronization::supports_big_skill_rate;
+    [100002] "EzioBigSkillTyp2" => super::synchronization::Handler, EzioBigSkillType2, AfterHit, destination, super::synchronization::supports_big_skill_rate;
+    [100003] "EzioBigSkillEnd" => super::synchronization::Handler, EzioBigSkillEnd, AfterHit, destination, super::synchronization::supports_big_skill_end;
     [100022] "EzioBigSkillCheckTimes" => super::synchronization::Handler, EzioBigSkillCheckTimes, AfterHit, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(214, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::AfterHit) }), arguments::none;
     [100012] "EzioBigSkillWeapon2" => super::ultimate_kind::Handler, UltimateExtraAction, Immediate, destination;
     [40009] "AddSummoned" => super::summon::Handler, AddSummoned, Immediate, destination, super::summon::supports_add_summoned;

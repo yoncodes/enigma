@@ -386,7 +386,7 @@ pub(super) fn snapshot_action_start_damage_state(
 
 fn hp_command_target(command: HpCommand) -> i64 {
     match command {
-        HpCommand::Damage(value) => value.target_uid,
+        HpCommand::Damage(value) | HpCommand::SettleAccumulatedDamage(value) => value.target_uid,
         HpCommand::Lose(value) => value.target_uid,
         HpCommand::Kill(value) => value.target_uid,
         HpCommand::Heal(value) => value.target_uid,

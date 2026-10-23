@@ -478,7 +478,8 @@ impl BattleManagers {
         let mut targets_by_team =
             std::collections::HashMap::<i32, std::collections::HashSet<i64>>::new();
         for command in &commands {
-            if let hp::HpCommand::Damage(damage) = command
+            if let hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) =
+                command
                 && damage.amount > 0
                 && let Some(team) = self.entity.team_type(damage.target_uid)
             {
@@ -494,11 +495,12 @@ impl BattleManagers {
         let mut plans = Vec::with_capacity(commands.len());
         for command in commands {
             let target_count = match command {
-                hp::HpCommand::Damage(damage) => self
-                    .entity
-                    .team_type(damage.target_uid)
-                    .and_then(|team| targets_by_team.get(&team))
-                    .map_or(1, std::collections::HashSet::len),
+                hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) => {
+                    self.entity
+                        .team_type(damage.target_uid)
+                        .and_then(|team| targets_by_team.get(&team))
+                        .map_or(1, std::collections::HashSet::len)
+                }
                 _ => 1,
             };
             let mut plan = staged.plan_hp(
@@ -560,7 +562,8 @@ impl BattleManagers {
         shared_values: &mut HashMap<i64, i32>,
         share_spent: &mut HashMap<i64, i32>,
     ) -> Result<HpPlan, hp::HpCommandError> {
-        let share = if let hp::HpCommand::Damage(damage) = &mut command
+        let share = if let hp::HpCommand::Damage(damage)
+        | hp::HpCommand::SettleAccumulatedDamage(damage) = &mut command
             && let Some(split) = crate::engine::skill::buff_act::share_hurt::plan(
                 &self.buff,
                 hp,
@@ -587,7 +590,8 @@ impl BattleManagers {
         } else {
             None
         };
-        if let hp::HpCommand::Damage(damage) = &mut command
+        if let hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) =
+            &mut command
             && let Some(cap) = self
                 .buff
                 .active_features(hp)
@@ -601,7 +605,7 @@ impl BattleManagers {
             damage.amount = damage.amount.min(cap);
         }
         match &mut command {
-            hp::HpCommand::Damage(damage) => {
+            hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) => {
                 if let Some(cap) = crate::engine::skill::buff_act::lock_hp::max_loss(
                     &self.buff,
                     hp,
@@ -623,7 +627,7 @@ impl BattleManagers {
         }
         hp.validate_command(command)?;
         let fake_hp_consumed = match command {
-            hp::HpCommand::Damage(damage)
+            hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage)
                 if damage.amount > 0 && damage.effect_kind != hp::DamageEffectKind::Avoided =>
             {
                 crate::engine::skill::buff_act::lost_hp_to_fake_hp::damage_consumption(
@@ -635,16 +639,20 @@ impl BattleManagers {
             _ => None,
         };
         let team_shared = match command {
-            hp::HpCommand::Damage(damage) if damage.amount > 0 => self
-                .team_shared_shield_plans(hp, damage.target_uid, target_count)
-                .into_iter()
-                .find_map(|mut plan| {
-                    plan.current = *shared_values.entry(plan.buff_uid).or_insert(plan.current);
-                    (plan.current > 0).then_some(plan)
-                }),
+            hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage)
+                if damage.amount > 0 =>
+            {
+                self.team_shared_shield_plans(hp, damage.target_uid, target_count)
+                    .into_iter()
+                    .find_map(|mut plan| {
+                        plan.current = *shared_values.entry(plan.buff_uid).or_insert(plan.current);
+                        (plan.current > 0).then_some(plan)
+                    })
+            }
             _ => None,
         };
-        let team_shared_buff = if let hp::HpCommand::Damage(damage) = command
+        let team_shared_buff = if let hp::HpCommand::Damage(damage)
+        | hp::HpCommand::SettleAccumulatedDamage(damage) = command
             && let Some(absorption) = team_shared.and_then(|plan| plan.absorption(damage.amount))
         {
             let plan = self.plan_team_shared_shield_absorption(absorption, damage.origin)?;
@@ -714,7 +722,7 @@ impl BattleManagers {
             Box::new(hp::SharedHurt { consumed, shares })
         });
         let toughness = match plan.command {
-            hp::HpCommand::Damage(damage)
+            hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage)
                 if damage.effect_kind != hp::DamageEffectKind::Avoided
                     && damage.hurt.damage_from == hp::HurtDamageFromType::Skill =>
             {
@@ -936,7 +944,9 @@ impl BattleManagers {
             | ex_point::ExPointCommand::ConfigureSynchronization(_)
             | ex_point::ExPointCommand::RestartSynchronization(_)
             | ex_point::ExPointCommand::CompleteSynchronization(_)
-            | ex_point::ExPointCommand::RecordSynchronizationAction(_) => None,
+            | ex_point::ExPointCommand::RecordSynchronizationAction(_)
+            | ex_point::ExPointCommand::RecordSynchronizationDamage(_)
+            | ex_point::ExPointCommand::PublishSynchronizationHit(_) => None,
         };
         let gain_allowed = target_uid.is_none_or(|target_uid| {
             !self.buff.has_buff_act_kind(

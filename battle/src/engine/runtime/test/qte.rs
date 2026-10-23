@@ -76,8 +76,10 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
     };
     let mut remaining = Vec::new();
     let mut replies = Vec::new();
+    let mut target_hp = Vec::new();
     for _ in 0..4 {
         let reply = runtime.use_cloth_skill(request).unwrap();
+        target_hp.push(runtime.managers.hp.current(-1));
         remaining.push(
             reply
                 .round
@@ -108,6 +110,8 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         .unwrap();
     assert_eq!((progress.completed_actions, progress.target_uid), (4, -1));
     assert!(progress.total_damage > 0);
+    assert_eq!(&target_hp[..3], &[100_000; 3]);
+    assert_eq!(target_hp[3], 100_000 - progress.total_damage);
     assert_eq!(remaining, [3, 2, 1, 0]);
     fn contains_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> bool {
         steps.iter().any(|step| {
@@ -171,7 +175,7 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     assert_eq!((terminal[1], terminal[3]), (-1, -1));
-    assert!(terminal[2] > progress.total_damage);
+    assert_eq!(terminal[2], progress.total_damage);
     assert!(!runtime.managers.buff.has_buff_id(10, 229100));
     assert!(runtime.use_cloth_skill(request).is_none());
 }

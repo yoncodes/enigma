@@ -1,7 +1,10 @@
 use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
 use super::*;
-use crate::engine::skill::rule::{DefinitionKey, RuleDomain};
+use crate::engine::{
+    manager::hp::{DamageEffectKind, DamageRecord, HurtDamageFromType, HurtInfoData},
+    skill::rule::{DefinitionKey, RuleDomain},
+};
 
 #[test]
 fn unique_skill_point_requires_a_known_type_and_positive_maximum() {
@@ -123,13 +126,64 @@ fn synchronization_lifecycle_is_owned_by_the_resource_manager() {
         )
         .unwrap();
     for damage in [120, 180] {
+        let progress_before_hit = manager.synchronization_progress(1);
+        let damage = DamageRecord {
+            amount: damage,
+            config_effect: 100002,
+            effect_kind: DamageEffectKind::Critical,
+            assassinate: true,
+            ignore_riposte: false,
+            hurt: HurtInfoData {
+                from_uid: 1,
+                is_crit: true,
+                career_restraint: true,
+                reduce_hp: 0,
+                effect_id: 11,
+                skill_id: 11,
+                damage_from: HurtDamageFromType::SkillEffect,
+                buff_act_id: 0,
+                buff_uid: 0,
+                hurt_effect_type: 3,
+                display_amount: None,
+            },
+        };
+        let hit = manager
+            .execute_command(
+                ExPointCommand::PublishSynchronizationHit(ExPointPublishSynchronizationHit {
+                    origin,
+                    target_uid: 1,
+                    action_target_uid: -1,
+                    damage,
+                }),
+                true,
+                true,
+            )
+            .unwrap();
+        assert!(matches!(
+            hit.events().as_slice(),
+            [BattleEvent::Hit(event)]
+                if event.amount == damage.amount && event.resolved_damage == damage.amount
+        ));
+        assert_eq!(manager.synchronization_progress(1), progress_before_hit);
+        let recorded = manager
+            .execute_command(
+                ExPointCommand::RecordSynchronizationDamage(ExPointRecordSynchronizationDamage {
+                    origin,
+                    target_uid: 1,
+                    action_target_uid: -1,
+                    damage,
+                }),
+                true,
+                true,
+            )
+            .unwrap();
+        assert!(recorded.events().is_empty());
         manager
             .execute_command(
                 ExPointCommand::RecordSynchronizationAction(ExPointRecordSynchronizationAction {
                     origin,
                     target_uid: 1,
                     action_target_uid: -1,
-                    damage,
                 }),
                 true,
                 true,

@@ -429,6 +429,7 @@ impl BattleRuntime {
                     }
                     .into();
                 invocation.target = crate::engine::skill::action::SkillTarget::Explicit(target_uid);
+                invocation.mode = crate::engine::skill::action::SkillExecutionMode::Synchronization;
                 let result = drain::run_skill(
                     &mut self.managers,
                     &pool,

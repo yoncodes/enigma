@@ -46,6 +46,72 @@ fn active_invocation_initializes_the_condition_mode() {
 }
 
 #[test]
+fn synchronization_uses_the_extra_action_lane_and_completes_its_own_action() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: Vec::new(),
+    });
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Synchronization;
+    let mut execution = SkillExecution::new(TargetContext::default());
+
+    let mut determinism = RoundDeterminism::default();
+    let mut ops = Vec::new();
+    loop {
+        let emission = emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            &mut execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap();
+        ops.extend(emission.ops);
+        let Some(continuation) = emission.continuation else {
+            break;
+        };
+        invocation = continuation;
+    }
+
+    assert_eq!(
+        execution.context.active_skill_mode,
+        SkillExecutionMode::Synchronization
+    );
+    assert!(crate::engine::skill::action::performs_extra_action(
+        0,
+        execution.context.active_skill_mode,
+        0
+    ));
+    assert!(ops.iter().any(|emission| matches!(
+        &emission.op,
+        RuleOp::SkillLifecycle(
+            crate::engine::skill::action::SkillLifecycle::ActionCompleted(action)
+        )
+            if action.mode == SkillExecutionMode::Synchronization
+    )));
+}
+
+#[test]
 fn team_injury_count_is_resynchronized_between_skill_phases() {
     let mut execution = SkillExecution::new(TargetContext::default());
 

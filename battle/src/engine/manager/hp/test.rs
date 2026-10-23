@@ -138,6 +138,58 @@ fn damage_command_commits_shield_hp_crit_and_death_once() {
 }
 
 #[test]
+fn accumulated_damage_settlement_changes_hp_without_publishing_a_second_hit() {
+    let mut hp = HpManager::default();
+    hp.states.insert(
+        10,
+        HpState {
+            current: 100,
+            max: 100,
+            base_max: 100,
+        },
+    );
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(100003, "EzioBigSkillEnd"),
+    };
+
+    let changes = hp
+        .execute_command(HpCommand::SettleAccumulatedDamage(HpDamage {
+            origin,
+            source_uid: 1,
+            target_uid: 10,
+            amount: 25,
+            config_effect: 100003,
+            effect_kind: DamageEffectKind::Normal,
+            assassinate: true,
+            ignore_riposte: false,
+            hurt: HurtInfoData {
+                from_uid: 1,
+                is_crit: false,
+                career_restraint: true,
+                reduce_hp: 0,
+                effect_id: 12,
+                skill_id: 12,
+                damage_from: HurtDamageFromType::SkillEffect,
+                buff_act_id: 0,
+                buff_uid: 0,
+                hurt_effect_type: 2,
+                display_amount: None,
+            },
+        }))
+        .unwrap();
+
+    assert_eq!(changes.hp.unwrap().delta, -25);
+    assert_eq!(hp.current(10), 75);
+    assert!(
+        changes
+            .events()
+            .iter()
+            .all(|event| !matches!(event, BattleEvent::Hit(_)))
+    );
+}
+
+#[test]
 fn shield_only_damage_is_a_hit_but_not_hp_loss() {
     let mut hp = HpManager::default();
     hp.states.insert(

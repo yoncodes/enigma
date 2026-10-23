@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use sonettobuf::{Fight, FightEntityInfo};
 
 use crate::engine::{
-    event::payload::{BattleEvent, ExPointChangeEvent},
+    event::payload::{BattleEvent, ExPointChangeEvent, HitEvent},
+    manager::hp::DamageRecord,
     skill::rule::CommandOrigin,
 };
 
@@ -225,7 +226,22 @@ pub struct ExPointRecordSynchronizationAction {
     pub origin: CommandOrigin,
     pub target_uid: i64,
     pub action_target_uid: i64,
-    pub damage: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExPointRecordSynchronizationDamage {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub action_target_uid: i64,
+    pub damage: DamageRecord,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExPointPublishSynchronizationHit {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub action_target_uid: i64,
+    pub damage: DamageRecord,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,6 +265,8 @@ pub enum ExPointCommand {
     RestartSynchronization(ExPointRestartSynchronization),
     CompleteSynchronization(ExPointCompleteSynchronization),
     RecordSynchronizationAction(ExPointRecordSynchronizationAction),
+    RecordSynchronizationDamage(ExPointRecordSynchronizationDamage),
+    PublishSynchronizationHit(ExPointPublishSynchronizationHit),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -283,32 +301,65 @@ pub enum ExPointChanges {
         target_uid: i64,
         progress: SynchronizationProgress,
     },
+    SynchronizationDamageRecorded {
+        origin: CommandOrigin,
+        target_uid: i64,
+        action_target_uid: i64,
+        damage: DamageRecord,
+    },
+    SynchronizationHitPublished {
+        origin: CommandOrigin,
+        target_uid: i64,
+        action_target_uid: i64,
+        damage: DamageRecord,
+    },
 }
 
 impl ExPointChanges {
     pub fn events(self) -> Vec<BattleEvent> {
-        let Self::Value { origin, change } = self else {
-            return Vec::new();
-        };
-        let event = ExPointChangeEvent {
-            origin,
-            source_uid: change.source_uid,
-            target_uid: change.target_uid,
-            kind: change.kind,
-            before: change.before,
-            requested_delta: change.requested_delta,
-            applied_delta: change.applied_delta,
-            after: change.after,
-            overflow: change.overflow,
-        };
-        let mut events = Vec::with_capacity(2);
-        if change.applied_delta != 0 {
-            events.push(BattleEvent::ExPointChanged(event));
+        match self {
+            Self::Value { origin, change } => {
+                let event = ExPointChangeEvent {
+                    origin,
+                    source_uid: change.source_uid,
+                    target_uid: change.target_uid,
+                    kind: change.kind,
+                    before: change.before,
+                    requested_delta: change.requested_delta,
+                    applied_delta: change.applied_delta,
+                    after: change.after,
+                    overflow: change.overflow,
+                };
+                let mut events = Vec::with_capacity(2);
+                if change.applied_delta != 0 {
+                    events.push(BattleEvent::ExPointChanged(event));
+                }
+                if change.overflow > 0 {
+                    events.push(BattleEvent::ExPointOverflow(event));
+                }
+                events
+            }
+            Self::SynchronizationHitPublished {
+                origin,
+                action_target_uid,
+                damage,
+                ..
+            } => vec![BattleEvent::Hit(HitEvent {
+                origin,
+                source_uid: damage.hurt.from_uid,
+                target_uid: action_target_uid,
+                skill_id: damage.hurt.skill_id,
+                amount: damage.amount,
+                resolved_damage: damage.amount,
+                shield_absorbed: 0,
+                career_restraint: damage.hurt.career_restraint,
+                damage_from: damage.hurt.damage_from,
+                share_count: 0,
+                assassinate: damage.assassinate,
+                ignore_riposte: damage.ignore_riposte,
+            })],
+            _ => Vec::new(),
         }
-        if change.overflow > 0 {
-            events.push(BattleEvent::ExPointOverflow(event));
-        }
-        events
     }
 }
 
@@ -391,7 +442,7 @@ impl ExPointManager {
                 .synchronization
                 .get(&record.target_uid)
                 .ok_or(ExPointCommandError::InvalidCommand)?;
-            if record.action_target_uid == 0 || record.damage < 0 {
+            if record.action_target_uid == 0 {
                 return Err(ExPointCommandError::InvalidCommand);
             }
             let progress = self
@@ -403,11 +454,44 @@ impl ExPointManager {
             }
             progress.completed_actions += 1;
             progress.target_uid = record.action_target_uid;
-            progress.total_damage = progress.total_damage.saturating_add(record.damage);
             return Ok(ExPointChanges::SynchronizationAdvanced {
                 origin: record.origin,
                 target_uid: record.target_uid,
                 progress: *progress,
+            });
+        }
+        if let ExPointCommand::RecordSynchronizationDamage(record) = command {
+            if !self.synchronization.contains_key(&record.target_uid)
+                || record.action_target_uid == 0
+                || record.damage.amount <= 0
+            {
+                return Err(ExPointCommandError::InvalidCommand);
+            }
+            let progress = self
+                .synchronization_progress
+                .entry(record.target_uid)
+                .or_default();
+            progress.target_uid = record.action_target_uid;
+            progress.total_damage = progress.total_damage.saturating_add(record.damage.amount);
+            return Ok(ExPointChanges::SynchronizationDamageRecorded {
+                origin: record.origin,
+                target_uid: record.target_uid,
+                action_target_uid: record.action_target_uid,
+                damage: record.damage,
+            });
+        }
+        if let ExPointCommand::PublishSynchronizationHit(publish) = command {
+            if !self.synchronization.contains_key(&publish.target_uid)
+                || publish.action_target_uid == 0
+                || publish.damage.amount <= 0
+            {
+                return Err(ExPointCommandError::InvalidCommand);
+            }
+            return Ok(ExPointChanges::SynchronizationHitPublished {
+                origin: publish.origin,
+                target_uid: publish.target_uid,
+                action_target_uid: publish.action_target_uid,
+                damage: publish.damage,
             });
         }
         if let ExPointCommand::ChangeMax(change) = command {
@@ -481,6 +565,8 @@ impl ExPointManager {
                 ExPointCommand::RestartSynchronization(_) => unreachable!(),
                 ExPointCommand::CompleteSynchronization(_) => unreachable!(),
                 ExPointCommand::RecordSynchronizationAction(_) => unreachable!(),
+                ExPointCommand::RecordSynchronizationDamage(_) => unreachable!(),
+                ExPointCommand::PublishSynchronizationHit(_) => unreachable!(),
             };
         if target_uid == 0 || (!set && value == 0) || (set && value < 0) {
             return Err(ExPointCommandError::InvalidCommand);

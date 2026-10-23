@@ -10,6 +10,7 @@ fn fully_absorbed_damage_projects_shield_then_zero_damage() {
         origin,
         source_uid: 1,
         target_uid: 10,
+        publishes_hit: true,
         damage: Some(DamageRecord {
             amount: 40,
             config_effect: -1,
@@ -68,6 +69,7 @@ fn version_seven_embeds_shield_and_zero_fake_hp_consumption_in_hurt_info() {
         origin,
         source_uid: 1,
         target_uid: 10,
+        publishes_hit: true,
         damage: Some(DamageRecord {
             amount: 40,
             config_effect: -1,
@@ -164,6 +166,7 @@ fn version_seven_embeds_team_shared_shield_consumption_in_hurt_info() {
             origin,
             source_uid: 1,
             target_uid: 10,
+            publishes_hit: true,
             damage: Some(DamageRecord {
                 amount: 418,
                 config_effect: -1,
@@ -236,6 +239,7 @@ fn reduce_hp_wire_value_is_gated_by_fight_protocol_version() {
         },
         source_uid: 1,
         target_uid: 10,
+        publishes_hit: true,
         damage: None,
         fake_hp_consumed: None,
         team_shared_shield_absorbed: None,

@@ -14,6 +14,7 @@ fn attr_max_hp_change(
         },
         source_uid,
         target_uid,
+        publishes_hit: true,
         damage: None,
         fake_hp_consumed: None,
         team_shared_shield_absorbed: None,

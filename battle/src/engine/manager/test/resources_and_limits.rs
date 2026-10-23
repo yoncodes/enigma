@@ -514,7 +514,6 @@ fn synchronization_reconnect_state_stays_owned_by_buff_manager() {
                 origin,
                 target_uid: 10,
                 action_target_uid: -1,
-                damage: 123,
             },
         ))
         .unwrap();

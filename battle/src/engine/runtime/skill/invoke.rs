@@ -190,12 +190,16 @@ pub(super) fn apply_event_context(
             context.damage_target_count_kind =
                 catalog.damage_target_count_kind(context.logic_target);
             context.active_skill_is_attack = catalog.skill_is_attack(hit.skill_id);
-            context.active_skill_mode = if managers.conduit.owns_skill(hit.source_uid, hit.skill_id)
+            if context.active_skill_mode
+                != crate::engine::skill::action::SkillExecutionMode::Synchronization
             {
-                crate::engine::skill::action::SkillExecutionMode::Device
-            } else {
-                crate::engine::skill::action::SkillExecutionMode::Active
-            };
+                context.active_skill_mode =
+                    if managers.conduit.owns_skill(hit.source_uid, hit.skill_id) {
+                        crate::engine::skill::action::SkillExecutionMode::Device
+                    } else {
+                        crate::engine::skill::action::SkillExecutionMode::Active
+                    };
+            }
         }
         BattleEvent::EntityDied(death) => context.runtime_target_uid = death.target_uid,
         BattleEvent::EntityEntered { target_uid }

@@ -153,6 +153,7 @@ pub(in crate::engine::runtime) fn emit_ops(
     if matches!(
         invocation.mode,
         crate::engine::skill::action::SkillExecutionMode::Active
+            | crate::engine::skill::action::SkillExecutionMode::Synchronization
             | crate::engine::skill::action::SkillExecutionMode::DirectBig
             | crate::engine::skill::action::SkillExecutionMode::Device
             | crate::engine::skill::action::SkillExecutionMode::DeviceCard

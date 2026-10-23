@@ -66,7 +66,6 @@ fn synchronization_buff_restarts_its_configured_action_cycle() {
                     origin,
                     target_uid: 10,
                     action_target_uid: -1,
-                    damage: 123,
                 },
             ),
         )

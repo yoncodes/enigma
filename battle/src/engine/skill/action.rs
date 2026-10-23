@@ -26,6 +26,7 @@ pub enum SkillExecutionMode {
     #[default]
     Nested,
     Active,
+    Synchronization,
     DirectBig,
     Device,
     DeviceCard,
@@ -35,7 +36,11 @@ impl SkillExecutionMode {
     pub(crate) fn completes_action(self) -> bool {
         matches!(
             self,
-            Self::Active | Self::DirectBig | Self::Device | Self::DeviceCard
+            Self::Active
+                | Self::Synchronization
+                | Self::DirectBig
+                | Self::Device
+                | Self::DeviceCard
         )
     }
 
@@ -50,7 +55,11 @@ pub(crate) fn performs_extra_action(
     extra_skill_kind: i32,
 ) -> bool {
     crate::engine::skill::buff_act::additional_damage::uses_costed_lane(extra_skill_kind)
-        || (card_index == 0 && mode == SkillExecutionMode::Active)
+        || (card_index == 0
+            && matches!(
+                mode,
+                SkillExecutionMode::Active | SkillExecutionMode::Synchronization
+            ))
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
