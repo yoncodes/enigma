@@ -315,7 +315,7 @@ fn run_card_refill(
                 CardCommand::RefillOne(CardRefillOne {
                     origin,
                     card,
-                    consume_draw_pile: !configured_opening && !is_ultimate,
+                    consume_draw_pile: !configured_opening && !is_ultimate && !is_device,
                     consume_deck: !configured_opening
                         && !is_ultimate
                         && !is_device

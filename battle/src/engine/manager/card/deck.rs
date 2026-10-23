@@ -132,10 +132,14 @@ impl CardDeck {
             else {
                 return false;
             };
-            remaining.remove(index);
+            if !self.is_persistent_draw_card(card) {
+                remaining.remove(index);
+            }
         }
         for card in cards {
-            self.consume_draw_card(card);
+            if !self.is_persistent_draw_card(card) {
+                self.consume_draw_card(card);
+            }
             self.push_hand(card.clone());
         }
         true
@@ -145,12 +149,26 @@ impl CardDeck {
         if !self.can_recycle_draw_pile() {
             return false;
         }
-        std::mem::swap(&mut self.draw_pile, &mut self.discard_pile);
+        let persistent = std::mem::take(&mut self.draw_pile);
+        self.draw_pile = std::mem::take(&mut self.discard_pile);
+        self.draw_pile.extend(persistent);
         true
     }
 
     pub(super) fn can_recycle_draw_pile(&self) -> bool {
-        self.draw_pile.is_empty() && !self.discard_pile.is_empty()
+        self.draw_pile
+            .iter()
+            .all(|card| self.is_persistent_draw_card(card))
+            && !self.discard_pile.is_empty()
+    }
+
+    fn is_persistent_draw_card(&self, card: &CardInfo) -> bool {
+        self.catalog().is_some_and(|catalog| {
+            card.skill_id.is_some_and(|skill_id| {
+                catalog.skill_effect_tag(skill_id)
+                    == crate::engine::skill::effect::catalog::SkillEffectTag::Device as i32
+            })
+        })
     }
 
     pub fn move_card(&mut self, from_index: usize, to_index: usize) -> bool {
@@ -629,6 +647,31 @@ mod tests {
         let removed = deck.dissolve(0, Some(card(14, 500))).unwrap();
         assert_eq!(removed.skill_id, Some(999));
         assert_eq!(deck.hand().last().unwrap().skill_id, Some(500));
+    }
+
+    #[test]
+    fn device_weights_survive_opening_deals_and_normal_recycle() {
+        crate::test_support::init_config();
+        let normal = card(10, 100);
+        let power = card(10, 31446062);
+        let special = card(10, 31450181);
+        let mut deck = CardDeck::with_draw_pile(
+            Vec::new(),
+            vec![normal.clone(), power.clone(), special.clone()],
+        )
+        .with_catalog(crate::catalog::BattleCatalog::new(
+            crate::test_support::game_data(),
+        ));
+
+        assert!(deck.deal_from_draw_pile(&[
+            power.clone(),
+            special.clone(),
+            power.clone(),
+            normal.clone(),
+        ]));
+        assert_eq!(deck.draw_pile(), &[power.clone(), special.clone()]);
+        assert!(deck.recycle_draw_pile());
+        assert_eq!(deck.draw_pile(), &[normal, power, special]);
     }
 
     #[test]
