@@ -451,6 +451,29 @@ mod tests {
     }
 
     #[test]
+    fn configured_buff_consumption_owns_source_opening() {
+        init_config();
+        let conditions = parse_conditions(config::configs::get(), "203");
+        let route = ConditionRoute::compile_for_behavior(
+            &conditions,
+            &crate::engine::skill::behavior::classify::BehaviorSpec::new(
+                50014,
+                "ConsumeBuffByTypeId",
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(
+            route.branches[0].driver,
+            Some(ConditionDriver::Trigger(ConditionTrigger {
+                key: crate::engine::skill::rule::DefinitionKey::new(203, "None"),
+                event: EventKind::SkillAction,
+                phase: Some(SkillPhase::SourceOpening),
+            }))
+        );
+    }
+
+    #[test]
     fn career_predicate_preserves_the_exact_skill_action_driver() {
         init_config();
         let expected = Some(ConditionDriver::Trigger(ConditionTrigger {

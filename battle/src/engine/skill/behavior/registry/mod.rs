@@ -691,7 +691,7 @@ behavior_definitions! {
     [60029] "RemoveBuffToAddBuff" => super::buff::Handler, RemoveBuffToAddBuff, AfterDamage, destination, arguments::exactly_two;
     [60145] "AddBuffDuration" => super::buff::Handler, AddBuffDuration, Immediate, destination, arguments::exactly_two;
     [60094] "ReduceCastChannelCount" => super::buff::Handler, ReduceCastChannelCount, AfterDamage, destination, super::buff::supports_channel_count_reduction;
-    [50014] "ConsumeBuffByTypeId" => super::buff::Handler, ConsumeBuffByTypeId, AfterDamage, destination, arguments::exactly_two;
+    [50014] "ConsumeBuffByTypeId" => super::buff::Handler, ConsumeBuffByTypeId, AfterDamage, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(203, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::SourceOpening) }), arguments::exactly_two;
     [50016] "ConsumeBuffByTypeId2" => super::buff::Handler, ConsumeBuffByTypeId2, AfterDamage, destination, arguments::exactly_two;
     [60260] "ConsumeBuffLayerAndOtherAddBuff" => super::buff::Handler, ConsumeBuffLayerAndOtherAddBuff, AfterDamage, destination, arguments::exactly_four;
     [30003] "Disperse1" => super::buff::Handler, Disperse1, Immediate, destination, super::buff::supports_status_dispel;
