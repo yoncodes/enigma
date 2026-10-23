@@ -45,6 +45,14 @@ impl BuffManager {
                 }
                 (grant.origin, BuffPlanAction::Grant(Box::new(plan)))
             }
+            BuffCommand::GrantOnIntermediateDeath(grant) => (
+                grant.origin,
+                BuffPlanAction::Grant(Box::new(self.plan_grant_with_source_attack(
+                    hp,
+                    (&grant).into(),
+                    inputs,
+                )?)),
+            ),
             BuffCommand::GrantRelated(related) => {
                 let grant = related.grant;
                 let (input, force_normal_uid) = match related.relation {

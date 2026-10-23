@@ -151,6 +151,7 @@ struct SubscriberContext {
     owner_uid: i64,
     skill_id: Option<i32>,
     group: Option<Rc<RefCell<SubscriberDeathGroup>>>,
+    intermediate_death_group: bool,
 }
 
 impl SubscriberContext {
@@ -159,6 +160,7 @@ impl SubscriberContext {
             owner_uid,
             skill_id: None,
             group: None,
+            intermediate_death_group: false,
         }
     }
 
@@ -167,6 +169,7 @@ impl SubscriberContext {
             owner_uid,
             skill_id: Some(skill_id),
             group: None,
+            intermediate_death_group: false,
         }
     }
 }
@@ -1304,6 +1307,17 @@ fn drain_queue_with_deferred(
             | RuleOp::MarkBuffActFired { .. }
             | RuleOp::ModifyActiveSkillTargets { .. }
             | RuleOp::NuoDiKaHit(_)) => {
+                if subscriber
+                    .as_ref()
+                    .is_some_and(|subscriber| subscriber.intermediate_death_group)
+                    && let RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
+                        command,
+                    )) = &mut command
+                    && let crate::engine::manager::buff::BuffCommand::GrantOnDeath(grant) = command
+                {
+                    *command =
+                        crate::engine::manager::buff::BuffCommand::GrantOnIntermediateDeath(*grant);
+                }
                 // After-hit observers must execute before the lifecycle operation
                 // that closes their boundary, so requeue that closer behind them.
                 let releases_after_hit = matches!(

@@ -10,6 +10,22 @@ fn each_death_event_group_settles_before_the_next_group_reacts() {
         position: Some(if uid > 0 { 1 } else { -uid as i32 }),
         current_hp: Some(100),
         passive_skill,
+        buffs: match uid {
+            10 => vec![BuffInfo {
+                uid: Some(1255),
+                buff_id: Some(31491201),
+                from_uid: Some(10),
+                ..Default::default()
+            }],
+            -1 => vec![BuffInfo {
+                uid: Some(1108),
+                buff_id: Some(103374115),
+                from_uid: Some(-1),
+                layer: Some(3),
+                ..Default::default()
+            }],
+            _ => Vec::new(),
+        },
         attr: Some(HeroAttribute {
             hp: Some(100),
             ..Default::default()
@@ -17,6 +33,7 @@ fn each_death_event_group_settles_before_the_next_group_reacts() {
         ..Default::default()
     };
     let fight = Fight {
+        version: Some(7),
         attacker: Some(FightTeam {
             entitys: vec![entity(10, 1, Vec::new())],
             ..Default::default()
@@ -158,6 +175,7 @@ fn each_death_event_group_settles_before_the_next_group_reacts() {
         ]
     );
     assert_eq!(managers.buff.buff_id_amount(10, 103374114), 2);
+    assert_eq!(managers.buff.buff_id_uid(10, 103374114), Some(1257));
 }
 
 #[test]

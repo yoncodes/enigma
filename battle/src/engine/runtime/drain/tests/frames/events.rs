@@ -728,6 +728,7 @@ fn death_outside_the_subscriber_group_supersedes_its_pending_transition() {
         owner_uid: -1,
         skill_id: None,
         group: Some(outer_group),
+        intermediate_death_group: false,
     };
     drain_nested_queue(
         &mut managers,
@@ -852,6 +853,7 @@ fn subscriber_death_batch_cleans_each_defeated_halo_emitter() {
         owner_uid: 10,
         skill_id: None,
         group: Some(group),
+        intermediate_death_group: false,
     };
     let queued = |op| QueuedOp {
         op,
