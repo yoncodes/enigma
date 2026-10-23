@@ -348,7 +348,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             });
         }
     }
-    if active_phase == Some(SkillPhase::Immediate)
+    if (active_phase == Some(SkillPhase::Immediate) || matches!(trigger, SkillOpTrigger::Event(_)))
         && let Some(origin) = invocation.action_hand_settlement.take()
     {
         outputs.push(SkillEmissionOp {

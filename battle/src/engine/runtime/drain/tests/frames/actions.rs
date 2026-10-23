@@ -163,16 +163,39 @@ fn recover_power_generated_action_settles_consumed_hand_once() {
         .iter()
         .find_map(generated_skill_frame)
         .expect("generated action owns a skill frame");
-    let ex_point = frame
+    let reaction = frame
+        .items
+        .iter()
+        .find_map(|item| match item {
+            FrameItem::Child(child)
+                if matches!(
+                    child.owner,
+                    FrameOwner::Skill {
+                        skill_id: 433911,
+                        ..
+                    }
+                ) =>
+            {
+                Some(child)
+            }
+            _ => None,
+        })
+        .expect("the actor start reaction owns its frame");
+    let ex_point = reaction
         .items
         .iter()
         .position(|item| matches!(item, FrameItem::Change(change) if matches!(change.as_ref(), BattleChange::ExPoint(_))))
         .expect("settlement grants the consumed ally card's owner Moxie");
-    let compose = frame
+    let compose = reaction
         .items
         .iter()
         .position(|item| matches!(item, FrameItem::Change(change) if matches!(change.as_ref(), BattleChange::Card(changes) if changes.kind == CardChangeKind::Composed)))
         .expect("settlement composes the remaining hand");
+    let reaction_buff = reaction
+        .items
+        .iter()
+        .position(|item| matches!(item, FrameItem::Change(change) if matches!(change.as_ref(), BattleChange::Buff(_))))
+        .expect("the actor reaction applies its buff after hand settlement");
     let force_field = frame
         .items
         .iter()
@@ -183,16 +206,14 @@ fn recover_power_generated_action_settles_consumed_hand_once() {
         .iter()
         .position(|item| matches!(item, FrameItem::Change(change) if matches!(change.as_ref(), BattleChange::Hp(_))))
         .expect("generated action deals damage");
-    for skill_id in [109380003, 31050143, 433911] {
-        let reaction = frame
-            .items
-            .iter()
-            .position(|item| matches!(item, FrameItem::Child(child) if matches!(child.owner, FrameOwner::Skill { skill_id: owner, .. } if owner == skill_id)))
-            .expect("each start subscriber keeps its own frame");
-        assert!(reaction < ex_point);
-    }
     assert!(ex_point < compose);
-    assert!(compose < force_field);
+    assert!(compose < reaction_buff);
+    let reaction = frame
+        .items
+        .iter()
+        .position(|item| matches!(item, FrameItem::Child(child) if matches!(child.owner, FrameOwner::Skill { skill_id: 433911, .. })))
+        .unwrap();
+    assert!(reaction < force_field);
     assert!(force_field < damage);
 }
 

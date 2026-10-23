@@ -115,27 +115,42 @@ fn queued_buff_act_feature_op(
     })
 }
 
-fn queued_skill_start_settlement(
+fn route_skill_start_settlement(
     event: &BattleEvent,
     reuse_path: Option<&[usize]>,
+    reactions: &mut [QueuedOp],
 ) -> Option<QueuedOp> {
     let BattleEvent::SkillEffectStarted(started) = event else {
         return None;
     };
     let origin = started.hand_settlement?;
-    let reuse_path = reuse_path?;
-    Some(QueuedOp {
-        op: RuleOp::ActionHandSettlement { origin },
-        trigger: SkillOpTrigger::Event(event.clone()),
-        skill_execution: None,
-        frame_path: Some(reuse_path.to_vec()),
-        parent_path: None,
-        frame_group: None,
-        independent_parent_group: None,
-        frame_owner: None,
-        subscriber: None,
-        caster_frame: None,
-    })
+    let reaction = reactions.iter_mut().rev().find(|queued| {
+        queued
+            .subscriber
+            .as_ref()
+            .is_some_and(|subscriber| subscriber.owner_uid == started.source_uid)
+            && matches!(queued.op, RuleOp::Skill(_))
+    });
+    let Some(reaction) = reaction else {
+        let reuse_path = reuse_path?;
+        return Some(QueuedOp {
+            op: RuleOp::ActionHandSettlement { origin },
+            trigger: SkillOpTrigger::Event(event.clone()),
+            skill_execution: None,
+            frame_path: Some(reuse_path.to_vec()),
+            parent_path: None,
+            frame_group: None,
+            independent_parent_group: None,
+            frame_owner: None,
+            subscriber: None,
+            caster_frame: None,
+        });
+    };
+    let RuleOp::Skill(invocation) = &mut reaction.op else {
+        unreachable!("actor reaction filter only selects skill invocations");
+    };
+    invocation.action_hand_settlement = Some(origin);
+    None
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -651,7 +666,7 @@ pub(super) fn dispatch_reactions(
             );
     }
     if runs_after {
-        let selected = queued_selected_timing(
+        let mut selected = queued_selected_timing(
             pool,
             managers,
             catalog,
@@ -668,10 +683,13 @@ pub(super) fn dispatch_reactions(
             crate::engine::event::subscription::ReactionTiming::Immediate,
             multiplicity.as_deref_mut(),
         )?;
+        let settlement = if lane.is_none() {
+            route_skill_start_settlement(event, reuse_path, &mut selected)
+        } else {
+            None
+        };
         reactions.after_publish.extend(selected);
-        if lane.is_none()
-            && let Some(settlement) = queued_skill_start_settlement(event, reuse_path)
-        {
+        if let Some(settlement) = settlement {
             reactions.after_publish.push(settlement);
         }
     }
