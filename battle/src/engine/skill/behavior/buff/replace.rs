@@ -175,7 +175,7 @@ pub(super) fn replace_buff_ops(
             origin: super::command_origin(behavior)?,
             source_uid: context.source_uid,
             target_uid: context.target_uid,
-            source: BuffSelector::IdOrType(*source_buff_id),
+            sources: vec![BuffSelector::IdOrType(*source_buff_id)],
             replacement_id_or_type: *replacement_buff_id,
         }),
     ))])
@@ -200,7 +200,7 @@ pub(super) fn remove_buff_to_add_buff_ops(
             origin: super::command_origin(behavior)?,
             source_uid: context.source_uid,
             target_uid: context.target_uid,
-            source: BuffSelector::IdOrType(*source_buff_id),
+            sources: vec![BuffSelector::IdOrType(*source_buff_id)],
             replacement_id_or_type: *replacement_buff_id,
         }),
     ))])

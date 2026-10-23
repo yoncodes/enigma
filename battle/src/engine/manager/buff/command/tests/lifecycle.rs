@@ -328,7 +328,7 @@ fn replacement_uses_the_exact_configured_output_without_inferring_a_family_varia
                 origin,
                 source_uid: 10,
                 target_uid: 10,
-                source: BuffSelector::IdOrType(30810101),
+                sources: vec![BuffSelector::IdOrType(30810101)],
                 replacement_id_or_type: 30810102,
             }),
         )

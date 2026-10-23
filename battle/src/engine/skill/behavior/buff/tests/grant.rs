@@ -289,27 +289,12 @@ fn layer_range_replaces_the_selected_buff_too() {
     )
     .unwrap();
 
-    assert!(matches!(
-        ops.as_slice(),
-        [
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::Deactivate(BuffRemove {
-                selector: BuffRemoveSelector::ExactId(31050141),
-                ..
-            }))),
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::Deactivate(BuffRemove {
-                selector: BuffRemoveSelector::ExactId(31050142),
-                ..
-            }))),
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::Deactivate(BuffRemove {
-                selector: BuffRemoveSelector::ExactId(31050143),
-                ..
-            }))),
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
-                buff_id: 31050142,
-                ..
-            }))),
-        ]
-    ));
+    let [RuleOp::Command(BattleCommand::Buff(BuffCommand::Replace(replace)))] = ops.as_slice()
+    else {
+        panic!("expected one atomic replacement");
+    };
+    assert_eq!(replace.sources, vec![BuffSelector::IdOrType(31050142)]);
+    assert_eq!(replace.replacement_id_or_type, 31050142);
 }
 
 #[test]

@@ -1347,14 +1347,19 @@ impl BuffManager {
         replace: BuffReplace,
         inputs: GrantInputs,
     ) -> Result<ReplacePlan, BuffCommandError> {
-        let BuffSelector::IdOrType(source_id_or_type) = replace.source else {
-            return Err(BuffCommandError::InvalidReplace);
-        };
+        let source_ids_or_types = replace
+            .sources
+            .into_iter()
+            .map(|source| match source {
+                BuffSelector::IdOrType(source_id_or_type) => Ok(source_id_or_type),
+                _ => Err(BuffCommandError::InvalidReplace),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         self.plan_replace_ids(
             hp,
             replace.source_uid,
             replace.target_uid,
-            source_id_or_type,
+            &source_ids_or_types,
             replace.replacement_id_or_type,
             inputs,
         )
@@ -1365,23 +1370,45 @@ impl BuffManager {
         hp: &HpManager,
         source_uid: i64,
         target_uid: i64,
-        source_id_or_type: i32,
+        source_ids_or_types: &[i32],
         replacement_id_or_type: i32,
         inputs: GrantInputs,
     ) -> Result<ReplacePlan, BuffCommandError> {
-        if target_uid == 0 || source_id_or_type <= 0 || replacement_id_or_type <= 0 {
+        if target_uid == 0
+            || source_ids_or_types.is_empty()
+            || source_ids_or_types.iter().any(|source| *source <= 0)
+            || replacement_id_or_type <= 0
+        {
             return Err(BuffCommandError::InvalidReplace);
         }
-        let source_buff_id = self
+        let source_buff_ids = source_ids_or_types
+            .iter()
+            .filter_map(|source_id_or_type| {
+                self.buffs
+                    .iter()
+                    .find(|active| {
+                        active.owner_uid == target_uid
+                            && (active.type_id == *source_id_or_type
+                                || active.buff.buff_id == Some(*source_id_or_type))
+                    })
+                    .and_then(|active| active.buff.buff_id)
+            })
+            .collect::<Vec<_>>();
+        if source_buff_ids.is_empty() {
+            return Err(BuffCommandError::InvalidReplace);
+        }
+        let removed_uids = self
             .buffs
             .iter()
-            .find(|active| {
+            .filter(|active| {
                 active.owner_uid == target_uid
-                    && (active.type_id == source_id_or_type
-                        || active.buff.buff_id == Some(source_id_or_type))
+                    && active
+                        .buff
+                        .buff_id
+                        .is_some_and(|buff_id| source_buff_ids.contains(&buff_id))
             })
-            .and_then(|active| active.buff.buff_id)
-            .ok_or(BuffCommandError::InvalidReplace)?;
+            .filter_map(|active| active.buff.uid)
+            .collect::<Vec<_>>();
         let policy = BuffPolicy::configured(self.catalog().game_data(), replacement_id_or_type)
             .map_err(BuffCommandError::InvalidPolicy)?;
         let excluded_uids = self.exclusion_uids(target_uid, &policy);
@@ -1389,7 +1416,11 @@ impl BuffManager {
             .len()
             .try_into()
             .map_err(|_| BuffCommandError::InvalidReplace)?;
-        let mut grant = self.plan_grant_with_source_attack(
+        let mut replacement_state = self.clone();
+        for buff_uid in &removed_uids {
+            replacement_state.delete(target_uid, *buff_uid);
+        }
+        let mut grant = replacement_state.plan_grant_with_source_attack(
             hp,
             GrantRequest {
                 source_uid,
@@ -1406,14 +1437,6 @@ impl BuffManager {
             inputs,
         )?;
         grant.excluded_uids = excluded_uids;
-        let removed_uids = self
-            .buffs
-            .iter()
-            .filter(|active| {
-                active.owner_uid == target_uid && active.buff.buff_id == Some(source_buff_id)
-            })
-            .filter_map(|active| active.buff.uid)
-            .collect();
         Ok(ReplacePlan {
             target_uid,
             removed_uids,

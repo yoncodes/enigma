@@ -143,12 +143,12 @@ pub struct BuffDispel {
     pub count: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuffReplace {
     pub origin: CommandOrigin,
     pub source_uid: i64,
     pub target_uid: i64,
-    pub source: BuffSelector,
+    pub sources: Vec<BuffSelector>,
     pub replacement_id_or_type: i32,
 }
 

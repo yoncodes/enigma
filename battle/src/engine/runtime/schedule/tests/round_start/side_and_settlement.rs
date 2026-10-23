@@ -364,31 +364,39 @@ fn round_start_zero_reads_timed_stacks_before_duration_advances() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                team_type: Some(1),
-                current_hp: Some(100),
-                passive_skill: vec![40],
-                buffs: vec![
-                    BuffInfo {
-                        uid: Some(1),
-                        buff_id: Some(31050111),
-                        duration: Some(1),
-                        layer: Some(10),
-                        from_uid: Some(10),
-                        ..Default::default()
-                    },
-                    BuffInfo {
-                        uid: Some(2),
-                        buff_id: Some(31050111),
-                        duration: Some(2),
-                        layer: Some(6),
-                        from_uid: Some(10),
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill: vec![40],
+                    buffs: vec![
+                        BuffInfo {
+                            uid: Some(1),
+                            buff_id: Some(31050111),
+                            duration: Some(1),
+                            layer: Some(27),
+                            from_uid: Some(10),
+                            ..Default::default()
+                        },
+                        BuffInfo {
+                            uid: Some(2),
+                            buff_id: Some(31050111),
+                            duration: Some(2),
+                            layer: Some(6),
+                            from_uid: Some(10),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -419,6 +427,12 @@ fn round_start_zero_reads_timed_stacks_before_duration_advances() {
     });
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
+    managers.buff.add(&managers.hp, 10, 10, 31050142, 0);
+    let old_lower_field_uid = managers.buff.buff_id_uid(10, 31050142).unwrap();
+    let old_lower_halo_uid = managers.buff.buff_id_uid(11, 31050145).unwrap();
+    managers.buff.add(&managers.hp, 10, 10, 31050143, 0);
+    let old_field_uid = managers.buff.buff_id_uid(10, 31050143).unwrap();
+    let old_halo_uid = managers.buff.buff_id_uid(11, 31050146).unwrap();
 
     run_round_start_split(
         &mut managers,
@@ -430,8 +444,14 @@ fn round_start_zero_reads_timed_stacks_before_duration_advances() {
     )
     .unwrap();
 
-    assert!(managers.buff.has_buff_id(10, 31050142));
+    assert!(managers.buff.has_buff_id(10, 31050143));
     assert!(!managers.buff.has_buff_id(10, 31050141));
+    assert!(!managers.buff.has_buff_id(10, 31050142));
+    assert!(!managers.buff.has_buff_id(11, 31050145));
+    assert_eq!(managers.buff.snapshot(10, old_lower_field_uid), None);
+    assert_eq!(managers.buff.snapshot(11, old_lower_halo_uid), None);
+    assert_ne!(managers.buff.buff_id_uid(10, 31050143), Some(old_field_uid));
+    assert_ne!(managers.buff.buff_id_uid(11, 31050146), Some(old_halo_uid));
 }
 
 #[test]
