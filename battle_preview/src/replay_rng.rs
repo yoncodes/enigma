@@ -452,6 +452,20 @@ fn crit_choices(
                         let rolled = crit(EffectType::Damage, EffectType::Crit)
                             .filter(|_| config_effect == -1)
                             .or_else(|| {
+                                matches!(
+                                    effect_type,
+                                    value
+                                        if value == EffectType::Eziobigskilldamage as i32
+                                            || value
+                                                == EffectType::Eziobigskillorigindamage as i32
+                                )
+                                .then(|| {
+                                    effect.hurt_info.as_ref().is_some_and(|hurt| {
+                                        hurt.hurt_effect == Some(EffectType::Crit as i32)
+                                    })
+                                })
+                            })
+                            .or_else(|| {
                                 heal_crit.filter(|_| matches!(config_effect, 20001 | 90001))
                             })
                             .or_else(|| {
@@ -990,7 +1004,7 @@ mod tests {
     #[test]
     fn observed_crits_follow_only_rolled_effects_of_their_own_step_in_order() {
         crate::init_test_config();
-        use sonettobuf::{ActEffect, effect_type_enum::EffectType};
+        use sonettobuf::{ActEffect, FightHurtInfo, effect_type_enum::EffectType};
 
         let effect = |effect_type: EffectType, target_id: i64, config_effect: i32| ActEffect {
             effect_type: Some(effect_type as i32),
@@ -1035,6 +1049,26 @@ mod tests {
                     effect(EffectType::Damage, -2, -1),
                     effect(EffectType::Heal, 10, 20001),
                     effect(EffectType::Buffadd, -2, 0),
+                    ActEffect {
+                        effect_type: Some(EffectType::Eziobigskilldamage as i32),
+                        target_id: Some(-1),
+                        config_effect: Some(100002),
+                        hurt_info: Some(FightHurtInfo {
+                            hurt_effect: Some(EffectType::Crit as i32),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    ActEffect {
+                        effect_type: Some(EffectType::Eziobigskillorigindamage as i32),
+                        target_id: Some(-1),
+                        config_effect: Some(100003),
+                        hurt_info: Some(FightHurtInfo {
+                            hurt_effect: Some(EffectType::Damage as i32),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
                 ],
                 ..Default::default()
             }],
@@ -1048,6 +1082,8 @@ mod tests {
             vec![
                 ((31090111, 10), true),
                 ((31090111, 10), false),
+                ((31090111, 10), false),
+                ((31090111, 10), true),
                 ((31090111, 10), false)
             ]
         );
