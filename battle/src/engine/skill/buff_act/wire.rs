@@ -18,6 +18,7 @@ pub struct BuffActWireDefinition {
     pub max_hp: Option<MaxHpWireRule>,
     pub pre_add: Option<WireEffect>,
     pub snapshot_reserve: Option<SnapshotReserveRule>,
+    removal_max_hp_sync_buff_ids: &'static [i32],
     pub refreshes_unchanged: bool,
     pub projects_initial_state_on_refresh: bool,
 }
@@ -115,6 +116,7 @@ impl BuffActWireDefinition {
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
+            removal_max_hp_sync_buff_ids: &[],
             refreshes_unchanged: false,
             projects_initial_state_on_refresh: false,
         }
@@ -131,6 +133,7 @@ impl BuffActWireDefinition {
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
+            removal_max_hp_sync_buff_ids: &[],
             refreshes_unchanged: false,
             projects_initial_state_on_refresh: false,
         }
@@ -147,6 +150,7 @@ impl BuffActWireDefinition {
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
+            removal_max_hp_sync_buff_ids: &[],
             refreshes_unchanged: false,
             projects_initial_state_on_refresh: false,
         }
@@ -191,6 +195,15 @@ impl BuffActWireDefinition {
     pub const fn with_snapshot_reserve(mut self, rule: SnapshotReserveRule) -> Self {
         self.snapshot_reserve = Some(rule);
         self
+    }
+
+    pub const fn with_removal_max_hp_sync(mut self, buff_ids: &'static [i32]) -> Self {
+        self.removal_max_hp_sync_buff_ids = buff_ids;
+        self
+    }
+
+    pub fn removal_max_hp_sync(self, buff_id: i32) -> bool {
+        self.removal_max_hp_sync_buff_ids.contains(&buff_id)
     }
 
     pub const fn with_unchanged_refresh(mut self) -> Self {

@@ -280,6 +280,15 @@ impl BuffDefinition {
             .collect()
     }
 
+    pub(super) fn removal_max_hp_sync_act_id(&self) -> Option<i32> {
+        self.features.iter().find_map(|feature| {
+            feature
+                .wire
+                .filter(|wire| wire.removal_max_hp_sync(self.id))
+                .map(|wire| wire.key.opcode)
+        })
+    }
+
     pub(super) fn command_refresh_wire_markers(
         &self,
         transaction_event: Option<crate::engine::event::kind::EventKind>,

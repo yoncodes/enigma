@@ -1129,7 +1129,7 @@ buff_act_definitions! {
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::each_change_attr_one_way::transaction_rule_ops,
         supports: super::each_change_attr_one_way::supports,
-        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1131, "EachChangeAttrOneWay"), &[EffectType::None as i32]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1131, "EachChangeAttrOneWay"), &[EffectType::None as i32]).with_removal_max_hp_sync(&[31440116]));
     (836, "ContractCastChannel") => ContractCastChannel,
         transactions: [EventKind::BuffAdded],
         publication: BeforePublish, frame: CausingFrame,

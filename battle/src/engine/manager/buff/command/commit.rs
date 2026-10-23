@@ -5,7 +5,7 @@ impl BuffManager {
     pub(crate) fn commit(&mut self, hp: &HpManager, plan: BuffPlan) -> BuffChanges {
         let origin = plan.origin;
         let catalog = self.catalog();
-        let changes = match plan.action {
+        let mut changes = match plan.action {
             BuffPlanAction::Grant(plan) => {
                 let markers = plan.refresh_initial_state_markers();
                 let change = self.commit_grant_plan(hp, *plan);
@@ -352,6 +352,14 @@ impl BuffManager {
                 },
             ),
         };
+        for removed in &mut changes.change.removed {
+            removed.target_max_hp = hp.max(removed.target_uid);
+        }
+        for transition in &mut changes.lifecycle_transitions {
+            if let BuffLifecycleTransition::Removed(removed) = transition {
+                removed.target_max_hp = hp.max(removed.target_uid);
+            }
+        }
         self.reconcile_transition_progress();
         changes
     }

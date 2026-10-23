@@ -71,6 +71,17 @@ impl EffectPacket {
                 .flat_map(|transition| match transition {
                     crate::engine::manager::buff::BuffLifecycleTransition::Removed(removed) => {
                         let mut effects = Self::buff_delete_effects(removed);
+                        if let Some(buff_act_id) = removed
+                            .buff
+                            .buff_id
+                            .and_then(crate::engine::manager::buff::removal_max_hp_sync_act_id)
+                        {
+                            effects.push(Self::max_hp_change(
+                                removed.target_uid,
+                                removed.target_max_hp,
+                                buff_act_id,
+                            ));
+                        }
                         if let Some(shield) = changes
                             .shield_removed
                             .iter()
@@ -104,6 +115,17 @@ impl EffectPacket {
                 effects.push(reason);
             }
             effects.push(Self::buff_delete(removed));
+            if let Some(buff_act_id) = removed
+                .buff
+                .buff_id
+                .and_then(crate::engine::manager::buff::removal_max_hp_sync_act_id)
+            {
+                effects.push(Self::max_hp_change(
+                    removed.target_uid,
+                    removed.target_max_hp,
+                    buff_act_id,
+                ));
+            }
             if let Some(shield) = changes
                 .shield_removed
                 .iter()

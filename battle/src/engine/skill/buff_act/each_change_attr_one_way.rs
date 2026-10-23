@@ -155,10 +155,14 @@ pub fn transaction_rule_ops(
 mod tests {
     use super::*;
     use crate::engine::{
-        manager::buff::{BuffCommand, BuffGrant, BuffRemove, BuffRemoveSelector},
+        manager::buff::{
+            BuffCommand, BuffDurationAdvance, BuffGrant, BuffRemove, BuffRemoveSelector,
+        },
         skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
     };
-    use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute, HeroExAttribute};
+    use sonettobuf::{
+        BuffActInfo, BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute, HeroExAttribute,
+    };
 
     fn managers(source_attack: i32, source_hp: i32, source_critical_dmg: i32) -> BattleManagers {
         crate::test_support::init_config();
@@ -452,6 +456,91 @@ mod tests {
                 1_650
             );
         }
+    }
+
+    #[test]
+    fn symphonic_unity_duration_expiry_owns_its_max_hp_sync() {
+        crate::test_support::init_config();
+        assert_eq!(
+            crate::engine::manager::buff::removal_max_hp_sync_act_id(31440116),
+            Some(1131)
+        );
+        assert_eq!(
+            crate::engine::manager::buff::removal_max_hp_sync_act_id(31440111),
+            None
+        );
+        let mut managers = BattleManagers::seeded(&Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![
+                    FightEntityInfo {
+                        uid: Some(10),
+                        team_type: Some(1),
+                        current_hp: Some(20_000),
+                        attr: Some(HeroAttribute {
+                            hp: Some(20_000),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    FightEntityInfo {
+                        uid: Some(11),
+                        team_type: Some(1),
+                        current_hp: Some(2_000),
+                        attr: Some(HeroAttribute {
+                            hp: Some(2_000),
+                            ..Default::default()
+                        }),
+                        buffs: vec![BuffInfo {
+                            uid: Some(100),
+                            buff_id: Some(31440116),
+                            duration: Some(1),
+                            from_uid: Some(10),
+                            act_info: vec![BuffActInfo {
+                                act_id: Some(1131),
+                                str_param: Some("203#480".to_owned()),
+                                ..Default::default()
+                            }],
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        let changes = managers
+            .execute_buff(BuffCommand::AdvanceDuration(
+                BuffDurationAdvance::new(
+                    crate::engine::skill::buff_act::effect_time::ROUND_START_DURATION,
+                    vec![11],
+                    None,
+                )
+                .unwrap(),
+            ))
+            .unwrap();
+
+        assert!(matches!(
+            changes.lifecycle_transitions.as_slice(),
+            [crate::engine::manager::buff::BuffLifecycleTransition::Removed(removed)]
+                if removed.buff.buff_id == Some(31440116)
+                    && removed.target_max_hp == 2_000
+        ));
+        assert_eq!(managers.hp.max(11), 2_000);
+        let effects = crate::engine::packet::effect::EffectPacket::recorded_buff_changes(&changes);
+        assert_eq!(
+            effects
+                .iter()
+                .map(|effect| effect.effect_type.unwrap_or_default())
+                .collect::<Vec<_>>(),
+            [
+                sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+                sonettobuf::effect_type_enum::EffectType::Maxhpchange as i32,
+            ]
+        );
+        assert_eq!(effects[1].effect_num, Some(2_000));
+        assert_eq!(effects[1].buff_act_id, Some(1131));
     }
 
     #[test]
