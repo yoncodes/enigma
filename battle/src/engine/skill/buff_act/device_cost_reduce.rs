@@ -26,7 +26,8 @@ pub fn modifier(
         .active_features(&managers.hp)
         .into_iter()
         .find(|feature| {
-            feature.team_type == team
+            feature.owner_uid == source_uid
+                && feature.team_type == team
                 && feature.amount > 0
                 && is_kind(feature, BuffActKind::DeviceCostReduce)
                 && supports(feature.values.get(1..).unwrap_or_default())
@@ -48,7 +49,7 @@ mod tests {
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
     #[test]
-    fn team_conduit_uses_one_calibration_stack_for_one_reduced_activation() {
+    fn conduit_uses_only_its_carriers_calibration_stack() {
         crate::test_support::init_config();
         let fight = Fight {
             attacker: Some(FightTeam {
@@ -70,6 +71,13 @@ mod tests {
                         uid: Some(11),
                         model_id: Some(3149),
                         current_hp: Some(100),
+                        buffs: vec![BuffInfo {
+                            uid: Some(21),
+                            buff_id: Some(31440113),
+                            count: Some(2),
+                            from_uid: Some(10),
+                            ..Default::default()
+                        }],
                         ..Default::default()
                     },
                 ],
@@ -106,8 +114,8 @@ mod tests {
         assert!(matches!(
             consume_command,
             BuffConsume {
-                target_uid: 10,
-                selector: BuffSelector::Uid(20),
+                target_uid: 11,
+                selector: BuffSelector::Uid(21),
                 amount: 1,
                 ..
             }
@@ -151,8 +159,14 @@ mod tests {
         assert_eq!(
             managers
                 .buff
-                .buff_act_amount(10, BuffActKind::DeviceCostReduce),
+                .buff_act_amount(11, BuffActKind::DeviceCostReduce),
             0
+        );
+        assert_eq!(
+            managers
+                .buff
+                .buff_act_amount(10, BuffActKind::DeviceCostReduce),
+            2
         );
     }
 }
