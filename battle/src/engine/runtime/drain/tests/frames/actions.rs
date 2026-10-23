@@ -2,17 +2,30 @@ use super::*;
 
 #[test]
 fn recover_power_generated_action_settles_consumed_hand_once() {
+    crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![
                 FightEntityInfo {
                     uid: Some(10),
-                    current_hp: Some(100),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
                     skill_group1: vec![100, 101],
+                    passive_skill: vec![31050143, 433911],
                     power_infos: vec![PowerInfo {
                         power_id: Some(EUREKA_RESOURCE_ID),
                         num: Some(0),
                         max: Some(5),
+                    }],
+                    buffs: vec![BuffInfo {
+                        uid: Some(30),
+                        buff_id: Some(31050146),
+                        from_uid: Some(10),
+                        ..Default::default()
                     }],
                     ..Default::default()
                 },
@@ -30,7 +43,12 @@ fn recover_power_generated_action_settles_consumed_hand_once() {
         defender: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(-1),
-                current_hp: Some(100),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![109380003],
                 ..Default::default()
             }],
             ..Default::default()
@@ -62,17 +80,21 @@ fn recover_power_generated_action_settles_consumed_hand_once() {
             deck_num: 0,
         }))
         .unwrap();
-    let mut catalog = SkillEffectCatalog::default();
+    let mut catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        [31050143, 31050151, 433911, 109380003],
+        [],
+    );
     catalog.insert(ParsedSkillEffect {
         skill_id: 500,
         slots: vec![SkillEffectSlot::new(
-            ParsedBehavior::new(60125, "RecoverPowerAndDelCardsUseSkill", vec![300, 210]),
+            ParsedBehavior::new(
+                60125,
+                "RecoverPowerAndDelCardsUseSkill",
+                vec![31050151, 210],
+            ),
             TargetRequest::self_only(),
         )],
-    });
-    catalog.insert(ParsedSkillEffect {
-        skill_id: 300,
-        slots: Vec::new(),
     });
 
     let result = run(
@@ -103,17 +125,32 @@ fn recover_power_generated_action_settles_consumed_hand_once() {
             .count(),
         1
     );
-    assert!(result.outcomes.windows(2).any(|outcomes| matches!(
-        outcomes,
-        [
-            RuleOutcome::ActionHandSettlement(_),
-            RuleOutcome::SkillLifecycle(
-                crate::engine::skill::action::SkillLifecycle::ActionCompleted(action)
+    let settlement = result
+        .outcomes
+        .iter()
+        .position(|outcome| matches!(outcome, RuleOutcome::ActionHandSettlement(_)))
+        .unwrap();
+    let completion = result
+        .outcomes
+        .iter()
+        .position(|outcome| {
+            matches!(
+                outcome,
+                RuleOutcome::SkillLifecycle(
+                    crate::engine::skill::action::SkillLifecycle::ActionCompleted(action)
+                ) if action.skill_id == 31050151
             )
-        ] if action.skill_id == 300
-    )));
+        })
+        .unwrap();
+    assert!(settlement < completion);
     fn generated_skill_frame(frame: &SemanticFrame) -> Option<&SemanticFrame> {
-        if matches!(frame.owner, FrameOwner::Skill { skill_id: 300, .. }) {
+        if matches!(
+            frame.owner,
+            FrameOwner::Skill {
+                skill_id: 31050151,
+                ..
+            }
+        ) {
             return Some(frame);
         }
         frame.items.iter().find_map(|item| match item {
@@ -126,10 +163,37 @@ fn recover_power_generated_action_settles_consumed_hand_once() {
         .iter()
         .find_map(generated_skill_frame)
         .expect("generated action owns a skill frame");
-    assert!(frame.items.windows(2).any(|items| {
-        matches!(items[0], FrameItem::Change(ref change) if matches!(change.as_ref(), BattleChange::ExPoint(_)))
-            && matches!(items[1], FrameItem::Change(ref change) if matches!(change.as_ref(), BattleChange::Card(changes) if changes.kind == CardChangeKind::Composed))
-    }));
+    let ex_point = frame
+        .items
+        .iter()
+        .position(|item| matches!(item, FrameItem::Change(change) if matches!(change.as_ref(), BattleChange::ExPoint(_))))
+        .expect("settlement grants the consumed ally card's owner Moxie");
+    let compose = frame
+        .items
+        .iter()
+        .position(|item| matches!(item, FrameItem::Change(change) if matches!(change.as_ref(), BattleChange::Card(changes) if changes.kind == CardChangeKind::Composed)))
+        .expect("settlement composes the remaining hand");
+    let force_field = frame
+        .items
+        .iter()
+        .position(|item| matches!(item, FrameItem::Child(child) if matches!(child.owner, FrameOwner::BuffAct { buff_id: 31050146, .. })))
+        .expect("generated action pays its force-field cost");
+    let damage = frame
+        .items
+        .iter()
+        .position(|item| matches!(item, FrameItem::Change(change) if matches!(change.as_ref(), BattleChange::Hp(_))))
+        .expect("generated action deals damage");
+    for skill_id in [109380003, 31050143, 433911] {
+        let reaction = frame
+            .items
+            .iter()
+            .position(|item| matches!(item, FrameItem::Child(child) if matches!(child.owner, FrameOwner::Skill { skill_id: owner, .. } if owner == skill_id)))
+            .expect("each start subscriber keeps its own frame");
+        assert!(reaction < ex_point);
+    }
+    assert!(ex_point < compose);
+    assert!(compose < force_field);
+    assert!(force_field < damage);
 }
 
 #[test]
@@ -1011,33 +1075,36 @@ fn queued_reactions_preserve_dispatch_pass_order() {
             ),
         )
     };
-    let started = BattleEvent::SkillEffectStarted(crate::engine::skill::action::SkillActionEvent {
-        source_uid: 10,
-        skill_id: 31050151,
-        target_uid: -1,
-        target_uids: vec![-1],
-        attacked_target_uids: Vec::new(),
-        phase: crate::engine::skill::action::SkillPhase::Immediate,
-        skill_slot: 0,
-        is_attack: true,
-        rank: 1,
-        skill_type: 1,
-        effect_tag: 1,
-        assassinate: false,
-        ignore_riposte: false,
-        damage_amount: 0,
-        kill_count: 0,
-        crit_count: 0,
-        guard_break_count: 0,
-        additional_moxie: 0,
-        extra_skill_kind: 1,
-        mode: crate::engine::skill::action::SkillExecutionMode::Active,
-        teammate_injury_count: 0,
-        teammate_injury_count_not_reset: 0,
-        team_injury_count_round: 0,
-        card_enchants: Vec::new(),
-        buff_additions: Vec::new(),
-    });
+    let started = BattleEvent::SkillEffectStarted(
+        crate::engine::skill::action::SkillActionEvent {
+            source_uid: 10,
+            skill_id: 31050151,
+            target_uid: -1,
+            target_uids: vec![-1],
+            attacked_target_uids: Vec::new(),
+            phase: crate::engine::skill::action::SkillPhase::Immediate,
+            skill_slot: 0,
+            is_attack: true,
+            rank: 1,
+            skill_type: 1,
+            effect_tag: 1,
+            assassinate: false,
+            ignore_riposte: false,
+            damage_amount: 0,
+            kill_count: 0,
+            crit_count: 0,
+            guard_break_count: 0,
+            additional_moxie: 0,
+            extra_skill_kind: 1,
+            mode: crate::engine::skill::action::SkillExecutionMode::Active,
+            teammate_injury_count: 0,
+            teammate_injury_count_not_reset: 0,
+            team_injury_count_round: 0,
+            card_enchants: Vec::new(),
+            buff_additions: Vec::new(),
+        }
+        .into(),
+    );
     let queued = queued_reactions(
         &TargetPool::default(),
         dispatcher::DispatchBatch {

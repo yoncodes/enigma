@@ -257,8 +257,8 @@ fn visible_status_threshold_runs_only_before_attacks() {
         .into();
         invocation.condition_key = Some(DefinitionKey::new(42203, "HasTypeBuffMoreThan"));
         invocation.phase = Some(SkillPhase::Immediate);
-        let event =
-            BattleEvent::SkillEffectStarted(crate::engine::skill::action::SkillActionEvent {
+        let event = BattleEvent::SkillEffectStarted(
+            crate::engine::skill::action::SkillActionEvent {
                 source_uid: 10,
                 skill_id: 200,
                 target_uid: 10,
@@ -284,7 +284,9 @@ fn visible_status_threshold_runs_only_before_attacks() {
                 team_injury_count_round: 0,
                 card_enchants: Vec::new(),
                 buff_additions: Vec::new(),
-            });
+            }
+            .into(),
+        );
         emit_all_ops(
             invocation,
             &managers,

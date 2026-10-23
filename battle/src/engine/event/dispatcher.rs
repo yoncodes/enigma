@@ -222,12 +222,12 @@ fn ordered_subscriber_passes(
 }
 
 fn current_card_enchants(event: &BattleEvent) -> Option<Vec<i32>> {
-    match event {
-        BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action) => {
-            Some(action.card_enchants.clone())
-        }
-        BattleEvent::AllyAction(action) => Some(action.card_enchants.clone()),
-        _ => None,
+    match event.skill_action_event() {
+        Some(action) => Some(action.card_enchants.clone()),
+        None => match event {
+            BattleEvent::AllyAction(action) => Some(action.card_enchants.clone()),
+            _ => None,
+        },
     }
 }
 
@@ -477,7 +477,7 @@ fn retain_observing_subscribers(
     determinism: &crate::engine::runtime::determinism::RoundDeterminism,
     event: &BattleEvent,
 ) {
-    if let BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action) = event {
+    if let Some(action) = event.skill_action_event() {
         subscribers.skills.retain(|subscriber| {
             skill_subscriber_observes_action(pool, subscriber, action)
                 && (subscriber.key.event != EventKind::SkillAction

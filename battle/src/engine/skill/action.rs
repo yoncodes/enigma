@@ -176,7 +176,7 @@ pub struct SkillInvocation {
     pub start: SkillStart,
     /// Exact rule whose progress resumes when this cast starts.
     pub release_progress: Option<super::rule::ConfiguredRuleKey>,
-    /// Hand settlement owned by this generated action's completion.
+    /// Hand settlement owned by this generated action's start.
     pub action_hand_settlement: Option<CommandOrigin>,
     pub card_enchants: Vec<i32>,
     pub recorded_skill: Option<SkillRequest>,

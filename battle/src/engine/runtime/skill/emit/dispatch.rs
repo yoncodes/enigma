@@ -327,12 +327,14 @@ pub(in crate::engine::runtime) fn emit_ops(
         if !effect_started_subscribers.skills.is_empty()
             || !effect_started_subscribers.buff_acts.is_empty()
         {
+            let hand_settlement = invocation.action_hand_settlement.take();
             outputs.push(effect_started_op(
                 &invocation,
                 managers,
                 catalog,
                 pool,
                 execution,
+                hand_settlement,
             ));
             execution.effect_started = true;
             let mut continuation = invocation.clone();
@@ -344,6 +346,16 @@ pub(in crate::engine::runtime) fn emit_ops(
                 target_uid: execution.primary_target_uid,
             });
         }
+    }
+    if active_phase == Some(SkillPhase::Immediate)
+        && let Some(origin) = invocation.action_hand_settlement.take()
+    {
+        outputs.push(SkillEmissionOp {
+            op: RuleOp::ActionHandSettlement { origin },
+            owner: behavior::registry::OutputOwner::Skill,
+            consequence: ConsequencePolicy::Default,
+            frame_owner: None,
+        });
     }
     let has_row_damage = catalog.damage_rate(effect_skill_id) > 0
         && !effect
@@ -1218,14 +1230,6 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
     }
     if continuation.is_none() && invocation.mode.completes_action() {
-        if let Some(origin) = invocation.action_hand_settlement {
-            outputs.push(SkillEmissionOp {
-                op: RuleOp::ActionHandSettlement { origin },
-                owner: behavior::registry::OutputOwner::Skill,
-                consequence: ConsequencePolicy::Default,
-                frame_owner: None,
-            });
-        }
         outputs.push(SkillEmissionOp {
             op: RuleOp::SkillLifecycle(
                 crate::engine::skill::action::SkillLifecycle::ActionCompleted(

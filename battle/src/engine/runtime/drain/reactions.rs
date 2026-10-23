@@ -115,6 +115,29 @@ fn queued_buff_act_feature_op(
     })
 }
 
+fn queued_skill_start_settlement(
+    event: &BattleEvent,
+    reuse_path: Option<&[usize]>,
+) -> Option<QueuedOp> {
+    let BattleEvent::SkillEffectStarted(started) = event else {
+        return None;
+    };
+    let origin = started.hand_settlement?;
+    let reuse_path = reuse_path?;
+    Some(QueuedOp {
+        op: RuleOp::ActionHandSettlement { origin },
+        trigger: SkillOpTrigger::Event(event.clone()),
+        skill_execution: None,
+        frame_path: Some(reuse_path.to_vec()),
+        parent_path: None,
+        frame_group: None,
+        independent_parent_group: None,
+        frame_owner: None,
+        subscriber: None,
+        caster_frame: None,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn dispatch_event_groups(
     pool: &TargetPool,
@@ -628,7 +651,7 @@ pub(super) fn dispatch_reactions(
             );
     }
     if runs_after {
-        reactions.after_publish.extend(queued_selected_timing(
+        let selected = queued_selected_timing(
             pool,
             managers,
             catalog,
@@ -644,7 +667,13 @@ pub(super) fn dispatch_reactions(
             crate::engine::event::subscription::PublicationPhase::AfterPublish,
             crate::engine::event::subscription::ReactionTiming::Immediate,
             multiplicity.as_deref_mut(),
-        )?);
+        )?;
+        reactions.after_publish.extend(selected);
+        if lane.is_none()
+            && let Some(settlement) = queued_skill_start_settlement(event, reuse_path)
+        {
+            reactions.after_publish.push(settlement);
+        }
     }
     for (timing, destination) in [
         (
@@ -1188,9 +1217,8 @@ fn event_target(event: &BattleEvent) -> Option<i64> {
         }
         BattleEvent::EurekaChanged(change) => Some(change.target_uid),
         BattleEvent::ConduitActivated(change) => Some(change.source_uid),
-        BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action) => {
-            Some(action.target_uid)
-        }
+        BattleEvent::SkillEffectStarted(started) => Some(started.target_uid),
+        BattleEvent::SkillAction(action) => Some(action.target_uid),
         BattleEvent::AllyAction(action) => Some(action.target_uid),
         BattleEvent::BuffFeatureTriggered(trigger) => Some(trigger.target_uid),
         _ => None,
@@ -1214,9 +1242,8 @@ pub(super) fn reaction_counterparty(
             | BattleEvent::BuffRejected(_)
     );
     let (source_uid, target_uid) = match event {
-        BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action) => {
-            (action.source_uid, action.target_uid)
-        }
+        BattleEvent::SkillEffectStarted(started) => (started.source_uid, started.target_uid),
+        BattleEvent::SkillAction(action) => (action.source_uid, action.target_uid),
         BattleEvent::AllyAction(action) => (action.source_uid, action.target_uid),
         BattleEvent::BuffFeatureTriggered(trigger) => (trigger.owner_uid, trigger.target_uid),
         BattleEvent::BuffAdded(change)

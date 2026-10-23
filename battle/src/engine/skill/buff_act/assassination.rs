@@ -209,7 +209,7 @@ pub fn rule_ops(
     if !super::subscriber_is_kind(subscriber, BuffActKind::BeAttackedAssassinate) {
         return None;
     }
-    let (BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action)) = event else {
+    let Some(action) = event.skill_action_event() else {
         return Some(Vec::new());
     };
     if action.phase != crate::engine::skill::action::SkillPhase::Immediate {
@@ -498,7 +498,8 @@ mod tests {
                     _ => None,
                 })
         };
-        let starts = |skill_id, rank| BattleEvent::SkillEffectStarted(action(skill_id, rank));
+        let starts =
+            |skill_id, rank| BattleEvent::SkillEffectStarted(action(skill_id, rank).into());
 
         assert_eq!(
             consume(1, starts(312431212, 1)).unwrap().depleted,

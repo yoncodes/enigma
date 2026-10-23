@@ -52,17 +52,23 @@ pub(super) fn effect_started(
     catalog: &SkillEffectCatalog,
     pool: &TargetPool,
     execution: &SkillExecution,
+    hand_settlement: Option<crate::engine::skill::rule::CommandOrigin>,
 ) -> SkillEmissionOp {
     SkillEmissionOp {
         op: RuleOp::Publish(
-            crate::engine::event::payload::BattleEvent::SkillEffectStarted(action_event(
-                invocation,
-                managers,
-                catalog,
-                pool,
-                execution,
-                SkillPhase::Immediate,
-            )),
+            crate::engine::event::payload::BattleEvent::SkillEffectStarted(
+                crate::engine::event::payload::SkillEffectStartedEvent {
+                    action: Box::new(action_event(
+                        invocation,
+                        managers,
+                        catalog,
+                        pool,
+                        execution,
+                        SkillPhase::Immediate,
+                    )),
+                    hand_settlement,
+                },
+            ),
         ),
         owner: OutputOwner::Skill,
         consequence: ConsequencePolicy::Default,

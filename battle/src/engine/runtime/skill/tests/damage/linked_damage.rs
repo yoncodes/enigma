@@ -735,6 +735,7 @@ fn an_extra_action_resolves_its_extra_action_passives_before_the_force_field_cos
     .into();
     invocation.mode = SkillExecutionMode::Active;
     invocation.target = SkillTarget::Explicit(-1);
+    invocation.action_hand_settlement = Some(FIELD_ORIGIN);
     let mut execution = SkillExecution::new(TargetContext::default());
     let mut determinism = RoundDeterminism::default();
     let started = emit_ops(
@@ -752,9 +753,11 @@ fn an_extra_action_resolves_its_extra_action_passives_before_the_force_field_cos
     assert!(matches!(
         started.ops.as_slice(),
         [SkillEmissionOp {
-            op: RuleOp::Publish(crate::engine::event::payload::BattleEvent::SkillEffectStarted(_)),
+            op: RuleOp::Publish(crate::engine::event::payload::BattleEvent::SkillEffectStarted(
+                started
+            )),
             ..
-        }]
+        }] if started.hand_settlement.is_some()
     ));
     let resumed = emit_ops(
         started
@@ -768,6 +771,12 @@ fn an_extra_action_resolves_its_extra_action_passives_before_the_force_field_cos
         &SkillOpTrigger::Active,
     )
     .unwrap();
+    assert!(
+        !resumed
+            .ops
+            .iter()
+            .any(|emission| matches!(emission.op, RuleOp::ActionHandSettlement { .. }))
+    );
     assert!(
         resumed
             .ops
