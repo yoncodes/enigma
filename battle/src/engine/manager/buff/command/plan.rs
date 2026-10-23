@@ -524,6 +524,23 @@ impl BuffManager {
                     }),
                 )
             }
+            BuffCommand::ReserveNormalUids(reservation) => {
+                if reservation.target_uid == 0 || reservation.count <= 0 {
+                    return Err(BuffCommandError::InvalidUidReservation);
+                }
+                (
+                    reservation.origin,
+                    BuffPlanAction::ReserveNormalUids(UidReservationPlan {
+                        target_uid: reservation.target_uid,
+                        uids: super::uid_policy::reservations(
+                            self,
+                            reservation.target_uid,
+                            reservation.count,
+                            0,
+                        ),
+                    }),
+                )
+            }
             BuffCommand::ReserveGrantUid(reservation) => {
                 if reservation.target_uid == 0 || reservation.buff_id <= 0 {
                     return Err(BuffCommandError::InvalidUidReservation);
@@ -881,12 +898,11 @@ impl BuffManager {
         }
         let uid_reserve_before = reserve_before;
         let normal_reserve_before = if action == GrantAction::Add {
-            policy.uid.normal_reservations_before_add
-                + if readds_prior_instance && !unconditional {
-                    policy.uid.normal_reservations_before_reapply
-                } else {
-                    0
-                }
+            if readds_prior_instance && !unconditional {
+                policy.uid.normal_reservations_before_reapply
+            } else {
+                0
+            }
         } else if action == GrantAction::ReplaceExisting {
             policy.uid.normal_reservations_before_reapply
         } else if action == GrantAction::KeepExisting && policy.uid.reserve_normal_on_kept_reapply {

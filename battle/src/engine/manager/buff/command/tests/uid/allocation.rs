@@ -57,7 +57,7 @@ fn ordinary_grant_keeps_origin_and_uses_manager_uid_policy() {
 }
 
 #[test]
-fn conduit_selection_reserves_one_normal_uid_before_its_carrier() {
+fn normal_uid_reservation_advances_the_shared_lane_before_the_next_grant() {
     crate::test_support::init_config();
     let fight = Fight {
         version: Some(7),
@@ -80,6 +80,23 @@ fn conduit_selection_reserves_one_normal_uid_before_its_carrier() {
     };
     let mut manager = BuffManager::default();
     manager.seed(&fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(60309, "FakeHpToHeal"),
+    };
+
+    let reservation = manager
+        .plan(
+            &HpManager::default(),
+            BuffCommand::ReserveNormalUids(BuffNormalUidReservation {
+                origin,
+                target_uid: 10,
+                count: 1,
+            }),
+        )
+        .unwrap();
+    assert_eq!(reservation.planned_reservation_uids(), Some(vec![1146]));
+    manager.commit(&HpManager::default(), reservation);
 
     let selection = manager
         .add(&HpManager::default(), 10, 10, 31490002, 0)

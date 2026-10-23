@@ -245,6 +245,13 @@ pub struct BuffChildUidReservation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuffNormalUidReservation {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub count: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuffGrantUidReservation {
     pub origin: CommandOrigin,
     pub target_uid: i64,
@@ -379,6 +386,7 @@ pub enum BuffCommand {
     RefreshDurationBySelector(BuffRefreshDurationBySelector),
     AddSpecialCount(BuffSpecialCount),
     ReserveChildUids(BuffChildUidReservation),
+    ReserveNormalUids(BuffNormalUidReservation),
     ReserveGrantUid(BuffGrantUidReservation),
     FanoutEntryHalos(BuffEntryHaloFanout),
     AdvanceDuration(BuffDurationAdvance),
@@ -425,8 +433,11 @@ impl BuffPlan {
     }
 
     pub(crate) fn planned_reservation_uids(&self) -> Option<Vec<i64>> {
-        let BuffPlanAction::ReserveChildUids(plan) = &self.action else {
-            return None;
+        let plan = match &self.action {
+            BuffPlanAction::ReserveChildUids(plan) | BuffPlanAction::ReserveNormalUids(plan) => {
+                plan
+            }
+            _ => return None,
         };
         Some(plan.uids.iter().map(|uid| uid.uid).collect())
     }
@@ -583,6 +594,7 @@ enum BuffPlanAction {
     ChangeDuration(Vec<DurationChangePlan>),
     AddSpecialCount(SpecialCountPlan),
     ReserveChildUids(UidReservationPlan),
+    ReserveNormalUids(UidReservationPlan),
     ReserveGrantUid(GrantUidReservationPlan),
     FanoutEntryHalos(Vec<PlannedEntryHaloFanout>),
     AdvanceDuration(Vec<super::lifecycle::BuffDurationPlan>),

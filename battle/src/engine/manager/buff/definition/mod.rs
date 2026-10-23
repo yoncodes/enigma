@@ -872,13 +872,6 @@ impl BuffDefinition {
         }
     }
 
-    pub(super) fn normal_reservations_before_add(&self) -> i32 {
-        self.features
-            .iter()
-            .any(|feature| feature.kind == Some(BuffActKind::ConduitCardSelection))
-            .into()
-    }
-
     pub(super) fn normal_reservations_after_first_apply(&self) -> i32 {
         (self.duration > 0
             && self

@@ -805,7 +805,7 @@ behavior_definitions! {
     [90001] "Heal" => crate::engine::damage::handler::Handler, Heal, AfterDamage, destination, crate::engine::damage::handler::supports_heal;
     [20016] "HealCantCrit" => crate::engine::damage::handler::Handler, HealCantCrit, AfterDamage, destination, crate::engine::damage::handler::supports_attr_heal;
     [60232] "HealByTwoAttr" => crate::engine::damage::handler::Handler, HealByTwoAttr, AfterDamage, destination, crate::engine::damage::handler::supports_two_attr_heal;
-    [60309] "FakeHpToHeal" => super::fake_hp::Handler, FakeHpToHeal, AfterDamage, destination;
+    [60309] "FakeHpToHeal" => super::fake_hp::Handler, FakeHpToHeal, AfterDamage, once_destination;
     [20010] "Bloodlust" => crate::engine::damage::handler::Handler, Bloodlust, AfterDamage, destination, crate::engine::damage::handler::supports_bloodlust;
     [30005] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
     [30006] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, immediate_death_destination, crate::engine::damage::handler::supports_lost_life;

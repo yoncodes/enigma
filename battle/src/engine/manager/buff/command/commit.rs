@@ -274,6 +274,12 @@ impl BuffManager {
                 }
                 BuffChanges::new(catalog, origin, BuffReplaceResult::default())
             }
+            BuffPlanAction::ReserveNormalUids(plan) => {
+                for uid in plan.uids {
+                    super::uid_policy::commit(self, plan.target_uid, uid);
+                }
+                BuffChanges::new(catalog, origin, BuffReplaceResult::default())
+            }
             BuffPlanAction::ReserveGrantUid(plan) => {
                 let uid = super::uid_policy::commit(self, plan.target_uid, plan.uid);
                 self.reserve_grant_uid(plan.target_uid, plan.buff_id, uid);
