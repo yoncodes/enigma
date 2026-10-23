@@ -207,28 +207,45 @@ fn target_status_type_count_repeats_once_per_distinct_type() {
 }
 
 #[test]
-fn visible_status_ceiling_excludes_indirect_type_membership() {
+fn visible_status_thresholds_evaluate_targets_without_team_aggregation() {
     init_config();
-    let buffs = [
-        31450171, 31450141, 31450143, 30250001, 31440116, 31450111, 31450132,
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(index, buff_id)| BuffInfo {
-        buff_id: Some(buff_id),
-        uid: Some(index as i64 + 1),
-        from_uid: Some(10),
-        ..Default::default()
-    })
-    .collect();
+    let buffs = |ids: &[i32], uid_offset| {
+        ids.iter()
+            .enumerate()
+            .map(|(index, buff_id)| BuffInfo {
+                buff_id: Some(*buff_id),
+                uid: Some(index as i64 + uid_offset),
+                from_uid: Some(10),
+                ..Default::default()
+            })
+            .collect()
+    };
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                current_hp: Some(100),
-                buffs,
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    buffs: buffs(
+                        &[
+                            31450171, 31450141, 31450143, 30250001, 31440116, 31450111, 31450132,
+                        ],
+                        1,
+                    ),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    current_hp: Some(100),
+                    buffs: buffs(
+                        &[
+                            31450171, 30250001, 31440116, 31450111, 31450132, 31440113, 30250003,
+                        ],
+                        20,
+                    ),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -236,10 +253,23 @@ fn visible_status_ceiling_excludes_indirect_type_membership() {
     let managers = BattleManagers::seeded(&fight);
 
     assert_eq!(managers.buff.visible_buff_status_type_count(10, &[1, 5]), 5);
+    assert_eq!(managers.buff.visible_buff_status_type_count(11, &[1, 5]), 7);
     assert!(conditions_match(
         &[exact_condition(43203, "HasTypeBuffLessThan", &["6", "1,5"],)],
         10,
-        &[10],
+        &[10, 11],
+        Some(&managers),
+        &TargetPool::from_fight(&fight),
+        TargetContext::default(),
+    ));
+    assert!(!conditions_match(
+        &[exact_condition(
+            42203,
+            "HasTypeBuffMoreThan",
+            &["10", "1,5"],
+        )],
+        10,
+        &[10, 11],
         Some(&managers),
         &TargetPool::from_fight(&fight),
         TargetContext::default(),

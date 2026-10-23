@@ -428,10 +428,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                 type_name: slot.behavior.spec.key.type_name.clone(),
             }
         })?;
-        if active_phase.is_some()
-            && definition.attack_modifier_only
-            && behavior::rate::collects_attack_modifier_per_hit(slot)
-        {
+        if active_phase.is_some() && definition.attack_modifier_only && slot.target_from_condition {
             continue;
         }
         if let Some(required_event) = definition.required_event {
