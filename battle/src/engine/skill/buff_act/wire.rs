@@ -55,13 +55,14 @@ impl MaxHpWireRule {
             },
             Self::Attr => {
                 let max_hp_repeats = if source_uid == target_uid { 2 } else { 1 };
-                let current_hp_repeats = if before_current == after_current {
-                    0
-                } else if delta < 0 {
-                    1
-                } else {
-                    max_hp_repeats
-                };
+                let current_hp_repeats =
+                    if before_current == after_current || (delta < 0 && source_uid != target_uid) {
+                        0
+                    } else if delta < 0 {
+                        1
+                    } else {
+                        max_hp_repeats
+                    };
                 MaxHpWirePlan {
                     max_hp_repeats,
                     current_hp_repeats,
