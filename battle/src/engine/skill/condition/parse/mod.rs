@@ -59,8 +59,7 @@ pub enum ParsedConditionKind {
         buff_ids: Vec<i32>,
         threshold: i32,
     },
-    TeamBuffPresence {
-        team: i32,
+    PlayerBuffPresence {
         present: bool,
         buff_id: i32,
     },

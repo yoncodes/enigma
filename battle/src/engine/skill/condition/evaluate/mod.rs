@@ -523,16 +523,14 @@ fn condition_kind_matches(
                 .sum::<i32>()
                 >= *threshold
         }),
-        ParsedConditionKind::TeamBuffPresence {
-            team,
-            present,
-            buff_id,
-        } => managers.is_some_and(|managers| {
-            pool.team_uids(*team)
-                .iter()
-                .any(|uid| managers.buff.has_active_buff_id_or_type(*uid, *buff_id))
-                == *present
-        }),
+        ParsedConditionKind::PlayerBuffPresence { present, buff_id } => {
+            managers.is_some_and(|managers| {
+                managers.buff.has_active_buff_id_or_type(
+                    crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                    *buff_id,
+                ) == *present
+            })
+        }
         ParsedConditionKind::BuffTypeCount {
             type_ids,
             compare,

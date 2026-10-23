@@ -272,7 +272,7 @@ fn other_allies_preserves_the_committed_dead_event_target() {
 }
 
 #[test]
-fn event_subject_preserves_a_committed_target_missing_from_the_live_pool() {
+fn side_state_target_resolves_to_the_attacker_side() {
     let fight = Fight {
         defender: Some(FightTeam {
             entitys: vec![entity_at(-1, 1), entity_at(-2, 2)],
@@ -300,6 +300,6 @@ fn event_subject_preserves_a_committed_target_missing_from_the_live_pool() {
                 ..Default::default()
             },
         ),
-        vec![-2]
+        vec![crate::engine::fight::rules::ATTACKER_SIDE_UID]
     );
 }

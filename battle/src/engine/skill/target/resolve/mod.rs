@@ -646,7 +646,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
     Some(match code {
         0 => TargetRule::Logic,
         6 => TargetRule::Fixed(emitter::UID),
-        8 => TargetRule::EventSubject,
+        8 => TargetRule::Fixed(crate::engine::fight::rules::ATTACKER_SIDE_UID),
         super::request::SOURCE_TARGET_CODE => TargetRule::Source,
         4 | 5 | 104 | 105 => TargetRule::Allies,
         130 => TargetRule::AlliesPreservingSelection,

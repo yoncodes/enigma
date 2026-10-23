@@ -140,8 +140,7 @@ fn version_seven_defers_defender_round_start_until_after_ai() {
     conditional.conditions = vec![ParsedCondition {
         opcode: 750101,
         type_name: "PlayerHasBuff".to_owned(),
-        kind: ParsedConditionKind::TeamBuffPresence {
-            team: 2,
+        kind: ParsedConditionKind::PlayerBuffPresence {
             present: false,
             buff_id: 109320002,
         },

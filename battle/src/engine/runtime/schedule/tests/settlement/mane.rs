@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::manager::buff::BuffGrant;
 
 #[test]
 fn final_settlement_advances_final_stage_durations() {
@@ -159,22 +160,13 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
         defender: Some(FightTeam {
             entitys: vec![entity(
                 -1,
-                vec![
-                    BuffInfo {
-                        uid: Some(20),
-                        buff_id: Some(109320001),
-                        duration: Some(1),
-                        from_uid: Some(-1),
-                        ..Default::default()
-                    },
-                    BuffInfo {
-                        uid: Some(21),
-                        buff_id: Some(109320101),
-                        duration: Some(2),
-                        from_uid: Some(-1),
-                        ..Default::default()
-                    },
-                ],
+                vec![BuffInfo {
+                    uid: Some(21),
+                    buff_id: Some(109320101),
+                    duration: Some(2),
+                    from_uid: Some(-1),
+                    ..Default::default()
+                }],
                 vec![109320102, 109320105, 109320112],
             )],
             ..Default::default()
@@ -184,6 +176,31 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
     let pool = TargetPool::from_fight(&fight);
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .buff
+        .execute(
+            &managers.hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: -1,
+                target_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                buff_id: 109320001,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+    let obscurity_uid = managers
+        .buff
+        .active_for(crate::engine::fight::rules::ATTACKER_SIDE_UID)
+        .find(|buff| buff.buff_id == Some(109320001))
+        .unwrap()
+        .uid
+        .unwrap();
 
     let result = run_round_end_final_settlement(
         &mut managers,
@@ -197,7 +214,16 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
 
     // "When Obscurity reaches zero, you'll enter a bonus Witness Round during the following
     // round", in which "enemies cannot take active actions".
-    assert!(managers.buff.has_active_buff_id(-1, 109320002));
+    assert!(
+        !managers
+            .buff
+            .has_active_buff_id(crate::engine::fight::rules::ATTACKER_SIDE_UID, 109320001)
+    );
+    assert!(
+        managers
+            .buff
+            .has_active_buff_id(crate::engine::fight::rules::ATTACKER_SIDE_UID, 109320002)
+    );
     assert!(managers.buff.has_active_buff_id(-1, 109320103));
     assert_eq!(managers.buff.snapshot(-1, 21).unwrap().duration, Some(1));
     let marker = managers
@@ -232,7 +258,11 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
     assert_eq!(
         owners,
         vec![
-            (-1, 20, effect_time::ROUND_END_FINAL_SETTLEMENT),
+            (
+                crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                obscurity_uid,
+                effect_time::ROUND_END_FINAL_SETTLEMENT
+            ),
             (-1, 21, effect_time::ROUND_END_FINAL_SETTLEMENT),
             (
                 -1,

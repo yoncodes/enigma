@@ -527,6 +527,24 @@ fn reactive_skill_frame_targets_the_other_team_of_a_hit() {
 }
 
 #[test]
+fn side_state_reactions_anchor_their_frame_to_the_applier() {
+    let pool = TargetPool::from_fight(&Fight::default());
+    let event = BattleEvent::BuffRemoved(crate::engine::event::payload::BuffChangeEvent {
+        source_uid: -1,
+        target_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+        buff_uid: 20,
+        buff_id: 109320001,
+        before_amount: 1,
+        after_amount: 0,
+        act_id: 0,
+        act_value: 0,
+        duration_expired: true,
+    });
+
+    assert_eq!(reaction_counterparty(&pool, &event, -1), Some(-1));
+}
+
+#[test]
 fn attack_consumption_keeps_first_hit_entity_order() {
     let hit = |source_uid, target_uid| {
         BattleEvent::Hit(crate::engine::event::payload::HitEvent {

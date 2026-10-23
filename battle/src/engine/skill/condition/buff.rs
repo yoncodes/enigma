@@ -205,10 +205,9 @@ pub fn buff_id_at_least(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCo
     })
 }
 
-pub fn team_buff_presence(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
-    let [team, present, buff_id] = parse_fixed(raw_args)?;
-    Some(ParsedConditionKind::TeamBuffPresence {
-        team,
+pub fn player_buff_presence(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let [owner, present, buff_id] = parse_fixed(raw_args)?;
+    (owner == 2).then_some(ParsedConditionKind::PlayerBuffPresence {
         present: present != 0,
         buff_id,
     })

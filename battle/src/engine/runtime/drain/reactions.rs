@@ -1275,6 +1275,9 @@ pub(super) fn reaction_counterparty(
         BattleEvent::ConduitActivated(change) => (change.source_uid, change.source_uid),
         _ => return None,
     };
+    if crate::engine::fight::rules::is_side_uid(target_uid) {
+        return Some(source_uid);
+    }
     if owner_uid == source_uid {
         Some(target_uid)
     } else if owner_uid == target_uid {

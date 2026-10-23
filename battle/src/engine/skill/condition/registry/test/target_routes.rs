@@ -758,18 +758,25 @@ fn round_start_buff_count_keeps_its_exact_setup_route() {
 }
 
 #[test]
-fn player_buff_gate_keeps_team_presence_and_exact_buff_identity() {
+fn player_buff_gate_keeps_side_presence_and_exact_buff_identity() {
     assert_eq!(
         parse(
             750101,
             "PlayerHasBuff",
             &["2".into(), "0".into(), "109320002".into()],
         ),
-        Some(ParsedConditionKind::TeamBuffPresence {
-            team: 2,
+        Some(ParsedConditionKind::PlayerBuffPresence {
             present: false,
             buff_id: 109320002,
         })
+    );
+    assert_eq!(
+        parse(
+            750101,
+            "PlayerHasBuff",
+            &["1".into(), "0".into(), "109320002".into()],
+        ),
+        None
     );
     assert_eq!(
         find_key(750101, "PlayerHasBuff").map(|definition| definition.role),

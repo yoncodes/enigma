@@ -16,6 +16,34 @@ fn grant(target_uid: i64, buff_id: i32) -> BuffCommand {
 }
 
 #[test]
+fn attacker_side_buffs_can_be_granted_and_removed() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight::default());
+    let hp = HpManager::default();
+    let side_uid = crate::engine::fight::rules::ATTACKER_SIDE_UID;
+
+    manager.execute(&hp, grant(side_uid, 109320001)).unwrap();
+    assert!(manager.has_active_buff_id(side_uid, 109320001));
+
+    manager
+        .execute(
+            &hp,
+            BuffCommand::Remove(BuffRemove {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60010, "DisperseForce2"),
+                },
+                target_uid: side_uid,
+                selector: BuffRemoveSelector::ExactId(109320001),
+            }),
+        )
+        .unwrap();
+
+    assert!(!manager.has_active_buff_id(side_uid, 109320001));
+}
+
+#[test]
 fn remove_id_or_type_resolves_a_configured_type_id() {
     crate::test_support::init_config();
     let fight = Fight {

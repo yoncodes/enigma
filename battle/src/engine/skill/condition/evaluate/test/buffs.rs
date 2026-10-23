@@ -224,7 +224,7 @@ fn final_settlement_buff_threshold_reads_accumulated_layers() {
 }
 
 #[test]
-fn player_buff_condition_reads_the_configured_team() {
+fn player_buff_condition_reads_only_side_state() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -261,7 +261,20 @@ fn player_buff_condition_reads_the_configured_team() {
 
     assert!(matches(&managers));
     managers.buff.add(&managers.hp, 10, -1, 109320002, 1);
-    assert!(!matches(&managers));
+    assert!(matches(&managers));
+
+    let mut side_managers = BattleManagers::seeded(&fight);
+    side_managers
+        .buff
+        .add(
+            &side_managers.hp,
+            10,
+            crate::engine::fight::rules::ATTACKER_SIDE_UID,
+            109320002,
+            1,
+        )
+        .unwrap();
+    assert!(!matches(&side_managers));
 }
 
 #[test]

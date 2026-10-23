@@ -584,7 +584,6 @@ impl BuffManager {
         inputs: GrantInputs,
     ) -> Result<GrantPlan, BuffCommandError> {
         if request.buff_id <= 0
-            || request.target_uid == 0
             || matches!(
                 request.input,
                 GrantInput::Layer(value)
@@ -1469,7 +1468,7 @@ impl BuffManager {
             BuffRemoveSelector::ExactId(buff_id) => buff_id > 0,
             BuffRemoveSelector::IdOrType(id) => id > 0,
         };
-        if remove.target_uid == 0 || !valid {
+        if !valid {
             return Err(BuffCommandError::InvalidRemove);
         }
         let buff_uids = self
