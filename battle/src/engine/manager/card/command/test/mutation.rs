@@ -275,6 +275,12 @@ fn temporary_card_and_energy_changes_share_one_command_path() {
             team_type: 1,
         }) if reserve_str == "configured"
     ));
+
+    let expired = manager
+        .execute_command(CardCommand::ExpireTemporary { origin: ORIGIN })
+        .unwrap();
+    assert_eq!(expired.expired_indices, [0, 1]);
+    assert!(manager.hand().is_empty());
 }
 
 #[test]
@@ -485,6 +491,7 @@ fn card_setup_rules_commit_enchants_and_temporary_lifecycle_through_the_manager(
         .execute_command(CardCommand::ExpireTemporary { origin: ORIGIN })
         .unwrap();
     assert_eq!(expired.kind, CardChangeKind::TemporaryExpired);
+    assert_eq!(expired.expired_indices, [0, 1, 2]);
     assert_eq!(manager.hand().len(), 1);
     assert_eq!(manager.hand()[0].skill_id, Some(900));
 }
@@ -524,6 +531,7 @@ fn precast_cards_cannot_enter_the_draw_pile_or_crystal_lane_as_normal_cards() {
         .unwrap();
     assert_eq!(manager.normal_hand_len(), 0);
     assert_eq!(manager.deck_num(), 0);
+
     let played = manager.play_card(0, None, None, None).unwrap();
     assert_eq!(
         manager.rank_up_played(played.card_index, 1, true),

@@ -58,6 +58,7 @@ pub struct CardManager {
     cast_channels: HashMap<i64, CastChannelState>,
     played_history: HashMap<i64, Vec<i32>>,
     expiring_temporary: Vec<CardInstanceId>,
+    pending_temporary: Vec<CardInstanceId>,
     hand_limit_bonus: i32,
     refill_floor: usize,
 }
@@ -117,6 +118,7 @@ impl CardManager {
             cast_channels: HashMap::new(),
             played_history: HashMap::new(),
             expiring_temporary: Vec::new(),
+            pending_temporary: Vec::new(),
             hand_limit_bonus: 0,
             refill_floor: 0,
         }
@@ -137,6 +139,7 @@ impl CardManager {
             cast_channels: HashMap::new(),
             played_history: HashMap::new(),
             expiring_temporary: Vec::new(),
+            pending_temporary: Vec::new(),
             hand_limit_bonus: 0,
             refill_floor: 0,
         }
@@ -323,6 +326,7 @@ impl CardManager {
         self.cast_channels.clear();
         self.played_history.clear();
         self.expiring_temporary.clear();
+        self.pending_temporary.clear();
         self.refill_floor = 0;
     }
 
@@ -336,6 +340,11 @@ impl CardManager {
         self.played.clear();
         self.refilled.clear();
         self.queued_use_cards.clear();
+        for card_id in std::mem::take(&mut self.pending_temporary) {
+            if !self.expiring_temporary.contains(&card_id) {
+                self.expiring_temporary.push(card_id);
+            }
+        }
     }
 
     pub fn queued_use_cards(&self) -> &[QueuedUseCard] {
@@ -1012,7 +1021,10 @@ impl CardManager {
         _reserve_id: i64,
         _team_type: i32,
     ) -> CardInfo {
-        self.deck.add_temp_card(target_uid, skill_id, hero_id)
+        let index = self.deck.hand().len();
+        let card = self.deck.add_temp_card(target_uid, skill_id, hero_id);
+        self.track_temporary(index);
+        card
     }
 
     pub fn change_to_temp_card(&mut self, index: usize, skill_id: i32) -> Option<CardInfo> {
@@ -1028,7 +1040,9 @@ impl CardManager {
         _reserve_str: String,
         _team_type: i32,
     ) -> Option<CardInfo> {
-        self.deck.change_to_temp_card(index, skill_id)
+        let card = self.deck.change_to_temp_card(index, skill_id)?;
+        self.track_temporary(index);
+        Some(card)
     }
 
     fn enchant_hand(
@@ -1044,13 +1058,35 @@ impl CardManager {
         let Some(card_ids) = self.deck.mark_temporary(indices) else {
             return false;
         };
-        self.expiring_temporary = card_ids;
+        for card_id in card_ids {
+            if !self.expiring_temporary.contains(&card_id) {
+                self.expiring_temporary.push(card_id);
+            }
+        }
         true
     }
 
-    fn expire_temporary(&mut self) {
+    fn track_temporary(&mut self, index: usize) {
+        let Some(card_id) = self.deck.hand_id(index) else {
+            return;
+        };
+        if !self.expiring_temporary.contains(&card_id) {
+            self.expiring_temporary.push(card_id);
+        }
+    }
+
+    fn add_pending_temporary(&mut self, card: CardInfo) -> CardInfo {
+        let index = self.deck.hand().len();
+        let card = self.add_to_hand(card);
+        if let Some(card_id) = self.deck.hand_id(index) {
+            self.pending_temporary.push(card_id);
+        }
+        card
+    }
+
+    fn expire_temporary(&mut self) -> Vec<usize> {
         self.deck
-            .expire_temporary(&std::mem::take(&mut self.expiring_temporary));
+            .expire_temporary(&std::mem::take(&mut self.expiring_temporary))
     }
 
     fn persist_temporary(&mut self, indices: &[usize]) -> bool {

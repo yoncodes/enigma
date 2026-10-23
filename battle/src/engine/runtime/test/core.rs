@@ -220,6 +220,7 @@ fn played_cards_grant_cloth_power_only_after_action_completion() {
             queued_use_card: None,
             rank_results: Vec::new(),
             consumed_indices: Vec::new(),
+            expired_indices: Vec::new(),
             consumed_owner_uid: None,
             consumption_kind: None,
             entity: None,

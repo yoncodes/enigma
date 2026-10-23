@@ -19,6 +19,17 @@ fn selected_precast_uses_the_normal_add_hand_change_without_entering_hand_capaci
             ref card,
         }) if card.temp_card == Some(true) && card.hero_id == Some(3149)
     ));
+
+    let current_round = manager
+        .execute_command(CardCommand::ExpireTemporary { origin: ORIGIN })
+        .unwrap();
+    assert!(current_round.expired_indices.is_empty());
+    manager.begin_round();
+    let next_round = manager
+        .execute_command(CardCommand::ExpireTemporary { origin: ORIGIN })
+        .unwrap();
+    assert_eq!(next_round.expired_indices, [0]);
+    assert!(manager.hand().is_empty());
 }
 
 #[test]

@@ -33,6 +33,49 @@ fn temporary_card_projection_uses_the_committed_operation() {
 }
 
 #[test]
+fn temporary_expiration_projects_the_removed_hand_positions() {
+    let origin = CommandOrigin {
+        domain: RuleDomain::Lifecycle,
+        key: DefinitionKey::new(0, "TemporaryCardExpiration"),
+    };
+    let mut cards = CardManager::new(vec![
+        sonettobuf::CardInfo {
+            uid: Some(10),
+            skill_id: Some(100),
+            ..Default::default()
+        },
+        sonettobuf::CardInfo {
+            uid: Some(10),
+            skill_id: Some(200),
+            ..Default::default()
+        },
+    ]);
+    cards
+        .execute_command(CardCommand::MarkTemporary(
+            crate::engine::manager::card::CardMarkTemporary {
+                origin,
+                indices: vec![1],
+                team_type: 1,
+                config_effect: 50023,
+            },
+        ))
+        .unwrap();
+    let changes = cards
+        .execute_command(CardCommand::ExpireTemporary { origin })
+        .unwrap();
+
+    let effects = project_change_for_test(&BattleChange::Card(Box::new(changes))).unwrap();
+
+    assert_eq!(effects.len(), 1);
+    assert_eq!(effects[0].effect_type, Some(EffectType::Cardremove as i32));
+    assert_eq!(effects[0].reserve_str.as_deref(), Some("2"));
+    assert_eq!(
+        effects[0].json_param.as_deref(),
+        Some(r#"{"buffActActiveIds":""}"#)
+    );
+}
+
+#[test]
 fn card_setup_is_state_only() {
     let mut cards = CardManager::default();
     let changes = cards

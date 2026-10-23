@@ -522,6 +522,7 @@ pub struct CardChanges {
     pub queued_use_card: Option<QueuedUseCard>,
     pub rank_results: Vec<CardRankResult>,
     pub consumed_indices: Vec<usize>,
+    pub expired_indices: Vec<usize>,
     pub consumed_owner_uid: Option<i64>,
     pub consumption_kind: Option<CardConsumptionKind>,
     pub entity: Option<FightEntityInfo>,
@@ -576,6 +577,7 @@ pub(super) fn execute(
     let mut queued_use_card = None;
     let mut rank_results = Vec::new();
     let mut consumed_indices = Vec::new();
+    let mut expired_indices = Vec::new();
     let mut consumed_owner_uid = None;
     let mut consumption_kind = None;
     let mut hand_limit = None;
@@ -831,7 +833,7 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             let target_uid = add.card.uid.unwrap_or_default();
-            let card = manager.add_to_hand(add.card);
+            let card = manager.add_pending_temporary(add.card);
             operation = Some(CardChange::AddHand {
                 target_uid,
                 card: card.clone(),
@@ -923,7 +925,7 @@ pub(super) fn execute(
             )
         }
         CardCommand::ExpireTemporary { origin } => {
-            manager.expire_temporary();
+            expired_indices = manager.expire_temporary();
             (
                 Some(origin),
                 CardChangeKind::TemporaryExpired,
@@ -1496,6 +1498,7 @@ pub(super) fn execute(
         queued_use_card,
         rank_results,
         consumed_indices,
+        expired_indices,
         consumed_owner_uid,
         consumption_kind,
         entity: None,

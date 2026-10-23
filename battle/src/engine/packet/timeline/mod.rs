@@ -1169,7 +1169,14 @@ fn project_change(
             .into_iter()
             .collect(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::TemporaryExpired => {
-            Vec::new()
+            (!changes.expired_indices.is_empty())
+                .then(|| {
+                    let mut effect = EffectPacket::card_remove(&changes.expired_indices);
+                    effect.json_param = Some(r#"{"buffActActiveIds":""}"#.to_owned());
+                    effect
+                })
+                .into_iter()
+                .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::TemporaryPersisted => {
             Vec::new()
