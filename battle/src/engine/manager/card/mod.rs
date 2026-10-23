@@ -59,6 +59,7 @@ pub struct CardManager {
     played_history: HashMap<i64, Vec<i32>>,
     expiring_temporary: Vec<CardInstanceId>,
     pending_temporary: Vec<CardInstanceId>,
+    persisting_temporary: Vec<CardInstanceId>,
     hand_limit_bonus: i32,
     refill_floor: usize,
 }
@@ -119,6 +120,7 @@ impl CardManager {
             played_history: HashMap::new(),
             expiring_temporary: Vec::new(),
             pending_temporary: Vec::new(),
+            persisting_temporary: Vec::new(),
             hand_limit_bonus: 0,
             refill_floor: 0,
         }
@@ -140,6 +142,7 @@ impl CardManager {
             played_history: HashMap::new(),
             expiring_temporary: Vec::new(),
             pending_temporary: Vec::new(),
+            persisting_temporary: Vec::new(),
             hand_limit_bonus: 0,
             refill_floor: 0,
         }
@@ -327,6 +330,7 @@ impl CardManager {
         self.played_history.clear();
         self.expiring_temporary.clear();
         self.pending_temporary.clear();
+        self.persisting_temporary.clear();
         self.refill_floor = 0;
     }
 
@@ -343,6 +347,9 @@ impl CardManager {
         for card_id in std::mem::take(&mut self.pending_temporary) {
             if !self.expiring_temporary.contains(&card_id) {
                 self.expiring_temporary.push(card_id);
+            }
+            if !self.persisting_temporary.contains(&card_id) {
+                self.persisting_temporary.push(card_id);
             }
         }
     }
@@ -1085,8 +1092,10 @@ impl CardManager {
     }
 
     fn expire_temporary(&mut self) -> Vec<usize> {
-        self.deck
-            .expire_temporary(&std::mem::take(&mut self.expiring_temporary))
+        self.deck.expire_temporary(
+            &std::mem::take(&mut self.expiring_temporary),
+            &std::mem::take(&mut self.persisting_temporary),
+        )
     }
 
     fn persist_temporary(&mut self, indices: &[usize]) -> bool {

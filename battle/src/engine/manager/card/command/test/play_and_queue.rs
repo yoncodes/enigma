@@ -30,6 +30,13 @@ fn selected_precast_uses_the_normal_add_hand_change_without_entering_hand_capaci
         .unwrap();
     assert_eq!(next_round.expired_indices, [0]);
     assert!(manager.hand().is_empty());
+    assert_eq!(
+        manager.draw_pile(),
+        &[sonettobuf::CardInfo {
+            temp_card: Some(false),
+            ..crate::engine::manager::card::selected_precast_card(10, 3149, 900)
+        }]
+    );
 }
 
 #[test]

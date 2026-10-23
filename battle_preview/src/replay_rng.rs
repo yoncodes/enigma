@@ -112,6 +112,25 @@ fn captured_round_draws(round: &FightRound) -> Vec<CardInfo> {
             {
                 *hand = Some(effect.card_info_list.clone());
             }
+            if effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Cardremove as i32)
+                && let Some(cards) = hand.as_mut()
+            {
+                let mut indices = effect
+                    .reserve_str
+                    .as_deref()
+                    .unwrap_or_default()
+                    .split('#')
+                    .filter_map(|index| index.parse::<usize>().ok()?.checked_sub(1))
+                    .collect::<Vec<_>>();
+                indices.sort_unstable();
+                indices.dedup();
+                for index in indices.into_iter().rev() {
+                    if index < cards.len() {
+                        cards.remove(index);
+                    }
+                }
+            }
             if let Some(nested) = effect.fight_step.as_ref() {
                 visit(nested, hand);
             }
@@ -925,6 +944,39 @@ mod tests {
                 ..Default::default()
             }),
             vec![normalized_temporary, after_actions, round_start]
+        );
+    }
+
+    #[test]
+    fn round_rng_import_requeues_a_removed_temporary_card() {
+        let temporary = card(10, 999, true);
+        let persisted = card(10, 999, false);
+
+        assert_eq!(
+            captured_round_draws(&FightRound {
+                fight_step: vec![FightStep {
+                    act_effect: vec![
+                        sonettobuf::ActEffect {
+                            effect_type: Some(
+                                sonettobuf::effect_type_enum::EffectType::Cardspush as i32,
+                            ),
+                            card_info_list: vec![temporary],
+                            ..Default::default()
+                        },
+                        sonettobuf::ActEffect {
+                            effect_type: Some(
+                                sonettobuf::effect_type_enum::EffectType::Cardremove as i32,
+                            ),
+                            reserve_str: Some("1".to_owned()),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }],
+                team_a_cards2: vec![persisted.clone()],
+                ..Default::default()
+            }),
+            vec![persisted]
         );
     }
 

@@ -349,17 +349,31 @@ impl CardDeck {
         Some(indices.iter().map(|index| self.hand_ids[*index]).collect())
     }
 
-    pub(super) fn expire_temporary(&mut self, card_ids: &[CardInstanceId]) -> Vec<usize> {
+    pub(super) fn expire_temporary(
+        &mut self,
+        card_ids: &[CardInstanceId],
+        persistent_ids: &[CardInstanceId],
+    ) -> Vec<usize> {
         let card_ids = card_ids.iter().copied().collect::<HashSet<_>>();
+        let persistent_ids = persistent_ids.iter().copied().collect::<HashSet<_>>();
         let indices = self
             .hand_ids
             .iter()
             .enumerate()
             .filter_map(|(index, id)| card_ids.contains(id).then_some(index))
             .collect::<Vec<_>>();
+        let persistent = indices
+            .iter()
+            .filter(|index| persistent_ids.contains(&self.hand_ids[**index]))
+            .map(|index| CardInfo {
+                temp_card: Some(false),
+                ..self.hand[*index].clone()
+            })
+            .collect::<Vec<_>>();
         for index in indices.iter().rev() {
             self.remove_card(*index);
         }
+        self.draw_pile.extend(persistent);
         indices
     }
 
@@ -658,7 +672,7 @@ mod tests {
 
         assert!(deck.move_card(0, 1));
         deck.hand_mut()[1].energy = Some(5);
-        let expired = deck.expire_temporary(&marked);
+        let expired = deck.expire_temporary(&marked, &[]);
 
         assert_eq!(expired, [1]);
         assert_eq!(deck.hand(), &[card(11, 200)]);
