@@ -559,21 +559,47 @@ pub fn run_round_end_final_settlement(
         &owner_uids,
         &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
     )?;
+    let take_stage = effect_time::ROUND_END_FINAL_SETTLEMENT;
+    let expiring = managers
+        .buff
+        .duration_targets(take_stage, &owner_uids)
+        .into_iter()
+        .filter(|target| target.remaining == 1)
+        .collect::<Vec<_>>();
     append(
         &mut result,
-        run_duration_advances_for_event(
+        run_owned_duration_advances(
             managers,
             pool,
             catalog,
             determinism,
             context,
-            EventKind::RoundEndFinalSettlement,
-            &owner_uids,
+            take_stage,
+            expiring,
         )?,
     );
     // "When Obscurity reaches zero, you'll enter a bonus Witness Round during the following
     // round": checks for a buff granted as the final settlement's durations expire.
     let after = BattleEvent::Kind(EventKind::RoundEndAfterFinalSettlement);
+    let mut after_phase = begin_round_phase(RoundPhase::RoundEndAfterFinalSettlement);
+    let refreshing = managers
+        .buff
+        .duration_targets(take_stage, &owner_uids)
+        .into_iter()
+        .filter(|target| target.remaining > 1)
+        .collect::<Vec<_>>();
+    append_round_phase(
+        &mut after_phase,
+        run_owned_duration_advances(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            take_stage,
+            refreshing,
+        )?,
+    );
     let mut after_skills = drain::run_group_event(
         managers,
         pool,
@@ -587,8 +613,39 @@ pub fn run_round_end_final_settlement(
     if after_skills.events.first() == Some(&after) {
         after_skills.events.remove(0);
     }
-    append(&mut result, after_skills);
+    append_round_phase(&mut after_phase, after_skills);
+    append(&mut result, after_phase);
     Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_owned_duration_advances(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    take_stage: i32,
+    targets: Vec<crate::engine::manager::buff::BuffDurationTarget>,
+) -> Result<DrainResult, DrainError> {
+    let operations = targets.into_iter().map(|target| {
+        let owner = FrameOwner::BuffDuration {
+            owner_uid: target.owner_uid,
+            buff_uid: target.buff_uid,
+            take_stage,
+        };
+        let advance = BuffDurationAdvance::new(
+            take_stage,
+            vec![target.owner_uid],
+            Some(vec![target.buff_uid]),
+        )
+        .expect("final settlement duration stage is registered");
+        (
+            owner,
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::AdvanceDuration(advance))),
+        )
+    });
+    drain::run_owned_command_group(managers, pool, catalog, determinism, context, operations)
 }
 
 fn final_settlement_owner_order(pool: &TargetPool, managers: &BattleManagers) -> Vec<i64> {

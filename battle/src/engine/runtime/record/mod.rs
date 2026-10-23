@@ -52,6 +52,11 @@ pub enum FrameOwner {
     },
     SetupMechanic,
     LifecycleMechanic,
+    BuffDuration {
+        owner_uid: i64,
+        buff_uid: i64,
+        take_stage: i32,
+    },
     StageWave {
         wave: i32,
     },
@@ -72,6 +77,7 @@ pub enum RoundPhase {
     RoundStartSettlement,
     RoundStartCapacitySync,
     RoundStartSync,
+    RoundEndAfterFinalSettlement,
     EntitySettlement,
     EntityBuffCleanup,
     EntityCardCleanup,

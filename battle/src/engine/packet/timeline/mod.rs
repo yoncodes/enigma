@@ -214,6 +214,7 @@ fn project_frame(
                 step
             }))
         }
+        FrameOwner::BuffDuration { .. } => Ok(StepPacket::effect(effects)),
         FrameOwner::SetupSide(_)
         | FrameOwner::SetupEntity { .. }
         | FrameOwner::StageWave { .. }
@@ -241,14 +242,27 @@ fn project_frame_items(
                 absorb_map_layout,
                 redeal_layout,
             )?),
-            FrameItem::Child(frame) => effects.extend(project_child(
-                frame,
-                writes_reduce_hp,
-                hurt_info_layout,
-                absorb_map_layout,
-                redeal_layout,
-                change_round_layout,
-            )?),
+            FrameItem::Child(frame) => {
+                if matches!(frame.owner, FrameOwner::BuffDuration { .. }) {
+                    effects.extend(project_frame_items(
+                        &frame.items,
+                        writes_reduce_hp,
+                        hurt_info_layout,
+                        absorb_map_layout,
+                        redeal_layout,
+                        change_round_layout,
+                    )?);
+                } else {
+                    effects.extend(project_child(
+                        frame,
+                        writes_reduce_hp,
+                        hurt_info_layout,
+                        absorb_map_layout,
+                        redeal_layout,
+                        change_round_layout,
+                    )?);
+                }
+            }
             FrameItem::Cue(cue) => {
                 effects.extend(project_cue(cue, redeal_layout, change_round_layout))
             }

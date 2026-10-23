@@ -159,14 +159,23 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
         defender: Some(FightTeam {
             entitys: vec![entity(
                 -1,
-                vec![BuffInfo {
-                    uid: Some(20),
-                    buff_id: Some(109320001),
-                    duration: Some(1),
-                    from_uid: Some(-1),
-                    ..Default::default()
-                }],
-                vec![109320102, 109320105],
+                vec![
+                    BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(109320001),
+                        duration: Some(1),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(21),
+                        buff_id: Some(109320101),
+                        duration: Some(2),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                ],
+                vec![109320102, 109320105, 109320112],
             )],
             ..Default::default()
         }),
@@ -176,7 +185,7 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut managers = BattleManagers::seeded(&fight);
 
-    run_round_end_final_settlement(
+    let result = run_round_end_final_settlement(
         &mut managers,
         &pool,
         &catalog,
@@ -190,6 +199,63 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
     // round", in which "enemies cannot take active actions".
     assert!(managers.buff.has_active_buff_id(-1, 109320002));
     assert!(managers.buff.has_active_buff_id(-1, 109320103));
+    assert_eq!(managers.buff.snapshot(-1, 21).unwrap().duration, Some(1));
+    let marker = managers
+        .buff
+        .active_for(-1)
+        .find(|buff| buff.buff_id == Some(109320112))
+        .unwrap();
+    assert_eq!(marker.duration, Some(1));
+
+    fn collect_duration_owners(
+        frame: &crate::engine::runtime::record::SemanticFrame,
+        owners: &mut Vec<(i64, i64, i32)>,
+    ) {
+        if let FrameOwner::BuffDuration {
+            owner_uid,
+            buff_uid,
+            take_stage,
+        } = &frame.owner
+        {
+            owners.push((*owner_uid, *buff_uid, *take_stage));
+        }
+        for item in &frame.items {
+            if let FrameItem::Child(child) = item {
+                collect_duration_owners(child, owners);
+            }
+        }
+    }
+    let mut owners = Vec::new();
+    for frame in &result.frames {
+        collect_duration_owners(frame, &mut owners);
+    }
+    assert_eq!(
+        owners,
+        vec![
+            (-1, 20, effect_time::ROUND_END_FINAL_SETTLEMENT),
+            (-1, 21, effect_time::ROUND_END_FINAL_SETTLEMENT),
+            (
+                -1,
+                marker.uid.unwrap(),
+                effect_time::ROUND_END_FINAL_SETTLEMENT
+            ),
+        ]
+    );
+
+    let steps = crate::engine::packet::timeline::project_for_version(&result.frames, 7).unwrap();
+    assert_eq!(steps.len(), 2);
+    assert_eq!(
+        steps
+            .iter()
+            .map(|step| {
+                step.act_effect
+                    .iter()
+                    .map(|effect| effect.effect_type.unwrap())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>(),
+        vec![vec![6, 162, 162], vec![7, 7, 162]]
+    );
 }
 
 #[test]

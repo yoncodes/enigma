@@ -61,6 +61,46 @@ pub fn run_command_group(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub fn run_owned_command_group(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    operations: impl IntoIterator<Item = (FrameOwner, RuleOp)>,
+) -> Result<DrainResult, DrainError> {
+    let mut frames = Vec::new();
+    let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
+    let mut queue = operations
+        .into_iter()
+        .map(|(owner, op)| {
+            let path = push_child(&mut frames, &root, owner, FrameTrigger::Active);
+            QueuedOp {
+                op,
+                trigger: SkillOpTrigger::Active,
+                skill_execution: None,
+                frame_path: Some(path),
+                parent_path: None,
+                frame_group: None,
+                independent_parent_group: None,
+                frame_owner: None,
+                subscriber: None,
+                caster_frame: None,
+            }
+        })
+        .collect::<VecDeque<_>>();
+    drain_queue_with_frames(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        &mut queue,
+        frames,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn run_setup_schedule(
     managers: &mut BattleManagers,
     pool: &TargetPool,

@@ -37,7 +37,7 @@ use definition::BuffDefinition;
 pub use feature::BuffPassiveSkillLink;
 pub use feature::{ActiveBuffFeature, BuffHpMaxAddRate, BuffPowerMaxAdd};
 use feature::{active_feature, hp_max_add_rate, passive_skill_links, power_max_add};
-pub(crate) use lifecycle::BuffTakeAction;
+pub(crate) use lifecycle::{BuffDurationTarget, BuffTakeAction};
 pub use query::SpecialCountOutput;
 pub use result::{
     BuffActInfoMarkerResult, BuffActTriggerResult, BuffApplyResult, BuffDeleteReason,

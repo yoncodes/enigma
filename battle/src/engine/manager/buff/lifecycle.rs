@@ -67,6 +67,13 @@ pub(crate) struct BuffDurationPlan {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BuffDurationTarget {
+    pub(crate) owner_uid: i64,
+    pub(crate) buff_uid: i64,
+    pub(crate) remaining: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BuffLifecyclePlan {
     pub(crate) target_uid: i64,
     pub(crate) buff_uid: i64,
@@ -368,6 +375,32 @@ impl BuffManager {
         self.plan_duration_advances(take_stage, owner_uids)
             .into_iter()
             .map(|plan| plan.buff_uid)
+            .collect()
+    }
+
+    pub(crate) fn duration_targets(
+        &self,
+        take_stage: i32,
+        owner_uids: &[i64],
+    ) -> Vec<BuffDurationTarget> {
+        self.plan_duration_advances(take_stage, owner_uids)
+            .into_iter()
+            .filter_map(|plan| {
+                let remaining = self
+                    .buffs
+                    .iter()
+                    .find(|active| {
+                        active.owner_uid == plan.target_uid
+                            && active.buff.uid == Some(plan.buff_uid)
+                    })?
+                    .buff
+                    .duration?;
+                Some(BuffDurationTarget {
+                    owner_uid: plan.target_uid,
+                    buff_uid: plan.buff_uid,
+                    remaining,
+                })
+            })
             .collect()
     }
 
