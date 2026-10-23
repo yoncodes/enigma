@@ -101,7 +101,6 @@ pub enum ReactionFrameScope {
     Causing,
     EventSibling,
     Independent,
-    IndependentOutsideAction,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -465,13 +464,6 @@ pub const fn in_causing_frame(mut metadata: ConditionMetadata) -> ConditionMetad
 
 pub const fn in_independent_frame(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_frame_scope = ReactionFrameScope::Independent;
-    metadata
-}
-
-pub const fn in_independent_frame_outside_action(
-    mut metadata: ConditionMetadata,
-) -> ConditionMetadata {
-    metadata.reaction_frame_scope = ReactionFrameScope::IndependentOutsideAction;
     metadata
 }
 
