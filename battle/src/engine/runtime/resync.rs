@@ -67,6 +67,7 @@ impl BattleRuntime {
             }
         }
         let opponent_uids = opponent_uids(&self.fight);
+        let player_uids = player_uids(&self.fight);
         let mut changed_buffs = BTreeSet::new();
         for effect in captured_buff_effects(captured) {
             let Some(kind) = effect.effect_type else {
@@ -84,16 +85,17 @@ impl BattleRuntime {
             let target_uid = effect
                 .target_id
                 .ok_or_else(|| format!("captured buff effect type={kind} has no target uid"))?;
-            if !opponent_uids.contains(&target_uid) {
-                continue;
-            }
             let buff = effect
                 .buff
                 .clone()
                 .ok_or_else(|| format!("captured buff effect type={kind} has no buff payload"))?;
-            // Player-sourced debuffs on an opponent are coupled to player-owned mechanic state.
-            // Replaying only their wire half would make the diagnostic runtime inconsistent.
-            if buff.from_uid != Some(target_uid) {
+            let source_uid = buff.from_uid.unwrap_or_default();
+            let safe_observed_owner = (opponent_uids.contains(&target_uid)
+                && source_uid == target_uid)
+                || (player_uids.contains(&target_uid) && opponent_uids.contains(&source_uid));
+            // Player-owned effects stay coupled to their mechanic state; opponent-owned effects
+            // can be copied onto either side without inventing player state.
+            if !safe_observed_owner {
                 continue;
             }
             let buff_uid = buff.uid.filter(|uid| *uid > 0).ok_or_else(|| {
@@ -148,6 +150,19 @@ fn opponent_uids(fight: &sonettobuf::Fight) -> BTreeSet<i64> {
                 .filter_map(|entity| entity.uid),
         );
         uids.extend(team.assist_boss.iter().filter_map(|entity| entity.uid));
+    }
+    uids
+}
+
+fn player_uids(fight: &sonettobuf::Fight) -> BTreeSet<i64> {
+    let mut uids = BTreeSet::new();
+    if let Some(team) = fight.attacker.as_ref() {
+        uids.extend(
+            team.entitys
+                .iter()
+                .chain(&team.sub_entitys)
+                .filter_map(|entity| entity.uid),
+        );
     }
     uids
 }
@@ -357,6 +372,7 @@ mod tests {
                     observed(EffectType::Buffdel, -1, -1, 100001, 0),
                     observed(EffectType::Buffadd, -1, -1, 100003, 1),
                     observed(EffectType::Buffadd, 10, 10, 4, 1),
+                    observed(EffectType::Buffadd, -1, 10, 6, 3),
                     observed(EffectType::Buffadd, 10, -1, 100005, 1),
                     ActEffect {
                         fight_step: Some(FightStep {
@@ -375,6 +391,10 @@ mod tests {
 
         assert!(runtime.managers.buff.snapshot(-1, 100001).is_none());
         assert!(runtime.managers.buff.snapshot(10, 4).is_none());
+        assert_eq!(
+            runtime.managers.buff.snapshot(10, 6).unwrap().layer,
+            Some(3)
+        );
         assert!(runtime.managers.buff.snapshot(-1, 100005).is_none());
         assert_eq!(
             runtime.managers.buff.snapshot(-1, 100003).unwrap().layer,
