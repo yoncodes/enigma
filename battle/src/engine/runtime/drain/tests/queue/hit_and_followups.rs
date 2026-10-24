@@ -596,7 +596,7 @@ fn attack_followup_does_not_start_without_a_living_configured_target() {
 }
 
 #[test]
-fn lethal_injury_waits_for_an_attack_from_someone_other_than_its_applier() {
+fn lethal_injury_waits_for_the_next_attack_including_from_its_applier() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {
         uid: Some(uid),
@@ -662,7 +662,7 @@ fn lethal_injury_waits_for_an_attack_from_someone_other_than_its_applier() {
         .unwrap();
         assert_eq!(
             managers.buff.max_id_or_type_layer(-1, 31240121),
-            if source_uid == 10 { 2 } else { 1 }
+            if source_uid == 10 { 1 } else { 0 }
         );
     }
 }

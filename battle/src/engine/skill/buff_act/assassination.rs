@@ -222,7 +222,7 @@ pub fn rule_ops(
         }
         if !action.is_attack
             || catalog.damage_rate(action.skill_id) <= 0
-            || action.source_uid == subscriber.source_uid
+            || action.source_uid == subscriber.owner_uid
             || subscriber.amount <= 0
             || !action.target_uids.contains(&subscriber.owner_uid)
             || catalog.is_assassinate(action.skill_id)
