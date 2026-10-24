@@ -549,7 +549,7 @@ pub fn run_round_end_final_settlement(
 ) -> Result<DrainResult, DrainError> {
     let owner_uids = final_settlement_owner_order(pool, managers);
     let event = BattleEvent::BuffsSettled(settled_buffs);
-    let mut result = drain::run_grouped_owner_event_lanes(
+    let initial = drain::run_grouped_owner_event_lanes(
         managers,
         pool,
         catalog,
@@ -559,6 +559,8 @@ pub fn run_round_end_final_settlement(
         &owner_uids,
         &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
     )?;
+    let mut result = begin_round_phase(RoundPhase::RoundEndFinalSettlement);
+    append_round_phase(&mut result, initial);
     let take_stage = effect_time::ROUND_END_FINAL_SETTLEMENT;
     let expiring = managers
         .buff
@@ -566,7 +568,7 @@ pub fn run_round_end_final_settlement(
         .into_iter()
         .filter(|target| target.remaining == 1)
         .collect::<Vec<_>>();
-    append(
+    append_round_phase(
         &mut result,
         run_owned_duration_advances(
             managers,
@@ -576,6 +578,19 @@ pub fn run_round_end_final_settlement(
             context,
             take_stage,
             expiring,
+        )?,
+    );
+    append_round_phase(
+        &mut result,
+        drain::run_grouped_owner_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundEndFinalExpiry),
+            &owner_uids,
+            drain::ReactionLane::Skills,
         )?,
     );
     // "When Obscurity reaches zero, you'll enter a bonus Witness Round during the following

@@ -70,6 +70,7 @@ fn side_round_end_schedules_keep_the_proven_lane_order() {
             EventKind::RoundEndAfterSettlement,
             EventKind::RoundEndAfterOwnerSettlement,
             EventKind::RoundEndFinalSettlement,
+            EventKind::RoundEndFinalExpiry,
         ]
     );
     let entity_settlement = after_ai
@@ -177,7 +178,7 @@ fn defeated_conduit_devices_refresh_only_after_terminal_commitment() {
 }
 
 #[test]
-fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
+fn final_settlement_keeps_expiry_reactions_in_one_phase() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -185,6 +186,8 @@ fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
                 uid: Some(10),
                 team_type: Some(1),
                 current_hp: Some(1_000),
+                ex_point_type: Some(4),
+                ex_point_max: Some(100),
                 passive_skill: vec![302501432],
                 buffs: vec![
                     BuffInfo {
@@ -199,6 +202,13 @@ fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
                         buff_id: Some(8011),
                         from_uid: Some(10),
                         layer: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(22),
+                        buff_id: Some(109320001),
+                        duration: Some(1),
+                        from_uid: Some(-1),
                         ..Default::default()
                     },
                 ],
@@ -267,6 +277,27 @@ fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
     ));
     assert!(contains_effect(&steps[0], 111, 10));
     assert!(!contains_skill(&steps[0], 302501432));
+    assert_eq!(managers.ex_point.get(10), 15);
+    assert!(managers.buff.snapshot(10, 22).is_none());
+
+    fn effect_types(step: &sonettobuf::FightStep, output: &mut Vec<i32>) {
+        for effect in &step.act_effect {
+            if let Some(effect_type) = effect.effect_type {
+                output.push(effect_type);
+            }
+            if let Some(child) = effect.fight_step.as_ref() {
+                effect_types(child, output);
+            }
+        }
+    }
+    let mut effects = Vec::new();
+    effect_types(&steps[0], &mut effects);
+    let expired = effects
+        .iter()
+        .position(|effect| *effect == sonettobuf::effect_type_enum::EffectType::Buffdel as i32)
+        .unwrap();
+    let resource = effects.iter().position(|effect| *effect == 111).unwrap();
+    assert!(expired < resource);
 }
 
 #[test]

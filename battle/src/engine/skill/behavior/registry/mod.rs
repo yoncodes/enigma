@@ -50,7 +50,11 @@ impl OutputOwner {
             Self::SetupParent if setup_triggered => Self::Parent,
             Self::SetupParent => Self::Skill,
             Self::SetupOrFinalSettlementParent
-                if setup_triggered || event == Some(EventKind::RoundEndFinalSettlement) =>
+                if setup_triggered
+                    || matches!(
+                        event,
+                        Some(EventKind::RoundEndFinalSettlement | EventKind::RoundEndFinalExpiry)
+                    ) =>
             {
                 Self::Parent
             }
