@@ -135,6 +135,7 @@ impl ConduitManager {
                         },
                         committed_cost: skill.cost_value,
                         cost_committed: false,
+                        activation_cost_measured: false,
                     },
                 );
                 Ok(ConduitChange::SkillBegan {
@@ -219,7 +220,10 @@ impl ConduitManager {
                 if !pending.cost_committed {
                     return Err(ConduitError::ActivationNotCommitted(skill_id));
                 }
-                if pending.event.activation_cost == 0 && skill.cost_type == 999 {
+                if pending.event.activation_cost == 0
+                    && skill.cost_type == 999
+                    && !pending.activation_cost_measured
+                {
                     pending.event.activation_cost =
                         self.current_costs.get(&team).copied().unwrap_or_default();
                 }
@@ -300,9 +304,12 @@ impl ConduitManager {
                     && let Some(pending) = self
                         .pending_activations
                         .get_mut(&(change.source_uid, change.skill_id))
-                        .filter(|pending| pending.event.activation_cost == 0)
+                        .filter(|pending| {
+                            pending.event.activation_cost == 0 && !pending.activation_cost_measured
+                        })
                 {
                     pending.event.activation_cost = before;
+                    pending.activation_cost_measured = true;
                 }
                 Ok(ConduitChange::CounterChanged {
                     origin: change.origin,
@@ -349,6 +356,7 @@ impl ConduitManager {
                 pending.event.power_id = 0;
                 pending.event.activation_cost = spent;
                 pending.event.spent = spent;
+                pending.activation_cost_measured = true;
                 Ok(ConduitChange::PowersCleared {
                     origin,
                     source_uid,

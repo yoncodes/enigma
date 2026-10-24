@@ -270,6 +270,7 @@ struct PendingActivation {
     event: crate::engine::event::payload::ConduitActivatedEvent,
     committed_cost: i32,
     cost_committed: bool,
+    activation_cost_measured: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

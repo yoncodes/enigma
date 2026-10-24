@@ -599,6 +599,16 @@ fn reduced_spend_keeps_the_configured_activation_cost() {
             kind: ConduitPowerChangeKind::Standard,
         }))
         .unwrap();
+    manager
+        .execute(ConduitCommand::ChangeCounter(ConduitCounterChange {
+            origin: ORIGIN,
+            source_uid: 10,
+            team: 1,
+            skill_id: 0,
+            kind: ConduitCounterKind::EnergyAccumulation,
+            delta: 5,
+        }))
+        .unwrap();
 
     manager
         .execute(ConduitCommand::BeginSkill {
@@ -635,6 +645,16 @@ fn reduced_spend_keeps_the_configured_activation_cost() {
         }),
         Err(ConduitError::ActivationAlreadyCommitted(31490121))
     );
+    manager
+        .execute(ConduitCommand::ChangeCounter(ConduitCounterChange {
+            origin: ORIGIN,
+            source_uid: 10,
+            team: 1,
+            skill_id: 31490121,
+            kind: ConduitCounterKind::EnergyAccumulation,
+            delta: 1,
+        }))
+        .unwrap();
     let change = manager
         .execute(ConduitCommand::CompleteActivation {
             source_uid: 10,
@@ -737,7 +757,12 @@ fn unique_activation_without_energy_mutation_uses_the_current_team_cost() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![
-                entity(10, 3144),
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3144),
+                    ex_skill_level: Some(1),
+                    ..Default::default()
+                },
                 entity(11, 3145),
                 FightEntityInfo {
                     uid: Some(12),
@@ -783,7 +808,7 @@ fn unique_activation_without_energy_mutation_uses_the_current_team_cost() {
             kind: ConduitPowerChangeKind::Standard,
         }))
         .unwrap();
-    complete(&mut manager, 10, 31440111);
+    complete(&mut manager, 10, 31441111);
     manager
         .execute(ConduitCommand::SetSkillGroup {
             origin: ORIGIN,
@@ -812,6 +837,54 @@ fn unique_activation_without_energy_mutation_uses_the_current_team_cost() {
         [crate::engine::event::payload::BattleEvent::ConduitActivated(event)]
             if event.activation_cost == 2
     ));
+
+    manager
+        .execute(ConduitCommand::ChangeCounter(ConduitCounterChange {
+            origin: ORIGIN,
+            source_uid: 10,
+            team: 1,
+            skill_id: 0,
+            kind: ConduitCounterKind::EnergyAccumulation,
+            delta: -2,
+        }))
+        .unwrap();
+    manager
+        .execute(ConduitCommand::SetSkillGroup {
+            origin: ORIGIN,
+            source_uid: 10,
+            group: 3,
+        })
+        .unwrap();
+    manager
+        .execute(ConduitCommand::BeginSkill {
+            source_uid: 10,
+            skill_id: 31441131,
+            cost_reduction: 0,
+        })
+        .unwrap();
+    manager
+        .execute(ConduitCommand::CommitSkillCost {
+            source_uid: 10,
+            skill_id: 31441131,
+        })
+        .unwrap();
+    manager
+        .execute(ConduitCommand::ChangeCounter(ConduitCounterChange {
+            origin: ORIGIN,
+            source_uid: 10,
+            team: 1,
+            skill_id: 31441131,
+            kind: ConduitCounterKind::EnergyAccumulation,
+            delta: 4,
+        }))
+        .unwrap();
+    let measured_zero = manager
+        .execute(ConduitCommand::CompleteActivation {
+            source_uid: 10,
+            skill_id: 31441131,
+        })
+        .unwrap();
+    assert!(measured_zero.events().is_empty());
 
     manager.begin_round();
     let next_round = complete(&mut manager, 11, 31450131);
@@ -925,6 +998,40 @@ fn unique_skill_clears_configured_energy_pools_as_one_activation() {
         [crate::engine::event::payload::BattleEvent::ConduitActivated(event)]
             if event.spent == 13 && event.skill_id == 31490151
     ));
+
+    manager
+        .execute(ConduitCommand::BeginSkill {
+            source_uid: 10,
+            skill_id: 31490151,
+            cost_reduction: 0,
+        })
+        .unwrap();
+    manager
+        .execute(ConduitCommand::CommitSkillCost {
+            source_uid: 10,
+            skill_id: 31490151,
+        })
+        .unwrap();
+    let cleared_zero = manager
+        .execute(ConduitCommand::ClearPowers {
+            origin: ORIGIN,
+            source_uid: 10,
+            team: 1,
+            skill_id: 31490151,
+            power_ids: vec![0, 1, 2],
+        })
+        .unwrap();
+    assert!(matches!(
+        cleared_zero,
+        ConduitChange::PowersCleared { spent: 0, .. }
+    ));
+    let completed_zero = manager
+        .execute(ConduitCommand::CompleteActivation {
+            source_uid: 10,
+            skill_id: 31490151,
+        })
+        .unwrap();
+    assert!(completed_zero.events().is_empty());
 }
 
 #[test]
