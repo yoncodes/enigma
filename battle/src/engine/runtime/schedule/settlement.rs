@@ -428,16 +428,20 @@ pub fn run_entity_settlement(
                         skills.events.remove(0);
                     }
                     append(&mut result, skills);
+                    let take_stage = effect_time::ROUND_END_AFTER_SETTLEMENT;
+                    let targets = managers
+                        .buff
+                        .duration_targets(take_stage, &active_owner_uids);
                     append(
                         &mut result,
-                        run_duration_advances_for_event(
+                        run_owned_duration_advances(
                             managers,
                             pool,
                             catalog,
                             determinism,
                             context,
-                            *kind,
-                            &active_owner_uids,
+                            take_stage,
+                            targets,
                         )?,
                     );
                     let owner_settled = BattleEvent::Kind(EventKind::RoundEndAfterOwnerSettlement);
