@@ -608,4 +608,4 @@ async fn handle_command_error(
 }
 
 #[cfg(test)]
-mod tests;
+mod test;
