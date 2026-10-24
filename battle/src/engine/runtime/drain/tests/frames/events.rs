@@ -269,6 +269,58 @@ fn one_skill_event_groups_all_of_its_subscribed_rules() {
 }
 
 #[test]
+fn event_sibling_rules_share_one_skill_frame() {
+    use crate::engine::{
+        event::{kind::EventKind, subscription::SubscriptionKey},
+        skill::subscriber::SkillSubscriber,
+    };
+
+    let subscriber = |slot_index| SkillSubscriber {
+        owner_uid: -1,
+        skill_id: 109320103,
+        slot_index: Some(slot_index),
+        key: SubscriptionKey::new(
+            EventKind::BuffRemoved,
+            DefinitionKey::new(515005, "BuffIdExpireOnly"),
+        ),
+    };
+    let op = || {
+        RuleOp::Skill(
+            SkillRequest {
+                source_uid: -1,
+                skill_id: 109320103,
+            }
+            .into(),
+        )
+    };
+    let queued = queued_reactions(
+        &TargetPool::default(),
+        dispatcher::DispatchBatch {
+            skills: vec![(subscriber(0), op()), (subscriber(1), op())],
+            ..Default::default()
+        },
+        &BattleEvent::Kind(EventKind::BuffRemoved),
+        Some(&[4, 2]),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    let [first, second] = queued.as_slice() else {
+        panic!("expected two subscribed rules")
+    };
+    assert!(first.frame_path.is_none());
+    assert_eq!(first.parent_path.as_deref(), Some([4].as_slice()));
+    assert!(Rc::ptr_eq(
+        first.frame_group.as_ref().unwrap(),
+        second.frame_group.as_ref().unwrap(),
+    ));
+}
+
+#[test]
 fn independent_reaction_does_not_inherit_the_causing_frame() {
     use crate::engine::{
         event::{kind::EventKind, subscription::SubscriptionKey},

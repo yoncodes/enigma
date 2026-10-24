@@ -1100,6 +1100,7 @@ fn queued_reaction_pass(
             let frame_group = matches!(
                 frame_scope,
                 crate::engine::skill::condition::registry::ReactionFrameScope::Causing
+                    | crate::engine::skill::condition::registry::ReactionFrameScope::EventSibling
                     | crate::engine::skill::condition::registry::ReactionFrameScope::Subscriber
             )
             .then(|| {
