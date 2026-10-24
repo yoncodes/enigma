@@ -208,7 +208,10 @@ impl ConduitManager {
                 source_uid,
                 skill_id,
             } => {
-                let pending = self
+                let (team, skill) = self
+                    .configured_skill(source_uid, skill_id)
+                    .ok_or(ConduitError::MissingSkill(skill_id))?;
+                let mut pending = self
                     .pending_activations
                     .get(&(source_uid, skill_id))
                     .copied()
@@ -216,6 +219,12 @@ impl ConduitManager {
                 if !pending.cost_committed {
                     return Err(ConduitError::ActivationNotCommitted(skill_id));
                 }
+                if pending.event.activation_cost == 0 && skill.cost_type == 999 {
+                    pending.event.activation_cost =
+                        self.current_costs.get(&team).copied().unwrap_or_default();
+                }
+                self.current_costs
+                    .insert(team, pending.event.activation_cost);
                 self.pending_activations.remove(&(source_uid, skill_id));
                 Ok(ConduitChange::ActivationCompleted(pending.event))
             }

@@ -727,6 +727,98 @@ fn unique_activation_publishes_the_current_cost_without_committing_it_again() {
 }
 
 #[test]
+fn unique_activation_without_energy_mutation_uses_the_current_team_cost() {
+    crate::test_support::init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(10, 3144),
+                entity(11, 3145),
+                FightEntityInfo {
+                    uid: Some(12),
+                    model_id: Some(3025),
+                    destiny_stone: Some(302502),
+                    destiny_rank: Some(4),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = ConduitManager::seed(&fight);
+    let complete = |manager: &mut ConduitManager, source_uid, skill_id| {
+        manager
+            .execute(ConduitCommand::BeginSkill {
+                source_uid,
+                skill_id,
+                cost_reduction: 0,
+            })
+            .unwrap();
+        manager
+            .execute(ConduitCommand::CommitSkillCost {
+                source_uid,
+                skill_id,
+            })
+            .unwrap();
+        manager
+            .execute(ConduitCommand::CompleteActivation {
+                source_uid,
+                skill_id,
+            })
+            .unwrap()
+    };
+    manager
+        .execute(ConduitCommand::ChangePower(ConduitPowerChange {
+            origin: ORIGIN,
+            source_uid: 10,
+            team: 1,
+            power_id: 1,
+            delta: 2,
+            kind: ConduitPowerChangeKind::Standard,
+        }))
+        .unwrap();
+    complete(&mut manager, 10, 31440111);
+    manager
+        .execute(ConduitCommand::SetSkillGroup {
+            origin: ORIGIN,
+            source_uid: 11,
+            group: 3,
+        })
+        .unwrap();
+    let completed = complete(&mut manager, 11, 31450131);
+
+    assert!(matches!(
+        completed.events().as_slice(),
+        [crate::engine::event::payload::BattleEvent::ConduitActivated(event)]
+            if event.activation_cost == 2 && event.spent == 0 && event.power_id == 999
+    ));
+
+    manager
+        .execute(ConduitCommand::SetSkillGroup {
+            origin: ORIGIN,
+            source_uid: 12,
+            group: 3,
+        })
+        .unwrap();
+    let repeated = complete(&mut manager, 12, 302504312);
+    assert!(matches!(
+        repeated.events().as_slice(),
+        [crate::engine::event::payload::BattleEvent::ConduitActivated(event)]
+            if event.activation_cost == 2
+    ));
+
+    manager.begin_round();
+    let next_round = complete(&mut manager, 11, 31450131);
+    assert!(next_round.events().is_empty());
+}
+
+#[test]
 fn unique_skill_clears_configured_energy_pools_as_one_activation() {
     config::init(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
