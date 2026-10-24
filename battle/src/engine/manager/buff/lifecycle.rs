@@ -80,6 +80,42 @@ pub(crate) struct BuffLifecyclePlan {
 }
 
 impl BuffManager {
+    fn halo_child_emitted_by(&self, child: &ActiveBuff, emitter_uid: i64) -> bool {
+        child.fanout_emitter_uid.map_or_else(
+            || {
+                self.buffs.iter().any(|carrier| {
+                    carrier.owner_uid == emitter_uid
+                        && carrier.buff.from_uid == child.buff.from_uid
+                        && carrier.buff.buff_id.into_iter().any(|buff_id| {
+                            halo::carriers(self.catalog(), buff_id)
+                                .into_iter()
+                                .any(|halo| {
+                                    let in_scope = match halo.scope {
+                                        halo::HaloScope::AlliedTeam => {
+                                            child.team_type == carrier.team_type
+                                        }
+                                        halo::HaloScope::OtherAllies => {
+                                            child.team_type == carrier.team_type
+                                                && child.owner_uid != emitter_uid
+                                        }
+                                        halo::HaloScope::OpposingTeam => {
+                                            child.team_type != carrier.team_type
+                                        }
+                                    };
+                                    in_scope
+                                        && Some(halo.linked_buff_id.unwrap_or(buff_id))
+                                            == child.buff.buff_id
+                                        && (halo.linked_buff_id.is_some()
+                                            || carrier.owner_uid
+                                                == child.buff.from_uid.unwrap_or(child.owner_uid))
+                                })
+                        })
+                })
+            },
+            |emitter| emitter == emitter_uid,
+        )
+    }
+
     pub(crate) fn plan_action_expiries(
         &self,
         action: &crate::engine::skill::action::SkillActionEvent,
@@ -118,31 +154,27 @@ impl BuffManager {
             .collect()
     }
 
-    pub(crate) fn defeated_entity_inactive_halo_cleanup(
+    pub(crate) fn defeated_entity_halo_cleanup(
         &self,
         defeated_uid: i64,
         hp: &HpManager,
     ) -> Vec<BuffCommand> {
-        let Some(team_type) = self.team_type(defeated_uid) else {
+        if self.team_type(defeated_uid).is_none() {
             return Vec::new();
-        };
-        self
-            .buffs
+        }
+        self.buffs
             .iter()
             .filter(|active| {
-                active.team_type == team_type
-                    && active.owner_uid != defeated_uid
+                active.owner_uid != defeated_uid
                     && hp.current(active.owner_uid) > 0
-                    && !active.effective
-                    && active.fanout_emitter_uid == Some(defeated_uid)
-                    && active.definition.as_ref().is_some_and(|definition| {
-                        definition.features().iter().any(|feature| {
-                            feature.kind
-                                == Some(
-                                    crate::engine::skill::buff_act::registry::BuffActKind::SlaveHalo,
-                                )
-                        })
-                    })
+                    && self.halo_child_emitted_by(active, defeated_uid)
+                    && (!active.effective
+                        || !self.entities.iter().any(|entity| {
+                            entity.active
+                                && entity.uid != defeated_uid
+                                && hp.current(entity.uid) > 0
+                                && self.halo_child_emitted_by(active, entity.uid)
+                        }))
             })
             .filter_map(|active| Some((active.owner_uid, active.buff.uid?)))
             .map(|(target_uid, buff_uid)| {
@@ -151,7 +183,7 @@ impl BuffManager {
                         domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
                         key: crate::engine::skill::rule::DefinitionKey::new(
                             0,
-                            "DefeatedEntityInactiveHaloCleanup",
+                            "DefeatedEntityHaloCleanup",
                         ),
                     },
                     target_uid,

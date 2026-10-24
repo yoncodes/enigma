@@ -42,7 +42,7 @@ use model::{
     DefenderCardCleanupOwner, DrainBudget, MAX_DRAIN_DEPTH, MAX_DRAIN_OPERATIONS, QueuedOp,
     ReactionBatch, SubscriberContext, SubscriberDeathGroup, assign_subscriber_death_groups,
     queued_death_event_group_completion, queued_death_event_group_settlement,
-    queued_death_settlement, queued_defeated_owner_buff_cleanup,
+    queued_death_settlement, queued_defeated_entity_halo_cleanup,
     queued_defeated_owner_card_cleanup, queued_terminal_settlement, required_buff_act_definition,
 };
 pub use model::{DrainError, DrainResult, ReactionLane};
@@ -403,7 +403,7 @@ fn drain_queue_with_deferred(
                         .or(frame_path.as_deref())
                         .expect("death event group completion keeps its parent frame");
                     let mut settlements =
-                        queued_defeated_owner_buff_cleanup(managers, transition, parent_path)
+                        queued_defeated_entity_halo_cleanup(managers, transition, parent_path)
                             .into_iter()
                             .collect::<Vec<_>>();
                     settlements.push(queued_death_event_group_settlement(transition, parent_path));
@@ -424,7 +424,7 @@ fn drain_queue_with_deferred(
                 let mut settlements = Vec::new();
                 for (death, parent_path) in &deaths {
                     if let Some(cleanup) =
-                        queued_defeated_owner_buff_cleanup(managers, *death, parent_path)
+                        queued_defeated_entity_halo_cleanup(managers, *death, parent_path)
                     {
                         settlements.push(cleanup);
                     }
@@ -591,7 +591,7 @@ fn drain_death_settlement_queue(
     nested
 }
 
-fn drain_defeated_owner_buff_cleanup(
+fn drain_defeated_entity_halo_cleanup(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,

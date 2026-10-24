@@ -258,6 +258,100 @@ fn subscriber_death_batch_cleans_each_defeated_halo_emitter() {
 }
 
 #[test]
+fn active_halo_cleanup_precedes_emitter_death() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(31050146),
+                        from_uid: Some(30),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(30),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(31050143),
+                        from_uid: Some(30),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let result = run(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::from_fight(config::configs::get(), &fight),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Command(BattleCommand::Hp(
+            crate::engine::manager::hp::HpCommand::Kill(crate::engine::manager::hp::HpKill {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Lifecycle,
+                    key: DefinitionKey::new(0, "TestHaloEmitterDeath"),
+                },
+                source_uid: -1,
+                target_uid: 30,
+                config_effect: 1,
+            }),
+        ))],
+    )
+    .unwrap();
+
+    fn collect(step: &sonettobuf::FightStep, order: &mut Vec<&'static str>) {
+        for effect in &step.act_effect {
+            if effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Buffdel as i32)
+                && effect
+                    .buff
+                    .as_ref()
+                    .is_some_and(|buff| buff.buff_id == Some(31050146))
+            {
+                order.push("cleanup");
+            }
+            if effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Dead as i32)
+                && effect.target_id == Some(30)
+            {
+                order.push("death");
+            }
+            if let Some(child) = effect.fight_step.as_ref() {
+                collect(child, order);
+            }
+        }
+    }
+
+    let mut order = Vec::new();
+    for step in crate::engine::packet::timeline::project(&result.frames).unwrap() {
+        collect(&step, &mut order);
+    }
+    assert_eq!(order, ["cleanup", "death"]);
+}
+
+#[test]
 fn deferred_same_owner_batches_share_one_final_completion() {
     let trigger = SkillOpTrigger::Event(BattleEvent::Kind(
         crate::engine::event::kind::EventKind::SkillAction,

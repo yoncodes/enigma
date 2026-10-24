@@ -199,14 +199,14 @@ pub(super) fn queued_defeated_owner_card_cleanup(
     })
 }
 
-pub(super) fn queued_defeated_owner_buff_cleanup(
+pub(super) fn queued_defeated_entity_halo_cleanup(
     managers: &BattleManagers,
     death: crate::engine::manager::hp::DeathTransition,
     parent_path: &[usize],
 ) -> Option<QueuedOp> {
     let commands = managers
         .buff
-        .defeated_entity_inactive_halo_cleanup(death.target_uid, &managers.hp);
+        .defeated_entity_halo_cleanup(death.target_uid, &managers.hp);
     (!commands.is_empty()).then(|| QueuedOp {
         op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::BuffBatch(commands)),
         trigger: SkillOpTrigger::Event(BattleEvent::EntityDied(

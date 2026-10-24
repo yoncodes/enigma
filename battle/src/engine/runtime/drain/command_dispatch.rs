@@ -732,8 +732,8 @@ pub(super) fn drain_command(
     if settles_death_immediately && let Some(action_scope) = settlement_action_scope {
         for death in &settled_deaths {
             let cleanup =
-                queued_defeated_owner_buff_cleanup(managers, death.transition(), action_scope);
-            drain_defeated_owner_buff_cleanup(
+                queued_defeated_entity_halo_cleanup(managers, death.transition(), action_scope);
+            drain_defeated_entity_halo_cleanup(
                 managers,
                 pool,
                 catalog,
@@ -772,8 +772,8 @@ pub(super) fn drain_command(
             .map(crate::engine::manager::hp::PendingDeath::transition)
             .collect::<Vec<_>>();
         for death in &deaths {
-            let cleanup = queued_defeated_owner_buff_cleanup(managers, *death, action_scope);
-            drain_defeated_owner_buff_cleanup(
+            let cleanup = queued_defeated_entity_halo_cleanup(managers, *death, action_scope);
+            drain_defeated_entity_halo_cleanup(
                 managers,
                 pool,
                 catalog,
@@ -817,7 +817,7 @@ pub(super) fn drain_command(
     }));
     let mut death_settlements = Vec::new();
     for death in non_action_deaths {
-        if let Some(cleanup) = queued_defeated_owner_buff_cleanup(managers, death, &event_scope) {
+        if let Some(cleanup) = queued_defeated_entity_halo_cleanup(managers, death, &event_scope) {
             death_settlements.push(cleanup);
         }
         death_settlements.push(queued_death_settlement(death, &event_scope));

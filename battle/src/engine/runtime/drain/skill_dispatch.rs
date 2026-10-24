@@ -134,8 +134,8 @@ pub(super) fn drain_skill(
             .map(crate::engine::manager::hp::PendingDeath::transition)
             .collect::<Vec<_>>();
         for death in deaths {
-            let cleanup = queued_defeated_owner_buff_cleanup(managers, death, &frame_path);
-            drain_defeated_owner_buff_cleanup(
+            let cleanup = queued_defeated_entity_halo_cleanup(managers, death, &frame_path);
+            drain_defeated_entity_halo_cleanup(
                 managers,
                 pool,
                 catalog,
