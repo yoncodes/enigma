@@ -283,7 +283,7 @@ fn final_settlement_runs_side_expiry_reactions_before_entity_expiry() {
         result.frames[1].owner,
         FrameOwner::RoundPhase(RoundPhase::RoundEndAfterFinalSettlement)
     );
-    assert!(!has_output(&result.frames[1]));
+    assert!(has_output(&result.frames[1]));
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
 
     fn contains_effect(step: &sonettobuf::FightStep, effect_type: i32, target_uid: i64) -> bool {
@@ -306,7 +306,7 @@ fn final_settlement_runs_side_expiry_reactions_before_entity_expiry() {
             })
     }
 
-    assert_eq!(steps.len(), 1);
+    assert_eq!(steps.len(), 2);
     assert!(contains_effect(
         &steps[0],
         sonettobuf::effect_type_enum::EffectType::Buffadd as i32,
@@ -314,6 +314,11 @@ fn final_settlement_runs_side_expiry_reactions_before_entity_expiry() {
     ));
     assert!(contains_effect(&steps[0], 111, 10));
     assert!(!contains_skill(&steps[0], 302501432));
+    assert!(contains_effect(
+        &steps[1],
+        sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+        10,
+    ));
     assert_eq!(managers.ex_point.get(10), 15);
     assert!(managers.buff.snapshot(10, 22).is_none());
     assert!(
@@ -332,18 +337,29 @@ fn final_settlement_runs_side_expiry_reactions_before_entity_expiry() {
             }
         }
     }
-    let mut effects = Vec::new();
-    effect_types(&steps[0], &mut effects);
-    let expired = effects
-        .iter()
-        .enumerate()
-        .filter_map(|(index, effect)| {
-            (*effect == sonettobuf::effect_type_enum::EffectType::Buffdel as i32).then_some(index)
-        })
-        .collect::<Vec<_>>();
-    let resource = effects.iter().position(|effect| *effect == 111).unwrap();
-    assert_eq!(expired.len(), 2);
-    assert!(expired[0] < resource && resource < expired[1]);
+    let mut first_effects = Vec::new();
+    effect_types(&steps[0], &mut first_effects);
+    let mut second_effects = Vec::new();
+    effect_types(&steps[1], &mut second_effects);
+    assert_eq!(
+        first_effects
+            .iter()
+            .filter(|effect| {
+                **effect == sonettobuf::effect_type_enum::EffectType::Buffdel as i32
+            })
+            .count(),
+        1
+    );
+    assert!(first_effects.contains(&111));
+    assert_eq!(
+        second_effects
+            .iter()
+            .filter(|effect| {
+                **effect == sonettobuf::effect_type_enum::EffectType::Buffdel as i32
+            })
+            .count(),
+        1
+    );
 }
 
 #[test]

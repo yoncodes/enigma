@@ -573,9 +573,10 @@ pub fn run_round_end_final_settlement(
         crate::engine::manager::emitter::UID,
         crate::engine::fight::rules::DEFENDER_SIDE_UID,
     ];
-    let (side_expiring, entity_expiring) = expiring
+    let side_expiring = expiring
         .into_iter()
-        .partition::<Vec<_>, _>(|target| side_owners.contains(&target.owner_uid));
+        .filter(|target| side_owners.contains(&target.owner_uid))
+        .collect::<Vec<_>>();
     append_round_phase(
         &mut result,
         run_owned_duration_advances(
@@ -601,27 +602,15 @@ pub fn run_round_end_final_settlement(
             drain::ReactionLane::Skills,
         )?,
     );
-    append_round_phase(
-        &mut result,
-        run_owned_duration_advances(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            take_stage,
-            entity_expiring,
-        )?,
-    );
     // "When Obscurity reaches zero, you'll enter a bonus Witness Round during the following
     // round": checks for a buff granted as the final settlement's durations expire.
     let after = BattleEvent::Kind(EventKind::RoundEndAfterFinalSettlement);
     let mut after_phase = begin_round_phase(RoundPhase::RoundEndAfterFinalSettlement);
-    let refreshing = managers
+    let entity_advances = managers
         .buff
         .duration_targets(take_stage, &owner_uids)
         .into_iter()
-        .filter(|target| target.remaining > 1)
+        .filter(|target| target.remaining > 1 || !side_owners.contains(&target.owner_uid))
         .collect::<Vec<_>>();
     append_round_phase(
         &mut after_phase,
@@ -632,7 +621,7 @@ pub fn run_round_end_final_settlement(
             determinism,
             context,
             take_stage,
-            refreshing,
+            entity_advances,
         )?,
     );
     let mut after_skills = drain::run_group_event(
