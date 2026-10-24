@@ -664,7 +664,6 @@ enum RemoveSnapshot {
     ClearAmount,
     ClearCount,
     ClearDuration,
-    OmitDuration,
 }
 
 #[derive(Debug, Clone)]

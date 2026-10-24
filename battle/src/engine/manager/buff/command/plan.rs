@@ -379,7 +379,7 @@ impl BuffManager {
                     remove,
                     0,
                     false,
-                    RemoveSnapshot::OmitDuration,
+                    RemoveSnapshot::ClearDuration,
                 )?),
             ),
             BuffCommand::CompleteSelection(remove) => (

@@ -94,9 +94,6 @@ impl BuffManager {
                                         RemoveSnapshot::ClearDuration => {
                                             result.buff.duration = Some(0);
                                         }
-                                        RemoveSnapshot::OmitDuration => {
-                                            result.buff.duration = None;
-                                        }
                                     }
                                 }
                                 removed

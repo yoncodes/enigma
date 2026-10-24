@@ -80,7 +80,7 @@ fn forced_expiry_publishes_an_expired_removal_with_its_behavior_identity() {
 }
 
 #[test]
-fn ending_a_channel_omits_its_remaining_duration() {
+fn ending_a_channel_clears_its_remaining_duration() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -116,7 +116,7 @@ fn ending_a_channel_omits_its_remaining_duration() {
         )
         .unwrap();
 
-    assert_eq!(changes.change.removed[0].buff.duration, None);
+    assert_eq!(changes.change.removed[0].buff.duration, Some(0));
     assert!(manager.snapshot(10, 20).is_none());
 }
 
