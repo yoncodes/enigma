@@ -436,9 +436,15 @@ fn condition_kind_matches(
             start_round,
             period,
         } => {
+            // 45101 runs during next-round setup but compares the completed round counter.
+            let current_round = if condition.opcode == 45101 {
+                context.current_round.saturating_sub(1)
+            } else {
+                context.current_round
+            };
             *period > 0
-                && context.current_round >= *start_round
-                && (context.current_round - *start_round) % *period == 0
+                && current_round >= *start_round
+                && (current_round - *start_round) % *period == 0
         }
         ParsedConditionKind::ActionOrder(order) => context.action_order == *order,
         ParsedConditionKind::ActionOrderRange { start, count } => {

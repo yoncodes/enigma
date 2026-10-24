@@ -275,15 +275,15 @@ fn completed_active_use_skill_requires_an_active_execution_mode_and_real_source(
 #[test]
 fn hero_round_interval_alternates_from_its_configured_start_round() {
     init_config();
-    let matches = |start_round, current_round| {
+    let matches = |opcode, start_round, period, current_round| {
         let condition = ParsedCondition {
-            opcode: 45104,
+            opcode,
             type_name: "HeroRoundInterval".into(),
             kind: ParsedConditionKind::RoundInterval {
                 start_round,
-                period: 2,
+                period,
             },
-            raw_args: vec!["2".into(), start_round.to_string()],
+            raw_args: vec![period.to_string(), start_round.to_string()],
         };
         condition_matches(
             &condition,
@@ -298,12 +298,18 @@ fn hero_round_interval_alternates_from_its_configured_start_round() {
         )
     };
 
-    assert!(matches(1, 1));
-    assert!(!matches(1, 2));
-    assert!(matches(1, 3));
-    assert!(!matches(2, 1));
-    assert!(matches(2, 2));
-    assert!(!matches(2, 3));
+    assert!(matches(45104, 1, 2, 1));
+    assert!(!matches(45104, 1, 2, 2));
+    assert!(matches(45104, 1, 2, 3));
+    assert!(!matches(45104, 2, 2, 1));
+    assert!(matches(45104, 2, 2, 2));
+    assert!(!matches(45104, 2, 2, 3));
+    assert!(!matches(45101, 11, 1, 11));
+    assert!(matches(45101, 11, 1, 12));
+    assert!(!matches(45101, 2, 2, 2));
+    assert!(matches(45101, 2, 2, 3));
+    assert!(!matches(45101, 2, 2, 4));
+    assert!(matches(45101, 2, 2, 5));
 }
 
 #[test]
