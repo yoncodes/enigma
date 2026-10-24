@@ -1,5 +1,6 @@
 use crate::engine::{
     damage::{AttackPlan, DamageRateTerm, handler as damage},
+    event::payload::BuffFeatureTriggeredEvent,
     manager::{BattleManagers, buff::ActiveBuffFeature, hp::HpCommand},
     runtime::determinism::RoundDeterminism,
     skill::{
@@ -27,6 +28,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) injured_allies: Vec<i64>,
     pub(super) affected_targets: Vec<i64>,
     pub(super) attacked_targets: Vec<i64>,
+    triggered_buff_features: Vec<BuffFeatureTriggeredEvent>,
     pub(super) buff_additions: Vec<(i32, i32)>,
     pub(super) team_injury_count_round: i32,
     team_injury_count_consumed: Option<DefinitionKey>,
@@ -113,6 +115,7 @@ impl SkillExecution {
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
+            triggered_buff_features: Vec::new(),
             buff_additions: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
@@ -147,6 +150,7 @@ impl SkillExecution {
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
+            triggered_buff_features: Vec::new(),
             buff_additions: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
@@ -251,6 +255,14 @@ impl SkillExecution {
                 self.attacked_targets.push(target_uid);
             }
         }
+    }
+
+    pub(super) fn record_triggered_buff_feature(&mut self, event: BuffFeatureTriggeredEvent) {
+        self.triggered_buff_features.push(event);
+    }
+
+    pub(super) fn take_triggered_buff_features(&mut self) -> Vec<BuffFeatureTriggeredEvent> {
+        std::mem::take(&mut self.triggered_buff_features)
     }
 
     pub(in crate::engine::runtime) fn record_buff_additions(

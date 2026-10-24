@@ -1023,13 +1023,27 @@ pub(in crate::engine::runtime) fn emit_ops(
             });
         }
         for feature in damage.avoided {
-            let ops = crate::engine::skill::buff_act::dodge_spec_skill::trigger_rule_ops(
-                managers, &feature,
-            )
-            .ok_or_else(|| SkillOpError::UnregisteredBuffAct {
-                opcode: feature.act_id().unwrap_or_default(),
-                type_name: feature.act_type.clone(),
-            })?;
+            let act_id = feature
+                .act_id()
+                .ok_or_else(|| SkillOpError::UnregisteredBuffAct {
+                    opcode: 0,
+                    type_name: feature.act_type.clone(),
+                })?;
+            let ops = crate::engine::skill::buff_act::dodge_spec_skill::trigger_rule_ops(&feature)
+                .ok_or_else(|| SkillOpError::UnregisteredBuffAct {
+                    opcode: act_id,
+                    type_name: feature.act_type.clone(),
+                })?;
+            execution.record_triggered_buff_feature(
+                crate::engine::event::payload::BuffFeatureTriggeredEvent {
+                    owner_uid: feature.owner_uid,
+                    source_uid: feature.source_uid,
+                    target_uid: feature.owner_uid,
+                    buff_uid: feature.buff_uid,
+                    buff_id: feature.buff_id,
+                    act_id,
+                },
+            );
             outputs.extend(ops.into_iter().map(|op| SkillEmissionOp {
                 op,
                 owner: behavior::registry::OutputOwner::Skill,
@@ -1239,6 +1253,21 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution,
             SkillPhase::AfterHit,
         ));
+    }
+    if active_phase == Some(SkillPhase::HitPassives) {
+        outputs.extend(
+            execution
+                .take_triggered_buff_features()
+                .into_iter()
+                .map(|event| SkillEmissionOp {
+                    op: RuleOp::Publish(
+                        crate::engine::event::payload::BattleEvent::BuffFeatureTriggered(event),
+                    ),
+                    owner: behavior::registry::OutputOwner::Skill,
+                    consequence: ConsequencePolicy::Default,
+                    frame_owner: None,
+                }),
+        );
     }
     if active_phase == Some(crate::engine::skill::action::SkillPhase::AfterHit) {
         for (origin, buff_id) in std::mem::take(&mut execution.temporary_damage_buffs) {

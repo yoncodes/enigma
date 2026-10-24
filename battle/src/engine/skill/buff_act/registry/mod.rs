@@ -802,11 +802,11 @@ buff_act_definitions! {
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(503, "AddToTarget"), &[EffectType::Addtotarget as i32]));
     (505, "DodgeSpecSkill") => DodgeSpecSkill, effect_time_subscription: false,
         events: [EventKind::AllyAction],
-        runtime: |context| super::dodge_spec_skill::expire_after_owner_action(context.managers, context.subscriber, context.event?),
+        scoped_runtime: |context| super::dodge_spec_skill::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::dodge_spec_skill::supports_skill_slots, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(505, "DodgeSpecSkill"), &[EffectType::Dodgespecskill as i32]));
     (507, "DodgeSpecSkill2") => DodgeDamageType, effect_time_subscription: false,
-        events: [EventKind::AllyAction],
-        runtime: |context| super::dodge_spec_skill::expire_after_owner_action(context.managers, context.subscriber, context.event?),
+        events: [EventKind::AllyAction, EventKind::BuffFeatureTriggered],
+        scoped_runtime: |context| super::dodge_spec_skill::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::dodge_spec_skill::supports_damage_types, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(507, "DodgeSpecSkill2"), &[EffectType::Dodgespecskill2 as i32]));
     (510, "DamageNotMoreThan") => DamageNotMoreThan, effect_time_subscription: false,
         events: [EventKind::TargetAttacked],

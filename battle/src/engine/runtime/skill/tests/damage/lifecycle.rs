@@ -330,6 +330,55 @@ fn dodged_attack_does_not_apply_effects_to_the_target_hit() {
 }
 
 #[test]
+fn counted_dodge_is_removed_after_the_triggering_attack() {
+    crate::test_support::init_config();
+    let attacker =
+        crate::engine::fight::defender::Defender::build_monster_with_uid(100109, 10, 1, 1).unwrap();
+    let mut defender =
+        crate::engine::fight::defender::Defender::build_monster_with_uid(100108, -1, 1, 2).unwrap();
+    defender.buffs.push(BuffInfo {
+        uid: Some(1002),
+        buff_id: Some(90201),
+        duration: Some(2),
+        count: Some(1),
+        from_uid: Some(-1),
+        ..Default::default()
+    });
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![attacker],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![defender],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 30230112,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-1);
+
+    crate::engine::runtime::drain::run(
+        &mut managers,
+        &pool,
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(invocation)],
+    )
+    .unwrap();
+
+    assert!(!managers.buff.has_buff_id(-1, 90201));
+}
+
+#[test]
 fn an_action_not_played_from_a_card_pays_the_extra_action_eureka_cost() {
     crate::test_support::init_config();
     let fight = Fight {
