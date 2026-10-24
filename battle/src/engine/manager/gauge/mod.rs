@@ -959,4 +959,4 @@ fn change(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

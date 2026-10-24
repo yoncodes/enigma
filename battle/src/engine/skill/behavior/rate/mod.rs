@@ -1059,4 +1059,4 @@ fn crystal_fixed_skill_rates(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

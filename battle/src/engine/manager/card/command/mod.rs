@@ -1518,4 +1518,4 @@ fn total_energy(cards: &[CardInfo]) -> i32 {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -274,4 +274,4 @@ fn valid_layout(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

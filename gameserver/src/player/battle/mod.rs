@@ -747,4 +747,4 @@ fn compress_round_steps(mut reply: BeginRoundReply) -> Result<BeginRoundReply, A
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

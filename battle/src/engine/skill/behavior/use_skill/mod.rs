@@ -907,4 +907,4 @@ fn skill_from_group_and_star(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -1206,4 +1206,4 @@ fn priority_enemy_with_monster_label(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

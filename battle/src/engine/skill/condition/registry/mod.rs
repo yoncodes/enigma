@@ -1026,4 +1026,4 @@ pub fn attack_modifier_side(conditions: &[ParsedCondition]) -> Option<AttackModi
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

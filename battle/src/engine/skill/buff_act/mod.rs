@@ -1134,4 +1134,4 @@ pub fn configured_attack_attribute_delta(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

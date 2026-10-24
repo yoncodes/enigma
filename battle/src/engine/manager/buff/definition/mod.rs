@@ -1184,4 +1184,4 @@ fn initial_act_common_params(game: &config::GameDB, features: &str) -> String {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

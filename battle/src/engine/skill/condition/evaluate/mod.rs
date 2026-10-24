@@ -1588,4 +1588,4 @@ fn identity_targets<'a>(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

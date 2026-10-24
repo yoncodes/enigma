@@ -434,4 +434,4 @@ fn observed_absorb_hurt_map_layout(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

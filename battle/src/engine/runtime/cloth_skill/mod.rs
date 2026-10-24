@@ -508,4 +508,4 @@ fn project_changes(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

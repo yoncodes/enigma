@@ -1201,4 +1201,4 @@ fn is_redealable(card: &CardInfo, catalog: Option<crate::catalog::BattleCatalog>
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

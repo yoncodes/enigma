@@ -251,4 +251,4 @@ impl ConnectionContext {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

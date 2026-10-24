@@ -777,4 +777,4 @@ pub(crate) fn supports_damage_real_lost_life(behavior: &ParsedBehavior) -> bool 
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

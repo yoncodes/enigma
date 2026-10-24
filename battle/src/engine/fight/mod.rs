@@ -6,7 +6,7 @@ pub mod trigger;
 pub(crate) mod versions;
 
 #[cfg(test)]
-mod test;
+mod tests;
 
 #[cfg(test)]
 pub(crate) fn configured_battle(

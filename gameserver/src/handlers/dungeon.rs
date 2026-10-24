@@ -876,4 +876,4 @@ async fn send_refund(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

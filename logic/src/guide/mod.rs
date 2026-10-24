@@ -392,4 +392,4 @@ impl GuideManager {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

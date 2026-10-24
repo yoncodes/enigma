@@ -1501,4 +1501,4 @@ fn project_cue(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

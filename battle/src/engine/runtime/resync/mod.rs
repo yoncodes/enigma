@@ -216,4 +216,4 @@ fn skill_ids(cards: &[CardInfo]) -> Vec<i32> {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

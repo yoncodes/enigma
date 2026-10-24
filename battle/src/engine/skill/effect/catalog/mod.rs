@@ -520,4 +520,4 @@ pub use parse::{
 use parse::{parse_i32_list, parse_target};
 
 #[cfg(test)]
-mod test;
+mod tests;

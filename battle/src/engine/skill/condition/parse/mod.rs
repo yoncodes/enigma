@@ -799,4 +799,4 @@ pub(super) fn parse_i32_args(raw_args: &[String]) -> Option<Vec<i32>> {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -171,4 +171,4 @@ impl MailManager {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

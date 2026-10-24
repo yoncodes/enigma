@@ -40,4 +40,4 @@ pub use restore::*;
 pub use settlement::*;
 
 #[cfg(test)]
-mod test;
+mod tests;

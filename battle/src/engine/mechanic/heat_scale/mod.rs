@@ -722,4 +722,4 @@ fn is_burn_or_halo(feature: &ActiveBuffFeature) -> bool {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

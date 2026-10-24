@@ -1806,4 +1806,4 @@ pub fn entities_mut(fight: &mut Fight) -> impl Iterator<Item = &mut FightEntityI
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

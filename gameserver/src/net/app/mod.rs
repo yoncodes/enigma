@@ -117,4 +117,4 @@ impl AppState {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -61,4 +61,4 @@ pub use catalog::*;
 pub use info::*;
 
 #[cfg(test)]
-mod test;
+mod tests;

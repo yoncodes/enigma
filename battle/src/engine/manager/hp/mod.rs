@@ -490,4 +490,4 @@ mod command;
 mod state;
 
 #[cfg(test)]
-mod test;
+mod tests;

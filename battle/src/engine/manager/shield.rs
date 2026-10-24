@@ -333,4 +333,4 @@ fn sort_act_info(buffs: &BuffManager, buff_id: i32, act_info: &mut [sonettobuf::
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

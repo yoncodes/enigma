@@ -56,4 +56,4 @@ use progression::duplicate_item_id;
 use specialization::{cancel_talents, light_talents};
 
 #[cfg(test)]
-mod test;
+mod tests;

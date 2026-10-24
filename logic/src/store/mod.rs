@@ -64,4 +64,4 @@ impl StoreManager {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -198,4 +198,4 @@ fn parse_ts_seconds(value: &str) -> Option<i32> {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

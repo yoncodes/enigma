@@ -214,4 +214,4 @@ fn login_payload(reason: &str, user_id: i64) -> Vec<u8> {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;
