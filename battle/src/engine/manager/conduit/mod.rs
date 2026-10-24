@@ -5,7 +5,7 @@ use crate::engine::skill::rule::CommandOrigin;
 mod execute;
 mod seed;
 #[cfg(test)]
-mod tests;
+mod test;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConduitSkill {
