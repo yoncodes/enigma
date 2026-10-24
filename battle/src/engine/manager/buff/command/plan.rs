@@ -570,10 +570,15 @@ impl BuffManager {
                     return Err(BuffCommandError::InvalidUidReservation);
                 }
                 let completed = self.shared_uid_lane
-                    && completion
-                        .target_uids
-                        .iter()
-                        .all(|uid| self.has_buff_id(*uid, completion.buff_id));
+                    && completion.target_uids.iter().all(|uid| {
+                        self.has_buff_id(*uid, completion.buff_id)
+                            && self
+                                .added_history_for_owner(*uid)
+                                .iter()
+                                .filter(|buff_id| **buff_id == completion.buff_id)
+                                .count()
+                                == 1
+                    });
                 (
                     completion.origin,
                     BuffPlanAction::CompleteTaggedGroup(UidReservationPlan {
