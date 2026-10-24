@@ -700,4 +700,4 @@ fn output_path(input_root: &Path, output_root: &Path, input: &Path) -> anyhow::R
 }
 
 #[cfg(test)]
-mod tests;
+mod test;
