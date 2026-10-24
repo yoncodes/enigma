@@ -80,6 +80,47 @@ fn forced_expiry_publishes_an_expired_removal_with_its_behavior_identity() {
 }
 
 #[test]
+fn ending_a_channel_omits_its_remaining_duration() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31050131),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    let changes = manager
+        .execute(
+            &HpManager::default(),
+            BuffCommand::EndChannel(BuffRemove {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Lifecycle,
+                    key: DefinitionKey::new(0, "PaperCircleChannelEnd"),
+                },
+                target_uid: 10,
+                selector: BuffRemoveSelector::Uid(20),
+            }),
+        )
+        .unwrap();
+
+    assert_eq!(changes.change.removed[0].buff.duration, None);
+    assert!(manager.snapshot(10, 20).is_none());
+}
+
+#[test]
 fn remove_id_or_type_resolves_a_configured_type_id() {
     crate::test_support::init_config();
     let fight = Fight {

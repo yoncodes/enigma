@@ -389,6 +389,7 @@ pub enum BuffCommand {
     Remove(BuffRemove),
     ForceExpire(BuffRemove),
     RemoveAfterTrigger(BuffRemove),
+    EndChannel(BuffRemove),
     CompleteSelection(BuffRemove),
     Deactivate(BuffRemove),
     ExpireAction(BuffRemove),
@@ -654,9 +655,16 @@ struct RemovePlan {
     buff_uids: Vec<i64>,
     config_effect: i32,
     duration_expired: bool,
-    clear_amount: bool,
-    clear_count: bool,
-    clear_duration: bool,
+    snapshot: RemoveSnapshot,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum RemoveSnapshot {
+    Preserve,
+    ClearAmount,
+    ClearCount,
+    ClearDuration,
+    OmitDuration,
 }
 
 #[derive(Debug, Clone)]

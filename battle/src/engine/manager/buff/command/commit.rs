@@ -82,19 +82,21 @@ impl BuffManager {
                                     return Vec::new();
                                 };
                                 let mut removed = self.remove_at(index, plan.config_effect);
-                                if plan.clear_amount {
-                                    for result in &mut removed {
-                                        result.buff.layer = Some(0);
-                                    }
-                                }
-                                if plan.clear_count {
-                                    for result in &mut removed {
-                                        result.buff.count = Some(0);
-                                    }
-                                }
-                                if plan.clear_duration {
-                                    for result in &mut removed {
-                                        result.buff.duration = Some(0);
+                                for result in &mut removed {
+                                    match plan.snapshot {
+                                        RemoveSnapshot::Preserve => {}
+                                        RemoveSnapshot::ClearAmount => {
+                                            result.buff.layer = Some(0);
+                                        }
+                                        RemoveSnapshot::ClearCount => {
+                                            result.buff.count = Some(0);
+                                        }
+                                        RemoveSnapshot::ClearDuration => {
+                                            result.buff.duration = Some(0);
+                                        }
+                                        RemoveSnapshot::OmitDuration => {
+                                            result.buff.duration = None;
+                                        }
                                     }
                                 }
                                 removed

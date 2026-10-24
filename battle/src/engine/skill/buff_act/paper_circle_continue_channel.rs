@@ -36,8 +36,8 @@ pub fn rule_ops(
             let mut ops = vec![RuleOp::Skill(invocation)];
             if channel_ending(managers, subscriber.owner_uid, subscriber.buff_uid) {
                 ops.extend(channel_end_moxie(managers, subscriber));
-                ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(
-                    BuffRemove {
+                ops.push(RuleOp::Command(BattleCommand::Buff(
+                    BuffCommand::EndChannel(BuffRemove {
                         origin: crate::engine::skill::rule::CommandOrigin {
                             domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
                             key: crate::engine::skill::rule::DefinitionKey::new(
@@ -47,8 +47,8 @@ pub fn rule_ops(
                         },
                         target_uid: subscriber.owner_uid,
                         selector: BuffRemoveSelector::Uid(subscriber.buff_uid),
-                    },
-                ))));
+                    }),
+                )));
             }
             Some(ops)
         }
@@ -312,7 +312,7 @@ mod tests {
                         ..
                     }
                 ))),
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::EndChannel(BuffRemove {
                     origin: crate::engine::skill::rule::CommandOrigin {
                         domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
                         key: crate::engine::skill::rule::DefinitionKey { opcode: 0, .. },

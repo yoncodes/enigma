@@ -352,9 +352,7 @@ impl BuffManager {
                     remove,
                     remove.origin.key.opcode,
                     false,
-                    false,
-                    false,
-                    false,
+                    RemoveSnapshot::Preserve,
                 )?),
             ),
             BuffCommand::ForceExpire(remove) => (
@@ -363,26 +361,53 @@ impl BuffManager {
                     remove,
                     remove.origin.key.opcode,
                     true,
-                    false,
-                    false,
-                    false,
+                    RemoveSnapshot::Preserve,
                 )?),
             ),
             BuffCommand::RemoveAfterTrigger(remove) => (
                 remove.origin,
-                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, false, false, false)?),
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::Preserve,
+                )?),
+            ),
+            BuffCommand::EndChannel(remove) => (
+                remove.origin,
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::OmitDuration,
+                )?),
             ),
             BuffCommand::CompleteSelection(remove) => (
                 remove.origin,
-                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, false, false, true)?),
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::ClearDuration,
+                )?),
             ),
             BuffCommand::Deactivate(remove) => (
                 remove.origin,
-                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, true, false, false)?),
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::ClearAmount,
+                )?),
             ),
             BuffCommand::ExpireAction(remove) => (
                 remove.origin,
-                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, false, true, false)?),
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::ClearCount,
+                )?),
             ),
             BuffCommand::Dispel(dispel) => (
                 dispel.origin,
@@ -1560,9 +1585,7 @@ impl BuffManager {
         remove: BuffRemove,
         config_effect: i32,
         duration_expired: bool,
-        clear_amount: bool,
-        clear_count: bool,
-        clear_duration: bool,
+        snapshot: RemoveSnapshot,
     ) -> Result<RemovePlan, BuffCommandError> {
         let valid = match remove.selector {
             BuffRemoveSelector::Uid(buff_uid) => buff_uid > 0,
@@ -1594,9 +1617,7 @@ impl BuffManager {
             buff_uids,
             config_effect,
             duration_expired,
-            clear_amount,
-            clear_count,
-            clear_duration,
+            snapshot,
         })
     }
 
@@ -1630,9 +1651,7 @@ impl BuffManager {
             buff_uids,
             config_effect: dispel.origin.key.opcode,
             duration_expired: false,
-            clear_amount: false,
-            clear_count: false,
-            clear_duration: false,
+            snapshot: RemoveSnapshot::Preserve,
         })
     }
 
