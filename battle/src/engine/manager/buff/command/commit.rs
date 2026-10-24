@@ -65,45 +65,53 @@ impl BuffManager {
             BuffPlanAction::Replace(plan) => {
                 BuffChanges::new(catalog, origin, self.commit_replace_plan(hp, *plan))
             }
-            BuffPlanAction::Remove(plan) => BuffChanges::new(
-                catalog,
-                origin,
-                BuffReplaceResult {
-                    removed: plan
-                        .buff_uids
-                        .into_iter()
-                        .flat_map(|buff_uid| {
-                            let Some(index) = self.buffs.iter().position(|active| {
-                                active.owner_uid == plan.target_uid
-                                    && active.buff.uid == Some(buff_uid)
-                            }) else {
-                                return Vec::new();
-                            };
-                            let mut removed = self.remove_at(index, plan.config_effect);
-                            if plan.clear_amount {
-                                for result in &mut removed {
-                                    result.buff.layer = Some(0);
+            BuffPlanAction::Remove(plan) => {
+                let duration_expired = plan.duration_expired;
+                let changes = BuffChanges::new(
+                    catalog,
+                    origin,
+                    BuffReplaceResult {
+                        removed: plan
+                            .buff_uids
+                            .into_iter()
+                            .flat_map(|buff_uid| {
+                                let Some(index) = self.buffs.iter().position(|active| {
+                                    active.owner_uid == plan.target_uid
+                                        && active.buff.uid == Some(buff_uid)
+                                }) else {
+                                    return Vec::new();
+                                };
+                                let mut removed = self.remove_at(index, plan.config_effect);
+                                if plan.clear_amount {
+                                    for result in &mut removed {
+                                        result.buff.layer = Some(0);
+                                    }
                                 }
-                            }
-                            if plan.clear_count {
-                                for result in &mut removed {
-                                    result.buff.count = Some(0);
+                                if plan.clear_count {
+                                    for result in &mut removed {
+                                        result.buff.count = Some(0);
+                                    }
                                 }
-                            }
-                            if plan.clear_duration {
-                                for result in &mut removed {
-                                    result.buff.duration = Some(0);
+                                if plan.clear_duration {
+                                    for result in &mut removed {
+                                        result.buff.duration = Some(0);
+                                    }
                                 }
-                            }
-                            removed
-                        })
-                        .collect(),
-                    added: None,
-                    refreshed: Vec::new(),
-                    rejected: None,
-                    fanout: Vec::new(),
-                },
-            ),
+                                removed
+                            })
+                            .collect(),
+                        added: None,
+                        refreshed: Vec::new(),
+                        rejected: None,
+                        fanout: Vec::new(),
+                    },
+                );
+                if duration_expired {
+                    changes.with_duration_expiry()
+                } else {
+                    changes
+                }
+            }
             BuffPlanAction::SetAmount(plan) => BuffChanges::set_amount(
                 catalog,
                 origin,

@@ -83,10 +83,10 @@ fn mass_action_per_target_behaviors_follow_entity_map_order() {
             _ => None,
         })
         .collect::<Vec<_>>();
-    let vacant_removals = ops
+    let vacant_expiries = ops
         .iter()
         .filter_map(|op| match op {
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(remove)))
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::ForceExpire(remove)))
                 if remove.selector == BuffRemoveSelector::IdOrType(109380001) =>
             {
                 Some(remove.target_uid)
@@ -96,7 +96,7 @@ fn mass_action_per_target_behaviors_follow_entity_map_order() {
         .collect::<Vec<_>>();
 
     assert_eq!(origin_damage, [240494371, 240494381]);
-    assert_eq!(vacant_removals, [237352626]);
+    assert_eq!(vacant_expiries, [237352626]);
     assert_eq!(grants, [240494371, 240494381, 234410900]);
 }
 

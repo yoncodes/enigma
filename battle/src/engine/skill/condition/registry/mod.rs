@@ -901,7 +901,7 @@ condition_definitions! {
     [10] "BuffIdAdd" => buff::buff_added, reactivates_on(event_trigger(EventKind::BuffChanged, None), &[EventKind::BuffAdded]);
     [88] "BuffTypeAdd" => buff::buff_type_added, event_trigger(EventKind::BuffAdded, None);
     [49] "BuffIdDel" => buff::buff_removed, event_trigger(EventKind::BuffRemoved, None);
-    [515005] "BuffIdExpireOnly" => buff::buff_expired, event_trigger(EventKind::BuffRemoved, None);
+    [515005] "BuffIdExpireOnly" => buff::buff_expired, in_event_sibling_frame(event_trigger(EventKind::BuffRemoved, None));
     [510] "MultiHpXIn" => parse::multi_hp_segment, predicate(&[]);
     [552017] "Random" => parse::random, predicate(&[]);
     [552203] "Random" => parse::random, predicate(&[]);

@@ -155,6 +155,10 @@ fn natural_buff_expiry_observes_buff_removal() {
             phase: None,
         })
     );
+    assert_eq!(
+        find_key(515005, "BuffIdExpireOnly").map(|definition| definition.reaction_frame_scope),
+        Some(ReactionFrameScope::EventSibling)
+    );
 }
 
 #[test]

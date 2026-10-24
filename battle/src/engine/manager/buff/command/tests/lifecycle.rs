@@ -26,7 +26,7 @@ fn attacker_side_buffs_can_be_granted_and_removed() {
     manager.execute(&hp, grant(side_uid, 109320001)).unwrap();
     assert!(manager.has_active_buff_id(side_uid, 109320001));
 
-    manager
+    let changes = manager
         .execute(
             &hp,
             BuffCommand::Remove(BuffRemove {
@@ -41,6 +41,42 @@ fn attacker_side_buffs_can_be_granted_and_removed() {
         .unwrap();
 
     assert!(!manager.has_active_buff_id(side_uid, 109320001));
+    assert!(matches!(
+        changes.events().as_slice(),
+        [BattleEvent::BuffRemoved(change)] if !change.duration_expired
+    ));
+}
+
+#[test]
+fn forced_expiry_publishes_an_expired_removal_with_its_behavior_identity() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight::default());
+    let side_uid = crate::engine::fight::rules::ATTACKER_SIDE_UID;
+
+    manager
+        .execute(&HpManager::default(), grant(side_uid, 109320001))
+        .unwrap();
+    let changes = manager
+        .execute(
+            &HpManager::default(),
+            BuffCommand::ForceExpire(BuffRemove {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60010, "DisperseForce2"),
+                },
+                target_uid: side_uid,
+                selector: BuffRemoveSelector::ExactId(109320001),
+            }),
+        )
+        .unwrap();
+
+    assert_eq!(changes.change.removed[0].config_effect, 60010);
+    assert!(matches!(
+        changes.events().as_slice(),
+        [BattleEvent::BuffRemoved(change)]
+            if change.buff_id == 109320001 && change.duration_expired
+    ));
 }
 
 #[test]

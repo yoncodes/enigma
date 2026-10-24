@@ -950,7 +950,7 @@ fn consume_buff_by_type_id_2_uses_an_exact_type_selector() {
 }
 
 #[test]
-fn damage_window_removes_each_configured_buff_id_or_type() {
+fn damage_window_force_expires_each_configured_buff_id_or_type() {
     let managers = BattleManagers::default();
     let mut determinism = RoundDeterminism::default();
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
@@ -982,12 +982,12 @@ fn damage_window_removes_each_configured_buff_id_or_type() {
     assert!(matches!(
         ops.as_slice(),
         [
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::ForceExpire(BuffRemove {
                 target_uid: 20,
                 selector: BuffRemoveSelector::IdOrType(31140111),
                 ..
             }))),
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::ForceExpire(BuffRemove {
                 target_uid: 20,
                 selector: BuffRemoveSelector::IdOrType(31140112),
                 ..

@@ -57,6 +57,102 @@ fn final_settlement_advances_final_stage_durations() {
 }
 
 #[test]
+fn obscurity_expiry_reactions_are_sibling_skill_frames() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(10_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100_000),
+                passive_skill: vec![109320103, 109320104],
+                buffs: vec![BuffInfo {
+                    uid: Some(21),
+                    buff_id: Some(109320101),
+                    duration: Some(2),
+                    from_uid: Some(-1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .buff
+        .execute(
+            &managers.hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: -1,
+                target_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                buff_id: 109320002,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+
+    let result = run_round_end_final_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        Vec::new(),
+    )
+    .unwrap();
+
+    assert!(!managers.buff.has_active_buff_id(-1, 109320101));
+    assert!(managers.buff.has_active_buff_id(-1, 109320102));
+
+    fn has_sibling_skills(
+        frame: &crate::engine::runtime::record::SemanticFrame,
+        expected: [i32; 2],
+    ) -> bool {
+        let skill_ids = frame
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                FrameItem::Child(child) => match child.owner {
+                    FrameOwner::Skill { skill_id, .. } => Some(skill_id),
+                    _ => None,
+                },
+                FrameItem::Change(_) | FrameItem::Cue(_) => None,
+            })
+            .collect::<Vec<_>>();
+        expected.iter().all(|skill_id| skill_ids.contains(skill_id))
+            || frame.items.iter().any(|item| match item {
+                FrameItem::Child(child) => has_sibling_skills(child, expected),
+                FrameItem::Change(_) | FrameItem::Cue(_) => false,
+            })
+    }
+
+    assert!(
+        result
+            .frames
+            .iter()
+            .any(|frame| has_sibling_skills(frame, [109320103, 109320104]))
+    );
+}
+
+#[test]
 fn blood_debt_replaces_its_expired_defense_debuff_after_settlement() {
     init_config();
     let fight = Fight {

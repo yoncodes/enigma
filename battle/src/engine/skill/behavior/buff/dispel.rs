@@ -139,7 +139,7 @@ pub(super) fn damage_window_remove_ops(
                         },
                     ));
                 }
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::ForceExpire(BuffRemove {
                     origin,
                     target_uid: context.target_uid,
                     selector: BuffRemoveSelector::IdOrType(buff_id),
