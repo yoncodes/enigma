@@ -53,7 +53,10 @@ impl OutputOwner {
                 if setup_triggered
                     || matches!(
                         event,
-                        Some(EventKind::RoundEndFinalSettlement | EventKind::RoundEndFinalExpiry)
+                        Some(
+                            EventKind::RoundEndFinalSettlement
+                                | EventKind::RoundEndAfterSideFinalExpiry
+                        )
                     ) =>
             {
                 Self::Parent

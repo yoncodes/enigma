@@ -48,8 +48,8 @@ pub enum EventKind {
     ExPointOverflow,
     RoundEndEntitySettlement,
     RoundEndFinalSettlement,
-    // After one-round final-settlement buffs expire, before surviving buffs advance.
-    RoundEndFinalExpiry,
+    // After side-owned final-settlement buffs expire, before entity-owned buffs advance.
+    RoundEndAfterSideFinalExpiry,
     // After the final settlement's buff durations advance.
     RoundEndAfterFinalSettlement,
     RoundEndAfterSettlement,

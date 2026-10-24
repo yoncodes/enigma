@@ -809,7 +809,7 @@ fn conduit_ex_point_is_parent_owned_for_setup_and_final_settlement() {
     assert_eq!(
         definition
             .output_owner
-            .resolve(Some(EventKind::RoundEndFinalExpiry), false),
+            .resolve(Some(EventKind::RoundEndAfterSideFinalExpiry), false),
         OutputOwner::Parent
     );
     assert_eq!(

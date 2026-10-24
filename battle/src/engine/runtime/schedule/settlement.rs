@@ -568,6 +568,14 @@ pub fn run_round_end_final_settlement(
         .into_iter()
         .filter(|target| target.remaining == 1)
         .collect::<Vec<_>>();
+    let side_owners = [
+        crate::engine::fight::rules::ATTACKER_SIDE_UID,
+        crate::engine::manager::emitter::UID,
+        crate::engine::fight::rules::DEFENDER_SIDE_UID,
+    ];
+    let (side_expiring, entity_expiring) = expiring
+        .into_iter()
+        .partition::<Vec<_>, _>(|target| side_owners.contains(&target.owner_uid));
     append_round_phase(
         &mut result,
         run_owned_duration_advances(
@@ -577,7 +585,7 @@ pub fn run_round_end_final_settlement(
             determinism,
             context,
             take_stage,
-            expiring,
+            side_expiring,
         )?,
     );
     append_round_phase(
@@ -588,9 +596,21 @@ pub fn run_round_end_final_settlement(
             catalog,
             determinism,
             context,
-            BattleEvent::Kind(EventKind::RoundEndFinalExpiry),
+            BattleEvent::Kind(EventKind::RoundEndAfterSideFinalExpiry),
             &owner_uids,
             drain::ReactionLane::Skills,
+        )?,
+    );
+    append_round_phase(
+        &mut result,
+        run_owned_duration_advances(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            take_stage,
+            entity_expiring,
         )?,
     );
     // "When Obscurity reaches zero, you'll enter a bonus Witness Round during the following

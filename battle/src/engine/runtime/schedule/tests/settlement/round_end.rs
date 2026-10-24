@@ -70,7 +70,7 @@ fn side_round_end_schedules_keep_the_proven_lane_order() {
             EventKind::RoundEndAfterSettlement,
             EventKind::RoundEndAfterOwnerSettlement,
             EventKind::RoundEndFinalSettlement,
-            EventKind::RoundEndFinalExpiry,
+            EventKind::RoundEndAfterSideFinalExpiry,
         ]
     );
     let entity_settlement = after_ai
@@ -178,7 +178,7 @@ fn defeated_conduit_devices_refresh_only_after_terminal_commitment() {
 }
 
 #[test]
-fn final_settlement_keeps_expiry_reactions_in_one_phase() {
+fn final_settlement_runs_side_expiry_reactions_before_entity_expiry() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -206,7 +206,7 @@ fn final_settlement_keeps_expiry_reactions_in_one_phase() {
                     },
                     BuffInfo {
                         uid: Some(22),
-                        buff_id: Some(109320001),
+                        buff_id: Some(109320112),
                         duration: Some(1),
                         from_uid: Some(-1),
                         ..Default::default()
@@ -221,6 +221,26 @@ fn final_settlement_keeps_expiry_reactions_in_one_phase() {
     let pool = TargetPool::from_fight(&fight);
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .buff
+        .execute(
+            &managers.hp,
+            crate::engine::manager::buff::BuffCommand::Grant(
+                crate::engine::manager::buff::BuffGrant {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Behavior,
+                        key: DefinitionKey::new(1, "AddBuff"),
+                    },
+                    source_uid: -1,
+                    target_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                    buff_id: 109320001,
+                    amount: None,
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                },
+            ),
+        )
+        .unwrap();
     managers
         .execute_buff(
             crate::engine::manager::buff::BuffCommand::AccumulateActValue(
@@ -247,6 +267,23 @@ fn final_settlement_keeps_expiry_reactions_in_one_phase() {
         Vec::new(),
     )
     .unwrap();
+    fn has_output(frame: &crate::engine::runtime::record::SemanticFrame) -> bool {
+        frame.items.iter().any(|item| match item {
+            FrameItem::Change(_) | FrameItem::Cue(_) => true,
+            FrameItem::Child(child) => has_output(child),
+        })
+    }
+    assert_eq!(result.frames.len(), 2);
+    assert_eq!(
+        result.frames[0].owner,
+        FrameOwner::RoundPhase(RoundPhase::RoundEndFinalSettlement)
+    );
+    assert!(has_output(&result.frames[0]));
+    assert_eq!(
+        result.frames[1].owner,
+        FrameOwner::RoundPhase(RoundPhase::RoundEndAfterFinalSettlement)
+    );
+    assert!(!has_output(&result.frames[1]));
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
 
     fn contains_effect(step: &sonettobuf::FightStep, effect_type: i32, target_uid: i64) -> bool {
@@ -279,6 +316,11 @@ fn final_settlement_keeps_expiry_reactions_in_one_phase() {
     assert!(!contains_skill(&steps[0], 302501432));
     assert_eq!(managers.ex_point.get(10), 15);
     assert!(managers.buff.snapshot(10, 22).is_none());
+    assert!(
+        !managers
+            .buff
+            .has_active_buff_id(crate::engine::fight::rules::ATTACKER_SIDE_UID, 109320001)
+    );
 
     fn effect_types(step: &sonettobuf::FightStep, output: &mut Vec<i32>) {
         for effect in &step.act_effect {
@@ -294,10 +336,14 @@ fn final_settlement_keeps_expiry_reactions_in_one_phase() {
     effect_types(&steps[0], &mut effects);
     let expired = effects
         .iter()
-        .position(|effect| *effect == sonettobuf::effect_type_enum::EffectType::Buffdel as i32)
-        .unwrap();
+        .enumerate()
+        .filter_map(|(index, effect)| {
+            (*effect == sonettobuf::effect_type_enum::EffectType::Buffdel as i32).then_some(index)
+        })
+        .collect::<Vec<_>>();
     let resource = effects.iter().position(|effect| *effect == 111).unwrap();
-    assert!(expired < resource);
+    assert_eq!(expired.len(), 2);
+    assert!(expired[0] < resource && resource < expired[1]);
 }
 
 #[test]

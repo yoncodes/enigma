@@ -537,7 +537,7 @@ fn conduit_round_end_buff_id_gate_keeps_its_exact_key() {
     assert_eq!(
         find_key(19307, "HasBuffId").map(|definition| definition.role),
         Some(ConditionRole::Trigger {
-            event: EventKind::RoundEndFinalExpiry,
+            event: EventKind::RoundEndAfterSideFinalExpiry,
             phase: None,
         })
     );
