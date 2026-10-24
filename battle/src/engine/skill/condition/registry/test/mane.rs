@@ -97,16 +97,11 @@ fn buff_and_obscurity_conditions_keep_their_exact_routes() {
         })
     );
     let power_ratio = find_key(749209, "PowerRatio").unwrap();
+    assert_eq!(power_ratio.role, ConditionRole::Predicate);
+    assert_eq!(power_ratio.dependencies, &[EventKind::TargetAttacked]);
     assert_eq!(
-        power_ratio.role,
-        ConditionRole::Trigger {
-            event: EventKind::EurekaChanged,
-            phase: None,
-        }
-    );
-    assert_eq!(
-        power_ratio.reaction_frame_scope,
-        ReactionFrameScope::Causing
+        power_ratio.reaction_timing,
+        ReactionTimingPolicy::Fixed(ReactionTiming::AfterSharedHit)
     );
     let absent = find_key(57209, "NoBuffId").unwrap();
     assert_eq!(absent.role, ConditionRole::Predicate);
