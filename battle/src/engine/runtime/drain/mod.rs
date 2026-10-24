@@ -1954,10 +1954,16 @@ fn drain_queue_with_deferred(
                         Some(ReactionLane::Skills),
                         None,
                     )?;
+                    hit_buff_acts
+                        .before_after_hit_observers
+                        .append(&mut hit_skills.before_after_hit_observers);
                     state.defer_before_after_hit_observers(
                         action_scope.as_deref(),
                         std::mem::take(&mut hit_buff_acts.before_after_hit_observers),
                     );
+                    hit_buff_acts
+                        .after_hit_skills
+                        .append(&mut hit_skills.after_hit_skills);
                     state.defer_after_hit_skills(
                         action_scope.as_deref(),
                         std::mem::take(&mut hit_buff_acts.after_hit_skills),
