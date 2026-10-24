@@ -410,7 +410,11 @@ impl BuffManager {
         planned_removed.extend(
             plan.replacement_uids
                 .iter()
-                .flat_map(|uid| self.delete(plan.route.target_uid, *uid)),
+                .flat_map(|uid| self.delete(plan.route.target_uid, *uid))
+                .map(|mut removed| {
+                    removed.buff.duration = None;
+                    removed
+                }),
         );
         for uid in &plan.capacity_eviction_uids {
             planned_removed.extend(self.delete(plan.route.target_uid, *uid).into_iter().map(
