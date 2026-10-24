@@ -32,9 +32,7 @@ impl BuffManager {
             BuffCommand::GrantOnDeath(grant) => {
                 let mut request = GrantRequest::from(&grant);
                 let mut plan = self.plan_grant_with_source_attack(hp, request, inputs)?;
-                if plan.action == GrantAction::RefreshLayer
-                    && !super::uid_policy::last_was_child(self, grant.target_uid)
-                {
+                if plan.action == GrantAction::KeepExisting {
                     request.child_uid_reservations = request
                         .child_uid_reservations
                         .checked_add(1)

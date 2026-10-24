@@ -264,6 +264,14 @@ fn death_refresh_manager() -> BuffManager {
                         from_uid: Some(10),
                         ..Default::default()
                     },
+                    BuffInfo {
+                        uid: Some(1109),
+                        buff_id: Some(103374114),
+                        from_uid: Some(-2),
+                        layer: Some(2),
+                        duration: Some(1),
+                        ..Default::default()
+                    },
                 ],
                 ..Default::default()
             }],
@@ -289,25 +297,48 @@ fn death_refresh_command() -> BuffCommand {
     })
 }
 
+fn capped_death_grant_command() -> BuffCommand {
+    BuffCommand::GrantOnDeath(BuffGrant {
+        origin: CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(1, "AddBuff"),
+        },
+        source_uid: -3,
+        target_uid: 10,
+        buff_id: 103374114,
+        amount: None,
+        occurrences: 1,
+        child_uid_reservations: 0,
+    })
+}
+
 #[test]
-fn death_triggered_layer_refresh_reserves_its_trigger_child_uid() {
+fn capped_death_grant_owns_the_group_child_uid() {
     let mut manager = death_refresh_manager();
 
-    let plan = manager
+    let refresh = manager
         .plan(&HpManager::default(), death_refresh_command())
         .unwrap();
-    let grant = grant_plan(&plan);
+    let refresh_grant = grant_plan(&refresh);
+    assert!(refresh_grant.pre_add_uids.is_empty());
+    assert_eq!(refresh_grant.layer_refresh_uid.unwrap().uid, 1155);
+    manager.commit(&HpManager::default(), refresh);
+
+    let capped = manager
+        .plan(&HpManager::default(), capped_death_grant_command())
+        .unwrap();
+    let capped_grant = grant_plan(&capped);
+    assert_eq!(capped_grant.action, GrantAction::KeepExisting);
 
     assert_eq!(
-        grant
+        capped_grant
             .pre_add_uids
             .iter()
             .map(|plan| plan.uid)
             .collect::<Vec<_>>(),
-        vec![1155]
+        vec![1156]
     );
-    assert_eq!(grant.layer_refresh_uid.unwrap().uid, 1156);
-    manager.commit(&HpManager::default(), plan);
+    manager.commit(&HpManager::default(), capped);
     let following = manager
         .add(&HpManager::default(), 10, 10, 70015, 0)
         .unwrap();
@@ -315,35 +346,32 @@ fn death_triggered_layer_refresh_reserves_its_trigger_child_uid() {
 }
 
 #[test]
-fn death_triggered_layer_refresh_reuses_an_existing_child_sequence() {
+fn added_death_grant_uses_the_group_child_uid() {
     let mut manager = death_refresh_manager();
-    let child = manager
+    manager
         .execute(
             &HpManager::default(),
-            BuffCommand::GrantUsingChildUid(BuffGrant {
+            BuffCommand::Remove(BuffRemove {
                 origin: CommandOrigin {
                     domain: RuleDomain::Behavior,
-                    key: DefinitionKey::new(1, "AddBuff"),
+                    key: DefinitionKey::new(60010, "DisperseForce2"),
                 },
-                source_uid: 10,
                 target_uid: 10,
-                buff_id: 70014,
-                amount: None,
-                occurrences: 1,
-                child_uid_reservations: 0,
+                selector: BuffRemoveSelector::ExactId(103374114),
             }),
         )
         .unwrap();
-    assert_eq!(child.change.added.unwrap().buff.uid, Some(1155));
 
-    let plan = manager
+    let refresh = manager
         .plan(&HpManager::default(), death_refresh_command())
         .unwrap();
-    let grant = grant_plan(&plan);
+    assert_eq!(grant_plan(&refresh).layer_refresh_uid.unwrap().uid, 1155);
+    manager.commit(&HpManager::default(), refresh);
 
-    assert!(grant.pre_add_uids.is_empty());
-    assert_eq!(grant.layer_refresh_uid.unwrap().uid, 1156);
-    manager.commit(&HpManager::default(), plan);
+    let added = manager
+        .execute(&HpManager::default(), capped_death_grant_command())
+        .unwrap();
+    assert_eq!(added.change.added.unwrap().buff.uid, Some(1156));
     let following = manager
         .add(&HpManager::default(), 10, 10, 70015, 0)
         .unwrap();
