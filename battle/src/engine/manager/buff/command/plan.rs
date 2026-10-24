@@ -1034,7 +1034,11 @@ impl BuffManager {
             .collect::<Vec<_>>();
         let refresh_uids = match action {
             GrantAction::RefreshCount if definition.reserves_normal_uid_on_count_refresh() => {
-                super::uid_policy::counted_refreshes(self, route.target_uid, repeat)
+                super::uid_policy::counted_refreshes(
+                    self,
+                    route.target_uid,
+                    repeat.saturating_sub(1).max(1),
+                )
             }
             GrantAction::RefreshCount if definition.reserves_child_uid_on_count_refresh() => {
                 super::uid_policy::children(self, route.target_uid, repeat)
