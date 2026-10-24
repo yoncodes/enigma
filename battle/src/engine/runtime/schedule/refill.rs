@@ -49,6 +49,30 @@ pub fn run_device_card_persistence(
     )
 }
 
+pub fn run_temporary_card_expiration(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+) -> Result<DrainResult, DrainError> {
+    drain::run(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        [RuleOp::Command(BattleCommand::Card(
+            CardCommand::ExpireTemporary {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Lifecycle,
+                    key: DefinitionKey::new(0, "TemporaryCardExpiration"),
+                },
+            },
+        ))],
+    )
+}
+
 /// Refills the normal hand deficit, then resolves composition and replacement rules.
 pub fn run_round_refill(
     managers: &mut BattleManagers,
@@ -134,21 +158,6 @@ fn run_card_refill(
         domain: RuleDomain::Lifecycle,
         key: DefinitionKey::new(0, "RoundRefill"),
     };
-    if stage == RefillStage::AfterActions {
-        append_round_phase(
-            &mut result,
-            drain::run(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
-                [RuleOp::Command(BattleCommand::Card(
-                    CardCommand::ExpireTemporary { origin },
-                ))],
-            )?,
-        );
-    }
     let composition = drain::run(
         managers,
         pool,
@@ -306,7 +315,7 @@ fn run_card_refill(
                 CardCommand::RefillOne(CardRefillOne {
                     origin,
                     card,
-                    consume_draw_pile: !configured_opening && !is_ultimate,
+                    consume_draw_pile: !configured_opening && !is_ultimate && !is_device,
                     consume_deck: !configured_opening
                         && !is_ultimate
                         && !is_device

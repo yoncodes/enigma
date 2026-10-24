@@ -127,6 +127,10 @@ impl CardMechanic {
             || managers
                 .catalog()
                 .skill_is_ultimate_for_model(skill_id, entity.model_id)
+            || managers
+                .ex_point
+                .synchronization_definition(entity.uid)
+                .is_some_and(|definition| definition.skills.contains(&skill_id))
     }
 
     pub fn can_add_normal_ultimate(
@@ -391,6 +395,52 @@ mod tests {
                 .special_team_cards(&pool, &BattleManagers::seeded(&fight), &[card])
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn configured_synchronization_chain_is_the_owners_ultimate() {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3123),
+                    current_hp: Some(100),
+                    ex_point_type: Some(ExPointKind::Synchronization.as_wire()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        managers
+            .execute_ex_point(
+                crate::engine::manager::ex_point::ExPointCommand::ConfigureSynchronization(
+                    crate::engine::manager::ex_point::ExPointConfigureSynchronization {
+                        origin: crate::engine::skill::rule::CommandOrigin {
+                            domain: crate::engine::skill::rule::RuleDomain::Behavior,
+                            key: crate::engine::skill::rule::DefinitionKey::new(
+                                100000,
+                                "EzioProps",
+                            ),
+                        },
+                        target_uid: 10,
+                        definition:
+                            crate::engine::manager::ex_point::SynchronizationDefinition::new(
+                                [312301323, 312301333, 312301343],
+                                4,
+                                100,
+                            )
+                            .unwrap(),
+                    },
+                ),
+            )
+            .unwrap();
+
+        for skill_id in [312301323, 312301333, 312301343] {
+            assert!(CardMechanic.is_ultimate_skill(&managers, skill_id, &pool.attacker_main[0]));
+        }
     }
 
     #[test]

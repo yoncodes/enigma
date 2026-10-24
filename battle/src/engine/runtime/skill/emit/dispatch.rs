@@ -153,6 +153,7 @@ pub(in crate::engine::runtime) fn emit_ops(
     if matches!(
         invocation.mode,
         crate::engine::skill::action::SkillExecutionMode::Active
+            | crate::engine::skill::action::SkillExecutionMode::Synchronization
             | crate::engine::skill::action::SkillExecutionMode::DirectBig
             | crate::engine::skill::action::SkillExecutionMode::Device
             | crate::engine::skill::action::SkillExecutionMode::DeviceCard
@@ -310,7 +311,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                 invocation.mode,
             ),
         );
-        plan::snapshot_action_start_damage_state(managers, execution);
+        plan::snapshot_action_start_damage_state(managers, catalog, effect_skill_id, execution)?;
         // The caster's and its targets' reactions to the action starting run before its own effects.
         let effect_started_owners = std::iter::once(invocation.plan.source_uid)
             .chain(execution.affected_targets.iter().copied())
@@ -327,12 +328,14 @@ pub(in crate::engine::runtime) fn emit_ops(
         if !effect_started_subscribers.skills.is_empty()
             || !effect_started_subscribers.buff_acts.is_empty()
         {
+            let hand_settlement = invocation.action_hand_settlement.take();
             outputs.push(effect_started_op(
                 &invocation,
                 managers,
                 catalog,
                 pool,
                 execution,
+                hand_settlement,
             ));
             execution.effect_started = true;
             let mut continuation = invocation.clone();
@@ -345,6 +348,16 @@ pub(in crate::engine::runtime) fn emit_ops(
             });
         }
     }
+    if (active_phase == Some(SkillPhase::Immediate) || matches!(trigger, SkillOpTrigger::Event(_)))
+        && let Some(origin) = invocation.action_hand_settlement.take()
+    {
+        outputs.push(SkillEmissionOp {
+            op: RuleOp::ActionHandSettlement { origin },
+            owner: behavior::registry::OutputOwner::Skill,
+            consequence: ConsequencePolicy::Default,
+            frame_owner: None,
+        });
+    }
     let has_row_damage = catalog.damage_rate(effect_skill_id) > 0
         && !effect
             .slots
@@ -355,7 +368,6 @@ pub(in crate::engine::runtime) fn emit_ops(
     if active_phase == Some(SkillPhase::Immediate) && !execution.opening_effects_emitted {
         execution.opening_effects_emitted = true;
         for activation in plan::LinkedDamagePlan::activations(&invocation, managers, execution) {
-            execution.record_unpaid_extra_action_cost_field(&activation.additional);
             if has_row_damage && activation.pays_extra_action_cost {
                 outputs.extend(emit_additional_damage_activation(
                     &invocation,
@@ -533,21 +545,22 @@ pub(in crate::engine::runtime) fn emit_ops(
                 )
             })
             .is_some_and(|definition| {
-                definition.skill_action_trigger.requires_attack()
-                    && !execution.context.active_skill_is_attack
-                    || definition
-                        .skill_action_trigger
-                        .rejects_extra_skill(execution.context.extra_skill_kind)
+                definition.skill_action_trigger.rejects_action(
+                    invocation.plan.skill_id,
+                    execution.context.active_skill_is_attack,
+                    execution.context.active_skill_mode,
+                ) || definition
+                    .skill_action_trigger
+                    .rejects_extra_skill(execution.context.extra_skill_kind)
             })
         {
             continue;
         }
-        if condition_key.is_some_and(|condition_key| {
+        if condition_key.is_some_and(|_| {
             !managers.can_fire_rule(
                 invocation.plan.source_uid,
                 invocation.plan.skill_id,
-                slot_index,
-                condition_key,
+                catalog.rule_limit_owner(invocation.plan.skill_id, slot_index),
                 slot.limit,
                 slot.round_limit,
             )
@@ -731,7 +744,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
         let outputs_before = outputs.len();
         let target_count = targets.len();
-        for (target_index, target_uid) in targets.into_iter().enumerate().skip(resume_target) {
+        for (target_index, target_uid) in targets.iter().copied().enumerate().skip(resume_target) {
             let target_outputs_before = outputs.len();
             if !has_row_damage && target_uid != 0 {
                 execution.primary_target_uid.get_or_insert(target_uid);
@@ -804,6 +817,28 @@ pub(in crate::engine::runtime) fn emit_ops(
                     target_uid: execution.primary_target_uid,
                 });
             }
+        }
+        if outputs.len() > outputs_before
+            && let Some(command) = behavior::buff::tagged_group_completion(
+                managers,
+                invocation.plan.source_uid,
+                &slot.target,
+                &targets,
+                &slot.behavior,
+            )
+        {
+            outputs.push(SkillEmissionOp {
+                op: RuleOp::Command(BattleCommand::Buff(command)),
+                owner: definition.output_owner.resolve(
+                    match trigger {
+                        SkillOpTrigger::Event(event) => Some(event.kind()),
+                        _ => None,
+                    },
+                    matches!(trigger, SkillOpTrigger::Setup { .. }),
+                ),
+                consequence,
+                frame_owner: None,
+            });
         }
         if let Some(child_skill_kind) = child_skill_kind {
             for emission in outputs.iter_mut().skip(outputs_before) {
@@ -988,13 +1023,27 @@ pub(in crate::engine::runtime) fn emit_ops(
             });
         }
         for feature in damage.avoided {
-            let ops = crate::engine::skill::buff_act::dodge_spec_skill::trigger_rule_ops(
-                managers, &feature,
-            )
-            .ok_or_else(|| SkillOpError::UnregisteredBuffAct {
-                opcode: feature.act_id().unwrap_or_default(),
-                type_name: feature.act_type.clone(),
-            })?;
+            let act_id = feature
+                .act_id()
+                .ok_or_else(|| SkillOpError::UnregisteredBuffAct {
+                    opcode: 0,
+                    type_name: feature.act_type.clone(),
+                })?;
+            let ops = crate::engine::skill::buff_act::dodge_spec_skill::trigger_rule_ops(&feature)
+                .ok_or_else(|| SkillOpError::UnregisteredBuffAct {
+                    opcode: act_id,
+                    type_name: feature.act_type.clone(),
+                })?;
+            execution.record_triggered_buff_feature(
+                crate::engine::event::payload::BuffFeatureTriggeredEvent {
+                    owner_uid: feature.owner_uid,
+                    source_uid: feature.source_uid,
+                    target_uid: feature.owner_uid,
+                    buff_uid: feature.buff_uid,
+                    buff_id: feature.buff_id,
+                    act_id,
+                },
+            );
             outputs.extend(ops.into_iter().map(|op| SkillEmissionOp {
                 op,
                 owner: behavior::registry::OutputOwner::Skill,
@@ -1204,6 +1253,21 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution,
             SkillPhase::AfterHit,
         ));
+    }
+    if active_phase == Some(SkillPhase::HitPassives) {
+        outputs.extend(
+            execution
+                .take_triggered_buff_features()
+                .into_iter()
+                .map(|event| SkillEmissionOp {
+                    op: RuleOp::Publish(
+                        crate::engine::event::payload::BattleEvent::BuffFeatureTriggered(event),
+                    ),
+                    owner: behavior::registry::OutputOwner::Skill,
+                    consequence: ConsequencePolicy::Default,
+                    frame_owner: None,
+                }),
+        );
     }
     if active_phase == Some(crate::engine::skill::action::SkillPhase::AfterHit) {
         for (origin, buff_id) in std::mem::take(&mut execution.temporary_damage_buffs) {

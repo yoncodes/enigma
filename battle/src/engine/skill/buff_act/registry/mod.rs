@@ -695,8 +695,7 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         transaction_wire_markers: [EventKind::BuffChanged],
         publications: [
-            EventKind::BuffAdded => BeforePublish,
-            EventKind::BuffRemoved => BeforePublish
+            EventKind::BuffAdded => BeforePublish
         ],
         frame: CausingFrame,
         transaction: super::attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(100, "Attr"), &[EffectType::Attr as i32]).with_attr_max_hp());
@@ -803,11 +802,11 @@ buff_act_definitions! {
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(503, "AddToTarget"), &[EffectType::Addtotarget as i32]));
     (505, "DodgeSpecSkill") => DodgeSpecSkill, effect_time_subscription: false,
         events: [EventKind::AllyAction],
-        runtime: |context| super::dodge_spec_skill::expire_after_owner_action(context.managers, context.subscriber, context.event?),
+        scoped_runtime: |context| super::dodge_spec_skill::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::dodge_spec_skill::supports_skill_slots, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(505, "DodgeSpecSkill"), &[EffectType::Dodgespecskill as i32]));
     (507, "DodgeSpecSkill2") => DodgeDamageType, effect_time_subscription: false,
-        events: [EventKind::AllyAction],
-        runtime: |context| super::dodge_spec_skill::expire_after_owner_action(context.managers, context.subscriber, context.event?),
+        events: [EventKind::AllyAction, EventKind::BuffFeatureTriggered],
+        scoped_runtime: |context| super::dodge_spec_skill::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::dodge_spec_skill::supports_damage_types, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(507, "DodgeSpecSkill2"), &[EffectType::Dodgespecskill2 as i32]));
     (510, "DamageNotMoreThan") => DamageNotMoreThan, effect_time_subscription: false,
         events: [EventKind::TargetAttacked],
@@ -889,7 +888,7 @@ buff_act_definitions! {
         supports: |args| matches!(args, [power_id, delta] if *power_id > 0 && *delta != 0), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(719, "PowerMaxAdd"), &[]));
     (720, "MonsterLabel") => MonsterLabel,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(720, "MonsterLabel"), &[EffectType::Monsterlabelbuff as i32]));
-    (721, "DotNoLimit") => DotNoLimit, runtime_marker: BeforeChanges(Owner),
+    (721, "DotNoLimit") => DotNoLimit,
         scoped_runtime: |context| super::dot_no_limit::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(721, "DotNoLimit"), &[EffectType::Dot as i32]));
     (743, "ReboundBasedOnDamage") => ReboundBasedOnDamage, source: Owner,
@@ -958,7 +957,7 @@ buff_act_definitions! {
                 && *ending_skill > 0 && *target_code != 0), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(846, "DuduBoneContinueChannel"), &[EffectType::Dudubonecontinuechannel as i32]));
     (862, "PaperCircleContinueChannel") => PaperCircleContinueChannel,
         setup: [RoundStart(2)],
-        runtime: |context| super::paper_circle_continue_channel::rule_ops(context.managers, context.subscriber, context.event?),
+        scoped_runtime: |context| super::paper_circle_continue_channel::scoped_rule_ops(context.managers, context.subscriber, context.event?),
         setup_handler: |context| super::paper_circle_continue_channel::setup_rule_ops(context.managers, &context.subscriber.feature),
         supports: |args| matches!(args, [skill_id, _, _, pairs @ ..]
             if *skill_id > 0 && pairs.len() >= 2 && pairs.len() % 2 == 0), references: references_for_feature, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(862, "PaperCircleContinueChannel"), &[EffectType::None as i32]));
@@ -1064,7 +1063,7 @@ buff_act_definitions! {
     (10001, "AdrenalineAddCard") => AdrenalineAddCard,
         runtime: |context| super::adrenaline_add_card::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::adrenaline_add_card::supports, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10001, "AdrenalineAddCard"), &[EffectType::None as i32]));
-    (10000, "EzioBigSkill") => EzioBigSkill, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10000, "EzioBigSkill"), &[]));
+    (10000, "EzioBigSkill") => EzioBigSkill, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10000, "EzioBigSkill"), &[EffectType::None as i32]));
     (10002, "AttrByHeroId") => AttrByHeroId, effect_time_subscription: false,
         supports: |args| matches!(args, [raw_attr, _, model_ids @ ..]
             if crate::engine::entity::attr::AttrId::from_raw(*raw_attr).is_some()
@@ -1130,7 +1129,7 @@ buff_act_definitions! {
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::each_change_attr_one_way::transaction_rule_ops,
         supports: super::each_change_attr_one_way::supports,
-        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1131, "EachChangeAttrOneWay"), &[EffectType::None as i32]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1131, "EachChangeAttrOneWay"), &[EffectType::None as i32]).with_removal_max_hp_sync(&[31440116]));
     (836, "ContractCastChannel") => ContractCastChannel,
         transactions: [EventKind::BuffAdded],
         publication: BeforePublish, frame: CausingFrame,

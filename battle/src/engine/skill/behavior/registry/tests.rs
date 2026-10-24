@@ -618,6 +618,20 @@ fn conduit_rate_uses_its_skill_gate_as_a_source_opening_driver() {
 }
 
 #[test]
+fn conduit_power_up_uses_its_skill_gate_as_a_source_opening_driver() {
+    let definition = find_key(100031, "TwinsPowerUp").unwrap();
+
+    assert_eq!(
+        definition.condition_route_override,
+        Some(ConditionRouteOverride::Trigger {
+            key: DefinitionKey::new(203, "None"),
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::SourceOpening),
+        })
+    );
+}
+
+#[test]
 fn channel_duration_reduction_keeps_its_exact_identity_and_phase() {
     let definition = find_key(60094, "ReduceCastChannelCount").unwrap();
     let supports = definition.supports.unwrap();
@@ -790,6 +804,12 @@ fn conduit_ex_point_is_parent_owned_for_setup_and_final_settlement() {
         definition
             .output_owner
             .resolve(Some(EventKind::RoundEndFinalSettlement), false),
+        OutputOwner::Parent
+    );
+    assert_eq!(
+        definition
+            .output_owner
+            .resolve(Some(EventKind::RoundEndAfterSideFinalExpiry), false),
         OutputOwner::Parent
     );
     assert_eq!(

@@ -147,6 +147,7 @@ pub struct ConduitCounterChange {
     pub origin: CommandOrigin,
     pub source_uid: i64,
     pub team: i32,
+    pub skill_id: i32,
     pub kind: ConduitCounterKind,
     pub delta: i32,
 }
@@ -267,7 +268,9 @@ pub enum ConduitError {
 #[derive(Debug, Clone, Copy)]
 struct PendingActivation {
     event: crate::engine::event::payload::ConduitActivatedEvent,
+    committed_cost: i32,
     cost_committed: bool,
+    activation_cost_measured: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -285,6 +288,7 @@ pub struct ConduitManager {
     consumed_this_round: BTreeMap<(i32, i32), i32>,
     uses_this_round: BTreeMap<i64, i32>,
     counters_this_round: BTreeMap<(i32, ConduitCounterKind), i32>,
+    current_costs: BTreeMap<i32, i32>,
     pending_activations: BTreeMap<(i64, i32), PendingActivation>,
     running: HashSet<i64>,
 }
@@ -360,6 +364,7 @@ impl ConduitManager {
         self.consumed_this_round.clear();
         self.uses_this_round.clear();
         self.counters_this_round.clear();
+        self.current_costs.clear();
         self.pending_activations.clear();
         for skill in self
             .areas
@@ -546,7 +551,7 @@ impl ConduitChange {
             ),
             _ => return Vec::new(),
         };
-        (spent > 0)
+        (activation_cost > 0)
             .then_some(
                 crate::engine::event::payload::BattleEvent::ConduitActivated(
                     crate::engine::event::payload::ConduitActivatedEvent {

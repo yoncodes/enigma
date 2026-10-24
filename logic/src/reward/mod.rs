@@ -416,4 +416,4 @@ pub(crate) use apply::*;
 pub use parse::*;
 
 #[cfg(test)]
-mod test;
+mod tests;

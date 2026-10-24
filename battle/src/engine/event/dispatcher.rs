@@ -194,8 +194,8 @@ fn ordered_subscriber_passes(
             ]
         }
         BattleEvent::EntityDied(_) => {
-            let (target_skills, observer_skills) = subscribers.skills.into_iter().partition(
-                |subscriber| {
+            let (target_skills, observer_skills): (Vec<_>, Vec<_>) =
+                subscribers.skills.into_iter().partition(|subscriber| {
                     crate::engine::skill::condition::registry::find_key(
                         subscriber.key.definition.opcode,
                         subscriber.key.definition.type_name,
@@ -203,6 +203,17 @@ fn ordered_subscriber_passes(
                     .is_some_and(|definition| {
                         definition.reaction_observer_scope
                             == crate::engine::skill::condition::registry::ReactionObserverScope::EventTarget
+                    })
+                });
+            let (subscriber_skills, side_skills) = observer_skills.into_iter().partition(
+                |subscriber| {
+                    crate::engine::skill::condition::registry::find_key(
+                        subscriber.key.definition.opcode,
+                        subscriber.key.definition.type_name,
+                    )
+                    .is_none_or(|definition| {
+                        definition.reaction_frame_source
+                            == crate::engine::skill::condition::registry::ReactionFrameSource::Subscriber
                     })
                 },
             );
@@ -212,7 +223,11 @@ fn ordered_subscriber_passes(
                     buff_acts: subscribers.buff_acts,
                 },
                 subscriber::EventSubscribers {
-                    skills: observer_skills,
+                    skills: subscriber_skills,
+                    buff_acts: Vec::new(),
+                },
+                subscriber::EventSubscribers {
+                    skills: side_skills,
                     buff_acts: Vec::new(),
                 },
             ]
@@ -222,12 +237,12 @@ fn ordered_subscriber_passes(
 }
 
 fn current_card_enchants(event: &BattleEvent) -> Option<Vec<i32>> {
-    match event {
-        BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action) => {
-            Some(action.card_enchants.clone())
-        }
-        BattleEvent::AllyAction(action) => Some(action.card_enchants.clone()),
-        _ => None,
+    match event.skill_action_event() {
+        Some(action) => Some(action.card_enchants.clone()),
+        None => match event {
+            BattleEvent::AllyAction(action) => Some(action.card_enchants.clone()),
+            _ => None,
+        },
     }
 }
 
@@ -477,7 +492,18 @@ fn retain_observing_subscribers(
     determinism: &crate::engine::runtime::determinism::RoundDeterminism,
     event: &BattleEvent,
 ) {
-    if let BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action) = event {
+    subscribers.skills.retain(|subscriber| {
+        crate::engine::skill::condition::registry::find_key(
+            subscriber.key.definition.opcode,
+            subscriber.key.definition.type_name,
+        )
+        .is_none_or(|definition| {
+            definition.reaction_observer_scope
+                != crate::engine::skill::condition::registry::ReactionObserverScope::EventTarget
+                || event.target_uid() == Some(subscriber.owner_uid)
+        })
+    });
+    if let Some(action) = event.skill_action_event() {
         subscribers.skills.retain(|subscriber| {
             skill_subscriber_observes_action(pool, subscriber, action)
                 && (subscriber.key.event != EventKind::SkillAction
@@ -884,7 +910,10 @@ mod tests {
 
     use super::*;
     use crate::engine::{
-        event::{bus::EventBus, payload::HitEvent},
+        event::{
+            bus::EventBus,
+            payload::{EntityDiedEvent, HitEvent},
+        },
         manager::buff::{BuffCommand, CommandOrigin},
         runtime::executor::execute_rule_op,
         skill::{
@@ -927,6 +956,46 @@ mod tests {
         assert_eq!(
             subscribers.skills[0].key.timing,
             crate::engine::event::subscription::ReactionTiming::AfterSkill
+        );
+    }
+
+    #[test]
+    fn death_reactions_run_subscriber_frames_before_side_frames() {
+        let skill = |skill_id, definition| SkillSubscriber {
+            owner_uid: -1,
+            skill_id,
+            slot_index: Some(0),
+            key: crate::engine::event::subscription::SubscriptionKey::new(
+                EventKind::EntityDied,
+                definition,
+            ),
+        };
+        let passes = ordered_subscriber_passes(
+            subscriber::EventSubscribers {
+                skills: vec![
+                    skill(1, DefinitionKey::new(8, "Dead")),
+                    skill(2, DefinitionKey::new(648003, "SelfExit")),
+                    skill(3, DefinitionKey::new(812, "Dead")),
+                ],
+                buff_acts: Vec::new(),
+            },
+            &BattleEvent::EntityDied(EntityDiedEvent {
+                source_uid: 10,
+                target_uid: -1,
+            }),
+        );
+
+        assert_eq!(
+            passes
+                .iter()
+                .map(|pass| {
+                    pass.skills
+                        .iter()
+                        .map(|subscriber| subscriber.skill_id)
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>(),
+            vec![vec![2], vec![3], vec![1]]
         );
     }
 

@@ -117,6 +117,67 @@ fn provoke_replaces_only_the_copy_from_the_same_applier() {
 }
 
 #[test]
+fn replacement_removal_does_not_publish_the_stale_duration() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31450131),
+                    from_uid: Some(10),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    let changes = manager
+        .execute(
+            &hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: -1,
+                buff_id: 31450131,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+
+    assert_eq!(changes.change.removed.len(), 1);
+    assert_eq!(changes.change.removed[0].buff.uid, Some(20));
+    assert_eq!(changes.change.removed[0].buff.duration, None);
+    assert_eq!(
+        changes.change.added.as_ref().unwrap().buff.duration,
+        Some(3)
+    );
+}
+
+#[test]
 fn counted_channel_starts_from_its_configured_private_count() {
     crate::test_support::init_config();
     let fight = Fight {

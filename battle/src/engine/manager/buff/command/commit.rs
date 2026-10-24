@@ -5,7 +5,7 @@ impl BuffManager {
     pub(crate) fn commit(&mut self, hp: &HpManager, plan: BuffPlan) -> BuffChanges {
         let origin = plan.origin;
         let catalog = self.catalog();
-        let changes = match plan.action {
+        let mut changes = match plan.action {
             BuffPlanAction::Grant(plan) => {
                 let markers = plan.refresh_initial_state_markers();
                 let change = self.commit_grant_plan(hp, *plan);
@@ -65,40 +65,55 @@ impl BuffManager {
             BuffPlanAction::Replace(plan) => {
                 BuffChanges::new(catalog, origin, self.commit_replace_plan(hp, *plan))
             }
-            BuffPlanAction::Remove(plan) => BuffChanges::new(
-                catalog,
-                origin,
-                BuffReplaceResult {
-                    removed: plan
-                        .buff_uids
-                        .into_iter()
-                        .flat_map(|buff_uid| {
-                            let Some(index) = self.buffs.iter().position(|active| {
-                                active.owner_uid == plan.target_uid
-                                    && active.buff.uid == Some(buff_uid)
-                            }) else {
-                                return Vec::new();
-                            };
-                            let mut removed = self.remove_at(index, plan.config_effect);
-                            if plan.clear_amount {
+            BuffPlanAction::Remove(plan) => {
+                let duration_expired = plan.duration_expired;
+                let changes = BuffChanges::new(
+                    catalog,
+                    origin,
+                    BuffReplaceResult {
+                        removed: plan
+                            .buff_uids
+                            .into_iter()
+                            .flat_map(|buff_uid| {
+                                let Some(index) = self.buffs.iter().position(|active| {
+                                    active.owner_uid == plan.target_uid
+                                        && active.buff.uid == Some(buff_uid)
+                                }) else {
+                                    return Vec::new();
+                                };
+                                let mut removed = self.remove_at(index, plan.config_effect);
                                 for result in &mut removed {
-                                    result.buff.layer = Some(0);
+                                    match plan.snapshot {
+                                        RemoveSnapshot::Preserve => {}
+                                        RemoveSnapshot::ClearAmount => {
+                                            result.buff.layer = Some(0);
+                                        }
+                                        RemoveSnapshot::ClearCount => {
+                                            result.buff.count = Some(0);
+                                        }
+                                        RemoveSnapshot::ClearDuration => {
+                                            result.buff.duration = Some(0);
+                                        }
+                                        RemoveSnapshot::OmitDuration => {
+                                            result.buff.duration = None;
+                                        }
+                                    }
                                 }
-                            }
-                            if plan.clear_count {
-                                for result in &mut removed {
-                                    result.buff.count = Some(0);
-                                }
-                            }
-                            removed
-                        })
-                        .collect(),
-                    added: None,
-                    refreshed: Vec::new(),
-                    rejected: None,
-                    fanout: Vec::new(),
-                },
-            ),
+                                removed
+                            })
+                            .collect(),
+                        added: None,
+                        refreshed: Vec::new(),
+                        rejected: None,
+                        fanout: Vec::new(),
+                    },
+                );
+                if duration_expired {
+                    changes.with_duration_expiry()
+                } else {
+                    changes
+                }
+            }
             BuffPlanAction::SetAmount(plan) => BuffChanges::set_amount(
                 catalog,
                 origin,
@@ -269,6 +284,18 @@ impl BuffManager {
                 }
                 BuffChanges::new(catalog, origin, BuffReplaceResult::default())
             }
+            BuffPlanAction::ReserveNormalUids(plan) => {
+                for uid in plan.uids {
+                    super::uid_policy::commit(self, plan.target_uid, uid);
+                }
+                BuffChanges::new(catalog, origin, BuffReplaceResult::default())
+            }
+            BuffPlanAction::CompleteTaggedGroup(plan) => {
+                for uid in plan.uids {
+                    super::uid_policy::commit(self, plan.target_uid, uid);
+                }
+                BuffChanges::new(catalog, origin, BuffReplaceResult::default())
+            }
             BuffPlanAction::ReserveGrantUid(plan) => {
                 let uid = super::uid_policy::commit(self, plan.target_uid, plan.uid);
                 self.reserve_grant_uid(plan.target_uid, plan.buff_id, uid);
@@ -335,6 +362,14 @@ impl BuffManager {
                 },
             ),
         };
+        for removed in &mut changes.change.removed {
+            removed.target_max_hp = hp.max(removed.target_uid);
+        }
+        for transition in &mut changes.lifecycle_transitions {
+            if let BuffLifecycleTransition::Removed(removed) = transition {
+                removed.target_max_hp = hp.max(removed.target_uid);
+            }
+        }
         self.reconcile_transition_progress();
         changes
     }
@@ -377,7 +412,11 @@ impl BuffManager {
         planned_removed.extend(
             plan.replacement_uids
                 .iter()
-                .flat_map(|uid| self.delete(plan.route.target_uid, *uid)),
+                .flat_map(|uid| self.delete(plan.route.target_uid, *uid))
+                .map(|mut removed| {
+                    removed.buff.duration = None;
+                    removed
+                }),
         );
         for uid in &plan.capacity_eviction_uids {
             planned_removed.extend(self.delete(plan.route.target_uid, *uid).into_iter().map(

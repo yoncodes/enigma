@@ -20,5 +20,4 @@ use setup::{
 };
 
 #[cfg(test)]
-#[path = "tests.rs"]
-mod setup_frame_container_tests;
+mod tests;

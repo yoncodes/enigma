@@ -1,6 +1,46 @@
 use super::*;
 
 #[test]
+fn nested_assassination_cast_derives_its_own_reaction_cardinality() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31240121),
+                    from_uid: Some(10),
+                    layer: Some(3),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31243121, 312431212], []);
+    let mut parent = SkillExecution::new(TargetContext::default());
+    plan::snapshot_action_start_damage_state(&managers, &catalog, 31243121, &mut parent).unwrap();
+    assert_eq!(
+        parent.assassination_rate_marks_at_action_start,
+        Some(vec![])
+    );
+
+    let consumed = BattleManagers::seeded(&Fight::default());
+    let mut child = SkillExecution::new(TargetContext::default());
+    child.inherit_assassination_marks(&parent);
+    plan::snapshot_action_start_damage_state(&consumed, &catalog, 312431212, &mut child).unwrap();
+    assert_eq!(
+        child.assassination_rate_marks_at_action_start,
+        Some(vec![(-1, 10)])
+    );
+}
+
+#[test]
 fn resolved_hit_additional_damage_precedes_independent_linked_damage() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -237,9 +277,9 @@ fn linked_damage_main_rate_follows_the_explicit_action_target() {
 }
 
 #[test]
-fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
+fn extra_action_penalties_follow_their_target_and_source_owners() {
     crate::test_support::init_config();
-    let resolve = |with_target_passive: bool| {
+    let resolve = |with_target_passive: bool, with_source_penalty: bool| {
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![
@@ -266,7 +306,15 @@ fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
                                 from_uid: Some(-1),
                                 ..Default::default()
                             },
-                        ],
+                        ]
+                        .into_iter()
+                        .chain(with_source_penalty.then_some(BuffInfo {
+                            uid: Some(22),
+                            buff_id: Some(109380002),
+                            from_uid: Some(-1),
+                            ..Default::default()
+                        }))
+                        .collect(),
                         ..Default::default()
                     },
                     FightEntityInfo {
@@ -283,6 +331,15 @@ fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
                             num: Some(5),
                             max: Some(5),
                         }],
+                        buffs: with_source_penalty
+                            .then_some(BuffInfo {
+                                uid: Some(23),
+                                buff_id: Some(109380002),
+                                from_uid: Some(-1),
+                                ..Default::default()
+                            })
+                            .into_iter()
+                            .collect(),
                         ..Default::default()
                     },
                 ],
@@ -356,11 +413,14 @@ fn target_extra_action_penalty_applies_to_main_and_credited_linked_damage() {
         (main.amount, linked.amount)
     };
 
-    let baseline = resolve(false);
-    let penalized = resolve(true);
+    let baseline = resolve(false, false);
+    let target_penalized = resolve(true, false);
+    let source_penalized = resolve(false, true);
 
-    assert!(penalized.0 < baseline.0);
-    assert!(penalized.1 < baseline.1);
+    assert!(target_penalized.0 < baseline.0);
+    assert!(target_penalized.1 < baseline.1);
+    assert!(source_penalized.0 < baseline.0);
+    assert_eq!(source_penalized.1, baseline.1);
 }
 
 #[test]
@@ -499,7 +559,7 @@ fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() 
     )));
     let (unpaid_ops, unpaid_additional, unpaid_main) = damage_phase(0, 0);
     assert!(unpaid_main.hurt.is_crit);
-    assert!(paid_main.amount > unpaid_main.amount);
+    assert_eq!(paid_main.amount, unpaid_main.amount);
     assert!(
         !unpaid_ops
             .iter()
@@ -522,7 +582,7 @@ fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() 
 }
 
 #[test]
-fn unpaid_force_field_is_known_before_immediate_origin_damage() {
+fn unpaid_force_field_keeps_its_immediate_origin_damage_bonus() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -611,7 +671,7 @@ fn unpaid_force_field_is_known_before_immediate_origin_damage() {
     assert!(ops.iter().any(|op| matches!(
         op,
         RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(HpLoss {
-            amount: 1_750,
+            amount: 2_275,
             hurt: Some(hurt),
             ..
         }))) if hurt.is_crit
@@ -675,6 +735,7 @@ fn an_extra_action_resolves_its_extra_action_passives_before_the_force_field_cos
     .into();
     invocation.mode = SkillExecutionMode::Active;
     invocation.target = SkillTarget::Explicit(-1);
+    invocation.action_hand_settlement = Some(FIELD_ORIGIN);
     let mut execution = SkillExecution::new(TargetContext::default());
     let mut determinism = RoundDeterminism::default();
     let started = emit_ops(
@@ -692,9 +753,11 @@ fn an_extra_action_resolves_its_extra_action_passives_before_the_force_field_cos
     assert!(matches!(
         started.ops.as_slice(),
         [SkillEmissionOp {
-            op: RuleOp::Publish(crate::engine::event::payload::BattleEvent::SkillEffectStarted(_)),
+            op: RuleOp::Publish(crate::engine::event::payload::BattleEvent::SkillEffectStarted(
+                started
+            )),
             ..
-        }]
+        }] if started.hand_settlement.is_some()
     ));
     let resumed = emit_ops(
         started
@@ -708,6 +771,12 @@ fn an_extra_action_resolves_its_extra_action_passives_before_the_force_field_cos
         &SkillOpTrigger::Active,
     )
     .unwrap();
+    assert!(
+        !resumed
+            .ops
+            .iter()
+            .any(|emission| matches!(emission.op, RuleOp::ActionHandSettlement { .. }))
+    );
     assert!(
         resumed
             .ops

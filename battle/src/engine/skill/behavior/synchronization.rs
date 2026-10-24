@@ -1,16 +1,24 @@
 use crate::engine::{
-    damage::AttackPlan,
+    damage::{AttackPlan, DamageRateTerm},
+    entity::attr::AttrId,
     manager::{
         buff::{BuffCommand, BuffRemove, BuffRemoveSelector, BuffSetState},
         ex_point::{
-            ExPointCommand, ExPointConfigureSynchronization, ExPointRecordSynchronizationAction,
-            SynchronizationDefinition,
+            ExPointCommand, ExPointCompleteSynchronization, ExPointConfigureSynchronization,
+            ExPointPublishSynchronizationHit, ExPointRecordSynchronizationAction,
+            ExPointRecordSynchronizationDamage, SynchronizationDefinition,
         },
+        hp::{DamageEffectKind, DamageRecord, HpCommand, HurtDamageFromType},
     },
     skill::{
         action::{SkillRequest, SkillTarget},
-        behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
-        effect::ParsedBehavior,
+        behavior::{
+            BehaviorOpContext,
+            classify::BehaviorKind,
+            rate::{self, RateRuntime},
+            registry::BehaviorHandler,
+        },
+        effect::{ParsedBehavior, SkillEffectCatalog},
         rule::{
             RuleReferences,
             output::{BattleCommand, RuleOp},
@@ -23,20 +31,19 @@ pub(super) struct Handler;
 
 impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
-        if behavior.spec.kind == BehaviorKind::EzioBigSkillCheckTimes {
-            return synchronization_progress_ops(context, behavior);
-        }
-        if behavior.spec.kind != BehaviorKind::EzioProps {
-            return damage_rule_ops(context, behavior);
-        }
-        let definition = definition(behavior)?;
-        Some(vec![RuleOp::Command(BattleCommand::ExPoint(
-            ExPointCommand::ConfigureSynchronization(ExPointConfigureSynchronization {
-                origin: super::command_origin(behavior)?,
-                target_uid: context.target_uid,
-                definition,
-            }),
-        ))])
+        emit_ops(
+            context,
+            behavior,
+            crate::engine::skill::effect::catalog::global(),
+        )
+    }
+
+    fn emit_runtime_ops(
+        context: BehaviorOpContext<'_>,
+        behavior: &ParsedBehavior,
+        catalog: &SkillEffectCatalog,
+    ) -> Option<Vec<RuleOp>> {
+        emit_ops(context, behavior, catalog)
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
@@ -49,6 +56,27 @@ impl BehaviorHandler for Handler {
             summons: Vec::new(),
         }
     }
+}
+
+fn emit_ops(
+    context: BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+    catalog: &SkillEffectCatalog,
+) -> Option<Vec<RuleOp>> {
+    if behavior.spec.kind == BehaviorKind::EzioBigSkillCheckTimes {
+        return synchronization_progress_ops(context, behavior);
+    }
+    if behavior.spec.kind != BehaviorKind::EzioProps {
+        return damage_rule_ops(context, behavior, catalog);
+    }
+    let definition = definition(behavior)?;
+    Some(vec![RuleOp::Command(BattleCommand::ExPoint(
+        ExPointCommand::ConfigureSynchronization(ExPointConfigureSynchronization {
+            origin: super::command_origin(behavior)?,
+            target_uid: context.target_uid,
+            definition,
+        }),
+    ))])
 }
 
 fn synchronization_progress_ops(
@@ -69,7 +97,6 @@ fn synchronization_progress_ops(
         .synchronization_progress(context.source_uid)
         .unwrap_or_default();
     let action_target_uid = context.target.runtime_target_uid;
-    let damage = context.target.action_damage_amount.max(0);
     let completed_actions = before.completed_actions + 1;
     let remaining_actions = definition.action_count.saturating_sub(completed_actions);
     let mut ops = vec![RuleOp::Command(BattleCommand::ExPoint(
@@ -77,7 +104,6 @@ fn synchronization_progress_ops(
             origin,
             target_uid: context.source_uid,
             action_target_uid,
-            damage,
         }),
     ))];
     let (buff_uid, act_id, _) = context.managers.buff.buff_act_carrier(
@@ -93,7 +119,7 @@ fn synchronization_progress_ops(
             params: Some(format!(
                 "{act_id}#{},{},{}",
                 remaining_actions,
-                before.total_damage.saturating_add(damage),
+                before.total_damage,
                 i32::try_from(action_target_uid).ok()?
             )),
             act_info: None,
@@ -114,6 +140,7 @@ fn synchronization_progress_ops(
 fn damage_rule_ops(
     context: BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
+    catalog: &SkillEffectCatalog,
 ) -> Option<Vec<RuleOp>> {
     let origin = super::command_origin(behavior)?;
     let terminal = if behavior.spec.kind == BehaviorKind::EzioBigSkillEnd {
@@ -131,23 +158,165 @@ fn damage_rule_ops(
         None
     };
     let hp = context.managers.hp.get(context.target_uid);
-    let (rate, hurt_effect_type) = damage_rate(behavior, hp.current, hp.max)?;
+    let (rate, _) = damage_rate(behavior, hp.current, hp.max)?;
+    let mut modifiers = context.modifiers.clone();
+    let mut target_context = *context.target;
+    target_context.hit_source_uid = context.source_uid;
+    target_context.hit_target_uid = context.target_uid;
+    target_context.runtime_target_uid = context.target_uid;
+    let runtime = RateRuntime {
+        effects: catalog,
+        managers: context.managers,
+        pool: context.pool,
+        context: target_context,
+    };
+    rate::emit_active_target_attack_attributes(
+        &mut modifiers,
+        context.source_uid,
+        context.active_skill_id,
+        context.active_skill_id,
+        runtime,
+        context.determinism,
+    );
+    let passive_skills = context
+        .pool
+        .entity(context.source_uid)
+        .map(|entity| entity.passive_skills.as_slice())
+        .unwrap_or_default();
+    rate::emit_passive_attack_attributes(
+        &mut modifiers,
+        context.source_uid,
+        context.active_skill_id,
+        passive_skills,
+        runtime,
+        context.determinism,
+    );
+    modifiers.merge(rate::incoming_target_attack_modifiers(
+        context.source_uid,
+        context.target_uid,
+        context.active_skill_id,
+        runtime,
+        context.determinism,
+    ));
+    let extra_action = crate::engine::skill::action::performs_extra_action(
+        target_context.active_card_index,
+        target_context.active_skill_mode,
+        target_context.extra_skill_kind,
+    );
+    let mut attack_attributes = modifiers.attack_attributes.clone();
+    let target_count_damage_bonus =
+        crate::engine::skill::buff_act::attr_by_skill_target_count::owner_attribute_delta(
+            context.managers,
+            context.source_uid,
+            target_context.damage_target_count_kind,
+            AttrId::DmgBonus,
+        );
+    if target_count_damage_bonus != 0 {
+        attack_attributes.push((AttrId::DmgBonus, target_count_damage_bonus));
+    }
+    let source_damage_type = context
+        .pool
+        .entity(context.source_uid)
+        .map(|entity| entity.damage_type)
+        .unwrap_or_default();
+    let incoming_reduction = crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
+        context.managers,
+        context.target_uid,
+        source_damage_type,
+        AttrId::DmgTakenReduction,
+    );
+    if incoming_reduction != 0 {
+        attack_attributes.push((AttrId::DmgTakenReduction, incoming_reduction));
+    }
+    let assassination = crate::engine::skill::buff_act::assassination::target_modifier(
+        context.managers,
+        context.source_uid,
+        context.target_uid,
+        true,
+        None,
+        None,
+    );
+    if assassination.final_damage_bonus != 0 {
+        attack_attributes.push((AttrId::FinalDmgBonus, assassination.final_damage_bonus));
+    }
+    for attr_id in [AttrId::CriticalDmg, AttrId::DmgBonus] {
+        let delta = crate::engine::skill::buff_act::target_attack_attribute_delta(
+            context.managers,
+            context.target_uid,
+            extra_action,
+            attr_id,
+        );
+        if delta != 0 {
+            attack_attributes.push((attr_id, delta));
+        }
+    }
+    let excess_crit = crate::engine::damage::handler::excess_crit_rate(
+        context.source_uid,
+        context.target_uid,
+        context.pool,
+        context.managers,
+        &attack_attributes,
+    );
+    let conversion_rate = modifiers.excess_crit_conversion_rate
+        + crate::engine::skill::buff_act::crit_rate_alter2::owner_conversion_rate(
+            context.source_uid,
+            &context.managers.buff,
+            &context.managers.hp,
+        )
+        + crate::engine::skill::buff_act::crit_rate_alter_by_other_buff::owner_conversion_rate(
+            context.source_uid,
+            &context.managers.buff,
+            &context.managers.hp,
+        );
+    let conversion_numerator = i64::from(excess_crit) * i64::from(conversion_rate);
+    let converted = (conversion_numerator / 1000) as i32;
+    let critical_multiplier_remainder = (conversion_numerator % 1000) as i32;
+    if converted != 0 {
+        attack_attributes.push((AttrId::CriticalDmg, converted));
+    }
+    let critical_rate = attack_attributes
+        .iter()
+        .filter_map(|(attr, delta)| (*attr == AttrId::CriticalRate).then_some(*delta))
+        .sum::<i32>();
+    let forces_critical = modifiers.force_critical
+        || crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::active_forces_critical(
+            context.source_uid,
+            context.managers,
+            extra_action,
+        );
     let is_crit = context.determinism.roll_hidden_crit(
         context.active_skill_id,
         context.source_uid,
         context.target_uid,
-        crate::engine::damage::handler::crit_chance(
-            context.source_uid,
-            context.target_uid,
-            context.pool,
-            context.managers,
-        ),
+        if forces_critical {
+            1000
+        } else {
+            crate::engine::damage::handler::crit_chance(
+                context.source_uid,
+                context.target_uid,
+                context.pool,
+                context.managers,
+            ) + critical_rate
+        },
     );
-    let rate_terms = crate::engine::skill::buff_act::life_attack_fix_rate::active_damage_rate_terms(
-        context.source_uid,
-        &context.managers.buff,
-        &context.managers.hp,
-    );
+    let rate_terms = modifiers
+        .rates
+        .iter()
+        .filter(|modifier| modifier.target_uid == 0 || modifier.target_uid == context.target_uid)
+        .map(|modifier| DamageRateTerm {
+            opcode: modifier.opcode,
+            rate: modifier.amount.resolve(&context.managers.gauge),
+            career_scaled: modifier.career_scaled,
+            composition: modifier.composition,
+        })
+        .chain(
+            crate::engine::skill::buff_act::life_attack_fix_rate::active_damage_rate_terms(
+                context.source_uid,
+                &context.managers.buff,
+                &context.managers.hp,
+            ),
+        )
+        .collect::<Vec<_>>();
     let mut command = crate::engine::damage::handler::resolve_attack_command(
         &AttackPlan {
             source_uid: context.source_uid,
@@ -155,29 +324,21 @@ fn damage_rule_ops(
             skill_id: context.active_skill_id,
             rate,
             rate_terms,
-            attack_attributes: context.modifiers.attack_attributes.clone(),
-            career_ratio_bonus: context.modifiers.career_ratio_bonus,
-            attack_career: context.modifiers.attack_career,
-            additional_attack_career: context.modifiers.additional_attack_career,
-            force_career_restraint: context.modifiers.force_career_restraint,
-            critical_multiplier_remainder: 0,
+            attack_attributes,
+            career_ratio_bonus: modifiers.career_ratio_bonus,
+            attack_career: modifiers.attack_career,
+            additional_attack_career: modifiers.additional_attack_career,
+            force_career_restraint: modifiers.force_career_restraint,
+            critical_multiplier_remainder,
             is_conduit: context
                 .managers
                 .conduit
                 .owns_skill(context.source_uid, context.active_skill_id),
             is_crit,
-            assassinate: true,
+            assassinate: assassination.assassinate,
             main_target: true,
             extra_skill_kind: context.target.extra_skill_kind,
-            performs_extra_action: crate::engine::skill::action::performs_extra_action(
-                context.target.active_card_index,
-                context.target.active_skill_mode,
-                context.target.extra_skill_kind,
-            ),
-            unpaid_extra_action_cost_fields: context
-                .modifiers
-                .unpaid_extra_action_cost_fields
-                .clone(),
+            performs_extra_action: extra_action,
             additional_enabled: false,
             additional_is_crit: None,
         },
@@ -198,11 +359,36 @@ fn damage_rule_ops(
         return None;
     };
     damage.config_effect = behavior.config_effect;
-    damage.hurt.damage_from = crate::engine::manager::hp::HurtDamageFromType::SkillEffect;
-    damage.hurt.hurt_effect_type = hurt_effect_type;
+    damage.hurt.damage_from = HurtDamageFromType::SkillEffect;
     let finisher_damage = damage.amount.max(0);
-    let mut ops = vec![RuleOp::Command(BattleCommand::Hp(command))];
+    let record = DamageRecord {
+        amount: damage.amount,
+        config_effect: damage.config_effect,
+        effect_kind: damage.effect_kind,
+        assassinate: damage.assassinate,
+        ignore_riposte: damage.ignore_riposte,
+        hurt: damage.hurt,
+    };
+    let mut ops = vec![
+        RuleOp::Command(BattleCommand::ExPoint(
+            ExPointCommand::PublishSynchronizationHit(ExPointPublishSynchronizationHit {
+                origin,
+                target_uid: context.source_uid,
+                action_target_uid: context.target_uid,
+                damage: record,
+            }),
+        )),
+        RuleOp::Command(BattleCommand::ExPoint(
+            ExPointCommand::RecordSynchronizationDamage(ExPointRecordSynchronizationDamage {
+                origin,
+                target_uid: context.source_uid,
+                action_target_uid: context.target_uid,
+                damage: record,
+            }),
+        )),
+    ];
     if let Some((progress, (buff_uid, act_id, _))) = terminal {
+        let total_damage = progress.total_damage.saturating_add(finisher_damage);
         ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::SetState(
             BuffSetState {
                 origin,
@@ -211,12 +397,16 @@ fn damage_rule_ops(
                 ex_info: None,
                 params: Some(format!(
                     "{act_id}#-1,{},{}",
-                    progress.total_damage.saturating_add(finisher_damage),
-                    progress.target_uid,
+                    total_damage, progress.target_uid,
                 )),
                 act_info: None,
             },
         ))));
+        damage.amount = total_damage;
+        damage.effect_kind = DamageEffectKind::Normal;
+        damage.hurt.hurt_effect_type = EffectType::Damage as i32;
+        command = HpCommand::SettleAccumulatedDamage(*damage);
+        ops.push(RuleOp::Command(BattleCommand::Hp(command)));
         ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(
             BuffRemove {
                 origin,
@@ -224,6 +414,12 @@ fn damage_rule_ops(
                 selector: BuffRemoveSelector::Uid(buff_uid),
             },
         ))));
+        ops.push(RuleOp::Command(BattleCommand::ExPoint(
+            ExPointCommand::CompleteSynchronization(ExPointCompleteSynchronization {
+                origin,
+                target_uid: context.source_uid,
+            }),
+        )));
     }
     Some(ops)
 }
@@ -265,7 +461,7 @@ fn damage_rate(behavior: &ParsedBehavior, current_hp: i32, max_hp: i32) -> Optio
             EffectType::Eziobigskilldamage as i32,
         )),
         (100003, BehaviorKind::EzioBigSkillEnd, [rate]) => {
-            Some((*rate, EffectType::Eziobigskillorigindamage as i32))
+            Some((*rate, EffectType::Eziobigskilldamage as i32))
         }
         _ => None,
     }
@@ -444,6 +640,6 @@ mod tests {
         assert_eq!(damage_rate(&first, 50, 100), Some((1400, 1000)));
         assert_eq!(damage_rate(&second, 49, 100), Some((1400, 1000)));
         assert_eq!(damage_rate(&second, 50, 100), Some((1900, 1000)));
-        assert_eq!(damage_rate(&finisher, 1, 100), Some((9000, 1001)));
+        assert_eq!(damage_rate(&finisher, 1, 100), Some((9000, 1000)));
     }
 }

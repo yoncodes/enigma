@@ -6,6 +6,7 @@ use crate::engine::{
         buff::{BuffCommand, BuffConsume, BuffGrant, BuffSelector, DepletedBuff},
     },
     skill::{
+        behavior::classify::BehaviorKind,
         buff_act::registry::BuffActKind,
         effect::SkillEffectCatalog,
         rule::output::{BattleCommand, RuleOp},
@@ -13,9 +14,23 @@ use crate::engine::{
     },
 };
 
-// Assassination grants Final DMG +5% per 100 excess Critical Technique. A target mark can trigger
-// Assassination and carries its configured additional rate when the attack was already one.
+// Assassination grants Final DMG +5% per 100 excess Critical Technique. A target mark's first
+// reaction can convert the attack; its configured rate applies to later reactions in that action.
 const TARGET_ASSASSINATION_BASE_RATE: i32 = 50;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TargetMark {
+    pub owner_uid: i64,
+    pub buff_id: i32,
+    pub rate: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnsupportedReactionCardinality {
+    pub skill_id: i32,
+    pub buff_id: i32,
+    pub count: usize,
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AssassinationModifier {
@@ -64,14 +79,75 @@ pub fn parse_target_trigger(raw_args: &[String]) -> Option<Vec<i32>> {
 
 // Targets marked when an action begins, with each mark's damage rate. Marks the action inflicts
 // itself land after it attacked, and a mark consumed as the attack starts still counts for it.
-pub fn marked_targets(managers: &BattleManagers) -> Vec<(i64, i32)> {
+pub fn marked_targets(managers: &BattleManagers) -> Vec<TargetMark> {
     managers
         .buff
         .active_features(&managers.hp)
         .into_iter()
         .filter(|feature| feature.amount > 0)
         .filter(|feature| super::is_kind(feature, BuffActKind::BeAttackedAssassinate))
-        .filter_map(|feature| Some((feature.owner_uid, *feature.values.get(1)?)))
+        .filter_map(|feature| {
+            Some(TargetMark {
+                owner_uid: feature.owner_uid,
+                buff_id: feature.buff_id,
+                rate: *feature.values.get(1)?,
+            })
+        })
+        .collect()
+}
+
+fn configured_target_trigger_count(
+    catalog: &SkillEffectCatalog,
+    skill_id: i32,
+    buff_id: i32,
+) -> usize {
+    catalog
+        .get(skill_id)
+        .map(|effect| {
+            effect
+                .slots
+                .iter()
+                .filter(|slot| {
+                    slot.behavior.spec.kind == BehaviorKind::AddBuff
+                        && slot.behavior.arg(0) == Some(buff_id)
+                })
+                .count()
+        })
+        .unwrap_or_default()
+}
+
+fn target_rate_applies(
+    skill_id: i32,
+    buff_id: i32,
+    inherent: bool,
+    count: usize,
+) -> Result<bool, UnsupportedReactionCardinality> {
+    if !inherent && count > 2 {
+        return Err(UnsupportedReactionCardinality {
+            skill_id,
+            buff_id,
+            count,
+        });
+    }
+    Ok(inherent || count == 2)
+}
+
+pub fn rate_marks_for_skill(
+    marks: &[TargetMark],
+    catalog: &SkillEffectCatalog,
+    skill_id: i32,
+) -> Result<Vec<(i64, i32)>, UnsupportedReactionCardinality> {
+    let inherent = catalog.is_assassinate(skill_id);
+    marks
+        .iter()
+        .filter_map(|mark| {
+            let count = configured_target_trigger_count(catalog, skill_id, mark.buff_id);
+            match target_rate_applies(skill_id, mark.buff_id, inherent, count) {
+                Ok(true) => Some(Ok((mark.owner_uid, mark.rate))),
+                Ok(false) => None,
+                Err(error) => Some(Err(error)),
+            }
+        })
         .collect()
 }
 
@@ -80,23 +156,31 @@ pub fn target_modifier(
     source_uid: i64,
     target_uid: i64,
     already_assassinate: bool,
-    marks_at_action_start: Option<&[(i64, i32)]>,
+    marks_at_action_start: Option<&[TargetMark]>,
+    rate_marks_at_action_start: Option<&[(i64, i32)]>,
 ) -> AssassinationModifier {
     let features = managers.buff.active_features(&managers.hp);
-    let live_marks;
+    let live_marks = marked_targets(managers);
     let marks = match marks_at_action_start {
         Some(marks) => marks,
-        None => {
-            live_marks = marked_targets(managers);
-            &live_marks
-        }
+        None => &live_marks,
     };
-    let (marked, target_rate) = marks
-        .iter()
-        .filter(|(owner_uid, _)| *owner_uid == target_uid)
-        .fold((false, 0), |(_, rate), (_, mark_rate)| {
-            (true, rate.max(*mark_rate))
-        });
+    let marked = marks.iter().any(|mark| mark.owner_uid == target_uid);
+    let target_rate = match rate_marks_at_action_start {
+        Some(marks) => marks
+            .iter()
+            .filter(|(owner_uid, _)| *owner_uid == target_uid)
+            .map(|(_, mark_rate)| *mark_rate)
+            .max()
+            .unwrap_or_default(),
+        None if already_assassinate => live_marks
+            .iter()
+            .filter(|mark| mark.owner_uid == target_uid)
+            .map(|mark| mark.rate)
+            .max()
+            .unwrap_or_default(),
+        None => 0,
+    };
     let assassinate = already_assassinate || marked;
     let source_rate = features
         .iter()
@@ -113,9 +197,7 @@ pub fn target_modifier(
         triggered_by_target: marked && !already_assassinate,
         final_damage_bonus: i32::from(assassinate)
             * (technique_excess / 100)
-            * (TARGET_ASSASSINATION_BASE_RATE
-                + source_rate
-                + i32::from(already_assassinate) * target_rate),
+            * (TARGET_ASSASSINATION_BASE_RATE + source_rate + target_rate),
     }
 }
 
@@ -127,7 +209,7 @@ pub fn rule_ops(
     if !super::subscriber_is_kind(subscriber, BuffActKind::BeAttackedAssassinate) {
         return None;
     }
-    let (BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action)) = event else {
+    let Some(action) = event.skill_action_event() else {
         return Some(Vec::new());
     };
     if action.phase != crate::engine::skill::action::SkillPhase::Immediate {
@@ -147,13 +229,16 @@ pub fn rule_ops(
         {
             return Some(Vec::new());
         }
+        // Separate configured mark applications each trigger this reaction; their layer amounts do not.
+        let reaction_count =
+            configured_target_trigger_count(catalog, action.skill_id, subscriber.buff_id).max(1);
         return Some(vec![RuleOp::Command(BattleCommand::Buff(
             BuffCommand::Consume(BuffConsume {
                 origin: super::command_origin(subscriber)?,
                 target_uid: subscriber.owner_uid,
                 selector: BuffSelector::Uid(subscriber.buff_uid),
-                amount: *amount,
-                depleted: DepletedBuff::Remove,
+                amount: amount.saturating_mul(i32::try_from(reaction_count).unwrap_or(i32::MAX)),
+                depleted: DepletedBuff::RemoveWithZeroLayer,
             }),
         ))]);
     }
@@ -241,7 +326,7 @@ mod tests {
             ..Default::default()
         };
 
-        let modifier = target_modifier(&BattleManagers::seeded(&fight), 10, -1, false, None);
+        let modifier = target_modifier(&BattleManagers::seeded(&fight), 10, -1, false, None, None);
         // The attack consumed the last stack as it started; the start-of-action mark still counts.
         let mut consumed = fight.clone();
         consumed.defender.as_mut().unwrap().entitys[0].buffs.clear();
@@ -252,29 +337,111 @@ mod tests {
             triggered_by_target: true,
             final_damage_bonus: 402,
         };
+        let start_mark = TargetMark {
+            owner_uid: -1,
+            buff_id: 31240121,
+            rate: 10,
+        };
         assert_eq!(modifier, triggered);
         assert_eq!(
-            target_modifier(&consumed, 10, -1, false, Some(&[(-1, 10)])),
-            triggered
+            target_modifier(
+                &consumed,
+                10,
+                -1,
+                false,
+                Some(&[start_mark]),
+                Some(&[(-1, 10)]),
+            ),
+            AssassinationModifier {
+                final_damage_bonus: 432,
+                ..triggered
+            }
         );
         assert_eq!(
-            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, None),
+            target_modifier(
+                &BattleManagers::seeded(&fight),
+                10,
+                -1,
+                false,
+                Some(&[start_mark]),
+                Some(&[]),
+            ),
+            AssassinationModifier {
+                final_damage_bonus: 402,
+                ..triggered
+            }
+        );
+        assert_eq!(
+            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, None, None,),
             AssassinationModifier {
                 assassinate: true,
                 triggered_by_target: false,
                 final_damage_bonus: 432,
             }
         );
-        assert!(
-            !target_modifier(&BattleManagers::seeded(&fight), 10, -1, false, Some(&[])).assassinate
+        assert!(!target_modifier(&consumed, 10, -1, false, Some(&[]), Some(&[])).assassinate);
+    }
+
+    #[test]
+    fn lethal_injury_rate_uses_exact_configured_reaction_cardinality() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(31240121),
+                        from_uid: Some(10),
+                        layer: Some(3),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let marks = marked_targets(&managers);
+        let catalog = SkillEffectCatalog::from_roots(
+            config::configs::get(),
+            [31243121, 312431212, 312401214, 312451031],
+            [],
+        );
+
+        assert_eq!(rate_marks_for_skill(&marks, &catalog, 31243121), Ok(vec![]));
+        assert_eq!(
+            rate_marks_for_skill(&marks, &catalog, 312431212),
+            Ok(vec![(-1, 10)])
+        );
+        assert_eq!(
+            rate_marks_for_skill(&marks, &catalog, 312401214),
+            Ok(vec![(-1, 10)])
+        );
+        assert_eq!(
+            rate_marks_for_skill(&marks, &catalog, 312451031),
+            Ok(vec![(-1, 10)])
+        );
+        assert_eq!(
+            target_rate_applies(999, 888, false, 3),
+            Err(UnsupportedReactionCardinality {
+                skill_id: 999,
+                buff_id: 888,
+                count: 3,
+            })
         );
     }
 
     #[test]
     fn only_damaging_attacks_on_a_marked_target_consume_lethal_injury_as_they_start() {
         crate::test_support::init_config();
-        let catalog =
-            SkillEffectCatalog::from_roots(config::configs::get(), [312431212, 435221], []);
+        let catalog = SkillEffectCatalog::from_roots(
+            config::configs::get(),
+            [31243122, 312431212, 312431222, 435221],
+            [],
+        );
         let lethal_injury = |stacks| BuffActSubscriber {
             owner_uid: -1,
             source_uid: 10,
@@ -293,7 +460,7 @@ mod tests {
             args: vec![10, 1, 312401451, 31240121],
             raw: "10004#10#1#312401451,31240121".to_owned(),
         };
-        let action = |skill_id| crate::engine::skill::action::SkillActionEvent {
+        let action = |skill_id, rank| crate::engine::skill::action::SkillActionEvent {
             source_uid: 11,
             skill_id,
             target_uid: -1,
@@ -302,7 +469,7 @@ mod tests {
             phase: crate::engine::skill::action::SkillPhase::Immediate,
             skill_slot: 0,
             is_attack: true,
-            rank: 1,
+            rank,
             skill_type: 1,
             effect_tag: 1,
             assassinate: false,
@@ -320,24 +487,31 @@ mod tests {
             card_enchants: Vec::new(),
             buff_additions: Vec::new(),
         };
-        let consumes = |stacks, event| {
+        let consume = |stacks, event| {
             rule_ops(&catalog, &lethal_injury(stacks), &event)
                 .unwrap()
-                .iter()
-                .any(|op| {
-                    matches!(
-                        op,
-                        RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(_)))
-                    )
+                .into_iter()
+                .find_map(|op| match op {
+                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(consume))) => {
+                        Some(consume)
+                    }
+                    _ => None,
                 })
         };
-        let starts = |skill_id| BattleEvent::SkillEffectStarted(action(skill_id));
+        let starts =
+            |skill_id, rank| BattleEvent::SkillEffectStarted(action(skill_id, rank).into());
 
-        assert!(consumes(1, starts(312431212)));
-        assert!(!consumes(0, starts(312431212)));
-        assert!(!consumes(1, starts(435221)));
+        assert_eq!(
+            consume(1, starts(312431212, 1)).unwrap().depleted,
+            DepletedBuff::RemoveWithZeroLayer
+        );
+        assert_eq!(consume(3, starts(312431212, 1)).unwrap().amount, 2);
+        assert_eq!(consume(2, starts(312431222, 2)).unwrap().amount, 2);
+        assert_eq!(consume(2, starts(31243122, 2)).unwrap().amount, 1);
+        assert!(consume(0, starts(312431212, 1)).is_none());
+        assert!(consume(1, starts(435221, 1)).is_none());
         // Not after the attack's own start effects.
-        assert!(!consumes(1, BattleEvent::SkillAction(action(312431212))));
+        assert!(consume(1, BattleEvent::SkillAction(action(312431212, 1))).is_none());
     }
 
     #[test]
@@ -386,7 +560,7 @@ mod tests {
         };
 
         assert_eq!(
-            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, None),
+            target_modifier(&BattleManagers::seeded(&fight), 10, -1, true, None, None,),
             AssassinationModifier {
                 assassinate: true,
                 triggered_by_target: false,

@@ -100,6 +100,19 @@ impl BuffManager {
             .collect()
     }
 
+    pub(crate) fn is_fanout_instance(&self, owner_uid: i64, buff_uid: i64) -> bool {
+        self.buffs.iter().any(|active| {
+            active.owner_uid == owner_uid
+                && active.buff.uid == Some(buff_uid)
+                && active.fanout_emitter_uid.is_some()
+        })
+    }
+
+    pub(crate) fn command_owns_attribute_refresh_markers(&self, buff_id: i32) -> bool {
+        super::BuffDefinition::configured(self.catalog().game_data(), buff_id)
+            .is_some_and(|definition| definition.command_owns_attribute_refresh_markers())
+    }
+
     pub(crate) fn has_status(&self, owner_uid: i64, status: BuffStatus) -> bool {
         self.buffs.iter().any(|active| {
             active.owner_uid == owner_uid
@@ -658,10 +671,7 @@ impl BuffManager {
             active.effective
                 && active.owner_uid == uid
                 && active.definition.as_ref().is_some_and(|definition| {
-                    definition.is_visible()
-                        && status_ids
-                            .iter()
-                            .any(|status_id| definition.matches_type_category(*status_id))
+                    definition.is_visible() && status_ids.contains(&definition.status_id)
                 })
         }) {
             if !type_ids.contains(&active.type_id) {

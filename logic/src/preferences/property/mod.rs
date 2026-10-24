@@ -103,4 +103,4 @@ async fn set_owned_skin_property(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -121,7 +121,8 @@ fn captured_cloth_redeal_reads_the_observed_post_rank_hand() {
     };
     fs::write(&path, serde_json::to_vec(&reply).unwrap()).unwrap();
 
-    assert_eq!(captured_cloth_redeal(&path).unwrap(), Some(cards));
+    let round = captured_cloth_round(&path).unwrap();
+    assert_eq!(captured_cloth_redeal(&round), Some(cards));
 
     fs::remove_file(path).unwrap();
 }

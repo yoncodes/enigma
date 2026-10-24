@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn compatible_drivers_keep_the_first_exact_key() {
+    fn pre_effect_power_compare_owns_compatible_immediate_conditions() {
         init_config();
         let conditions = parse_conditions(config::configs::get(), "66203#1#0&180203#1#1#2");
 
@@ -442,12 +442,35 @@ mod tests {
         assert_eq!(
             route.branches[0].driver,
             Some(ConditionDriver::Trigger(ConditionTrigger {
-                key: crate::engine::skill::rule::DefinitionKey::new(66203, "UseSpecificSkill"),
-                event: EventKind::SkillAction,
+                key: crate::engine::skill::rule::DefinitionKey::new(180203, "PowerCompare"),
+                event: EventKind::SkillEffectStarted,
                 phase: Some(SkillPhase::Immediate),
             }))
         );
         assert_eq!(route.branches[0].conditions.len(), 2);
+    }
+
+    #[test]
+    fn configured_buff_consumption_owns_source_opening() {
+        init_config();
+        let conditions = parse_conditions(config::configs::get(), "203");
+        let route = ConditionRoute::compile_for_behavior(
+            &conditions,
+            &crate::engine::skill::behavior::classify::BehaviorSpec::new(
+                50014,
+                "ConsumeBuffByTypeId",
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(
+            route.branches[0].driver,
+            Some(ConditionDriver::Trigger(ConditionTrigger {
+                key: crate::engine::skill::rule::DefinitionKey::new(203, "None"),
+                event: EventKind::SkillAction,
+                phase: Some(SkillPhase::SourceOpening),
+            }))
+        );
     }
 
     #[test]

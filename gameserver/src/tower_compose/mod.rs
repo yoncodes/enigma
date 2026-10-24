@@ -188,4 +188,4 @@ fn max_selected_mod_level(plane_mods: &[TowerComposePlaneMods]) -> i32 {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

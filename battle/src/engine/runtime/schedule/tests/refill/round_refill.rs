@@ -168,6 +168,57 @@ fn round_refill_commits_draw_compose_moxie_and_deck_count_in_order() {
 }
 
 #[test]
+fn round_refill_keeps_device_weights_available_after_draw() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3145),
+                current_hp: Some(100),
+                skill_group1: vec![31450111],
+                skill_group2: vec![31450121],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let device = CardInfo {
+        uid: Some(10),
+        hero_id: Some(3145),
+        skill_id: Some(31446062),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: Vec::new(),
+            draw_pile: vec![device.clone()],
+            deck_num: 0,
+        }))
+        .unwrap();
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_card_draws(vec![device.clone()]);
+
+    run_round_refill(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut determinism,
+        TargetContext::default(),
+        1,
+        1,
+    )
+    .unwrap();
+
+    assert_eq!(managers.card.hand(), std::slice::from_ref(&device));
+    assert_eq!(managers.card.draw_pile(), &[device]);
+    assert_eq!(managers.card.deck_num(), 0);
+}
+
+#[test]
 fn overflow_bank_replenishes_only_after_actions_in_buff_owned_wire_order() {
     init_config();
     let fight = Fight {

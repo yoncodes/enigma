@@ -538,4 +538,4 @@ fn decompose_config(value: &str) -> Option<(i32, i32)> {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

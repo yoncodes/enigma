@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::manager::buff::BuffGrant;
 
 #[test]
 fn final_settlement_advances_final_stage_durations() {
@@ -53,6 +54,102 @@ fn final_settlement_advances_final_stage_durations() {
         .unwrap();
     assert!(settled < removed);
     assert!(duration_expired);
+}
+
+#[test]
+fn obscurity_expiry_reactions_are_sibling_skill_frames() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(10_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100_000),
+                passive_skill: vec![109320103, 109320104],
+                buffs: vec![BuffInfo {
+                    uid: Some(21),
+                    buff_id: Some(109320101),
+                    duration: Some(2),
+                    from_uid: Some(-1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .buff
+        .execute(
+            &managers.hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: -1,
+                target_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                buff_id: 109320002,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+
+    let result = run_round_end_final_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        Vec::new(),
+    )
+    .unwrap();
+
+    assert!(!managers.buff.has_active_buff_id(-1, 109320101));
+    assert!(managers.buff.has_active_buff_id(-1, 109320102));
+
+    fn has_sibling_skills(
+        frame: &crate::engine::runtime::record::SemanticFrame,
+        expected: [i32; 2],
+    ) -> bool {
+        let skill_ids = frame
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                FrameItem::Child(child) => match child.owner {
+                    FrameOwner::Skill { skill_id, .. } => Some(skill_id),
+                    _ => None,
+                },
+                FrameItem::Change(_) | FrameItem::Cue(_) => None,
+            })
+            .collect::<Vec<_>>();
+        expected.iter().all(|skill_id| skill_ids.contains(skill_id))
+            || frame.items.iter().any(|item| match item {
+                FrameItem::Child(child) => has_sibling_skills(child, expected),
+                FrameItem::Change(_) | FrameItem::Cue(_) => false,
+            })
+    }
+
+    assert!(
+        result
+            .frames
+            .iter()
+            .any(|frame| has_sibling_skills(frame, [109320103, 109320104]))
+    );
 }
 
 #[test]
@@ -160,13 +257,13 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
             entitys: vec![entity(
                 -1,
                 vec![BuffInfo {
-                    uid: Some(20),
-                    buff_id: Some(109320001),
-                    duration: Some(1),
+                    uid: Some(21),
+                    buff_id: Some(109320101),
+                    duration: Some(2),
                     from_uid: Some(-1),
                     ..Default::default()
                 }],
-                vec![109320102, 109320105],
+                vec![109320102, 109320105, 109320112],
             )],
             ..Default::default()
         }),
@@ -175,8 +272,33 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
     let pool = TargetPool::from_fight(&fight);
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .buff
+        .execute(
+            &managers.hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: -1,
+                target_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                buff_id: 109320001,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+    let obscurity_uid = managers
+        .buff
+        .active_for(crate::engine::fight::rules::ATTACKER_SIDE_UID)
+        .find(|buff| buff.buff_id == Some(109320001))
+        .unwrap()
+        .uid
+        .unwrap();
 
-    run_round_end_final_settlement(
+    let result = run_round_end_final_settlement(
         &mut managers,
         &pool,
         &catalog,
@@ -188,8 +310,159 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
 
     // "When Obscurity reaches zero, you'll enter a bonus Witness Round during the following
     // round", in which "enemies cannot take active actions".
-    assert!(managers.buff.has_active_buff_id(-1, 109320002));
+    assert!(
+        !managers
+            .buff
+            .has_active_buff_id(crate::engine::fight::rules::ATTACKER_SIDE_UID, 109320001)
+    );
+    assert!(
+        managers
+            .buff
+            .has_active_buff_id(crate::engine::fight::rules::ATTACKER_SIDE_UID, 109320002)
+    );
     assert!(managers.buff.has_active_buff_id(-1, 109320103));
+    assert_eq!(managers.buff.snapshot(-1, 21).unwrap().duration, Some(1));
+    let marker = managers
+        .buff
+        .active_for(-1)
+        .find(|buff| buff.buff_id == Some(109320112))
+        .unwrap();
+    assert_eq!(marker.duration, Some(1));
+
+    fn collect_duration_owners(
+        frame: &crate::engine::runtime::record::SemanticFrame,
+        owners: &mut Vec<(i64, i64, i32)>,
+    ) {
+        if let FrameOwner::BuffDuration {
+            owner_uid,
+            buff_uid,
+            take_stage,
+        } = &frame.owner
+        {
+            owners.push((*owner_uid, *buff_uid, *take_stage));
+        }
+        for item in &frame.items {
+            if let FrameItem::Child(child) = item {
+                collect_duration_owners(child, owners);
+            }
+        }
+    }
+    let mut owners = Vec::new();
+    for frame in &result.frames {
+        collect_duration_owners(frame, &mut owners);
+    }
+    assert_eq!(
+        owners,
+        vec![
+            (
+                crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                obscurity_uid,
+                effect_time::ROUND_END_FINAL_SETTLEMENT
+            ),
+            (-1, 21, effect_time::ROUND_END_FINAL_SETTLEMENT),
+            (
+                -1,
+                marker.uid.unwrap(),
+                effect_time::ROUND_END_FINAL_SETTLEMENT
+            ),
+        ]
+    );
+
+    let steps = crate::engine::packet::timeline::project_for_version(&result.frames, 7).unwrap();
+    assert_eq!(steps.len(), 2);
+    assert_eq!(
+        steps
+            .iter()
+            .map(|step| {
+                step.act_effect
+                    .iter()
+                    .map(|effect| effect.effect_type.unwrap())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>(),
+        vec![vec![6, 162, 162], vec![7, 7, 162]]
+    );
+}
+
+#[test]
+fn attacker_settlement_groups_duration_expiry_before_owner_reactions() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![433911],
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(109380002),
+                        duration: Some(1),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(21),
+                        buff_id: Some(433911),
+                        layer: Some(3),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    let result = run_entity_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[10],
+        SettlementSide::Attacker,
+    )
+    .unwrap();
+
+    assert!(managers.buff.snapshot(10, 20).is_none());
+    assert_eq!(managers.buff.buff_id_amount(10, 433911), 2);
+    assert_eq!(
+        result
+            .output
+            .frames
+            .iter()
+            .filter(|frame| matches!(
+                frame.owner,
+                FrameOwner::RoundPhase(RoundPhase::EntitySettlement)
+            ))
+            .count(),
+        1
+    );
+    let steps =
+        crate::engine::packet::timeline::project_for_version(&result.output.frames, 7).unwrap();
+
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]
+            .act_effect
+            .iter()
+            .map(|effect| effect.effect_type.unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+            sonettobuf::effect_type_enum::EffectType::Fightstep as i32,
+        ]
+    );
 }
 
 #[test]

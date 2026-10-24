@@ -91,6 +91,10 @@ impl CardDeck {
         &mut self.hand
     }
 
+    pub(super) fn hand_id(&self, index: usize) -> Option<CardInstanceId> {
+        self.hand_ids.get(index).copied()
+    }
+
     pub fn into_hand(self) -> Vec<CardInfo> {
         self.hand
     }
@@ -128,10 +132,14 @@ impl CardDeck {
             else {
                 return false;
             };
-            remaining.remove(index);
+            if !self.is_persistent_draw_card(card) {
+                remaining.remove(index);
+            }
         }
         for card in cards {
-            self.consume_draw_card(card);
+            if !self.is_persistent_draw_card(card) {
+                self.consume_draw_card(card);
+            }
             self.push_hand(card.clone());
         }
         true
@@ -141,12 +149,26 @@ impl CardDeck {
         if !self.can_recycle_draw_pile() {
             return false;
         }
-        std::mem::swap(&mut self.draw_pile, &mut self.discard_pile);
+        let persistent = std::mem::take(&mut self.draw_pile);
+        self.draw_pile = std::mem::take(&mut self.discard_pile);
+        self.draw_pile.extend(persistent);
         true
     }
 
     pub(super) fn can_recycle_draw_pile(&self) -> bool {
-        self.draw_pile.is_empty() && !self.discard_pile.is_empty()
+        self.draw_pile
+            .iter()
+            .all(|card| self.is_persistent_draw_card(card))
+            && !self.discard_pile.is_empty()
+    }
+
+    fn is_persistent_draw_card(&self, card: &CardInfo) -> bool {
+        self.catalog().is_some_and(|catalog| {
+            card.skill_id.is_some_and(|skill_id| {
+                catalog.skill_effect_tag(skill_id)
+                    == crate::engine::skill::effect::catalog::SkillEffectTag::Device as i32
+            })
+        })
     }
 
     pub fn move_card(&mut self, from_index: usize, to_index: usize) -> bool {
@@ -345,13 +367,32 @@ impl CardDeck {
         Some(indices.iter().map(|index| self.hand_ids[*index]).collect())
     }
 
-    pub(super) fn expire_temporary(&mut self, card_ids: &[CardInstanceId]) {
+    pub(super) fn expire_temporary(
+        &mut self,
+        card_ids: &[CardInstanceId],
+        persistent_ids: &[CardInstanceId],
+    ) -> Vec<usize> {
         let card_ids = card_ids.iter().copied().collect::<HashSet<_>>();
-        for index in (0..self.hand.len()).rev() {
-            if card_ids.contains(&self.hand_ids[index]) {
-                self.remove_card(index);
-            }
+        let persistent_ids = persistent_ids.iter().copied().collect::<HashSet<_>>();
+        let indices = self
+            .hand_ids
+            .iter()
+            .enumerate()
+            .filter_map(|(index, id)| card_ids.contains(id).then_some(index))
+            .collect::<Vec<_>>();
+        let persistent = indices
+            .iter()
+            .filter(|index| persistent_ids.contains(&self.hand_ids[**index]))
+            .map(|index| CardInfo {
+                temp_card: Some(false),
+                ..self.hand[*index].clone()
+            })
+            .collect::<Vec<_>>();
+        for index in indices.iter().rev() {
+            self.remove_card(*index);
         }
+        self.draw_pile.extend(persistent);
+        indices
     }
 
     pub(super) fn persist_temporary(&mut self, indices: &[usize]) -> bool {
@@ -609,6 +650,31 @@ mod tests {
     }
 
     #[test]
+    fn device_weights_survive_opening_deals_and_normal_recycle() {
+        crate::test_support::init_config();
+        let normal = card(10, 100);
+        let power = card(10, 31446062);
+        let special = card(10, 31450181);
+        let mut deck = CardDeck::with_draw_pile(
+            Vec::new(),
+            vec![normal.clone(), power.clone(), special.clone()],
+        )
+        .with_catalog(crate::catalog::BattleCatalog::new(
+            crate::test_support::game_data(),
+        ));
+
+        assert!(deck.deal_from_draw_pile(&[
+            power.clone(),
+            special.clone(),
+            power.clone(),
+            normal.clone(),
+        ]));
+        assert_eq!(deck.draw_pile(), &[power.clone(), special.clone()]);
+        assert!(deck.recycle_draw_pile());
+        assert_eq!(deck.draw_pile(), &[normal, power, special]);
+    }
+
+    #[test]
     fn adjacent_equal_cards_compose_and_report_the_owner() {
         let mut deck = CardDeck::new(vec![card(10, 100), card(10, 100), card(11, 200)]);
 
@@ -649,8 +715,9 @@ mod tests {
 
         assert!(deck.move_card(0, 1));
         deck.hand_mut()[1].energy = Some(5);
-        deck.expire_temporary(&marked);
+        let expired = deck.expire_temporary(&marked, &[]);
 
+        assert_eq!(expired, [1]);
         assert_eq!(deck.hand(), &[card(11, 200)]);
     }
 

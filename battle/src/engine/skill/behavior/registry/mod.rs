@@ -50,7 +50,14 @@ impl OutputOwner {
             Self::SetupParent if setup_triggered => Self::Parent,
             Self::SetupParent => Self::Skill,
             Self::SetupOrFinalSettlementParent
-                if setup_triggered || event == Some(EventKind::RoundEndFinalSettlement) =>
+                if setup_triggered
+                    || matches!(
+                        event,
+                        Some(
+                            EventKind::RoundEndFinalSettlement
+                                | EventKind::RoundEndAfterSideFinalExpiry
+                        )
+                    ) =>
             {
                 Self::Parent
             }
@@ -638,7 +645,7 @@ behavior_definitions! {
     [60293] "SetDeviceSkillIndex" => super::resource::Handler, SetConduitSkillGroup, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(19210, "HasBuffId"), event: EventKind::SkillAction, phase: Some(SkillPhase::AfterHit) }), super::resource::supports_conduit_skill_group;
     [60294] "StopDeviceSkill" => super::resource::Handler, StopConduitSkill, Immediate, destination, arguments::none;
     [60308] "ConsumeBuffResetDevice" => super::resource::Handler, ConsumeBuffResetDevice, Immediate, ally_action_owner_destination, super::resource::supports_consume_buff_reset_device;
-    [60297] "AddDeviceCounter" => super::resource::Handler, AddConduitCounter, Immediate, destination, super::resource::supports_conduit_counter;
+    [60297] "AddDeviceCounter" => super::resource::Handler, AddConduitCounter, Immediate, causing_event_destination, super::resource::supports_conduit_counter;
     [100034] "StopDeviceSkill" => super::resource::Handler, StopConduitSkill, Immediate, destination, arguments::none;
     [60231] "RaspberryAddCount" => super::resource::Handler, RaspberryAddCount, Immediate, destination, super::resource::supports_raspberry_add_count;
     [60233] "RaspberryBigSkill" => super::resource::Handler, RaspberryBigSkill, Immediate, destination, super::resource::supports_raspberry_big_skill;
@@ -691,7 +698,7 @@ behavior_definitions! {
     [60029] "RemoveBuffToAddBuff" => super::buff::Handler, RemoveBuffToAddBuff, AfterDamage, destination, arguments::exactly_two;
     [60145] "AddBuffDuration" => super::buff::Handler, AddBuffDuration, Immediate, destination, arguments::exactly_two;
     [60094] "ReduceCastChannelCount" => super::buff::Handler, ReduceCastChannelCount, AfterDamage, destination, super::buff::supports_channel_count_reduction;
-    [50014] "ConsumeBuffByTypeId" => super::buff::Handler, ConsumeBuffByTypeId, AfterDamage, destination, arguments::exactly_two;
+    [50014] "ConsumeBuffByTypeId" => super::buff::Handler, ConsumeBuffByTypeId, AfterDamage, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(203, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::SourceOpening) }), arguments::exactly_two;
     [50016] "ConsumeBuffByTypeId2" => super::buff::Handler, ConsumeBuffByTypeId2, AfterDamage, destination, arguments::exactly_two;
     [60260] "ConsumeBuffLayerAndOtherAddBuff" => super::buff::Handler, ConsumeBuffLayerAndOtherAddBuff, AfterDamage, destination, arguments::exactly_four;
     [30003] "Disperse1" => super::buff::Handler, Disperse1, Immediate, destination, super::buff::supports_status_dispel;
@@ -728,9 +735,9 @@ behavior_definitions! {
     [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, destination;
     [60195] "ElectricTransform" => super::electric::Handler, ElectricTransform, Immediate, destination, super::electric::supports;
     [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, owner_destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(0, "None"), stage: SetupStage::Unconditional, priority: 0 }), super::synchronization::supports_props;
-    [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterDamage, destination, super::synchronization::supports_big_skill_rate;
-    [100002] "EzioBigSkillTyp2" => super::synchronization::Handler, EzioBigSkillType2, AfterDamage, destination, super::synchronization::supports_big_skill_rate;
-    [100003] "EzioBigSkillEnd" => super::synchronization::Handler, EzioBigSkillEnd, AfterDamage, destination, super::synchronization::supports_big_skill_end;
+    [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterHit, destination, super::synchronization::supports_big_skill_rate;
+    [100002] "EzioBigSkillTyp2" => super::synchronization::Handler, EzioBigSkillType2, AfterHit, destination, super::synchronization::supports_big_skill_rate;
+    [100003] "EzioBigSkillEnd" => super::synchronization::Handler, EzioBigSkillEnd, AfterHit, destination, super::synchronization::supports_big_skill_end;
     [100022] "EzioBigSkillCheckTimes" => super::synchronization::Handler, EzioBigSkillCheckTimes, AfterHit, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(214, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::AfterHit) }), arguments::none;
     [100012] "EzioBigSkillWeapon2" => super::ultimate_kind::Handler, UltimateExtraAction, Immediate, destination;
     [40009] "AddSummoned" => super::summon::Handler, AddSummoned, Immediate, destination, super::summon::supports_add_summoned;
@@ -784,7 +791,7 @@ behavior_definitions! {
     [60174] "ConsumeExPointAddAttr" => super::rate::Handler, ConsumeExPointAddAttr, Immediate, modifier;
     [60255] "HeatScaleAddSkillRate" => super::rate::Handler, HeatScaleAddSkillRate, Immediate, modifier, super::rate::supports_heat_scale_rate;
     [100030] "TwinsUpByCounter" => super::rate::Handler, ConduitRateByConsumedPower, Immediate, modifier, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(203, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::SourceOpening) }), super::rate::supports_conduit_rate;
-    [100031] "TwinsPowerUp" => super::rate::Handler, ConduitPowerUp, Immediate, modifier, super::rate::supports_conduit_power_up;
+    [100031] "TwinsPowerUp" => super::rate::Handler, ConduitPowerUp, Immediate, modifier, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(203, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::SourceOpening) }), super::rate::supports_conduit_power_up;
     [60243] "CrystalAddSkillRate" => super::rate::Handler, CrystalAddSkillRate, Immediate, destination, super::rate::supports_crystal_skill_rate;
     [60244] "CrystalAddCardRank" => super::rate::Handler, CrystalAddCardRank, Immediate, destination;
     [60086] "BulletCritRateAlter" => super::rate::Handler, BulletCritRateAlter, Immediate, modifier, super::rate::supports_bullet_crit_rate;
@@ -805,7 +812,7 @@ behavior_definitions! {
     [90001] "Heal" => crate::engine::damage::handler::Handler, Heal, AfterDamage, destination, crate::engine::damage::handler::supports_heal;
     [20016] "HealCantCrit" => crate::engine::damage::handler::Handler, HealCantCrit, AfterDamage, destination, crate::engine::damage::handler::supports_attr_heal;
     [60232] "HealByTwoAttr" => crate::engine::damage::handler::Handler, HealByTwoAttr, AfterDamage, destination, crate::engine::damage::handler::supports_two_attr_heal;
-    [60309] "FakeHpToHeal" => super::fake_hp::Handler, FakeHpToHeal, AfterDamage, destination;
+    [60309] "FakeHpToHeal" => super::fake_hp::Handler, FakeHpToHeal, AfterDamage, once_destination;
     [20010] "Bloodlust" => crate::engine::damage::handler::Handler, Bloodlust, AfterDamage, destination, crate::engine::damage::handler::supports_bloodlust;
     [30005] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
     [30006] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, immediate_death_destination, crate::engine::damage::handler::supports_lost_life;

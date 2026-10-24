@@ -134,4 +134,4 @@ use rewards::select_reward;
 #[cfg(test)]
 use tasks::{should_show_task_red_dot, task_tab_id};
 #[cfg(test)]
-mod test;
+mod tests;

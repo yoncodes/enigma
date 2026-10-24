@@ -5,6 +5,29 @@ use crate::engine::manager::gauge::{GaugeChangeKind, GaugeKey};
 use crate::engine::{event::kind::EventKind, skill::rule::CommandOrigin};
 use sonettobuf::CardInfo;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillEffectStartedEvent {
+    pub action: Box<crate::engine::skill::action::SkillActionEvent>,
+    pub hand_settlement: Option<CommandOrigin>,
+}
+
+impl From<crate::engine::skill::action::SkillActionEvent> for SkillEffectStartedEvent {
+    fn from(action: crate::engine::skill::action::SkillActionEvent) -> Self {
+        Self {
+            action: Box::new(action),
+            hand_settlement: None,
+        }
+    }
+}
+
+impl std::ops::Deref for SkillEffectStartedEvent {
+    type Target = crate::engine::skill::action::SkillActionEvent;
+
+    fn deref(&self) -> &Self::Target {
+        self.action.as_ref()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuffChangeEvent {
     pub source_uid: i64,
@@ -196,7 +219,7 @@ pub enum BattleEvent {
         emitter_uid: i64,
         critical_action_count: i32,
     },
-    SkillEffectStarted(crate::engine::skill::action::SkillActionEvent),
+    SkillEffectStarted(SkillEffectStartedEvent),
     SkillAction(crate::engine::skill::action::SkillActionEvent),
     AllyAction(crate::engine::skill::action::ActionEvent),
     BuffAdded(BuffChangeEvent),
@@ -222,6 +245,7 @@ pub enum BattleEvent {
         participant_uids: Vec<i64>,
         amount: i32,
         share_count: i32,
+        action_share_count: i32,
         damage_from: crate::engine::manager::hp::HurtDamageFromType,
     },
     HpHealed {
@@ -260,12 +284,21 @@ pub enum BattleEvent {
 }
 
 impl BattleEvent {
+    pub fn skill_action_event(&self) -> Option<&crate::engine::skill::action::SkillActionEvent> {
+        match self {
+            Self::SkillEffectStarted(started) => Some(started.action.as_ref()),
+            Self::SkillAction(action) => Some(action),
+            _ => None,
+        }
+    }
+
     pub fn source_uid(&self) -> Option<i64> {
         match self {
             Self::ActionQueueCommitted { emitter_uid, .. }
             | Self::PlayerActionsResolved { emitter_uid, .. }
             | Self::ImpromptuResolved { emitter_uid, .. } => Some(*emitter_uid),
-            Self::SkillEffectStarted(action) | Self::SkillAction(action) => Some(action.source_uid),
+            Self::SkillEffectStarted(started) => Some(started.source_uid),
+            Self::SkillAction(action) => Some(action.source_uid),
             Self::AllyAction(action) => Some(action.source_uid),
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
                 Some(change.source_uid)
@@ -306,7 +339,8 @@ impl BattleEvent {
             | Self::DamageShared { target_uid, .. }
             | Self::HpHealed { target_uid, .. }
             | Self::ToughnessBroken { target_uid, .. } => Some(*target_uid),
-            Self::SkillEffectStarted(action) | Self::SkillAction(action) => Some(action.target_uid),
+            Self::SkillEffectStarted(started) => Some(started.target_uid),
+            Self::SkillAction(action) => Some(action.target_uid),
             Self::AllyAction(action) => Some(action.target_uid),
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
                 Some(change.target_uid)

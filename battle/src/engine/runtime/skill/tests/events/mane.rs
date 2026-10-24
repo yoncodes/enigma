@@ -83,10 +83,10 @@ fn mass_action_per_target_behaviors_follow_entity_map_order() {
             _ => None,
         })
         .collect::<Vec<_>>();
-    let vacant_removals = ops
+    let vacant_expiries = ops
         .iter()
         .filter_map(|op| match op {
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(remove)))
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::ForceExpire(remove)))
                 if remove.selector == BuffRemoveSelector::IdOrType(109380001) =>
             {
                 Some(remove.target_uid)
@@ -96,7 +96,7 @@ fn mass_action_per_target_behaviors_follow_entity_map_order() {
         .collect::<Vec<_>>();
 
     assert_eq!(origin_damage, [240494371, 240494381]);
-    assert_eq!(vacant_removals, [237352626]);
+    assert_eq!(vacant_expiries, [237352626]);
     assert_eq!(grants, [240494371, 240494381, 234410900]);
 }
 
@@ -192,7 +192,7 @@ fn committed_conduit_hit_satisfies_attack_conditions() {
 }
 
 #[test]
-fn visible_status_threshold_runs_only_before_attacks() {
+fn twins_visible_status_threshold_runs_before_attacks_and_device_actions() {
     crate::test_support::init_config();
     let mut status_buffs = [31450171, 31450143, 31440116, 31450111]
         .into_iter()
@@ -244,21 +244,23 @@ fn visible_status_threshold_runs_only_before_attacks() {
     slot.compiled_route =
         crate::engine::skill::rule::route::ConditionRoute::compile(&slot.conditions);
     let mut catalog = SkillEffectCatalog::default();
-    catalog.insert(ParsedSkillEffect {
-        skill_id: 100,
-        slots: vec![slot],
-    });
+    for skill_id in [103374322, 420000411] {
+        catalog.insert(ParsedSkillEffect {
+            skill_id,
+            slots: vec![slot.clone()],
+        });
+    }
 
-    let emit = |is_attack| {
+    let emit = |observer_skill_id, is_attack, mode| {
         let mut invocation: SkillInvocation = SkillRequest {
             source_uid: 10,
-            skill_id: 100,
+            skill_id: observer_skill_id,
         }
         .into();
         invocation.condition_key = Some(DefinitionKey::new(42203, "HasTypeBuffMoreThan"));
         invocation.phase = Some(SkillPhase::Immediate);
-        let event =
-            BattleEvent::SkillEffectStarted(crate::engine::skill::action::SkillActionEvent {
+        let event = BattleEvent::SkillEffectStarted(
+            crate::engine::skill::action::SkillActionEvent {
                 source_uid: 10,
                 skill_id: 200,
                 target_uid: 10,
@@ -278,13 +280,15 @@ fn visible_status_threshold_runs_only_before_attacks() {
                 guard_break_count: 0,
                 additional_moxie: 0,
                 extra_skill_kind: 0,
-                mode: SkillExecutionMode::Active,
+                mode,
                 teammate_injury_count: 0,
                 teammate_injury_count_not_reset: 0,
                 team_injury_count_round: 0,
                 card_enchants: Vec::new(),
                 buff_additions: Vec::new(),
-            });
+            }
+            .into(),
+        );
         emit_all_ops(
             invocation,
             &managers,
@@ -294,6 +298,7 @@ fn visible_status_threshold_runs_only_before_attacks() {
             TargetContext {
                 active_skill_id: 200,
                 active_skill_is_attack: is_attack,
+                active_skill_mode: mode,
                 ..Default::default()
             },
             &SkillOpTrigger::Event(event),
@@ -301,10 +306,16 @@ fn visible_status_threshold_runs_only_before_attacks() {
         .unwrap()
     };
 
-    assert!(emit(false).is_empty());
-    assert!(emit(true).iter().any(|op| matches!(
+    assert!(emit(103374322, false, SkillExecutionMode::Active).is_empty());
+    assert!(emit(420000411, false, SkillExecutionMode::Device).is_empty());
+    for ops in [
+        emit(103374322, true, SkillExecutionMode::Active),
+        emit(103374322, false, SkillExecutionMode::Device),
+    ] {
+        assert!(ops.iter().any(|op| matches!(
         op,
         RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))
             if grant.buff_id == 103374322 && grant.target_uid == 10
-    )));
+        )));
+    }
 }

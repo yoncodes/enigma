@@ -261,13 +261,7 @@ impl BuffDefinition {
         phase: crate::engine::skill::buff_act::wire::WirePhase,
     ) -> Vec<i32> {
         if phase == crate::engine::skill::buff_act::wire::WirePhase::Refresh
-            && self.features.iter().any(|feature| {
-                feature.arguments_supported
-                    && feature.initial_state.is_some()
-                    && feature
-                        .wire
-                        .is_some_and(|wire| wire.projects_initial_state_on_refresh)
-            })
+            && self.has_initial_state_refresh_projection()
         {
             return Vec::new();
         }
@@ -286,25 +280,29 @@ impl BuffDefinition {
             .collect()
     }
 
+    pub(super) fn removal_max_hp_sync_act_id(&self) -> Option<i32> {
+        self.features.iter().find_map(|feature| {
+            feature
+                .wire
+                .filter(|wire| wire.removal_max_hp_sync(self.id))
+                .map(|wire| wire.key.opcode)
+        })
+    }
+
     pub(super) fn command_refresh_wire_markers(
         &self,
         transaction_event: Option<crate::engine::event::kind::EventKind>,
     ) -> Vec<i32> {
         let phase = crate::engine::skill::buff_act::wire::WirePhase::Refresh;
-        if self.features.iter().any(|feature| {
-            feature.arguments_supported
-                && feature.initial_state.is_some()
-                && feature
-                    .wire
-                    .is_some_and(|wire| wire.projects_initial_state_on_refresh)
-        }) {
+        let command_owns_attribute_markers = self.command_owns_attribute_refresh_markers();
+        if self.has_initial_state_refresh_projection() {
             return Vec::new();
         }
         self.features
             .iter()
             .filter(|feature| {
                 !mutates_max_hp(feature)
-                    && !transaction_event.is_some_and(|event| {
+                    && (!transaction_event.is_some_and(|event| {
                         feature.values.first().copied().is_some_and(|act_id| {
                             crate::engine::skill::buff_act::registry::find(
                                 act_id,
@@ -324,7 +322,8 @@ impl BuffDefinition {
                                         == crate::engine::event::subscription::PublicationPhase::AfterPublish
                             })
                         })
-                    })
+                    }) || (command_owns_attribute_markers
+                        && feature.kind == Some(BuffActKind::Attr)))
             })
             .flat_map(|feature| {
                 feature
@@ -333,6 +332,25 @@ impl BuffDefinition {
                     .flat_map(move |definition| definition.markers(phase).iter().copied())
             })
             .collect()
+    }
+
+    pub(super) fn command_owns_attribute_refresh_markers(&self) -> bool {
+        self.has_initial_state_refresh_projection()
+            || (self
+                .features
+                .iter()
+                .any(|feature| feature.kind == Some(BuffActKind::RealHarmFix))
+                && !self.features.iter().any(mutates_max_hp))
+    }
+
+    fn has_initial_state_refresh_projection(&self) -> bool {
+        self.features.iter().any(|feature| {
+            feature.arguments_supported
+                && feature.initial_state.is_some()
+                && feature
+                    .wire
+                    .is_some_and(|wire| wire.projects_initial_state_on_refresh)
+        })
     }
 
     pub(super) fn projects_initial_state_on_refresh(&self, act_id: i32) -> bool {
@@ -1166,4 +1184,4 @@ fn initial_act_common_params(game: &config::GameDB, features: &str) -> String {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -72,4 +72,4 @@ fn role_max_progress(condition: &str) -> i32 {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

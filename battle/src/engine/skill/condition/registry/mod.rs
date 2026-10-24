@@ -122,7 +122,7 @@ pub enum AttackModifierSide {
 pub enum SkillActionTriggerPolicy {
     #[default]
     Default,
-    AttackOnly,
+    AttackOnlyWithDeviceObservers(&'static [i32]),
     InitialCriticalFollowUp,
 }
 
@@ -158,13 +158,27 @@ impl ReactionTimingPolicy {
 impl SkillActionTriggerPolicy {
     pub const fn child_skill_kind(self) -> Option<extra::ExtraSkillKind> {
         match self {
-            Self::Default | Self::AttackOnly => None,
+            Self::Default | Self::AttackOnlyWithDeviceObservers(_) => None,
             Self::InitialCriticalFollowUp => Some(extra::ExtraSkillKind::FollowUp),
         }
     }
 
-    pub const fn requires_attack(self) -> bool {
-        matches!(self, Self::AttackOnly)
+    pub fn rejects_action(
+        self,
+        observer_skill_id: i32,
+        is_attack: bool,
+        mode: crate::engine::skill::action::SkillExecutionMode,
+    ) -> bool {
+        match self {
+            Self::AttackOnlyWithDeviceObservers(device_observers) => {
+                !is_attack
+                    && (!matches!(
+                        mode,
+                        crate::engine::skill::action::SkillExecutionMode::Device
+                    ) || !device_observers.contains(&observer_skill_id))
+            }
+            Self::Default | Self::InitialCriticalFollowUp => false,
+        }
     }
 
     pub const fn rejects_extra_skill(self, extra_skill_kind: i32) -> bool {
@@ -358,6 +372,11 @@ pub const fn after_hit_skills(mut metadata: ConditionMetadata) -> ConditionMetad
     metadata
 }
 
+pub const fn before_after_hit_observers(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::BeforeAfterHitObservers);
+    metadata
+}
+
 pub const fn psychube_after_action(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_timing = ReactionTimingPolicy::ByPassiveSource {
         psychube: ReactionTiming::AfterAction,
@@ -381,8 +400,12 @@ pub const fn initial_critical_follow_up(mut metadata: ConditionMetadata) -> Cond
     metadata
 }
 
-pub const fn attack_only(mut metadata: ConditionMetadata) -> ConditionMetadata {
-    metadata.skill_action_trigger = SkillActionTriggerPolicy::AttackOnly;
+pub const fn attack_only_with_device_observers(
+    mut metadata: ConditionMetadata,
+    observer_skill_ids: &'static [i32],
+) -> ConditionMetadata {
+    metadata.skill_action_trigger =
+        SkillActionTriggerPolicy::AttackOnlyWithDeviceObservers(observer_skill_ids);
     metadata
 }
 
@@ -608,15 +631,15 @@ condition_definitions! {
     [19103] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::BuffGate, 0, &[]));
     [19212] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [19302] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEnd, None));
-    [19307] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEndFinalSettlement, None));
+    [19307] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEndAfterSideFinalExpiry, None));
     [19303] "HasBuffId" => buff::buff_present, reaction_targets_owner(filters_behavior_targets(event_trigger(EventKind::RoundEndEntitySettlement, None)));
     [19304] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::RoundEndAfterSettlement, None));
     [19301] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
     [19402] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
     [64208] "HasRejectBuffId" => buff::rejected_buff_id_or_type, filters_behavior_targets(event_trigger(EventKind::BuffRejected, None));
     [56301] "NoBuff" => buff::first_status_absent, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
-    [750101] "PlayerHasBuff" => buff::team_buff_presence, setup_route(SetupStage::RoundStartCondition, 101, &[]);
-    [750307] "PlayerHasBuff" => buff::team_buff_presence, event_trigger(EventKind::RoundEndAfterFinalSettlement, None);
+    [750101] "PlayerHasBuff" => buff::player_buff_presence, setup_route(SetupStage::RoundStartCondition, 101, &[]);
+    [750307] "PlayerHasBuff" => buff::player_buff_presence, event_trigger(EventKind::RoundEndAfterFinalSettlement, None);
     [514100] "SelfTeamHasBuffTypeLayerLessThan" => buff::team_buff_type_layer_at_most, setup_route(SetupStage::RoundStartCondition, 100, &[EventKind::BuffChanged]);
     [550102] "AllInBuffByTypeId" => buff::all_targets_buff_type_at_least, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [513101] "SelfTeamHasBuffTypeLayerMoreThan" => buff::team_buff_type_layer_at_least, setup_route(SetupStage::RoundStartCondition, 101, &[]);
@@ -666,7 +689,7 @@ condition_definitions! {
     [51102] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [51103] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::RoundStart, 1, &[]);
     [511201] "HasTypeBuffIdsMoreThan" => buff::buff_status_at_least, predicate(&[EventKind::BuffChanged]);
-    [42203] "HasTypeBuffMoreThan" => buff::visible_stacked_status_types_at_least, attack_only(event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate)));
+    [42203] "HasTypeBuffMoreThan" => buff::visible_stacked_status_types_at_least, attack_only_with_device_observers(event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate)), &[103374322]);
     [42209] "HasTypeBuffMoreThan" => buff::visible_stacked_status_types_at_least, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
     [43203] "HasTypeBuffLessThan" => buff::visible_buff_status_types_less_than, predicate(&[]);
     [42208] "HasTypeBuffMoreThan" => buff::buff_status_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
@@ -698,7 +721,7 @@ condition_definitions! {
     [501203] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [501201] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [501208] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
-    [501209] "UseHurtSkill" => active_skill::hurt_skill, after_shared_hit(event_trigger(EventKind::TargetAttacked, None));
+    [501209] "UseHurtSkill" => active_skill::hurt_skill, once_per_action(event_target_observes(after_shared_hit(event_trigger(EventKind::TargetAttacked, None))));
     [501210] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [501212] "UseHurtSkill" => active_skill::hurt_skill, predicate(&[]);
     [507201] "UseSkillId" => active_skill::skill_id, event_trigger(EventKind::SkillAction, None);
@@ -726,7 +749,7 @@ condition_definitions! {
     [726210] "BloodPoolValue" => resource::blood_pool_value, predicate(&[]);
     [589] "PowerIncrChange" => resource::power_increase, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
     [749301] "PowerRatio" => resource::power_ratio, event_trigger(EventKind::SmallRoundEnd, None);
-    [749209] "PowerRatio" => resource::power_ratio, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
+    [749209] "PowerRatio" => resource::power_ratio, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
     [1010301] "ProgressValue" => resource::fight_progress_value, reaction_targets_owner(event_trigger(EventKind::DefenderActionPhaseStart, None));
     [1010012] "ProgressValue" => resource::fight_progress_value, event_target_observes(reaction_targets_owner(event_trigger(EventKind::EntityDied, None)));
     [710301] "PerHandCardHasSkillId" => card::hand_skill_presence, event_trigger(EventKind::SmallRoundEnd, None);
@@ -855,7 +878,7 @@ condition_definitions! {
     [403212] "SkillExtraType" => extra::other_ally_action, event_trigger(EventKind::AllyAction, None);
     [626212] "ActionSkillExtraType" => extra::other_ally_action, event_trigger(EventKind::AllyAction, None);
     [656212] "SelfBuffTypeTargetBuffTypes" => buff::self_buff_type_target_buff_types, event_trigger(EventKind::AllyAction, None);
-    [180203] "PowerCompare" => resource::power_compare, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [180203] "PowerCompare" => resource::power_compare, event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate));
     [180208] "PowerCompare" => resource::power_compare, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [180210] "PowerCompare" => resource::power_compare, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [180212999] "PowerCompare" => resource::power_compare, team_observes(event_trigger(EventKind::AllyAction, None));
@@ -866,7 +889,7 @@ condition_definitions! {
     [180106] "PowerCompare" => resource::power_compare, setup_route(SetupStage::CardSetup, 0, &[]);
     [89210] "ExpointMoreThan" => resource::ex_point_at_least, predicate(&[EventKind::ExPointChanged]);
     [89304] "ExpointMoreThan" => resource::ex_point_at_least, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
-    [1008101] "Synchronization" => resource::synchronization, predicate(&[EventKind::ExPointChanged]);
+    [1008101] "Synchronization" => resource::synchronization, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [526203, 526210] "ExpointLessThan" => resource::ex_point_at_most, predicate(&[EventKind::ExPointChanged]);
     [544100] "NotInMagicCircleId" => magic_circle::absent, setup_route(SetupStage::RoundStartCondition, 100, &[EventKind::FieldChanged]);
     [542103, 542104] "InMagicCircleId" => magic_circle::present, setup_route(SetupStage::RoundStart, 1, &[EventKind::FieldChanged]);
@@ -878,7 +901,7 @@ condition_definitions! {
     [10] "BuffIdAdd" => buff::buff_added, reactivates_on(event_trigger(EventKind::BuffChanged, None), &[EventKind::BuffAdded]);
     [88] "BuffTypeAdd" => buff::buff_type_added, event_trigger(EventKind::BuffAdded, None);
     [49] "BuffIdDel" => buff::buff_removed, event_trigger(EventKind::BuffRemoved, None);
-    [515005] "BuffIdExpireOnly" => buff::buff_expired, event_trigger(EventKind::BuffRemoved, None);
+    [515005] "BuffIdExpireOnly" => buff::buff_expired, in_event_sibling_frame(event_trigger(EventKind::BuffRemoved, None));
     [510] "MultiHpXIn" => parse::multi_hp_segment, predicate(&[]);
     [552017] "Random" => parse::random, predicate(&[]);
     [552203] "Random" => parse::random, predicate(&[]);
@@ -913,8 +936,8 @@ condition_definitions! {
     [1105] "LifeLess" => parse::hp_less, setup_route(SetupStage::AfterRoundStart, 0, &[]);
     [1203] "LifeLess" => parse::hp_less, predicate(&[]);
     [1204] "LifeLess" => parse::hp_less, incoming_attack_modifier(predicate(&[]));
-    [1304] "LifeLess" => parse::hp_less, after_hit_skills(once_per_action(predicate(&[EventKind::HpLost])));
-    [1209] "LifeLess" => parse::hp_less, after_hit_skills(once_per_action(predicate(&[EventKind::HpLost])));
+    [1304] "LifeLess" => parse::hp_less, before_after_hit_observers(once_per_action(predicate(&[EventKind::HpLost])));
+    [1209] "LifeLess" => parse::hp_less, before_after_hit_observers(once_per_action(predicate(&[EventKind::HpLost])));
     [2104] "LifeMore" => parse::hp_more, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [2203] "LifeMore" => parse::hp_more, predicate(&[]);
     [2301] "LifeMore" => parse::hp_more, event_trigger(EventKind::SmallRoundEnd, None);
@@ -1003,4 +1026,4 @@ pub fn attack_modifier_side(conditions: &[ParsedCondition]) -> Option<AttackModi
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

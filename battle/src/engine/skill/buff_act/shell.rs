@@ -182,7 +182,10 @@ pub fn rule_ops(
             };
             if hit.target_uid != subscriber.owner_uid
                 || hit.amount <= 0
-                || hit.damage_from != HurtDamageFromType::Skill
+                || !matches!(
+                    hit.damage_from,
+                    HurtDamageFromType::Skill | HurtDamageFromType::SkillEffect
+                )
             {
                 return Some(Vec::new());
             }
@@ -347,6 +350,15 @@ pub fn extra_action_attribute_delta(
         .unwrap_or_default()
 }
 
+pub(crate) fn linked_damage_inherits_attribute(extra_skill_kind: i32, attr_id: AttrId) -> bool {
+    attr_id == AttrId::DmgBonus
+        || (attr_id == AttrId::CriticalDmg
+            && matches!(
+                crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind),
+                Some(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction)
+            ))
+}
+
 #[cfg(test)]
 mod tests {
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute};
@@ -443,6 +455,7 @@ mod tests {
             participant_uids: vec![10, 11, 12],
             amount: 20,
             share_count: 3,
+            action_share_count: 6,
             damage_from: HurtDamageFromType::Skill,
         };
 
@@ -534,6 +547,44 @@ mod tests {
     }
 
     #[test]
+    fn deployed_shell_retrieves_after_a_skill_effect_hit_but_not_after_buff_damage() {
+        crate::test_support::init_config();
+        let managers = BattleManagers::default();
+        let pool = TargetPool::default();
+        let retrieves = |damage_from| {
+            let event = BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Skill,
+                    key: DefinitionKey::new(100002, "EzioBigSkillTyp2"),
+                },
+                source_uid: 10,
+                target_uid: -1,
+                skill_id: 312301333,
+                amount: 20,
+                resolved_damage: 20,
+                shield_absorbed: 0,
+                career_restraint: false,
+                damage_from,
+                share_count: 0,
+                assassinate: true,
+                ignore_riposte: false,
+            });
+            rule_ops(
+                &managers,
+                &pool,
+                &mut RoundDeterminism::default(),
+                &subscriber(-1, 10, 31090112, 871, "ShellDebuff", vec![1]),
+                &event,
+            )
+            .unwrap()
+            .len()
+        };
+
+        assert_eq!(retrieves(HurtDamageFromType::SkillEffect), 1);
+        assert_eq!(retrieves(HurtDamageFromType::Buff), 0);
+    }
+
+    #[test]
     fn shell_lock_redeploys_only_retrievals_from_its_carrier() {
         let managers = BattleManagers::default();
         let pool = TargetPool::default();
@@ -596,6 +647,35 @@ mod tests {
             240
         );
         assert_eq!(extra_action_attribute_delta(&feature, AttrId::Attack), 0);
+    }
+
+    #[test]
+    fn linked_shell_attributes_keep_critical_damage_on_extra_actions() {
+        use crate::engine::skill::condition::extra::ExtraSkillKind;
+
+        for kind in [
+            0,
+            ExtraSkillKind::ExtraAction.id(),
+            ExtraSkillKind::FollowUp.id(),
+            ExtraSkillKind::Riposte.id(),
+        ] {
+            assert!(linked_damage_inherits_attribute(kind, AttrId::DmgBonus));
+        }
+        assert!(linked_damage_inherits_attribute(
+            ExtraSkillKind::ExtraAction.id(),
+            AttrId::CriticalDmg,
+        ));
+        for kind in [
+            0,
+            ExtraSkillKind::FollowUp.id(),
+            ExtraSkillKind::Riposte.id(),
+        ] {
+            assert!(!linked_damage_inherits_attribute(kind, AttrId::CriticalDmg,));
+        }
+        assert!(!linked_damage_inherits_attribute(
+            ExtraSkillKind::ExtraAction.id(),
+            AttrId::Attack,
+        ));
     }
 
     #[test]

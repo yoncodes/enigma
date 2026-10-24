@@ -280,6 +280,19 @@ impl BattleRuntime {
             &self.managers,
             &pool,
         );
+        let ended_during_attacker_actions = battle_ended(&self.fight, &pool, &self.managers);
+        let expiration = (!ended_during_attacker_actions)
+            .then(|| {
+                schedule::run_temporary_card_expiration(
+                    &mut self.managers,
+                    &pool,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                )
+            })
+            .transpose()
+            .map_err(|error| format!("{error:?}"))?;
         ai_turn.observe(&player);
         let mut fight_steps = project_result(player, fight_version, absorb_hurt_map_layout)?;
         ai_turn.observe(&conduit);
@@ -294,7 +307,13 @@ impl BattleRuntime {
             fight_version,
             absorb_hurt_map_layout,
         )?);
-        let ended_during_attacker_actions = battle_ended(&self.fight, &pool, &self.managers);
+        if let Some(expiration) = expiration {
+            fight_steps.extend(project_result(
+                expiration,
+                fight_version,
+                absorb_hurt_map_layout,
+            )?);
+        }
         let attacker_settlement = if ended_during_attacker_actions {
             schedule::run_finished_attacker_settlement(
                 &mut self.managers,

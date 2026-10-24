@@ -67,6 +67,13 @@ pub(crate) struct BuffDurationPlan {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BuffDurationTarget {
+    pub(crate) owner_uid: i64,
+    pub(crate) buff_uid: i64,
+    pub(crate) remaining: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BuffLifecyclePlan {
     pub(crate) target_uid: i64,
     pub(crate) buff_uid: i64,
@@ -226,56 +233,6 @@ impl BuffManager {
         entity.buffs = self.active_for(uid).cloned().collect();
     }
 
-    pub(crate) fn project_synchronization(
-        &self,
-        entity: &mut FightEntityInfo,
-        progress: crate::engine::manager::ex_point::SynchronizationProgress,
-    ) {
-        let Some(owner_uid) = entity.uid else { return };
-        let Some((buff_uid, act_id, _)) = self.buff_act_carrier(
-            owner_uid,
-            crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
-        ) else {
-            return;
-        };
-        let Ok(target_uid) = i32::try_from(progress.target_uid) else {
-            return;
-        };
-        let params = vec![
-            progress.completed_actions.saturating_add(1),
-            progress.total_damage,
-            target_uid,
-        ];
-        let Some(buff) = entity
-            .buffs
-            .iter_mut()
-            .find(|buff| buff.uid == Some(buff_uid))
-        else {
-            return;
-        };
-        buff.act_common_params = Some(format!(
-            "{act_id}#{}",
-            params
-                .iter()
-                .map(i32::to_string)
-                .collect::<Vec<_>>()
-                .join(",")
-        ));
-        if let Some(info) = buff
-            .act_info
-            .iter_mut()
-            .find(|info| info.act_id == Some(act_id))
-        {
-            info.param = params;
-        } else {
-            buff.act_info.push(BuffActInfo {
-                act_id: Some(act_id),
-                param: params,
-                str_param: Some(String::new()),
-            });
-        }
-    }
-
     pub(crate) fn plan_round_start_duration_sync(
         &self,
         owner_uids: &[i64],
@@ -349,7 +306,12 @@ impl BuffManager {
         owner_uids: &[i64],
         buff_uids: &[i64],
     ) -> Vec<BuffReplaceResult> {
-        let plans = self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids));
+        let plans = self.plan_duration_advances_matching(
+            take_stage,
+            owner_uids,
+            Some(buff_uids),
+            Default::default(),
+        );
         plans
             .into_iter()
             .filter_map(|plan| self.commit_duration_advance(plan))
@@ -361,7 +323,16 @@ impl BuffManager {
         take_stage: i32,
         owner_uids: &[i64],
     ) -> Vec<BuffDurationPlan> {
-        self.plan_duration_advances_matching(take_stage, owner_uids, None)
+        self.plan_duration_advances_scoped(take_stage, owner_uids, Default::default())
+    }
+
+    pub(crate) fn plan_duration_advances_scoped(
+        &self,
+        take_stage: i32,
+        owner_uids: &[i64],
+        scope: crate::engine::skill::buff_act::effect_time::DurationBuffScope,
+    ) -> Vec<BuffDurationPlan> {
+        self.plan_duration_advances_matching(take_stage, owner_uids, None, scope)
     }
 
     pub(crate) fn duration_buff_uids(&self, take_stage: i32, owner_uids: &[i64]) -> Vec<i64> {
@@ -371,13 +342,54 @@ impl BuffManager {
             .collect()
     }
 
+    pub(crate) fn duration_targets(
+        &self,
+        take_stage: i32,
+        owner_uids: &[i64],
+    ) -> Vec<BuffDurationTarget> {
+        self.plan_duration_advances(take_stage, owner_uids)
+            .into_iter()
+            .filter_map(|plan| {
+                let remaining = self
+                    .buffs
+                    .iter()
+                    .find(|active| {
+                        active.owner_uid == plan.target_uid
+                            && active.buff.uid == Some(plan.buff_uid)
+                    })?
+                    .buff
+                    .duration?;
+                Some(BuffDurationTarget {
+                    owner_uid: plan.target_uid,
+                    buff_uid: plan.buff_uid,
+                    remaining,
+                })
+            })
+            .collect()
+    }
+
     pub(crate) fn plan_duration_advances_for_snapshot(
         &self,
         take_stage: i32,
         owner_uids: &[i64],
         buff_uids: &[i64],
     ) -> Vec<BuffDurationPlan> {
-        self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids))
+        self.plan_duration_advances_for_snapshot_scoped(
+            take_stage,
+            owner_uids,
+            buff_uids,
+            Default::default(),
+        )
+    }
+
+    pub(crate) fn plan_duration_advances_for_snapshot_scoped(
+        &self,
+        take_stage: i32,
+        owner_uids: &[i64],
+        buff_uids: &[i64],
+        scope: crate::engine::skill::buff_act::effect_time::DurationBuffScope,
+    ) -> Vec<BuffDurationPlan> {
+        self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids), scope)
     }
 
     fn plan_duration_advances_matching(
@@ -385,6 +397,7 @@ impl BuffManager {
         take_stage: i32,
         owner_uids: &[i64],
         buff_uids: Option<&[i64]>,
+        scope: crate::engine::skill::buff_act::effect_time::DurationBuffScope,
     ) -> Vec<BuffDurationPlan> {
         let mut indices = if owner_uids.is_empty() {
             (0..self.buffs.len()).collect::<Vec<_>>()
@@ -419,6 +432,7 @@ impl BuffManager {
                 let buff_uid = active.buff.uid?;
                 let duration = active.buff.duration.unwrap_or_default();
                 (duration > 0
+                    && scope.includes(active.buff.buff_id.unwrap_or_default())
                     && active
                         .definition
                         .as_ref()

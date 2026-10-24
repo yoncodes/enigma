@@ -209,6 +209,133 @@ fn entity_settlement_advances_after_settlement_durations_after_reactions() {
 }
 
 #[test]
+fn after_settlement_duration_transitions_release_before_the_next_buff() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_100),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(103374114),
+                        layer: Some(1),
+                        duration: Some(1),
+                        from_uid: Some(-8),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(21),
+                        buff_id: Some(103374114),
+                        layer: Some(1),
+                        duration: Some(2),
+                        from_uid: Some(-9),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    let result = run_entity_settlement(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[10],
+        SettlementSide::Attacker,
+    )
+    .unwrap();
+
+    assert!(managers.buff.snapshot(10, 20).is_none());
+    assert_eq!(managers.buff.snapshot(10, 21).unwrap().duration, Some(1));
+    fn collect_duration_frames<'a>(
+        frame: &'a crate::engine::runtime::record::SemanticFrame,
+        frames: &mut Vec<&'a crate::engine::runtime::record::SemanticFrame>,
+    ) {
+        if matches!(frame.owner, FrameOwner::BuffDuration { .. }) {
+            frames.push(frame);
+        }
+        for item in &frame.items {
+            if let FrameItem::Child(child) = item {
+                collect_duration_frames(child, frames);
+            }
+        }
+    }
+    let mut duration_frames = Vec::new();
+    for frame in &result.output.frames {
+        collect_duration_frames(frame, &mut duration_frames);
+    }
+    assert_eq!(
+        duration_frames
+            .iter()
+            .map(|frame| frame.owner.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            FrameOwner::BuffDuration {
+                owner_uid: 10,
+                buff_uid: 20,
+                take_stage: crate::engine::skill::buff_act::effect_time::ROUND_END_AFTER_SETTLEMENT,
+            },
+            FrameOwner::BuffDuration {
+                owner_uid: 10,
+                buff_uid: 21,
+                take_stage: crate::engine::skill::buff_act::effect_time::ROUND_END_AFTER_SETTLEMENT,
+            },
+        ]
+    );
+    let expired_effects = crate::engine::packet::timeline::project_for_version(
+        std::slice::from_ref(duration_frames[0]),
+        7,
+    )
+    .unwrap()
+    .into_iter()
+    .flat_map(|step| step.act_effect)
+    .filter_map(|effect| effect.effect_type)
+    .collect::<Vec<_>>();
+    assert_eq!(
+        expired_effects,
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+            sonettobuf::effect_type_enum::EffectType::Maxhpchange as i32,
+        ]
+    );
+    let effects = crate::engine::packet::timeline::project_for_version(&result.output.frames, 7)
+        .unwrap()
+        .into_iter()
+        .flat_map(|step| step.act_effect)
+        .filter_map(|effect| effect.effect_type)
+        .filter(|effect| {
+            [
+                sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+                sonettobuf::effect_type_enum::EffectType::Maxhpchange as i32,
+                sonettobuf::effect_type_enum::EffectType::Buffupdate as i32,
+            ]
+            .contains(effect)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        effects,
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+            sonettobuf::effect_type_enum::EffectType::Maxhpchange as i32,
+            sonettobuf::effect_type_enum::EffectType::Buffupdate as i32,
+        ]
+    );
+}
+
+#[test]
 fn entity_settlement_buff_presence_fires_once_only_for_the_matching_owner() {
     init_config();
     let entity = |uid, buffs| FightEntityInfo {

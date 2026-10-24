@@ -250,6 +250,70 @@ fn existing_refresh_count_reserves_the_next_normal_uid() {
 }
 
 #[test]
+fn explicit_count_refresh_reuses_the_existing_instance_uid() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(1263),
+                        buff_id: Some(31440113),
+                        count: Some(1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(1518),
+                        buff_id: Some(101),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    let plan = manager
+        .plan(
+            &HpManager::default(),
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 31440113,
+                amount: Some(3),
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+    assert_eq!(
+        grant_plan(&plan)
+            .refresh_uids
+            .iter()
+            .map(|uid| uid.uid)
+            .collect::<Vec<_>>(),
+        [1520, 1522]
+    );
+    let changes = manager.commit(&HpManager::default(), plan);
+    assert_eq!(changes.change.refreshed.len(), 3);
+    assert_eq!(changes.change.refreshed[2].after.count, Some(4));
+    let next = manager
+        .add(&HpManager::default(), 10, 10, 70015, 0)
+        .unwrap();
+    assert_eq!(next.buff.uid, Some(1524));
+}
+
+#[test]
 fn counted_storage_refresh_reserves_child_uids() {
     crate::test_support::init_config();
     let fight = Fight {

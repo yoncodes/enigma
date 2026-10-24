@@ -70,6 +70,7 @@ fn side_round_end_schedules_keep_the_proven_lane_order() {
             EventKind::RoundEndAfterSettlement,
             EventKind::RoundEndAfterOwnerSettlement,
             EventKind::RoundEndFinalSettlement,
+            EventKind::RoundEndAfterSideFinalExpiry,
         ]
     );
     let entity_settlement = after_ai
@@ -177,7 +178,7 @@ fn defeated_conduit_devices_refresh_only_after_terminal_commitment() {
 }
 
 #[test]
-fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
+fn final_settlement_runs_side_expiry_reactions_before_entity_expiry() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -185,6 +186,8 @@ fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
                 uid: Some(10),
                 team_type: Some(1),
                 current_hp: Some(1_000),
+                ex_point_type: Some(4),
+                ex_point_max: Some(100),
                 passive_skill: vec![302501432],
                 buffs: vec![
                     BuffInfo {
@@ -201,6 +204,13 @@ fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
                         layer: Some(1),
                         ..Default::default()
                     },
+                    BuffInfo {
+                        uid: Some(22),
+                        buff_id: Some(109320112),
+                        duration: Some(1),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
                 ],
                 ..Default::default()
             }],
@@ -211,6 +221,26 @@ fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
     let pool = TargetPool::from_fight(&fight);
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .buff
+        .execute(
+            &managers.hp,
+            crate::engine::manager::buff::BuffCommand::Grant(
+                crate::engine::manager::buff::BuffGrant {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Behavior,
+                        key: DefinitionKey::new(1, "AddBuff"),
+                    },
+                    source_uid: -1,
+                    target_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                    buff_id: 109320001,
+                    amount: None,
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                },
+            ),
+        )
+        .unwrap();
     managers
         .execute_buff(
             crate::engine::manager::buff::BuffCommand::AccumulateActValue(
@@ -237,6 +267,23 @@ fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
         Vec::new(),
     )
     .unwrap();
+    fn has_output(frame: &crate::engine::runtime::record::SemanticFrame) -> bool {
+        frame.items.iter().any(|item| match item {
+            FrameItem::Change(_) | FrameItem::Cue(_) => true,
+            FrameItem::Child(child) => has_output(child),
+        })
+    }
+    assert_eq!(result.frames.len(), 2);
+    assert_eq!(
+        result.frames[0].owner,
+        FrameOwner::RoundPhase(RoundPhase::RoundEndFinalSettlement)
+    );
+    assert!(has_output(&result.frames[0]));
+    assert_eq!(
+        result.frames[1].owner,
+        FrameOwner::RoundPhase(RoundPhase::RoundEndAfterFinalSettlement)
+    );
+    assert!(has_output(&result.frames[1]));
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
 
     fn contains_effect(step: &sonettobuf::FightStep, effect_type: i32, target_uid: i64) -> bool {
@@ -259,7 +306,7 @@ fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
             })
     }
 
-    assert_eq!(steps.len(), 1);
+    assert_eq!(steps.len(), 2);
     assert!(contains_effect(
         &steps[0],
         sonettobuf::effect_type_enum::EffectType::Buffadd as i32,
@@ -267,6 +314,52 @@ fn final_settlement_keeps_buff_and_skill_reactions_in_one_event_frame() {
     ));
     assert!(contains_effect(&steps[0], 111, 10));
     assert!(!contains_skill(&steps[0], 302501432));
+    assert!(contains_effect(
+        &steps[1],
+        sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+        10,
+    ));
+    assert_eq!(managers.ex_point.get(10), 15);
+    assert!(managers.buff.snapshot(10, 22).is_none());
+    assert!(
+        !managers
+            .buff
+            .has_active_buff_id(crate::engine::fight::rules::ATTACKER_SIDE_UID, 109320001)
+    );
+
+    fn effect_types(step: &sonettobuf::FightStep, output: &mut Vec<i32>) {
+        for effect in &step.act_effect {
+            if let Some(effect_type) = effect.effect_type {
+                output.push(effect_type);
+            }
+            if let Some(child) = effect.fight_step.as_ref() {
+                effect_types(child, output);
+            }
+        }
+    }
+    let mut first_effects = Vec::new();
+    effect_types(&steps[0], &mut first_effects);
+    let mut second_effects = Vec::new();
+    effect_types(&steps[1], &mut second_effects);
+    assert_eq!(
+        first_effects
+            .iter()
+            .filter(|effect| {
+                **effect == sonettobuf::effect_type_enum::EffectType::Buffdel as i32
+            })
+            .count(),
+        1
+    );
+    assert!(first_effects.contains(&111));
+    assert_eq!(
+        second_effects
+            .iter()
+            .filter(|effect| {
+                **effect == sonettobuf::effect_type_enum::EffectType::Buffdel as i32
+            })
+            .count(),
+        1
+    );
 }
 
 #[test]

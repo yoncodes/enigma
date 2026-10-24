@@ -1,5 +1,6 @@
 use crate::engine::{
     damage::{AttackPlan, DamageRateTerm, handler as damage},
+    event::payload::BuffFeatureTriggeredEvent,
     manager::{BattleManagers, buff::ActiveBuffFeature, hp::HpCommand},
     runtime::determinism::RoundDeterminism,
     skill::{
@@ -21,10 +22,13 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) configured_targets: Option<Vec<i64>>,
     pub(super) additional_damage_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
-    pub(super) assassination_marks_at_action_start: Option<Vec<(i64, i32)>>,
+    pub(super) assassination_marks_at_action_start:
+        Option<Vec<crate::engine::skill::buff_act::assassination::TargetMark>>,
+    pub(super) assassination_rate_marks_at_action_start: Option<Vec<(i64, i32)>>,
     pub(super) injured_allies: Vec<i64>,
     pub(super) affected_targets: Vec<i64>,
     pub(super) attacked_targets: Vec<i64>,
+    triggered_buff_features: Vec<BuffFeatureTriggeredEvent>,
     pub(super) buff_additions: Vec<(i32, i32)>,
     pub(super) team_injury_count_round: i32,
     team_injury_count_consumed: Option<DefinitionKey>,
@@ -48,6 +52,15 @@ pub(in crate::engine::runtime) struct SkillExecution {
 }
 
 impl SkillExecution {
+    pub(in crate::engine::runtime) fn inherit_assassination_marks(&mut self, parent: &Self) {
+        self.assassination_marks_at_action_start
+            .clone_from(&parent.assassination_marks_at_action_start);
+    }
+
+    pub(in crate::engine::runtime) fn set_causing_skill_target(&mut self, target_uid: i64) {
+        self.context.causing_skill_target_uid = target_uid;
+    }
+
     pub(in crate::engine::runtime) fn preserves_selected_frame_target(
         &self,
         target: SkillTarget,
@@ -98,9 +111,11 @@ impl SkillExecution {
             additional_damage_targets: None,
             planned_crits: None,
             assassination_marks_at_action_start: None,
+            assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
+            triggered_buff_features: Vec::new(),
             buff_additions: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
@@ -131,9 +146,11 @@ impl SkillExecution {
             additional_damage_targets: None,
             planned_crits: None,
             assassination_marks_at_action_start: None,
+            assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
             affected_targets: Vec::new(),
             attacked_targets: Vec::new(),
+            triggered_buff_features: Vec::new(),
             buff_additions: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
@@ -240,6 +257,14 @@ impl SkillExecution {
         }
     }
 
+    pub(super) fn record_triggered_buff_feature(&mut self, event: BuffFeatureTriggeredEvent) {
+        self.triggered_buff_features.push(event);
+    }
+
+    pub(super) fn take_triggered_buff_features(&mut self) -> Vec<BuffFeatureTriggeredEvent> {
+        std::mem::take(&mut self.triggered_buff_features)
+    }
+
     pub(in crate::engine::runtime) fn record_buff_additions(
         &mut self,
         additions: impl IntoIterator<Item = (i32, i32)>,
@@ -322,24 +347,10 @@ impl SkillExecution {
     }
 
     pub(super) fn activate_additional_damage(&mut self, planned: LinkedDamagePlan) {
-        self.record_unpaid_extra_action_cost_field(&planned);
         if planned.is_resolved_hit_derived() {
             self.resolved_hit_additional_damage.push(planned);
         } else {
             self.activated_additional_damage.push(planned);
-        }
-    }
-
-    pub(super) fn record_unpaid_extra_action_cost_field(&mut self, planned: &LinkedDamagePlan) {
-        let field = (planned.feature.buff_id, planned.feature.source_uid);
-        if planned.spec.extra_eureka_cost > 0
-            && !planned.uses_extra_lane
-            && !self
-                .modifiers
-                .unpaid_extra_action_cost_fields
-                .contains(&field)
-        {
-            self.modifiers.unpaid_extra_action_cost_fields.push(field);
         }
     }
 
@@ -352,26 +363,42 @@ impl SkillExecution {
                     && planned.feature.buff_id == candidate.feature.buff_id
             })
     }
-
-    pub(super) fn unpaid_extra_action_cost_fields(&self) -> Vec<(i32, i64)> {
-        self.modifiers.unpaid_extra_action_cost_fields.clone()
-    }
 }
 
 pub(super) fn snapshot_action_start_damage_state(
     managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    skill_id: i32,
     execution: &mut SkillExecution,
-) {
+) -> Result<(), super::SkillOpError> {
     execution
         .assassination_marks_at_action_start
         .get_or_insert_with(|| {
             crate::engine::skill::buff_act::assassination::marked_targets(managers)
         });
+    execution.assassination_rate_marks_at_action_start = Some(
+        crate::engine::skill::buff_act::assassination::rate_marks_for_skill(
+            execution
+                .assassination_marks_at_action_start
+                .as_deref()
+                .unwrap_or_default(),
+            catalog,
+            skill_id,
+        )
+        .map_err(|error| {
+            super::SkillOpError::UnsupportedAssassinationReactionCardinality {
+                skill_id: error.skill_id,
+                buff_id: error.buff_id,
+                count: error.count,
+            }
+        })?,
+    );
+    Ok(())
 }
 
 fn hp_command_target(command: HpCommand) -> i64 {
     match command {
-        HpCommand::Damage(value) => value.target_uid,
+        HpCommand::Damage(value) | HpCommand::SettleAccumulatedDamage(value) => value.target_uid,
         HpCommand::Lose(value) => value.target_uid,
         HpCommand::Kill(value) => value.target_uid,
         HpCommand::Heal(value) => value.target_uid,
@@ -443,8 +470,6 @@ impl LinkedDamagePlan {
     }
 }
 
-// "When an ally performs an extra action": follow-ups, ripostes and extra actions, and any other
-// action not played from a card, such as a skill another skill casts.
 fn performs_extra_action(invocation: &SkillInvocation, execution: &SkillExecution) -> bool {
     crate::engine::skill::action::performs_extra_action(
         invocation.card_index,
@@ -464,20 +489,6 @@ fn additional_damage_main_target(
 }
 
 impl LinkedDamagePlan {
-    pub(super) fn shell_attributes(extra_skill_kind: i32, uses_extra_lane: bool) -> (bool, bool) {
-        use crate::engine::skill::condition::extra::ExtraSkillKind;
-
-        let (damage, critical) =
-            match crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind)
-            {
-                Some(ExtraSkillKind::ExtraAction) => (true, true),
-                Some(ExtraSkillKind::FollowUp) => (true, false),
-                Some(ExtraSkillKind::Riposte) => (false, false),
-                _ => (true, false),
-            };
-        (damage || uses_extra_lane, critical)
-    }
-
     pub(super) fn attack_attributes(
         local: &[(crate::engine::entity::attr::AttrId, i32)],
         shared: &[(crate::engine::entity::attr::AttrId, i32)],
@@ -799,6 +810,9 @@ pub(super) fn damage_ops(
             target_uid,
             inherent_assassinate,
             execution.assassination_marks_at_action_start.as_deref(),
+            execution
+                .assassination_rate_marks_at_action_start
+                .as_deref(),
         );
         execution.context.active_skill_assassinate |= assassination.assassinate;
         if assassination.final_damage_bonus != 0 {
@@ -807,8 +821,6 @@ pub(super) fn damage_ops(
                 assassination.final_damage_bonus,
             ));
         }
-        let (_, linked_shell_critical) =
-            LinkedDamagePlan::shell_attributes(execution.context.extra_skill_kind, false);
         for attr_id in [
             crate::engine::entity::attr::AttrId::CriticalDmg,
             crate::engine::entity::attr::AttrId::DmgBonus,
@@ -823,10 +835,10 @@ pub(super) fn damage_ops(
                 attack_attributes.push((attr_id, delta));
                 // A linked producer shares the triggering action's damage lane, while its
                 // independently rolled critical hit keeps its own critical-damage lane.
-                if attr_id == crate::engine::entity::attr::AttrId::DmgBonus
-                    || (attr_id == crate::engine::entity::attr::AttrId::CriticalDmg
-                        && linked_shell_critical)
-                {
+                if crate::engine::skill::buff_act::shell::linked_damage_inherits_attribute(
+                    execution.context.extra_skill_kind,
+                    attr_id,
+                ) {
                     linked_attack_attributes.push((attr_id, delta));
                 }
             }
@@ -913,7 +925,6 @@ pub(super) fn damage_ops(
                 )
             });
         let main_target = main_target == Some(target_uid);
-        let unpaid_extra_action_cost_fields = execution.unpaid_extra_action_cost_fields();
         let attack_plan = AttackPlan {
             source_uid,
             target_uid,
@@ -932,7 +943,6 @@ pub(super) fn damage_ops(
             main_target,
             extra_skill_kind: execution.context.extra_skill_kind,
             performs_extra_action: extra_action,
-            unpaid_extra_action_cost_fields,
             additional_enabled: false,
             additional_is_crit: None,
         };
@@ -1052,6 +1062,9 @@ pub(super) fn damage_ops(
                             target_uid,
                             false,
                             execution.assassination_marks_at_action_start.as_deref(),
+                            execution
+                                .assassination_rate_marks_at_action_start
+                                .as_deref(),
                         );
                     if linked_assassination.final_damage_bonus != 0 {
                         additional_attributes.push((
@@ -1089,6 +1102,7 @@ pub(super) fn damage_ops(
                 damage::resolve_additional_damage_command(
                     damage::DamageRequest {
                         source_uid: additional.credited_source_uid,
+                        action_owner_uid,
                         target_uid,
                         skill_id,
                         rate,
@@ -1106,8 +1120,6 @@ pub(super) fn damage_ops(
                         is_crit: additional_is_crit,
                         extra_skill_kind: execution.context.extra_skill_kind,
                         performs_extra_action: extra_action,
-                        unpaid_extra_action_cost_fields: &attack_plan
-                            .unpaid_extra_action_cost_fields,
                     },
                     damage::DamageRuntime {
                         fight_version: managers.fight_version(),
@@ -1286,23 +1298,11 @@ pub(super) fn forces_critical(
     managers: &BattleManagers,
     execution: &SkillExecution,
 ) -> bool {
-    field_forces_critical(
+    crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::active_forces_critical(
         invocation.plan.source_uid,
         managers,
         performs_extra_action(invocation, execution),
     )
-}
-
-// Gust Force Field: "The extra action is always a critical hit".
-fn field_forces_critical(source_uid: i64, managers: &BattleManagers, extra_action: bool) -> bool {
-    extra_action && {
-        let active_features = managers.buff.active_features(&managers.hp);
-        crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::forces_critical(
-            &active_features,
-            source_uid,
-            true,
-        )
-    }
 }
 
 fn planned_crit_chance(
@@ -1314,7 +1314,11 @@ fn planned_crit_chance(
     extra_action: bool,
 ) -> i32 {
     if execution.modifiers.force_critical
-        || field_forces_critical(source_uid, managers, extra_action)
+        || crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::active_forces_critical(
+            source_uid,
+            managers,
+            extra_action,
+        )
     {
         return 1000;
     }

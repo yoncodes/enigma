@@ -42,7 +42,7 @@ fn attr_transactions_follow_the_buff_lifecycle_boundary() {
     );
     assert_eq!(
         runtime_publication(100, "Attr", EventKind::BuffRemoved),
-        PublicationPhase::BeforePublish
+        PublicationPhase::AfterPublish
     );
 }
 

@@ -436,9 +436,15 @@ fn condition_kind_matches(
             start_round,
             period,
         } => {
+            // 45101 runs during next-round setup but compares the completed round counter.
+            let current_round = if condition.opcode == 45101 {
+                context.current_round.saturating_sub(1)
+            } else {
+                context.current_round
+            };
             *period > 0
-                && context.current_round >= *start_round
-                && (context.current_round - *start_round) % *period == 0
+                && current_round >= *start_round
+                && (current_round - *start_round) % *period == 0
         }
         ParsedConditionKind::ActionOrder(order) => context.action_order == *order,
         ParsedConditionKind::ActionOrderRange { start, count } => {
@@ -523,16 +529,14 @@ fn condition_kind_matches(
                 .sum::<i32>()
                 >= *threshold
         }),
-        ParsedConditionKind::TeamBuffPresence {
-            team,
-            present,
-            buff_id,
-        } => managers.is_some_and(|managers| {
-            pool.team_uids(*team)
-                .iter()
-                .any(|uid| managers.buff.has_active_buff_id_or_type(*uid, *buff_id))
-                == *present
-        }),
+        ParsedConditionKind::PlayerBuffPresence { present, buff_id } => {
+            managers.is_some_and(|managers| {
+                managers.buff.has_active_buff_id_or_type(
+                    crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                    *buff_id,
+                ) == *present
+            })
+        }
         ParsedConditionKind::BuffTypeCount {
             type_ids,
             compare,
@@ -661,30 +665,24 @@ fn condition_kind_matches(
             compare,
             threshold,
         } => managers.is_some_and(|managers| {
-            let amount = condition_targets
-                .iter()
-                .map(|uid| {
-                    managers
-                        .buff
-                        .visible_buff_status_type_count(*uid, status_ids)
-                })
-                .sum();
-            compare_value(amount, *compare, *threshold)
+            condition_targets.iter().any(|uid| {
+                let amount = managers
+                    .buff
+                    .visible_buff_status_type_count(*uid, status_ids);
+                compare_value(amount, *compare, *threshold)
+            })
         }),
         ParsedConditionKind::VisibleStackedStatusTypeCount {
             status_ids,
             compare,
             threshold,
         } => managers.is_some_and(|managers| {
-            let amount = condition_targets
-                .iter()
-                .map(|uid| {
-                    managers
-                        .buff
-                        .visible_stacked_status_type_count(*uid, status_ids)
-                })
-                .sum();
-            compare_value(amount, *compare, *threshold)
+            condition_targets.iter().any(|uid| {
+                let amount = managers
+                    .buff
+                    .visible_stacked_status_type_count(*uid, status_ids);
+                compare_value(amount, *compare, *threshold)
+            })
         }),
         ParsedConditionKind::PerTeamBuffStatusTypeCount {
             status_ids,
@@ -1590,4 +1588,4 @@ fn identity_targets<'a>(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

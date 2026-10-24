@@ -91,18 +91,30 @@ pub(super) fn add_buff_by_layer_range_ops(
         return Some(Vec::new());
     };
     let origin = super::command_origin(behavior)?;
-    let mut ops = buff_ids
-        .into_iter()
-        .map(|buff_id| {
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::Deactivate(BuffRemove {
-                origin,
-                target_uid: context.target_uid,
-                selector: BuffRemoveSelector::ExactId(buff_id),
-            })))
+    let active = buff_ids
+        .iter()
+        .filter(|buff_id| {
+            context
+                .managers
+                .buff
+                .has_buff_id_or_type(context.target_uid, **buff_id)
         })
+        .map(|buff_id| BuffSelector::IdOrType(*buff_id))
         .collect::<Vec<_>>();
-    ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
-        BuffGrant {
+    if !active.is_empty() {
+        return Some(vec![RuleOp::Command(BattleCommand::Buff(
+            BuffCommand::Replace(BuffReplace {
+                origin,
+                source_uid: context.source_uid,
+                target_uid: context.target_uid,
+                sources: active,
+                replacement_id_or_type: selected,
+                child_uid_reservations: 1,
+            }),
+        ))]);
+    }
+    Some(vec![RuleOp::Command(BattleCommand::Buff(
+        BuffCommand::Grant(BuffGrant {
             origin,
             source_uid: context.source_uid,
             target_uid: context.target_uid,
@@ -110,9 +122,8 @@ pub(super) fn add_buff_by_layer_range_ops(
             amount: None,
             occurrences: 1,
             child_uid_reservations: 0,
-        },
-    ))));
-    Some(ops)
+        }),
+    ))])
 }
 
 pub(super) fn consume_buff_layer_and_team_grant_ops(

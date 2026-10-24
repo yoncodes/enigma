@@ -42,12 +42,12 @@ pub(super) fn resource_event(event: &BattleEvent) -> Option<ResourceEvent> {
 }
 
 pub(super) fn active_skill_targets(event: &BattleEvent) -> Option<&[i64]> {
-    match event {
-        BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action) => {
-            Some(&action.target_uids)
-        }
-        BattleEvent::AllyAction(action) => Some(&action.target_uids),
-        _ => None,
+    match event.skill_action_event() {
+        Some(action) => Some(&action.target_uids),
+        None => match event {
+            BattleEvent::AllyAction(action) => Some(&action.target_uids),
+            _ => None,
+        },
     }
 }
 
@@ -93,6 +93,31 @@ pub(super) fn apply_event_context(
 ) {
     let catalog = managers.catalog();
     context.event_source_uid = event.source_uid().unwrap_or_default();
+    if let Some(action) = event.skill_action_event() {
+        context.runtime_target_uid = action.target_uid;
+        context.active_skill_id = action.skill_id;
+        context.active_skill_source_uid = action.source_uid;
+        context.active_skill_slot = action.skill_slot;
+        context.active_skill_is_attack = action.is_attack;
+        context.active_skill_rank = action.rank;
+        context.active_skill_type = action.skill_type;
+        context.damage_target_count_kind = action.skill_type;
+        context.active_skill_effect_tag = action.effect_tag;
+        context.active_skill_assassinate = action.assassinate;
+        context.active_skill_mode = action.mode;
+        context.action_damage_amount = action.damage_amount;
+        context.action_dealt_damage = action.damage_amount > 0;
+        context.action_kill_count = action.kill_count;
+        context.action_crit_count = action.crit_count;
+        context.action_guard_break_count = action.guard_break_count;
+        context.additional_moxie = action.additional_moxie;
+        context.extra_skill_kind = action.extra_skill_kind;
+        context.teammate_injury_count = action.teammate_injury_count;
+        context.teammate_injury_count_not_reset = action.teammate_injury_count_not_reset;
+        context.team_injury_count_round = action.team_injury_count_round;
+        context.direct_skill_body = true;
+        return;
+    }
     match event {
         BattleEvent::BuffAdded(change) | BattleEvent::BuffChanged(change) => {
             context.runtime_target_uid = change.target_uid;
@@ -127,7 +152,7 @@ pub(super) fn apply_event_context(
         BattleEvent::DamageShared {
             target_uid,
             participant_uids,
-            share_count,
+            action_share_count,
             damage_from,
             ..
         } => {
@@ -138,7 +163,7 @@ pub(super) fn apply_event_context(
                 } else {
                     0
                 };
-            context.damage_shared_count = *share_count;
+            context.damage_shared_count = *action_share_count;
             context.hit_damage_from = Some(*damage_from);
         }
         BattleEvent::HpLost { target_uid, .. } | BattleEvent::HpHealed { target_uid, .. } => {
@@ -165,12 +190,16 @@ pub(super) fn apply_event_context(
             context.damage_target_count_kind =
                 catalog.damage_target_count_kind(context.logic_target);
             context.active_skill_is_attack = catalog.skill_is_attack(hit.skill_id);
-            context.active_skill_mode = if managers.conduit.owns_skill(hit.source_uid, hit.skill_id)
+            if context.active_skill_mode
+                != crate::engine::skill::action::SkillExecutionMode::Synchronization
             {
-                crate::engine::skill::action::SkillExecutionMode::Device
-            } else {
-                crate::engine::skill::action::SkillExecutionMode::Active
-            };
+                context.active_skill_mode =
+                    if managers.conduit.owns_skill(hit.source_uid, hit.skill_id) {
+                        crate::engine::skill::action::SkillExecutionMode::Device
+                    } else {
+                        crate::engine::skill::action::SkillExecutionMode::Active
+                    };
+            }
         }
         BattleEvent::EntityDied(death) => context.runtime_target_uid = death.target_uid,
         BattleEvent::EntityEntered { target_uid }
@@ -238,30 +267,7 @@ pub(super) fn apply_event_context(
         | BattleEvent::SummonChanged(_)
         | BattleEvent::BloodtitheChanged { .. }
         | BattleEvent::Kind(_) => {}
-        BattleEvent::SkillEffectStarted(action) | BattleEvent::SkillAction(action) => {
-            context.runtime_target_uid = action.target_uid;
-            context.active_skill_id = action.skill_id;
-            context.active_skill_source_uid = action.source_uid;
-            context.active_skill_slot = action.skill_slot;
-            context.active_skill_is_attack = action.is_attack;
-            context.active_skill_rank = action.rank;
-            context.active_skill_type = action.skill_type;
-            context.damage_target_count_kind = action.skill_type;
-            context.active_skill_effect_tag = action.effect_tag;
-            context.active_skill_assassinate = action.assassinate;
-            context.active_skill_mode = action.mode;
-            context.action_damage_amount = action.damage_amount;
-            context.action_dealt_damage = action.damage_amount > 0;
-            context.action_kill_count = action.kill_count;
-            context.action_crit_count = action.crit_count;
-            context.action_guard_break_count = action.guard_break_count;
-            context.additional_moxie = action.additional_moxie;
-            context.extra_skill_kind = action.extra_skill_kind;
-            context.teammate_injury_count = action.teammate_injury_count;
-            context.teammate_injury_count_not_reset = action.teammate_injury_count_not_reset;
-            context.team_injury_count_round = action.team_injury_count_round;
-            context.direct_skill_body = true;
-        }
+        BattleEvent::SkillEffectStarted(_) | BattleEvent::SkillAction(_) => unreachable!(),
         BattleEvent::AllyAction(action) => {
             context.runtime_target_uid = action.target_uid;
             context.active_skill_id = action.skill_id;

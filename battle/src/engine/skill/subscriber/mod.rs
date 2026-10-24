@@ -641,4 +641,4 @@ fn additional_skill_owners(pool: &TargetPool, managers: &BattleManagers) -> Vec<
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

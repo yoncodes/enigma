@@ -35,7 +35,6 @@ pub struct AttackPlan {
     pub main_target: bool,
     pub extra_skill_kind: i32,
     pub performs_extra_action: bool,
-    pub unpaid_extra_action_cost_fields: Vec<(i32, i64)>,
     pub additional_enabled: bool,
     pub additional_is_crit: Option<bool>,
 }

@@ -1,6 +1,48 @@
 use super::*;
 
 impl EffectPacket {
+    pub(crate) fn synchronization_damage(
+        target_uid: i64,
+        damage: DamageRecord,
+        hurt_info_layout: HurtInfoWireLayout,
+        absorb_map_layout: AbsorbHurtMapLayout,
+    ) -> ActEffect {
+        let change = HpChange {
+            target_uid,
+            before: 0,
+            delta: 0,
+            after: 0,
+            max: 0,
+            config_effect: damage.config_effect,
+            hurt: Some(damage.hurt),
+            assassinate: damage.assassinate,
+            effect_type: EffectType::Eziobigskilldamage as i32,
+            display_amount: Some(damage.amount),
+        };
+        let mut hurt_info = Self::hurt_info(
+            change,
+            damage.hurt,
+            None,
+            damage.hurt.hurt_effect_type,
+            hurt_info_layout,
+            absorb_map_layout,
+        );
+        hurt_info.reduce_hp = None;
+        hurt_info.career_restraint = Some(damage.hurt.career_restraint);
+        ActEffect {
+            target_id: Some(target_uid),
+            effect_type: Some(EffectType::Eziobigskilldamage as i32),
+            effect_num: Some(damage.amount),
+            config_effect: Some(damage.config_effect),
+            buff_act_id: Some(damage.hurt.skill_id),
+            reserve_id: Some(0),
+            team_type: Some(0),
+            effect_num1: Some(damage.hurt.hurt_effect_type),
+            hurt_info: Some(hurt_info),
+            ..Default::default()
+        }
+    }
+
     pub(crate) fn hp_with_hurt_info_layout(
         change: HpChange,
         hurt_info_layout: HurtInfoWireLayout,
