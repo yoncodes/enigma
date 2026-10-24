@@ -117,7 +117,7 @@ fn provoke_replaces_only_the_copy_from_the_same_applier() {
 }
 
 #[test]
-fn replacement_removal_does_not_publish_the_stale_duration() {
+fn replacement_removal_clears_the_stale_duration() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -170,7 +170,7 @@ fn replacement_removal_does_not_publish_the_stale_duration() {
 
     assert_eq!(changes.change.removed.len(), 1);
     assert_eq!(changes.change.removed[0].buff.uid, Some(20));
-    assert_eq!(changes.change.removed[0].buff.duration, None);
+    assert_eq!(changes.change.removed[0].buff.duration, Some(0));
     assert_eq!(
         changes.change.added.as_ref().unwrap().buff.duration,
         Some(3)

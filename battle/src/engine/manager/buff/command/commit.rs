@@ -414,7 +414,7 @@ impl BuffManager {
                 .iter()
                 .flat_map(|uid| self.delete(plan.route.target_uid, *uid))
                 .map(|mut removed| {
-                    removed.buff.duration = None;
+                    removed.buff.duration = Some(0);
                     removed
                 }),
         );
