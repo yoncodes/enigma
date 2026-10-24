@@ -183,6 +183,7 @@ impl BuffManager {
             definition: Some(definition.clone()),
             fanout_emitter_uid: None,
             effective,
+            reserve_normal_uid_on_expiry: false,
             buff: buff.clone(),
         });
         if effective {

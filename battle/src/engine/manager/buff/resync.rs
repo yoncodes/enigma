@@ -78,6 +78,7 @@ impl BuffManager {
                 self.buffs[index].type_id = type_id;
                 self.buffs[index].fanout_emitter_uid = None;
                 self.buffs[index].effective = true;
+                self.buffs[index].reserve_normal_uid_on_expiry = false;
                 self.commit_grant_values(buff_uid, &grant_values);
             }
             self.buffs[index].buff = buff;
@@ -105,6 +106,7 @@ impl BuffManager {
             definition,
             fanout_emitter_uid: None,
             effective: true,
+            reserve_normal_uid_on_expiry: false,
             buff,
         });
         self.commit_grant_values(buff_uid, &grant_values);
@@ -211,6 +213,47 @@ mod tests {
         assert_eq!(manager.grant_value(1, 1127), Some(140));
         assert_eq!(manager.buff_id_amount(20, 31050111), 0);
         assert_eq!(manager.buff_id_amount(20, 31430131), 1);
+    }
+
+    #[test]
+    fn observed_id_change_clears_private_expiry_uid_policy() {
+        let mut manager = manager(Some(BuffInfo {
+            uid: Some(1),
+            buff_id: Some(31090131),
+            from_uid: Some(20),
+            duration: Some(2),
+            ..Default::default()
+        }));
+        manager
+            .buffs
+            .iter_mut()
+            .find(|active| active.buff.uid == Some(1))
+            .unwrap()
+            .reserve_normal_uid_on_expiry = true;
+
+        assert!(
+            manager
+                .resync_observed_present(
+                    20,
+                    BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(31050111),
+                        from_uid: Some(20),
+                        duration: Some(3),
+                        ..Default::default()
+                    }
+                )
+                .unwrap()
+        );
+
+        assert!(
+            !manager
+                .buffs
+                .iter()
+                .find(|active| active.buff.uid == Some(1))
+                .unwrap()
+                .reserve_normal_uid_on_expiry
+        );
     }
 
     #[test]

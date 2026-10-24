@@ -743,6 +743,7 @@ pub(super) struct GrantPlan {
     args: BuffAddArgs,
     repeat: i32,
     action: GrantAction,
+    reserve_normal_uid_on_expiry: bool,
     excluded_uids: Vec<i64>,
     replacement_uids: Vec<i64>,
     capacity_eviction_uids: Vec<i64>,

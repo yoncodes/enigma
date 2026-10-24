@@ -1293,6 +1293,8 @@ impl BuffManager {
             args,
             repeat,
             action,
+            reserve_normal_uid_on_expiry: action == GrantAction::ReplaceExisting
+                && policy.uid.reserve_normal_on_replaced_expiry,
             excluded_uids,
             replacement_uids,
             capacity_eviction_uids,

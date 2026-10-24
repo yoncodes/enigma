@@ -449,6 +449,14 @@ impl BuffManager {
             layer_refresh_uid,
             &plan.fanout,
         );
+        if plan.reserve_normal_uid_on_expiry
+            && let Some(added) = change.added.as_ref()
+            && let Some(active) = self.buffs.iter_mut().find(|active| {
+                active.owner_uid == added.target_uid && active.buff.uid == added.buff.uid
+            })
+        {
+            active.reserve_normal_uid_on_expiry = true;
+        }
         if let Some(progress) = plan.transition_progress {
             self.transition_progress
                 .insert((plan.route.target_uid, plan.route.buff_id), progress);

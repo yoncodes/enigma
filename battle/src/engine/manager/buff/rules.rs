@@ -79,6 +79,7 @@ pub struct BuffUidPolicy {
     pub allocation: UidAllocationPolicy,
     pub normal_reservations_before_reapply: i32,
     pub normal_reservations_after_first_apply: i32,
+    pub reserve_normal_on_replaced_expiry: bool,
     pub reserve_normal_on_kept_reapply: bool,
     pub reserve_after_first_apply: bool,
     pub reserve_before_explicit_layer_apply: bool,
@@ -212,6 +213,8 @@ impl BuffPolicy {
                 normal_reservations_before_reapply: definition.normal_reservations_before_reapply(),
                 normal_reservations_after_first_apply: definition
                     .normal_reservations_after_first_apply(),
+                reserve_normal_on_replaced_expiry: definition
+                    .reserves_normal_uid_on_replaced_expiry(),
                 reserve_normal_on_kept_reapply: definition.reserves_normal_uid_on_kept_reapply(),
                 reserve_after_first_apply: definition.reserves_child_after_first_apply(),
                 reserve_before_explicit_layer_apply: definition

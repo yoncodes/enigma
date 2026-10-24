@@ -221,6 +221,7 @@ struct ActiveBuff {
     definition: Option<BuffDefinition>,
     fanout_emitter_uid: Option<i64>,
     effective: bool,
+    reserve_normal_uid_on_expiry: bool,
     buff: BuffInfo,
 }
 
