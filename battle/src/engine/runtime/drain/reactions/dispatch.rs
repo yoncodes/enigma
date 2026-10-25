@@ -129,6 +129,10 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         if timing == crate::engine::event::subscription::ReactionTiming::AfterAction {
             reactions.after_action.push(queued);
         } else if timing
+            == crate::engine::event::subscription::ReactionTiming::BeforeHitPassiveSkills
+        {
+            reactions.before_hit_passive_skills.push(queued);
+        } else if timing
             == crate::engine::event::subscription::ReactionTiming::BeforeAfterHitObservers
         {
             reactions.before_after_hit_observers.push(queued);
@@ -255,6 +259,10 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         (
             crate::engine::event::subscription::ReactionTiming::AfterHitSkills,
             &mut reactions.after_hit,
+        ),
+        (
+            crate::engine::event::subscription::ReactionTiming::BeforeHitPassiveSkills,
+            &mut reactions.before_hit_passive_skills,
         ),
         (
             crate::engine::event::subscription::ReactionTiming::BeforeAfterHitObservers,

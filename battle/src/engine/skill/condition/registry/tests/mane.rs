@@ -31,6 +31,20 @@ fn attack_conditions_keep_their_exact_routes() {
 }
 
 #[test]
+fn attacked_psychube_reactions_wait_for_after_hit_observers() {
+    let timing = find_key(22209, "BeAttacked").unwrap().reaction_timing;
+
+    assert_eq!(
+        timing.resolve(PassiveSourceKind::Psychube),
+        ReactionTiming::AfterHitObservers
+    );
+    assert_eq!(
+        timing.resolve(PassiveSourceKind::Insight),
+        ReactionTiming::AfterSharedHit
+    );
+}
+
+#[test]
 fn tuning_practice_observes_matching_incantations_at_action_start() {
     assert_eq!(
         parse(34201, "UseSkillEffectTag", &["4".into(), "6".into()]),

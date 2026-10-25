@@ -17,6 +17,7 @@ pub enum ReactionTiming {
     AfterSettlement,
     AfterSkill,
     AfterHitSkills,
+    BeforeHitPassiveSkills,
     BeforeAfterHitObservers,
     AfterHitObservers,
     AfterSharedHit,

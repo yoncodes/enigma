@@ -424,7 +424,7 @@ mod tests {
         assert_eq!(subscription.multiplicity_policy, subscription.timing_policy);
         assert_eq!(
             subscription.timing,
-            crate::engine::event::subscription::ReactionTiming::BeforeAfterHitObservers
+            crate::engine::event::subscription::ReactionTiming::BeforeHitPassiveSkills
         );
     }
 

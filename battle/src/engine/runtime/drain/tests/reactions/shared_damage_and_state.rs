@@ -30,7 +30,14 @@ fn mane_mass_attack_orders_shared_damage_before_hit_passives_and_direct_hit() {
                 entity(1, 10, Vec::new(), vec![share_buff(50)]),
                 entity(2, 11, Vec::new(), vec![share_buff(51)]),
                 entity(3, 12, Vec::new(), vec![share_buff(52)]),
-                entity(4, 13, vec![434111], vec![share_buff(53)]),
+                FightEntityInfo {
+                    equips: vec![sonettobuf::EquipRecord {
+                        equip_id: Some(1541),
+                        refine_lv: Some(1),
+                        ..Default::default()
+                    }],
+                    ..entity(4, 13, vec![434111], vec![share_buff(53)])
+                },
             ],
             ..Default::default()
         }),
@@ -66,8 +73,27 @@ fn mane_mass_attack_orders_shared_damage_before_hit_passives_and_direct_hit() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
+    assert_eq!(
+        managers.entity.passive_source(13, 434111),
+        crate::engine::entity::passive::PassiveSourceKind::Psychube
+    );
     let catalog =
         SkillEffectCatalog::from_roots(config::configs::get(), [109380001, 109380006, 434111], []);
+    let attacked = crate::engine::skill::subscriber::for_compiled_event(
+        &pool,
+        &managers,
+        &catalog,
+        crate::engine::event::kind::EventKind::TargetAttacked,
+    )
+    .unwrap()
+    .skills
+    .into_iter()
+    .find(|subscriber| subscriber.skill_id == 434111)
+    .unwrap();
+    assert_eq!(
+        attacked.key.timing,
+        crate::engine::event::subscription::ReactionTiming::AfterHitObservers
+    );
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: -1,
         skill_id: 109380001,

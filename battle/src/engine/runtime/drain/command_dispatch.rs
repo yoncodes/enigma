@@ -556,6 +556,10 @@ pub(super) fn drain_command(
                 .then_some(pending_deaths.as_slice()),
         )?
     };
+    state.defer_hit_passive_skills(
+        action_scope.as_deref(),
+        std::mem::take(&mut reactions.before_hit_passive_skills),
+    );
     state.defer_before_after_hit_observers(
         action_scope.as_deref(),
         std::mem::take(&mut reactions.before_after_hit_observers),
@@ -614,6 +618,13 @@ pub(super) fn drain_command(
             None,
         )?;
         hit_buff_acts
+            .before_hit_passive_skills
+            .append(&mut hit_skills.before_hit_passive_skills);
+        state.defer_hit_passive_skills(
+            action_scope.as_deref(),
+            std::mem::take(&mut hit_buff_acts.before_hit_passive_skills),
+        );
+        hit_buff_acts
             .before_after_hit_observers
             .append(&mut hit_skills.before_after_hit_observers);
         state.defer_before_after_hit_observers(
@@ -654,10 +665,13 @@ pub(super) fn drain_command(
     let after_settlement = reactions.after_settlement;
     if releases_hit_passive_skills {
         let mut released_hit_passives = state
-            .take_before_after_hit_observers(action_scope.as_ref())
+            .take_hit_passive_skills(action_scope.as_ref())
             .unwrap_or_default();
-        if let Some(hit_skills) = state.take_hit_passive_skills(action_scope.as_ref()) {
+        if let Some(hit_skills) = state.take_hit_skills(action_scope.as_ref()) {
             released_hit_passives.extend(hit_skills);
+        }
+        if let Some(observers) = state.take_before_after_hit_observers(action_scope.as_ref()) {
+            released_hit_passives.extend(observers);
         }
         after_publish.splice(0..0, released_hit_passives);
     }
