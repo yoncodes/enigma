@@ -124,7 +124,6 @@ pub(super) struct SubscriberContext {
     pub(super) owner_uid: i64,
     pub(super) skill_id: Option<i32>,
     pub(super) group: Option<Rc<RefCell<SubscriberDeathGroup>>>,
-    pub(super) intermediate_death_group: bool,
 }
 
 impl SubscriberContext {
@@ -133,7 +132,6 @@ impl SubscriberContext {
             owner_uid,
             skill_id: None,
             group: None,
-            intermediate_death_group: false,
         }
     }
 
@@ -142,7 +140,6 @@ impl SubscriberContext {
             owner_uid,
             skill_id: Some(skill_id),
             group: None,
-            intermediate_death_group: false,
         }
     }
 }
@@ -363,22 +360,6 @@ pub(super) struct ReactionBatch {
 pub use crate::engine::event::dispatcher::ReactionLane;
 
 impl ReactionBatch {
-    pub(super) fn queued_mut(&mut self) -> impl Iterator<Item = &mut QueuedOp> {
-        self.before_publish
-            .iter_mut()
-            .chain(&mut self.after_publish)
-            .chain(&mut self.after_settlement)
-            .chain(&mut self.after_skill)
-            .chain(&mut self.after_hit)
-            .chain(&mut self.attacked_skills)
-            .chain(&mut self.hp_thresholds)
-            .chain(&mut self.before_after_hit_observers)
-            .chain(&mut self.after_hit_skills)
-            .chain(&mut self.after_hit_shell)
-            .chain(&mut self.shared_hit_skills)
-            .chain(&mut self.after_action)
-    }
-
     pub(super) fn append(&mut self, mut other: Self) {
         self.before_publish.append(&mut other.before_publish);
         self.after_publish.append(&mut other.after_publish);

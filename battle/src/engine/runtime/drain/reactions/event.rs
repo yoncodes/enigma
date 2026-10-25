@@ -179,12 +179,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_groups(
     let mut reactions = ReactionBatch::default();
     let mut scheduled_death_completions = Vec::<crate::engine::manager::hp::PendingDeath>::new();
     let mut event_offset = 0;
-    let final_death_group = event_groups.iter().rposition(|events| {
-        events
-            .iter()
-            .any(|event| matches!(event, BattleEvent::EntityDied(_)))
-    });
-    for (group_index, events) in event_groups.iter().enumerate() {
+    for events in event_groups {
         let events = &all_events[event_offset..event_offset + events.len()];
         event_offset += events.len();
         let mut group = dispatch_event_batch_inner(
@@ -207,21 +202,6 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_groups(
             &mut state,
             fired_once_per_action,
         )?;
-        if final_death_group.is_some_and(|final_index| group_index < final_index)
-            && events
-                .iter()
-                .any(|event| matches!(event, BattleEvent::EntityDied(_)))
-        {
-            for queued in group.queued_mut() {
-                if matches!(
-                    queued.trigger,
-                    SkillOpTrigger::Event(BattleEvent::EntityDied(_))
-                ) && let Some(subscriber) = queued.subscriber.as_mut()
-                {
-                    subscriber.intermediate_death_group = true;
-                }
-            }
-        }
         if publication_phase == crate::engine::event::subscription::PublicationPhase::AfterPublish
             && lane.is_none()
             && let Some(pending_deaths) = pending_deaths

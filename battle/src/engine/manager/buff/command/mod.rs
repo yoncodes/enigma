@@ -360,7 +360,6 @@ impl BuffDurationAdvance {
 pub enum BuffCommand {
     Grant(BuffGrant),
     GrantOnDeath(BuffGrant),
-    GrantOnIntermediateDeath(BuffGrant),
     GrantRelated(RelatedBuffGrant),
     GrantIndependent(BuffGrant),
     Accumulate(BuffGrant),

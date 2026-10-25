@@ -24,15 +24,6 @@ pub(super) fn drain_command(
     subscriber: Option<SubscriberContext>,
     caster_frame: Option<FrameOwner>,
 ) -> Result<(), DrainError> {
-    if subscriber
-        .as_ref()
-        .is_some_and(|subscriber| subscriber.intermediate_death_group)
-        && let RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(command)) =
-            &mut command
-        && let crate::engine::manager::buff::BuffCommand::GrantOnDeath(grant) = command
-    {
-        *command = crate::engine::manager::buff::BuffCommand::GrantOnIntermediateDeath(*grant);
-    }
     // After-hit observers must execute before the lifecycle operation
     // that closes their boundary, so requeue that closer behind them.
     let releases_after_hit = matches!(
