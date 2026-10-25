@@ -25,6 +25,36 @@ fn setup_initializes_owned_card_state_without_publishing_a_change() {
 }
 
 #[test]
+fn state_publication_reports_the_committed_hand_and_deck_without_mutating_them() {
+    let hand = vec![CardInfo {
+        uid: Some(10),
+        skill_id: Some(100),
+        ..Default::default()
+    }];
+    let mut manager = CardManager::new(hand.clone());
+    manager.set_deck_num(30);
+
+    let changes = manager
+        .execute_command(CardCommand::PublishState(CardPublishState {
+            origin: ORIGIN,
+            team_type: 1,
+        }))
+        .unwrap();
+
+    assert_eq!(changes.kind, CardChangeKind::StatePublished);
+    assert_eq!(changes.before, hand);
+    assert_eq!(changes.after, hand);
+    assert!(changes.events().is_empty());
+    assert!(matches!(
+        changes.operation,
+        Some(CardChange::DeckCount {
+            deck_num: 30,
+            team_type: 1
+        })
+    ));
+}
+
+#[test]
 fn hand_rank_change_mutates_one_registered_card_and_records_its_one_based_index() {
     crate::test_support::init_config();
     let mut manager = CardManager::new(vec![CardInfo {

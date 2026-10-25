@@ -923,6 +923,21 @@ fn project_change(
                 .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Played => Vec::new(),
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::StatePublished => {
+            let mut effects = match redeal_layout {
+                RedealWireLayout::Version6 => Vec::new(),
+                RedealWireLayout::Version7 => {
+                    vec![CardPacket::redeal_hand_sync(changes.after.clone())]
+                }
+            };
+            effects.push(CardPacket::from_change(
+                changes
+                    .operation
+                    .clone()
+                    .expect("published card state retains its deck count"),
+            ));
+            effects
+        }
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,

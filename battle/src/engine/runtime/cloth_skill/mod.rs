@@ -1,6 +1,6 @@
 use sonettobuf::{FightStep, RedealCardInfoPush, UseClothSkillReply, UseClothSkillRequest};
 
-use crate::engine::round::state::{RoundCardSnapshotPolicy, next_round_shell};
+use crate::engine::round::state::continuation_round_shell;
 
 use super::{BattleRuntime, change, drain, executor, project_result, record};
 
@@ -453,7 +453,7 @@ impl BattleRuntime {
                     .into();
                 invocation.target = crate::engine::skill::action::SkillTarget::Explicit(target_uid);
                 invocation.mode = crate::engine::skill::action::SkillExecutionMode::Synchronization;
-                let mut result = drain::run_skill(
+                let result = drain::run_skill(
                     &mut self.managers,
                     &pool,
                     &self.catalog,
@@ -469,37 +469,15 @@ impl BattleRuntime {
                 )
                 .inspect_err(|error| tracing::warn!(?error, "cloth skill execution failed"))
                 .ok()?;
-                result.frames.push(record::SemanticFrame {
-                    owner: record::FrameOwner::Command,
-                    trigger: record::FrameTrigger::Active,
-                    items: vec![
-                        record::FrameItem::Cue(record::RoundCue::RedealHandSync {
-                            cards: self.managers.card.hand().to_vec(),
-                        }),
-                        record::FrameItem::Cue(record::RoundCue::DeckCount {
-                            count: self.managers.card.deck_num(),
-                            team_type: 1,
-                        }),
-                    ],
-                });
                 project_result(result, fight_version, absorb_hurt_map_layout)
                     .inspect_err(|error| tracing::warn!(%error, "cloth skill projection failed"))
                     .ok()?
             }
             _ => return None,
         };
-        let mut round = next_round_shell(
+        let mut round = continuation_round_shell(
             &self.fight,
             &self.round_state,
-            if skill_type == ClothSkillType::EzioBigSkill {
-                RoundCardSnapshotPolicy::None
-            } else if self.round_state.is_finish {
-                RoundCardSnapshotPolicy::CurrentOnly
-            } else {
-                RoundCardSnapshotPolicy::All
-            },
-            self.managers.card.hand(),
-            self.managers.card.team_cards(),
             self.managers.card.ai_queue(),
         );
         self.managers.sync_entities(&mut self.fight);

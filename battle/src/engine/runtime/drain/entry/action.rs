@@ -35,6 +35,9 @@ pub fn run_skill(
     invocation: crate::engine::skill::action::SkillInvocation,
     modifiers: crate::engine::skill::action::SkillModifiers,
 ) -> Result<DrainResult, DrainError> {
+    let publishes_card_state =
+        invocation.mode == crate::engine::skill::action::SkillExecutionMode::Synchronization;
+    let source_uid = invocation.plan.source_uid;
     let mut queue = VecDeque::from([QueuedOp {
         op: RuleOp::Skill(invocation),
         trigger: SkillOpTrigger::Active,
@@ -47,6 +50,33 @@ pub fn run_skill(
         subscriber: None,
         caster_frame: None,
     }]);
+    if publishes_card_state {
+        queue.push_back(QueuedOp {
+            op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Card(
+                crate::engine::manager::card::CardCommand::PublishState(
+                    crate::engine::manager::card::CardPublishState {
+                        origin: crate::engine::skill::rule::CommandOrigin {
+                            domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                            key: crate::engine::skill::rule::DefinitionKey::new(
+                                0,
+                                "SynchronizationCardState",
+                            ),
+                        },
+                        team_type: pool.team_type(source_uid).unwrap_or_default(),
+                    },
+                ),
+            )),
+            trigger: SkillOpTrigger::Active,
+            skill_execution: None,
+            frame_path: None,
+            parent_path: None,
+            frame_group: None,
+            independent_parent_group: None,
+            frame_owner: None,
+            subscriber: None,
+            caster_frame: None,
+        });
+    }
     drain_queue(managers, pool, catalog, determinism, context, &mut queue)
 }
 
