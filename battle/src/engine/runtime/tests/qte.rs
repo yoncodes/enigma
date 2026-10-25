@@ -13,12 +13,13 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
             attack: Some(attack),
             ..Default::default()
         }),
+        passive_skill: (uid == 20).then_some(31050141).into_iter().collect(),
         ..Default::default()
     };
     let mut runtime = runtime(Fight {
         version: Some(7),
         attacker: Some(FightTeam {
-            entitys: vec![entity(10, 1, 1_000, 1_000)],
+            entitys: vec![entity(10, 1, 1_000, 1_000), entity(20, 1, 1_000, 1_000)],
             ..Default::default()
         }),
         defender: Some(FightTeam {
@@ -64,7 +65,7 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         .unwrap();
     runtime.catalog = SkillEffectCatalog::from_roots(
         config::configs::get(),
-        [312301323, 312301333, 312301343],
+        [312301323, 312301333, 312301343, 31050141],
         [],
     );
 
@@ -123,10 +124,31 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
                 })
         })
     }
+    fn count_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> usize {
+        steps
+            .iter()
+            .map(|step| {
+                usize::from(step.act_id == Some(skill_id))
+                    + step
+                        .act_effect
+                        .iter()
+                        .filter_map(|effect| effect.fight_step.as_ref())
+                        .map(|nested| count_skill(std::slice::from_ref(nested), skill_id))
+                        .sum::<usize>()
+            })
+            .sum()
+    }
     assert!(contains_skill(
         &replies.last().unwrap().round.as_ref().unwrap().fight_step,
         312301343,
     ));
+    assert_eq!(
+        count_skill(
+            &replies.last().unwrap().round.as_ref().unwrap().fight_step,
+            31050141,
+        ),
+        2
+    );
     fn buff_lifecycle(
         steps: &[sonettobuf::FightStep],
         buff_id: i32,

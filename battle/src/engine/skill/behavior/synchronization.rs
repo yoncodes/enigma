@@ -132,6 +132,7 @@ fn synchronization_progress_ops(
         }
         .into();
         finisher.target = SkillTarget::Explicit(action_target_uid);
+        finisher.mode = crate::engine::skill::action::SkillExecutionMode::Synchronization;
         ops.push(RuleOp::Skill(finisher));
     }
     Some(ops)
