@@ -535,7 +535,7 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
     let mut managers = BattleManagers::seeded(&fight);
     let catalog = SkillEffectCatalog::from_roots(
         config::configs::get(),
-        [31090112, 31090144, 312301701, 31050141],
+        [31090111, 31090144, 312301701, 31050141],
         [],
     );
     crate::engine::mechanic::shell::execute(
@@ -552,11 +552,11 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
     .unwrap();
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
-        skill_id: 31090112,
+        skill_id: 31090111,
     }
     .into();
     invocation.card_index = 3;
-    invocation.target = SkillTarget::Explicit(-1);
+    invocation.target = SkillTarget::Explicit(11);
     invocation.mode = SkillExecutionMode::Active;
 
     let result = run_action(
@@ -573,7 +573,7 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
     let attack = crate::engine::packet::timeline::project(&result.frames)
         .unwrap()
         .into_iter()
-        .find(|step| step.act_id == Some(31090112))
+        .find(|step| step.act_id == Some(31090111))
         .expect("the attack projects a step");
     let children = attack
         .act_effect
@@ -604,6 +604,7 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
         .filter(|step| step.act_id == Some(31090144))
         .collect::<Vec<_>>();
     assert_eq!(shell.len(), 1);
+    assert_eq!(shell[0].to_id, Some(-1));
     assert_eq!(
         shell[0]
             .act_effect
@@ -616,7 +617,7 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
 }
 
 #[test]
-fn deferred_caster_frame_targets_the_action_it_joins() {
+fn deferred_caster_frame_targets_the_exact_action_it_joins() {
     let mut frames = Vec::new();
     let action = push_root(
         &mut frames,
@@ -636,12 +637,32 @@ fn deferred_caster_frame_targets_the_action_it_joins() {
     };
 
     assert_eq!(
-        join_caster_to_action(&frames, &action, caster),
+        join_caster_to_action(&frames, &action, caster.clone()),
         FrameOwner::Skill {
             source_uid: 10,
             skill_id: 100,
             card_index: 0,
             target_uid: Some(-1),
+        }
+    );
+
+    let conduit_action = push_root(
+        &mut frames,
+        FrameOwner::ConduitSkill {
+            source_uid: 12,
+            skill_id: 300,
+            device_index: 1,
+            target_uid: Some(-2),
+        },
+        FrameTrigger::Active,
+    );
+    assert_eq!(
+        join_caster_to_action(&frames, &conduit_action, caster),
+        FrameOwner::Skill {
+            source_uid: 10,
+            skill_id: 100,
+            card_index: 0,
+            target_uid: Some(-2),
         }
     );
 }

@@ -905,6 +905,15 @@ pub(super) fn drain_command(
     {
         state.defer_after_reaction_casts(&group, std::mem::take(&mut reaction_casts));
     }
+    let claimed_casts = claimed_casts.into_iter().map(|(caster, queued)| {
+        let action_path = queued
+            .parent_path
+            .as_deref()
+            .expect("claimed reaction cast keeps its action path");
+        let caster =
+            caster.map(|caster| join_caster_to_action(&result.frames, action_path, caster));
+        (caster, queued)
+    });
     let held_casts = held_casts
         .into_iter()
         .chain(reaction_casts)

@@ -819,10 +819,17 @@ fn join_caster_to_action(
     action_path: &[usize],
     mut caster: FrameOwner,
 ) -> FrameOwner {
-    if let Some(target) = active_skill_target_uid(frames, action_path)
+    if let FrameOwner::Skill {
+        target_uid: Some(target),
+        ..
+    }
+    | FrameOwner::ConduitSkill {
+        target_uid: Some(target),
+        ..
+    } = owner_at_path(frames, action_path)
         && let FrameOwner::Skill { target_uid, .. } = &mut caster
     {
-        *target_uid = Some(target);
+        *target_uid = Some(*target);
     }
     caster
 }
