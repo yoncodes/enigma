@@ -138,17 +138,27 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
             })
             .sum()
     }
-    assert!(contains_skill(
-        &replies.last().unwrap().round.as_ref().unwrap().fight_step,
-        312301343,
-    ));
-    assert_eq!(
-        count_skill(
-            &replies.last().unwrap().round.as_ref().unwrap().fight_step,
-            31050141,
-        ),
-        2
-    );
+    fn skill_order(steps: &[sonettobuf::FightStep], order: &mut Vec<i32>) {
+        for step in steps {
+            if let Some(skill_id) = step.act_id {
+                order.push(skill_id);
+            }
+            for nested in step
+                .act_effect
+                .iter()
+                .filter_map(|effect| effect.fight_step.as_ref())
+            {
+                skill_order(std::slice::from_ref(nested), order);
+            }
+        }
+    }
+    let final_steps = &replies.last().unwrap().round.as_ref().unwrap().fight_step;
+    assert!(contains_skill(final_steps, 312301343,));
+    assert_eq!(count_skill(final_steps, 31050141), 2);
+    let mut order = Vec::new();
+    skill_order(final_steps, &mut order);
+    order.retain(|skill_id| [312301343, 31050141].contains(skill_id));
+    assert_eq!(order, [31050141, 312301343, 31050141]);
     fn buff_lifecycle(
         steps: &[sonettobuf::FightStep],
         buff_id: i32,
