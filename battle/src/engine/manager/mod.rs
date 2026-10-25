@@ -1465,6 +1465,10 @@ impl BattleManagers {
         self.conduit.begin_round();
     }
 
+    pub(crate) fn begin_cloth_sequence(&mut self) {
+        self.configured_rule_progress.begin_cloth_sequence();
+    }
+
     pub fn advance_configured_rule_progress_until_cast(
         &mut self,
         owner_uid: i64,

@@ -83,6 +83,7 @@ impl BattleRuntime {
                     &self.fight,
                 )
                 .runtime_view(&self.managers);
+                self.managers.begin_cloth_sequence();
                 let result = drain::run_skill(
                     &mut self.managers,
                     &pool,
@@ -437,6 +438,7 @@ impl BattleRuntime {
                 {
                     return None;
                 }
+                self.managers.begin_cloth_sequence();
                 let mut invocation: crate::engine::skill::action::SkillInvocation =
                     crate::engine::skill::action::SkillRequest {
                         source_uid: owner_uid,
