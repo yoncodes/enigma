@@ -738,7 +738,7 @@ behavior_definitions! {
     [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterHit, destination, super::synchronization::supports_big_skill_rate;
     [100002] "EzioBigSkillTyp2" => super::synchronization::Handler, EzioBigSkillType2, AfterHit, destination, super::synchronization::supports_big_skill_rate;
     [100003] "EzioBigSkillEnd" => super::synchronization::Handler, EzioBigSkillEnd, AfterHit, destination, super::synchronization::supports_big_skill_end;
-    [100022] "EzioBigSkillCheckTimes" => super::synchronization::Handler, EzioBigSkillCheckTimes, AfterHit, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(214, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::AfterHit) }), arguments::none;
+    [100022] "EzioBigSkillCheckTimes" => super::synchronization::Handler, EzioBigSkillCheckTimes, HitPassives, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(214, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::HitPassives) }), arguments::none;
     [100012] "EzioBigSkillWeapon2" => super::ultimate_kind::Handler, UltimateExtraAction, Immediate, destination;
     [40009] "AddSummoned" => super::summon::Handler, AddSummoned, Immediate, destination, super::summon::supports_add_summoned;
     [40010] "ChangeSummonedLevel" => super::summon::Handler, ChangeSummonedLevel, Immediate, destination;

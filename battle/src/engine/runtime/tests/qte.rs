@@ -14,7 +14,11 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
             attack: Some(attack),
             ..Default::default()
         }),
-        passive_skill: (uid == 20).then_some(31050141).into_iter().collect(),
+        passive_skill: match uid {
+            20 => vec![31050141],
+            30 => vec![31090141],
+            _ => Vec::new(),
+        },
         ..Default::default()
     };
     let mut runtime = runtime(Fight {
@@ -29,13 +33,22 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         }),
         defender: Some(FightTeam {
             entitys: vec![FightEntityInfo {
-                buffs: vec![sonettobuf::BuffInfo {
-                    uid: Some(1),
-                    buff_id: Some(312451011),
-                    from_uid: Some(30),
-                    duration: Some(3),
-                    ..Default::default()
-                }],
+                buffs: vec![
+                    sonettobuf::BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(312451011),
+                        from_uid: Some(30),
+                        duration: Some(3),
+                        ..Default::default()
+                    },
+                    sonettobuf::BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(31090112),
+                        from_uid: Some(30),
+                        layer: Some(15),
+                        ..Default::default()
+                    },
+                ],
                 ..entity(-1, 2, 100_000, 0)
             }],
             ..Default::default()
@@ -79,7 +92,9 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         .unwrap();
     runtime.catalog = SkillEffectCatalog::from_roots(
         config::configs::get(),
-        [312301323, 312301333, 312301343, 31050141, 312451011],
+        [
+            312301323, 312301333, 312301343, 31050141, 31090141, 312451011,
+        ],
         [],
     );
 
@@ -200,6 +215,14 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         &mut first_order,
     );
     assert_eq!(first_order, [312451011, -1, -2]);
+    let first_effects = &replies[0].round.as_ref().unwrap().fight_step[0].act_effect;
+    let buff_position = |buff_id| {
+        first_effects
+            .iter()
+            .position(|effect| effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(buff_id))
+            .unwrap()
+    };
+    assert!(buff_position(229100) < buff_position(31090112));
     fn contains_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> bool {
         steps.iter().any(|step| {
             step.act_id == Some(skill_id)

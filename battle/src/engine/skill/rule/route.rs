@@ -396,7 +396,7 @@ mod tests {
             Some(ConditionDriver::Trigger(ConditionTrigger {
                 key: crate::engine::skill::rule::DefinitionKey::new(214, "None"),
                 event: EventKind::SkillAction,
-                phase: Some(SkillPhase::AfterHit),
+                phase: Some(SkillPhase::HitPassives),
             }))
         );
     }
