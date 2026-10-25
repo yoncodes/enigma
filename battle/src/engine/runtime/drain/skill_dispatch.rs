@@ -1,4 +1,4 @@
-use super::{state::ReactionCastLink, *};
+use super::*;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn drain_skill(
@@ -20,7 +20,6 @@ pub(super) fn drain_skill(
     frame_owner: Option<FrameOwner>,
     subscriber: Option<SubscriberContext>,
     caster_frame: Option<FrameOwner>,
-    reaction_link: Option<ReactionCastLink>,
 ) -> Result<(), DrainError> {
     // After terminal commitment, skip active skills that have not
     // started a frame. Existing-frame continuations may finish settling.
@@ -233,19 +232,6 @@ pub(super) fn drain_skill(
         });
     if completes_action {
         state.open_action(frame_path.clone());
-        if let Some(link) = &reaction_link {
-            state.claim_action_link(&frame_path, link);
-        }
-        if let Some(group) = &frame_group {
-            for (caster, mut queued) in state.take_after_reaction_casts(group) {
-                queued.parent_path = Some(frame_path.clone());
-                let caster =
-                    caster.map(|caster| join_caster_to_action(&result.frames, &frame_path, caster));
-                state.push_after_action_cast(frame_path.clone(), caster, queued);
-            }
-        }
-    } else if let Some(link) = &reaction_link {
-        state.defer_reaction_child_link(frame_path.clone(), link);
     }
     let mut outputs = defeated_owner_card_cleanups
         .into_iter()

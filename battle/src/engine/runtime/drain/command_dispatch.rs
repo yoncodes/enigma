@@ -875,96 +875,16 @@ pub(super) fn drain_command(
             &event_scope,
         ));
     }
-    let (after_action, held_casts, claimed_casts) = if completes_action {
+    let (after_action, held_casts) = if completes_action {
         let casts = state.take_after_action_casts(&frame_path);
-        let claimed = state.take_claimed_reaction_casts(&frame_path);
-        (state.take_after_action(&frame_path), casts, claimed)
+        (state.take_after_action(&frame_path), casts)
     } else {
-        (Vec::new(), Vec::new(), Vec::new())
+        (Vec::new(), Vec::new())
     };
-    let (mut reaction_casts, mut held_casts): (Vec<_>, Vec<_>) =
-        held_casts.into_iter().partition(|(_, queued)| {
-            matches!(
-                &queued.op,
-                RuleOp::Skill(invocation)
-                    if invocation.start.follows_action_reaction()
-            )
-        });
-    let action_reactions = if reaction_casts.is_empty() {
-        Vec::new()
-    } else {
-        ally_action_reaction_groups(&after_publish)
-    };
-    if !action_reactions.is_empty() {
-        let link = DrainState::reaction_cast_link(std::mem::take(&mut reaction_casts));
-        for group in &action_reactions {
-            state.defer_action_reaction_link(group, &link);
-        }
-        drain_nested_queue(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            std::mem::take(&mut after_publish).into(),
-            result,
-            state,
-        )?;
-        reaction_casts = DrainState::take_unclaimed_reaction_casts(&link);
-    }
-    let held_action_groups = held_action_groups(&mut held_casts);
-    if !reaction_casts.is_empty() && !held_action_groups.is_empty() {
-        let link = DrainState::reaction_cast_link(std::mem::take(&mut reaction_casts));
-        for group in &held_action_groups {
-            state.defer_action_reaction_link(group, &link);
-        }
-        let completion_group = Rc::new(RefCell::new(None));
-        state.defer_action_reaction_link(&completion_group, &link);
-        held_casts.push((
-            None,
-            QueuedOp {
-                op: RuleOp::HeldActionBatchComplete,
-                trigger: SkillOpTrigger::Active,
-                skill_execution: None,
-                frame_path: None,
-                parent_path: None,
-                frame_group: Some(completion_group),
-                independent_parent_group: None,
-                frame_owner: None,
-                subscriber: None,
-                caster_frame: None,
-            },
-        ));
-    }
-    if !reaction_casts.is_empty()
-        && let Some(group) = after_action
-            .iter()
-            .rev()
-            .chain(reactions.after_skill.iter().rev())
-            .find_map(|queued| {
-                matches!(queued.op, RuleOp::Skill(_))
-                    .then(|| queued.frame_group.clone())
-                    .flatten()
-            })
-    {
-        state.defer_after_reaction_casts(&group, std::mem::take(&mut reaction_casts));
-    }
-    let claimed_casts = claimed_casts.into_iter().map(|(caster, queued)| {
-        let action_path = queued
-            .parent_path
-            .as_deref()
-            .expect("claimed reaction cast keeps its action path");
-        let caster =
-            caster.map(|caster| join_caster_to_action(&result.frames, action_path, caster));
-        (caster, queued)
+    let held_casts = held_casts.into_iter().map(|(caster, mut queued)| {
+        queued.caster_frame = caster;
+        queued
     });
-    let held_casts = held_casts
-        .into_iter()
-        .chain(reaction_casts)
-        .chain(claimed_casts)
-        .map(|(caster, mut queued)| {
-            queued.caster_frame = caster;
-            queued
-        });
 
     // Manager-produced follow-ups re-enter the same queue. Skills marked
     // AfterCurrentAction are retained until that action closes.

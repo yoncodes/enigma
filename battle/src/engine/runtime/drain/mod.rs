@@ -330,11 +330,6 @@ fn drain_queue_with_deferred(
         let frame_group_started = frame_group
             .as_ref()
             .is_some_and(|group| group.borrow().is_some());
-        let reaction_link = frame_group
-            .as_ref()
-            .and_then(|group| state.action_reaction_link(group))
-            .or_else(|| state.reaction_child_link(frame_path.as_ref()))
-            .or_else(|| state.reaction_child_link(parent_path.as_ref()));
         if !matches!(op, RuleOp::SubscriberGroupComplete)
             && matches!(trigger, SkillOpTrigger::Event(_))
             && !frame_group_started
@@ -450,18 +445,6 @@ fn drain_queue_with_deferred(
                 }
                 prepend(queue, settlements);
             }
-            RuleOp::HeldActionBatchComplete => {
-                let link = reaction_link
-                    .as_ref()
-                    .expect("held action batch completion keeps its reaction link");
-                let casts = DrainState::take_unclaimed_reaction_casts(link)
-                    .into_iter()
-                    .map(|(caster, mut queued)| {
-                        queued.caster_frame = caster;
-                        queued
-                    });
-                prepend(queue, casts);
-            }
             RuleOp::TerminalSettlement => {
                 commit_terminal(managers, base_pool, context, state, &mut result.events);
             }
@@ -484,7 +467,6 @@ fn drain_queue_with_deferred(
                 frame_owner,
                 subscriber,
                 caster_frame,
-                reaction_link,
             )?,
             RuleOp::FreezeActiveSkillRates => {
                 let frame_path = frame_path.ok_or(DrainError::MissingActiveSkillContext)?;
@@ -821,68 +803,6 @@ fn casting_reaction(
             owner @ FrameOwner::Skill { .. } => Some(owner.clone()),
             _ => None,
         })
-}
-
-fn join_caster_to_action(
-    frames: &[SemanticFrame],
-    action_path: &[usize],
-    mut caster: FrameOwner,
-) -> FrameOwner {
-    if let FrameOwner::Skill {
-        target_uid: Some(target),
-        ..
-    }
-    | FrameOwner::ConduitSkill {
-        target_uid: Some(target),
-        ..
-    } = owner_at_path(frames, action_path)
-        && let FrameOwner::Skill { target_uid, .. } = &mut caster
-    {
-        *target_uid = Some(*target);
-    }
-    caster
-}
-
-fn ally_action_reaction_group(queued: &QueuedOp) -> Option<Rc<RefCell<Option<FramePath>>>> {
-    let SkillOpTrigger::Event(BattleEvent::AllyAction(_)) = &queued.trigger else {
-        return None;
-    };
-    let RuleOp::Skill(_) = &queued.op else {
-        return None;
-    };
-    queued.frame_group.clone()
-}
-
-fn ally_action_reaction_groups(queued: &[QueuedOp]) -> Vec<Rc<RefCell<Option<FramePath>>>> {
-    let mut groups = Vec::new();
-    for group in queued.iter().filter_map(ally_action_reaction_group) {
-        if !groups.iter().any(|known| Rc::ptr_eq(known, &group)) {
-            groups.push(group);
-        }
-    }
-    groups
-}
-
-fn held_action_groups(
-    casts: &mut [(Option<FrameOwner>, QueuedOp)],
-) -> Vec<Rc<RefCell<Option<FramePath>>>> {
-    let mut groups = Vec::new();
-    for queued in casts.iter_mut().filter_map(|(_, queued)| {
-        matches!(
-            &queued.op,
-            RuleOp::Skill(invocation) if invocation.mode.completes_action()
-        )
-        .then_some(queued)
-    }) {
-        let group = queued
-            .frame_group
-            .get_or_insert_with(|| Rc::new(RefCell::new(None)))
-            .clone();
-        if !groups.iter().any(|known| Rc::ptr_eq(known, &group)) {
-            groups.push(group);
-        }
-    }
-    groups
 }
 
 fn insert_after_frame(

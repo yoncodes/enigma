@@ -115,7 +115,6 @@ pub enum RuleOp {
     DeathSettlement(crate::engine::manager::hp::DeathTransition),
     DeathEventGroupComplete(crate::engine::manager::hp::PendingDeath),
     SubscriberGroupComplete,
-    HeldActionBatchComplete,
     TerminalSettlement,
     BeginSkillAction {
         lifecycle: SkillLifecycle,

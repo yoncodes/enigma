@@ -330,8 +330,8 @@ fn accumulate_and_use_skill(
                 Some(crate::engine::skill::condition::extra::ExtraSkillKind::ExtraAction);
             invocation.target_observed_extra_action = Some(false);
             invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
-            // Unmendable Cracks is an extra action nested under the action that deployed it.
-            invocation.start = crate::engine::skill::action::SkillStart::AfterCurrentActionReaction;
+            // Unmendable Cracks belongs to the action that completed the configured threshold.
+            invocation.start = crate::engine::skill::action::SkillStart::AfterCurrentAction;
             invocation.release_progress = Some(rule);
             invocation
         })

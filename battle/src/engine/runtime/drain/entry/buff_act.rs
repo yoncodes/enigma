@@ -134,7 +134,6 @@ fn run_owned_buff_act_groups(
                 | RuleOp::DeathSettlement(_)
                 | RuleOp::DeathEventGroupComplete(_)
                 | RuleOp::SubscriberGroupComplete
-                | RuleOp::HeldActionBatchComplete
                 | RuleOp::TerminalSettlement
                 | RuleOp::BeginSkillAction { .. }
                 | RuleOp::BuffFeatureMarker { .. }

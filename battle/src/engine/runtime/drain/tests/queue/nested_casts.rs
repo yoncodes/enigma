@@ -179,128 +179,6 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
 }
 
 #[test]
-fn held_shell_cast_follows_the_first_recast_attack() {
-    crate::test_support::init_config();
-    let entity = |uid| FightEntityInfo {
-        uid: Some(uid),
-        current_hp: Some(100_000),
-        attr: Some(HeroAttribute {
-            hp: Some(100_000),
-            attack: Some(1_000),
-            technic: Some(if uid > 0 { 1_000 } else { 0 }),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    let fight = Fight {
-        attacker: Some(FightTeam {
-            entitys: vec![
-                entity(10),
-                FightEntityInfo {
-                    passive_skill: vec![31090144],
-                    ..entity(11)
-                },
-            ],
-            ..Default::default()
-        }),
-        defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                buffs: vec![
-                    BuffInfo {
-                        uid: Some(30),
-                        buff_id: Some(312451011),
-                        from_uid: Some(10),
-                        duration: Some(3),
-                        ..Default::default()
-                    },
-                    BuffInfo {
-                        uid: Some(31),
-                        buff_id: Some(312451021),
-                        from_uid: Some(10),
-                        duration: Some(3),
-                        ..Default::default()
-                    },
-                    BuffInfo {
-                        uid: Some(32),
-                        buff_id: Some(31090112),
-                        from_uid: Some(11),
-                        layer: Some(16),
-                        ..Default::default()
-                    },
-                ],
-                ..entity(-1)
-            }],
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    let pool = TargetPool::from_fight(&fight);
-    let mut managers = BattleManagers::seeded(&fight);
-    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312451115, 31090144], []);
-    crate::engine::mechanic::shell::execute(
-        &mut managers,
-        ShellCommand::AccumulateAndUseSkill {
-            rule: ConfiguredRuleKey::new(31090144, 2, DefinitionKey::new(60135, "ShellUseSkill")),
-            source_uid: 11,
-            target_uid: -1,
-            threshold: 7,
-            delta: 6,
-            skill_id: 31090114,
-        },
-    )
-    .unwrap();
-    let mut invocation: SkillInvocation = SkillRequest {
-        source_uid: 10,
-        skill_id: 312451115,
-    }
-    .into();
-    invocation.target = SkillTarget::Explicit(-1);
-    invocation.mode = SkillExecutionMode::Active;
-
-    let result = run_action(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
-        [],
-        invocation,
-    )
-    .unwrap();
-
-    let fury = crate::engine::packet::timeline::project(&result.frames)
-        .unwrap()
-        .into_iter()
-        .find(|step| step.act_id == Some(312451115))
-        .expect("Fury of Ares projects a step");
-    let kicks = fury
-        .act_effect
-        .iter()
-        .filter_map(|effect| effect.fight_step.as_ref())
-        .filter(|step| {
-            step.act_id == Some(312451011)
-                && step.act_type == Some(sonettobuf::fight_step::ActType::Skill as i32)
-        })
-        .collect::<Vec<_>>();
-
-    assert_eq!(kicks.len(), 2);
-    assert!(kicks[0].act_effect.iter().any(|effect| {
-        effect
-            .fight_step
-            .as_ref()
-            .is_some_and(|step| step.act_id == Some(31090144))
-    }));
-    assert!(kicks[1..].iter().all(|kick| {
-        !kick.act_effect.iter().any(|effect| {
-            effect
-                .fight_step
-                .as_ref()
-                .is_some_and(|step| step.act_id == Some(31090144))
-        })
-    }));
-}
-
-#[test]
 fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {
@@ -479,7 +357,7 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
 }
 
 #[test]
-fn shell_necklace_cast_follows_action_reaction_after_non_action() {
+fn shell_necklace_cast_stays_with_its_triggering_action() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {
         uid: Some(uid),
@@ -580,7 +458,21 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
         .iter()
         .filter_map(|effect| effect.fight_step.as_ref())
         .collect::<Vec<_>>();
-    assert!(!children.iter().any(|step| step.act_id == Some(31090144)));
+    let shell = children
+        .iter()
+        .filter(|step| step.act_id == Some(31090144))
+        .collect::<Vec<_>>();
+    assert_eq!(shell.len(), 1);
+    assert_eq!(shell[0].to_id, Some(11));
+    assert_eq!(
+        shell[0]
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .filter(|step| step.act_id == Some(31090114))
+            .count(),
+        1
+    );
     let reuse_index = children
         .iter()
         .position(|step| step.act_id == Some(312301701))
@@ -597,78 +489,16 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
         .filter_map(|effect| effect.fight_step.as_ref())
         .find(|step| step.act_id == Some(312301711))
         .expect("Ezio performs the follow-up action");
-    let shell = follow_up
-        .act_effect
-        .iter()
-        .filter_map(|effect| effect.fight_step.as_ref())
-        .filter(|step| step.act_id == Some(31090144))
-        .collect::<Vec<_>>();
-    assert_eq!(shell.len(), 1);
-    assert_eq!(shell[0].to_id, Some(-1));
-    assert_eq!(
-        shell[0]
-            .act_effect
-            .iter()
-            .filter_map(|effect| effect.fight_step.as_ref())
-            .filter(|step| step.act_id == Some(31090114))
-            .count(),
-        1
-    );
+    assert!(follow_up.act_effect.iter().all(|effect| {
+        effect
+            .fight_step
+            .as_ref()
+            .is_none_or(|step| step.act_id != Some(31090144))
+    }));
 }
 
 #[test]
-fn deferred_caster_frame_targets_the_exact_action_it_joins() {
-    let mut frames = Vec::new();
-    let action = push_root(
-        &mut frames,
-        FrameOwner::Skill {
-            source_uid: 12,
-            skill_id: 200,
-            card_index: 0,
-            target_uid: Some(-1),
-        },
-        FrameTrigger::Active,
-    );
-    let caster = FrameOwner::Skill {
-        source_uid: 10,
-        skill_id: 100,
-        card_index: 0,
-        target_uid: Some(11),
-    };
-
-    assert_eq!(
-        join_caster_to_action(&frames, &action, caster.clone()),
-        FrameOwner::Skill {
-            source_uid: 10,
-            skill_id: 100,
-            card_index: 0,
-            target_uid: Some(-1),
-        }
-    );
-
-    let conduit_action = push_root(
-        &mut frames,
-        FrameOwner::ConduitSkill {
-            source_uid: 12,
-            skill_id: 300,
-            device_index: 1,
-            target_uid: Some(-2),
-        },
-        FrameTrigger::Active,
-    );
-    assert_eq!(
-        join_caster_to_action(&frames, &conduit_action, caster),
-        FrameOwner::Skill {
-            source_uid: 10,
-            skill_id: 100,
-            card_index: 0,
-            target_uid: Some(-2),
-        }
-    );
-}
-
-#[test]
-fn shell_necklace_cast_releases_inside_the_following_riposte() {
+fn shell_necklace_cast_does_not_rebind_to_the_following_riposte() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {
         uid: Some(uid),
@@ -762,16 +592,22 @@ fn shell_necklace_cast_releases_inside_the_following_riposte() {
         .iter()
         .find(|step| step.act_id == Some(2292031))
         .expect("the attack causes the ally riposte");
-    assert!(!children.iter().any(|step| step.act_id == Some(31090144)));
-    assert!(riposte.act_effect.iter().any(|effect| {
+    assert_eq!(
+        children
+            .iter()
+            .filter(|step| step.act_id == Some(31090144))
+            .count(),
+        1
+    );
+    assert!(riposte.act_effect.iter().all(|effect| {
         effect.fight_step.as_ref().is_some_and(|step| {
-            step.act_effect.iter().any(|effect| {
+            step.act_effect.iter().all(|effect| {
                 effect
                     .fight_step
                     .as_ref()
-                    .is_some_and(|step| step.act_id == Some(31090144))
+                    .is_none_or(|step| step.act_id != Some(31090144))
             })
-        })
+        }) || effect.fight_step.is_none()
     }));
 }
 
