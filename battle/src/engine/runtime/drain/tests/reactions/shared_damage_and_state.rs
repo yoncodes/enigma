@@ -27,7 +27,10 @@ fn mane_mass_attack_orders_shared_damage_before_hit_passives_and_direct_hit() {
         version: Some(7),
         attacker: Some(FightTeam {
             entitys: vec![
-                entity(1, 10, Vec::new(), vec![share_buff(50)]),
+                FightEntityInfo {
+                    current_hp: Some(2_000),
+                    ..entity(1, 10, vec![312301533], vec![share_buff(50)])
+                },
                 entity(2, 11, Vec::new(), vec![share_buff(51)]),
                 entity(3, 12, Vec::new(), vec![share_buff(52)]),
                 FightEntityInfo {
@@ -77,8 +80,11 @@ fn mane_mass_attack_orders_shared_damage_before_hit_passives_and_direct_hit() {
         managers.entity.passive_source(13, 434111),
         crate::engine::entity::passive::PassiveSourceKind::Psychube
     );
-    let catalog =
-        SkillEffectCatalog::from_roots(config::configs::get(), [109380001, 109380006, 434111], []);
+    let catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        [109380001, 109380006, 312301533, 434111],
+        [],
+    );
     let attacked = crate::engine::skill::subscriber::for_compiled_event(
         &pool,
         &managers,
@@ -112,7 +118,7 @@ fn mane_mass_attack_orders_shared_damage_before_hit_passives_and_direct_hit() {
     .unwrap();
 
     fn collect_skills(step: &sonettobuf::FightStep, skills: &mut Vec<i32>) {
-        if let Some(skill_id @ (434111 | 109380006)) = step.act_id {
+        if let Some(skill_id @ (434111 | 109380006 | 312301533)) = step.act_id {
             skills.push(skill_id);
         }
         for effect in &step.act_effect {
@@ -125,7 +131,7 @@ fn mane_mass_attack_orders_shared_damage_before_hit_passives_and_direct_hit() {
     for step in crate::engine::packet::timeline::project(&result.frames).unwrap() {
         collect_skills(&step, &mut skills);
     }
-    assert_eq!(skills, vec![434111, 109380006, 434111]);
+    assert_eq!(skills, vec![312301533, 434111, 109380006, 434111]);
 }
 
 #[test]

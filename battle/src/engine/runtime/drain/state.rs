@@ -32,6 +32,7 @@ pub(super) type ReactionCastLink = Rc<RefCell<ReactionCastState>>;
 #[derive(Default)]
 pub(super) struct DrainState {
     after_hit: HashMap<FramePath, Vec<QueuedOp>>,
+    before_hit_passive_skills: HashMap<FramePath, Vec<QueuedOp>>,
     hit_passive_skills: HashMap<FramePath, Vec<QueuedOp>>,
     hit_skills: HashMap<FramePath, Vec<QueuedOp>>,
     before_after_hit_observers: HashMap<FramePath, Vec<QueuedOp>>,
@@ -156,6 +157,21 @@ impl DrainState {
         queued: Vec<QueuedOp>,
     ) {
         defer(&mut self.hit_passive_skills, action_path, queued);
+    }
+
+    pub(super) fn defer_before_hit_passive_skills(
+        &mut self,
+        action_path: Option<&[usize]>,
+        queued: Vec<QueuedOp>,
+    ) {
+        defer(&mut self.before_hit_passive_skills, action_path, queued);
+    }
+
+    pub(super) fn take_before_hit_passive_skills(
+        &mut self,
+        action_path: Option<&FramePath>,
+    ) -> Option<Vec<QueuedOp>> {
+        action_path.and_then(|path| self.before_hit_passive_skills.remove(path))
     }
 
     pub(super) fn take_hit_passive_skills(
@@ -379,6 +395,11 @@ impl DrainState {
         }
 
         let mut abandoned = self.after_hit.remove(action_path).unwrap_or_default();
+        abandoned.extend(
+            self.before_hit_passive_skills
+                .remove(action_path)
+                .unwrap_or_default(),
+        );
         abandoned.extend(
             self.hit_passive_skills
                 .remove(action_path)
