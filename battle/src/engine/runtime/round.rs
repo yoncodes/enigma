@@ -6,7 +6,10 @@ use crate::engine::{
         command::{RoundCommand, commands_from_opers},
         outcome::{battle_ended, finish_if_battle_ended, round_limit_reached, should_advance_wave},
         power::ClothPower,
-        state::{RoundState, next_action_points, next_round_shell, round_field_cards},
+        state::{
+            RoundCardSnapshotPolicy, RoundState, next_action_points, next_round_shell,
+            round_field_cards,
+        },
     },
     skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
 };
@@ -730,7 +733,11 @@ impl BattleRuntime {
         let mut round = next_round_shell(
             &self.fight,
             &self.round_state,
-            next_round_prepared,
+            if next_round_prepared {
+                RoundCardSnapshotPolicy::All
+            } else {
+                RoundCardSnapshotPolicy::CurrentOnly
+            },
             &next_round_hand_snapshot,
             &next_round_dealt_cards,
             self.managers.card.ai_queue(),

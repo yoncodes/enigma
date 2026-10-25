@@ -97,6 +97,20 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         ],
         [],
     );
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Setup(
+            crate::engine::manager::card::CardSetup {
+                hand: vec![CardInfo {
+                    uid: Some(20),
+                    skill_id: Some(31050111),
+                    ..Default::default()
+                }],
+                draw_pile: Vec::new(),
+                deck_num: 30,
+            },
+        ))
+        .unwrap();
 
     let request = UseClothSkillRequest {
         skill_id: Some(1),
@@ -188,6 +202,27 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         })
         .collect::<Vec<_>>();
     assert_eq!(costs, [vec![-100], vec![], vec![], vec![]]);
+    let first_round = replies[0].round.as_ref().unwrap();
+    assert!(
+        first_round.before_cards1.is_empty()
+            && first_round.team_a_cards1.is_empty()
+            && first_round.before_cards2.is_empty()
+            && first_round.team_a_cards2.is_empty()
+    );
+    let card_sync = first_round.fight_step.last().unwrap();
+    assert_eq!(
+        card_sync
+            .act_effect
+            .iter()
+            .map(|effect| effect.effect_type.unwrap_or_default())
+            .collect::<Vec<_>>(),
+        [
+            sonettobuf::effect_type_enum::EffectType::Cardspush as i32,
+            sonettobuf::effect_type_enum::EffectType::Carddecknum as i32,
+        ]
+    );
+    assert_eq!(card_sync.act_effect[0].card_info_list.len(), 1);
+    assert_eq!(card_sync.act_effect[1].effect_num, Some(30));
     fn synchronization_order(steps: &[sonettobuf::FightStep], order: &mut Vec<i32>) {
         for step in steps {
             if step.act_id == Some(312451011) {
