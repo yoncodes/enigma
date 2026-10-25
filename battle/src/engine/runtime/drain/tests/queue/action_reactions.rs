@@ -144,6 +144,101 @@ fn an_attacked_targets_attack_start_reaction_runs_before_the_attacks_own_effects
 }
 
 #[test]
+fn a_pre_effect_power_reaction_runs_before_the_actions_immediate_damage() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(109380001),
+                    from_uid: Some(-1),
+                    ..Default::default()
+                }],
+                ..entity(10)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                passive_skill: vec![109380003],
+                power_infos: vec![PowerInfo {
+                    power_id: Some(9),
+                    num: Some(0),
+                    max: Some(5),
+                }],
+                buffs: vec![BuffInfo {
+                    uid: Some(21),
+                    buff_id: Some(109320109),
+                    from_uid: Some(-1),
+                    ..Default::default()
+                }],
+                ..entity(-1)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [109380001, 109380003], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: -1,
+        skill_id: 109380001,
+    }
+    .into();
+    invocation.card_index = 1;
+    invocation.target = SkillTarget::Explicit(10);
+    invocation.mode = SkillExecutionMode::Active;
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+    let action = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(109380001))
+        .expect("the attack projects a step");
+    let power = action
+        .act_effect
+        .iter()
+        .position(|effect| {
+            effect
+                .fight_step
+                .as_ref()
+                .is_some_and(|step| step.act_id == Some(109380003))
+        })
+        .expect("the pre-effect power reaction projects a step");
+    let origin_damage = action
+        .act_effect
+        .iter()
+        .position(|effect| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Origindamage as i32)
+        })
+        .expect("the action deals configured origin damage");
+
+    assert!(power < origin_damage);
+}
+
+#[test]
 fn a_later_slot_sees_the_changes_of_an_earlier_slot_in_the_same_phase() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {

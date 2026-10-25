@@ -604,7 +604,7 @@ fn conduit_group_change_uses_its_buff_gate_as_an_after_hit_driver() {
 }
 
 #[test]
-fn power_change_uses_its_buff_gate_as_an_immediate_action_driver() {
+fn power_change_uses_its_buff_gate_as_a_pre_effect_driver() {
     crate::test_support::init_config();
     let definition = find_key(50017, "ChangePower").unwrap();
 
@@ -612,7 +612,7 @@ fn power_change_uses_its_buff_gate_as_an_immediate_action_driver() {
         definition.condition_route_override,
         Some(ConditionRouteOverride::Trigger {
             key: DefinitionKey::new(19201, "HasBuffId"),
-            event: EventKind::SkillAction,
+            event: EventKind::SkillEffectStarted,
             phase: Some(SkillPhase::Immediate),
         })
     );
@@ -633,7 +633,7 @@ fn power_change_uses_its_buff_gate_as_an_immediate_action_driver() {
             branch.subscriptions(),
             vec![crate::engine::skill::rule::route::ConditionTrigger {
                 key: DefinitionKey::new(19201, "HasBuffId"),
-                event: EventKind::SkillAction,
+                event: EventKind::SkillEffectStarted,
                 phase: Some(SkillPhase::Immediate),
             }]
         );
