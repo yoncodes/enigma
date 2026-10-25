@@ -3,6 +3,7 @@ pub mod battle_rule;
 pub mod buff;
 pub mod card;
 pub mod conduit;
+mod configured_rule_progress;
 pub mod contract;
 pub mod emanation;
 pub mod emitter;
@@ -78,15 +79,11 @@ pub struct BattleManagers {
     pub summon: SummonManager,
     pub toughness: toughness::ToughnessManager,
     pub wave: wave::WaveManager,
-    rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
-    round_rule_fires: HashMap<(i64, i32, usize, crate::engine::skill::rule::DefinitionKey), i32>,
+    configured_rule_progress: configured_rule_progress::ConfiguredRuleProgressManager,
+    rule_fires: HashMap<(i64, i32, crate::engine::skill::effect::RuleLimitOwner), i32>,
+    round_rule_fires: HashMap<(i64, i32, crate::engine::skill::effect::RuleLimitOwner), i32>,
     buff_act_fires: HashMap<(i64, i64, crate::engine::skill::rule::DefinitionKey), i32>,
     rule_progress: HashMap<(i64, i64, crate::engine::skill::rule::DefinitionKey, i32), i32>,
-    configured_rule_progress:
-        HashMap<(i64, crate::engine::skill::rule::ConfiguredRuleKey, i32), i32>,
-    // Progress that triggered a cast stays paused until that cast starts or is canceled.
-    held_rule_progress:
-        std::collections::HashSet<(i64, crate::engine::skill::rule::ConfiguredRuleKey)>,
 }
 
 struct HpPlan {
@@ -282,6 +279,7 @@ impl BattleManagers {
     ) -> Result<BuffChanges, BuffCommandError> {
         let resist_roll = match &command {
             BuffCommand::Grant(grant)
+            | BuffCommand::GrantOnDeath(grant)
             | BuffCommand::GrantRelated(buff::RelatedBuffGrant { grant, .. })
             | BuffCommand::GrantIndependent(grant)
             | BuffCommand::Accumulate(grant)
@@ -330,6 +328,7 @@ impl BattleManagers {
     ) -> Result<BuffPlan, BuffCommandError> {
         let source_uid = match &command {
             BuffCommand::Grant(grant)
+            | BuffCommand::GrantOnDeath(grant)
             | BuffCommand::GrantRelated(buff::RelatedBuffGrant { grant, .. })
             | BuffCommand::GrantIndependent(grant)
             | BuffCommand::Accumulate(grant)
@@ -481,7 +480,8 @@ impl BattleManagers {
         let mut targets_by_team =
             std::collections::HashMap::<i32, std::collections::HashSet<i64>>::new();
         for command in &commands {
-            if let hp::HpCommand::Damage(damage) = command
+            if let hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) =
+                command
                 && damage.amount > 0
                 && let Some(team) = self.entity.team_type(damage.target_uid)
             {
@@ -497,11 +497,12 @@ impl BattleManagers {
         let mut plans = Vec::with_capacity(commands.len());
         for command in commands {
             let target_count = match command {
-                hp::HpCommand::Damage(damage) => self
-                    .entity
-                    .team_type(damage.target_uid)
-                    .and_then(|team| targets_by_team.get(&team))
-                    .map_or(1, std::collections::HashSet::len),
+                hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) => {
+                    self.entity
+                        .team_type(damage.target_uid)
+                        .and_then(|team| targets_by_team.get(&team))
+                        .map_or(1, std::collections::HashSet::len)
+                }
                 _ => 1,
             };
             let mut plan = staged.plan_hp(
@@ -563,7 +564,8 @@ impl BattleManagers {
         shared_values: &mut HashMap<i64, i32>,
         share_spent: &mut HashMap<i64, i32>,
     ) -> Result<HpPlan, hp::HpCommandError> {
-        let share = if let hp::HpCommand::Damage(damage) = &mut command
+        let share = if let hp::HpCommand::Damage(damage)
+        | hp::HpCommand::SettleAccumulatedDamage(damage) = &mut command
             && let Some(split) = crate::engine::skill::buff_act::share_hurt::plan(
                 &self.buff,
                 hp,
@@ -590,7 +592,8 @@ impl BattleManagers {
         } else {
             None
         };
-        if let hp::HpCommand::Damage(damage) = &mut command
+        if let hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) =
+            &mut command
             && let Some(cap) = self
                 .buff
                 .active_features(hp)
@@ -604,7 +607,7 @@ impl BattleManagers {
             damage.amount = damage.amount.min(cap);
         }
         match &mut command {
-            hp::HpCommand::Damage(damage) => {
+            hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) => {
                 if let Some(cap) = crate::engine::skill::buff_act::lock_hp::max_loss(
                     &self.buff,
                     hp,
@@ -626,7 +629,7 @@ impl BattleManagers {
         }
         hp.validate_command(command)?;
         let fake_hp_consumed = match command {
-            hp::HpCommand::Damage(damage)
+            hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage)
                 if damage.amount > 0 && damage.effect_kind != hp::DamageEffectKind::Avoided =>
             {
                 crate::engine::skill::buff_act::lost_hp_to_fake_hp::damage_consumption(
@@ -638,16 +641,20 @@ impl BattleManagers {
             _ => None,
         };
         let team_shared = match command {
-            hp::HpCommand::Damage(damage) if damage.amount > 0 => self
-                .team_shared_shield_plans(hp, damage.target_uid, target_count)
-                .into_iter()
-                .find_map(|mut plan| {
-                    plan.current = *shared_values.entry(plan.buff_uid).or_insert(plan.current);
-                    (plan.current > 0).then_some(plan)
-                }),
+            hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage)
+                if damage.amount > 0 =>
+            {
+                self.team_shared_shield_plans(hp, damage.target_uid, target_count)
+                    .into_iter()
+                    .find_map(|mut plan| {
+                        plan.current = *shared_values.entry(plan.buff_uid).or_insert(plan.current);
+                        (plan.current > 0).then_some(plan)
+                    })
+            }
             _ => None,
         };
-        let team_shared_buff = if let hp::HpCommand::Damage(damage) = command
+        let team_shared_buff = if let hp::HpCommand::Damage(damage)
+        | hp::HpCommand::SettleAccumulatedDamage(damage) = command
             && let Some(absorption) = team_shared.and_then(|plan| plan.absorption(damage.amount))
         {
             let plan = self.plan_team_shared_shield_absorption(absorption, damage.origin)?;
@@ -717,7 +724,7 @@ impl BattleManagers {
             Box::new(hp::SharedHurt { consumed, shares })
         });
         let toughness = match plan.command {
-            hp::HpCommand::Damage(damage)
+            hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage)
                 if damage.effect_kind != hp::DamageEffectKind::Avoided
                     && damage.hurt.damage_from == hp::HurtDamageFromType::Skill =>
             {
@@ -937,7 +944,11 @@ impl BattleManagers {
             ex_point::ExPointCommand::Set(change) => Some(change.target_uid),
             ex_point::ExPointCommand::ChangeMax(_)
             | ex_point::ExPointCommand::ConfigureSynchronization(_)
-            | ex_point::ExPointCommand::RecordSynchronizationAction(_) => None,
+            | ex_point::ExPointCommand::RestartSynchronization(_)
+            | ex_point::ExPointCommand::CompleteSynchronization(_)
+            | ex_point::ExPointCommand::RecordSynchronizationAction(_)
+            | ex_point::ExPointCommand::RecordSynchronizationDamage(_)
+            | ex_point::ExPointCommand::PublishSynchronizationHit(_) => None,
         };
         let gain_allowed = target_uid.is_none_or(|target_uid| {
             !self.buff.has_buff_act_kind(
@@ -1072,11 +1083,26 @@ impl BattleManagers {
         self.gauge.execute_command(command)
     }
 
-    pub(crate) fn execute_raw_gauge_batch(
+    pub(crate) fn start_raw_gauge_batch(
         &mut self,
+        id: gauge::GaugeBatchId,
         commands: Vec<gauge::GaugeCommand>,
-    ) -> Result<Vec<gauge::GaugeChange>, gauge::GaugeCommandError> {
-        self.gauge.execute_raw_batch(commands)
+    ) -> Result<gauge::GaugeChange, gauge::GaugeCommandError> {
+        self.gauge.start_raw_batch(id, commands)
+    }
+
+    pub(crate) fn continue_raw_gauge_batch(
+        &mut self,
+        id: gauge::GaugeBatchId,
+    ) -> Result<gauge::GaugeChange, gauge::GaugeCommandError> {
+        self.gauge.continue_raw_batch(id)
+    }
+
+    pub(crate) fn commit_raw_gauge_batch(
+        &mut self,
+        id: gauge::GaugeBatchId,
+    ) -> Result<gauge::GaugeBatchChanges, gauge::GaugeCommandError> {
+        self.gauge.commit_raw_batch(id)
     }
 
     pub(crate) fn execute_emitter(
@@ -1363,29 +1389,27 @@ impl BattleManagers {
         }))
     }
 
-    pub fn can_fire_rule(
+    pub(crate) fn can_fire_rule(
         &self,
         owner_uid: i64,
         skill_id: i32,
-        slot_index: usize,
-        condition_key: crate::engine::skill::rule::DefinitionKey,
+        limit_owner: crate::engine::skill::effect::RuleLimitOwner,
         limit: i32,
         round_limit: i32,
     ) -> bool {
-        let key = (owner_uid, skill_id, slot_index, condition_key);
+        let key = (owner_uid, skill_id, limit_owner);
         (limit <= 0 || self.rule_fires.get(&key).copied().unwrap_or_default() < limit)
             && (round_limit <= 0
                 || self.round_rule_fires.get(&key).copied().unwrap_or_default() < round_limit)
     }
 
-    pub fn mark_rule_fired(
+    pub(crate) fn mark_rule_fired(
         &mut self,
         owner_uid: i64,
         skill_id: i32,
-        slot_index: usize,
-        condition_key: crate::engine::skill::rule::DefinitionKey,
+        limit_owner: crate::engine::skill::effect::RuleLimitOwner,
     ) {
-        let key = (owner_uid, skill_id, slot_index, condition_key);
+        let key = (owner_uid, skill_id, limit_owner);
         *self.rule_fires.entry(key).or_default() += 1;
         *self.round_rule_fires.entry(key).or_default() += 1;
     }
@@ -1424,15 +1448,21 @@ impl BattleManagers {
     pub(crate) fn begin_reaction_round(&mut self) {
         self.round_rule_fires.clear();
         self.buff_act_fires.clear();
+        self.configured_rule_progress.begin_round_start();
     }
 
     pub(crate) fn begin_action_round(&mut self) {
+        self.configured_rule_progress.begin_action_round();
         self.card.begin_round();
         self.hp.begin_round();
         self.injury.begin_round();
         self.gauge.begin_combat_round();
         self.field.begin_round();
         self.conduit.begin_round();
+    }
+
+    pub(crate) fn begin_cloth_sequence(&mut self) {
+        self.configured_rule_progress.begin_cloth_sequence();
     }
 
     pub fn advance_configured_rule_progress_until_cast(
@@ -1442,20 +1472,8 @@ impl BattleManagers {
         threshold: i32,
         delta: i32,
     ) -> bool {
-        if threshold <= 0 || delta <= 0 || self.held_rule_progress.contains(&(owner_uid, key)) {
-            return false;
-        }
-        let progress = self
-            .configured_rule_progress
-            .entry((owner_uid, key, threshold))
-            .or_default();
-        *progress = progress.saturating_add(delta);
-        if *progress < threshold {
-            return false;
-        }
-        *progress = 0;
-        self.held_rule_progress.insert((owner_uid, key));
-        true
+        self.configured_rule_progress
+            .advance_until_cast(owner_uid, key, threshold, delta)
     }
 
     pub fn release_held_rule_progress(
@@ -1463,7 +1481,7 @@ impl BattleManagers {
         owner_uid: i64,
         key: crate::engine::skill::rule::ConfiguredRuleKey,
     ) {
-        self.held_rule_progress.remove(&(owner_uid, key));
+        self.configured_rule_progress.release(owner_uid, key);
     }
 
     pub fn advance_rule_progress(
@@ -1604,9 +1622,6 @@ impl BattleManagers {
         self.ex_point.sync_entity_configured(self.catalog(), entity);
         entity.ex_skill_point_change =
             Some(crate::engine::mechanic::card::CardMechanic.ultimate_cost_offset(self, uid));
-        if let Some(progress) = self.ex_point.synchronization_progress(uid) {
-            self.buff.project_synchronization(entity, progress);
-        }
     }
 
     fn project_primary_attributes(&self, entity: &mut FightEntityInfo) {
@@ -1791,4 +1806,4 @@ pub fn entities_mut(fight: &mut Fight) -> impl Iterator<Item = &mut FightEntityI
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -182,19 +182,32 @@ fn split_session(files: &[PathBuf]) -> Vec<CapturedBattle> {
 }
 
 fn cloth_inputs(parent: &Path, round_index: i32) -> io::Result<Vec<CapturedCloth>> {
-    super::cloth_input_paths(parent, round_index).map(|requests| {
-        requests
-            .into_iter()
-            .map(|request| {
-                let reply = request.file_name().and_then(|name| {
-                    let name = name.to_string_lossy().replace("Request", "Reply");
-                    let path = request.with_file_name(name);
-                    path.exists().then_some(path)
-                });
-                CapturedCloth { request, reply }
-            })
-            .collect()
-    })
+    let requests = super::cloth_input_paths(parent, round_index)?;
+    let reply_name = format!("UseClothSkillReply_{round_index}");
+    let mut replies = fs::read_dir(parent)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| super::is_cloth_input(path, &reply_name))
+        .collect::<Vec<_>>();
+    replies.sort();
+    if !replies.is_empty() && replies.len() != requests.len() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "round {round_index} has {} cloth requests but {} replies",
+                requests.len(),
+                replies.len()
+            ),
+        ));
+    }
+    Ok(requests
+        .into_iter()
+        .enumerate()
+        .map(|(index, request)| CapturedCloth {
+            request,
+            reply: replies.get(index).cloned(),
+        })
+        .collect())
 }
 
 fn is_start_reply(command: &str) -> bool {
@@ -292,6 +305,58 @@ mod tests {
             battles[0].rounds[0].cloth[0].reply.as_ref(),
             Some(&files[2])
         );
+    }
+
+    #[test]
+    fn fixed_folder_pairs_timestamped_cloth_packets_by_order() {
+        let directory =
+            std::env::temp_dir().join(format!("enigma-cloth-pairing-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        for name in [
+            "UseClothSkillRequest_8_20261011_123156_212.json",
+            "UseClothSkillReply_8_20261011_123156_277.json",
+            "UseClothSkillRequest_8_20261011_123157_839.json",
+            "UseClothSkillReply_8_20261011_123157_907.json",
+        ] {
+            fs::write(directory.join(name), "{}").unwrap();
+        }
+
+        let inputs = cloth_inputs(&directory, 8).unwrap();
+
+        assert_eq!(inputs.len(), 2);
+        assert_eq!(
+            inputs[0].reply.as_deref().and_then(Path::file_name),
+            Some(std::ffi::OsStr::new(
+                "UseClothSkillReply_8_20261011_123156_277.json"
+            ))
+        );
+        assert_eq!(
+            inputs[1].reply.as_deref().and_then(Path::file_name),
+            Some(std::ffi::OsStr::new(
+                "UseClothSkillReply_8_20261011_123157_907.json"
+            ))
+        );
+
+        fs::remove_file(directory.join("UseClothSkillReply_8_20261011_123157_907.json")).unwrap();
+        assert_eq!(
+            cloth_inputs(&directory, 8).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        fs::write(
+            directory.join("UseClothSkillReply_8_20261011_123157_907.json"),
+            "{}",
+        )
+        .unwrap();
+        fs::write(
+            directory.join("UseClothSkillReply_8_20261011_123159_548.json"),
+            "{}",
+        )
+        .unwrap();
+        assert_eq!(
+            cloth_inputs(&directory, 8).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

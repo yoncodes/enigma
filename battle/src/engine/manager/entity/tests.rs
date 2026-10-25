@@ -22,6 +22,30 @@ fn configured_seed_preserves_defender_uid_reservations() {
 }
 
 #[test]
+fn configured_seed_marks_entity_battle_rule_passives() {
+    let fight = Fight {
+        battle_id: Some(119_385_110),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                passive_skill: vec![119_381_154],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let manager = EntityManager::configured(catalog(), &fight);
+
+    assert_eq!(
+        manager.passive_source(-1, 119_381_154),
+        PassiveSourceKind::BattleRule
+    );
+}
+
+#[test]
 fn configured_ultimate_kind_applies_only_to_the_current_ultimate() {
     let fight = Fight {
         attacker: Some(FightTeam {

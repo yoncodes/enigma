@@ -387,6 +387,7 @@ fn round_start_capacity_uses_only_exact_raspberry_loss_instances() {
                 origin: CommandOrigin { domain, key },
                 source_uid: 10,
                 target_uid: 10,
+                publishes_hit: true,
                 damage: None,
                 fake_hp_consumed: None,
                 team_shared_shield_absorbed: None,

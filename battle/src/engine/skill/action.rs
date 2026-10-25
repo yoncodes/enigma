@@ -26,6 +26,7 @@ pub enum SkillExecutionMode {
     #[default]
     Nested,
     Active,
+    Synchronization,
     DirectBig,
     Device,
     DeviceCard,
@@ -35,7 +36,11 @@ impl SkillExecutionMode {
     pub(crate) fn completes_action(self) -> bool {
         matches!(
             self,
-            Self::Active | Self::DirectBig | Self::Device | Self::DeviceCard
+            Self::Active
+                | Self::Synchronization
+                | Self::DirectBig
+                | Self::Device
+                | Self::DeviceCard
         )
     }
 
@@ -50,7 +55,11 @@ pub(crate) fn performs_extra_action(
     extra_skill_kind: i32,
 ) -> bool {
     crate::engine::skill::buff_act::additional_damage::uses_costed_lane(extra_skill_kind)
-        || (card_index == 0 && mode == SkillExecutionMode::Active)
+        || (card_index == 0
+            && matches!(
+                mode,
+                SkillExecutionMode::Active | SkillExecutionMode::Synchronization
+            ))
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -59,17 +68,11 @@ pub enum SkillStart {
     Immediate,
     /// Runs after the current action and its reactions as a child of that action.
     AfterCurrentAction,
-    /// Follows an action-producing reaction before falling back to the current action.
-    AfterCurrentActionReaction,
 }
 
 impl SkillStart {
     pub(crate) fn waits_for_current_action(self) -> bool {
         self != Self::Immediate
-    }
-
-    pub(crate) fn follows_action_reaction(self) -> bool {
-        self == Self::AfterCurrentActionReaction
     }
 }
 
@@ -161,6 +164,7 @@ pub struct SkillInvocation {
     pub card_index: i32,
     pub additional_moxie: i32,
     pub condition_key: Option<DefinitionKey>,
+    pub(crate) reaction_multiplicity_key: Option<DefinitionKey>,
     pub condition_slot: Option<usize>,
     pub(crate) reaction_batch_id: Option<u64>,
     pub(crate) reaction_action_path: Option<Vec<usize>>,
@@ -176,6 +180,8 @@ pub struct SkillInvocation {
     pub start: SkillStart,
     /// Exact rule whose progress resumes when this cast starts.
     pub release_progress: Option<super::rule::ConfiguredRuleKey>,
+    /// Hand settlement owned by this generated action's start.
+    pub action_hand_settlement: Option<CommandOrigin>,
     pub card_enchants: Vec<i32>,
     pub recorded_skill: Option<SkillRequest>,
 }
@@ -187,6 +193,7 @@ impl From<SkillRequest> for SkillInvocation {
             card_index: 0,
             additional_moxie: 0,
             condition_key: None,
+            reaction_multiplicity_key: None,
             condition_slot: None,
             reaction_batch_id: None,
             reaction_action_path: None,
@@ -199,6 +206,7 @@ impl From<SkillRequest> for SkillInvocation {
             mode: SkillExecutionMode::Nested,
             start: SkillStart::Immediate,
             release_progress: None,
+            action_hand_settlement: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
         }
@@ -220,6 +228,7 @@ mod invocation_tests {
             card_index: 4,
             additional_moxie: 0,
             condition_key: Some(DefinitionKey::new(30, "TestCondition")),
+            reaction_multiplicity_key: None,
             condition_slot: Some(2),
             reaction_batch_id: None,
             reaction_action_path: None,
@@ -232,6 +241,7 @@ mod invocation_tests {
             mode: SkillExecutionMode::Nested,
             start: SkillStart::Immediate,
             release_progress: None,
+            action_hand_settlement: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
         };
@@ -395,7 +405,6 @@ pub struct SkillModifiers {
     pub additional_attack_career: Option<i32>,
     pub force_career_restraint: bool,
     pub additional_damage: Vec<AdditionalDamageModifier>,
-    pub unpaid_extra_action_cost_fields: Vec<(i32, i64)>,
     pub post_immediate_target_buffs: Vec<PostImmediateTargetBuffModifier>,
     pub consume_team_injury_count_round: Option<DefinitionKey>,
 }
@@ -421,11 +430,6 @@ impl SkillModifiers {
             .or(other.additional_attack_career);
         self.force_career_restraint |= other.force_career_restraint;
         self.additional_damage.append(&mut other.additional_damage);
-        for field in other.unpaid_extra_action_cost_fields {
-            if !self.unpaid_extra_action_cost_fields.contains(&field) {
-                self.unpaid_extra_action_cost_fields.push(field);
-            }
-        }
         self.post_immediate_target_buffs
             .append(&mut other.post_immediate_target_buffs);
         self.consume_team_injury_count_round = self

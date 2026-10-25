@@ -250,6 +250,158 @@ fn halo_children_keep_the_grant_source_separate_from_the_carrier() {
 }
 
 #[test]
+fn defeated_only_halo_emitter_removes_seeded_linked_and_same_id_children() {
+    crate::test_support::init_config();
+    let child = |uid| BuffInfo {
+        uid: Some(uid),
+        buff_id: Some(31050146),
+        from_uid: Some(30),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    buffs: vec![
+                        child(2),
+                        BuffInfo {
+                            uid: Some(4),
+                            buff_id: Some(109320111),
+                            from_uid: Some(30),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    buffs: vec![child(3)],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(30),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    buffs: vec![
+                        BuffInfo {
+                            uid: Some(1),
+                            buff_id: Some(31050143),
+                            from_uid: Some(30),
+                            ..Default::default()
+                        },
+                        BuffInfo {
+                            uid: Some(5),
+                            buff_id: Some(109320111),
+                            from_uid: Some(30),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ],
+            sub_entitys: vec![FightEntityInfo {
+                uid: Some(40),
+                team_type: Some(1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(6),
+                    buff_id: Some(31050143),
+                    from_uid: Some(30),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    let mut hp = HpManager::default();
+    manager.seed(&fight);
+    hp.seed(&fight);
+    hp.lose(30, 100, 0).unwrap();
+
+    let commands = manager.defeated_entity_halo_cleanup(30, &hp);
+    assert_eq!(
+        commands
+            .iter()
+            .filter_map(|command| match command {
+                BuffCommand::Remove(remove) => Some(remove.target_uid),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [10, 10, 11]
+    );
+    for command in commands {
+        let changes = manager.execute(&hp, command).unwrap();
+        assert!(changes.change.removed.iter().all(|removed| {
+            removed.effective && [Some(31050146), Some(109320111)].contains(&removed.buff.buff_id)
+        }));
+    }
+    for owner_uid in [10, 11] {
+        assert!(!manager.has_buff_id(owner_uid, 31050146));
+    }
+    assert!(!manager.has_buff_id(10, 109320111));
+}
+
+#[test]
+fn defeated_halo_emitter_removes_opposing_team_children() {
+    crate::test_support::init_config();
+    let entity = |uid, team_type| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team_type),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    let mut hp = HpManager::default();
+    manager.seed(&fight);
+    hp.seed(&fight);
+    manager
+        .execute(
+            &hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 109320215,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+    assert!(manager.has_buff_id(-1, 109320214));
+    hp.lose(10, 100, 0).unwrap();
+
+    let commands = manager.defeated_entity_halo_cleanup(10, &hp);
+    assert_eq!(commands.len(), 1);
+    for command in commands {
+        manager.execute(&hp, command).unwrap();
+    }
+    assert!(!manager.has_buff_id(-1, 109320214));
+}
+
+#[test]
 fn defeated_entity_cleanup_preserves_halos_from_surviving_emitters() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -292,7 +444,7 @@ fn defeated_entity_cleanup_preserves_halos_from_surviving_emitters() {
     }
     hp.lose(11, 100, 0).unwrap();
 
-    let commands = manager.defeated_entity_inactive_halo_cleanup(11, &hp);
+    let commands = manager.defeated_entity_halo_cleanup(11, &hp);
     let targets = commands
         .iter()
         .filter_map(|command| match command {
@@ -324,7 +476,7 @@ fn defeated_entity_cleanup_preserves_halos_from_surviving_emitters() {
     }
 
     hp.lose(30, 100, 0).unwrap();
-    let commands = manager.defeated_entity_inactive_halo_cleanup(30, &hp);
+    let commands = manager.defeated_entity_halo_cleanup(30, &hp);
     assert_eq!(
         commands
             .iter()

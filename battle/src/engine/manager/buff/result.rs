@@ -91,6 +91,7 @@ pub struct BuffRemoveResult {
     pub delete_reason: Option<BuffDeleteReason>,
     pub depleted: bool,
     pub fixed_max_hp_delta: i32,
+    pub target_max_hp: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

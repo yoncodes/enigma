@@ -161,4 +161,4 @@ fn tower_const(tables: &config::GameDB, id: TowerConstId) -> Option<i32> {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -1,5 +1,56 @@
 use super::*;
 
+pub(super) fn synchronization_cycle_grant_ops(
+    context: &BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    if !matches!(
+        behavior.spec.kind,
+        BehaviorKind::AddBuff | BehaviorKind::AddBuffPowerUse | BehaviorKind::AddBuffRound2
+    ) {
+        return None;
+    }
+    let buff_id = behavior.arg(0)?;
+    let act_id = context
+        .managers
+        .buff
+        .definition_features(buff_id)
+        .into_iter()
+        .find(|feature| {
+            crate::engine::skill::buff_act::is_kind(
+                feature,
+                crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
+            )
+        })?
+        .act_id()?;
+    let definition = context
+        .managers
+        .ex_point
+        .synchronization_definition(context.target_uid)?;
+    let origin = super::command_origin(behavior)?;
+    Some(vec![
+        RuleOp::Command(BattleCommand::ExPoint(
+            crate::engine::manager::ex_point::ExPointCommand::RestartSynchronization(
+                crate::engine::manager::ex_point::ExPointRestartSynchronization {
+                    origin,
+                    target_uid: context.target_uid,
+                },
+            ),
+        )),
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantStateful(
+            BuffGrantChild {
+                origin,
+                source_uid: context.source_uid,
+                target_uid: context.target_uid,
+                buff_id,
+                amount: behavior.arg(1),
+                params: Some(format!("{act_id}#{},0,0", definition.action_count)),
+                act_info: None,
+            },
+        ))),
+    ])
+}
+
 pub(super) fn hero_grant_command(
     context: &BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,

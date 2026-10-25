@@ -232,6 +232,7 @@ fn event_skills_keep_committed_changes_in_the_active_action_scope() {
     );
 
     assert_eq!(active_skill_scope_path(&frames, &reaction), Some(action));
+    assert_eq!(active_skill_target_uid(&frames, &reaction), Some(11));
 }
 
 #[test]

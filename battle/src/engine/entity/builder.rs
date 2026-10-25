@@ -88,11 +88,12 @@ impl EntityBuilder {
             hero.destiny_stone,
             hero.destiny_rank,
         )?;
-        let device_owned = crate::catalog::configured_conduit_device_id(
+        let device_owned = crate::catalog::configured_conduit_device_id_for_rank(
             game,
             hero.hero_id,
             hero.ex_skill_level,
             hero.destiny_stone,
+            hero.destiny_rank,
         )
         .is_some();
         let (sg1, sg2, ex_skill) =
@@ -239,11 +240,12 @@ impl EntityBuilder {
             trial.facets_id,
             trial.facetslevel,
         )?;
-        let device_owned = crate::catalog::configured_conduit_device_id(
+        let device_owned = crate::catalog::configured_conduit_device_id_for_rank(
             tables,
             trial.hero_id,
             trial.ex_skill_lv,
             trial.facets_id,
+            trial.facetslevel,
         )
         .is_some();
         let (skill_group1, skill_group2, ex_skill) = Self::wire_loadout(
@@ -442,7 +444,7 @@ impl EntityBuilder {
     }
 }
 
-fn parse_power_specs(spec: &str) -> Vec<(i32, i32)> {
+pub(crate) fn parse_power_specs(spec: &str) -> Vec<(i32, i32)> {
     spec.split('|')
         .filter_map(|entry| {
             let (power_id, max) = entry.trim().split_once('#')?;
@@ -679,7 +681,7 @@ mod tests {
             HeroBuildInput {
                 hero_id: 3025,
                 rank: 4,
-                ex_skill_level: 3,
+                ex_skill_level: 0,
                 destiny_stone: 302502,
                 destiny_rank: 4,
                 ..Default::default()
@@ -693,5 +695,8 @@ mod tests {
 
         assert_eq!(entity.ex_point_type, Some(4));
         assert_eq!(entity.ex_point_max, Some(100));
+        assert!(entity.skill_group1.is_empty());
+        assert!(entity.skill_group2.is_empty());
+        assert_eq!(entity.ex_skill, Some(0));
     }
 }

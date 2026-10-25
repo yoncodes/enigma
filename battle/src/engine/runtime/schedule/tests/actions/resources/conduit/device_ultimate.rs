@@ -14,14 +14,17 @@ fn fight(ex_point: i32) -> Fight {
         }),
         ..Default::default()
     };
+    let mut twins = entity(
+        10,
+        3149,
+        ex_point,
+        crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire(),
+    );
+    twins.ex_skill_level = Some(5);
+    twins.ex_skill = Some(31495151);
     Fight {
         attacker: Some(FightTeam {
-            entitys: vec![entity(
-                10,
-                3145,
-                ex_point,
-                crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire(),
-            )],
+            entitys: vec![twins],
             ..Default::default()
         }),
         defender: Some(FightTeam {
@@ -196,7 +199,7 @@ fn device_overflow_is_banked_before_applied_harmonization_is_recorded() {
 }
 
 #[test]
-fn conduit_ultimate_requires_full_personal_device_power() {
+fn conduit_unique_requires_full_personal_device_power() {
     init_config();
     let fight = fight(99);
     let (pool, mut managers, mut catalog) = selected_unique_device(&fight);
@@ -211,7 +214,7 @@ fn conduit_ultimate_requires_full_personal_device_power() {
         TargetContext::default(),
         &operation(),
     ) {
-        Ok(_) => panic!("an underfilled personal device gauge authorized its ultimate"),
+        Ok(_) => panic!("an underfilled personal device gauge authorized its unique skill"),
         Err(error) => error,
     };
 
@@ -219,7 +222,7 @@ fn conduit_ultimate_requires_full_personal_device_power() {
         error,
         DrainError::InsufficientUltimateResource {
             owner_uid: 10,
-            skill_id: 31450131,
+            skill_id: 31495151,
             required: 100,
             current: 99,
         }
@@ -227,7 +230,7 @@ fn conduit_ultimate_requires_full_personal_device_power() {
 }
 
 #[test]
-fn conduit_ultimate_spends_personal_device_power_before_casting() {
+fn conduit_unique_spends_personal_device_power_before_casting() {
     init_config();
     let fight = fight(100);
     let (pool, mut managers, mut catalog) = selected_unique_device(&fight);
@@ -252,7 +255,7 @@ fn conduit_ultimate_spends_personal_device_power_before_casting() {
                 effect
                     .fight_step
                     .as_ref()
-                    .is_some_and(|skill| skill.act_id == Some(31450131))
+                    .is_some_and(|skill| skill.act_id == Some(31495151))
             })
         })
         .unwrap();
@@ -273,7 +276,7 @@ fn conduit_ultimate_spends_personal_device_power_before_casting() {
             effect
                 .fight_step
                 .as_ref()
-                .is_some_and(|skill| skill.act_id == Some(31450131))
+                .is_some_and(|skill| skill.act_id == Some(31495151))
         })
         .unwrap();
     assert!(spend < skill);

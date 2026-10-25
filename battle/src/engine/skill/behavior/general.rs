@@ -91,7 +91,6 @@ impl BehaviorHandler for AddMaxRoundHandler {
                 crate::engine::manager::battle_rule::MaxRoundCommand {
                     increment: behavior.args[0],
                     cap: behavior.args[1],
-                    config_effect: behavior.spec.key.opcode,
                 },
             ))]
         })

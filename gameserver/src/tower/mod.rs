@@ -5,4 +5,4 @@ pub use battle::*;
 pub use talent::*;
 
 #[cfg(test)]
-mod test;
+mod tests;

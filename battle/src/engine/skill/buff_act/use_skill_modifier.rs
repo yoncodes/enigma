@@ -28,6 +28,10 @@ fn is_active_cast(mode: SkillExecutionMode) -> bool {
     )
 }
 
+fn uses_active_attributes(mode: SkillExecutionMode) -> bool {
+    is_active_cast(mode) || mode == SkillExecutionMode::Synchronization
+}
+
 pub fn loss_rule_ops(
     managers: &BattleManagers,
     subscriber: &BuffActSubscriber,
@@ -81,7 +85,7 @@ pub fn attribute_deltas(
     owner_uid: i64,
     mode: SkillExecutionMode,
 ) -> Vec<(AttrId, i32)> {
-    if !is_active_cast(mode) {
+    if !uses_active_attributes(mode) {
         return Vec::new();
     }
     managers
@@ -221,5 +225,25 @@ mod tests {
             vec![(AttrId::CriticalRate, 150)]
         );
         assert!(attribute_deltas(&managers, 10, SkillExecutionMode::Nested).is_empty());
+    }
+
+    #[test]
+    fn synchronization_reads_action_attributes_without_paying_active_cast_hp_cost() {
+        let managers = managers();
+        let subscriber = subscriber();
+
+        assert_eq!(
+            attribute_deltas(&managers, 10, SkillExecutionMode::Synchronization),
+            vec![(AttrId::CriticalRate, 150)]
+        );
+        assert!(
+            loss_rule_ops(
+                &managers,
+                &subscriber,
+                &event(SkillExecutionMode::Synchronization)
+            )
+            .unwrap()
+            .is_empty()
+        );
     }
 }

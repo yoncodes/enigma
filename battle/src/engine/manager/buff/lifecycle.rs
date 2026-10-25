@@ -67,12 +67,55 @@ pub(crate) struct BuffDurationPlan {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BuffDurationTarget {
+    pub(crate) owner_uid: i64,
+    pub(crate) buff_uid: i64,
+    pub(crate) remaining: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BuffLifecyclePlan {
     pub(crate) target_uid: i64,
     pub(crate) buff_uid: i64,
 }
 
 impl BuffManager {
+    fn halo_child_emitted_by(&self, child: &ActiveBuff, emitter_uid: i64) -> bool {
+        child.fanout_emitter_uid.map_or_else(
+            || {
+                self.buffs.iter().any(|carrier| {
+                    carrier.owner_uid == emitter_uid
+                        && carrier.buff.from_uid == child.buff.from_uid
+                        && carrier.buff.buff_id.into_iter().any(|buff_id| {
+                            halo::carriers(self.catalog(), buff_id)
+                                .into_iter()
+                                .any(|halo| {
+                                    let in_scope = match halo.scope {
+                                        halo::HaloScope::AlliedTeam => {
+                                            child.team_type == carrier.team_type
+                                        }
+                                        halo::HaloScope::OtherAllies => {
+                                            child.team_type == carrier.team_type
+                                                && child.owner_uid != emitter_uid
+                                        }
+                                        halo::HaloScope::OpposingTeam => {
+                                            child.team_type != carrier.team_type
+                                        }
+                                    };
+                                    in_scope
+                                        && Some(halo.linked_buff_id.unwrap_or(buff_id))
+                                            == child.buff.buff_id
+                                        && (halo.linked_buff_id.is_some()
+                                            || carrier.owner_uid
+                                                == child.buff.from_uid.unwrap_or(child.owner_uid))
+                                })
+                        })
+                })
+            },
+            |emitter| emitter == emitter_uid,
+        )
+    }
+
     pub(crate) fn plan_action_expiries(
         &self,
         action: &crate::engine::skill::action::SkillActionEvent,
@@ -111,31 +154,27 @@ impl BuffManager {
             .collect()
     }
 
-    pub(crate) fn defeated_entity_inactive_halo_cleanup(
+    pub(crate) fn defeated_entity_halo_cleanup(
         &self,
         defeated_uid: i64,
         hp: &HpManager,
     ) -> Vec<BuffCommand> {
-        let Some(team_type) = self.team_type(defeated_uid) else {
+        if self.team_type(defeated_uid).is_none() {
             return Vec::new();
-        };
-        self
-            .buffs
+        }
+        self.buffs
             .iter()
             .filter(|active| {
-                active.team_type == team_type
-                    && active.owner_uid != defeated_uid
+                active.owner_uid != defeated_uid
                     && hp.current(active.owner_uid) > 0
-                    && !active.effective
-                    && active.fanout_emitter_uid == Some(defeated_uid)
-                    && active.definition.as_ref().is_some_and(|definition| {
-                        definition.features().iter().any(|feature| {
-                            feature.kind
-                                == Some(
-                                    crate::engine::skill::buff_act::registry::BuffActKind::SlaveHalo,
-                                )
-                        })
-                    })
+                    && self.halo_child_emitted_by(active, defeated_uid)
+                    && (!active.effective
+                        || !self.entities.iter().any(|entity| {
+                            entity.active
+                                && entity.uid != defeated_uid
+                                && hp.current(entity.uid) > 0
+                                && self.halo_child_emitted_by(active, entity.uid)
+                        }))
             })
             .filter_map(|active| Some((active.owner_uid, active.buff.uid?)))
             .map(|(target_uid, buff_uid)| {
@@ -144,7 +183,7 @@ impl BuffManager {
                         domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
                         key: crate::engine::skill::rule::DefinitionKey::new(
                             0,
-                            "DefeatedEntityInactiveHaloCleanup",
+                            "DefeatedEntityHaloCleanup",
                         ),
                     },
                     target_uid,
@@ -224,56 +263,6 @@ impl BuffManager {
     pub(crate) fn sync_entity(&self, entity: &mut FightEntityInfo) {
         let Some(uid) = entity.uid else { return };
         entity.buffs = self.active_for(uid).cloned().collect();
-    }
-
-    pub(crate) fn project_synchronization(
-        &self,
-        entity: &mut FightEntityInfo,
-        progress: crate::engine::manager::ex_point::SynchronizationProgress,
-    ) {
-        let Some(owner_uid) = entity.uid else { return };
-        let Some((buff_uid, act_id, _)) = self.buff_act_carrier(
-            owner_uid,
-            crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
-        ) else {
-            return;
-        };
-        let Ok(target_uid) = i32::try_from(progress.target_uid) else {
-            return;
-        };
-        let params = vec![
-            progress.completed_actions.saturating_add(1),
-            progress.total_damage,
-            target_uid,
-        ];
-        let Some(buff) = entity
-            .buffs
-            .iter_mut()
-            .find(|buff| buff.uid == Some(buff_uid))
-        else {
-            return;
-        };
-        buff.act_common_params = Some(format!(
-            "{act_id}#{}",
-            params
-                .iter()
-                .map(i32::to_string)
-                .collect::<Vec<_>>()
-                .join(",")
-        ));
-        if let Some(info) = buff
-            .act_info
-            .iter_mut()
-            .find(|info| info.act_id == Some(act_id))
-        {
-            info.param = params;
-        } else {
-            buff.act_info.push(BuffActInfo {
-                act_id: Some(act_id),
-                param: params,
-                str_param: Some(String::new()),
-            });
-        }
     }
 
     pub(crate) fn plan_round_start_duration_sync(
@@ -368,6 +357,32 @@ impl BuffManager {
         self.plan_duration_advances(take_stage, owner_uids)
             .into_iter()
             .map(|plan| plan.buff_uid)
+            .collect()
+    }
+
+    pub(crate) fn duration_targets(
+        &self,
+        take_stage: i32,
+        owner_uids: &[i64],
+    ) -> Vec<BuffDurationTarget> {
+        self.plan_duration_advances(take_stage, owner_uids)
+            .into_iter()
+            .filter_map(|plan| {
+                let remaining = self
+                    .buffs
+                    .iter()
+                    .find(|active| {
+                        active.owner_uid == plan.target_uid
+                            && active.buff.uid == Some(plan.buff_uid)
+                    })?
+                    .buff
+                    .duration?;
+                Some(BuffDurationTarget {
+                    owner_uid: plan.target_uid,
+                    buff_uid: plan.buff_uid,
+                    remaining,
+                })
+            })
             .collect()
     }
 

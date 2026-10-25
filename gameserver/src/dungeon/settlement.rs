@@ -73,6 +73,9 @@ pub async fn settle_active(
         active.runtime.activity_score(),
     )
     .await?;
+    if let Some(extra) = act128_score_extra(active) {
+        settlement.end_dungeon.extra_str = Some(extra);
+    }
     settlement.compose_push =
         tower_compose::settle_in_transaction(&mut tx, player_id, active).await?;
     battle_db::finish_fight_instance_in_transaction(&mut tx, player_id, fight_id).await?;

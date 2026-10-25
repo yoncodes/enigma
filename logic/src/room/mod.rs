@@ -85,4 +85,4 @@ use plan::room_plan_building_degree;
 use production::{scale_production_rewards, scaled_formula_materials};
 
 #[cfg(test)]
-mod test;
+mod tests;

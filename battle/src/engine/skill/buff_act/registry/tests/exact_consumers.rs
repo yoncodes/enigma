@@ -1,6 +1,21 @@
 use super::*;
 
 #[test]
+fn share_hurt_marks_adds_and_refreshes() {
+    let wire = find(872, "ShareHurt").unwrap().wire.unwrap();
+
+    for phase in [
+        super::super::super::wire::WirePhase::Add,
+        super::super::super::wire::WirePhase::Refresh,
+    ] {
+        assert_eq!(
+            wire.markers(phase),
+            &[sonettobuf::effect_type_enum::EffectType::None as i32]
+        );
+    }
+}
+
+#[test]
 fn hurt_to_progress_owns_the_pre_damage_hit_route() {
     let definition = find(1148, "HurtToProgress").unwrap();
 
@@ -42,7 +57,7 @@ fn attr_transactions_follow_the_buff_lifecycle_boundary() {
     );
     assert_eq!(
         runtime_publication(100, "Attr", EventKind::BuffRemoved),
-        PublicationPhase::BeforePublish
+        PublicationPhase::AfterPublish
     );
 }
 

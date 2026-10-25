@@ -143,12 +143,12 @@ pub struct BuffDispel {
     pub count: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuffReplace {
     pub origin: CommandOrigin,
     pub source_uid: i64,
     pub target_uid: i64,
-    pub source: BuffSelector,
+    pub sources: Vec<BuffSelector>,
     pub replacement_id_or_type: i32,
 }
 
@@ -315,15 +315,15 @@ impl BuffDurationAdvance {
     }
 
     pub fn for_event(event: &BattleEvent) -> Vec<Self> {
+        if let BattleEvent::SkillAction(action) = event {
+            return crate::engine::skill::buff_act::effect_time::duration_stage_after_skill_phase(
+                action.phase,
+            )
+            .and_then(|take_stage| Self::new(take_stage, vec![action.source_uid], None))
+            .into_iter()
+            .collect();
+        }
         let (take_stages, owner_uid) = match event {
-            BattleEvent::SkillAction(action) => (
-                crate::engine::skill::buff_act::effect_time::duration_stage_for_skill_phase(
-                    action.phase,
-                )
-                .into_iter()
-                .collect::<Vec<_>>(),
-                action.source_uid,
-            ),
             BattleEvent::AllyAction(action) => (
                 crate::engine::skill::buff_act::effect_time::duration_stages_for_event(
                     crate::engine::event::kind::EventKind::AllyAction,
@@ -343,6 +343,7 @@ impl BuffDurationAdvance {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuffCommand {
     Grant(BuffGrant),
+    GrantOnDeath(BuffGrant),
     GrantRelated(RelatedBuffGrant),
     GrantIndependent(BuffGrant),
     Accumulate(BuffGrant),
@@ -360,7 +361,10 @@ pub enum BuffCommand {
     Convert(BuffConvert),
     Replace(BuffReplace),
     Remove(BuffRemove),
+    ForceExpire(BuffRemove),
     RemoveAfterTrigger(BuffRemove),
+    EndChannel(BuffRemove),
+    CompleteSelection(BuffRemove),
     Deactivate(BuffRemove),
     ExpireAction(BuffRemove),
     Dispel(BuffDispel),
@@ -422,8 +426,9 @@ impl BuffPlan {
     }
 
     pub(crate) fn planned_reservation_uids(&self) -> Option<Vec<i64>> {
-        let BuffPlanAction::ReserveChildUids(plan) = &self.action else {
-            return None;
+        let plan = match &self.action {
+            BuffPlanAction::ReserveChildUids(plan) => plan,
+            _ => return None,
         };
         Some(plan.uids.iter().map(|uid| uid.uid).collect())
     }
@@ -617,8 +622,16 @@ struct RemovePlan {
     target_uid: i64,
     buff_uids: Vec<i64>,
     config_effect: i32,
-    clear_amount: bool,
-    clear_count: bool,
+    duration_expired: bool,
+    snapshot: RemoveSnapshot,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum RemoveSnapshot {
+    Preserve,
+    ClearAmount,
+    ClearCount,
+    ClearDuration,
 }
 
 #[derive(Debug, Clone)]

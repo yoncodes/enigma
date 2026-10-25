@@ -2,7 +2,10 @@ use anyhow::Result;
 use sonettobuf::{EquipRecord, FightEntityInfo, FightTeam, PowerInfo};
 
 use super::team::Team;
-use crate::engine::entity::{builder::EntityBuilder, skill::parse_skill_group};
+use crate::engine::entity::{
+    builder::{EntityBuilder, parse_power_specs},
+    skill::parse_skill_group,
+};
 
 pub struct Defender;
 
@@ -280,17 +283,15 @@ fn parse_passives(value: &str) -> Vec<i32> {
 }
 
 fn monster_power_infos(value: &str) -> Vec<PowerInfo> {
-    let mut parts = value.split('#');
-    let power_id = parts.next().and_then(|v| v.parse().ok()).unwrap_or(1);
-    let max = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
-    if max <= 0 {
-        return vec![];
-    }
-    vec![PowerInfo {
-        power_id: Some(power_id),
-        num: Some(0),
-        max: Some(max),
-    }]
+    parse_power_specs(value)
+        .into_iter()
+        .filter(|(_, max)| *max > 0)
+        .map(|(power_id, max)| PowerInfo {
+            power_id: Some(power_id),
+            num: Some(0),
+            max: Some(max),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -385,6 +386,23 @@ mod tests {
             .unwrap();
 
         assert_eq!(monster.ex_point, Some(5));
+    }
+
+    #[test]
+    fn monster_preserves_all_configured_power_resources() {
+        crate::test_support::init_config();
+
+        let monster = Defender::build_monster_with_uid(109_380_001, -1, 1, 2).unwrap();
+        let powers = monster
+            .power_infos
+            .iter()
+            .map(|power| (power.power_id, power.num, power.max))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            powers,
+            vec![(Some(10), Some(0), Some(100)), (Some(9), Some(0), Some(4))]
+        );
     }
 
     #[test]

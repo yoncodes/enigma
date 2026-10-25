@@ -246,6 +246,78 @@ fn active_modifier_inheriting_its_condition_target_counts_each_target_separately
 }
 
 #[test]
+fn active_logic_target_modifier_is_collected_once_when_any_target_matches() {
+    crate::test_support::init_config();
+    let buffs = |ids: &[i32], uid_offset| {
+        ids.iter()
+            .enumerate()
+            .map(|(index, buff_id)| BuffInfo {
+                uid: Some(index as i64 + uid_offset),
+                buff_id: Some(*buff_id),
+                ..Default::default()
+            })
+            .collect()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(10_000),
+                    buffs: buffs(&[31450171], 1),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    current_hp: Some(10_000),
+                    buffs: buffs(
+                        &[31450171, 31440116, 31450111, 31450132, 30250003, 30250001],
+                        10,
+                    ),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: -1,
+        skill_id: 103374113,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(10);
+    let mut execution = SkillExecution::new(TargetContext::default());
+
+    emit_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        &mut execution,
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+
+    assert_eq!(execution.modifiers.rates.len(), 1);
+    assert_eq!(execution.modifiers.rates[0].target_uid, 0);
+    assert_eq!(execution.modifiers.rates[0].fixed_value(), Some(-1_000));
+}
+
+#[test]
 fn buff_feature_event_preserves_the_exact_act_identity() {
     let mut context = TargetContext::default();
     apply_event_context(

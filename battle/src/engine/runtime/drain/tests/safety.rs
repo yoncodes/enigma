@@ -69,39 +69,6 @@ fn canceling_an_action_releases_its_held_after_action_casts() {
 }
 
 #[test]
-fn canceled_reaction_action_restores_its_unclaimed_cast() {
-    let action_path = vec![0];
-    let cast = queued(RuleOp::FreezeActiveSkillRates);
-    let link = DrainState::reaction_cast_link(vec![(None, cast)]);
-    let mut state = DrainState::new(TargetContext::default());
-
-    state.open_action(action_path.clone());
-    state.claim_action_link(&action_path, &link);
-    assert!(state.cancel_action(&action_path).is_empty());
-
-    let restored = DrainState::take_unclaimed_reaction_casts(&link);
-    assert_eq!(restored.len(), 1);
-    assert!(restored[0].1.parent_path.is_none());
-}
-
-#[test]
-fn completed_reaction_action_owns_its_held_cast() {
-    let action_path = vec![0];
-    let cast = queued(RuleOp::FreezeActiveSkillRates);
-    let link = DrainState::reaction_cast_link(vec![(None, cast)]);
-    let mut state = DrainState::new(TargetContext::default());
-
-    state.open_action(action_path.clone());
-    state.claim_action_link(&action_path, &link);
-
-    assert!(state.take_after_action_casts(&action_path).is_empty());
-    let released = state.take_claimed_reaction_casts(&action_path);
-    assert_eq!(released.len(), 1);
-    assert_eq!(released[0].1.parent_path.as_ref(), Some(&action_path));
-    assert!(DrainState::take_unclaimed_reaction_casts(&link).is_empty());
-}
-
-#[test]
 fn repeated_capped_state_commands_commit_cumulative_absolute_markers() {
     crate::test_support::init_config();
     let fight = Fight {

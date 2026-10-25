@@ -70,6 +70,19 @@ pub fn forces_critical(
         })
 }
 
+pub fn active_forces_critical(
+    source_uid: i64,
+    managers: &crate::engine::manager::BattleManagers,
+    extra_action: bool,
+) -> bool {
+    extra_action
+        && forces_critical(
+            &managers.buff.active_features(&managers.hp),
+            source_uid,
+            true,
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, HeroExAttribute};
@@ -136,6 +149,8 @@ mod tests {
         );
         assert!(!forces_critical(&features, 10, false));
         assert!(forces_critical(&features, 10, true));
+        assert!(!active_forces_critical(10, &managers, false));
+        assert!(active_forces_critical(10, &managers, true));
         assert_eq!(
             super::super::calculated_attack_attribute_delta_for_skill(
                 configured,
@@ -146,9 +161,9 @@ mod tests {
                 false,
                 false,
                 true,
-                &[(31050186, 20)],
+                true,
             ),
-            0
+            300
         );
         assert!(forces_critical(&features, 10, true));
 

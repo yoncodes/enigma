@@ -143,4 +143,4 @@ fn ex_point_effect_type(change: ExPointApplyResult) -> i32 {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

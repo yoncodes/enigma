@@ -86,14 +86,11 @@ pub(crate) fn collect_hero_build_roots(
     let destiny_stone = destiny_selection
         .map(|(stone, _)| stone)
         .unwrap_or_default();
+    let destiny_rank = destiny_selection.map(|(_, rank)| rank).unwrap_or_default();
     // Device ownership and device skills are chosen per Portrait level.
     let levels = std::iter::once(0)
         .chain(if destiny_stone > 0 {
-            db.destiny_facets_ex_level
-                .iter()
-                .filter(|row| row.hero_id == destiny_stone)
-                .map(|row| row.skill_level)
-                .collect::<Vec<_>>()
+            (1..=5).collect::<Vec<_>>()
         } else {
             db.skill_ex_level
                 .iter()
@@ -104,8 +101,14 @@ pub(crate) fn collect_hero_build_roots(
         .collect::<Vec<_>>();
     let mut character_kit_reachable = false;
     for level in levels {
-        match battle::tooling::configured_conduit_skill_ids(db, hero_id, level, destiny_stone)
-            .map_err(|error| anyhow::anyhow!("resolve configured device skills: {error}"))?
+        match battle::tooling::configured_conduit_skill_ids_for_rank(
+            db,
+            hero_id,
+            level,
+            destiny_stone,
+            destiny_rank,
+        )
+        .map_err(|error| anyhow::anyhow!("resolve configured device skills: {error}"))?
         {
             Some(device_skills) => {
                 for skill_id in device_skills {

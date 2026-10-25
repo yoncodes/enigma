@@ -369,10 +369,8 @@ pub fn run_ai_actions(
         if crate::engine::round::outcome::battle_ended(fight, pool, managers) {
             break;
         }
-        let current_pool = pool
-            .roster_changed(managers)
-            .then(|| pool.runtime_view(managers));
-        let pool = current_pool.as_ref().unwrap_or(pool);
+        let current_pool = pool.runtime_view(managers);
+        let pool = &current_pool;
         let card_index = index as i32 + 1;
         if managers.hp.current(choice.source_uid) <= 0 {
             let resource_owner_uid = promotions

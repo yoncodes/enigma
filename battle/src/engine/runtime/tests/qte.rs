@@ -1,0 +1,442 @@
+use super::*;
+
+#[test]
+fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
+    crate::test_support::init_config();
+    let entity = |uid, team_type, hp, attack| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team_type),
+        current_hp: Some(hp),
+        ex_point: (uid == 10).then_some(99),
+        ex_point_type: Some(if uid > 0 { 2 } else { 0 }),
+        attr: Some(sonettobuf::HeroAttribute {
+            hp: Some(hp),
+            attack: Some(attack),
+            ..Default::default()
+        }),
+        passive_skill: match uid {
+            20 => vec![31050141],
+            30 => vec![31090141],
+            _ => Vec::new(),
+        },
+        ..Default::default()
+    };
+    let mut runtime = runtime(Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(10, 1, 1_000, 1_000),
+                entity(20, 1, 1_000, 1_000),
+                entity(30, 1, 1_000, 1_000),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                buffs: vec![
+                    sonettobuf::BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(312451011),
+                        from_uid: Some(30),
+                        duration: Some(3),
+                        ..Default::default()
+                    },
+                    sonettobuf::BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(31090112),
+                        from_uid: Some(30),
+                        layer: Some(15),
+                        ..Default::default()
+                    },
+                ],
+                model_id: Some(109380001),
+                passive_skill: vec![109380005],
+                power_infos: vec![sonettobuf::PowerInfo {
+                    power_id: Some(10),
+                    num: Some(100),
+                    max: Some(100),
+                }],
+                ..entity(-1, 2, 100_000, 0)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let origin = crate::engine::skill::rule::CommandOrigin {
+        domain: crate::engine::skill::rule::RuleDomain::Behavior,
+        key: crate::engine::skill::rule::DefinitionKey::new(100000, "EzioProps"),
+    };
+    runtime
+        .managers
+        .execute_ex_point(
+            crate::engine::manager::ex_point::ExPointCommand::ConfigureSynchronization(
+                crate::engine::manager::ex_point::ExPointConfigureSynchronization {
+                    origin,
+                    target_uid: 10,
+                    definition: crate::engine::manager::ex_point::SynchronizationDefinition::new(
+                        [312301323, 312301333, 312301343],
+                        4,
+                        100,
+                    )
+                    .unwrap(),
+                },
+            ),
+        )
+        .unwrap();
+    runtime
+        .managers
+        .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+            crate::engine::manager::buff::BuffGrant {
+                origin,
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 229100,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            },
+        ))
+        .unwrap();
+    runtime.catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        [
+            312301323, 312301333, 312301343, 31050141, 31090141, 312451011, 109380005,
+        ],
+        [],
+    );
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Setup(
+            crate::engine::manager::card::CardSetup {
+                hand: vec![CardInfo {
+                    uid: Some(20),
+                    skill_id: Some(31050111),
+                    ..Default::default()
+                }],
+                draw_pile: Vec::new(),
+                deck_num: 30,
+            },
+        ))
+        .unwrap();
+
+    let request = UseClothSkillRequest {
+        skill_id: Some(1),
+        from_id: Some(10),
+        to_id: Some(-1),
+        r#type: Some(ClothSkillType::EzioBigSkill as i32),
+    };
+    assert!(runtime.use_cloth_skill(request).is_none());
+    assert_eq!(
+        runtime
+            .managers
+            .ex_point
+            .synchronization_progress(10)
+            .unwrap()
+            .completed_actions,
+        0
+    );
+    runtime
+        .managers
+        .execute_ex_point(crate::engine::manager::ex_point::ExPointCommand::Change(
+            crate::engine::manager::ex_point::ExPointChange {
+                origin,
+                source_uid: 10,
+                target_uid: 10,
+                delta: 1,
+                config_effect: 0,
+                effect_type: 0,
+            },
+        ))
+        .unwrap();
+    let mut remaining = Vec::new();
+    let mut replies = Vec::new();
+    let mut target_hp = Vec::new();
+    for _ in 0..4 {
+        let reply = runtime.use_cloth_skill(request).unwrap();
+        target_hp.push(runtime.managers.hp.current(-1));
+        remaining.push(
+            reply
+                .round
+                .as_ref()
+                .unwrap()
+                .fight_step
+                .iter()
+                .flat_map(|step| &step.act_effect)
+                .find_map(|effect| {
+                    (effect.effect_type
+                        == Some(sonettobuf::effect_type_enum::EffectType::Buffupdate as i32))
+                    .then_some(effect.buff.as_ref())
+                    .flatten()
+                    .filter(|buff| buff.buff_id == Some(229100))
+                    .and_then(|buff| buff.act_common_params.as_deref())
+                    .and_then(|params| params.split(['#', ',']).nth(1))
+                    .and_then(|remaining| remaining.parse::<i32>().ok())
+                })
+                .unwrap(),
+        );
+        replies.push(reply);
+    }
+
+    let progress = runtime
+        .managers
+        .ex_point
+        .synchronization_progress(10)
+        .unwrap();
+    assert_eq!((progress.completed_actions, progress.target_uid), (4, -1));
+    assert!(progress.total_damage > 0);
+    assert!(target_hp[..3].windows(2).all(|hp| hp[1] < hp[0]));
+    assert!(target_hp[3] < target_hp[2] - progress.total_damage);
+    assert_eq!(remaining, [3, 2, 1, 0]);
+    assert_eq!(runtime.managers.ex_point.get(10), 0);
+    fn ex_point_changes(steps: &[sonettobuf::FightStep], changes: &mut Vec<i32>) {
+        for effect in steps.iter().flat_map(|step| &step.act_effect) {
+            if effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
+            {
+                changes.push(effect.effect_num.unwrap_or_default());
+            }
+            if let Some(nested) = effect.fight_step.as_ref() {
+                ex_point_changes(std::slice::from_ref(nested), changes);
+            }
+        }
+    }
+    let costs = replies
+        .iter()
+        .map(|reply| {
+            let mut changes = Vec::new();
+            ex_point_changes(&reply.round.as_ref().unwrap().fight_step, &mut changes);
+            changes
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(costs, [vec![-100], vec![], vec![], vec![]]);
+    let passive_counts = replies
+        .iter()
+        .map(|reply| count_skill(&reply.round.as_ref().unwrap().fight_step, 109380005))
+        .collect::<Vec<_>>();
+    assert_eq!(passive_counts, [1, 1, 1, 2]);
+    fn synchronization_damage_from(steps: &[sonettobuf::FightStep], kinds: &mut Vec<i32>) {
+        for effect in steps.iter().flat_map(|step| &step.act_effect) {
+            if effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Eziobigskilldamage as i32)
+            {
+                kinds.push(
+                    effect
+                        .hurt_info
+                        .as_ref()
+                        .and_then(|hurt| hurt.damage_from_type)
+                        .unwrap(),
+                );
+            }
+            if let Some(nested) = effect.fight_step.as_ref() {
+                synchronization_damage_from(std::slice::from_ref(nested), kinds);
+            }
+        }
+    }
+    let mut damage_from = Vec::new();
+    for reply in &replies {
+        synchronization_damage_from(&reply.round.as_ref().unwrap().fight_step, &mut damage_from);
+    }
+    assert_eq!(damage_from.len(), 5);
+    assert!(damage_from.iter().all(|damage_from| {
+        *damage_from == sonettobuf::fight_hurt_info::DamageFromType::SkillEffect as i32
+    }));
+    let first_round = replies[0].round.as_ref().unwrap();
+    assert!(
+        first_round.before_cards1.is_empty()
+            && first_round.team_a_cards1.is_empty()
+            && first_round.before_cards2.is_empty()
+            && first_round.team_a_cards2.is_empty()
+    );
+    let card_sync = first_round.fight_step.last().unwrap();
+    assert_eq!(
+        card_sync
+            .act_effect
+            .iter()
+            .map(|effect| effect.effect_type.unwrap_or_default())
+            .collect::<Vec<_>>(),
+        [
+            sonettobuf::effect_type_enum::EffectType::Cardspush as i32,
+            sonettobuf::effect_type_enum::EffectType::Carddecknum as i32,
+        ]
+    );
+    assert_eq!(card_sync.act_effect[0].card_info_list.len(), 1);
+    assert_eq!(card_sync.act_effect[1].effect_num, Some(30));
+    fn synchronization_order(steps: &[sonettobuf::FightStep], order: &mut Vec<i32>) {
+        for step in steps {
+            if step.act_id == Some(312451011) {
+                order.push(312451011);
+            }
+            for effect in &step.act_effect {
+                if effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
+                {
+                    order.push(-1);
+                } else if effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Eziobigskilldamage as i32)
+                {
+                    order.push(-2);
+                }
+                if let Some(nested) = effect.fight_step.as_ref() {
+                    synchronization_order(std::slice::from_ref(nested), order);
+                }
+            }
+        }
+    }
+    let mut first_order = Vec::new();
+    synchronization_order(
+        &replies[0].round.as_ref().unwrap().fight_step,
+        &mut first_order,
+    );
+    assert_eq!(first_order, [312451011, -1, -2]);
+    let first_effects = &replies[0].round.as_ref().unwrap().fight_step[0].act_effect;
+    let buff_position = |buff_id| {
+        first_effects
+            .iter()
+            .position(|effect| effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(buff_id))
+            .unwrap()
+    };
+    assert!(buff_position(229100) < buff_position(31090112));
+    fn contains_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> bool {
+        steps.iter().any(|step| {
+            step.act_id == Some(skill_id)
+                || step.act_effect.iter().any(|effect| {
+                    effect.fight_step.as_ref().is_some_and(|nested| {
+                        contains_skill(std::slice::from_ref(nested), skill_id)
+                    })
+                })
+        })
+    }
+    fn count_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> usize {
+        steps
+            .iter()
+            .map(|step| {
+                usize::from(step.act_id == Some(skill_id))
+                    + step
+                        .act_effect
+                        .iter()
+                        .filter_map(|effect| effect.fight_step.as_ref())
+                        .map(|nested| count_skill(std::slice::from_ref(nested), skill_id))
+                        .sum::<usize>()
+            })
+            .sum()
+    }
+    fn skill_order(steps: &[sonettobuf::FightStep], order: &mut Vec<i32>) {
+        for step in steps {
+            if let Some(skill_id) = step.act_id {
+                order.push(skill_id);
+            }
+            for nested in step
+                .act_effect
+                .iter()
+                .filter_map(|effect| effect.fight_step.as_ref())
+            {
+                skill_order(std::slice::from_ref(nested), order);
+            }
+        }
+    }
+    let final_steps = &replies.last().unwrap().round.as_ref().unwrap().fight_step;
+    assert!(contains_skill(final_steps, 312301343,));
+    assert_eq!(count_skill(final_steps, 31050141), 2);
+    let mut order = Vec::new();
+    skill_order(final_steps, &mut order);
+    order.retain(|skill_id| [312301343, 31050141].contains(skill_id));
+    assert_eq!(order, [31050141, 312301343, 31050141]);
+    fn buff_lifecycle(
+        steps: &[sonettobuf::FightStep],
+        buff_id: i32,
+        lifecycle: &mut Vec<(i32, String)>,
+    ) {
+        for effect in steps.iter().flat_map(|step| &step.act_effect) {
+            if let Some(buff) = effect
+                .buff
+                .as_ref()
+                .filter(|buff| buff.buff_id == Some(buff_id))
+            {
+                lifecycle.push((
+                    effect.effect_type.unwrap_or_default(),
+                    buff.act_common_params.clone().unwrap_or_default(),
+                ));
+            }
+            if let Some(nested) = effect.fight_step.as_ref() {
+                buff_lifecycle(std::slice::from_ref(nested), buff_id, lifecycle);
+            }
+        }
+    }
+    let mut lifecycle = Vec::new();
+    buff_lifecycle(
+        &replies.last().unwrap().round.as_ref().unwrap().fight_step,
+        229100,
+        &mut lifecycle,
+    );
+    assert_eq!(
+        lifecycle
+            .iter()
+            .map(|(effect, _)| *effect)
+            .collect::<Vec<_>>(),
+        [
+            sonettobuf::effect_type_enum::EffectType::Buffupdate as i32,
+            sonettobuf::effect_type_enum::EffectType::Buffupdate as i32,
+            sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+        ],
+    );
+    assert!(lifecycle[0].1.starts_with("10000#0,"));
+    assert!(lifecycle[1].1.starts_with("10000#-1,"));
+    assert_eq!(lifecycle[1].1, lifecycle[2].1);
+    let terminal = lifecycle[1]
+        .1
+        .split(['#', ','])
+        .map(str::parse::<i32>)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!((terminal[1], terminal[3]), (-1, -1));
+    assert_eq!(terminal[2], progress.total_damage);
+    assert!(!runtime.managers.buff.has_buff_id(10, 229100));
+    assert!(runtime.use_cloth_skill(request).is_none());
+}
+
+#[test]
+fn battle_start_configures_synchronization_from_the_owner_passive() {
+    crate::test_support::init_config();
+    let mut runtime = runtime(Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3123),
+                team_type: Some(1),
+                position: Some(1),
+                current_hp: Some(1_000),
+                ex_point_type: Some(2),
+                passive_skill: vec![312301403],
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                position: Some(1),
+                current_hp: Some(1_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    runtime.start_round().unwrap();
+
+    assert_eq!(
+        runtime
+            .managers
+            .ex_point
+            .synchronization_definition(10)
+            .map(|definition| definition.skills),
+        Some([312301323, 312301333, 312301343])
+    );
+}

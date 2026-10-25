@@ -14,8 +14,8 @@ enum SettlementStep {
 }
 
 const ATTACKER_SETTLEMENT: &[SettlementStep] = &[
-    SettlementStep::OwnerEvent(EventKind::RoundEndEntitySettlement),
     SettlementStep::Settlement,
+    SettlementStep::OwnerEvent(EventKind::RoundEndEntitySettlement),
     SettlementStep::OwnerEvent(EventKind::RoundEndAfterSettlement),
     SettlementStep::ResetEureka,
 ];
@@ -428,16 +428,20 @@ pub fn run_entity_settlement(
                         skills.events.remove(0);
                     }
                     append(&mut result, skills);
+                    let take_stage = effect_time::ROUND_END_AFTER_SETTLEMENT;
+                    let targets = managers
+                        .buff
+                        .duration_targets(take_stage, &active_owner_uids);
                     append(
                         &mut result,
-                        run_duration_advances_for_event(
+                        run_owned_duration_advances(
                             managers,
                             pool,
                             catalog,
                             determinism,
                             context,
-                            *kind,
-                            &active_owner_uids,
+                            take_stage,
+                            targets,
                         )?,
                     );
                     let owner_settled = BattleEvent::Kind(EventKind::RoundEndAfterOwnerSettlement);
@@ -519,12 +523,10 @@ pub fn run_entity_settlement(
                 ))],
             )?,
         };
-        if side == SettlementSide::Defender
-            && matches!(
-                step,
-                SettlementStep::OwnerEvent(EventKind::RoundEndEntitySettlement)
-            )
-        {
+        if matches!(
+            step,
+            SettlementStep::OwnerEvent(EventKind::RoundEndEntitySettlement)
+        ) {
             append_round_phase(&mut result, next);
         } else {
             append(&mut result, next);
@@ -551,7 +553,7 @@ pub fn run_round_end_final_settlement(
 ) -> Result<DrainResult, DrainError> {
     let owner_uids = final_settlement_owner_order(pool, managers);
     let event = BattleEvent::BuffsSettled(settled_buffs);
-    let mut result = drain::run_grouped_owner_event_lanes(
+    let initial = drain::run_grouped_owner_event_lanes(
         managers,
         pool,
         catalog,
@@ -561,21 +563,71 @@ pub fn run_round_end_final_settlement(
         &owner_uids,
         &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
     )?;
-    append(
+    let mut result = begin_round_phase(RoundPhase::RoundEndFinalSettlement);
+    append_round_phase(&mut result, initial);
+    let take_stage = effect_time::ROUND_END_FINAL_SETTLEMENT;
+    let expiring = managers
+        .buff
+        .duration_targets(take_stage, &owner_uids)
+        .into_iter()
+        .filter(|target| target.remaining == 1)
+        .collect::<Vec<_>>();
+    let side_owners = [
+        crate::engine::fight::rules::ATTACKER_SIDE_UID,
+        crate::engine::manager::emitter::UID,
+        crate::engine::fight::rules::DEFENDER_SIDE_UID,
+    ];
+    let side_expiring = expiring
+        .into_iter()
+        .filter(|target| side_owners.contains(&target.owner_uid))
+        .collect::<Vec<_>>();
+    append_round_phase(
         &mut result,
-        run_duration_advances_for_event(
+        run_owned_duration_advances(
             managers,
             pool,
             catalog,
             determinism,
             context,
-            EventKind::RoundEndFinalSettlement,
+            take_stage,
+            side_expiring,
+        )?,
+    );
+    append_round_phase(
+        &mut result,
+        drain::run_grouped_owner_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundEndAfterSideFinalExpiry),
             &owner_uids,
+            drain::ReactionLane::Skills,
         )?,
     );
     // "When Obscurity reaches zero, you'll enter a bonus Witness Round during the following
     // round": checks for a buff granted as the final settlement's durations expire.
     let after = BattleEvent::Kind(EventKind::RoundEndAfterFinalSettlement);
+    let mut after_phase = begin_round_phase(RoundPhase::RoundEndAfterFinalSettlement);
+    let entity_advances = managers
+        .buff
+        .duration_targets(take_stage, &owner_uids)
+        .into_iter()
+        .filter(|target| target.remaining > 1 || !side_owners.contains(&target.owner_uid))
+        .collect::<Vec<_>>();
+    append_round_phase(
+        &mut after_phase,
+        run_owned_duration_advances(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            take_stage,
+            entity_advances,
+        )?,
+    );
     let mut after_skills = drain::run_group_event(
         managers,
         pool,
@@ -589,8 +641,39 @@ pub fn run_round_end_final_settlement(
     if after_skills.events.first() == Some(&after) {
         after_skills.events.remove(0);
     }
-    append(&mut result, after_skills);
+    append_round_phase(&mut after_phase, after_skills);
+    append(&mut result, after_phase);
     Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_owned_duration_advances(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    take_stage: i32,
+    targets: Vec<crate::engine::manager::buff::BuffDurationTarget>,
+) -> Result<DrainResult, DrainError> {
+    let operations = targets.into_iter().map(|target| {
+        let owner = FrameOwner::BuffDuration {
+            owner_uid: target.owner_uid,
+            buff_uid: target.buff_uid,
+            take_stage,
+        };
+        let advance = BuffDurationAdvance::new(
+            take_stage,
+            vec![target.owner_uid],
+            Some(vec![target.buff_uid]),
+        )
+        .expect("final settlement duration stage is registered");
+        (
+            owner,
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::AdvanceDuration(advance))),
+        )
+    });
+    drain::run_owned_command_group(managers, pool, catalog, determinism, context, operations)
 }
 
 fn final_settlement_owner_order(pool: &TargetPool, managers: &BattleManagers) -> Vec<i64> {

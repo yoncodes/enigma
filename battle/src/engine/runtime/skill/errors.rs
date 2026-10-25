@@ -32,6 +32,11 @@ pub enum SkillOpError {
         skill_id: i32,
         opcode: i32,
     },
+    UnsupportedAssassinationReactionCardinality {
+        skill_id: i32,
+        buff_id: i32,
+        count: usize,
+    },
 }
 
 impl From<crate::engine::skill::subscriber::SubscriberError> for SkillOpError {

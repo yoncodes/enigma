@@ -679,18 +679,18 @@ fn terminal_player_action_stops_the_remaining_action_queue() {
 }
 
 #[test]
-fn repeated_play_index_tracks_the_mutating_hand() {
+fn repeated_play_index_tracks_the_composed_mutating_hand() {
     init_config();
-    let entity = |uid, skill_id| FightEntityInfo {
-        uid: Some(uid),
-        team_type: Some(1),
-        current_hp: Some(100),
-        skill_group1: vec![skill_id],
-        ..Default::default()
-    };
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![entity(10, 100), entity(20, 200)],
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                skill_group1: vec![100, 101],
+                skill_group2: vec![200],
+                ..Default::default()
+            }],
             ..Default::default()
         }),
         defender: Some(FightTeam {
@@ -715,17 +715,22 @@ fn repeated_play_index_tracks_the_mutating_hand() {
                     ..Default::default()
                 },
                 CardInfo {
-                    uid: Some(20),
+                    uid: Some(10),
+                    skill_id: Some(100),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(10),
                     skill_id: Some(200),
                     ..Default::default()
                 },
             ],
             draw_pile: Vec::new(),
-            deck_num: 2,
+            deck_num: 3,
         }))
         .unwrap();
     let mut catalog = SkillEffectCatalog::default();
-    for skill_id in [100, 200] {
+    for skill_id in [100, 101, 200] {
         catalog.insert(ParsedSkillEffect {
             skill_id,
             slots: Vec::new(),
@@ -745,7 +750,7 @@ fn repeated_play_index_tracks_the_mutating_hand() {
         TargetContext::default(),
         [
             RoundCommand::PlayCard {
-                card_index: 0,
+                card_index: 2,
                 target_uid: None,
                 chosen_skill_id: None,
                 recorded_skill: None,
@@ -773,7 +778,7 @@ fn repeated_play_index_tracks_the_mutating_hand() {
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(completed, vec![100, 200]);
+    assert_eq!(completed, vec![200, 101]);
     assert!(managers.card.hand().is_empty());
 }
 

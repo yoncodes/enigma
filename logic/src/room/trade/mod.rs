@@ -159,4 +159,4 @@ async fn trade_level_up(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

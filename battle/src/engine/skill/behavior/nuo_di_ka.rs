@@ -170,6 +170,7 @@ fn emit_ops(
         let command = resolve_configured_replacement_damage_command(
             DamageRequest {
                 source_uid: context.source_uid,
+                action_owner_uid: context.source_uid,
                 target_uid,
                 skill_id: context.active_skill_id,
                 rate,
@@ -187,7 +188,6 @@ fn emit_ops(
                 is_crit,
                 extra_skill_kind: context.target.extra_skill_kind,
                 performs_extra_action: extra_action,
-                unpaid_extra_action_cost_fields: &modifiers.unpaid_extra_action_cost_fields,
             },
             runtime,
             replacement_buff_id,

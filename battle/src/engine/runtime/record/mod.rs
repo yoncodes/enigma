@@ -52,6 +52,11 @@ pub enum FrameOwner {
     },
     SetupMechanic,
     LifecycleMechanic,
+    BuffDuration {
+        owner_uid: i64,
+        buff_uid: i64,
+        take_stage: i32,
+    },
     StageWave {
         wave: i32,
     },
@@ -72,6 +77,8 @@ pub enum RoundPhase {
     RoundStartSettlement,
     RoundStartCapacitySync,
     RoundStartSync,
+    RoundEndFinalSettlement,
+    RoundEndAfterFinalSettlement,
     EntitySettlement,
     EntityBuffCleanup,
     EntityCardCleanup,
@@ -323,6 +330,16 @@ pub(crate) fn active_skill_scope_path(
     }
 
     action
+}
+
+pub(crate) fn active_skill_target_uid(frames: &[SemanticFrame], path: &[usize]) -> Option<i64> {
+    let action = active_skill_scope_path(frames, path)?;
+    match owner_at_path(frames, &action) {
+        FrameOwner::Skill { target_uid, .. } | FrameOwner::ConduitSkill { target_uid, .. } => {
+            *target_uid
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn set_skill_target(

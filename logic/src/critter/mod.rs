@@ -304,4 +304,4 @@ async fn save_book_state(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

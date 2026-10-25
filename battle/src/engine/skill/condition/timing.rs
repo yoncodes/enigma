@@ -129,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    fn power_compare_uses_its_event_suffix() {
+    fn immediate_power_compare_uses_the_pre_effect_event() {
         let condition = ParsedCondition {
             opcode: 180203,
             type_name: "PowerCompare".to_owned(),
@@ -143,7 +143,7 @@ mod tests {
 
         assert_eq!(
             condition.timing(),
-            ConditionTiming::Event(EventKind::SkillAction)
+            ConditionTiming::Event(EventKind::SkillEffectStarted)
         );
         assert_eq!(condition.subscriptions()[0].definition.opcode, 180203);
     }

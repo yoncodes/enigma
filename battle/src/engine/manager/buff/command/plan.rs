@@ -29,6 +29,20 @@ impl BuffManager {
                     inputs,
                 )?)),
             ),
+            BuffCommand::GrantOnDeath(grant) => {
+                let mut request = GrantRequest::from(&grant);
+                let mut plan = self.plan_grant_with_source_attack(hp, request, inputs)?;
+                if plan.action == GrantAction::KeepExisting {
+                    request.child_uid_reservations = request
+                        .child_uid_reservations
+                        .checked_add(1)
+                        .ok_or(BuffCommandError::UnsupportedOccurrences(
+                            request.child_uid_reservations,
+                        ))?;
+                    plan = self.plan_grant_with_source_attack(hp, request, inputs)?;
+                }
+                (grant.origin, BuffPlanAction::Grant(Box::new(plan)))
+            }
             BuffCommand::GrantRelated(related) => {
                 let grant = related.grant;
                 let (input, force_normal_uid) = match related.relation {
@@ -330,20 +344,62 @@ impl BuffManager {
                     remove,
                     remove.origin.key.opcode,
                     false,
-                    false,
+                    RemoveSnapshot::Preserve,
+                )?),
+            ),
+            BuffCommand::ForceExpire(remove) => (
+                remove.origin,
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    remove.origin.key.opcode,
+                    true,
+                    RemoveSnapshot::Preserve,
                 )?),
             ),
             BuffCommand::RemoveAfterTrigger(remove) => (
                 remove.origin,
-                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, false)?),
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::Preserve,
+                )?),
+            ),
+            BuffCommand::EndChannel(remove) => (
+                remove.origin,
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::ClearDuration,
+                )?),
+            ),
+            BuffCommand::CompleteSelection(remove) => (
+                remove.origin,
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::ClearDuration,
+                )?),
             ),
             BuffCommand::Deactivate(remove) => (
                 remove.origin,
-                BuffPlanAction::Remove(self.plan_remove(remove, 0, true, false)?),
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::ClearAmount,
+                )?),
             ),
             BuffCommand::ExpireAction(remove) => (
                 remove.origin,
-                BuffPlanAction::Remove(self.plan_remove(remove, 0, false, true)?),
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::ClearCount,
+                )?),
             ),
             BuffCommand::Dispel(dispel) => (
                 dispel.origin,
@@ -584,7 +640,6 @@ impl BuffManager {
         inputs: GrantInputs,
     ) -> Result<GrantPlan, BuffCommandError> {
         if request.buff_id <= 0
-            || request.target_uid == 0
             || matches!(
                 request.input,
                 GrantInput::Layer(value)
@@ -860,9 +915,13 @@ impl BuffManager {
                     ))?;
         }
         let uid_reserve_before = reserve_before;
-        let normal_reserve_before = if action == GrantAction::ReplaceExisting
-            || (readds_prior_instance && !unconditional)
-        {
+        let normal_reserve_before = if action == GrantAction::Add {
+            if readds_prior_instance && !unconditional {
+                policy.uid.normal_reservations_before_reapply
+            } else {
+                0
+            }
+        } else if action == GrantAction::ReplaceExisting {
             policy.uid.normal_reservations_before_reapply
         } else if action == GrantAction::KeepExisting && policy.uid.reserve_normal_on_kept_reapply {
             1
@@ -940,7 +999,11 @@ impl BuffManager {
             .collect::<Vec<_>>();
         let refresh_uids = match action {
             GrantAction::RefreshCount if definition.reserves_normal_uid_on_count_refresh() => {
-                super::uid_policy::counted_refreshes(self, route.target_uid, repeat)
+                super::uid_policy::counted_refreshes(
+                    self,
+                    route.target_uid,
+                    repeat.saturating_sub(1).max(1),
+                )
             }
             GrantAction::RefreshCount if definition.reserves_child_uid_on_count_refresh() => {
                 super::uid_policy::children(self, route.target_uid, repeat)
@@ -1347,41 +1410,52 @@ impl BuffManager {
         replace: BuffReplace,
         inputs: GrantInputs,
     ) -> Result<ReplacePlan, BuffCommandError> {
-        let BuffSelector::IdOrType(source_id_or_type) = replace.source else {
-            return Err(BuffCommandError::InvalidReplace);
-        };
-        self.plan_replace_ids(
-            hp,
-            replace.source_uid,
-            replace.target_uid,
-            source_id_or_type,
-            replace.replacement_id_or_type,
-            inputs,
-        )
-    }
-
-    fn plan_replace_ids(
-        &self,
-        hp: &HpManager,
-        source_uid: i64,
-        target_uid: i64,
-        source_id_or_type: i32,
-        replacement_id_or_type: i32,
-        inputs: GrantInputs,
-    ) -> Result<ReplacePlan, BuffCommandError> {
-        if target_uid == 0 || source_id_or_type <= 0 || replacement_id_or_type <= 0 {
+        let source_ids_or_types = replace
+            .sources
+            .into_iter()
+            .map(|source| match source {
+                BuffSelector::IdOrType(source_id_or_type) => Ok(source_id_or_type),
+                _ => Err(BuffCommandError::InvalidReplace),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let source_uid = replace.source_uid;
+        let target_uid = replace.target_uid;
+        let replacement_id_or_type = replace.replacement_id_or_type;
+        if target_uid == 0
+            || source_ids_or_types.is_empty()
+            || source_ids_or_types.iter().any(|source| *source <= 0)
+            || replacement_id_or_type <= 0
+        {
             return Err(BuffCommandError::InvalidReplace);
         }
-        let source_buff_id = self
+        let source_buff_ids = source_ids_or_types
+            .iter()
+            .filter_map(|source_id_or_type| {
+                self.buffs
+                    .iter()
+                    .find(|active| {
+                        active.owner_uid == target_uid
+                            && (active.type_id == *source_id_or_type
+                                || active.buff.buff_id == Some(*source_id_or_type))
+                    })
+                    .and_then(|active| active.buff.buff_id)
+            })
+            .collect::<Vec<_>>();
+        if source_buff_ids.is_empty() {
+            return Err(BuffCommandError::InvalidReplace);
+        }
+        let removed_uids = self
             .buffs
             .iter()
-            .find(|active| {
+            .filter(|active| {
                 active.owner_uid == target_uid
-                    && (active.type_id == source_id_or_type
-                        || active.buff.buff_id == Some(source_id_or_type))
+                    && active
+                        .buff
+                        .buff_id
+                        .is_some_and(|buff_id| source_buff_ids.contains(&buff_id))
             })
-            .and_then(|active| active.buff.buff_id)
-            .ok_or(BuffCommandError::InvalidReplace)?;
+            .filter_map(|active| active.buff.uid)
+            .collect::<Vec<_>>();
         let policy = BuffPolicy::configured(self.catalog().game_data(), replacement_id_or_type)
             .map_err(BuffCommandError::InvalidPolicy)?;
         let excluded_uids = self.exclusion_uids(target_uid, &policy);
@@ -1389,7 +1463,11 @@ impl BuffManager {
             .len()
             .try_into()
             .map_err(|_| BuffCommandError::InvalidReplace)?;
-        let mut grant = self.plan_grant_with_source_attack(
+        let mut replacement_state = self.clone();
+        for buff_uid in &removed_uids {
+            replacement_state.delete(target_uid, *buff_uid);
+        }
+        let mut grant = replacement_state.plan_grant_with_source_attack(
             hp,
             GrantRequest {
                 source_uid,
@@ -1406,14 +1484,6 @@ impl BuffManager {
             inputs,
         )?;
         grant.excluded_uids = excluded_uids;
-        let removed_uids = self
-            .buffs
-            .iter()
-            .filter(|active| {
-                active.owner_uid == target_uid && active.buff.buff_id == Some(source_buff_id)
-            })
-            .filter_map(|active| active.buff.uid)
-            .collect();
         Ok(ReplacePlan {
             target_uid,
             removed_uids,
@@ -1453,15 +1523,15 @@ impl BuffManager {
         &self,
         remove: BuffRemove,
         config_effect: i32,
-        clear_amount: bool,
-        clear_count: bool,
+        duration_expired: bool,
+        snapshot: RemoveSnapshot,
     ) -> Result<RemovePlan, BuffCommandError> {
         let valid = match remove.selector {
             BuffRemoveSelector::Uid(buff_uid) => buff_uid > 0,
             BuffRemoveSelector::ExactId(buff_id) => buff_id > 0,
             BuffRemoveSelector::IdOrType(id) => id > 0,
         };
-        if remove.target_uid == 0 || !valid {
+        if !valid {
             return Err(BuffCommandError::InvalidRemove);
         }
         let buff_uids = self
@@ -1485,8 +1555,8 @@ impl BuffManager {
             target_uid: remove.target_uid,
             buff_uids,
             config_effect,
-            clear_amount,
-            clear_count,
+            duration_expired,
+            snapshot,
         })
     }
 
@@ -1519,8 +1589,8 @@ impl BuffManager {
             target_uid: dispel.target_uid,
             buff_uids,
             config_effect: dispel.origin.key.opcode,
-            clear_amount: false,
-            clear_count: false,
+            duration_expired: false,
+            snapshot: RemoveSnapshot::Preserve,
         })
     }
 

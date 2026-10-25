@@ -164,4 +164,4 @@ fn equipment_build_input(equip: &Equipment) -> EquipmentBuildInput {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;
