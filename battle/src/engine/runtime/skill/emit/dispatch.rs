@@ -822,28 +822,6 @@ pub(in crate::engine::runtime) fn emit_ops(
                 });
             }
         }
-        if outputs.len() > outputs_before
-            && let Some(command) = behavior::buff::tagged_group_completion(
-                managers,
-                invocation.plan.source_uid,
-                &slot.target,
-                &targets,
-                &slot.behavior,
-            )
-        {
-            outputs.push(SkillEmissionOp {
-                op: RuleOp::Command(BattleCommand::Buff(command)),
-                owner: definition.output_owner.resolve(
-                    match trigger {
-                        SkillOpTrigger::Event(event) => Some(event.kind()),
-                        _ => None,
-                    },
-                    matches!(trigger, SkillOpTrigger::Setup { .. }),
-                ),
-                consequence,
-                frame_owner: None,
-            });
-        }
         if let Some(child_skill_kind) = child_skill_kind {
             for emission in outputs.iter_mut().skip(outputs_before) {
                 if let RuleOp::Skill(child) = &mut emission.op {

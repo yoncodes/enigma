@@ -1,9 +1,6 @@
 use crate::engine::{
     damage::{handler::modified_heal, scale_permille},
-    manager::{
-        buff::{BuffCommand, BuffNormalUidReservation},
-        hp::{HpCommand, HpHeal, HpHealKind},
-    },
+    manager::hp::{HpCommand, HpHeal, HpHealKind},
     skill::{
         behavior::{
             BehaviorOpContext,
@@ -71,25 +68,11 @@ impl BehaviorHandler for Handler {
                 }),
             ]);
         }
-        if !ops.is_empty() {
-            ops.push(RuleOp::Command(BattleCommand::Buff(
-                BuffCommand::ReserveNormalUids(BuffNormalUidReservation {
-                    origin,
-                    target_uid: context.source_uid,
-                    count: 1,
-                }),
-            )));
-        }
         Some(ops)
     }
 
     fn output_owner(_: &ParsedBehavior, op: &RuleOp, _: usize) -> Option<OutputOwner> {
-        matches!(
-            op,
-            RuleOp::BuffActInfoMarker(_)
-                | RuleOp::Command(BattleCommand::Buff(BuffCommand::ReserveNormalUids(_)))
-        )
-        .then_some(OutputOwner::Parent)
+        matches!(op, RuleOp::BuffActInfoMarker(_)).then_some(OutputOwner::Parent)
     }
 }
 
@@ -211,8 +194,7 @@ mod tests {
                 RuleOp::Command(BattleCommand::Hp(HpCommand::Heal(heal))),
                 RuleOp::BuffActInfoMarker(marker),
                 RuleOp::Command(BattleCommand::Hp(HpCommand::Heal(other_heal))),
-                RuleOp::BuffActInfoMarker(other_marker),
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::ReserveNormalUids(reservation)))
+                RuleOp::BuffActInfoMarker(other_marker)
             ] if heal.source_uid == 10
                 && heal.target_uid == 20
                 && heal.amount == 414
@@ -226,8 +208,6 @@ mod tests {
                 && other_marker.target_uid == 30
                 && other_marker.buff_uid == 40
                 && other_marker.params == [1_000, 4_000]
-                && reservation.target_uid == 10
-                && reservation.count == 1
         ));
         let definition = super::super::registry::find(&behavior).expect("FakeHpToHeal definition");
         assert_eq!(
@@ -237,10 +217,6 @@ mod tests {
         assert_eq!((definition.output_owner_for)(&behavior, &ops[0], 0), None);
         assert_eq!(
             (definition.output_owner_for)(&behavior, &ops[1], 1),
-            Some(OutputOwner::Parent)
-        );
-        assert_eq!(
-            (definition.output_owner_for)(&behavior, &ops[4], 4),
             Some(OutputOwner::Parent)
         );
         assert_eq!(

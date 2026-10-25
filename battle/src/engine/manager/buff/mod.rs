@@ -28,11 +28,10 @@ pub use command::{
     BuffAccumulateActValue, BuffAccumulateCappedActState, BuffAmount, BuffChangeDuration,
     BuffChanges, BuffChildUidReservation, BuffCommand, BuffCommandError, BuffConsume, BuffConvert,
     BuffDispel, BuffDurationAdvance, BuffEntryHaloFanout, BuffGrant, BuffGrantChild,
-    BuffGrantRelation, BuffGrantUidReservation, BuffLifecycleTransition, BuffNormalUidReservation,
-    BuffRefreshDuration, BuffRefreshDurationBySelector, BuffRefreshWire, BuffRemove,
-    BuffRemoveSelector, BuffReplace, BuffRoundStartDurationSync, BuffSelector, BuffSetAmount,
-    BuffSetState, BuffSpecialCount, BuffStateSnapshotWire, BuffTaggedGroupCompletion, DepletedBuff,
-    RelatedBuffGrant, SourceRelativeBuffGrant,
+    BuffGrantRelation, BuffGrantUidReservation, BuffLifecycleTransition, BuffRefreshDuration,
+    BuffRefreshDurationBySelector, BuffRefreshWire, BuffRemove, BuffRemoveSelector, BuffReplace,
+    BuffRoundStartDurationSync, BuffSelector, BuffSetAmount, BuffSetState, BuffSpecialCount,
+    BuffStateSnapshotWire, DepletedBuff, RelatedBuffGrant, SourceRelativeBuffGrant,
 };
 use definition::BuffDefinition;
 pub use feature::BuffPassiveSkillLink;
@@ -221,7 +220,6 @@ struct ActiveBuff {
     definition: Option<BuffDefinition>,
     fanout_emitter_uid: Option<i64>,
     effective: bool,
-    reserve_normal_uid_on_expiry: bool,
     buff: BuffInfo,
 }
 

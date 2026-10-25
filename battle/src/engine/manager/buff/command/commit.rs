@@ -281,18 +281,6 @@ impl BuffManager {
                 }
                 BuffChanges::new(catalog, origin, BuffReplaceResult::default())
             }
-            BuffPlanAction::ReserveNormalUids(plan) => {
-                for uid in plan.uids {
-                    super::uid_policy::commit(self, plan.target_uid, uid);
-                }
-                BuffChanges::new(catalog, origin, BuffReplaceResult::default())
-            }
-            BuffPlanAction::CompleteTaggedGroup(plan) => {
-                for uid in plan.uids {
-                    super::uid_policy::commit(self, plan.target_uid, uid);
-                }
-                BuffChanges::new(catalog, origin, BuffReplaceResult::default())
-            }
             BuffPlanAction::ReserveGrantUid(plan) => {
                 let uid = super::uid_policy::commit(self, plan.target_uid, plan.uid);
                 self.reserve_grant_uid(plan.target_uid, plan.buff_id, uid);
@@ -449,14 +437,6 @@ impl BuffManager {
             layer_refresh_uid,
             &plan.fanout,
         );
-        if plan.reserve_normal_uid_on_expiry
-            && let Some(added) = change.added.as_ref()
-            && let Some(active) = self.buffs.iter_mut().find(|active| {
-                active.owner_uid == added.target_uid && active.buff.uid == added.buff.uid
-            })
-        {
-            active.reserve_normal_uid_on_expiry = true;
-        }
         if let Some(progress) = plan.transition_progress {
             self.transition_progress
                 .insert((plan.route.target_uid, plan.route.buff_id), progress);

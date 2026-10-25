@@ -559,53 +559,6 @@ impl BuffManager {
                     }),
                 )
             }
-            BuffCommand::ReserveNormalUids(reservation) => {
-                if reservation.target_uid == 0 || reservation.count <= 0 {
-                    return Err(BuffCommandError::InvalidUidReservation);
-                }
-                (
-                    reservation.origin,
-                    BuffPlanAction::ReserveNormalUids(UidReservationPlan {
-                        target_uid: reservation.target_uid,
-                        uids: super::uid_policy::reservations(
-                            self,
-                            reservation.target_uid,
-                            reservation.count,
-                            0,
-                        ),
-                    }),
-                )
-            }
-            BuffCommand::CompleteTaggedGroup(completion) => {
-                if completion.source_uid == 0
-                    || completion.buff_id <= 0
-                    || completion.target_uids.len() <= 1
-                    || completion.target_uids.contains(&0)
-                {
-                    return Err(BuffCommandError::InvalidUidReservation);
-                }
-                let completed = self.shared_uid_lane
-                    && completion.target_uids.iter().all(|uid| {
-                        self.has_buff_id(*uid, completion.buff_id)
-                            && self
-                                .added_history_for_owner(*uid)
-                                .iter()
-                                .filter(|buff_id| **buff_id == completion.buff_id)
-                                .count()
-                                == 1
-                    });
-                (
-                    completion.origin,
-                    BuffPlanAction::CompleteTaggedGroup(UidReservationPlan {
-                        target_uid: completion.source_uid,
-                        uids: if completed {
-                            super::uid_policy::reservations(self, completion.source_uid, 1, 0)
-                        } else {
-                            Vec::new()
-                        },
-                    }),
-                )
-            }
             BuffCommand::ReserveGrantUid(reservation) => {
                 if reservation.target_uid == 0 || reservation.buff_id <= 0 {
                     return Err(BuffCommandError::InvalidUidReservation);
@@ -1280,8 +1233,6 @@ impl BuffManager {
             args,
             repeat,
             action,
-            reserve_normal_uid_on_expiry: action == GrantAction::ReplaceExisting
-                && policy.uid.reserve_normal_on_replaced_expiry,
             excluded_uids,
             replacement_uids,
             capacity_eviction_uids,
@@ -1470,7 +1421,6 @@ impl BuffManager {
         let source_uid = replace.source_uid;
         let target_uid = replace.target_uid;
         let replacement_id_or_type = replace.replacement_id_or_type;
-        let child_uid_reservations = replace.child_uid_reservations;
         if target_uid == 0
             || source_ids_or_types.is_empty()
             || source_ids_or_types.iter().any(|source| *source <= 0)
@@ -1509,10 +1459,10 @@ impl BuffManager {
         let policy = BuffPolicy::configured(self.catalog().game_data(), replacement_id_or_type)
             .map_err(BuffCommandError::InvalidPolicy)?;
         let excluded_uids = self.exclusion_uids(target_uid, &policy);
-        let child_uid_reservations = u32::try_from(excluded_uids.len())
-            .ok()
-            .and_then(|excluded| excluded.checked_add(child_uid_reservations))
-            .ok_or(BuffCommandError::InvalidReplace)?;
+        let child_uid_reservations = excluded_uids
+            .len()
+            .try_into()
+            .map_err(|_| BuffCommandError::InvalidReplace)?;
         let mut replacement_state = self.clone();
         for buff_uid in &removed_uids {
             replacement_state.delete(target_uid, *buff_uid);

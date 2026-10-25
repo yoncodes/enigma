@@ -435,7 +435,6 @@ fn replacement_uses_the_exact_configured_output_without_inferring_a_family_varia
                 target_uid: 10,
                 sources: vec![BuffSelector::IdOrType(30810101)],
                 replacement_id_or_type: 30810102,
-                child_uid_reservations: 0,
             }),
         )
         .unwrap();

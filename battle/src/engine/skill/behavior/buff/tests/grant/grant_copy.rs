@@ -471,5 +471,4 @@ fn layer_range_replaces_the_selected_buff_too() {
     };
     assert_eq!(replace.sources, vec![BuffSelector::IdOrType(31050142)]);
     assert_eq!(replace.replacement_id_or_type, 31050142);
-    assert_eq!(replace.child_uid_reservations, 1);
 }

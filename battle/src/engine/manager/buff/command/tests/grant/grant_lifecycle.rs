@@ -114,14 +114,6 @@ fn provoke_replaces_only_the_copy_from_the_same_applier() {
             .count(),
         2
     );
-
-    for _ in 0..3 {
-        for plan in manager.plan_duration_advances(303, &[-1]) {
-            manager.commit_duration_advance(plan).unwrap();
-        }
-    }
-    let next = manager.add(&hp, 10, -1, 70015, 0).unwrap();
-    assert_eq!(next.buff.uid, Some(1112));
 }
 
 #[test]
@@ -183,85 +175,6 @@ fn replacement_removal_clears_the_stale_duration() {
         changes.change.added.as_ref().unwrap().buff.duration,
         Some(3)
     );
-}
-
-#[test]
-fn only_expiring_replacements_reserve_the_next_shared_normal_uid() {
-    crate::test_support::init_config();
-    let mut fight = Fight {
-        version: Some(7),
-        attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                current_hp: Some(100),
-                ..Default::default()
-            }],
-            ..Default::default()
-        }),
-        defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                current_hp: Some(100),
-                ..Default::default()
-            }],
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    let mut hp = HpManager::default();
-    hp.seed(&fight);
-    let mut manager = BuffManager::default();
-    manager.seed(&fight);
-    let grant = BuffCommand::Grant(BuffGrant {
-        origin: CommandOrigin {
-            domain: RuleDomain::Behavior,
-            key: DefinitionKey::new(1, "AddBuff"),
-        },
-        source_uid: 10,
-        target_uid: -1,
-        buff_id: 31090131,
-        amount: None,
-        occurrences: 1,
-        child_uid_reservations: 0,
-    });
-
-    manager.execute(&hp, grant.clone()).unwrap();
-    for _ in 0..2 {
-        let plan = manager.plan_duration_advances(103, &[-1]).remove(0);
-        manager.commit_duration_advance(plan).unwrap();
-    }
-    let next = manager.add(&hp, 10, 10, 70015, 0).unwrap();
-    assert_eq!(next.buff.uid, Some(1004));
-
-    fight.defender.as_mut().unwrap().entitys[0].buffs = vec![BuffInfo {
-        uid: Some(20),
-        buff_id: Some(31090131),
-        from_uid: Some(10),
-        duration: Some(1),
-        ..Default::default()
-    }];
-    let mut hp = HpManager::default();
-    hp.seed(&fight);
-    let mut manager = BuffManager::default();
-    manager.seed(&fight);
-    let replacement_uid = manager
-        .execute(&hp, grant)
-        .unwrap()
-        .change
-        .added
-        .unwrap()
-        .buff
-        .uid
-        .unwrap();
-    assert_eq!(replacement_uid, 1002);
-
-    for _ in 0..2 {
-        let plan = manager.plan_duration_advances(103, &[-1]).remove(0);
-        manager.commit_duration_advance(plan).unwrap();
-    }
-
-    let next = manager.add(&hp, 10, 10, 70015, 0).unwrap();
-    assert_eq!(next.buff.uid, Some(1006));
 }
 
 #[test]

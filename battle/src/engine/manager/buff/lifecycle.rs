@@ -455,28 +455,20 @@ impl BuffManager {
         let index = self.buffs.iter().position(|active| {
             active.owner_uid == plan.target_uid && active.buff.uid == Some(plan.buff_uid)
         })?;
-        let (duration, take_stage_matches, reserve_replacement_expiry_uid) = {
-            let active = &self.buffs[index];
-            (
-                active.buff.duration.unwrap_or_default(),
-                active
-                    .definition
-                    .as_ref()
-                    .is_some_and(|definition| definition.take_stage == plan.take_stage),
-                self.shared_uid_lane && active.reserve_normal_uid_on_expiry,
-            )
-        };
-        if duration <= 0 || !take_stage_matches {
+        let active = &self.buffs[index];
+        let duration = active.buff.duration.unwrap_or_default();
+        if duration <= 0
+            || active
+                .definition
+                .as_ref()
+                .is_none_or(|definition| definition.take_stage != plan.take_stage)
+        {
             return None;
         }
-        let before = self.buffs[index].buff.clone();
+        let before = active.buff.clone();
         self.buffs[index].buff.duration = Some(duration - 1);
         let after = self.buffs[index].buff.clone();
         if duration == 1 {
-            if reserve_replacement_expiry_uid {
-                let uid = super::uid_policy::reservations(self, plan.target_uid, 1, 0)[0];
-                super::uid_policy::commit(self, plan.target_uid, uid);
-            }
             let mut removed = self.delete(plan.target_uid, plan.buff_uid);
             if let Some(expired) = removed
                 .iter_mut()
@@ -551,7 +543,6 @@ impl BuffManager {
                 definition,
                 fanout_emitter_uid: None,
                 effective: true,
-                reserve_normal_uid_on_expiry: false,
                 buff,
             });
         }

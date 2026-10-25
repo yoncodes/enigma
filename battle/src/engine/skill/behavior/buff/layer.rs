@@ -109,7 +109,6 @@ pub(super) fn add_buff_by_layer_range_ops(
                 target_uid: context.target_uid,
                 sources: active,
                 replacement_id_or_type: selected,
-                child_uid_reservations: 1,
             }),
         ))]);
     }

@@ -890,14 +890,6 @@ impl BuffDefinition {
         .into()
     }
 
-    pub(super) fn reserves_normal_uid_on_replaced_expiry(&self) -> bool {
-        self.duration > 0
-            && self
-                .features
-                .iter()
-                .any(|feature| feature.kind == Some(BuffActKind::ShellLock))
-    }
-
     pub(super) fn uses_child_uid(&self) -> bool {
         self.uses_calculation_child_uid()
             || (self.uses_stack_layer() && !self.has_include_type(BuffIncludeType::OwnUid))

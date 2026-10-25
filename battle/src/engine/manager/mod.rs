@@ -357,8 +357,6 @@ impl BattleManagers {
                 replace.target_uid
             }),
             BuffCommand::ReserveChildUids(reservation) => Some(reservation.target_uid),
-            BuffCommand::ReserveNormalUids(reservation) => Some(reservation.target_uid),
-            BuffCommand::CompleteTaggedGroup(completion) => Some(completion.source_uid),
             BuffCommand::ReserveGrantUid(reservation) => Some(reservation.target_uid),
             BuffCommand::ChangeDuration(change) => Some(change.target_uid),
             _ => None,
