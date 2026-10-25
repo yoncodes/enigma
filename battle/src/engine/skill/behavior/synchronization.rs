@@ -4,9 +4,10 @@ use crate::engine::{
     manager::{
         buff::{BuffCommand, BuffRemove, BuffRemoveSelector, BuffSetState},
         ex_point::{
-            ExPointCommand, ExPointCompleteSynchronization, ExPointConfigureSynchronization,
-            ExPointPublishSynchronizationHit, ExPointRecordSynchronizationAction,
-            ExPointRecordSynchronizationDamage, SynchronizationDefinition,
+            ExPointChange, ExPointCommand, ExPointCompleteSynchronization,
+            ExPointConfigureSynchronization, ExPointPublishSynchronizationHit,
+            ExPointRecordSynchronizationAction, ExPointRecordSynchronizationDamage,
+            SynchronizationDefinition,
         },
         hp::{DamageEffectKind, DamageRecord, HpCommand, HurtDamageFromType},
     },
@@ -145,12 +146,17 @@ fn damage_rule_ops(
     catalog: &SkillEffectCatalog,
 ) -> Option<Vec<RuleOp>> {
     let origin = super::command_origin(behavior)?;
+    let definition = context
+        .managers
+        .ex_point
+        .synchronization_definition(context.source_uid)?;
+    let progress = context
+        .managers
+        .ex_point
+        .synchronization_progress(context.source_uid)?;
     let terminal = if behavior.spec.kind == BehaviorKind::EzioBigSkillEnd {
         Some((
-            context
-                .managers
-                .ex_point
-                .synchronization_progress(context.source_uid)?,
+            progress,
             context.managers.buff.buff_act_carrier(
                 context.source_uid,
                 crate::engine::skill::buff_act::registry::BuffActKind::EzioBigSkill,
@@ -371,24 +377,34 @@ fn damage_rule_ops(
         ignore_riposte: damage.ignore_riposte,
         hurt: damage.hurt,
     };
-    let mut ops = vec![
-        RuleOp::Command(BattleCommand::ExPoint(
-            ExPointCommand::PublishSynchronizationHit(ExPointPublishSynchronizationHit {
+    let mut ops = vec![RuleOp::Command(BattleCommand::ExPoint(
+        ExPointCommand::PublishSynchronizationHit(ExPointPublishSynchronizationHit {
+            origin,
+            target_uid: context.source_uid,
+            action_target_uid: context.target_uid,
+            damage: record,
+        }),
+    ))];
+    if progress.completed_actions == 0 {
+        ops.push(RuleOp::Command(BattleCommand::ExPoint(
+            ExPointCommand::Spend(ExPointChange {
                 origin,
+                source_uid: context.source_uid,
                 target_uid: context.source_uid,
-                action_target_uid: context.target_uid,
-                damage: record,
+                delta: -definition.threshold,
+                config_effect: 0,
+                effect_type: EffectType::Expointchange as i32,
             }),
-        )),
-        RuleOp::Command(BattleCommand::ExPoint(
-            ExPointCommand::RecordSynchronizationDamage(ExPointRecordSynchronizationDamage {
-                origin,
-                target_uid: context.source_uid,
-                action_target_uid: context.target_uid,
-                damage: record,
-            }),
-        )),
-    ];
+        )));
+    }
+    ops.push(RuleOp::Command(BattleCommand::ExPoint(
+        ExPointCommand::RecordSynchronizationDamage(ExPointRecordSynchronizationDamage {
+            origin,
+            target_uid: context.source_uid,
+            action_target_uid: context.target_uid,
+            damage: record,
+        }),
+    )));
     if let Some((progress, (buff_uid, act_id, _))) = terminal {
         let total_damage = progress.total_damage.saturating_add(finisher_damage);
         ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::SetState(

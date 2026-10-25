@@ -438,6 +438,12 @@ impl BattleRuntime {
                 {
                     return None;
                 }
+                let progress = self.managers.ex_point.synchronization_progress(owner_uid)?;
+                if progress.completed_actions == 0
+                    && self.managers.ex_point.get(owner_uid) < definition.threshold
+                {
+                    return None;
+                }
                 self.managers.begin_cloth_sequence();
                 let mut invocation: crate::engine::skill::action::SkillInvocation =
                     crate::engine::skill::action::SkillRequest {
