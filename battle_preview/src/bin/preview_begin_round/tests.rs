@@ -128,6 +128,38 @@ fn captured_cloth_redeal_reads_the_observed_post_rank_hand() {
 }
 
 #[test]
+fn cloth_report_writes_the_generated_reply() {
+    let directory = std::env::temp_dir().join(format!(
+        "enigma-cloth-report-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let input_root = directory.join("captured");
+    let output_root = directory.join("generated");
+    fs::create_dir_all(&input_root).unwrap();
+    let input = input_root.join("UseClothSkillReply_3.json");
+    fs::write(&input, r#"{"round":{"curRound":3}}"#).unwrap();
+    let generated = UseClothSkillReply {
+        round: Some(FightRound {
+            cur_round: Some(4),
+            ..Default::default()
+        }),
+    };
+
+    report_cloth_input(&input_root, &output_root, &input, &generated).unwrap();
+
+    let output: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(output_root.join(input.file_name().unwrap())).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(output["round"]["curRound"], 4);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn cloth_input_discovery_returns_same_round_requests_in_capture_order() {
     let directory = std::env::temp_dir().join(format!(
         "enigma-cloth-inputs-{}-{}",

@@ -16,7 +16,9 @@ use battle_preview::{
     seed_action_determinism, seed_round_determinism, tower_plan_id_from_request,
     value_at_diff_path,
 };
-use sonettobuf::{BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep};
+use sonettobuf::{
+    BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep, UseClothSkillReply,
+};
 
 mod capture;
 
@@ -91,6 +93,18 @@ fn run() -> anyhow::Result<()> {
             println!("battle start={}", battle.start.display());
             replay_rounds(db, &battle, through, resync)
         });
+        if let Ok(run) = run.as_ref() {
+            for outcome in &run.cloth_outcomes {
+                if let Err(error) = report_cloth_input(
+                    &input_root,
+                    &output_root,
+                    &outcome.captured,
+                    &outcome.generated,
+                ) {
+                    println!("{} cloth=ERROR {error:#}", outcome.captured.display());
+                }
+            }
+        }
         for (index, input) in inputs {
             let reported = run
                 .as_ref()
@@ -102,6 +116,37 @@ fn run() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn report_cloth_input(
+    input_root: &Path,
+    output_root: &Path,
+    input: &Path,
+    generated: &UseClothSkillReply,
+) -> anyhow::Result<()> {
+    let original_text = fs::read_to_string(input)?;
+    let original = captured_original(input)?;
+    let generated = serde_json::to_value(generated)?;
+    let output_value = render_json_with_capture_conventions(&generated, &original);
+    let (generated_compare, original_compare) = canonical_comparison(generated, original.clone());
+    let matches = generated_compare == original_compare;
+    if !matches && let Some(path) = first_diff_path(&generated_compare, &original_compare, "") {
+        eprintln!("  first cloth diff: {path}");
+    }
+    let output = output_path(input_root, output_root, input)?;
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(
+        &output,
+        preview_output_text(&output_value, &original, original_text)?,
+    )?;
+    println!(
+        "{} cloth={}",
+        output.display(),
+        if matches { "MATCH" } else { "DIFF" },
+    );
     Ok(())
 }
 
@@ -261,8 +306,14 @@ struct RoundOutcome {
     resynced: bool,
 }
 
+struct ClothOutcome {
+    captured: PathBuf,
+    generated: UseClothSkillReply,
+}
+
 struct ReplayRun {
     outcomes: Vec<RoundOutcome>,
+    cloth_outcomes: Vec<ClothOutcome>,
     stopped: Option<String>,
     build: &'static str,
 }
@@ -319,6 +370,7 @@ fn replay_rounds(
     }
     let mut run = ReplayRun {
         outcomes: Vec::new(),
+        cloth_outcomes: Vec::new(),
         stopped: None,
         build: build_metadata_source(&battle.metadata)?,
     };
@@ -333,8 +385,13 @@ fn replay_rounds(
         }
     }
     let mut previous_captured_round = captured_start_round;
-    if let Err(error) = replay_cloth_input(&battle.start_cloth, &mut runtime, resync, &mut resynced)
-    {
+    if let Err(error) = replay_cloth_input(
+        &battle.start_cloth,
+        &mut runtime,
+        resync,
+        &mut resynced,
+        &mut run.cloth_outcomes,
+    ) {
         run.stopped = Some(format!("cloth before round 1: {error:#}"));
         return Ok(run);
     }
@@ -346,7 +403,13 @@ fn replay_rounds(
             let request = begin_round_request(&round.request)?;
             let captured = captured_round(&round.reply)?;
             validate_captured_round_continuity(&previous_captured_round, &captured)?;
-            replay_cloth_input(&round.cloth, &mut runtime, resync, &mut resynced)?;
+            replay_cloth_input(
+                &round.cloth,
+                &mut runtime,
+                resync,
+                &mut resynced,
+                &mut run.cloth_outcomes,
+            )?;
             Ok((request, captured))
         })();
         let (request, captured) = match prepared {
@@ -402,6 +465,7 @@ fn replay_cloth_input(
     runtime: &mut ReplayBattle,
     resync: bool,
     resynced: &mut bool,
+    outcomes: &mut Vec<ClothOutcome>,
 ) -> anyhow::Result<()> {
     for input in inputs {
         let mut request: serde_json::Value =
@@ -419,9 +483,15 @@ fn replay_cloth_input(
                 seed_observed_redeal(runtime, &cards).map_err(io::Error::other)?;
             }
         }
-        runtime.use_cloth_skill(request).ok_or_else(|| {
+        let generated = runtime.use_cloth_skill(request).ok_or_else(|| {
             io::Error::other(format!("invalid cloth input: {}", input.request.display()))
         })?;
+        if let Some(captured) = input.reply.as_ref() {
+            outcomes.push(ClothOutcome {
+                captured: captured.clone(),
+                generated,
+            });
+        }
         if resync && let Some(captured) = captured.as_ref() {
             let changes = runtime
                 .resync_observed_state(captured)
