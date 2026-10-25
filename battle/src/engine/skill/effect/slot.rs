@@ -77,17 +77,57 @@ impl SkillEffectSlot {
         let mut subscriptions = route
             .branches
             .iter()
-            .flat_map(|branch| branch.subscriptions())
-            .map(|trigger| {
-                let publication = registry::find_key(trigger.key.opcode, trigger.key.type_name)
-                    .map(|definition| definition.publication)
-                    .unwrap_or(PublicationPhase::AfterPublish);
-                let timing = registry::find_key(trigger.key.opcode, trigger.key.type_name)
-                    .map(|definition| definition.reaction_timing.resolve(Default::default()))
-                    .unwrap_or_default();
-                SubscriptionKey::at_phase(trigger.event, trigger.key, trigger.phase)
-                    .with_publication(publication)
-                    .with_timing(timing)
+            .flat_map(|branch| {
+                let predicate_definitions = branch
+                    .conditions
+                    .iter()
+                    .filter_map(|condition| {
+                        registry::find_key(condition.key.opcode, condition.key.type_name)
+                    })
+                    .filter(|definition| definition.role == registry::ConditionRole::Predicate)
+                    .collect::<Vec<_>>();
+                branch.subscriptions().into_iter().map(move |trigger| {
+                    let driver = registry::find_key(trigger.key.opcode, trigger.key.type_name);
+                    let timing_policy = predicate_definitions
+                        .iter()
+                        .copied()
+                        .find(|definition| {
+                            definition.reaction_timing
+                                != registry::ReactionTimingPolicy::Fixed(Default::default())
+                        })
+                        .or(driver);
+                    let multiplicity_policy = predicate_definitions
+                        .iter()
+                        .copied()
+                        .find(|definition| {
+                            definition.reaction_multiplicity
+                                != registry::ReactionMultiplicity::PerEvent
+                        })
+                        .or(driver);
+                    SubscriptionKey::at_phase(trigger.event, trigger.key, trigger.phase)
+                        .with_timing_policy(
+                            timing_policy
+                                .map(|definition| definition.key)
+                                .unwrap_or(trigger.key),
+                        )
+                        .with_multiplicity_policy(
+                            multiplicity_policy
+                                .map(|definition| definition.key)
+                                .unwrap_or(trigger.key),
+                        )
+                        .with_publication(
+                            driver
+                                .map(|definition| definition.publication)
+                                .unwrap_or(PublicationPhase::AfterPublish),
+                        )
+                        .with_timing(
+                            timing_policy
+                                .map(|definition| {
+                                    definition.reaction_timing.resolve(Default::default())
+                                })
+                                .unwrap_or_default(),
+                        )
+                })
             })
             .collect::<Vec<_>>();
         for condition in &self.conditions {
@@ -357,6 +397,59 @@ mod tests {
             )]
         );
         assert_eq!(slot.active_phases().unwrap(), vec![SkillPhase::AfterDamage]);
+    }
+
+    #[test]
+    fn compound_hp_threshold_keeps_its_policy_on_the_attacked_driver() {
+        crate::test_support::init_config();
+        let mut slot = SkillEffectSlot::new(
+            ParsedBehavior::new(1, "AddBuff", Vec::new()),
+            TargetRequest::self_only(),
+        );
+        slot.conditions = crate::engine::skill::condition::parse_conditions(
+            config::configs::get(),
+            "1209#300&22209",
+        );
+        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+
+        let subscription = slot.compiled_subscriptions().unwrap().remove(0);
+        assert_eq!(
+            subscription.definition,
+            crate::engine::skill::rule::DefinitionKey::new(22209, "BeAttacked")
+        );
+        assert_eq!(
+            subscription.timing_policy,
+            crate::engine::skill::rule::DefinitionKey::new(1209, "LifeLess")
+        );
+        assert_eq!(subscription.multiplicity_policy, subscription.timing_policy);
+        assert_eq!(
+            subscription.timing,
+            crate::engine::event::subscription::ReactionTiming::BeforeAfterHitObservers
+        );
+    }
+
+    #[test]
+    fn compound_route_keeps_driver_multiplicity_when_predicate_owns_timing() {
+        crate::test_support::init_config();
+        let mut slot = SkillEffectSlot::new(
+            ParsedBehavior::new(1, "AddBuff", Vec::new()),
+            TargetRequest::self_only(),
+        );
+        slot.conditions = crate::engine::skill::condition::parse_conditions(
+            config::configs::get(),
+            "19209#109380007&501209",
+        );
+        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+
+        let subscription = slot.compiled_subscriptions().unwrap().remove(0);
+        assert_eq!(
+            subscription.timing_policy,
+            crate::engine::skill::rule::DefinitionKey::new(19209, "HasBuffId")
+        );
+        assert_eq!(
+            subscription.multiplicity_policy,
+            crate::engine::skill::rule::DefinitionKey::new(501209, "UseHurtSkill")
+        );
     }
 
     #[test]

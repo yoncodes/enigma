@@ -653,15 +653,12 @@ pub(super) fn drain_command(
     let mut after_publish = reactions.after_publish;
     let after_settlement = reactions.after_settlement;
     if releases_hit_passive_skills {
-        let mut released_hit_passives = Vec::new();
+        let mut released_hit_passives = state
+            .take_before_after_hit_observers(action_scope.as_ref())
+            .unwrap_or_default();
         if let Some(hit_skills) = state.take_hit_passive_skills(action_scope.as_ref()) {
             released_hit_passives.extend(hit_skills);
         }
-        let before_observers = state
-            .take_before_after_hit_observers(action_scope.as_ref())
-            .unwrap_or_default()
-            .into_iter();
-        released_hit_passives.extend(before_observers);
         after_publish.splice(0..0, released_hit_passives);
     }
     if releases_after_hit_skills {

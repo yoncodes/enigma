@@ -118,6 +118,7 @@ fn outputs(
             let output = RuleOp::Skill(SkillInvocation {
                 plan,
                 condition_key: Some(subscriber.key.definition),
+                reaction_multiplicity_key: Some(subscriber.key.multiplicity_policy),
                 condition_slot: subscriber.slot_index,
                 phase: subscriber.key.phase,
                 target: crate::engine::skill::action::SkillTarget::Inherited,
@@ -438,8 +439,8 @@ fn dispatch_subscribers_with_multiplicity(
     );
     subscribers.skills.retain(|subscriber| {
         let Some(definition) = crate::engine::skill::condition::registry::find_key(
-            subscriber.key.definition.opcode,
-            subscriber.key.definition.type_name,
+            subscriber.key.multiplicity_policy.opcode,
+            subscriber.key.multiplicity_policy.type_name,
         ) else {
             return true;
         };

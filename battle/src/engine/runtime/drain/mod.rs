@@ -178,9 +178,12 @@ fn reaction_already_fired(
     let Some(condition_key) = invocation.condition_key else {
         return false;
     };
+    let reaction_multiplicity_key = invocation
+        .reaction_multiplicity_key
+        .unwrap_or(condition_key);
     let Some(definition) = crate::engine::skill::condition::registry::find_key(
-        condition_key.opcode,
-        condition_key.type_name,
+        reaction_multiplicity_key.opcode,
+        reaction_multiplicity_key.type_name,
     ) else {
         return false;
     };
@@ -213,8 +216,14 @@ fn mark_reaction_fired(
     condition_key: crate::engine::skill::rule::DefinitionKey,
 ) {
     let Some(definition) = crate::engine::skill::condition::registry::find_key(
-        condition_key.opcode,
-        condition_key.type_name,
+        invocation
+            .reaction_multiplicity_key
+            .unwrap_or(condition_key)
+            .opcode,
+        invocation
+            .reaction_multiplicity_key
+            .unwrap_or(condition_key)
+            .type_name,
     ) else {
         return;
     };

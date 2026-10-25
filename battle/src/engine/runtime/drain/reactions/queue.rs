@@ -63,13 +63,29 @@ fn queued_reaction_pass(
                     },
                 )
             })?;
-            Ok((subscriber, op, definition))
+            let multiplicity_policy = crate::engine::skill::condition::registry::find_key(
+                subscriber.key.multiplicity_policy.opcode,
+                subscriber.key.multiplicity_policy.type_name,
+            )
+            .ok_or_else(|| {
+                DrainError::Subscriber(
+                    crate::engine::skill::subscriber::SubscriberError::UncompiledRoute {
+                        skill_id: subscriber.skill_id,
+                        route:
+                            crate::engine::skill::rule::route::RouteError::UnregisteredExactKey {
+                                opcode: subscriber.key.multiplicity_policy.opcode,
+                                type_name: subscriber.key.multiplicity_policy.type_name.to_owned(),
+                            },
+                    },
+                )
+            })?;
+            Ok((subscriber, op, definition, multiplicity_policy))
         })
         .collect::<Result<Vec<_>, DrainError>>()?;
     let mut reactions = skills
         .into_iter()
-        .map(|(subscriber, mut op, definition)| {
-            if definition.reaction_multiplicity
+        .map(|(subscriber, mut op, definition, multiplicity_policy)| {
+            if multiplicity_policy.reaction_multiplicity
                 != crate::engine::skill::condition::registry::ReactionMultiplicity::PerEvent
                 && let RuleOp::Skill(invocation) = &mut op
                 && let Some((batch_id, action_path)) = &reaction_scope

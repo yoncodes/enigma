@@ -456,7 +456,7 @@ fn push_skill_subscribers(
             .filter(|(_, key)| events.contains(&key.event))
         {
             if let Some(definition) =
-                condition_registry::find_key(key.definition.opcode, key.definition.type_name)
+                condition_registry::find_key(key.timing_policy.opcode, key.timing_policy.type_name)
             {
                 key = key.with_timing(definition.reaction_timing.resolve(passive_source));
             }
