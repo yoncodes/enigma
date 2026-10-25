@@ -32,11 +32,13 @@ pub(super) type ReactionCastLink = Rc<RefCell<ReactionCastState>>;
 #[derive(Default)]
 pub(super) struct DrainState {
     after_hit: HashMap<FramePath, Vec<QueuedOp>>,
-    before_hit_passive_skills: HashMap<FramePath, Vec<QueuedOp>>,
+    attacked_skills: HashMap<FramePath, Vec<QueuedOp>>,
+    hp_thresholds: HashMap<FramePath, Vec<QueuedOp>>,
     hit_passive_skills: HashMap<FramePath, Vec<QueuedOp>>,
     hit_skills: HashMap<FramePath, Vec<QueuedOp>>,
     before_after_hit_observers: HashMap<FramePath, Vec<QueuedOp>>,
     after_hit_skills: HashMap<FramePath, Vec<QueuedOp>>,
+    after_hit_shell: HashMap<FramePath, Vec<QueuedOp>>,
     after_action: HashMap<FramePath, Vec<QueuedOp>>,
     // Casts held until their action completes, with the step that cast them.
     after_action_casts: HashMap<FramePath, Vec<DeferredCast>>,
@@ -135,6 +137,14 @@ impl DrainState {
         defer(&mut self.after_hit_skills, action_path, queued);
     }
 
+    pub(super) fn defer_after_hit_shell(
+        &mut self,
+        action_path: Option<&[usize]>,
+        queued: Vec<QueuedOp>,
+    ) {
+        defer(&mut self.after_hit_shell, action_path, queued);
+    }
+
     pub(super) fn defer_before_after_hit_observers(
         &mut self,
         action_path: Option<&[usize]>,
@@ -159,19 +169,34 @@ impl DrainState {
         defer(&mut self.hit_passive_skills, action_path, queued);
     }
 
-    pub(super) fn defer_before_hit_passive_skills(
+    pub(super) fn defer_hp_thresholds(
         &mut self,
         action_path: Option<&[usize]>,
         queued: Vec<QueuedOp>,
     ) {
-        defer(&mut self.before_hit_passive_skills, action_path, queued);
+        defer(&mut self.hp_thresholds, action_path, queued);
     }
 
-    pub(super) fn take_before_hit_passive_skills(
+    pub(super) fn defer_attacked_skills(
+        &mut self,
+        action_path: Option<&[usize]>,
+        queued: Vec<QueuedOp>,
+    ) {
+        defer(&mut self.attacked_skills, action_path, queued);
+    }
+
+    pub(super) fn take_attacked_skills(
         &mut self,
         action_path: Option<&FramePath>,
     ) -> Option<Vec<QueuedOp>> {
-        action_path.and_then(|path| self.before_hit_passive_skills.remove(path))
+        action_path.and_then(|path| self.attacked_skills.remove(path))
+    }
+
+    pub(super) fn take_hp_thresholds(
+        &mut self,
+        action_path: Option<&FramePath>,
+    ) -> Option<Vec<QueuedOp>> {
+        action_path.and_then(|path| self.hp_thresholds.remove(path))
     }
 
     pub(super) fn take_hit_passive_skills(
@@ -193,6 +218,13 @@ impl DrainState {
         action_path: Option<&FramePath>,
     ) -> Option<Vec<QueuedOp>> {
         action_path.and_then(|path| self.after_hit_skills.remove(path))
+    }
+
+    pub(super) fn take_after_hit_shell(
+        &mut self,
+        action_path: Option<&FramePath>,
+    ) -> Option<Vec<QueuedOp>> {
+        action_path.and_then(|path| self.after_hit_shell.remove(path))
     }
 
     pub(super) fn take_before_after_hit_observers(
@@ -395,11 +427,8 @@ impl DrainState {
         }
 
         let mut abandoned = self.after_hit.remove(action_path).unwrap_or_default();
-        abandoned.extend(
-            self.before_hit_passive_skills
-                .remove(action_path)
-                .unwrap_or_default(),
-        );
+        abandoned.extend(self.attacked_skills.remove(action_path).unwrap_or_default());
+        abandoned.extend(self.hp_thresholds.remove(action_path).unwrap_or_default());
         abandoned.extend(
             self.hit_passive_skills
                 .remove(action_path)
@@ -416,6 +445,7 @@ impl DrainState {
                 .remove(action_path)
                 .unwrap_or_default(),
         );
+        abandoned.extend(self.after_hit_shell.remove(action_path).unwrap_or_default());
         abandoned.extend(self.after_action.remove(action_path).unwrap_or_default());
         abandoned.extend(
             self.after_action_casts

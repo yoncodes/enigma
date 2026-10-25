@@ -192,7 +192,7 @@ fn buff_act_subscription_selects_declared_reaction_timing_before_rule_outputs() 
             DefinitionKey::new(302, "BeatBack"),
         ),
         (
-            crate::engine::event::subscription::ReactionTiming::AfterHitObservers,
+            crate::engine::event::subscription::ReactionTiming::AfterHitShell,
             DefinitionKey::new(870, "Shell"),
         ),
         (

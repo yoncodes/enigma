@@ -827,7 +827,7 @@ fn a_skill_cast_by_another_skill_keeps_its_step_without_effects() {
 }
 
 #[test]
-fn hit_damage_reactions_settle_before_hp_threshold_and_after_hit_observers() {
+fn hit_damage_reactions_follow_semantic_settlement_phases() {
     crate::test_support::init_config();
     let entity = |uid, attack, hp| FightEntityInfo {
         uid: Some(uid),
@@ -849,7 +849,16 @@ fn hit_damage_reactions_settle_before_hp_threshold_and_after_hit_observers() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![
-                entity(10, 1_000, 100_000),
+                FightEntityInfo {
+                    buffs: vec![BuffInfo {
+                        uid: Some(36),
+                        buff_id: Some(109380007),
+                        from_uid: Some(-1),
+                        layer: Some(5),
+                        ..Default::default()
+                    }],
+                    ..entity(10, 1_000, 100_000)
+                },
                 entity(11, 1_000, 100_000),
                 entity(12, 1_000, 100_000),
             ],
@@ -857,7 +866,7 @@ fn hit_damage_reactions_settle_before_hp_threshold_and_after_hit_observers() {
         }),
         defender: Some(FightTeam {
             entitys: vec![FightEntityInfo {
-                passive_skill: vec![109320108, 434111],
+                passive_skill: vec![109320108, 109380003, 109380004, 434111],
                 buffs: vec![
                     dot(30, 312451021),
                     dot(31, 312451011),
@@ -880,8 +889,11 @@ fn hit_damage_reactions_settle_before_hp_threshold_and_after_hit_observers() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
-    let catalog =
-        SkillEffectCatalog::from_roots(config::configs::get(), [312301142, 109320108, 434111], []);
+    let catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        [312301142, 109320108, 109380003, 109380004, 434111],
+        [],
+    );
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
         skill_id: 312301142,
@@ -915,7 +927,10 @@ fn hit_damage_reactions_settle_before_hp_threshold_and_after_hit_observers() {
     );
 
     fn collect(step: &sonettobuf::FightStep, found: &mut Vec<i32>) {
-        if let Some(act_id @ (312451021 | 312451011 | 312451031 | 109320108 | 434111)) = step.act_id
+        if let Some(
+            act_id @ (312451021 | 312451011 | 312451031 | 109320108 | 109380003 | 109380004
+            | 434111),
+        ) = step.act_id
         {
             found.push(act_id);
         }
@@ -936,7 +951,8 @@ fn hit_damage_reactions_settle_before_hp_threshold_and_after_hit_observers() {
     assert_eq!(
         found,
         vec![
-            312451021, 312451011, 312451011, 312451031, 312451011, 109320108, 434111, 31090112,
+            109380003, 312451021, 312451011, 312451011, 312451031, 312451011, 109380003, 109380004,
+            434111, 109320108, 31090112,
         ]
     );
 }

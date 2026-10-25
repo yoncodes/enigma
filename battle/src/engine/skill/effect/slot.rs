@@ -88,12 +88,18 @@ impl SkillEffectSlot {
                     .collect::<Vec<_>>();
                 branch.subscriptions().into_iter().map(move |trigger| {
                     let driver = registry::find_key(trigger.key.opcode, trigger.key.type_name);
-                    let timing_policy = predicate_definitions
-                        .iter()
-                        .copied()
-                        .find(|definition| {
+                    let timing_policy = driver
+                        .filter(|definition| {
                             definition.reaction_timing
-                                != registry::ReactionTimingPolicy::Fixed(Default::default())
+                                == registry::ReactionTimingPolicy::Fixed(
+                                    crate::engine::event::subscription::ReactionTiming::AttackedSkills,
+                                )
+                        })
+                        .or_else(|| {
+                            predicate_definitions.iter().copied().find(|definition| {
+                                definition.reaction_timing
+                                    != registry::ReactionTimingPolicy::Fixed(Default::default())
+                            })
                         })
                         .or(driver);
                     let multiplicity_policy = predicate_definitions
@@ -424,12 +430,12 @@ mod tests {
         assert_eq!(subscription.multiplicity_policy, subscription.timing_policy);
         assert_eq!(
             subscription.timing,
-            crate::engine::event::subscription::ReactionTiming::BeforeHitPassiveSkills
+            crate::engine::event::subscription::ReactionTiming::HpThresholds
         );
     }
 
     #[test]
-    fn compound_route_keeps_driver_multiplicity_when_predicate_owns_timing() {
+    fn attacked_compound_route_keeps_driver_timing_and_multiplicity() {
         crate::test_support::init_config();
         let mut slot = SkillEffectSlot::new(
             ParsedBehavior::new(1, "AddBuff", Vec::new()),
@@ -444,11 +450,15 @@ mod tests {
         let subscription = slot.compiled_subscriptions().unwrap().remove(0);
         assert_eq!(
             subscription.timing_policy,
-            crate::engine::skill::rule::DefinitionKey::new(19209, "HasBuffId")
+            crate::engine::skill::rule::DefinitionKey::new(501209, "UseHurtSkill")
         );
         assert_eq!(
             subscription.multiplicity_policy,
             crate::engine::skill::rule::DefinitionKey::new(501209, "UseHurtSkill")
+        );
+        assert_eq!(
+            subscription.timing,
+            crate::engine::event::subscription::ReactionTiming::AttackedSkills
         );
     }
 

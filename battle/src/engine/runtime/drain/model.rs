@@ -351,9 +351,11 @@ pub(super) struct ReactionBatch {
     pub(super) after_settlement: Vec<QueuedOp>,
     pub(super) after_skill: Vec<QueuedOp>,
     pub(super) after_hit: Vec<QueuedOp>,
-    pub(super) before_hit_passive_skills: Vec<QueuedOp>,
+    pub(super) attacked_skills: Vec<QueuedOp>,
+    pub(super) hp_thresholds: Vec<QueuedOp>,
     pub(super) before_after_hit_observers: Vec<QueuedOp>,
     pub(super) after_hit_skills: Vec<QueuedOp>,
+    pub(super) after_hit_shell: Vec<QueuedOp>,
     pub(super) shared_hit_skills: Vec<QueuedOp>,
     pub(super) after_action: Vec<QueuedOp>,
 }
@@ -368,9 +370,11 @@ impl ReactionBatch {
             .chain(&mut self.after_settlement)
             .chain(&mut self.after_skill)
             .chain(&mut self.after_hit)
-            .chain(&mut self.before_hit_passive_skills)
+            .chain(&mut self.attacked_skills)
+            .chain(&mut self.hp_thresholds)
             .chain(&mut self.before_after_hit_observers)
             .chain(&mut self.after_hit_skills)
+            .chain(&mut self.after_hit_shell)
             .chain(&mut self.shared_hit_skills)
             .chain(&mut self.after_action)
     }
@@ -381,11 +385,12 @@ impl ReactionBatch {
         self.after_settlement.append(&mut other.after_settlement);
         self.after_skill.append(&mut other.after_skill);
         self.after_hit.append(&mut other.after_hit);
-        self.before_hit_passive_skills
-            .append(&mut other.before_hit_passive_skills);
+        self.attacked_skills.append(&mut other.attacked_skills);
+        self.hp_thresholds.append(&mut other.hp_thresholds);
         self.before_after_hit_observers
             .append(&mut other.before_after_hit_observers);
         self.after_hit_skills.append(&mut other.after_hit_skills);
+        self.after_hit_shell.append(&mut other.after_hit_shell);
         self.shared_hit_skills.append(&mut other.shared_hit_skills);
         self.after_action.append(&mut other.after_action);
     }
@@ -408,9 +413,11 @@ impl ReactionBatch {
                 &mut self.after_settlement,
                 &mut self.after_skill,
                 &mut self.after_hit,
-                &mut self.before_hit_passive_skills,
+                &mut self.attacked_skills,
+                &mut self.hp_thresholds,
                 &mut self.before_after_hit_observers,
                 &mut self.after_hit_skills,
+                &mut self.after_hit_shell,
                 &mut self.shared_hit_skills,
                 &mut self.after_action,
             ]);

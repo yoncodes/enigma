@@ -108,11 +108,38 @@ pub struct EntityManager {
 
 impl EntityManager {
     pub(crate) fn configured(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
-        Self::from_fight(
+        let mut manager = Self::from_fight(
             catalog.game_data(),
             fight,
             catalog.defender_reservation_count(fight),
-        )
+        );
+        let mut rule_sources = Vec::new();
+        for rule in catalog.battle_rules(fight).into_iter().filter(|rule| {
+            rule.rule_type != crate::engine::fight::rules::AdditionRuleType::FightSkill
+        }) {
+            for (&uid, entity) in &manager.identities {
+                let owns_side = match rule.side {
+                    crate::engine::fight::rules::BattleRuleSide::Attacker => {
+                        manager.teams.get(&uid) == Some(&1)
+                    }
+                    crate::engine::fight::rules::BattleRuleSide::Defender => {
+                        manager.teams.get(&uid) == Some(&2)
+                    }
+                    crate::engine::fight::rules::BattleRuleSide::Both => true,
+                };
+                if owns_side && entity.passive_skill.contains(&rule.skill_id) {
+                    rule_sources.push((uid, rule.skill_id));
+                }
+            }
+        }
+        for (uid, skill_id) in rule_sources {
+            manager
+                .passive_sources
+                .entry(uid)
+                .or_default()
+                .insert(skill_id, PassiveSourceKind::BattleRule);
+        }
+        manager
     }
 
     pub fn seed_with_game_data(game_data: &config::GameDB, fight: &Fight) -> Self {

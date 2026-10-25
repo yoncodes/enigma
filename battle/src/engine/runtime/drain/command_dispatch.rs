@@ -556,9 +556,13 @@ pub(super) fn drain_command(
                 .then_some(pending_deaths.as_slice()),
         )?
     };
-    state.defer_before_hit_passive_skills(
+    state.defer_hp_thresholds(
         action_scope.as_deref(),
-        std::mem::take(&mut reactions.before_hit_passive_skills),
+        std::mem::take(&mut reactions.hp_thresholds),
+    );
+    state.defer_attacked_skills(
+        action_scope.as_deref(),
+        std::mem::take(&mut reactions.attacked_skills),
     );
     state.defer_before_after_hit_observers(
         action_scope.as_deref(),
@@ -567,6 +571,10 @@ pub(super) fn drain_command(
     state.defer_after_hit_skills(
         action_scope.as_deref(),
         std::mem::take(&mut reactions.after_hit_skills),
+    );
+    state.defer_after_hit_shell(
+        action_scope.as_deref(),
+        std::mem::take(&mut reactions.after_hit_shell),
     );
     state.defer_after_hit(
         action_scope.as_deref(),
@@ -618,11 +626,18 @@ pub(super) fn drain_command(
             None,
         )?;
         hit_buff_acts
-            .before_hit_passive_skills
-            .append(&mut hit_skills.before_hit_passive_skills);
-        state.defer_before_hit_passive_skills(
+            .attacked_skills
+            .append(&mut hit_skills.attacked_skills);
+        state.defer_attacked_skills(
             action_scope.as_deref(),
-            std::mem::take(&mut hit_buff_acts.before_hit_passive_skills),
+            std::mem::take(&mut hit_buff_acts.attacked_skills),
+        );
+        hit_buff_acts
+            .hp_thresholds
+            .append(&mut hit_skills.hp_thresholds);
+        state.defer_hp_thresholds(
+            action_scope.as_deref(),
+            std::mem::take(&mut hit_buff_acts.hp_thresholds),
         );
         hit_buff_acts
             .before_after_hit_observers
@@ -637,6 +652,13 @@ pub(super) fn drain_command(
         state.defer_after_hit_skills(
             action_scope.as_deref(),
             std::mem::take(&mut hit_buff_acts.after_hit_skills),
+        );
+        hit_buff_acts
+            .after_hit_shell
+            .append(&mut hit_skills.after_hit_shell);
+        state.defer_after_hit_shell(
+            action_scope.as_deref(),
+            std::mem::take(&mut hit_buff_acts.after_hit_shell),
         );
         state.defer_after_hit(
             action_scope.as_deref(),
@@ -665,8 +687,11 @@ pub(super) fn drain_command(
     let after_settlement = reactions.after_settlement;
     if releases_hit_passive_skills {
         let mut released_hit_passives = state
-            .take_before_hit_passive_skills(action_scope.as_ref())
+            .take_attacked_skills(action_scope.as_ref())
             .unwrap_or_default();
+        if let Some(thresholds) = state.take_hp_thresholds(action_scope.as_ref()) {
+            released_hit_passives.extend(thresholds);
+        }
         if let Some(hit_passives) = state.take_hit_passive_skills(action_scope.as_ref()) {
             released_hit_passives.extend(hit_passives);
         }
@@ -685,8 +710,12 @@ pub(super) fn drain_command(
         let observers = state
             .take_after_hit_skills(action_scope.as_ref())
             .unwrap_or_default();
+        let shell = state
+            .take_after_hit_shell(action_scope.as_ref())
+            .unwrap_or_default();
         after_publish.extend(hit_skills);
         after_publish.extend(observers);
+        after_publish.extend(shell);
     }
     // Death-sensitive reactions declared before settlement get one
     // chance to change HP before death transitions are finalized.

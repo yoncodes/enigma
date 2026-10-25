@@ -9,12 +9,12 @@ fn shared_damage_reacts_once_per_event_batch() {
 }
 
 #[test]
-fn damage_hp_threshold_reactions_run_before_hit_passive_skills() {
+fn damage_hp_threshold_reactions_keep_their_owned_phase() {
     for opcode in [1209, 1304] {
         let definition = find_key(opcode, "LifeLess").unwrap();
         assert_eq!(
             definition.reaction_timing.resolve(Default::default()),
-            ReactionTiming::BeforeHitPassiveSkills
+            ReactionTiming::HpThresholds
         );
         assert_eq!(
             definition.reaction_multiplicity,

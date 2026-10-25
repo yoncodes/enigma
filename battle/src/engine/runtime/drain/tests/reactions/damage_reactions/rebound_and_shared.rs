@@ -186,7 +186,7 @@ fn hurt_skill_reactions_are_once_per_attacked_owner_per_action() {
         None,
     )
     .unwrap();
-    let mut queue = std::collections::VecDeque::from(reactions.after_publish);
+    let mut queue = std::collections::VecDeque::from(reactions.attacked_skills);
     drain_queue_with_frames(
         &mut managers,
         &pool,
@@ -330,8 +330,16 @@ fn shared_damage_subscription_carries_event_batch_ownership() {
     )
     .unwrap();
 
-    let first = first.into_ordered();
-    let second = second.into_ordered();
+    let queued = |mut reactions: ReactionBatch| {
+        let attacked = std::mem::take(&mut reactions.attacked_skills);
+        reactions
+            .into_ordered()
+            .into_iter()
+            .chain(attacked)
+            .collect::<Vec<_>>()
+    };
+    let first = queued(first);
+    let second = queued(second);
     assert_eq!(
         first
             .iter()

@@ -31,7 +31,7 @@ fn attack_conditions_keep_their_exact_routes() {
 }
 
 #[test]
-fn attacked_psychube_reactions_wait_for_after_hit_observers() {
+fn attacked_reactions_follow_their_passive_source() {
     let timing = find_key(22209, "BeAttacked").unwrap().reaction_timing;
 
     assert_eq!(
@@ -40,6 +40,10 @@ fn attacked_psychube_reactions_wait_for_after_hit_observers() {
     );
     assert_eq!(
         timing.resolve(PassiveSourceKind::Insight),
+        ReactionTiming::AttackedSkills
+    );
+    assert_eq!(
+        timing.resolve(PassiveSourceKind::BattleRule),
         ReactionTiming::AfterSharedHit
     );
 }
@@ -115,11 +119,15 @@ fn buff_and_obscurity_conditions_keep_their_exact_routes() {
     assert_eq!(power_ratio.dependencies, &[EventKind::TargetAttacked]);
     assert_eq!(
         power_ratio.reaction_timing,
-        ReactionTimingPolicy::Fixed(ReactionTiming::AfterSharedHit)
+        ReactionTimingPolicy::Fixed(ReactionTiming::AttackedSkills)
     );
     let absent = find_key(57209, "NoBuffId").unwrap();
     assert_eq!(absent.role, ConditionRole::Predicate);
     assert_eq!(absent.dependencies, &[EventKind::TargetAttacked]);
+    assert_eq!(
+        absent.reaction_timing,
+        ReactionTimingPolicy::Fixed(ReactionTiming::AttackedSkills)
+    );
 }
 
 #[test]

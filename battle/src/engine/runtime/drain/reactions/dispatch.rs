@@ -128,16 +128,20 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         };
         if timing == crate::engine::event::subscription::ReactionTiming::AfterAction {
             reactions.after_action.push(queued);
-        } else if timing
-            == crate::engine::event::subscription::ReactionTiming::BeforeHitPassiveSkills
+        } else if timing == crate::engine::event::subscription::ReactionTiming::AttackedSkills
+            && action_path.is_some()
         {
-            reactions.before_hit_passive_skills.push(queued);
+            reactions.attacked_skills.push(queued);
+        } else if timing == crate::engine::event::subscription::ReactionTiming::HpThresholds {
+            reactions.hp_thresholds.push(queued);
         } else if timing
             == crate::engine::event::subscription::ReactionTiming::BeforeAfterHitObservers
         {
             reactions.before_after_hit_observers.push(queued);
         } else if timing == crate::engine::event::subscription::ReactionTiming::AfterHitObservers {
             reactions.after_hit_skills.push(queued);
+        } else if timing == crate::engine::event::subscription::ReactionTiming::AfterHitShell {
+            reactions.after_hit_shell.push(queued);
         } else if timing == crate::engine::event::subscription::ReactionTiming::AfterSettlement {
             reactions.after_settlement.push(queued);
         } else if publication == crate::engine::event::subscription::PublicationPhase::BeforePublish
@@ -261,8 +265,16 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
             &mut reactions.after_hit,
         ),
         (
-            crate::engine::event::subscription::ReactionTiming::BeforeHitPassiveSkills,
-            &mut reactions.before_hit_passive_skills,
+            crate::engine::event::subscription::ReactionTiming::AttackedSkills,
+            if action_path.is_some() {
+                &mut reactions.attacked_skills
+            } else {
+                &mut reactions.after_publish
+            },
+        ),
+        (
+            crate::engine::event::subscription::ReactionTiming::HpThresholds,
+            &mut reactions.hp_thresholds,
         ),
         (
             crate::engine::event::subscription::ReactionTiming::BeforeAfterHitObservers,
@@ -271,6 +283,10 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         (
             crate::engine::event::subscription::ReactionTiming::AfterHitObservers,
             &mut reactions.after_hit_skills,
+        ),
+        (
+            crate::engine::event::subscription::ReactionTiming::AfterHitShell,
+            &mut reactions.after_hit_shell,
         ),
         (
             crate::engine::event::subscription::ReactionTiming::AfterSharedHit,

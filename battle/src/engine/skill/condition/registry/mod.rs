@@ -140,6 +140,7 @@ pub enum ReactionTimingPolicy {
     Fixed(ReactionTiming),
     ByPassiveSource {
         psychube: ReactionTiming,
+        battle_rule: ReactionTiming,
         fallback: ReactionTiming,
     },
 }
@@ -148,8 +149,13 @@ impl ReactionTimingPolicy {
     pub const fn resolve(self, source: PassiveSourceKind) -> ReactionTiming {
         match self {
             Self::Fixed(timing) => timing,
-            Self::ByPassiveSource { psychube, fallback } => match source {
+            Self::ByPassiveSource {
+                psychube,
+                battle_rule,
+                fallback,
+            } => match source {
                 PassiveSourceKind::Psychube => psychube,
+                PassiveSourceKind::BattleRule => battle_rule,
                 _ => fallback,
             },
         }
@@ -382,8 +388,13 @@ pub const fn after_hit_skills(mut metadata: ConditionMetadata) -> ConditionMetad
     metadata
 }
 
-pub const fn before_hit_passive_skills(mut metadata: ConditionMetadata) -> ConditionMetadata {
-    metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::BeforeHitPassiveSkills);
+pub const fn attacked_skills(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::AttackedSkills);
+    metadata
+}
+
+pub const fn hp_thresholds(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::HpThresholds);
     metadata
 }
 
@@ -395,6 +406,7 @@ pub const fn before_after_hit_observers(mut metadata: ConditionMetadata) -> Cond
 pub const fn psychube_after_action(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_timing = ReactionTimingPolicy::ByPassiveSource {
         psychube: ReactionTiming::AfterAction,
+        battle_rule: ReactionTiming::Immediate,
         fallback: ReactionTiming::Immediate,
     };
     metadata
@@ -403,7 +415,8 @@ pub const fn psychube_after_action(mut metadata: ConditionMetadata) -> Condition
 pub const fn psychube_after_hit_observers(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_timing = ReactionTimingPolicy::ByPassiveSource {
         psychube: ReactionTiming::AfterHitObservers,
-        fallback: ReactionTiming::AfterSharedHit,
+        battle_rule: ReactionTiming::AfterSharedHit,
+        fallback: ReactionTiming::AttackedSkills,
     };
     metadata
 }
@@ -615,7 +628,7 @@ condition_definitions! {
     [783102] "IsBroken" => trigger::parse_entity_broken, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [1061] "None" => none::action_queue_committed, event_trigger(EventKind::ActionQueueCommitted, None);
     [2081] "None" => none::skill_cast, uses_active_skill_targets(event_trigger(EventKind::SkillCast, None));
-    [209, 211] "None" => none::attacked, event_trigger(EventKind::BeAttacked, None);
+    [209, 211] "None" => none::attacked, attacked_skills(event_trigger(EventKind::BeAttacked, None));
     [212] "None" => none::ally_action, reaction_targets_causing_frame(event_trigger(EventKind::AllyAction, None));
     [52008] "None" => none::ally_action, event_trigger(EventKind::AllyAction, None);
     [214] "None" => none::shell_deploy, reaction_targets_causing_frame(event_trigger(EventKind::ShellDeployed, None));
@@ -675,7 +688,7 @@ condition_definitions! {
     [513101] "SelfTeamHasBuffTypeLayerMoreThan" => buff::team_buff_type_layer_at_least, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [513102] "SelfTeamHasBuffTypeLayerMoreThan" => buff::team_buff_type_layer_at_least, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [57208] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
-    [57209] "NoBuffId" => buff::buff_absent, after_shared_hit(filters_behavior_targets(predicate(&[EventKind::TargetAttacked])));
+    [57209] "NoBuffId" => buff::buff_absent, attacked_skills(filters_behavior_targets(predicate(&[EventKind::TargetAttacked])));
     [57204] "NoBuffId" => buff::buff_absent, incoming_attack_modifier(filters_behavior_targets(predicate(&[EventKind::BuffChanged])));
     [57210] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[EventKind::SkillAction]));
     [572081] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[]));
@@ -751,7 +764,7 @@ condition_definitions! {
     [501203] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [501201] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [501208] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
-    [501209] "UseHurtSkill" => active_skill::hurt_skill, once_per_action(event_target_observes(after_shared_hit(event_trigger(EventKind::TargetAttacked, None))));
+    [501209] "UseHurtSkill" => active_skill::hurt_skill, attacked_skills(once_per_action(event_target_observes(event_trigger(EventKind::TargetAttacked, None))));
     [501210] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [501212] "UseHurtSkill" => active_skill::hurt_skill, predicate(&[]);
     [507201] "UseSkillId" => active_skill::skill_id, event_trigger(EventKind::SkillAction, None);
@@ -779,7 +792,7 @@ condition_definitions! {
     [726210] "BloodPoolValue" => resource::blood_pool_value, predicate(&[]);
     [589] "PowerIncrChange" => resource::power_increase, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
     [749301] "PowerRatio" => resource::power_ratio, event_trigger(EventKind::SmallRoundEnd, None);
-    [749209] "PowerRatio" => resource::power_ratio, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
+    [749209] "PowerRatio" => resource::power_ratio, attacked_skills(predicate(&[EventKind::TargetAttacked]));
     [1010301] "ProgressValue" => resource::fight_progress_value, reaction_targets_owner(event_trigger(EventKind::DefenderActionPhaseStart, None));
     [1010012] "ProgressValue" => resource::fight_progress_value, event_target_observes(reaction_targets_owner(event_trigger(EventKind::EntityDied, None)));
     [710301] "PerHandCardHasSkillId" => card::hand_skill_presence, event_trigger(EventKind::SmallRoundEnd, None);
@@ -945,7 +958,7 @@ condition_definitions! {
     [34212] "UseSkillEffectTag" => active_skill::effect_tag, predicate(&[]);
     [33201] "HurtRestraint" => parse::hurt_restrained, predicate(&[]);
     [33204] "HurtRestraint" => parse::hurt_restrained, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate))));
-    [33209] "HurtRestraint" => parse::hurt_restrained, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
+    [33209] "HurtRestraint" => parse::hurt_restrained, attacked_skills(predicate(&[EventKind::TargetAttacked]));
     [47204] "HurtNotRestraint" => parse::hurt_not_restrained, incoming_attack_modifier(predicate(&[]));
     [47209] "HurtNotRestraint" => parse::hurt_not_restrained, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
     [53201] "HurtNumType" => parse::damage_target_count_kind, predicate(&[]);
@@ -967,8 +980,8 @@ condition_definitions! {
     [1105] "LifeLess" => parse::hp_less, setup_route(SetupStage::AfterRoundStart, 0, &[]);
     [1203] "LifeLess" => parse::hp_less, predicate(&[]);
     [1204] "LifeLess" => parse::hp_less, incoming_attack_modifier(predicate(&[]));
-    [1304] "LifeLess" => parse::hp_less, before_hit_passive_skills(once_per_action(predicate(&[EventKind::HpLost])));
-    [1209] "LifeLess" => parse::hp_less, before_hit_passive_skills(once_per_action(predicate(&[EventKind::HpLost])));
+    [1304] "LifeLess" => parse::hp_less, hp_thresholds(once_per_action(predicate(&[EventKind::HpLost])));
+    [1209] "LifeLess" => parse::hp_less, hp_thresholds(once_per_action(predicate(&[EventKind::HpLost])));
     [2104] "LifeMore" => parse::hp_more, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [2203] "LifeMore" => parse::hp_more, predicate(&[]);
     [2301] "LifeMore" => parse::hp_more, event_trigger(EventKind::SmallRoundEnd, None);
