@@ -549,6 +549,10 @@ pub(in crate::engine::runtime) fn emit_ops(
                     invocation.plan.skill_id,
                     execution.context.active_skill_is_attack,
                     execution.context.active_skill_mode,
+                    managers
+                        .entity
+                        .passive_source(invocation.plan.source_uid, invocation.plan.skill_id),
+                    execution.context.action_damage_amount,
                 ) || definition
                     .skill_action_trigger
                     .rejects_extra_skill(execution.context.extra_skill_kind)

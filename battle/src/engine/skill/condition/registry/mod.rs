@@ -124,6 +124,7 @@ pub enum SkillActionTriggerPolicy {
     Default,
     AttackOnlyWithDeviceObservers(&'static [i32]),
     InitialCriticalFollowUp,
+    PsychubeRequiresSynchronizationDamage,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -158,7 +159,9 @@ impl ReactionTimingPolicy {
 impl SkillActionTriggerPolicy {
     pub const fn child_skill_kind(self) -> Option<extra::ExtraSkillKind> {
         match self {
-            Self::Default | Self::AttackOnlyWithDeviceObservers(_) => None,
+            Self::Default
+            | Self::AttackOnlyWithDeviceObservers(_)
+            | Self::PsychubeRequiresSynchronizationDamage => None,
             Self::InitialCriticalFollowUp => Some(extra::ExtraSkillKind::FollowUp),
         }
     }
@@ -168,6 +171,8 @@ impl SkillActionTriggerPolicy {
         observer_skill_id: i32,
         is_attack: bool,
         mode: crate::engine::skill::action::SkillExecutionMode,
+        passive_source: PassiveSourceKind,
+        damage_amount: i32,
     ) -> bool {
         match self {
             Self::AttackOnlyWithDeviceObservers(device_observers) => {
@@ -176,6 +181,11 @@ impl SkillActionTriggerPolicy {
                         mode,
                         crate::engine::skill::action::SkillExecutionMode::Device
                     ) || !device_observers.contains(&observer_skill_id))
+            }
+            Self::PsychubeRequiresSynchronizationDamage => {
+                passive_source == PassiveSourceKind::Psychube
+                    && mode == crate::engine::skill::action::SkillExecutionMode::Synchronization
+                    && damage_amount == 0
             }
             Self::Default | Self::InitialCriticalFollowUp => false,
         }
@@ -406,6 +416,13 @@ pub const fn attack_only_with_device_observers(
 ) -> ConditionMetadata {
     metadata.skill_action_trigger =
         SkillActionTriggerPolicy::AttackOnlyWithDeviceObservers(observer_skill_ids);
+    metadata
+}
+
+pub const fn psychube_requires_synchronization_damage(
+    mut metadata: ConditionMetadata,
+) -> ConditionMetadata {
+    metadata.skill_action_trigger = SkillActionTriggerPolicy::PsychubeRequiresSynchronizationDamage;
     metadata
 }
 
@@ -846,7 +863,7 @@ condition_definitions! {
     [1001204] "Assassinate" => trigger::parse_assassinate, event_trigger(EventKind::SkillAction, None);
     [1001208] "Assassinate" => trigger::parse_assassinate, in_causing_frame(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [1001210] "Assassinate" => trigger::parse_assassinate, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
-    [1001212] "Assassinate" => trigger::parse_assassinate, reaction_targets_causing_frame(team_observes(event_trigger(EventKind::AllyAction, None)));
+    [1001212] "Assassinate" => trigger::parse_assassinate, psychube_requires_synchronization_damage(reaction_targets_causing_frame(team_observes(event_trigger(EventKind::AllyAction, None))));
     [791210] "ToBrokenEnemy" => trigger::parse_target_guard_broken, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [25201] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [25203] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));

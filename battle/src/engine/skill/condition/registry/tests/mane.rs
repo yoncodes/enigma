@@ -216,3 +216,44 @@ fn captured_mane_conditions_keep_their_exact_routes() {
     );
     assert_eq!(ex_point.reaction_frame_target, ReactionFrameTarget::Owner);
 }
+
+#[test]
+fn assassination_psychubes_wait_for_synchronization_damage() {
+    let policy = find_key(1001212, "Assassinate")
+        .unwrap()
+        .skill_action_trigger;
+    assert_eq!(
+        policy,
+        SkillActionTriggerPolicy::PsychubeRequiresSynchronizationDamage
+    );
+
+    let synchronization = crate::engine::skill::action::SkillExecutionMode::Synchronization;
+    assert!(policy.rejects_action(
+        435211,
+        true,
+        synchronization,
+        PassiveSourceKind::Psychube,
+        0,
+    ));
+    assert!(!policy.rejects_action(
+        435211,
+        true,
+        synchronization,
+        PassiveSourceKind::Psychube,
+        1,
+    ));
+    assert!(!policy.rejects_action(
+        31050141,
+        true,
+        synchronization,
+        PassiveSourceKind::Insight,
+        0,
+    ));
+    assert!(!policy.rejects_action(
+        435211,
+        true,
+        crate::engine::skill::action::SkillExecutionMode::Active,
+        PassiveSourceKind::Psychube,
+        0,
+    ));
+}
