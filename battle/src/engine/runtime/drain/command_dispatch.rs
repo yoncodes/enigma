@@ -839,7 +839,7 @@ pub(super) fn drain_command(
     } else {
         (Vec::new(), Vec::new(), Vec::new())
     };
-    let (mut reaction_casts, held_casts): (Vec<_>, Vec<_>) =
+    let (mut reaction_casts, mut held_casts): (Vec<_>, Vec<_>) =
         held_casts.into_iter().partition(|(_, queued)| {
             matches!(
                 &queued.op,
@@ -867,6 +867,30 @@ pub(super) fn drain_command(
             state,
         )?;
         reaction_casts = DrainState::take_unclaimed_reaction_casts(&link);
+    }
+    let held_action_groups = held_action_groups(&mut held_casts);
+    if !reaction_casts.is_empty() && !held_action_groups.is_empty() {
+        let link = DrainState::reaction_cast_link(std::mem::take(&mut reaction_casts));
+        for group in &held_action_groups {
+            state.defer_action_reaction_link(group, &link);
+        }
+        let completion_group = Rc::new(RefCell::new(None));
+        state.defer_action_reaction_link(&completion_group, &link);
+        held_casts.push((
+            None,
+            QueuedOp {
+                op: RuleOp::HeldActionBatchComplete,
+                trigger: SkillOpTrigger::Active,
+                skill_execution: None,
+                frame_path: None,
+                parent_path: None,
+                frame_group: Some(completion_group),
+                independent_parent_group: None,
+                frame_owner: None,
+                subscriber: None,
+                caster_frame: None,
+            },
+        ));
     }
     if !reaction_casts.is_empty()
         && let Some(group) = after_action

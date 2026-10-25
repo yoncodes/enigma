@@ -23,6 +23,7 @@ pub fn run_command_group(
                 | RuleOp::DeathSettlement(_)
                 | RuleOp::DeathEventGroupComplete(_)
                 | RuleOp::SubscriberGroupComplete
+                | RuleOp::HeldActionBatchComplete
                 | RuleOp::TerminalSettlement
                 | RuleOp::BeginSkillAction { .. }
                 | RuleOp::BuffFeatureMarker { .. }

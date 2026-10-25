@@ -441,6 +441,18 @@ fn drain_queue_with_deferred(
                 }
                 prepend(queue, settlements);
             }
+            RuleOp::HeldActionBatchComplete => {
+                let link = reaction_link
+                    .as_ref()
+                    .expect("held action batch completion keeps its reaction link");
+                let casts = DrainState::take_unclaimed_reaction_casts(link)
+                    .into_iter()
+                    .map(|(caster, mut queued)| {
+                        queued.caster_frame = caster;
+                        queued
+                    });
+                prepend(queue, casts);
+            }
             RuleOp::TerminalSettlement => {
                 commit_terminal(managers, base_pool, context, state, &mut result.events);
             }
@@ -828,6 +840,28 @@ fn ally_action_reaction_group(queued: &QueuedOp) -> Option<Rc<RefCell<Option<Fra
 fn ally_action_reaction_groups(queued: &[QueuedOp]) -> Vec<Rc<RefCell<Option<FramePath>>>> {
     let mut groups = Vec::new();
     for group in queued.iter().filter_map(ally_action_reaction_group) {
+        if !groups.iter().any(|known| Rc::ptr_eq(known, &group)) {
+            groups.push(group);
+        }
+    }
+    groups
+}
+
+fn held_action_groups(
+    casts: &mut [(Option<FrameOwner>, QueuedOp)],
+) -> Vec<Rc<RefCell<Option<FramePath>>>> {
+    let mut groups = Vec::new();
+    for queued in casts.iter_mut().filter_map(|(_, queued)| {
+        matches!(
+            &queued.op,
+            RuleOp::Skill(invocation) if invocation.mode.completes_action()
+        )
+        .then_some(queued)
+    }) {
+        let group = queued
+            .frame_group
+            .get_or_insert_with(|| Rc::new(RefCell::new(None)))
+            .clone();
         if !groups.iter().any(|known| Rc::ptr_eq(known, &group)) {
             groups.push(group);
         }

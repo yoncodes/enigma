@@ -179,6 +179,128 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
 }
 
 #[test]
+fn held_shell_cast_follows_the_first_recast_attack() {
+    crate::test_support::init_config();
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            technic: Some(if uid > 0 { 1_000 } else { 0 }),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(10),
+                FightEntityInfo {
+                    passive_skill: vec![31090144],
+                    ..entity(11)
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(30),
+                        buff_id: Some(312451011),
+                        from_uid: Some(10),
+                        duration: Some(3),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(31),
+                        buff_id: Some(312451021),
+                        from_uid: Some(10),
+                        duration: Some(3),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(32),
+                        buff_id: Some(31090112),
+                        from_uid: Some(11),
+                        layer: Some(16),
+                        ..Default::default()
+                    },
+                ],
+                ..entity(-1)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312451115, 31090144], []);
+    crate::engine::mechanic::shell::execute(
+        &mut managers,
+        ShellCommand::AccumulateAndUseSkill {
+            rule: ConfiguredRuleKey::new(31090144, 2, DefinitionKey::new(60135, "ShellUseSkill")),
+            source_uid: 11,
+            target_uid: -1,
+            threshold: 7,
+            delta: 6,
+            skill_id: 31090114,
+        },
+    )
+    .unwrap();
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312451115,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    let fury = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(312451115))
+        .expect("Fury of Ares projects a step");
+    let kicks = fury
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .filter(|step| {
+            step.act_id == Some(312451011)
+                && step.act_type == Some(sonettobuf::fight_step::ActType::Skill as i32)
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(kicks.len(), 2);
+    assert!(kicks[0].act_effect.iter().any(|effect| {
+        effect
+            .fight_step
+            .as_ref()
+            .is_some_and(|step| step.act_id == Some(31090144))
+    }));
+    assert!(kicks[1..].iter().all(|kick| {
+        !kick.act_effect.iter().any(|effect| {
+            effect
+                .fight_step
+                .as_ref()
+                .is_some_and(|step| step.act_id == Some(31090144))
+        })
+    }));
+}
+
+#[test]
 fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {

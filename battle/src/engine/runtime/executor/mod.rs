@@ -573,6 +573,9 @@ pub(crate) fn execute_rule_op_with(
         RuleOp::SubscriberGroupComplete => {
             unreachable!("subscriber group completion is owned by the runtime drain")
         }
+        RuleOp::HeldActionBatchComplete => {
+            unreachable!("held action batch completion is owned by the runtime drain")
+        }
         RuleOp::TerminalSettlement => {
             unreachable!("terminal settlement is owned by the runtime drain")
         }
