@@ -353,7 +353,9 @@ impl ExPointChanges {
                 resolved_damage: damage.amount,
                 shield_absorbed: 0,
                 career_restraint: damage.hurt.career_restraint,
-                damage_from: damage.hurt.damage_from,
+                // Synchronization is projected as skill-effect damage, but it is the QTE skill's
+                // primary hit and therefore publishes the normal attacked-skill reactions.
+                damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
                 share_count: 0,
                 assassinate: damage.assassinate,
                 ignore_riposte: damage.ignore_riposte,

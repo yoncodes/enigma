@@ -2,6 +2,7 @@ use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
 use super::*;
 use crate::engine::{
+    event::kind::EventKind,
     manager::hp::{DamageEffectKind, DamageRecord, HurtDamageFromType, HurtInfoData},
     skill::rule::{DefinitionKey, RuleDomain},
 };
@@ -159,11 +160,19 @@ fn synchronization_lifecycle_is_owned_by_the_resource_manager() {
                 true,
             )
             .unwrap();
+        let events = hit.events();
         assert!(matches!(
-            hit.events().as_slice(),
+            events.as_slice(),
             [BattleEvent::Hit(event)]
-                if event.amount == damage.amount && event.resolved_damage == damage.amount
+                if event.amount == damage.amount
+                    && event.resolved_damage == damage.amount
+                    && event.damage_from == HurtDamageFromType::Skill
         ));
+        assert!(
+            events[0]
+                .subscription_kinds()
+                .any(|kind| kind == EventKind::TargetAttacked)
+        );
         assert_eq!(manager.synchronization_progress(1), progress_before_hit);
         let recorded = manager
             .execute_command(

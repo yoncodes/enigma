@@ -49,6 +49,13 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
                         ..Default::default()
                     },
                 ],
+                model_id: Some(109380001),
+                passive_skill: vec![109380005],
+                power_infos: vec![sonettobuf::PowerInfo {
+                    power_id: Some(10),
+                    num: Some(100),
+                    max: Some(100),
+                }],
                 ..entity(-1, 2, 100_000, 0)
             }],
             ..Default::default()
@@ -93,7 +100,7 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
     runtime.catalog = SkillEffectCatalog::from_roots(
         config::configs::get(),
         [
-            312301323, 312301333, 312301343, 31050141, 31090141, 312451011,
+            312301323, 312301333, 312301343, 31050141, 31090141, 312451011, 109380005,
         ],
         [],
     );
@@ -202,6 +209,37 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         })
         .collect::<Vec<_>>();
     assert_eq!(costs, [vec![-100], vec![], vec![], vec![]]);
+    let passive_counts = replies
+        .iter()
+        .map(|reply| count_skill(&reply.round.as_ref().unwrap().fight_step, 109380005))
+        .collect::<Vec<_>>();
+    assert_eq!(passive_counts, [1, 1, 1, 2]);
+    fn synchronization_damage_from(steps: &[sonettobuf::FightStep], kinds: &mut Vec<i32>) {
+        for effect in steps.iter().flat_map(|step| &step.act_effect) {
+            if effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Eziobigskilldamage as i32)
+            {
+                kinds.push(
+                    effect
+                        .hurt_info
+                        .as_ref()
+                        .and_then(|hurt| hurt.damage_from_type)
+                        .unwrap(),
+                );
+            }
+            if let Some(nested) = effect.fight_step.as_ref() {
+                synchronization_damage_from(std::slice::from_ref(nested), kinds);
+            }
+        }
+    }
+    let mut damage_from = Vec::new();
+    for reply in &replies {
+        synchronization_damage_from(&reply.round.as_ref().unwrap().fight_step, &mut damage_from);
+    }
+    assert_eq!(damage_from.len(), 5);
+    assert!(damage_from.iter().all(|damage_from| {
+        *damage_from == sonettobuf::fight_hurt_info::DamageFromType::SkillEffect as i32
+    }));
     let first_round = replies[0].round.as_ref().unwrap();
     assert!(
         first_round.before_cards1.is_empty()
