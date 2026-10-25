@@ -80,6 +80,7 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
         attr: Some(HeroAttribute {
             hp: Some(100_000),
             attack: Some(1_000),
+            technic: Some(if uid > 0 { 1_000 } else { 0 }),
             ..Default::default()
         }),
         ..Default::default()
@@ -123,15 +124,12 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
             .events
             .iter()
             .enumerate()
-            .filter(|(_, event)| {
-                matches!(
-                    event,
-                    crate::engine::event::payload::BattleEvent::SkillAction(action)
-                        if action.skill_id == 312451011
-                            && action.phase == crate::engine::skill::action::SkillPhase::Immediate
-                )
+            .filter_map(|(index, event)| {
+                let crate::engine::event::payload::BattleEvent::Hit(hit) = event else {
+                    return None;
+                };
+                (hit.skill_id == 312451011).then_some((index, hit.assassinate, hit.resolved_damage))
             })
-            .map(|(index, _)| index)
             .collect::<Vec<_>>();
         // The recast follows the mass attack's completion and its ally-action reactions.
         let completed = result.events.iter().position(|event| {
@@ -144,9 +142,9 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
         assert!(
             kicks
                 .iter()
-                .all(|kick| completed.is_some_and(|completed| completed < *kick))
+                .all(|(kick, _, _)| completed.is_some_and(|completed| completed < *kick))
         );
-        kicks.len()
+        kicks
     };
     let kick_gash = BuffInfo {
         uid: Some(30),
@@ -162,9 +160,22 @@ fn each_gash_type_on_the_main_target_casts_sparta_kick_again() {
         ..kick_gash.clone()
     };
 
-    assert_eq!(sparta_kicks(Vec::new()), 0);
-    assert_eq!(sparta_kicks(vec![kick_gash.clone()]), 1);
-    assert_eq!(sparta_kicks(vec![kick_gash, arrow_gash]), 2);
+    assert!(sparta_kicks(Vec::new()).is_empty());
+    let generated = sparta_kicks(vec![kick_gash.clone()]);
+    assert_eq!(generated.len(), 1);
+    assert!(generated[0].1);
+    let preexisting = sparta_kicks(vec![
+        kick_gash.clone(),
+        BuffInfo {
+            uid: Some(32),
+            buff_id: Some(31240121),
+            from_uid: Some(10),
+            layer: Some(1),
+            ..Default::default()
+        },
+    ]);
+    assert_eq!(preexisting[0].2, generated[0].2);
+    assert_eq!(sparta_kicks(vec![kick_gash, arrow_gash]).len(), 2);
 }
 
 #[test]
@@ -184,34 +195,59 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
         attacker: Some(FightTeam {
             entitys: vec![
                 FightEntityInfo {
-                    passive_skill: vec![31090144],
-                    buffs: vec![BuffInfo {
-                        uid: Some(20),
-                        buff_id: Some(31090111),
-                        from_uid: Some(10),
-                        layer: Some(15),
-                        ..Default::default()
-                    }],
+                    passive_skill: vec![31090144, 434111],
+                    buffs: vec![
+                        BuffInfo {
+                            uid: Some(20),
+                            buff_id: Some(31090111),
+                            from_uid: Some(10),
+                            layer: Some(15),
+                            ..Default::default()
+                        },
+                        BuffInfo {
+                            uid: Some(21),
+                            buff_id: Some(31050145),
+                            from_uid: Some(11),
+                            ..Default::default()
+                        },
+                        BuffInfo {
+                            uid: Some(22),
+                            buff_id: Some(109380006),
+                            from_uid: Some(-1),
+                            ..Default::default()
+                        },
+                    ],
                     ..entity(10)
                 },
                 // Flutterpage gains Gust after any ally takes an action.
                 FightEntityInfo {
                     passive_skill: vec![31050141],
+                    power_infos: vec![sonettobuf::PowerInfo {
+                        power_id: Some(crate::engine::manager::eureka::EUREKA_RESOURCE_ID),
+                        num: Some(2),
+                        max: Some(5),
+                    }],
                     ..entity(11)
                 },
             ],
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![entity(-1)],
+            entitys: vec![FightEntityInfo {
+                passive_skill: vec![109380003],
+                ..entity(-1)
+            }],
             ..Default::default()
         }),
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
-    let catalog =
-        SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 31090144, 31050141], []);
+    let catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        [31090111, 31090144, 31050141, 434111, 109380003],
+        [],
+    );
     // Six deployments or retrievals so far; the attack's deployment is the seventh.
     crate::engine::mechanic::shell::execute(
         &mut managers,
@@ -232,12 +268,15 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
     .into();
     invocation.target = SkillTarget::Explicit(11);
     invocation.mode = SkillExecutionMode::Active;
+    invocation.card_index = 1;
 
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_hidden_crits(31090114, 10, [true]);
     let result = run_action(
         &mut managers,
         &pool,
         &catalog,
-        &mut RoundDeterminism::default(),
+        &mut determinism,
         TargetContext::default(),
         [],
         invocation,
@@ -251,6 +290,7 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
         .expect("the attack projects a step");
     assert_eq!(attack.to_id, Some(11));
     assert!(managers.hp.current(-1) < 100_000);
+    assert_eq!(managers.eureka.get(11, 1).current, 0);
     assert!(managers.buff.buff_id_amount(-1, 31090112) > 0);
     assert_eq!(managers.buff.buff_id_amount(11, 31090112), 0);
     let children = attack
@@ -266,17 +306,58 @@ fn shell_necklace_cast_follows_the_attack_inside_its_own_step() {
     assert!(ally_reaction < children.len() - 1);
     assert_eq!(last_child.act_id, Some(31090144));
     assert_eq!(last_child.to_id, Some(11));
+    let attached = last_child
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .find(|step| step.act_id == Some(31090114) && step.to_id == Some(-1))
+        .expect("the shell cast stays attached to its triggering action");
+    let direct_hit = attached
+        .act_effect
+        .iter()
+        .find(|effect| effect.hurt_info.is_some())
+        .expect("the attached cast deals direct damage");
+    assert_eq!(
+        direct_hit.effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Crit as i32)
+    );
+    assert_eq!(direct_hit.effect_num, Some(1_614));
     assert!(
-        last_child
+        attached
             .act_effect
             .iter()
             .filter_map(|effect| effect.fight_step.as_ref())
-            .any(|step| step.act_id == Some(31090114) && step.to_id == Some(-1))
+            .any(|step| step.act_id == Some(31050141)),
+        "the attached cast still publishes its own ally action"
+    );
+    assert!(
+        attached
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.act_id == Some(31050145)),
+        "the attached extra action activates Wave of Sheets"
+    );
+    assert!(
+        attached
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.act_id == Some(434111)),
+        "the attached cast keeps its configured extra-skill kind"
+    );
+    assert!(
+        attached
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .all(|step| step.act_id != Some(109380003)),
+        "the attached cast is not a player-selected active attack"
     );
 }
 
 #[test]
-fn shell_necklace_cast_follows_action_reaction_after_non_action() {
+fn shell_necklace_cast_stays_with_its_triggering_action() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {
         uid: Some(uid),
@@ -332,7 +413,7 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
     let mut managers = BattleManagers::seeded(&fight);
     let catalog = SkillEffectCatalog::from_roots(
         config::configs::get(),
-        [31090112, 31090144, 312301701, 31050141],
+        [31090111, 31090144, 312301701, 31050141],
         [],
     );
     crate::engine::mechanic::shell::execute(
@@ -349,11 +430,11 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
     .unwrap();
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
-        skill_id: 31090112,
+        skill_id: 31090111,
     }
     .into();
     invocation.card_index = 3;
-    invocation.target = SkillTarget::Explicit(-1);
+    invocation.target = SkillTarget::Explicit(11);
     invocation.mode = SkillExecutionMode::Active;
 
     let result = run_action(
@@ -370,14 +451,28 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
     let attack = crate::engine::packet::timeline::project(&result.frames)
         .unwrap()
         .into_iter()
-        .find(|step| step.act_id == Some(31090112))
+        .find(|step| step.act_id == Some(31090111))
         .expect("the attack projects a step");
     let children = attack
         .act_effect
         .iter()
         .filter_map(|effect| effect.fight_step.as_ref())
         .collect::<Vec<_>>();
-    assert!(!children.iter().any(|step| step.act_id == Some(31090144)));
+    let shell = children
+        .iter()
+        .filter(|step| step.act_id == Some(31090144))
+        .collect::<Vec<_>>();
+    assert_eq!(shell.len(), 1);
+    assert_eq!(shell[0].to_id, Some(11));
+    assert_eq!(
+        shell[0]
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .filter(|step| step.act_id == Some(31090114))
+            .count(),
+        1
+    );
     let reuse_index = children
         .iter()
         .position(|step| step.act_id == Some(312301701))
@@ -394,26 +489,16 @@ fn shell_necklace_cast_follows_action_reaction_after_non_action() {
         .filter_map(|effect| effect.fight_step.as_ref())
         .find(|step| step.act_id == Some(312301711))
         .expect("Ezio performs the follow-up action");
-    let shell = follow_up
-        .act_effect
-        .iter()
-        .filter_map(|effect| effect.fight_step.as_ref())
-        .filter(|step| step.act_id == Some(31090144))
-        .collect::<Vec<_>>();
-    assert_eq!(shell.len(), 1);
-    assert_eq!(
-        shell[0]
-            .act_effect
-            .iter()
-            .filter_map(|effect| effect.fight_step.as_ref())
-            .filter(|step| step.act_id == Some(31090114))
-            .count(),
-        1
-    );
+    assert!(follow_up.act_effect.iter().all(|effect| {
+        effect
+            .fight_step
+            .as_ref()
+            .is_none_or(|step| step.act_id != Some(31090144))
+    }));
 }
 
 #[test]
-fn shell_necklace_cast_releases_inside_the_following_riposte() {
+fn shell_necklace_cast_does_not_rebind_to_the_following_riposte() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {
         uid: Some(uid),
@@ -507,16 +592,22 @@ fn shell_necklace_cast_releases_inside_the_following_riposte() {
         .iter()
         .find(|step| step.act_id == Some(2292031))
         .expect("the attack causes the ally riposte");
-    assert!(!children.iter().any(|step| step.act_id == Some(31090144)));
-    assert!(riposte.act_effect.iter().any(|effect| {
+    assert_eq!(
+        children
+            .iter()
+            .filter(|step| step.act_id == Some(31090144))
+            .count(),
+        1
+    );
+    assert!(riposte.act_effect.iter().all(|effect| {
         effect.fight_step.as_ref().is_some_and(|step| {
-            step.act_effect.iter().any(|effect| {
+            step.act_effect.iter().all(|effect| {
                 effect
                     .fight_step
                     .as_ref()
-                    .is_some_and(|step| step.act_id == Some(31090144))
+                    .is_none_or(|step| step.act_id != Some(31090144))
             })
-        })
+        }) || effect.fight_step.is_none()
     }));
 }
 

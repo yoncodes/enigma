@@ -59,8 +59,7 @@ pub enum ParsedConditionKind {
         buff_ids: Vec<i32>,
         threshold: i32,
     },
-    TeamBuffPresence {
-        team: i32,
+    PlayerBuffPresence {
         present: bool,
         buff_id: i32,
     },
@@ -800,4 +799,4 @@ pub(super) fn parse_i32_args(raw_args: &[String]) -> Option<Vec<i32>> {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

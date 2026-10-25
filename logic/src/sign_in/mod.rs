@@ -291,4 +291,4 @@ impl SignInAddupOutcome {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

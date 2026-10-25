@@ -233,4 +233,4 @@ impl ProfileManager {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

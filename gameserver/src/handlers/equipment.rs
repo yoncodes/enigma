@@ -140,4 +140,4 @@ pub async fn on_equip_decompose(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

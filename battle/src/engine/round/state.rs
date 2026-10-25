@@ -13,6 +13,12 @@ use super::power::ClothPower;
 
 pub const FIRST_ACTION_ROUND: i32 = 2;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoundCardSnapshotPolicy {
+    All,
+    CurrentOnly,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct RoundState {
     pub act_point: i32,
@@ -97,23 +103,38 @@ pub fn next_action_points(
 pub fn next_round_shell(
     fight: &Fight,
     state: &RoundState,
-    include_next_round_card_snapshots: bool,
+    card_snapshots: RoundCardSnapshotPolicy,
     current_hand: &[CardInfo],
     current_team_cards: &[CardInfo],
     ai_queue: &[CardInfo],
 ) -> FightRound {
-    let attacker = fight.attacker.as_ref();
-    let before_cards1 = if include_next_round_card_snapshots {
+    let mut round = continuation_round_shell(fight, state, ai_queue);
+    round.before_cards1 = if card_snapshots == RoundCardSnapshotPolicy::All {
         round_before_cards1(current_hand)
     } else {
         Vec::new()
     };
-    let team_a_cards1 = if include_next_round_card_snapshots {
+    round.team_a_cards1 = if card_snapshots == RoundCardSnapshotPolicy::All {
         round_field_cards(current_team_cards)
     } else {
         Vec::new()
     };
+    round.before_cards2 = state
+        .before_cards2
+        .iter()
+        .filter(|card| !card.temp_card.unwrap_or_default())
+        .cloned()
+        .collect();
+    round.team_a_cards2.clone_from(&state.team_a_cards2);
+    round
+}
 
+pub fn continuation_round_shell(
+    fight: &Fight,
+    state: &RoundState,
+    ai_queue: &[CardInfo],
+) -> FightRound {
+    let attacker = fight.attacker.as_ref();
     FightRound {
         act_point: Some(state.act_point),
         is_finish: Some(state.is_finish),
@@ -123,15 +144,6 @@ pub fn next_round_shell(
         skill_infos: attacker
             .map(|team| team.skill_infos.clone())
             .unwrap_or_default(),
-        before_cards1,
-        team_a_cards1,
-        before_cards2: state
-            .before_cards2
-            .iter()
-            .filter(|card| !card.temp_card.unwrap_or_default())
-            .cloned()
-            .collect(),
-        team_a_cards2: state.team_a_cards2.clone(),
         next_round_begin_step: Vec::new(),
         use_card_list: Vec::new(),
         cur_round: Some(state.cur_round),
@@ -211,7 +223,14 @@ mod tests {
             ..Default::default()
         };
 
-        let round = next_round_shell(&Fight::default(), &state, true, &cards, &cards, &[]);
+        let round = next_round_shell(
+            &Fight::default(),
+            &state,
+            RoundCardSnapshotPolicy::All,
+            &cards,
+            &cards,
+            &[],
+        );
         let skills = |cards: &[CardInfo]| {
             cards
                 .iter()
@@ -239,12 +258,39 @@ mod tests {
             ..Default::default()
         };
 
-        let round = next_round_shell(&Fight::default(), &state, false, &cards, &cards, &[]);
+        let round = next_round_shell(
+            &Fight::default(),
+            &state,
+            RoundCardSnapshotPolicy::CurrentOnly,
+            &cards,
+            &cards,
+            &[],
+        );
 
         assert!(round.before_cards1.is_empty());
         assert!(round.team_a_cards1.is_empty());
         assert_eq!(round.before_cards2, cards);
         assert_eq!(round.team_a_cards2, cards);
+    }
+
+    #[test]
+    fn continuation_round_omits_phase_snapshots() {
+        let cards = vec![CardInfo {
+            skill_id: Some(1),
+            ..Default::default()
+        }];
+        let state = RoundState {
+            before_cards2: cards.clone(),
+            team_a_cards2: cards,
+            ..Default::default()
+        };
+
+        let round = continuation_round_shell(&Fight::default(), &state, &[]);
+
+        assert!(round.before_cards1.is_empty());
+        assert!(round.team_a_cards1.is_empty());
+        assert!(round.before_cards2.is_empty());
+        assert!(round.team_a_cards2.is_empty());
     }
 
     #[test]
@@ -260,7 +306,14 @@ mod tests {
             ..Default::default()
         };
 
-        let round = next_round_shell(&Fight::default(), &state, true, &cards, &cards, &[]);
+        let round = next_round_shell(
+            &Fight::default(),
+            &state,
+            RoundCardSnapshotPolicy::All,
+            &cards,
+            &cards,
+            &[],
+        );
 
         assert_eq!(round.before_cards1, round_field_cards(&cards));
         assert_eq!(round.team_a_cards1, round_field_cards(&cards));

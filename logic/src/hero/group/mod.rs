@@ -321,4 +321,4 @@ impl HeroManager {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -92,7 +92,7 @@ pub fn plan(
             selector: BuffSelector::Uid(feature.buff_uid),
             // Consume plans store the resulting layer, so count stacks planned earlier in the batch.
             amount: 1 + spent.get(&feature.buff_uid).copied().unwrap_or_default(),
-            depleted: DepletedBuff::Remove,
+            depleted: DepletedBuff::RemoveWithZeroLayer,
         }),
         shares,
         holder_amount: share,
@@ -374,6 +374,18 @@ mod tests {
             .unwrap();
 
         assert!(batch.iter().all(|changes| changes.shared_hurt.is_some()));
+        assert_eq!(
+            batch[1]
+                .shared_hurt
+                .as_ref()
+                .unwrap()
+                .consumed
+                .change
+                .removed[0]
+                .buff
+                .layer,
+            Some(0)
+        );
         assert!(!managers.buff.has_buff_id(10, 31090121));
         assert_eq!(managers.hp.current(11), 10_000 - 525 - 525);
     }

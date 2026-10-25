@@ -703,4 +703,4 @@ fn rate(feature: &ActiveBuffFeature, index_after_act_id: usize) -> i32 {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -223,6 +223,7 @@ impl BehaviorHandler for Handler {
             }
             BehaviorKind::AddBuff | BehaviorKind::AddBuffPowerUse | BehaviorKind::AddBuffRound2 => {
                 shield_grant_ops(&context, behavior)
+                    .or_else(|| synchronization_cycle_grant_ops(&context, behavior))
                     .or_else(|| heat_scale_snapshot_grant_ops(&context, behavior))
                     .or_else(|| team_energy_snapshot_grant_ops(&context, behavior))
                     .or_else(|| source_relative_attribute_snapshot_grant_ops(&context, behavior))
@@ -231,6 +232,7 @@ impl BehaviorHandler for Handler {
                             context.source_uid,
                             context.target_uid,
                             context.transfer_count.max(0) as u32,
+                            context.event,
                             behavior,
                         )
                         .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
@@ -344,6 +346,7 @@ fn add_buff_from_skill_additions_ops(
         context.source_uid,
         context.target_uid,
         count as u32,
+        context.event,
         behavior,
     )
     .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])

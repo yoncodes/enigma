@@ -280,4 +280,4 @@ impl InventoryManager {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

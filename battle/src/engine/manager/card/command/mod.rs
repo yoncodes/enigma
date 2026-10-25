@@ -168,6 +168,12 @@ pub struct CardDraw {
     pub count: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardPublishState {
+    pub origin: CommandOrigin,
+    pub team_type: i32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardOpeningDraw {
     pub origin: CommandOrigin,
@@ -386,6 +392,7 @@ pub enum CardCommand {
         origin: CommandOrigin,
     },
     Play(CardPlay),
+    PublishState(CardPublishState),
     Draw(CardDraw),
     DealOpening(CardOpeningDraw),
     RecycleDrawPile {
@@ -477,6 +484,7 @@ pub enum CardChangeKind {
     TemporaryPersisted,
     TemporaryExpired,
     Played,
+    StatePublished,
     Drawn,
     OpeningDrawn,
     DrawPileRecycled,
@@ -522,6 +530,7 @@ pub struct CardChanges {
     pub queued_use_card: Option<QueuedUseCard>,
     pub rank_results: Vec<CardRankResult>,
     pub consumed_indices: Vec<usize>,
+    pub expired_indices: Vec<usize>,
     pub consumed_owner_uid: Option<i64>,
     pub consumption_kind: Option<CardConsumptionKind>,
     pub entity: Option<FightEntityInfo>,
@@ -576,6 +585,7 @@ pub(super) fn execute(
     let mut queued_use_card = None;
     let mut rank_results = Vec::new();
     let mut consumed_indices = Vec::new();
+    let mut expired_indices = Vec::new();
     let mut consumed_owner_uid = None;
     let mut consumption_kind = None;
     let mut hand_limit = None;
@@ -831,7 +841,7 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             let target_uid = add.card.uid.unwrap_or_default();
-            let card = manager.add_to_hand(add.card);
+            let card = manager.add_pending_temporary(add.card);
             operation = Some(CardChange::AddHand {
                 target_uid,
                 card: card.clone(),
@@ -923,7 +933,7 @@ pub(super) fn execute(
             )
         }
         CardCommand::ExpireTemporary { origin } => {
-            manager.expire_temporary();
+            expired_indices = manager.expire_temporary();
             (
                 Some(origin),
                 CardChangeKind::TemporaryExpired,
@@ -957,6 +967,23 @@ pub(super) fn execute(
                 CardChangeKind::Played,
                 None,
                 Some(played),
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::PublishState(publish) => {
+            if publish.team_type == 0 {
+                return Err(CardCommandError::InvalidCommand);
+            }
+            operation = Some(CardChange::DeckCount {
+                deck_num: manager.deck_num(),
+                team_type: publish.team_type,
+            });
+            (
+                Some(publish.origin),
+                CardChangeKind::StatePublished,
+                None,
+                None,
                 Vec::new(),
                 Vec::new(),
             )
@@ -1496,6 +1523,7 @@ pub(super) fn execute(
         queued_use_card,
         rank_results,
         consumed_indices,
+        expired_indices,
         consumed_owner_uid,
         consumption_kind,
         entity: None,
@@ -1515,4 +1543,4 @@ fn total_energy(cards: &[CardInfo]) -> i32 {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -65,4 +65,4 @@ fn build_info(tables: &config::GameDB, hero_times: &HashMap<i32, i64>) -> GetUdi
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

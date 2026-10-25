@@ -146,4 +146,4 @@ fn completed_ids(states: activity_state::ActivityStates) -> Vec<i32> {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

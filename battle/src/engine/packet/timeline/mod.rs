@@ -214,6 +214,7 @@ fn project_frame(
                 step
             }))
         }
+        FrameOwner::BuffDuration { .. } => Ok(StepPacket::effect(effects)),
         FrameOwner::SetupSide(_)
         | FrameOwner::SetupEntity { .. }
         | FrameOwner::StageWave { .. }
@@ -241,14 +242,27 @@ fn project_frame_items(
                 absorb_map_layout,
                 redeal_layout,
             )?),
-            FrameItem::Child(frame) => effects.extend(project_child(
-                frame,
-                writes_reduce_hp,
-                hurt_info_layout,
-                absorb_map_layout,
-                redeal_layout,
-                change_round_layout,
-            )?),
+            FrameItem::Child(frame) => {
+                if matches!(frame.owner, FrameOwner::BuffDuration { .. }) {
+                    effects.extend(project_frame_items(
+                        &frame.items,
+                        writes_reduce_hp,
+                        hurt_info_layout,
+                        absorb_map_layout,
+                        redeal_layout,
+                        change_round_layout,
+                    )?);
+                } else {
+                    effects.extend(project_child(
+                        frame,
+                        writes_reduce_hp,
+                        hurt_info_layout,
+                        absorb_map_layout,
+                        redeal_layout,
+                        change_round_layout,
+                    )?);
+                }
+            }
             FrameItem::Cue(cue) => {
                 effects.extend(project_cue(cue, redeal_layout, change_round_layout))
             }
@@ -606,6 +620,16 @@ fn project_change(
         BattleChange::ExPoint(ExPointChanges::Max { change, .. }) if change.applied_delta != 0 => {
             vec![EffectPacket::ex_point_max(*change)]
         }
+        BattleChange::ExPoint(ExPointChanges::SynchronizationDamageRecorded {
+            action_target_uid,
+            damage,
+            ..
+        }) => vec![EffectPacket::synchronization_damage(
+            *action_target_uid,
+            *damage,
+            hurt_info_layout,
+            absorb_map_layout,
+        )],
         BattleChange::ExPoint(_) => Vec::new(),
         BattleChange::Eureka(EurekaChanges::Changed { change, .. })
             if change.applied_delta != 0 =>
@@ -899,6 +923,21 @@ fn project_change(
                 .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Played => Vec::new(),
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::StatePublished => {
+            let mut effects = match redeal_layout {
+                RedealWireLayout::Version6 => Vec::new(),
+                RedealWireLayout::Version7 => {
+                    vec![CardPacket::redeal_hand_sync(changes.after.clone())]
+                }
+            };
+            effects.push(CardPacket::from_change(
+                changes
+                    .operation
+                    .clone()
+                    .expect("published card state retains its deck count"),
+            ));
+            effects
+        }
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,
@@ -1145,7 +1184,14 @@ fn project_change(
             .into_iter()
             .collect(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::TemporaryExpired => {
-            Vec::new()
+            (!changes.expired_indices.is_empty())
+                .then(|| {
+                    let mut effect = EffectPacket::card_remove(&changes.expired_indices);
+                    effect.json_param = Some(r#"{"buffActActiveIds":""}"#.to_owned());
+                    effect
+                })
+                .into_iter()
+                .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::TemporaryPersisted => {
             Vec::new()
@@ -1470,4 +1516,4 @@ fn project_cue(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

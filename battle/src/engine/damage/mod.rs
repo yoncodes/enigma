@@ -24,4 +24,4 @@ pub use trace::{
 };
 
 #[cfg(test)]
-mod test;
+mod tests;

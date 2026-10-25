@@ -79,7 +79,11 @@ pub fn active_skills(pool: &TargetPool, managers: &BattleManagers) -> Vec<(i64, 
     for entity in pool.active_entities() {
         skills.extend(entity_skill_owners(entity, pool, managers));
     }
-    skills.extend(additional_skill_owners(pool, managers));
+    skills.extend(
+        additional_skill_owners(pool, managers)
+            .into_iter()
+            .map(|(owner_uid, skill_id, _)| (owner_uid, skill_id)),
+    );
     skills.sort_unstable();
     skills.dedup();
     skills
@@ -419,7 +423,7 @@ fn collect_event_skills(
             )?;
         }
     }
-    for (owner_uid, skill_id) in additional_skill_owners(pool, managers) {
+    for (owner_uid, skill_id, passive_source) in additional_skill_owners(pool, managers) {
         push_skill_subscribers(
             &mut skills,
             owner_uid,
@@ -427,7 +431,7 @@ fn collect_event_skills(
             catalog,
             events,
             &subscriptions,
-            managers.entity.passive_source(owner_uid, skill_id),
+            passive_source,
         )?;
     }
     Ok(skills)
@@ -456,7 +460,7 @@ fn push_skill_subscribers(
             .filter(|(_, key)| events.contains(&key.event))
         {
             if let Some(definition) =
-                condition_registry::find_key(key.definition.opcode, key.definition.type_name)
+                condition_registry::find_key(key.timing_policy.opcode, key.timing_policy.type_name)
             {
                 key = key.with_timing(definition.reaction_timing.resolve(passive_source));
             }
@@ -557,7 +561,11 @@ fn collect_setup_stage(
     for entity in pool.active_entities() {
         skills.extend(entity_skill_owners(entity, pool, managers));
     }
-    skills.extend(additional_skill_owners(pool, managers));
+    skills.extend(
+        additional_skill_owners(pool, managers)
+            .into_iter()
+            .map(|(owner_uid, skill_id, _)| (owner_uid, skill_id)),
+    );
 
     let mut subscribers = Vec::new();
     for (owner_uid, skill_id) in skills {
@@ -618,7 +626,10 @@ fn entity_skill_owners(
     skills
 }
 
-fn additional_skill_owners(pool: &TargetPool, managers: &BattleManagers) -> Vec<(i64, i32)> {
+fn additional_skill_owners(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+) -> Vec<(i64, i32, PassiveSourceKind)> {
     managers
         .entity
         .passive_overrides()
@@ -628,17 +639,27 @@ fn additional_skill_owners(pool: &TargetPool, managers: &BattleManagers) -> Vec<
         .flat_map(|(owner_uid, passive_skills)| {
             passive_skills
                 .iter()
-                .map(move |&skill_id| (owner_uid, skill_id))
+                .map(move |&skill_id| (owner_uid, skill_id, PassiveSourceKind::Unknown))
         })
-        .chain(managers.battle_rule.owned_skills())
+        .chain(
+            managers
+                .battle_rule
+                .owned_skills()
+                .map(|(owner_uid, skill_id)| (owner_uid, skill_id, PassiveSourceKind::BattleRule)),
+        )
         .chain(
             managers
                 .summon
-                .skill_owners(|summoned_id| managers.catalog().summoned_unique_skills(summoned_id)),
+                .skill_owners(|summoned_id| managers.catalog().summoned_unique_skills(summoned_id))
+                .into_iter()
+                .map(|(owner_uid, skill_id)| (owner_uid, skill_id, PassiveSourceKind::Unknown)),
         )
-        .chain(pool.assist_boss_skill_owners())
+        .chain(
+            pool.assist_boss_skill_owners()
+                .map(|(owner_uid, skill_id)| (owner_uid, skill_id, PassiveSourceKind::Unknown)),
+        )
         .collect()
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

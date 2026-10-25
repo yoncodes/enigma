@@ -334,6 +334,21 @@ fn hit_context_uses_the_explicit_skill_catalog_rank() {
     assert!(context.active_skill_is_attack);
     assert_eq!(context.active_skill_mode, SkillExecutionMode::Active);
     assert_eq!(context.damage_target_count_kind, 1);
+
+    let mut synchronization = TargetContext {
+        active_skill_mode: SkillExecutionMode::Synchronization,
+        ..Default::default()
+    };
+    super::super::invoke::apply_event_context(
+        &BattleManagers::seeded(&Fight::default()),
+        &SkillEffectCatalog::from_game_db(config::configs::get()),
+        &mut synchronization,
+        &event,
+    );
+    assert_eq!(
+        synchronization.active_skill_mode,
+        SkillExecutionMode::Synchronization
+    );
 }
 
 #[test]

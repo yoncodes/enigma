@@ -17,8 +17,11 @@ pub enum ReactionTiming {
     AfterSettlement,
     AfterSkill,
     AfterHitSkills,
+    AttackedSkills,
+    HpThresholds,
     BeforeAfterHitObservers,
     AfterHitObservers,
+    AfterHitShell,
     AfterSharedHit,
     AfterAction,
 }
@@ -27,6 +30,8 @@ pub enum ReactionTiming {
 pub struct SubscriptionKey {
     pub event: EventKind,
     pub definition: DefinitionKey,
+    pub timing_policy: DefinitionKey,
+    pub multiplicity_policy: DefinitionKey,
     pub phase: Option<SkillPhase>,
     pub publication: PublicationPhase,
     pub timing: ReactionTiming,
@@ -37,6 +42,8 @@ impl SubscriptionKey {
         Self {
             event,
             definition,
+            timing_policy: definition,
+            multiplicity_policy: definition,
             phase: None,
             publication: PublicationPhase::AfterPublish,
             timing: ReactionTiming::Immediate,
@@ -51,6 +58,8 @@ impl SubscriptionKey {
         Self {
             event,
             definition,
+            timing_policy: definition,
+            multiplicity_policy: definition,
             phase,
             publication: PublicationPhase::AfterPublish,
             timing: ReactionTiming::Immediate,
@@ -67,6 +76,16 @@ impl SubscriptionKey {
         self
     }
 
+    pub const fn with_timing_policy(mut self, timing_policy: DefinitionKey) -> Self {
+        self.timing_policy = timing_policy;
+        self
+    }
+
+    pub const fn with_multiplicity_policy(mut self, multiplicity_policy: DefinitionKey) -> Self {
+        self.multiplicity_policy = multiplicity_policy;
+        self
+    }
+
     pub const fn at_phase_and_publication(
         event: EventKind,
         definition: DefinitionKey,
@@ -76,6 +95,8 @@ impl SubscriptionKey {
         Self {
             event,
             definition,
+            timing_policy: definition,
+            multiplicity_policy: definition,
             phase,
             publication,
             timing: ReactionTiming::Immediate,

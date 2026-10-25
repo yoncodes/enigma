@@ -339,7 +339,11 @@ fn attribute_transaction_rule_ops_with_refresh_marker_ownership(
         .flat_map(|(feature, amount_delta)| {
             let op = rule_op(managers, &feature, amount_delta);
             let owns_marker = op.is_some()
-                || (owns_refresh_markers && matches!(event, BattleEvent::BuffChanged(_)));
+                || (owns_refresh_markers
+                    && matches!(event, BattleEvent::BuffChanged(_))
+                    && !managers
+                        .buff
+                        .is_fanout_instance(feature.owner_uid, feature.buff_uid));
             if !owns_marker {
                 return Vec::new();
             }
@@ -948,14 +952,11 @@ pub fn calculated_attack_attribute_delta_for_skill(
     is_big_skill: bool,
     extra_action: bool,
     performs_extra_action: bool,
-    unpaid_extra_action_cost_fields: &[(i32, i64)],
+    source_performs_extra_action: bool,
 ) -> i32 {
     // Gust Force Field bonuses share the field's own "performs an extra action" clause.
     match feature_kind(feature) {
         Some(registry::BuffActKind::MustCritAndFixTempAttr) if performs_extra_action => {
-            if unpaid_extra_action_cost_fields.contains(&(feature.buff_id, feature.source_uid)) {
-                return 0;
-            }
             return must_crit_and_fix_temp_attr::attribute_delta(
                 feature, attr_id, attributes, buffs, hp,
             );
@@ -970,15 +971,12 @@ pub fn calculated_attack_attribute_delta_for_skill(
                 true,
             );
         }
-        Some(registry::BuffActKind::AttrOnlyCalDamageInExtra) if performs_extra_action => {
-            return attack_attribute_delta_for_skill(
-                feature,
-                attr_id,
-                buffs,
-                hp,
-                is_big_skill,
-                true,
-            );
+        Some(registry::BuffActKind::AttrOnlyCalDamageInExtra) => {
+            return if source_performs_extra_action {
+                attack_attribute_delta_for_skill(feature, attr_id, buffs, hp, is_big_skill, true)
+            } else {
+                0
+            };
         }
         _ => {}
     }
@@ -1136,4 +1134,4 @@ pub fn configured_attack_attribute_delta(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

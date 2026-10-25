@@ -107,9 +107,14 @@ pub fn find(code: i32) -> Option<&'static EffectTimeDefinition> {
     definitions().find(|definition| definition.key.opcode == code)
 }
 
-pub fn duration_stage_for_skill_phase(phase: SkillPhase) -> Option<i32> {
+pub fn duration_stage_after_skill_phase(phase: SkillPhase) -> Option<i32> {
+    let duration_phase = match phase {
+        SkillPhase::HitPassives => SkillPhase::AfterHit,
+        SkillPhase::AfterHit => return None,
+        phase => phase,
+    };
     definitions()
-        .find(|definition| definition.duration_phase == Some(phase))
+        .find(|definition| definition.duration_phase == Some(duration_phase))
         .map(|definition| definition.key.opcode)
 }
 
@@ -230,5 +235,23 @@ mod tests {
         assert!(!supports_duration_policy(209));
         assert!(!supports_duration_policy(205));
         assert!(!supports_duration_policy(101));
+    }
+
+    #[test]
+    fn after_hit_duration_advances_when_hit_passives_complete() {
+        assert_eq!(
+            duration_stage_after_skill_phase(SkillPhase::HitPassives),
+            Some(210)
+        );
+        assert_eq!(duration_stage_after_skill_phase(SkillPhase::AfterHit), None);
+    }
+
+    #[test]
+    fn device_actions_use_the_registered_duration_phase() {
+        assert_eq!(
+            duration_stage_after_skill_phase(SkillPhase::HitPassives),
+            Some(210)
+        );
+        assert_eq!(duration_stage_after_skill_phase(SkillPhase::AfterHit), None);
     }
 }

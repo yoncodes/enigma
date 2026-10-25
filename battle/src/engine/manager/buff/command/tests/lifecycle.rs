@@ -16,6 +16,111 @@ fn grant(target_uid: i64, buff_id: i32) -> BuffCommand {
 }
 
 #[test]
+fn attacker_side_buffs_can_be_granted_and_removed() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight::default());
+    let hp = HpManager::default();
+    let side_uid = crate::engine::fight::rules::ATTACKER_SIDE_UID;
+
+    manager.execute(&hp, grant(side_uid, 109320001)).unwrap();
+    assert!(manager.has_active_buff_id(side_uid, 109320001));
+
+    let changes = manager
+        .execute(
+            &hp,
+            BuffCommand::Remove(BuffRemove {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60010, "DisperseForce2"),
+                },
+                target_uid: side_uid,
+                selector: BuffRemoveSelector::ExactId(109320001),
+            }),
+        )
+        .unwrap();
+
+    assert!(!manager.has_active_buff_id(side_uid, 109320001));
+    assert!(matches!(
+        changes.events().as_slice(),
+        [BattleEvent::BuffRemoved(change)] if !change.duration_expired
+    ));
+}
+
+#[test]
+fn forced_expiry_publishes_an_expired_removal_with_its_behavior_identity() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight::default());
+    let side_uid = crate::engine::fight::rules::ATTACKER_SIDE_UID;
+
+    manager
+        .execute(&HpManager::default(), grant(side_uid, 109320001))
+        .unwrap();
+    let changes = manager
+        .execute(
+            &HpManager::default(),
+            BuffCommand::ForceExpire(BuffRemove {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60010, "DisperseForce2"),
+                },
+                target_uid: side_uid,
+                selector: BuffRemoveSelector::ExactId(109320001),
+            }),
+        )
+        .unwrap();
+
+    assert_eq!(changes.change.removed[0].config_effect, 60010);
+    assert!(matches!(
+        changes.events().as_slice(),
+        [BattleEvent::BuffRemoved(change)]
+            if change.buff_id == 109320001 && change.duration_expired
+    ));
+}
+
+#[test]
+fn ending_a_channel_clears_its_remaining_duration() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31050131),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    let changes = manager
+        .execute(
+            &HpManager::default(),
+            BuffCommand::EndChannel(BuffRemove {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Lifecycle,
+                    key: DefinitionKey::new(0, "PaperCircleChannelEnd"),
+                },
+                target_uid: 10,
+                selector: BuffRemoveSelector::Uid(20),
+            }),
+        )
+        .unwrap();
+
+    assert_eq!(changes.change.removed[0].buff.duration, Some(0));
+    assert!(manager.snapshot(10, 20).is_none());
+}
+
+#[test]
 fn remove_id_or_type_resolves_a_configured_type_id() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -328,7 +433,7 @@ fn replacement_uses_the_exact_configured_output_without_inferring_a_family_varia
                 origin,
                 source_uid: 10,
                 target_uid: 10,
-                source: BuffSelector::IdOrType(30810101),
+                sources: vec![BuffSelector::IdOrType(30810101)],
                 replacement_id_or_type: 30810102,
             }),
         )

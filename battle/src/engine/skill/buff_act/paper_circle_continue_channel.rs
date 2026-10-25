@@ -36,18 +36,45 @@ pub fn rule_ops(
             let mut ops = vec![RuleOp::Skill(invocation)];
             if channel_ending(managers, subscriber.owner_uid, subscriber.buff_uid) {
                 ops.extend(channel_end_moxie(managers, subscriber));
-                ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(
-                    BuffRemove {
-                        origin: super::command_origin(subscriber)?,
+                ops.push(RuleOp::Command(BattleCommand::Buff(
+                    BuffCommand::EndChannel(BuffRemove {
+                        origin: crate::engine::skill::rule::CommandOrigin {
+                            domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                            key: crate::engine::skill::rule::DefinitionKey::new(
+                                0,
+                                "PaperCircleChannelEnd",
+                            ),
+                        },
                         target_uid: subscriber.owner_uid,
                         selector: BuffRemoveSelector::Uid(subscriber.buff_uid),
-                    },
-                ))));
+                    }),
+                )));
             }
             Some(ops)
         }
         _ => Some(Vec::new()),
     }
+}
+
+pub fn scoped_rule_ops(
+    managers: &BattleManagers,
+    subscriber: &BuffActSubscriber,
+    event: &BattleEvent,
+) -> Option<Vec<super::BuffActRuleOp>> {
+    let ops = rule_ops(managers, subscriber, event)?;
+    let last = ops.len().saturating_sub(1);
+    Some(
+        ops.into_iter()
+            .enumerate()
+            .map(|(index, op)| {
+                if index == last && matches!(op, RuleOp::Command(BattleCommand::Buff(_))) {
+                    super::BuffActRuleOp::separate_subscriber_from_owner(op)
+                } else {
+                    super::BuffActRuleOp::subscriber_from_owner(op)
+                }
+            })
+            .collect(),
+    )
 }
 
 // "At the start of the round, recovers all Eureka, converts all own incantations into the
@@ -285,12 +312,25 @@ mod tests {
                         ..
                     }
                 ))),
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::EndChannel(BuffRemove {
+                    origin: crate::engine::skill::rule::CommandOrigin {
+                        domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                        key: crate::engine::skill::rule::DefinitionKey { opcode: 0, .. },
+                    },
                     selector: BuffRemoveSelector::Uid(20),
                     ..
                 })))
             ])
         ));
+        let scoped = scoped_rule_ops(&ending, &channel_subscriber(), &event).unwrap();
+        assert!(scoped[..2].iter().all(|op| {
+            op.scope == super::super::BuffActFrameScope::SubscriberFrame && op.group_with_siblings
+        }));
+        assert_eq!(
+            scoped[2].scope,
+            super::super::BuffActFrameScope::SubscriberFrame
+        );
+        assert!(!scoped[2].group_with_siblings);
         assert!(matches!(
             rule_ops(&continuing, &channel_subscriber(), &event).as_deref(),
             Some([RuleOp::Skill(_)])

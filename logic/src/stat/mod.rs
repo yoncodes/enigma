@@ -35,4 +35,4 @@ impl StatManager {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

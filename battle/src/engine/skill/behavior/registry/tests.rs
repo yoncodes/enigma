@@ -604,8 +604,59 @@ fn conduit_group_change_uses_its_buff_gate_as_an_after_hit_driver() {
 }
 
 #[test]
+fn power_change_uses_its_buff_gate_as_a_pre_effect_driver() {
+    crate::test_support::init_config();
+    let definition = find_key(50017, "ChangePower").unwrap();
+
+    assert_eq!(
+        definition.condition_route_override,
+        Some(ConditionRouteOverride::Trigger {
+            key: DefinitionKey::new(19201, "HasBuffId"),
+            event: EventKind::SkillEffectStarted,
+            phase: Some(SkillPhase::Immediate),
+        })
+    );
+
+    let conditions = crate::engine::skill::condition::parse_conditions(
+        config::configs::get(),
+        "19201#109320109|19201#109320110",
+    );
+    let route = crate::engine::skill::rule::route::ConditionRoute::compile_for_behavior(
+        &conditions,
+        &BehaviorSpec::new(50017, "ChangePower"),
+    )
+    .unwrap();
+
+    assert_eq!(route.branches.len(), 2);
+    for branch in route.branches {
+        assert_eq!(
+            branch.subscriptions(),
+            vec![crate::engine::skill::rule::route::ConditionTrigger {
+                key: DefinitionKey::new(19201, "HasBuffId"),
+                event: EventKind::SkillEffectStarted,
+                phase: Some(SkillPhase::Immediate),
+            }]
+        );
+    }
+}
+
+#[test]
 fn conduit_rate_uses_its_skill_gate_as_a_source_opening_driver() {
     let definition = find_key(100030, "TwinsUpByCounter").unwrap();
+
+    assert_eq!(
+        definition.condition_route_override,
+        Some(ConditionRouteOverride::Trigger {
+            key: DefinitionKey::new(203, "None"),
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::SourceOpening),
+        })
+    );
+}
+
+#[test]
+fn conduit_power_up_uses_its_skill_gate_as_a_source_opening_driver() {
+    let definition = find_key(100031, "TwinsPowerUp").unwrap();
 
     assert_eq!(
         definition.condition_route_override,
@@ -790,6 +841,12 @@ fn conduit_ex_point_is_parent_owned_for_setup_and_final_settlement() {
         definition
             .output_owner
             .resolve(Some(EventKind::RoundEndFinalSettlement), false),
+        OutputOwner::Parent
+    );
+    assert_eq!(
+        definition
+            .output_owner
+            .resolve(Some(EventKind::RoundEndAfterSideFinalExpiry), false),
         OutputOwner::Parent
     );
     assert_eq!(

@@ -39,6 +39,7 @@ fn active_hit_deferral_carries_its_primary_skill_hp_transaction() {
         participant_uids: vec![-2, -3, -4],
         amount: 25,
         share_count: 3,
+        action_share_count: 3,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
     };
     let death = BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
@@ -595,7 +596,7 @@ fn attack_followup_does_not_start_without_a_living_configured_target() {
 }
 
 #[test]
-fn lethal_injury_inflicted_by_an_attack_waits_for_the_next_attack() {
+fn lethal_injury_waits_for_the_next_attack_including_from_its_applier() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {
         uid: Some(uid),
@@ -609,7 +610,7 @@ fn lethal_injury_inflicted_by_an_attack_waits_for_the_next_attack() {
     };
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![entity(10)],
+            entitys: vec![entity(10), entity(11)],
             ..Default::default()
         }),
         defender: Some(FightTeam {
@@ -620,7 +621,7 @@ fn lethal_injury_inflicted_by_an_attack_waits_for_the_next_attack() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
-    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312431212], []);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312431212, 31090111], []);
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
         skill_id: 312431212,
@@ -641,6 +642,29 @@ fn lethal_injury_inflicted_by_an_attack_waits_for_the_next_attack() {
 
     // "Inflicts 2 stacks of [Lethal Injury] on the target hit": the hit itself is not an Assassination.
     assert_eq!(managers.buff.max_id_or_type_layer(-1, 31240121), 2);
+
+    for source_uid in [10, 11] {
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid,
+            skill_id: 31090111,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(-1);
+        run_skill(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            invocation,
+            crate::engine::skill::action::SkillModifiers::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            managers.buff.max_id_or_type_layer(-1, 31240121),
+            if source_uid == 10 { 1 } else { 0 }
+        );
+    }
 }
 
 #[test]

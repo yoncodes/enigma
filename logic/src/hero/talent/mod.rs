@@ -404,4 +404,4 @@ async fn use_template(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

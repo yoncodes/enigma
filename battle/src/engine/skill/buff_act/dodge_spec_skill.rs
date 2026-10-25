@@ -63,37 +63,43 @@ pub fn marker_effect_type(feature: &ActiveBuffFeature) -> Option<i32> {
         .copied()
 }
 
-pub fn trigger_rule_ops(
-    managers: &BattleManagers,
-    feature: &ActiveBuffFeature,
-) -> Option<Vec<RuleOp>> {
-    let mut ops = vec![RuleOp::BuffFeatureMarker {
+pub fn trigger_rule_ops(feature: &ActiveBuffFeature) -> Option<Vec<RuleOp>> {
+    Some(vec![RuleOp::BuffFeatureMarker {
         target_uid: feature.owner_uid,
         effect_type: marker_effect_type(feature)?,
         effect_num: feature.buff_id,
         buff_act_id: feature.act_id()?,
-    }];
-    if is_kind(feature, BuffActKind::DodgeDamageType)
-        && configured_trigger_count(managers, feature.buff_id)
-    {
-        ops.push(RuleOp::Command(BattleCommand::Buff(
-            BuffCommand::ConsumeEffectCount(BuffConsume {
-                origin: super::feature_command_origin(feature)?,
-                target_uid: feature.owner_uid,
-                selector: BuffSelector::Uid(feature.buff_uid),
-                amount: 1,
-                depleted: DepletedBuff::Keep,
-            }),
-        )));
-    }
-    Some(ops)
+    }])
 }
 
-pub fn expire_after_owner_action(
+pub fn rule_ops(
     managers: &BattleManagers,
     subscriber: &BuffActSubscriber,
     event: &BattleEvent,
-) -> Option<Vec<RuleOp>> {
+) -> Option<Vec<super::BuffActRuleOp>> {
+    if let BattleEvent::BuffFeatureTriggered(trigger) = event {
+        if trigger.owner_uid != subscriber.owner_uid
+            || trigger.source_uid != subscriber.source_uid
+            || trigger.target_uid != subscriber.owner_uid
+            || trigger.buff_uid != subscriber.buff_uid
+            || trigger.buff_id != subscriber.buff_id
+            || trigger.act_id != subscriber.key.definition.opcode
+            || !configured_trigger_count(managers, subscriber.buff_id)
+        {
+            return Some(Vec::new());
+        }
+        return Some(vec![super::BuffActRuleOp::subscriber_from_applier(
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::ConsumeCount(
+                BuffConsume {
+                    origin: super::command_origin(subscriber)?,
+                    target_uid: subscriber.owner_uid,
+                    selector: BuffSelector::Uid(subscriber.buff_uid),
+                    amount: 1,
+                    depleted: DepletedBuff::Remove,
+                },
+            ))),
+        )]);
+    }
     let expires = match super::subscriber_kind(subscriber) {
         Some(BuffActKind::DodgeSpecSkill) => true,
         Some(BuffActKind::DodgeDamageType) => managers
@@ -113,8 +119,8 @@ pub fn expire_after_owner_action(
     {
         return Some(Vec::new());
     }
-    Some(vec![RuleOp::Command(BattleCommand::Buff(
-        crate::engine::manager::buff::BuffCommand::ExpireAction(
+    Some(vec![super::BuffActRuleOp::subscriber(RuleOp::Command(
+        BattleCommand::Buff(crate::engine::manager::buff::BuffCommand::ExpireAction(
             crate::engine::manager::buff::BuffRemove {
                 origin: super::command_origin(subscriber)?,
                 target_uid: subscriber.owner_uid,
@@ -122,7 +128,7 @@ pub fn expire_after_owner_action(
                     subscriber.buff_uid,
                 ),
             },
-        ),
+        )),
     ))])
 }
 
@@ -275,24 +281,27 @@ mod tests {
         };
 
         assert!(
-            expire_after_owner_action(&managers, &subscriber, &action(11))
+            rule_ops(&managers, &subscriber, &action(11))
                 .unwrap()
                 .is_empty()
         );
         assert!(matches!(
-            expire_after_owner_action(&managers, &subscriber, &action(10))
+            rule_ops(&managers, &subscriber, &action(10))
                 .unwrap()
                 .as_slice(),
-            [RuleOp::Command(BattleCommand::Buff(
-                crate::engine::manager::buff::BuffCommand::ExpireAction(remove)
-            ))] if remove.target_uid == 10
+            [scoped] if matches!(
+                &scoped.op,
+                RuleOp::Command(BattleCommand::Buff(
+                    crate::engine::manager::buff::BuffCommand::ExpireAction(remove)
+                )) if remove.target_uid == 10
                 && remove.selector
                     == crate::engine::manager::buff::BuffRemoveSelector::Uid(20)
+            )
         ));
     }
 
     #[test]
-    fn counted_damage_type_dodge_consumes_one_trigger_charge() {
+    fn counted_damage_type_dodge_removes_its_depleted_buff() {
         crate::test_support::init_config();
         let managers = BattleManagers::seeded(&Fight {
             defender: Some(FightTeam {
@@ -324,23 +333,43 @@ mod tests {
             .unwrap();
 
         assert!(matches!(
-            trigger_rule_ops(&managers, &feature).unwrap().as_slice(),
-            [
-                RuleOp::BuffFeatureMarker {
-                    effect_type,
-                    buff_act_id: 507,
-                    ..
-                },
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::ConsumeEffectCount(
-                    BuffConsume {
-                        selector: BuffSelector::Uid(20),
-                        amount: 1,
-                        depleted: DepletedBuff::Keep,
-                        ..
-                    }
-                )))
-            ] if *effect_type
+            trigger_rule_ops(&feature).unwrap().as_slice(),
+            [RuleOp::BuffFeatureMarker {
+                effect_type,
+                buff_act_id: 507,
+                ..
+            }] if *effect_type
                 == sonettobuf::effect_type_enum::EffectType::Dodgespecskill2 as i32
+        ));
+        let subscriber =
+            super::super::subscriber_from_feature(feature.clone(), EventKind::BuffFeatureTriggered)
+                .unwrap();
+        let event = BattleEvent::BuffFeatureTriggered(
+            crate::engine::event::payload::BuffFeatureTriggeredEvent {
+                owner_uid: -1,
+                source_uid: -1,
+                target_uid: -1,
+                buff_uid: 20,
+                buff_id: 90201,
+                act_id: 507,
+            },
+        );
+        assert!(matches!(
+            rule_ops(&managers, &subscriber, &event).unwrap().as_slice(),
+            [scoped]
+                if scoped.scope == super::super::BuffActFrameScope::SubscriberFrame
+                    && scoped.source == super::super::BuffActFrameSource::Applier
+                    && matches!(
+                        &scoped.op,
+                        RuleOp::Command(BattleCommand::Buff(BuffCommand::ConsumeCount(
+                            BuffConsume {
+                                selector: BuffSelector::Uid(20),
+                                amount: 1,
+                                depleted: DepletedBuff::Remove,
+                                ..
+                            }
+                        )))
+                    )
         ));
     }
 
@@ -381,9 +410,9 @@ mod tests {
             values: vec![507, 1, 2],
         };
 
-        assert_eq!(trigger_rule_ops(&managers, &feature).unwrap().len(), 1);
+        assert_eq!(trigger_rule_ops(&feature).unwrap().len(), 1);
         assert!(
-            expire_after_owner_action(
+            rule_ops(
                 &managers,
                 &subscriber,
                 &BattleEvent::AllyAction(ActionEvent {
@@ -396,7 +425,7 @@ mod tests {
             .is_empty()
         );
         assert!(matches!(
-            expire_after_owner_action(
+            rule_ops(
                 &managers,
                 &subscriber,
                 &BattleEvent::AllyAction(ActionEvent {
@@ -407,9 +436,10 @@ mod tests {
             )
             .unwrap()
             .as_slice(),
-            [RuleOp::Command(BattleCommand::Buff(
-                BuffCommand::ExpireAction(_)
-            ))]
+            [scoped] if matches!(
+                &scoped.op,
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::ExpireAction(_)))
+            )
         ));
     }
 
@@ -437,7 +467,7 @@ mod tests {
         };
 
         assert!(
-            expire_after_owner_action(
+            rule_ops(
                 &managers,
                 &subscriber,
                 &BattleEvent::AllyAction(ActionEvent {

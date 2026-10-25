@@ -8,7 +8,7 @@ use crate::engine::{
     skill::{
         behavior::classify::{BehaviorKind, BehaviorSpec},
         condition::{ParsedConditionKind, parse_conditions, query},
-        effect::slot::{ParsedBehavior, ParsedSkillEffect, SkillEffectSlot},
+        effect::slot::{ParsedBehavior, ParsedSkillEffect, RuleLimitOwner, SkillEffectSlot},
         rule::DefinitionKey,
         target::TargetRequest,
     },
@@ -108,6 +108,37 @@ impl SkillEffectCatalog {
             .get(&skill_id)
             .and_then(|effect_id| self.effects.get(effect_id))
             .or_else(|| self.effects.get(&skill_id))
+    }
+
+    pub(crate) fn rule_limit_owner(&self, skill_id: i32, slot_index: usize) -> RuleLimitOwner {
+        let Some(effect) = self.get(skill_id) else {
+            return RuleLimitOwner::from_slot(slot_index);
+        };
+        let Some(slot) = effect.slots.get(slot_index) else {
+            return RuleLimitOwner::from_slot(slot_index);
+        };
+        if slot.limit <= 0 && slot.round_limit <= 0 {
+            return RuleLimitOwner::from_slot(slot_index);
+        }
+        let Some(threshold) = alternative_life_less_threshold(slot) else {
+            return RuleLimitOwner::from_slot(slot_index);
+        };
+        let owner = effect.slots[..slot_index]
+            .iter()
+            .position(|candidate| {
+                candidate.limit == slot.limit
+                    && candidate.round_limit == slot.round_limit
+                    && candidate.behavior.spec == slot.behavior.spec
+                    && candidate.behavior.args == slot.behavior.args
+                    && candidate.behavior.raw_args == slot.behavior.raw_args
+                    && candidate.behavior.config_effect == slot.behavior.config_effect
+                    && candidate.condition_target == slot.condition_target
+                    && candidate.target == slot.target
+                    && candidate.target_from_condition == slot.target_from_condition
+                    && alternative_life_less_threshold(candidate) == Some(threshold)
+            })
+            .unwrap_or(slot_index);
+        RuleLimitOwner::from_slot(owner)
     }
 
     pub fn random_skill_choice_references(&self, skill_id: i32) -> Vec<i32> {
@@ -462,6 +493,22 @@ impl SkillEffectCatalog {
     }
 }
 
+fn alternative_life_less_threshold(slot: &SkillEffectSlot) -> Option<i32> {
+    let [condition] = slot.conditions.as_slice() else {
+        return None;
+    };
+    if condition.type_name != "LifeLess" || !matches!(condition.opcode, 1104 | 1209 | 1304) {
+        return None;
+    }
+    match condition.kind {
+        ParsedConditionKind::HpPermille {
+            compare: crate::engine::skill::condition::ConditionCompare::LessThan,
+            threshold,
+        } => Some(threshold),
+        _ => None,
+    }
+}
+
 mod build;
 mod parse;
 
@@ -473,4 +520,4 @@ pub use parse::{
 use parse::{parse_i32_list, parse_target};
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -8,7 +8,6 @@ use crate::engine::fight::rules::{AdditionRuleType, OwnedBattleSkill};
 pub struct MaxRoundCommand {
     pub increment: i32,
     pub cap: i32,
-    pub config_effect: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,7 +94,7 @@ impl BattleRuleManager {
             effect_type: sonettobuf::effect_type_enum::EffectType::Addmaxround as i32,
             effect_num: applied,
             effect_num1: None,
-            config_effect: command.config_effect,
+            config_effect: 0,
             reserve_id: None,
             reserve_str: None,
         })
@@ -144,16 +143,15 @@ mod tests {
             .add_max_round(MaxRoundCommand {
                 increment: 1,
                 cap: 30,
-                config_effect: 60249,
             })
             .unwrap();
         assert_eq!(manager.max_round(), Some(21));
         assert_eq!(marker.effect_num, 1);
+        assert_eq!(marker.config_effect, 0);
 
         manager.add_max_round(MaxRoundCommand {
             increment: 20,
             cap: 30,
-            config_effect: 60249,
         });
         assert_eq!(manager.max_round(), Some(30));
     }

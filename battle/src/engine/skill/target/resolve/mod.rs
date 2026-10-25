@@ -356,10 +356,14 @@ impl TargetResolver {
         };
         if rule == TargetRule::EnemiesIncludingSpecial
             && context.active_skill_is_attack
-            && managers.is_none_or(|managers| managers.catalog().skill_is_attack(skill_id))
-            && let Some(index) = targets
-                .iter()
-                .position(|uid| *uid == context.runtime_target_uid)
+            && (context.causing_skill_target_uid != 0
+                || managers.is_none_or(|managers| managers.catalog().skill_is_attack(skill_id)))
+            && let priority_uid = if context.causing_skill_target_uid != 0 {
+                context.causing_skill_target_uid
+            } else {
+                context.runtime_target_uid
+            }
+            && let Some(index) = targets.iter().position(|uid| *uid == priority_uid)
         {
             let primary = targets.remove(index);
             targets.insert(0, primary);
@@ -403,7 +407,7 @@ impl TargetResolver {
             managers,
             context,
         );
-        let targets = redirect_provoked_single_target(targets, source_uid, pool, context);
+        let targets = prioritize_provoked_target(targets, source_uid, pool, context);
         let targets = redirect_taunted_single_target(targets, source_uid, pool, context);
         redirect_mock_taunted_single_target(targets, source_uid, pool, context)
     }
@@ -519,29 +523,44 @@ fn redirect_mock_taunted_single_target(
     vec![priority_targets[0].uid]
 }
 
-fn redirect_provoked_single_target(
-    targets: Vec<i64>,
+fn prioritize_provoked_target(
+    mut targets: Vec<i64>,
     source_uid: i64,
     pool: &TargetPool,
     context: TargetContext,
 ) -> Vec<i64> {
-    if !context.active_skill_is_attack || targets.len() != 1 {
+    if targets.is_empty() {
         return targets;
     }
-    let Some(provoke_source) = pool.entity(source_uid).and_then(|source| {
-        source.buff_source_for_kind(crate::engine::skill::buff_act::registry::BuffActKind::Provoke)
-    }) else {
+    let Some(provoke_source) = provoke_target(source_uid, pool, context.active_skill_is_attack)
+    else {
         return targets;
     };
-    if pool
-        .enemies(source_uid, false)
+    if targets.len() == 1 {
+        return vec![provoke_source];
+    }
+    if let Some(index) = targets.iter().position(|uid| *uid == provoke_source) {
+        let primary = targets.remove(index);
+        targets.insert(0, primary);
+    }
+    targets
+}
+
+pub(crate) fn provoke_target(
+    source_uid: i64,
+    pool: &TargetPool,
+    active_skill_is_attack: bool,
+) -> Option<i64> {
+    if !active_skill_is_attack {
+        return None;
+    }
+    let provoke_source = pool
+        .entity(source_uid)?
+        .buff_source_for_kind(crate::engine::skill::buff_act::registry::BuffActKind::Provoke)?;
+    pool.enemies(source_uid, false)
         .iter()
         .any(|enemy| enemy.uid == provoke_source)
-    {
-        vec![provoke_source]
-    } else {
-        targets
-    }
+        .then_some(provoke_source)
 }
 
 pub fn is_mapped_target_code(code: i32) -> bool {
@@ -627,7 +646,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
     Some(match code {
         0 => TargetRule::Logic,
         6 => TargetRule::Fixed(emitter::UID),
-        8 => TargetRule::EventSubject,
+        8 => TargetRule::Fixed(crate::engine::fight::rules::ATTACKER_SIDE_UID),
         super::request::SOURCE_TARGET_CODE => TargetRule::Source,
         4 | 5 | 104 | 105 => TargetRule::Allies,
         130 => TargetRule::AlliesPreservingSelection,
@@ -961,9 +980,9 @@ fn enemy_with_most_shell(
     enemies
         .iter()
         .filter(|enemy| managers.hp.current(enemy.uid) > 0)
-        .filter_map(|enemy| {
+        .map(|enemy| {
             let amount = managers.buff.buff_id_amount(enemy.uid, deployed_buff_id);
-            (amount > 0).then_some((enemy, amount))
+            (enemy, amount)
         })
         .min_by_key(|(enemy, amount)| (-*amount, enemy.position, enemy.uid))
         .map(|(enemy, _)| vec![enemy.uid])
@@ -1187,4 +1206,4 @@ fn priority_enemy_with_monster_label(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::event::kind::EventKind;
 
 #[test]
 fn exact_conduit_counter_behavior_commits_typed_round_state() {
@@ -30,6 +31,17 @@ fn exact_conduit_counter_behavior_commits_typed_round_state() {
         let behavior = ParsedBehavior::new(60297, "AddDeviceCounter", vec![kind, delta]);
         let definition = super::super::super::registry::find(&behavior).unwrap();
         assert_eq!(definition.kind, BehaviorKind::AddConduitCounter);
+        assert_eq!(definition.output_owner, OutputOwner::CausingEvent);
+        assert_eq!(
+            definition.output_owner.resolve(None, false),
+            OutputOwner::Skill
+        );
+        assert_eq!(
+            definition
+                .output_owner
+                .resolve(Some(EventKind::SkillAction), false),
+            OutputOwner::Parent
+        );
         assert!(
             definition
                 .supports

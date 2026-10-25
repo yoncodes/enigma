@@ -5,7 +5,8 @@ use std::{
 };
 
 use crate::engine::{
-    manager::hp::PendingDeath,
+    event::payload::BattleEvent,
+    manager::hp::{HurtDamageFromType, PendingDeath},
     runtime::record::{FrameOwner, FramePath},
     skill::{rule::DefinitionKey, target::TargetContext},
 };
@@ -15,38 +16,28 @@ use super::{
     assign_subscriber_death_groups,
 };
 
-type FrameGroup = Rc<RefCell<Option<FramePath>>>;
 type DeferredCast = (Option<FrameOwner>, QueuedOp);
 pub(super) type ActionReactionKey = (i64, i32, Option<usize>, DefinitionKey);
-
-#[derive(Default)]
-pub(super) struct ReactionCastState {
-    action_path: Option<FramePath>,
-    casts: Vec<DeferredCast>,
-}
-
-pub(super) type ReactionCastLink = Rc<RefCell<ReactionCastState>>;
 
 /// Owns bookkeeping shared by the root drain and every nested reaction drain.
 #[derive(Default)]
 pub(super) struct DrainState {
     after_hit: HashMap<FramePath, Vec<QueuedOp>>,
+    attacked_skills: HashMap<FramePath, Vec<QueuedOp>>,
+    hp_thresholds: HashMap<FramePath, Vec<QueuedOp>>,
     hit_passive_skills: HashMap<FramePath, Vec<QueuedOp>>,
     hit_skills: HashMap<FramePath, Vec<QueuedOp>>,
     before_after_hit_observers: HashMap<FramePath, Vec<QueuedOp>>,
     after_hit_skills: HashMap<FramePath, Vec<QueuedOp>>,
+    after_hit_shell: HashMap<FramePath, Vec<QueuedOp>>,
     after_action: HashMap<FramePath, Vec<QueuedOp>>,
     // Casts held until their action completes, with the step that cast them.
     after_action_casts: HashMap<FramePath, Vec<DeferredCast>>,
-    // Casts released after a reaction action inherit that reaction's frame once it materializes.
-    after_reaction_casts: Vec<(FrameGroup, Vec<DeferredCast>)>,
-    action_reaction_links: Vec<(FrameGroup, ReactionCastLink)>,
-    reaction_child_links: HashMap<FramePath, ReactionCastLink>,
-    claimed_action_links: HashMap<FramePath, Vec<ReactionCastLink>>,
     // Actions that will publish ActionCompleted and have not yet done so.
     open_actions: HashSet<FramePath>,
     completed_actions: HashSet<FramePath>,
     action_reactions: HashMap<FramePath, HashSet<ActionReactionKey>>,
+    action_shared_damage: HashMap<FramePath, HashMap<i64, [i32; 2]>>,
     action_skill_reaction_frames: HashMap<(FramePath, i64, i32), FramePath>,
     event_batch_reactions: HashMap<u64, HashSet<ActionReactionKey>>,
     next_event_batch_id: u64,
@@ -132,6 +123,14 @@ impl DrainState {
         defer(&mut self.after_hit_skills, action_path, queued);
     }
 
+    pub(super) fn defer_after_hit_shell(
+        &mut self,
+        action_path: Option<&[usize]>,
+        queued: Vec<QueuedOp>,
+    ) {
+        defer(&mut self.after_hit_shell, action_path, queued);
+    }
+
     pub(super) fn defer_before_after_hit_observers(
         &mut self,
         action_path: Option<&[usize]>,
@@ -156,6 +155,36 @@ impl DrainState {
         defer(&mut self.hit_passive_skills, action_path, queued);
     }
 
+    pub(super) fn defer_hp_thresholds(
+        &mut self,
+        action_path: Option<&[usize]>,
+        queued: Vec<QueuedOp>,
+    ) {
+        defer(&mut self.hp_thresholds, action_path, queued);
+    }
+
+    pub(super) fn defer_attacked_skills(
+        &mut self,
+        action_path: Option<&[usize]>,
+        queued: Vec<QueuedOp>,
+    ) {
+        defer(&mut self.attacked_skills, action_path, queued);
+    }
+
+    pub(super) fn take_attacked_skills(
+        &mut self,
+        action_path: Option<&FramePath>,
+    ) -> Option<Vec<QueuedOp>> {
+        action_path.and_then(|path| self.attacked_skills.remove(path))
+    }
+
+    pub(super) fn take_hp_thresholds(
+        &mut self,
+        action_path: Option<&FramePath>,
+    ) -> Option<Vec<QueuedOp>> {
+        action_path.and_then(|path| self.hp_thresholds.remove(path))
+    }
+
     pub(super) fn take_hit_passive_skills(
         &mut self,
         action_path: Option<&FramePath>,
@@ -175,6 +204,13 @@ impl DrainState {
         action_path: Option<&FramePath>,
     ) -> Option<Vec<QueuedOp>> {
         action_path.and_then(|path| self.after_hit_skills.remove(path))
+    }
+
+    pub(super) fn take_after_hit_shell(
+        &mut self,
+        action_path: Option<&FramePath>,
+    ) -> Option<Vec<QueuedOp>> {
+        action_path.and_then(|path| self.after_hit_shell.remove(path))
     }
 
     pub(super) fn take_before_after_hit_observers(
@@ -215,6 +251,7 @@ impl DrainState {
         self.open_actions.remove(action_path);
         self.completed_actions.insert(action_path.clone());
         self.action_reactions.remove(action_path);
+        self.action_shared_damage.remove(action_path);
         self.after_action_casts
             .remove(action_path)
             .unwrap_or_default()
@@ -251,112 +288,6 @@ impl DrainState {
         }
     }
 
-    pub(super) fn take_claimed_reaction_casts(
-        &mut self,
-        action_path: &FramePath,
-    ) -> Vec<DeferredCast> {
-        let mut casts = Vec::new();
-        for link in self
-            .claimed_action_links
-            .remove(action_path)
-            .unwrap_or_default()
-        {
-            casts.extend(
-                link.borrow_mut()
-                    .casts
-                    .drain(..)
-                    .map(|(caster, mut queued)| {
-                        queued.parent_path = Some(action_path.clone());
-                        (caster, queued)
-                    }),
-            );
-        }
-        casts
-    }
-
-    pub(super) fn defer_after_reaction_casts(
-        &mut self,
-        group: &Rc<RefCell<Option<FramePath>>>,
-        casts: Vec<DeferredCast>,
-    ) {
-        if let Some((_, pending)) = self
-            .after_reaction_casts
-            .iter_mut()
-            .find(|(known, _)| Rc::ptr_eq(known, group))
-        {
-            pending.extend(casts);
-        } else {
-            self.after_reaction_casts.push((group.clone(), casts));
-        }
-    }
-
-    pub(super) fn take_after_reaction_casts(
-        &mut self,
-        group: &Rc<RefCell<Option<FramePath>>>,
-    ) -> Vec<DeferredCast> {
-        let Some(index) = self
-            .after_reaction_casts
-            .iter()
-            .position(|(known, _)| Rc::ptr_eq(known, group))
-        else {
-            return Vec::new();
-        };
-        self.after_reaction_casts.swap_remove(index).1
-    }
-
-    pub(super) fn defer_action_reaction_link(
-        &mut self,
-        group: &FrameGroup,
-        link: &ReactionCastLink,
-    ) {
-        self.action_reaction_links
-            .push((group.clone(), link.clone()));
-    }
-
-    pub(super) fn action_reaction_link(&self, group: &FrameGroup) -> Option<ReactionCastLink> {
-        self.action_reaction_links
-            .iter()
-            .find(|(known, _)| Rc::ptr_eq(known, group))
-            .map(|(_, link)| link.clone())
-    }
-
-    pub(super) fn defer_reaction_child_link(&mut self, path: FramePath, link: &ReactionCastLink) {
-        self.reaction_child_links
-            .entry(path)
-            .or_insert_with(|| link.clone());
-    }
-
-    pub(super) fn reaction_child_link(&self, path: Option<&FramePath>) -> Option<ReactionCastLink> {
-        path.and_then(|path| self.reaction_child_links.get(path).cloned())
-    }
-
-    pub(super) fn reaction_cast_link(casts: Vec<DeferredCast>) -> ReactionCastLink {
-        Rc::new(RefCell::new(ReactionCastState {
-            action_path: None,
-            casts,
-        }))
-    }
-
-    pub(super) fn take_unclaimed_reaction_casts(link: &ReactionCastLink) -> Vec<DeferredCast> {
-        let mut state = link.borrow_mut();
-        if state.action_path.is_some() {
-            Vec::new()
-        } else {
-            std::mem::take(&mut state.casts)
-        }
-    }
-
-    pub(super) fn claim_action_link(&mut self, action_path: &FramePath, link: &ReactionCastLink) {
-        if link.borrow().action_path.is_some() {
-            return;
-        }
-        link.borrow_mut().action_path = Some(action_path.clone());
-        self.claimed_action_links
-            .entry(action_path.clone())
-            .or_default()
-            .push(link.clone());
-    }
-
     pub(super) fn cancel_action(&mut self, action_path: &FramePath) -> Vec<QueuedOp> {
         self.open_actions.remove(action_path);
         self.completed_actions.insert(action_path.clone());
@@ -364,17 +295,10 @@ impl DrainState {
         self.deaths.remove(action_path);
         self.target_modifiers.remove(action_path);
         self.action_reactions.remove(action_path);
-        for link in self
-            .claimed_action_links
-            .remove(action_path)
-            .unwrap_or_default()
-        {
-            if link.borrow().action_path.as_ref() == Some(action_path) {
-                link.borrow_mut().action_path = None;
-            }
-        }
-
+        self.action_shared_damage.remove(action_path);
         let mut abandoned = self.after_hit.remove(action_path).unwrap_or_default();
+        abandoned.extend(self.attacked_skills.remove(action_path).unwrap_or_default());
+        abandoned.extend(self.hp_thresholds.remove(action_path).unwrap_or_default());
         abandoned.extend(
             self.hit_passive_skills
                 .remove(action_path)
@@ -391,6 +315,7 @@ impl DrainState {
                 .remove(action_path)
                 .unwrap_or_default(),
         );
+        abandoned.extend(self.after_hit_shell.remove(action_path).unwrap_or_default());
         abandoned.extend(self.after_action.remove(action_path).unwrap_or_default());
         abandoned.extend(
             self.after_action_casts
@@ -420,6 +345,57 @@ impl DrainState {
         self.action_reactions
             .entry(action_path.to_vec())
             .or_default()
+    }
+
+    pub(super) fn record_action_shared_damage(
+        &mut self,
+        action_path: Option<&[usize]>,
+        events: &mut [BattleEvent],
+    ) {
+        let mut local = HashMap::new();
+        let counts = if let Some(action_path) = action_path {
+            self.action_shared_damage
+                .entry(action_path.to_vec())
+                .or_default()
+        } else {
+            &mut local
+        };
+        for event in events.iter() {
+            let BattleEvent::DamageShared {
+                participant_uids,
+                share_count,
+                damage_from,
+                ..
+            } = event
+            else {
+                continue;
+            };
+            let lane = match damage_from {
+                HurtDamageFromType::Skill => 0,
+                HurtDamageFromType::SkillEffect => 1,
+                _ => continue,
+            };
+            for owner_uid in participant_uids {
+                let owner = counts.entry(*owner_uid).or_insert([0, 0]);
+                owner[lane] = owner[lane].max(*share_count);
+            }
+        }
+        for event in events {
+            let BattleEvent::DamageShared {
+                participant_uids,
+                action_share_count,
+                ..
+            } = event
+            else {
+                continue;
+            };
+            *action_share_count = participant_uids
+                .iter()
+                .filter_map(|owner_uid| counts.get(owner_uid))
+                .map(|lanes| lanes.iter().sum())
+                .max()
+                .unwrap_or(*action_share_count);
+        }
     }
 
     pub(super) fn next_event_batch_id(&mut self) -> u64 {

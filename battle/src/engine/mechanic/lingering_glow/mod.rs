@@ -496,4 +496,4 @@ impl LingeringGlowRuntime {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

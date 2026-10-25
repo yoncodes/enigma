@@ -99,4 +99,4 @@ impl RoomManager {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

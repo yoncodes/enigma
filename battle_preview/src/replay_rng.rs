@@ -85,6 +85,14 @@ pub fn seed_round_determinism(
     if runtime.fight_version() == 7 {
         runtime.seed_next_ai_cards(round.ai_use_cards.clone());
     }
+    seed_action_determinism(runtime, catalog, round);
+}
+
+pub fn seed_action_determinism(
+    runtime: &mut ReplayBattle,
+    catalog: &SkillEffectCatalog,
+    round: &FightRound,
+) {
     runtime.seed_skill_targets(skill_target_choices(catalog, round));
     runtime.seed_random_skills(random_skill_choices(catalog, round));
     runtime.seed_shell_moxie_choices(shell_moxie_choices(config::configs::get(), round));
@@ -103,6 +111,25 @@ fn captured_round_draws(round: &FightRound) -> Vec<CardInfo> {
                 == Some(sonettobuf::effect_type_enum::EffectType::Cardspush as i32)
             {
                 *hand = Some(effect.card_info_list.clone());
+            }
+            if effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Cardremove as i32)
+                && let Some(cards) = hand.as_mut()
+            {
+                let mut indices = effect
+                    .reserve_str
+                    .as_deref()
+                    .unwrap_or_default()
+                    .split('#')
+                    .filter_map(|index| index.parse::<usize>().ok()?.checked_sub(1))
+                    .collect::<Vec<_>>();
+                indices.sort_unstable();
+                indices.dedup();
+                for index in indices.into_iter().rev() {
+                    if index < cards.len() {
+                        cards.remove(index);
+                    }
+                }
             }
             if let Some(nested) = effect.fight_step.as_ref() {
                 visit(nested, hand);
@@ -443,6 +470,20 @@ fn crit_choices(
                     } else {
                         let rolled = crit(EffectType::Damage, EffectType::Crit)
                             .filter(|_| config_effect == -1)
+                            .or_else(|| {
+                                matches!(
+                                    effect_type,
+                                    value
+                                        if value == EffectType::Eziobigskilldamage as i32
+                                            || value
+                                                == EffectType::Eziobigskillorigindamage as i32
+                                )
+                                .then(|| {
+                                    effect.hurt_info.as_ref().is_some_and(|hurt| {
+                                        hurt.hurt_effect == Some(EffectType::Crit as i32)
+                                    })
+                                })
+                            })
                             .or_else(|| {
                                 heal_crit.filter(|_| matches!(config_effect, 20001 | 90001))
                             })
@@ -907,9 +948,115 @@ mod tests {
     }
 
     #[test]
+    fn round_rng_import_requeues_a_removed_temporary_card() {
+        let temporary = card(10, 999, true);
+        let persisted = card(10, 999, false);
+
+        assert_eq!(
+            captured_round_draws(&FightRound {
+                fight_step: vec![FightStep {
+                    act_effect: vec![
+                        sonettobuf::ActEffect {
+                            effect_type: Some(
+                                sonettobuf::effect_type_enum::EffectType::Cardspush as i32,
+                            ),
+                            card_info_list: vec![temporary],
+                            ..Default::default()
+                        },
+                        sonettobuf::ActEffect {
+                            effect_type: Some(
+                                sonettobuf::effect_type_enum::EffectType::Cardremove as i32,
+                            ),
+                            reserve_str: Some("1".to_owned()),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }],
+                team_a_cards2: vec![persisted.clone()],
+                ..Default::default()
+            }),
+            vec![persisted]
+        );
+    }
+
+    #[test]
+    fn action_rng_import_does_not_queue_the_cloth_replys_ai_snapshot() {
+        crate::init_test_config();
+        let fight = Fight {
+            version: Some(7),
+            battle_id: Some(109380001),
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100_000),
+                    skill_group1: vec![31050111],
+                    skill_group2: vec![31050121],
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(100_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100_000),
+                    skill_group1: vec![40340111],
+                    skill_group2: vec![40340121],
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(100_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut runtime = ReplayBattle::new(
+            battle::catalog::BattleCatalog::new(config::configs::get()),
+            fight,
+        );
+        runtime.start_round().unwrap();
+        let stale = card(-1, 40340111, false);
+        let expected = card(-1, 40340121, false);
+
+        seed_action_determinism(
+            &mut runtime,
+            &SkillEffectCatalog::default(),
+            &FightRound {
+                ai_use_cards: vec![stale],
+                ..Default::default()
+            },
+        );
+        seed_round_determinism(
+            &mut runtime,
+            &SkillEffectCatalog::default(),
+            &FightRound {
+                ai_use_cards: vec![expected.clone()],
+                ..Default::default()
+            },
+        );
+
+        let round = runtime.advance_round(Default::default()).unwrap();
+
+        assert_eq!(
+            round
+                .ai_use_cards
+                .iter()
+                .map(|card| (card.uid, card.skill_id))
+                .collect::<Vec<_>>(),
+            vec![(expected.uid, expected.skill_id)]
+        );
+    }
+
+    #[test]
     fn observed_crits_follow_only_rolled_effects_of_their_own_step_in_order() {
         crate::init_test_config();
-        use sonettobuf::{ActEffect, effect_type_enum::EffectType};
+        use sonettobuf::{ActEffect, FightHurtInfo, effect_type_enum::EffectType};
 
         let effect = |effect_type: EffectType, target_id: i64, config_effect: i32| ActEffect {
             effect_type: Some(effect_type as i32),
@@ -954,6 +1101,26 @@ mod tests {
                     effect(EffectType::Damage, -2, -1),
                     effect(EffectType::Heal, 10, 20001),
                     effect(EffectType::Buffadd, -2, 0),
+                    ActEffect {
+                        effect_type: Some(EffectType::Eziobigskilldamage as i32),
+                        target_id: Some(-1),
+                        config_effect: Some(100002),
+                        hurt_info: Some(FightHurtInfo {
+                            hurt_effect: Some(EffectType::Crit as i32),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    ActEffect {
+                        effect_type: Some(EffectType::Eziobigskillorigindamage as i32),
+                        target_id: Some(-1),
+                        config_effect: Some(100003),
+                        hurt_info: Some(FightHurtInfo {
+                            hurt_effect: Some(EffectType::Damage as i32),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
                 ],
                 ..Default::default()
             }],
@@ -967,6 +1134,8 @@ mod tests {
             vec![
                 ((31090111, 10), true),
                 ((31090111, 10), false),
+                ((31090111, 10), false),
+                ((31090111, 10), true),
                 ((31090111, 10), false)
             ]
         );

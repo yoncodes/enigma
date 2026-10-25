@@ -611,4 +611,4 @@ pub fn episode_cost_value(episode: &config::episode::Episode) -> i32 {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;
