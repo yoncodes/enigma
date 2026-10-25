@@ -543,7 +543,7 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
 }
 
 #[test]
-fn non_attack_device_after_hit_behaviors_run_before_take_stage_buff_settles() {
+fn non_attack_device_uses_the_configured_take_stage_boundary() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -636,5 +636,5 @@ fn non_attack_device_after_hit_behaviors_run_before_take_stage_buff_settles() {
             )
         })
         .unwrap();
-    assert!(resource < removed);
+    assert!(removed < resource);
 }

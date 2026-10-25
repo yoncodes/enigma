@@ -338,12 +338,7 @@ impl BuffManager {
         owner_uids: &[i64],
         buff_uids: &[i64],
     ) -> Vec<BuffReplaceResult> {
-        let plans = self.plan_duration_advances_matching(
-            take_stage,
-            owner_uids,
-            Some(buff_uids),
-            Default::default(),
-        );
+        let plans = self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids));
         plans
             .into_iter()
             .filter_map(|plan| self.commit_duration_advance(plan))
@@ -355,16 +350,7 @@ impl BuffManager {
         take_stage: i32,
         owner_uids: &[i64],
     ) -> Vec<BuffDurationPlan> {
-        self.plan_duration_advances_scoped(take_stage, owner_uids, Default::default())
-    }
-
-    pub(crate) fn plan_duration_advances_scoped(
-        &self,
-        take_stage: i32,
-        owner_uids: &[i64],
-        scope: crate::engine::skill::buff_act::effect_time::DurationBuffScope,
-    ) -> Vec<BuffDurationPlan> {
-        self.plan_duration_advances_matching(take_stage, owner_uids, None, scope)
+        self.plan_duration_advances_matching(take_stage, owner_uids, None)
     }
 
     pub(crate) fn duration_buff_uids(&self, take_stage: i32, owner_uids: &[i64]) -> Vec<i64> {
@@ -406,22 +392,7 @@ impl BuffManager {
         owner_uids: &[i64],
         buff_uids: &[i64],
     ) -> Vec<BuffDurationPlan> {
-        self.plan_duration_advances_for_snapshot_scoped(
-            take_stage,
-            owner_uids,
-            buff_uids,
-            Default::default(),
-        )
-    }
-
-    pub(crate) fn plan_duration_advances_for_snapshot_scoped(
-        &self,
-        take_stage: i32,
-        owner_uids: &[i64],
-        buff_uids: &[i64],
-        scope: crate::engine::skill::buff_act::effect_time::DurationBuffScope,
-    ) -> Vec<BuffDurationPlan> {
-        self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids), scope)
+        self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids))
     }
 
     fn plan_duration_advances_matching(
@@ -429,7 +400,6 @@ impl BuffManager {
         take_stage: i32,
         owner_uids: &[i64],
         buff_uids: Option<&[i64]>,
-        scope: crate::engine::skill::buff_act::effect_time::DurationBuffScope,
     ) -> Vec<BuffDurationPlan> {
         let mut indices = if owner_uids.is_empty() {
             (0..self.buffs.len()).collect::<Vec<_>>()
@@ -464,7 +434,6 @@ impl BuffManager {
                 let buff_uid = active.buff.uid?;
                 let duration = active.buff.duration.unwrap_or_default();
                 (duration > 0
-                    && scope.includes(active.buff.buff_id.unwrap_or_default())
                     && active
                         .definition
                         .as_ref()

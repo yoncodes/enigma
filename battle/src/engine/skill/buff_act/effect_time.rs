@@ -39,24 +39,6 @@ pub struct EffectTimeDefinition {
     pub duration_phase: Option<SkillPhase>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum DurationBuffScope {
-    #[default]
-    All,
-    Only(i32),
-    Excluding(i32),
-}
-
-impl DurationBuffScope {
-    pub const fn includes(self, buff_id: i32) -> bool {
-        match self {
-            Self::All => true,
-            Self::Only(selected) => buff_id == selected,
-            Self::Excluding(excluded) => buff_id != excluded,
-        }
-    }
-}
-
 macro_rules! effect_time_definitions {
     ($($code:expr => $event:expr $(; $phase:expr)?),* $(,)?) => {
         pub const DEFINITIONS: &[EffectTimeDefinition] = &[
@@ -134,22 +116,6 @@ pub fn duration_stage_after_skill_phase(phase: SkillPhase) -> Option<i32> {
     definitions()
         .find(|definition| definition.duration_phase == Some(duration_phase))
         .map(|definition| definition.key.opcode)
-}
-
-pub fn duration_stage_after_skill_action(
-    phase: SkillPhase,
-    is_attack: bool,
-    mode: crate::engine::skill::action::SkillExecutionMode,
-) -> Option<(i32, DurationBuffScope)> {
-    if !is_attack && mode == crate::engine::skill::action::SkillExecutionMode::Device {
-        return match phase {
-            SkillPhase::HitPassives => Some((210, DurationBuffScope::Excluding(103374322))),
-            SkillPhase::AfterHit => Some((210, DurationBuffScope::Only(103374322))),
-            phase => duration_stage_after_skill_phase(phase)
-                .map(|take_stage| (take_stage, DurationBuffScope::All)),
-        };
-    }
-    duration_stage_after_skill_phase(phase).map(|take_stage| (take_stage, DurationBuffScope::All))
 }
 
 pub fn classify(effect_time: i32) -> BuffActEvent {
@@ -281,32 +247,11 @@ mod tests {
     }
 
     #[test]
-    fn non_attack_device_duration_advances_after_its_after_hit_behaviors() {
-        use crate::engine::skill::action::SkillExecutionMode;
-
+    fn device_actions_use_the_registered_duration_phase() {
         assert_eq!(
-            duration_stage_after_skill_action(
-                SkillPhase::HitPassives,
-                false,
-                SkillExecutionMode::Device,
-            ),
-            Some((210, DurationBuffScope::Excluding(103374322)))
+            duration_stage_after_skill_phase(SkillPhase::HitPassives),
+            Some(210)
         );
-        assert_eq!(
-            duration_stage_after_skill_action(
-                SkillPhase::AfterHit,
-                false,
-                SkillExecutionMode::Device,
-            ),
-            Some((210, DurationBuffScope::Only(103374322)))
-        );
-        assert_eq!(
-            duration_stage_after_skill_action(
-                SkillPhase::HitPassives,
-                true,
-                SkillExecutionMode::Device,
-            ),
-            Some((210, DurationBuffScope::All))
-        );
+        assert_eq!(duration_stage_after_skill_phase(SkillPhase::AfterHit), None);
     }
 }
