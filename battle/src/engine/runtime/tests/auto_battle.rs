@@ -868,6 +868,27 @@ fn auto_round_feeds_the_selected_conduit_group_first() {
 }
 
 #[test]
+fn auto_round_prefers_flexible_energy_when_equal_amounts_are_usable() {
+    let mut runtime = twins_conduit_runtime(1_000, 0, false, 70);
+    runtime
+        .managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: [31446022, 31446062]
+                .into_iter()
+                .map(|skill_id| hand_card(10, skill_id, false))
+                .collect(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        }))
+        .unwrap();
+    runtime.round_state.act_point = 1;
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers[0].param1, Some(2));
+}
+
+#[test]
 fn auto_round_selects_an_enemy_while_conduit_energy_resolves_on_its_owner() {
     let setup = |runtime: &mut BattleRuntime| {
         runtime

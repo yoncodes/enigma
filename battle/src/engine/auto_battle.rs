@@ -38,6 +38,7 @@ struct Candidate {
     energy: bool,
     preferred_energy: bool,
     energy_amount: i32,
+    flexible_energy: bool,
     special_energy: bool,
     first_for_owner: bool,
     support: Support,
@@ -515,6 +516,7 @@ fn best_candidate(
                     power_type == 0 || selected_power_types.contains(&power_type)
                 }),
                 energy_amount: energy_gain.map_or(0, |(_, amount)| amount),
+                flexible_energy: energy_gain.is_some_and(|(power_type, _)| power_type == 0),
                 special_energy: energy_gain.is_some()
                     && managers.catalog().is_special_power_card(skill_id),
                 support,
@@ -534,6 +536,7 @@ fn best_candidate(
                     candidate.energy,
                     candidate.energy_amount,
                     candidate.special_energy,
+                    candidate.flexible_energy,
                 ),
                 // Give every hero a card before any hero plays a second one when utility is equal.
                 candidate.first_for_owner,
