@@ -1124,6 +1124,21 @@ fn auto_round_does_not_rank_a_self_setup_buff_as_ally_support() {
 }
 
 #[test]
+fn auto_round_prefers_an_explicit_counter_card_over_an_attack() {
+    let runtime = team_runtime(
+        vec![team_hero(10, 3123, 1_000, [312301142, 312301242])],
+        vec![
+            hand_card(10, 312301142, false),
+            hand_card(10, 312301242, false),
+        ],
+    );
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers[0].param1, Some(2));
+}
+
+#[test]
 fn auto_round_feeds_the_selected_conduit_group_first() {
     let mut runtime = twins_conduit_runtime(1_000, 0, false, 70);
     runtime

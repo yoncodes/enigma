@@ -499,6 +499,8 @@ fn best_candidate(
                     != crate::engine::skill::effect::catalog::SkillEffectTag::Debuff as i32;
             let support = support_need(
                 effect_tag == crate::engine::skill::effect::catalog::SkillEffectTag::Heal as i32,
+                effect_tag
+                    == crate::engine::skill::effect::catalog::SkillEffectTag::CounterSpell as i32,
                 if may_be_redundant { &buffs } else { &[] },
                 &targets,
                 sim,
@@ -674,6 +676,7 @@ fn certain_buffs(skill_id: i32, catalog: &SkillEffectCatalog) -> Vec<i32> {
 
 fn support_need(
     heal: bool,
+    counter: bool,
     buffs: &[i32],
     targets: &[i64],
     managers: &BattleManagers,
@@ -699,6 +702,8 @@ fn support_need(
         })
     {
         Support::Unneeded
+    } else if counter && !buffs.is_empty() {
+        Support::Needed
     } else {
         Support::None
     }

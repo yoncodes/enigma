@@ -415,7 +415,7 @@ fn conduit_support_need(
     pool: &TargetPool,
 ) -> Support {
     if heal {
-        return support_need(true, &[], targets, managers, pool);
+        return support_need(true, false, &[], targets, managers, pool);
     }
     if !buffs.is_empty()
         && targets.iter().all(|uid| {
