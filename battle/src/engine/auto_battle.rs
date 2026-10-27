@@ -36,6 +36,8 @@ struct Candidate {
     free: bool,
     ultimate: bool,
     energy: bool,
+    preferred_energy: bool,
+    energy_amount: i32,
     first_for_owner: bool,
     support: Support,
     damage_rate: i32,
@@ -115,6 +117,14 @@ pub(crate) fn plan(
     }
 
     let live_pool = pool.runtime_view(managers);
+    let planned_devices = conduit::operations(
+        fight,
+        &sim,
+        &pool.runtime_view(&sim),
+        catalog,
+        &sim_determinism,
+    );
+    let selected_power_types = conduit::selected_power_types(&sim, &planned_devices);
     let mut opers = Vec::new();
     let mut reported_unsupported = HashSet::new();
     loop {
@@ -136,6 +146,7 @@ pub(crate) fn plan(
             &pool.runtime_view(&sim),
             catalog,
             &sim_determinism,
+            &selected_power_types,
             &mut reported_unsupported,
         ) else {
             break;
@@ -382,6 +393,7 @@ fn best_candidate(
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
+    selected_power_types: &HashSet<i32>,
     reported_unsupported: &mut HashSet<i32>,
 ) -> Option<Candidate> {
     cards
@@ -430,6 +442,7 @@ fn best_candidate(
             );
             let buffs = certain_buffs(skill_id, catalog);
             let effect_tag = catalog.effect_tag(skill_id);
+            let energy_gain = conduit_power_gain(skill_id, catalog);
             // An enemy's debuff may come from a passive, so debuff cards never count as redundant.
             let may_be_redundant = !catalog.is_attack(skill_id)
                 && effect_tag
@@ -463,6 +476,10 @@ fn best_candidate(
                     && support != Support::Unneeded,
                 energy: effect_tag
                     == crate::engine::skill::effect::catalog::SkillEffectTag::Device as i32,
+                preferred_energy: energy_gain.is_some_and(|(power_type, _)| {
+                    power_type == 0 || selected_power_types.contains(&power_type)
+                }),
+                energy_amount: energy_gain.map_or(0, |(_, amount)| amount),
                 support,
                 damage_rate: catalog.damage_rate(skill_id),
                 rank: managers.catalog().card_skill_rank(card),
@@ -477,7 +494,9 @@ fn best_candidate(
                 candidate.support == Support::Urgent,
                 // Give every hero a card before any hero plays a second one.
                 candidate.first_for_owner,
+                candidate.preferred_energy,
                 candidate.energy,
+                candidate.energy_amount,
                 candidate.support,
                 strength,
                 Reverse(candidate.card_index),
@@ -485,6 +504,19 @@ fn best_candidate(
                 Reverse(candidate.skill_id),
             )
         })
+}
+
+fn conduit_power_gain(skill_id: i32, catalog: &SkillEffectCatalog) -> Option<(i32, i32)> {
+    catalog
+        .get(skill_id)
+        .into_iter()
+        .flat_map(|effect| &effect.slots)
+        .filter(|slot| {
+            slot.behavior.spec.kind
+                == crate::engine::skill::behavior::classify::BehaviorKind::AddConduitPower
+        })
+        .filter_map(|slot| Some((*slot.behavior.args.first()?, *slot.behavior.args.get(1)?)))
+        .max_by_key(|(_, amount)| *amount)
 }
 
 // Only unconditional `AddBuff` slots aimed at the card's own target count.

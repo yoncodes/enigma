@@ -68,6 +68,27 @@ pub(super) fn operations(
     operations
 }
 
+pub(super) fn selected_power_types(
+    managers: &BattleManagers,
+    operations: &[FightDeviceOper],
+) -> HashSet<i32> {
+    operations
+        .iter()
+        .filter_map(|operation| Some((operation.uid?, operation.index?)))
+        .filter_map(|(uid, group)| {
+            managers
+                .conduit
+                .devices()
+                .find(|device| device.uid == uid)?
+                .skill_groups
+                .get(group.saturating_sub(1) as usize)
+        })
+        .flatten()
+        .filter(|skill| skill.cost_type > 0 && skill.cost_type != 999 && skill.cost_value > 0)
+        .map(|skill| skill.cost_type)
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn simulate_group(
     fight: &Fight,

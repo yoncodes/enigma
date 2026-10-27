@@ -700,6 +700,35 @@ fn auto_round_does_not_rank_a_self_setup_buff_as_ally_support() {
 }
 
 #[test]
+fn auto_round_feeds_the_selected_conduit_group_first() {
+    let mut runtime = twins_conduit_runtime(1_000, 0, false, 70);
+    runtime
+        .managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: [31446012, 31446021, 31446011, 31446011, 31446022, 31446022]
+                .into_iter()
+                .map(|skill_id| hand_card(10, skill_id, false))
+                .collect(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        }))
+        .unwrap();
+    runtime.round_state.act_point = 2;
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(
+        reply
+            .opers
+            .iter()
+            .map(|oper| oper.param1)
+            .collect::<Vec<_>>(),
+        vec![Some(1), Some(2)]
+    );
+    assert_eq!(reply.devices_opers[0].index, Some(1));
+}
+
+#[test]
 fn auto_round_keeps_the_current_conduit_group_without_a_legal_target() {
     let reply = regulus_conduit_runtime(0).plan_auto_round(&AutoRoundRequest::default());
 
