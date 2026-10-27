@@ -508,7 +508,8 @@ fn best_candidate(
                 chosen_skill_id,
                 free: normal_ap_cost == 0,
                 ultimate,
-                first_for_owner: !played_owners.contains(&source_uid)
+                first_for_owner: energy_gain.is_none()
+                    && !played_owners.contains(&source_uid)
                     && support != Support::Unneeded,
                 energy: effect_tag
                     == crate::engine::skill::effect::catalog::SkillEffectTag::Device as i32,

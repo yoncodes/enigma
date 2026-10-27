@@ -605,7 +605,7 @@ fn auto_round_conduit_lookahead_respects_higher_priority_action_points() {
 }
 
 #[test]
-fn auto_round_conduit_lookahead_preserves_prefix_owner_fairness() {
+fn auto_round_conduit_lookahead_keeps_energy_order_after_prefix() {
     let runtime = coppelia_conduit_runtime(
         team_hero(11, 3023, 1_000, [30230111, 30230121]),
         vec![
@@ -626,8 +626,8 @@ fn auto_round_conduit_lookahead_preserves_prefix_owner_fairness() {
     });
 
     assert_eq!(reply.opers.len(), 1);
-    assert_eq!(reply.opers[0].param1, Some(2));
-    assert_eq!(reply.devices_opers[0].index, Some(2));
+    assert_eq!(reply.opers[0].param1, Some(1));
+    assert_eq!(reply.devices_opers[0].index, Some(1));
 }
 
 fn coppelia_conduit_runtime(
@@ -886,6 +886,34 @@ fn auto_round_prefers_flexible_energy_when_equal_amounts_are_usable() {
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
     assert_eq!(reply.opers[0].param1, Some(2));
+}
+
+#[test]
+fn auto_round_keeps_equal_energy_cards_in_hand_order_after_an_owner_plays() {
+    let mut ally = team_hero(11, 3023, 1_000, [30230111, 30230121]);
+    ally.ex_point = Some(5);
+    ally.ex_point_max = Some(5);
+    ally.ex_skill = Some(30230131);
+    let runtime = coppelia_conduit_runtime(
+        ally,
+        vec![
+            hand_card(11, 30230131, false),
+            hand_card(11, 31446021, false),
+            hand_card(10, 31446021, false),
+        ],
+        2,
+    );
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(
+        reply
+            .opers
+            .iter()
+            .map(|oper| oper.param1)
+            .collect::<Vec<_>>(),
+        vec![Some(1), Some(1)]
+    );
 }
 
 #[test]
