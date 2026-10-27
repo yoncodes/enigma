@@ -476,6 +476,18 @@ fn auto_round_plays_energy_cards_before_other_cards() {
 }
 
 #[test]
+fn auto_round_loads_visible_conduit_card_roots() {
+    let runtime = team_runtime(
+        vec![team_hero(10, 3144, 1_000, [31440111, 31440121])],
+        vec![hand_card(10, 31446011, false)],
+    );
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers[0].param1, Some(1));
+}
+
+#[test]
 fn auto_round_gives_every_hero_a_card_before_repeating_one() {
     let mut runtime = team_runtime(
         vec![

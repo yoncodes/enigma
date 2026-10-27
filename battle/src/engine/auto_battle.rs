@@ -60,12 +60,21 @@ pub(crate) fn plan(
 ) -> AutoRoundReply {
     // Every card resolves before any skill runs, so indices, AP and readiness use round-start state.
     let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
-    let options: Vec<i32> = managers
+    let roots: Vec<i32> = managers
         .card
         .hand()
         .iter()
         .chain(managers.card.team_cards())
-        .flat_map(|card| card_choice_options(card, managers))
+        .filter_map(|card| card.skill_id)
+        .filter(|skill_id| *skill_id > 0)
+        .chain(
+            managers
+                .card
+                .hand()
+                .iter()
+                .chain(managers.card.team_cards())
+                .flat_map(|card| card_choice_options(card, managers)),
+        )
         .chain(
             request
                 .opers
@@ -74,13 +83,13 @@ pub(crate) fn plan(
                 .filter(|skill_id| *skill_id > 0),
         )
         .collect();
-    let catalog = if options.is_empty() {
+    let catalog = if roots.is_empty() {
         std::borrow::Cow::Borrowed(catalog)
     } else {
         let mut extended = catalog.clone();
         managers
             .catalog()
-            .extend_skill_roots(&mut extended, options, std::iter::empty());
+            .extend_skill_roots(&mut extended, roots, std::iter::empty());
         std::borrow::Cow::Owned(extended)
     };
     let catalog = catalog.as_ref();
