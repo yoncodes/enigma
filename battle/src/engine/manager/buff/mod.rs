@@ -61,10 +61,6 @@ pub(crate) fn wire_markers(
         .unwrap_or_default()
 }
 
-pub(crate) fn removal_max_hp_sync_act_id(buff_id: i32) -> Option<i32> {
-    BuffDefinition::get(buff_id)?.removal_max_hp_sync_act_id()
-}
-
 #[derive(Debug, Clone)]
 /// Owns active buff instances, storage policy, private act state, and buff UID allocation.
 /// Callers submit `BuffCommand`s rather than choosing stacking, exclusion, or UID policy.

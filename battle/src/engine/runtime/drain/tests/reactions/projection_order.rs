@@ -1,6 +1,109 @@
 use super::*;
 
 #[test]
+fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3146),
+                    team_type: Some(1),
+                    current_hp: Some(20_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(20_000),
+                        attack: Some(4_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    team_type: Some(1),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(1, "AddBuff"),
+    };
+    let grant = || {
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
+            origin,
+            source_uid: 10,
+            target_uid: 11,
+            buff_id: 31460131,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })))
+    };
+    run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [grant()],
+    )
+    .unwrap();
+
+    let replaced = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [grant()],
+    )
+    .unwrap();
+    let relevant = crate::engine::packet::timeline::project_for_version(&replaced.frames, 7)
+        .unwrap()
+        .into_iter()
+        .flat_map(|step| step.act_effect)
+        .filter(|effect| {
+            effect.target_id == Some(11)
+                && (effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Buffdel as i32)
+                    || effect.effect_type
+                        == Some(sonettobuf::effect_type_enum::EffectType::Maxhpchange as i32)
+                        && effect.buff_act_id == Some(1131))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        relevant
+            .iter()
+            .filter_map(|effect| effect.effect_type)
+            .collect::<Vec<_>>(),
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Maxhpchange as i32,
+            sonettobuf::effect_type_enum::EffectType::Maxhpchange as i32,
+            sonettobuf::effect_type_enum::EffectType::Buffdel as i32,
+        ]
+    );
+    assert!(
+        relevant[..2]
+            .iter()
+            .all(|effect| { effect.effect_num == Some(1_000) && effect.buff_act_id == Some(1131) })
+    );
+}
+
+#[test]
 fn bendith_buff_drain_projects_add_remove_and_recast_in_capture_order() {
     crate::test_support::init_config();
     let base_group1 = vec![31460114, 31460115, 31460116];

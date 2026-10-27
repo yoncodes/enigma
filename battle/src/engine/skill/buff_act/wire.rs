@@ -18,7 +18,6 @@ pub struct BuffActWireDefinition {
     pub max_hp: Option<MaxHpWireRule>,
     pub pre_add: Option<WireEffect>,
     pub snapshot_reserve: Option<SnapshotReserveRule>,
-    removal_max_hp_sync_buff_ids: &'static [i32],
     pub refreshes_unchanged: bool,
     pub projects_initial_state_on_refresh: bool,
 }
@@ -26,6 +25,7 @@ pub struct BuffActWireDefinition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MaxHpWireRule {
     Fixed { repeats: u8, buff_act_id: i32 },
+    OneWayAttr { buff_act_id: i32 },
     Attr { buff_act_id: i32 },
 }
 
@@ -53,6 +53,23 @@ impl MaxHpWireRule {
                 max_hp_repeats: repeats,
                 current_hp_repeats: repeats,
                 buff_act_id,
+            },
+            Self::OneWayAttr { buff_act_id } => match delta.cmp(&0) {
+                std::cmp::Ordering::Greater => MaxHpWirePlan {
+                    max_hp_repeats: 1,
+                    current_hp_repeats: 1,
+                    buff_act_id: 0,
+                },
+                std::cmp::Ordering::Less => MaxHpWirePlan {
+                    max_hp_repeats: 2,
+                    current_hp_repeats: 0,
+                    buff_act_id,
+                },
+                std::cmp::Ordering::Equal => MaxHpWirePlan {
+                    max_hp_repeats: 1,
+                    current_hp_repeats: 0,
+                    buff_act_id,
+                },
             },
             Self::Attr { buff_act_id } => {
                 let max_hp_repeats = if source_uid == target_uid { 2 } else { 1 };
@@ -116,7 +133,6 @@ impl BuffActWireDefinition {
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
-            removal_max_hp_sync_buff_ids: &[],
             refreshes_unchanged: false,
             projects_initial_state_on_refresh: false,
         }
@@ -133,7 +149,6 @@ impl BuffActWireDefinition {
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
-            removal_max_hp_sync_buff_ids: &[],
             refreshes_unchanged: false,
             projects_initial_state_on_refresh: false,
         }
@@ -150,7 +165,6 @@ impl BuffActWireDefinition {
             max_hp: None,
             pre_add: None,
             snapshot_reserve: None,
-            removal_max_hp_sync_buff_ids: &[],
             refreshes_unchanged: false,
             projects_initial_state_on_refresh: false,
         }
@@ -187,6 +201,13 @@ impl BuffActWireDefinition {
         self
     }
 
+    pub const fn with_one_way_attr_max_hp(mut self) -> Self {
+        self.max_hp = Some(MaxHpWireRule::OneWayAttr {
+            buff_act_id: self.key.opcode,
+        });
+        self
+    }
+
     pub const fn with_pre_add(mut self, effect: WireEffect) -> Self {
         self.pre_add = Some(effect);
         self
@@ -195,15 +216,6 @@ impl BuffActWireDefinition {
     pub const fn with_snapshot_reserve(mut self, rule: SnapshotReserveRule) -> Self {
         self.snapshot_reserve = Some(rule);
         self
-    }
-
-    pub const fn with_removal_max_hp_sync(mut self, buff_ids: &'static [i32]) -> Self {
-        self.removal_max_hp_sync_buff_ids = buff_ids;
-        self
-    }
-
-    pub fn removal_max_hp_sync(self, buff_id: i32) -> bool {
-        self.removal_max_hp_sync_buff_ids.contains(&buff_id)
     }
 
     pub const fn with_unchanged_refresh(mut self) -> Self {
