@@ -69,6 +69,31 @@ pub(super) fn operations(
     operations
 }
 
+pub(super) fn selection_operations(
+    fight: &Fight,
+    round_start: &BattleManagers,
+    after_cards: &BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &RoundDeterminism,
+) -> Vec<FightDeviceOper> {
+    let mut operations = operations(fight, after_cards, pool, catalog, determinism);
+    // Card-driven group changes run after devicesOpers, so do not echo the same change early.
+    for operation in &mut operations {
+        let Some(uid) = operation.uid else { continue };
+        let Some(round_start_group) = round_start.conduit.selected_group(uid) else {
+            continue;
+        };
+        let Some(after_cards_group) = after_cards.conduit.selected_group(uid) else {
+            continue;
+        };
+        if round_start_group != after_cards_group && operation.index == Some(after_cards_group) {
+            operation.index = Some(round_start_group);
+        }
+    }
+    operations
+}
+
 pub(super) fn selected_power_types(
     managers: &BattleManagers,
     operations: &[FightDeviceOper],

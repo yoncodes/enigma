@@ -3,6 +3,7 @@ use crate::engine::{
     manager::{
         buff::{BuffCommand, BuffGrant},
         card::{CardCommand, CardOpType},
+        conduit::ConduitCommand,
     },
     skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
 };
@@ -597,6 +598,35 @@ fn auto_round_selects_conduit_groups_from_round_utility() {
             (Some(13), Some(1)),
         ]
     );
+}
+
+#[test]
+fn auto_round_does_not_report_a_future_card_driven_group_change() {
+    let mut runtime = team_runtime(
+        vec![
+            team_hero(10, 3145, 1_000, [31450111, 31450121]),
+            team_hero(11, 3023, 500, [30230111, 30230121]),
+        ],
+        vec![hand_card(10, 31450181, false)],
+    );
+    runtime
+        .managers
+        .conduit
+        .execute(ConduitCommand::StopSkill {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60294, "StopDeviceSkill"),
+            },
+            source_uid: 10,
+            team: 1,
+            skill_id: 31450111,
+        })
+        .unwrap();
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers[0].param1, Some(1));
+    assert_eq!(reply.devices_opers[0].index, Some(1));
 }
 
 #[test]

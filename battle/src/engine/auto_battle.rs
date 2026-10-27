@@ -207,17 +207,15 @@ pub(crate) fn plan(
         });
     }
 
-    reply(
-        request,
-        opers,
-        conduit::operations(
-            fight,
-            &sim,
-            &pool.runtime_view(&sim),
-            catalog,
-            &sim_determinism,
-        ),
-    )
+    let device_opers = conduit::selection_operations(
+        fight,
+        managers,
+        &sim,
+        &pool.runtime_view(&sim),
+        catalog,
+        &sim_determinism,
+    );
+    reply(request, opers, device_opers)
 }
 
 fn card_choice_options(card: &CardInfo, managers: &BattleManagers) -> Vec<i32> {
