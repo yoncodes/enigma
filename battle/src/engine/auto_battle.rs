@@ -497,10 +497,17 @@ fn best_candidate(
             let may_be_redundant = !catalog.is_attack(skill_id)
                 && effect_tag
                     != crate::engine::skill::effect::catalog::SkillEffectTag::Debuff as i32;
+            let setup = effect_tag
+                == crate::engine::skill::effect::catalog::SkillEffectTag::CounterSpell as i32
+                || catalog.get(skill_id).is_some_and(|effect| {
+                    effect.slots.iter().any(|slot| {
+                        slot.behavior.spec.kind
+                            == crate::engine::skill::behavior::classify::BehaviorKind::AverageLife
+                    })
+                });
             let support = support_need(
                 effect_tag == crate::engine::skill::effect::catalog::SkillEffectTag::Heal as i32,
-                effect_tag
-                    == crate::engine::skill::effect::catalog::SkillEffectTag::CounterSpell as i32,
+                setup,
                 if may_be_redundant { &buffs } else { &[] },
                 &targets,
                 sim,
@@ -676,7 +683,7 @@ fn certain_buffs(skill_id: i32, catalog: &SkillEffectCatalog) -> Vec<i32> {
 
 fn support_need(
     heal: bool,
-    counter: bool,
+    setup: bool,
     buffs: &[i32],
     targets: &[i64],
     managers: &BattleManagers,
@@ -702,7 +709,7 @@ fn support_need(
         })
     {
         Support::Unneeded
-    } else if counter && !buffs.is_empty() {
+    } else if setup && !buffs.is_empty() {
         Support::Needed
     } else {
         Support::None

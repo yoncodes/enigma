@@ -1139,6 +1139,28 @@ fn auto_round_prefers_an_explicit_counter_card_over_an_attack() {
 }
 
 #[test]
+fn auto_round_prefers_hp_redistribution_setup_over_an_attack() {
+    let mut fatutu = team_hero(10, 3109, 1_000, [31090111, 31090121]);
+    fatutu.buffs.push(sonettobuf::BuffInfo {
+        uid: Some(20),
+        buff_id: Some(31090111),
+        layer: Some(8),
+        ..Default::default()
+    });
+    let runtime = team_runtime(
+        vec![fatutu, team_hero(11, 3124, 1_000, [312431212, 312451115])],
+        vec![
+            hand_card(10, 31090111, false),
+            hand_card(10, 31090121, false),
+        ],
+    );
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers[0].param1, Some(2));
+}
+
+#[test]
 fn auto_round_feeds_the_selected_conduit_group_first() {
     let mut runtime = twins_conduit_runtime(1_000, 0, false, 70);
     runtime
