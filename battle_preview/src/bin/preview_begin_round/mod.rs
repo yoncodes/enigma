@@ -494,25 +494,22 @@ fn replay_rounds(
 
     for round in battle.rounds.iter().filter(|round| round.index <= through) {
         let index = round.index;
-        if let Some(auto) = &round.auto {
-            let request = auto_round_request(&auto.request)?;
-            run.auto_outcomes.push(AutoOutcome {
-                captured: auto.reply.clone(),
-                generated: runtime.plan_auto_round(&request),
-            });
-        }
+        replay_auto_inputs(&round.autos, 0, &runtime, &mut run.auto_outcomes)?;
         // Capture problems block this round and every later one, never the earlier results.
         let prepared = (|| -> anyhow::Result<(BeginRoundRequest, FightRound)> {
             let request = begin_round_request(&round.request)?;
             let captured = captured_round(&round.reply)?;
             validate_captured_round_continuity(&previous_captured_round, &captured)?;
-            replay_cloth_input(
-                &round.cloth,
-                &mut runtime,
-                resync,
-                &mut resynced,
-                &mut run.cloth_outcomes,
-            )?;
+            for (index, cloth) in round.cloth.iter().enumerate() {
+                replay_cloth_input(
+                    std::slice::from_ref(cloth),
+                    &mut runtime,
+                    resync,
+                    &mut resynced,
+                    &mut run.cloth_outcomes,
+                )?;
+                replay_auto_inputs(&round.autos, index + 1, &runtime, &mut run.auto_outcomes)?;
+            }
             Ok((request, captured))
         })();
         let (request, captured) = match prepared {
@@ -547,6 +544,25 @@ fn replay_rounds(
     }
 
     Ok(run)
+}
+
+fn replay_auto_inputs(
+    inputs: &[capture::CapturedAuto],
+    after_cloth: usize,
+    runtime: &ReplayBattle,
+    outcomes: &mut Vec<AutoOutcome>,
+) -> anyhow::Result<()> {
+    for input in inputs
+        .iter()
+        .filter(|input| input.after_cloth == after_cloth)
+    {
+        let request = auto_round_request(&input.request)?;
+        outcomes.push(AutoOutcome {
+            captured: input.reply.clone(),
+            generated: runtime.plan_auto_round(&request),
+        });
+    }
+    Ok(())
 }
 
 fn resync_round(
