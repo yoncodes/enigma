@@ -168,12 +168,6 @@ pub struct CardDraw {
     pub count: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CardPublishState {
-    pub origin: CommandOrigin,
-    pub team_type: i32,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardOpeningDraw {
     pub origin: CommandOrigin,
@@ -392,7 +386,6 @@ pub enum CardCommand {
         origin: CommandOrigin,
     },
     Play(CardPlay),
-    PublishState(CardPublishState),
     Draw(CardDraw),
     DealOpening(CardOpeningDraw),
     RecycleDrawPile {
@@ -484,7 +477,6 @@ pub enum CardChangeKind {
     TemporaryPersisted,
     TemporaryExpired,
     Played,
-    StatePublished,
     Drawn,
     OpeningDrawn,
     DrawPileRecycled,
@@ -967,23 +959,6 @@ pub(super) fn execute(
                 CardChangeKind::Played,
                 None,
                 Some(played),
-                Vec::new(),
-                Vec::new(),
-            )
-        }
-        CardCommand::PublishState(publish) => {
-            if publish.team_type == 0 {
-                return Err(CardCommandError::InvalidCommand);
-            }
-            operation = Some(CardChange::DeckCount {
-                deck_num: manager.deck_num(),
-                team_type: publish.team_type,
-            });
-            (
-                Some(publish.origin),
-                CardChangeKind::StatePublished,
-                None,
-                None,
                 Vec::new(),
                 Vec::new(),
             )

@@ -21,8 +21,8 @@ pub use command::{
     CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange,
     CardHandLimitChange, CardInvalidateAiOwner, CardInvalidatePlayed, CardInvalidatedAi,
     CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary, CardPlay,
-    CardPublishState, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
-    CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
+    CardQueueUse, CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel,
+    CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
     CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability,
     CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp,
     QueuedUseCard, TemporaryCardKind,
@@ -70,6 +70,13 @@ pub struct CardRefill {
     pub composed_owners: Vec<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CardStateSnapshot {
+    pub hand: Vec<CardInfo>,
+    pub deck_num: i32,
+    pub team_type: i32,
+}
+
 struct DeckRankUpStep {
     deck_index: usize,
     owner_uid: i64,
@@ -79,6 +86,14 @@ struct DeckRankUpStep {
 }
 
 impl CardManager {
+    pub fn state_snapshot(&self, team_type: i32) -> CardStateSnapshot {
+        CardStateSnapshot {
+            hand: self.hand().to_vec(),
+            deck_num: self.deck_num(),
+            team_type,
+        }
+    }
+
     pub(crate) fn set_catalog(&mut self, catalog: crate::catalog::BattleCatalog) {
         self.deck = std::mem::take(&mut self.deck).with_catalog(catalog);
     }

@@ -39,6 +39,7 @@ pub enum BattleChange {
     Emitter(EmitterChange),
     Entity(Box<EntityChanges>),
     Card(Box<CardChanges>),
+    CardStateSnapshot(crate::engine::manager::card::CardStateSnapshot),
     Conduit(ConduitChange),
     Contract(ContractChange),
     Field(FieldChange),

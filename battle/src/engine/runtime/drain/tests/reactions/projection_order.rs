@@ -1,6 +1,134 @@
 use super::*;
 
 #[test]
+fn synchronization_action_publishes_card_state_after_the_skill() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3123),
+                team_type: Some(1),
+                current_hp: Some(10_000),
+                ex_point: Some(99),
+                ex_point_type: Some(2),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(100000, "EzioProps"),
+    };
+    managers
+        .execute_ex_point(
+            crate::engine::manager::ex_point::ExPointCommand::ConfigureSynchronization(
+                crate::engine::manager::ex_point::ExPointConfigureSynchronization {
+                    origin,
+                    target_uid: 10,
+                    definition: crate::engine::manager::ex_point::SynchronizationDefinition::new(
+                        [312301323, 312301333, 312301343],
+                        4,
+                        100,
+                    )
+                    .unwrap(),
+                },
+            ),
+        )
+        .unwrap();
+    managers
+        .execute_buff(BuffCommand::Grant(BuffGrant {
+            origin,
+            source_uid: 10,
+            target_uid: 10,
+            buff_id: 229100,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }))
+        .unwrap();
+    let catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        [312301323, 312301333, 312301343],
+        [],
+    );
+    let hand = vec![CardInfo {
+        uid: Some(10),
+        hero_id: Some(3123),
+        skill_id: Some(31230111),
+        ..Default::default()
+    }];
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: hand.clone(),
+            draw_pile: Vec::new(),
+            deck_num: 27,
+        }))
+        .unwrap();
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312301333,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Synchronization;
+
+    let result = run_skill(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        invocation,
+        crate::engine::skill::action::SkillModifiers::default(),
+    )
+    .unwrap();
+
+    assert!(matches!(
+        result.frames.last().map(|frame| &frame.owner),
+        Some(FrameOwner::SynchronizationCardState { source_uid: 10 })
+    ));
+    let steps = crate::engine::packet::timeline::project_for_version(&result.frames, 7).unwrap();
+    let published = steps.last().unwrap();
+    assert_eq!(
+        published
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.effect_type)
+            .collect::<Vec<_>>(),
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Cardspush as i32,
+            sonettobuf::effect_type_enum::EffectType::Carddecknum as i32,
+        ]
+    );
+    assert_eq!(managers.card.hand(), hand);
+    assert_eq!(managers.card.deck_num(), 27);
+}
+
+#[test]
 fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
     crate::test_support::init_config();
     let fight = Fight {

@@ -220,6 +220,7 @@ fn project_frame(
         | FrameOwner::StageWave { .. }
         | FrameOwner::EventRule
         | FrameOwner::RoundPhase(_)
+        | FrameOwner::SynchronizationCardState { .. }
         | FrameOwner::Command => Ok(StepPacket::effect(effects)),
     }
 }
@@ -923,18 +924,18 @@ fn project_change(
                 .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Played => Vec::new(),
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::StatePublished => {
+        BattleChange::CardStateSnapshot(snapshot) => {
             let mut effects = match redeal_layout {
                 RedealWireLayout::Version6 => Vec::new(),
                 RedealWireLayout::Version7 => {
-                    vec![CardPacket::redeal_hand_sync(changes.after.clone())]
+                    vec![CardPacket::redeal_hand_sync(snapshot.hand.clone())]
                 }
             };
             effects.push(CardPacket::from_change(
-                changes
-                    .operation
-                    .clone()
-                    .expect("published card state retains its deck count"),
+                crate::engine::manager::card::CardChange::DeckCount {
+                    deck_num: snapshot.deck_num,
+                    team_type: snapshot.team_type,
+                },
             ));
             effects
         }
