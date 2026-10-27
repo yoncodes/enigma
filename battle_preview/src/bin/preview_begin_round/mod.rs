@@ -143,8 +143,10 @@ fn report_auto_input(
     let generated_compare = comparable_json(generated);
     let original_compare = comparable_json(original.clone());
     let matches = generated_compare == original_compare;
-    if !matches && let Some(path) = first_diff_path(&generated_compare, &original_compare, "") {
-        eprintln!("  first auto diff: {path}");
+    if !matches {
+        for path in auto_reply_diff_paths(&generated_compare, &original_compare) {
+            eprintln!("  auto diff: {path}");
+        }
     }
     let output = output_path(input_root, output_root, input)?;
     if let Some(parent) = output.parent() {
@@ -160,6 +162,35 @@ fn report_auto_input(
         if matches { "MATCH" } else { "DIFF" },
     );
     Ok(())
+}
+
+fn auto_reply_diff_paths(
+    generated: &serde_json::Value,
+    captured: &serde_json::Value,
+) -> Vec<String> {
+    let (serde_json::Value::Object(generated), serde_json::Value::Object(captured)) =
+        (generated, captured)
+    else {
+        return first_diff_path(generated, captured, "")
+            .into_iter()
+            .collect();
+    };
+    let mut fields = generated.keys().chain(captured.keys()).collect::<Vec<_>>();
+    fields.sort_unstable();
+    fields.dedup();
+    fields
+        .into_iter()
+        .filter_map(|field| {
+            let path = format!("/{field}");
+            match (generated.get(field), captured.get(field)) {
+                (Some(generated), Some(captured)) if generated != captured => {
+                    first_diff_path(generated, captured, &path).or(Some(path))
+                }
+                (None, Some(_)) | (Some(_), None) => Some(path),
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 fn report_cloth_input(
