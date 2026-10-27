@@ -623,7 +623,7 @@ condition_definitions! {
     [103] "None" => none::round_start, setup_route(SetupStage::RoundStart, 1, &[]);
     [104] "None" => none::round_start, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [45100] "HeroRoundInterval" => lifecycle::period_then_start, setup_route(SetupStage::RoundStart, -1, &[]);
-    [45101] "HeroRoundInterval" => lifecycle::period_then_start, setup_route(SetupStage::RoundStartCondition, 101, &[]);
+    [45101] "HeroRoundInterval" => lifecycle::completed_period_then_start, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [727100] "RoundAfter" => lifecycle::after_round, opening_owner_both_sides(setup_route(SetupStage::RoundStartCondition, 100, &[]));
     [45102] "HeroRoundInterval" => lifecycle::round_interval, setup_route(SetupStage::RoundTransitionStart, 0, &[]);
     [45104] "HeroRoundInterval" => lifecycle::period_then_start, setup_route(SetupStage::RoundTransitionStart, 1, &[]);

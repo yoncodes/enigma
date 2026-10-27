@@ -275,15 +275,12 @@ fn completed_active_use_skill_requires_an_active_execution_mode_and_real_source(
 #[test]
 fn hero_round_interval_alternates_from_its_configured_start_round() {
     init_config();
-    let matches = |opcode, start_round, period, current_round| {
+    let matches = |opcode, kind, current_round| {
         let condition = ParsedCondition {
             opcode,
             type_name: "HeroRoundInterval".into(),
-            kind: ParsedConditionKind::RoundInterval {
-                start_round,
-                period,
-            },
-            raw_args: vec![period.to_string(), start_round.to_string()],
+            kind,
+            raw_args: Vec::new(),
         };
         condition_matches(
             &condition,
@@ -298,18 +295,26 @@ fn hero_round_interval_alternates_from_its_configured_start_round() {
         )
     };
 
-    assert!(matches(45104, 1, 2, 1));
-    assert!(!matches(45104, 1, 2, 2));
-    assert!(matches(45104, 1, 2, 3));
-    assert!(!matches(45104, 2, 2, 1));
-    assert!(matches(45104, 2, 2, 2));
-    assert!(!matches(45104, 2, 2, 3));
-    assert!(!matches(45101, 11, 1, 11));
-    assert!(matches(45101, 11, 1, 12));
-    assert!(!matches(45101, 2, 2, 2));
-    assert!(matches(45101, 2, 2, 3));
-    assert!(!matches(45101, 2, 2, 4));
-    assert!(matches(45101, 2, 2, 5));
+    let current = |start_round, period| ParsedConditionKind::RoundInterval {
+        start_round,
+        period,
+    };
+    let completed = |start_round, period| ParsedConditionKind::CompletedRoundInterval {
+        start_round,
+        period,
+    };
+    assert!(matches(45104, current(1, 2), 1));
+    assert!(!matches(45104, current(1, 2), 2));
+    assert!(matches(45104, current(1, 2), 3));
+    assert!(!matches(45104, current(2, 2), 1));
+    assert!(matches(45104, current(2, 2), 2));
+    assert!(!matches(45104, current(2, 2), 3));
+    assert!(!matches(45101, completed(11, 1), 11));
+    assert!(matches(45101, completed(11, 1), 12));
+    assert!(!matches(45101, completed(2, 2), 2));
+    assert!(matches(45101, completed(2, 2), 3));
+    assert!(!matches(45101, completed(2, 2), 4));
+    assert!(matches(45101, completed(2, 2), 5));
 }
 
 #[test]

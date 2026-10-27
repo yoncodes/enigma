@@ -40,6 +40,10 @@ pub enum ParsedConditionKind {
         start_round: i32,
         period: i32,
     },
+    CompletedRoundInterval {
+        start_round: i32,
+        period: i32,
+    },
     ActionOrder(i32),
     ActionOrderRange {
         start: i32,
