@@ -546,7 +546,7 @@ fn best_candidate(
                     candidate.energy,
                     candidate.energy_amount,
                     candidate.special_energy,
-                    candidate.flexible_energy,
+                    candidate.flexible_energy && !candidate.special_energy,
                 ),
                 // Give every hero a card before any hero plays a second one when utility is equal.
                 candidate.first_for_owner,

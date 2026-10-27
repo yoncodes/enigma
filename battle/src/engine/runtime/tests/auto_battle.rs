@@ -937,6 +937,55 @@ fn auto_round_prefers_flexible_energy_when_equal_amounts_are_usable() {
 }
 
 #[test]
+fn auto_round_keeps_equal_special_energy_cards_in_hand_order() {
+    let mut runtime = team_runtime(
+        vec![
+            team_hero(10, 3149, 1_000, [31490111, 31490121]),
+            team_hero(11, 3145, 1_000, [31450111, 31450121]),
+        ],
+        vec![
+            hand_card(10, 31490211, false),
+            hand_card(11, 31450181, false),
+        ],
+    );
+    runtime.round_state.act_point = 2;
+    runtime
+        .managers
+        .conduit
+        .execute(ConduitCommand::SelectGroup {
+            source_uid: 10,
+            group: 2,
+        })
+        .unwrap();
+    for skill_id in [31490111, 31490121] {
+        runtime
+            .managers
+            .conduit
+            .execute(ConduitCommand::StopSkill {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60294, "StopDeviceSkill"),
+                },
+                source_uid: 10,
+                team: 1,
+                skill_id,
+            })
+            .unwrap();
+    }
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(
+        reply
+            .opers
+            .iter()
+            .map(|operation| operation.param1)
+            .collect::<Vec<_>>(),
+        vec![Some(1), Some(1)]
+    );
+}
+
+#[test]
 fn auto_round_keeps_equal_energy_cards_in_hand_order_after_an_owner_plays() {
     let mut ally = team_hero(11, 3023, 1_000, [30230111, 30230121]);
     ally.ex_point = Some(5);
