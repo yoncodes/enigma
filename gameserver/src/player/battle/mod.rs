@@ -639,13 +639,20 @@ impl ActiveBattle {
     }
 
     pub fn begin_round(&mut self, request: BeginRoundRequest) -> Result<BeginRoundReply, AppError> {
-        let mut next = self.clone();
-        let reply = ::battle::dungeon::begin_round(&mut next.runtime, request.clone())
-            .map_err(AppError::Custom)?;
-        next.record_round(request);
-        let reply = compress_round_steps(reply)?;
+        let (next, reply) = self.clone().advance_round_candidate(request)?;
         *self = next;
         Ok(reply)
+    }
+
+    pub fn advance_round_candidate(
+        mut self,
+        request: BeginRoundRequest,
+    ) -> Result<(Self, BeginRoundReply), AppError> {
+        let reply = ::battle::dungeon::begin_round_candidate(&mut self.runtime, request.clone())
+            .map_err(AppError::Custom)?;
+        self.record_round(request);
+        let reply = compress_round_steps(reply)?;
+        Ok((self, reply))
     }
 
     fn record_round(&mut self, request: BeginRoundRequest) {

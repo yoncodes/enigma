@@ -775,9 +775,17 @@ impl BattleRuntime {
 
     pub fn advance_round(&mut self, request: BeginRoundRequest) -> Result<FightRound, String> {
         let mut next = self.clone();
-        let round = next.build_begin_round_from_schedule(&request)?;
-        next.round = Some(round.clone());
+        let round = next.advance_round_candidate(request)?;
         *self = next;
+        Ok(round)
+    }
+
+    pub(crate) fn advance_round_candidate(
+        &mut self,
+        request: BeginRoundRequest,
+    ) -> Result<FightRound, String> {
+        let round = self.build_begin_round_from_schedule(&request)?;
+        self.round = Some(round.clone());
         Ok(round)
     }
 }
