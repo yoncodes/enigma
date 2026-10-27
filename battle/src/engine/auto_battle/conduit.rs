@@ -107,7 +107,7 @@ fn simulate_group(
     if skills
         .iter()
         .any(|skill| sim_catalog.is_big_skill(skill.skill_id))
-        && !CardMechanic.ultimate_ready(managers, source)
+        && !CardMechanic.ultimate_resource_ready(managers, source)
     {
         return None;
     }

@@ -572,7 +572,7 @@ fn auto_round_selects_conduit_groups_from_round_utility() {
     );
 }
 
-fn twins_conduit_runtime(enemy_hp: i32, cost_reduction: bool) -> BattleRuntime {
+fn twins_conduit_runtime(enemy_hp: i32, cost_reduction: bool, ex_point: i32) -> BattleRuntime {
     crate::test_support::init_config();
     let twins = FightEntityInfo {
         uid: Some(10),
@@ -580,6 +580,10 @@ fn twins_conduit_runtime(enemy_hp: i32, cost_reduction: bool) -> BattleRuntime {
         team_type: Some(1),
         position: Some(1),
         current_hp: Some(1_000),
+        ex_point: Some(ex_point),
+        ex_point_type: Some(4),
+        ex_point_max: Some(100),
+        ex_skill: Some(0),
         attr: Some(HeroAttribute {
             hp: Some(1_000),
             ..Default::default()
@@ -669,8 +673,17 @@ fn auto_round_keeps_the_current_conduit_group_when_power_is_insufficient() {
 
 #[test]
 fn auto_round_conduit_groups_honor_reduced_costs() {
-    let reduced = twins_conduit_runtime(1_000, true).plan_auto_round(&AutoRoundRequest::default());
+    let reduced =
+        twins_conduit_runtime(1_000, true, 0).plan_auto_round(&AutoRoundRequest::default());
     assert_eq!(reduced.devices_opers[0].index, Some(2));
+}
+
+#[test]
+fn auto_round_selects_ready_conduit_unique_without_a_character_ultimate() {
+    let reply =
+        twins_conduit_runtime(1_000, false, 100).plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.devices_opers[0].index, Some(3));
 }
 
 #[test]

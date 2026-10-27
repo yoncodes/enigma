@@ -86,6 +86,14 @@ impl CardMechanic {
         if entity.ex_skill <= 0 {
             return false;
         }
+        self.ultimate_resource_ready(managers, entity)
+    }
+
+    pub fn ultimate_resource_ready(
+        &self,
+        managers: &BattleManagers,
+        entity: &TargetEntity,
+    ) -> bool {
         if let Some(power) = self.boss_ultimate_power(managers, entity.uid) {
             return power.is_full()
                 && !managers
