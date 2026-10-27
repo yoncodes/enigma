@@ -578,6 +578,15 @@ fn twins_conduit_runtime(
     cost_reduction: bool,
     ex_point: i32,
 ) -> BattleRuntime {
+    twins_conduit_runtime_with_enemy_hps(&[enemy_hp], enemy_career, cost_reduction, ex_point)
+}
+
+fn twins_conduit_runtime_with_enemy_hps(
+    enemy_hps: &[i32],
+    enemy_career: i32,
+    cost_reduction: bool,
+    ex_point: i32,
+) -> BattleRuntime {
     crate::test_support::init_config();
     let twins = FightEntityInfo {
         uid: Some(10),
@@ -604,18 +613,22 @@ fn twins_conduit_runtime(
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                team_type: Some(2),
-                position: Some(1),
-                career: Some(enemy_career),
-                current_hp: Some(enemy_hp),
-                attr: Some(HeroAttribute {
-                    hp: Some(1_000),
+            entitys: enemy_hps
+                .iter()
+                .enumerate()
+                .map(|(index, hp)| FightEntityInfo {
+                    uid: Some(-(index as i64) - 1),
+                    team_type: Some(2),
+                    position: Some(index as i32 + 1),
+                    career: Some(enemy_career),
+                    current_hp: Some(*hp),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
+                })
+                .collect(),
             ..Default::default()
         }),
         ..Default::default()
@@ -726,6 +739,65 @@ fn auto_round_feeds_the_selected_conduit_group_first() {
         vec![Some(1), Some(2)]
     );
     assert_eq!(reply.devices_opers[0].index, Some(1));
+}
+
+#[test]
+fn auto_round_selects_an_enemy_while_conduit_energy_resolves_on_its_owner() {
+    let setup = |runtime: &mut BattleRuntime| {
+        runtime
+            .managers
+            .execute_card(CardCommand::Setup(CardSetup {
+                hand: vec![hand_card(10, 31446012, false)],
+                draw_pile: Vec::new(),
+                deck_num: 0,
+            }))
+            .unwrap();
+        runtime.round_state.act_point = 1;
+    };
+    let mut runtime = twins_conduit_runtime_with_enemy_hps(&[1_000, 1_000], 0, false, 70);
+    setup(&mut runtime);
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest {
+        to_id: Some(-2),
+        ..Default::default()
+    });
+
+    assert_eq!(reply.opers[0].to_id, Some(-2));
+    let pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+        runtime.catalog_data.unwrap(),
+        &runtime.fight,
+    );
+    let mut catalog = runtime.catalog.clone();
+    runtime
+        .managers
+        .catalog()
+        .extend_skill_roots(&mut catalog, [31446012], std::iter::empty());
+    let mut determinism = runtime.determinism.clone();
+    crate::engine::runtime::schedule::run_player_commands(
+        &mut runtime.managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        crate::engine::skill::target::TargetContext::default(),
+        reply
+            .opers
+            .iter()
+            .filter_map(crate::engine::round::command::RoundCommand::from_oper),
+        1,
+        crate::engine::manager::emitter::UID,
+    )
+    .unwrap();
+    assert_eq!(runtime.managers.conduit.power(1, 1), 2);
+
+    let mut fallback = twins_conduit_runtime_with_enemy_hps(&[1_000, 0], 0, false, 70);
+    setup(&mut fallback);
+
+    let reply = fallback.plan_auto_round(&AutoRoundRequest {
+        to_id: Some(-2),
+        ..Default::default()
+    });
+
+    assert_eq!(reply.opers[0].to_id, Some(-1));
 }
 
 #[test]

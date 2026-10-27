@@ -16,7 +16,7 @@ use crate::engine::{
     skill::{
         buff_act::action_point::skill_uses_action_point,
         effect::SkillEffectCatalog,
-        target::{TargetContext, TargetPool, TargetRequest, TargetResolver},
+        target::{CardSelectionResolver, TargetContext, TargetPool, TargetRequest, TargetResolver},
     },
 };
 
@@ -454,7 +454,7 @@ fn best_candidate(
                 sim,
                 pool,
             );
-            let target_uid = choose_target(
+            let resolved_target_uid = choose_target(
                 targets,
                 skill_id,
                 preferred_target,
@@ -463,6 +463,29 @@ fn best_candidate(
                 pool,
                 catalog,
             )?;
+            let target_uid = energy_gain
+                .and_then(|_| {
+                    card_selection_target_options(
+                        source_uid,
+                        skill_id,
+                        preferred_target,
+                        managers,
+                        live_pool,
+                        catalog,
+                        determinism,
+                    )
+                    .into_iter()
+                    .min_by_key(|uid| {
+                        let target = pool.entity(*uid);
+                        (
+                            preferred_target != Some(*uid),
+                            target.map(|target| target.current_hp).unwrap_or(i32::MAX),
+                            target.map(|target| target.position).unwrap_or(i32::MAX),
+                            *uid,
+                        )
+                    })
+                })
+                .unwrap_or(resolved_target_uid);
             Some(Candidate {
                 card_index,
                 source_uid,
@@ -637,7 +660,7 @@ fn legal_target(
     determinism: &RoundDeterminism,
 ) -> bool {
     let Some(target_uid) = requested_target else {
-        return !target_options(
+        return !card_selection_target_options(
             source_uid,
             skill_id,
             None,
@@ -648,7 +671,7 @@ fn legal_target(
         )
         .is_empty();
     };
-    target_options(
+    card_selection_target_options(
         source_uid,
         skill_id,
         Some(target_uid),
@@ -730,5 +753,41 @@ fn target_options(
         determinism,
         Some(managers),
         context,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn card_selection_target_options(
+    source_uid: i64,
+    skill_id: i32,
+    preferred_target: Option<i64>,
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &RoundDeterminism,
+) -> Vec<i64> {
+    let code = catalog.logic_target(skill_id);
+    CardSelectionResolver::candidates(
+        &TargetRequest {
+            code,
+            raw: Vec::new(),
+        },
+        skill_id,
+        source_uid,
+        pool,
+        catalog,
+        determinism,
+        Some(managers),
+        TargetContext {
+            runtime_target_uid: preferred_target.unwrap_or_default(),
+            active_skill_id: skill_id,
+            active_skill_source_uid: source_uid,
+            active_skill_is_attack: catalog.is_attack(skill_id),
+            active_skill_rank: managers.catalog().skill_rank(skill_id),
+            active_skill_type: managers.catalog().damage_target_count_kind(code),
+            active_skill_effect_tag: catalog.effect_tag(skill_id),
+            damage_target_count_kind: managers.catalog().damage_target_count_kind(code),
+            ..Default::default()
+        },
     )
 }
