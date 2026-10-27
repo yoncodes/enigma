@@ -810,6 +810,13 @@ fn lethal_injury_skill_rate_gate_has_its_own_immediate_route() {
             phase: Some(SkillPhase::Immediate),
         }
     );
+    assert_eq!(definition.read_timing, ConditionReadTiming::ActionStart);
+    assert_eq!(
+        find_key(51203, "HasTypeIdBuffMoreThan")
+            .unwrap()
+            .read_timing,
+        ConditionReadTiming::Current
+    );
     assert!(find_key(51201, "HasBuffId").is_none());
 }
 

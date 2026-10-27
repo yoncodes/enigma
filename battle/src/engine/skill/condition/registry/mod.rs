@@ -33,6 +33,13 @@ pub enum ConditionRole {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ConditionReadTiming {
+    #[default]
+    Current,
+    ActionStart,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SetupFrameScope {
     Side,
     #[default]
@@ -206,6 +213,7 @@ pub struct ConditionDefinition {
     pub key: DefinitionKey,
     pub parse: Parser,
     pub role: ConditionRole,
+    pub read_timing: ConditionReadTiming,
     pub dependencies: &'static [EventKind],
     pub publication: PublicationPhase,
     pub reaction_timing: ReactionTimingPolicy,
@@ -231,6 +239,7 @@ pub struct ConditionDefinition {
 #[derive(Debug, Clone, Copy)]
 pub struct ConditionMetadata {
     pub role: ConditionRole,
+    pub read_timing: ConditionReadTiming,
     pub dependencies: &'static [EventKind],
     pub publication: PublicationPhase,
     pub reaction_timing: ReactionTimingPolicy,
@@ -263,6 +272,7 @@ pub const fn definition(
         key: DefinitionKey::new(opcode, type_name),
         parse,
         role: metadata.role,
+        read_timing: metadata.read_timing,
         dependencies: metadata.dependencies,
         publication: metadata.publication,
         reaction_timing: metadata.reaction_timing,
@@ -289,6 +299,7 @@ pub const fn definition(
 pub const fn predicate(dependencies: &'static [EventKind]) -> ConditionMetadata {
     ConditionMetadata {
         role: ConditionRole::Predicate,
+        read_timing: ConditionReadTiming::Current,
         dependencies,
         publication: PublicationPhase::AfterPublish,
         reaction_timing: ReactionTimingPolicy::Fixed(ReactionTiming::Immediate),
@@ -315,6 +326,7 @@ pub const fn predicate(dependencies: &'static [EventKind]) -> ConditionMetadata 
 pub const fn event_trigger(event: EventKind, phase: Option<SkillPhase>) -> ConditionMetadata {
     ConditionMetadata {
         role: ConditionRole::Trigger { event, phase },
+        read_timing: ConditionReadTiming::Current,
         dependencies: &[],
         publication: PublicationPhase::AfterPublish,
         reaction_timing: ReactionTimingPolicy::Fixed(ReactionTiming::Immediate),
@@ -345,6 +357,7 @@ pub const fn setup_route(
 ) -> ConditionMetadata {
     ConditionMetadata {
         role: ConditionRole::Setup { stage, priority },
+        read_timing: ConditionReadTiming::Current,
         dependencies,
         publication: PublicationPhase::AfterPublish,
         reaction_timing: ReactionTimingPolicy::Fixed(ReactionTiming::Immediate),
@@ -370,6 +383,11 @@ pub const fn setup_route(
 
 pub const fn before_publish(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.publication = PublicationPhase::BeforePublish;
+    metadata
+}
+
+pub const fn reads_action_start(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.read_timing = ConditionReadTiming::ActionStart;
     metadata
 }
 
@@ -702,7 +720,7 @@ condition_definitions! {
     [57304] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::RoundEndAfterSettlement, None));
     [539203] "PerSelfTeamTypeType2BuffTypeIdNum" => buff::per_team_status_type_count, predicate(&[EventKind::BuffChanged]);
     [539301] "PerSelfTeamTypeType2BuffTypeIdNum" => buff::per_team_status_type_count, event_trigger(EventKind::SmallRoundEnd, None);
-    [51201] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [51201] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, reads_action_start(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate)));
     [51402] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [51203] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [51210] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));

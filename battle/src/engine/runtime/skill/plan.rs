@@ -14,6 +14,7 @@ use crate::engine::{
         },
     },
 };
+use std::sync::Arc;
 
 pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) modifiers: SkillModifiers,
@@ -22,6 +23,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) configured_targets: Option<Vec<i64>>,
     pub(super) additional_damage_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
+    pub(super) action_start_managers: Option<Arc<BattleManagers>>,
     pub(super) assassination_marks_at_action_start:
         Option<Vec<crate::engine::skill::buff_act::assassination::TargetMark>>,
     pub(super) assassination_rate_marks_at_action_start: Option<Vec<(i64, i32)>>,
@@ -110,6 +112,7 @@ impl SkillExecution {
             configured_targets: None,
             additional_damage_targets: None,
             planned_crits: None,
+            action_start_managers: None,
             assassination_marks_at_action_start: None,
             assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
@@ -145,6 +148,7 @@ impl SkillExecution {
             configured_targets: None,
             additional_damage_targets: None,
             planned_crits: None,
+            action_start_managers: None,
             assassination_marks_at_action_start: None,
             assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
