@@ -410,6 +410,10 @@ impl ConduitManager {
             .collect()
     }
 
+    pub(crate) fn devices(&self) -> impl Iterator<Item = &ConduitDevice> {
+        self.areas.values().flat_map(|area| &area.devices)
+    }
+
     pub fn skill_ids(&self) -> impl Iterator<Item = i32> + '_ {
         self.areas
             .values()

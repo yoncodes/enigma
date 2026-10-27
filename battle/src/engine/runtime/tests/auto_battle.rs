@@ -6,7 +6,7 @@ use crate::engine::{
     },
     skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
 };
-use sonettobuf::{AutoRoundRequest, CardInfo, HeroAttribute};
+use sonettobuf::{AutoRoundRequest, CardInfo, FightDeviceAreaInfo, HeroAttribute};
 
 fn auto_runtime() -> BattleRuntime {
     crate::test_support::init_config();
@@ -485,6 +485,199 @@ fn auto_round_loads_visible_conduit_card_roots() {
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
     assert_eq!(reply.opers[0].param1, Some(1));
+}
+
+#[test]
+fn auto_round_selects_conduit_groups_from_round_utility() {
+    crate::test_support::init_config();
+    let hero = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        team_type: Some(1),
+        position: Some(uid as i32 - 9),
+        current_hp: Some(1_000),
+        attr: Some(HeroAttribute {
+            hp: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut regulus = hero(13, 3025);
+    regulus.destiny_stone = Some(302502);
+    regulus.destiny_rank = Some(4);
+    let fight = Fight {
+        battle_id: Some(119383110),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![hero(10, 3149), hero(11, 3144), hero(12, 3145), regulus],
+            device_area: Some(FightDeviceAreaInfo::default()),
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                position: Some(1),
+                career: Some(1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(fight);
+    runtime
+        .managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: [
+                (11, 31446012),
+                (11, 31446011),
+                (13, 31447002),
+                (10, 31490201),
+                (13, 31446021),
+                (10, 31446012),
+                (11, 31446011),
+                (12, 31450181),
+                (13, 31446021),
+                (10, 31446022),
+            ]
+            .into_iter()
+            .map(|(uid, skill_id)| hand_card(uid, skill_id, false))
+            .collect(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        }))
+        .unwrap();
+    runtime.round_state.act_point = 5;
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(
+        reply
+            .devices_opers
+            .iter()
+            .map(|oper| (oper.uid, oper.index))
+            .collect::<Vec<_>>(),
+        vec![
+            (Some(10), Some(2)),
+            (Some(11), Some(2)),
+            (Some(12), Some(1)),
+            (Some(13), Some(1)),
+        ]
+    );
+}
+
+fn twins_conduit_runtime(enemy_hp: i32, cost_reduction: bool) -> BattleRuntime {
+    crate::test_support::init_config();
+    let twins = FightEntityInfo {
+        uid: Some(10),
+        model_id: Some(3149),
+        team_type: Some(1),
+        position: Some(1),
+        current_hp: Some(1_000),
+        attr: Some(HeroAttribute {
+            hp: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(Fight {
+        battle_id: Some(77),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![twins],
+            device_area: Some(FightDeviceAreaInfo::default()),
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                position: Some(1),
+                career: Some(1),
+                current_hp: Some(enemy_hp),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    grant_buff(&mut runtime, 10, 10, 31490006);
+    grant_buff(&mut runtime, 10, 10, 31490007);
+    if cost_reduction {
+        grant_buff(&mut runtime, 10, 10, 31440113);
+    }
+    runtime
+}
+
+fn regulus_conduit_runtime(enemy_hp: i32) -> BattleRuntime {
+    crate::test_support::init_config();
+    runtime(Fight {
+        battle_id: Some(77),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3025),
+                team_type: Some(1),
+                position: Some(1),
+                ex_skill_level: Some(3),
+                destiny_stone: Some(302502),
+                destiny_rank: Some(4),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            device_area: Some(FightDeviceAreaInfo::default()),
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                position: Some(1),
+                current_hp: Some(enemy_hp),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    })
+}
+
+#[test]
+fn auto_round_keeps_the_current_conduit_group_when_power_is_insufficient() {
+    let insufficient = regulus_conduit_runtime(1_000).plan_auto_round(&AutoRoundRequest::default());
+    assert_eq!(insufficient.devices_opers[0].index, Some(1));
+}
+
+#[test]
+fn auto_round_conduit_groups_honor_reduced_costs() {
+    let reduced = twins_conduit_runtime(1_000, true).plan_auto_round(&AutoRoundRequest::default());
+    assert_eq!(reduced.devices_opers[0].index, Some(2));
+}
+
+#[test]
+fn auto_round_keeps_the_current_conduit_group_without_a_legal_target() {
+    let reply = regulus_conduit_runtime(0).plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.devices_opers[0].index, Some(1));
 }
 
 #[test]

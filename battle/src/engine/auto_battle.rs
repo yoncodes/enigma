@@ -20,6 +20,8 @@ use crate::engine::{
     },
 };
 
+mod conduit;
+
 const HEAL_BELOW_HP_PERCENT: i64 = 80;
 const URGENT_HEAL_BELOW_HP_PERCENT: i64 = 60;
 
@@ -170,7 +172,17 @@ pub(crate) fn plan(
         });
     }
 
-    reply(request, opers, devices_opers)
+    reply(
+        request,
+        opers,
+        conduit::operations(
+            fight,
+            &sim,
+            &pool.runtime_view(&sim),
+            catalog,
+            &sim_determinism,
+        ),
+    )
 }
 
 fn card_choice_options(card: &CardInfo, managers: &BattleManagers) -> Vec<i32> {
