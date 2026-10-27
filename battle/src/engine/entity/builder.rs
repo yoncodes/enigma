@@ -142,7 +142,12 @@ impl EntityBuilder {
             equip_uid: Some(primary_equip_uid),
             trial_equip: Some(EquipRecord::default()),
             ex_skill_level: Some(hero.ex_skill_level),
-            power_infos: Self::hero_power_infos(game, hero.hero_id),
+            power_infos: Self::hero_power_infos(
+                game,
+                hero.hero_id,
+                hero.destiny_stone,
+                hero.destiny_rank,
+            ),
             ex_skill_point_change: Some(0),
             team_type: Some(self.team_type),
             enhance_info_box: Some(EnhanceInfoBox {
@@ -308,7 +313,12 @@ impl EntityBuilder {
                     break_lv: None,
                 }),
                 ex_skill_level: Some(trial.ex_skill_lv),
-                power_infos: Self::hero_power_infos(tables, trial.hero_id),
+                power_infos: Self::hero_power_infos(
+                    tables,
+                    trial.hero_id,
+                    trial.facets_id,
+                    trial.facetslevel,
+                ),
                 ex_skill_point_change: Some(0),
                 team_type: Some(team_type),
                 enhance_info_box: Some(EnhanceInfoBox {
@@ -429,12 +439,33 @@ impl EntityBuilder {
         game.character.get(hero_id).map(|c| c.career).unwrap_or(0)
     }
 
-    fn hero_power_infos(game: &config::GameDB, hero_id: i32) -> Vec<PowerInfo> {
-        game.character
+    fn hero_power_infos(
+        game: &config::GameDB,
+        hero_id: i32,
+        destiny_stone: i32,
+        destiny_rank: i32,
+    ) -> Vec<PowerInfo> {
+        let mut powers = game
+            .character
             .get(hero_id)
             .into_iter()
             .flat_map(|c| parse_power_specs(&c.power_max))
             .filter(|(_, max)| *max > 0)
+            .collect::<Vec<_>>();
+        if let Some(spec) = Destiny::power_add(game, destiny_stone, destiny_rank) {
+            for (power_id, added_max) in parse_power_specs(spec) {
+                if added_max <= 0 {
+                    continue;
+                }
+                if let Some((_, maximum)) = powers.iter_mut().find(|(id, _)| *id == power_id) {
+                    *maximum = maximum.saturating_add(added_max);
+                } else {
+                    powers.push((power_id, added_max));
+                }
+            }
+        }
+        powers
+            .into_iter()
             .map(|(power_id, max)| PowerInfo {
                 power_id: Some(power_id),
                 num: Some(0),
@@ -460,6 +491,7 @@ mod tests {
         input::{EquipmentBuildInput, HeroBuildInput},
         stats::Stats,
     };
+    use sonettobuf::PowerInfo;
 
     #[test]
     fn catalog_attached_builder_matches_the_legacy_entry_point() {
@@ -698,5 +730,45 @@ mod tests {
         assert!(entity.skill_group1.is_empty());
         assert!(entity.skill_group2.is_empty());
         assert_eq!(entity.ex_skill, Some(0));
+    }
+
+    #[test]
+    fn selected_destiny_adds_its_configured_power_to_roster_and_trial() {
+        crate::test_support::init_config();
+
+        let hero = HeroBuildInput {
+            hero_id: 3053,
+            rank: 4,
+            ex_skill_level: 3,
+            ..Default::default()
+        };
+        let plain = EntityBuilder::new(hero.clone(), 1, 1, false)
+            .build()
+            .unwrap();
+        let enhanced = EntityBuilder::new(
+            HeroBuildInput {
+                destiny_stone: 305301,
+                destiny_rank: 1,
+                ..hero
+            },
+            1,
+            1,
+            false,
+        )
+        .build()
+        .unwrap();
+        let (trial, _) = EntityBuilder::trial(9341003, 10, 1, 1).unwrap();
+
+        assert!(plain.power_infos.is_empty());
+        for entity in [enhanced, trial] {
+            assert!(matches!(
+                entity.power_infos.as_slice(),
+                [PowerInfo {
+                    power_id: Some(1),
+                    num: Some(0),
+                    max: Some(5),
+                }]
+            ));
+        }
     }
 }
