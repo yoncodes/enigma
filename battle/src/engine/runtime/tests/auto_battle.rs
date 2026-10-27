@@ -113,6 +113,33 @@ fn auto_round_prefers_the_configured_win_target_over_lower_hp_enemies() {
 }
 
 #[test]
+fn auto_round_keeps_the_selected_enemy_for_all_queued_attacks() {
+    let mut runtime = team_runtime_against(
+        vec![team_hero(10, 3066, 1_000, [30660111, 30660121])],
+        vec![enemy(-1, 1), enemy(-2, 100_000)],
+        vec![
+            hand_card(10, 30660111, false),
+            hand_card(10, 30660121, false),
+        ],
+    );
+    runtime.round_state.act_point = 2;
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest {
+        to_id: Some(-1),
+        ..Default::default()
+    });
+
+    assert_eq!(
+        reply
+            .opers
+            .iter()
+            .map(|operation| operation.to_id)
+            .collect::<Vec<_>>(),
+        vec![Some(-1), Some(-1)]
+    );
+}
+
+#[test]
 fn auto_round_honors_existing_operations_without_echoing_them() {
     let mut runtime = auto_runtime();
     let request = AutoRoundRequest {

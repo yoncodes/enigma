@@ -513,15 +513,31 @@ fn best_candidate(
                 sim,
                 pool,
             );
-            let resolved_target_uid = choose_target(
-                targets,
-                skill_id,
-                preferred_target,
-                &buffs,
-                sim,
-                pool,
-                catalog,
-            )?;
+            let live_preferred_target = catalog
+                .is_attack(skill_id)
+                .then(|| {
+                    target_options(
+                        source_uid,
+                        skill_id,
+                        preferred_target,
+                        managers,
+                        live_pool,
+                        catalog,
+                        determinism,
+                    )
+                })
+                .and_then(|targets| preferred_target.filter(|uid| targets.contains(uid)));
+            let resolved_target_uid = live_preferred_target.or_else(|| {
+                choose_target(
+                    targets,
+                    skill_id,
+                    preferred_target,
+                    &buffs,
+                    sim,
+                    pool,
+                    catalog,
+                )
+            })?;
             let target_uid = energy_gain
                 .and_then(|_| {
                     card_selection_target_options(
