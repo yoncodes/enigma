@@ -630,6 +630,40 @@ fn auto_round_does_not_report_a_future_card_driven_group_change() {
 }
 
 #[test]
+fn auto_round_selects_conduit_healing_only_for_urgent_hp() {
+    for (ally_hp, expected_group) in [(700, 1), (500, 2)] {
+        let mut runtime = team_runtime(
+            vec![
+                team_hero(10, 3145, 1_000, [31450111, 31450121]),
+                team_hero(11, 3023, ally_hp, [30230111, 30230121]),
+            ],
+            vec![hand_card(10, 31446062, false)],
+        );
+        runtime
+            .managers
+            .conduit
+            .execute(ConduitCommand::StopSkill {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60294, "StopDeviceSkill"),
+                },
+                source_uid: 10,
+                team: 1,
+                skill_id: 31450111,
+            })
+            .unwrap();
+
+        let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+        assert_eq!(
+            reply.devices_opers[0].index,
+            Some(expected_group),
+            "ally hp {ally_hp}"
+        );
+    }
+}
+
+#[test]
 fn auto_round_conduit_lookahead_respects_higher_priority_action_points() {
     let mut ally = team_hero(11, 3023, 1_000, [30230111, 30230121]);
     ally.ex_point = Some(5);
