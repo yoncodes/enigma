@@ -19,7 +19,14 @@ pub(super) struct CapturedRound {
     pub index: i32,
     pub request: PathBuf,
     pub reply: PathBuf,
+    pub auto: Option<CapturedAuto>,
     pub cloth: Vec<CapturedCloth>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(super) struct CapturedAuto {
+    pub request: PathBuf,
+    pub reply: PathBuf,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -68,6 +75,7 @@ impl CapturedBattle {
                     index,
                     request: parent.join(request),
                     reply: parent.join(reply),
+                    auto: auto_input(parent, index),
                     cloth: cloth_inputs(parent, index)?,
                 })
             })
@@ -131,6 +139,8 @@ fn split_session(files: &[PathBuf]) -> Vec<CapturedBattle> {
     let mut last_start_request = None;
     let mut cloth = Vec::new();
     let mut request = None;
+    let mut auto_request = None;
+    let mut auto = None;
     for file in files {
         let Some(command) = command(file) else {
             continue;
@@ -143,6 +153,8 @@ fn split_session(files: &[PathBuf]) -> Vec<CapturedBattle> {
                 battles.extend(current.take());
                 cloth.clear();
                 request = None;
+                auto_request = None;
+                auto = None;
                 current = Some(CapturedBattle {
                     start: file.clone(),
                     start_request: last_start_request.take(),
@@ -159,6 +171,15 @@ fn split_session(files: &[PathBuf]) -> Vec<CapturedBattle> {
                     input.reply = Some(file.clone());
                 }
             }
+            "AutoRoundRequest" if current.is_some() => auto_request = Some(file.clone()),
+            "AutoRoundReply" if current.is_some() => {
+                if let Some(request) = auto_request.take() {
+                    auto = Some(CapturedAuto {
+                        request,
+                        reply: file.clone(),
+                    });
+                }
+            }
             "BeginRoundRequest" if current.is_some() => request = Some(file.clone()),
             "BeginRoundReply" => {
                 if let (Some(battle), Some(request)) = (current.as_mut(), request.take()) {
@@ -167,9 +188,12 @@ fn split_session(files: &[PathBuf]) -> Vec<CapturedBattle> {
                         index,
                         request,
                         reply: file.clone(),
+                        auto: auto.take(),
                         cloth: std::mem::take(&mut cloth),
                     });
                 }
+                auto_request = None;
+                auto = None;
             }
             "EndFightRequest" | "EndFightPush" | "EndFightReply" => {
                 battles.extend(current.take());
@@ -179,6 +203,12 @@ fn split_session(files: &[PathBuf]) -> Vec<CapturedBattle> {
     }
     battles.extend(current);
     battles
+}
+
+fn auto_input(parent: &Path, round_index: i32) -> Option<CapturedAuto> {
+    let request = parent.join(format!("AutoRoundRequest_{round_index}.json"));
+    let reply = parent.join(format!("AutoRoundReply_{round_index}.json"));
+    (request.exists() && reply.exists()).then_some(CapturedAuto { request, reply })
 }
 
 fn cloth_inputs(parent: &Path, round_index: i32) -> io::Result<Vec<CapturedCloth>> {
@@ -265,6 +295,7 @@ mod tests {
                     index: 1,
                     request: files[3].clone(),
                     reply: files[4].clone(),
+                    auto: None,
                     cloth: vec![CapturedCloth {
                         request: files[2].clone(),
                         reply: None,
@@ -274,6 +305,7 @@ mod tests {
                     index: 2,
                     request: files[6].clone(),
                     reply: files[7].clone(),
+                    auto: None,
                     cloth: vec![CapturedCloth {
                         request: files[5].clone(),
                         reply: None,
@@ -305,6 +337,48 @@ mod tests {
             battles[0].rounds[0].cloth[0].reply.as_ref(),
             Some(&files[2])
         );
+    }
+
+    #[test]
+    fn session_timeline_pairs_auto_planning_with_the_following_round() {
+        let files = [
+            "20261011_110256_429_002589_StartDungeonReply.json",
+            "20261011_110305_582_002594_AutoRoundRequest.json",
+            "20261011_110305_631_002595_AutoRoundReply.json",
+            "20261011_110308_819_002596_BeginRoundRequest.json",
+            "20261011_110308_964_002597_BeginRoundReply.json",
+        ]
+        .map(PathBuf::from);
+
+        let battles = split_session(&files);
+
+        assert_eq!(
+            battles[0].rounds[0].auto,
+            Some(CapturedAuto {
+                request: files[1].clone(),
+                reply: files[2].clone(),
+            })
+        );
+    }
+
+    #[test]
+    fn session_timeline_does_not_carry_incomplete_auto_input_across_rounds() {
+        let files = [
+            "20261011_110000_000_000001_StartDungeonReply.json",
+            "20261011_110001_000_000002_AutoRoundRequest.json",
+            "20261011_110002_000_000003_BeginRoundRequest.json",
+            "20261011_110003_000_000004_BeginRoundReply.json",
+            "20261011_110004_000_000005_AutoRoundReply.json",
+            "20261011_110005_000_000006_BeginRoundRequest.json",
+            "20261011_110006_000_000007_BeginRoundReply.json",
+        ]
+        .map(PathBuf::from);
+
+        let battles = split_session(&files);
+
+        assert_eq!(battles[0].rounds.len(), 2);
+        assert_eq!(battles[0].rounds[0].auto, None);
+        assert_eq!(battles[0].rounds[1].auto, None);
     }
 
     #[test]
