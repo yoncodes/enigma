@@ -146,6 +146,21 @@ fn report_auto_input(
     if !matches {
         for path in auto_reply_diff_paths(&generated_compare, &original_compare) {
             eprintln!("  auto diff: {path}");
+            let array_lines =
+                array_len_diff_lines(&generated_compare, &original_compare, &path, "");
+            if array_lines.is_empty() {
+                eprintln!(
+                    "    generated={} captured={}",
+                    value_at_diff_path(&generated_compare, &path, "")
+                        .map_or_else(|| "-".to_owned(), serde_json::Value::to_string),
+                    value_at_diff_path(&original_compare, &path, "")
+                        .map_or_else(|| "-".to_owned(), serde_json::Value::to_string),
+                );
+            } else {
+                for line in array_lines {
+                    eprintln!("    {line}");
+                }
+            }
         }
     }
     let output = output_path(input_root, output_root, input)?;
