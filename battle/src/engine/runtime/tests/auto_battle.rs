@@ -1,7 +1,7 @@
 use super::*;
 use crate::engine::{
     manager::{
-        buff::{BuffCommand, BuffGrant},
+        buff::{BuffChangeDuration, BuffCommand, BuffGrant, BuffSelector},
         card::{CardCommand, CardOpType},
         conduit::ConduitCommand,
     },
@@ -347,6 +347,21 @@ fn grant_buff(runtime: &mut BattleRuntime, source_uid: i64, target_uid: i64, buf
         .unwrap();
 }
 
+fn change_buff_duration(runtime: &mut BattleRuntime, target_uid: i64, buff_id: i32, delta: i32) {
+    runtime
+        .managers
+        .execute_buff(BuffCommand::ChangeDuration(BuffChangeDuration {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            target_uid,
+            selector: BuffSelector::ExactId(buff_id),
+            delta,
+        }))
+        .unwrap();
+}
+
 fn hand_card(uid: i64, skill_id: i32, temp_card: bool) -> CardInfo {
     CardInfo {
         uid: Some(uid),
@@ -684,6 +699,53 @@ fn auto_round_conduit_lookahead_respects_higher_priority_action_points() {
     assert_eq!(reply.opers.len(), 2);
     assert_eq!(reply.opers[0].param1, Some(1));
     assert_eq!(reply.devices_opers[0].index, Some(2));
+}
+
+#[test]
+fn auto_round_keeps_a_ready_conduit_attack_while_its_setup_buff_is_expiring() {
+    let mut runtime = coppelia_conduit_runtime(
+        team_hero(11, 3023, 1_000, [30230111, 30230121]),
+        vec![
+            hand_card(10, 31446011, false),
+            hand_card(10, 31446011, false),
+        ],
+        2,
+    );
+    for target_uid in [10, 11] {
+        change_buff_duration(&mut runtime, target_uid, 31440111, -2);
+    }
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.devices_opers[0].index, Some(1));
+}
+
+#[test]
+fn auto_round_refreshes_an_expiring_buff_with_an_ordinary_card() {
+    let mut runtime = coppelia_conduit_runtime(
+        team_hero(11, 3023, 1_000, [30230111, 30230121]),
+        vec![
+            hand_card(11, 30230111, false),
+            hand_card(10, 31440121, false),
+            hand_card(11, 30230111, false),
+        ],
+        2,
+    );
+    for target_uid in [10, 11] {
+        change_buff_duration(&mut runtime, target_uid, 31440111, -2);
+    }
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest {
+        opers: vec![BeginRoundOper {
+            oper_type: Some(CardOpType::PlayCard.id()),
+            param1: Some(1),
+            to_id: Some(-1),
+            ..Default::default()
+        }],
+        to_id: Some(-1),
+    });
+
+    assert_eq!(reply.opers[0].param1, Some(1));
 }
 
 #[test]

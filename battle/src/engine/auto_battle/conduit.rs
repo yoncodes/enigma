@@ -17,7 +17,7 @@ use crate::engine::{
     },
 };
 
-use super::{Support, certain_buffs, support_need, target_options};
+use super::{Support, certain_buffs, is_shield_buff, support_need, target_options};
 
 pub(super) mod lookahead;
 #[cfg(test)]
@@ -262,7 +262,7 @@ fn skill_score(
     } else {
         certain_buffs(skill.skill_id, catalog)
     };
-    let support = support_need(
+    let support = conduit_support_need(
         catalog.effect_tag(skill.skill_id) == SkillEffectTag::Heal as i32,
         &buffs,
         &targets,
@@ -314,4 +314,36 @@ fn skill_score(
         support_score,
         attack_score,
     )
+}
+
+fn conduit_support_need(
+    heal: bool,
+    buffs: &[i32],
+    targets: &[i64],
+    managers: &BattleManagers,
+    pool: &TargetPool,
+) -> Support {
+    if heal {
+        return support_need(true, &[], targets, managers, pool);
+    }
+    if !buffs.is_empty()
+        && targets.iter().all(|uid| {
+            buffs
+                .iter()
+                .all(|buff_id| conduit_buff_held(*uid, *buff_id, managers))
+        })
+    {
+        Support::Unneeded
+    } else {
+        Support::None
+    }
+}
+
+fn conduit_buff_held(uid: i64, buff_id: i32, managers: &BattleManagers) -> bool {
+    !is_shield_buff(buff_id, managers)
+        && managers
+            .buff
+            .buff_family_carrier_uid(uid, buff_id)
+            .and_then(|buff_uid| managers.buff.snapshot(uid, buff_uid))
+            .is_some_and(|buff| buff.duration.is_none_or(|duration| duration > 0))
 }
