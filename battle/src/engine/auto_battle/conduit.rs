@@ -19,6 +19,7 @@ use crate::engine::{
 
 use super::{Support, certain_buffs, support_need, target_options};
 
+pub(super) mod lookahead;
 #[cfg(test)]
 mod tests;
 

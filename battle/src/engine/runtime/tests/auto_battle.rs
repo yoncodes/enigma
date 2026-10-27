@@ -559,6 +559,15 @@ fn auto_round_selects_conduit_groups_from_round_utility() {
 
     assert_eq!(
         reply
+            .opers
+            .iter()
+            .map(|oper| oper.param1)
+            .collect::<Vec<_>>(),
+        vec![Some(3), Some(9), Some(7), Some(4), Some(6)]
+    );
+
+    assert_eq!(
+        reply
             .devices_opers
             .iter()
             .map(|oper| (oper.uid, oper.index))
@@ -570,6 +579,123 @@ fn auto_round_selects_conduit_groups_from_round_utility() {
             (Some(13), Some(1)),
         ]
     );
+}
+
+#[test]
+fn auto_round_conduit_lookahead_respects_higher_priority_action_points() {
+    let mut ally = team_hero(11, 3023, 1_000, [30230111, 30230121]);
+    ally.ex_point = Some(5);
+    ally.ex_point_max = Some(5);
+    ally.ex_skill = Some(30230131);
+    let runtime = coppelia_conduit_runtime(
+        ally,
+        vec![
+            hand_card(11, 30230131, false),
+            hand_card(10, 31446011, false),
+            hand_card(10, 31446011, false),
+        ],
+        2,
+    );
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers.len(), 2);
+    assert_eq!(reply.opers[0].param1, Some(1));
+    assert_eq!(reply.devices_opers[0].index, Some(2));
+}
+
+#[test]
+fn auto_round_conduit_lookahead_preserves_prefix_owner_fairness() {
+    let runtime = coppelia_conduit_runtime(
+        team_hero(11, 3023, 1_000, [30230111, 30230121]),
+        vec![
+            hand_card(10, 31446011, false),
+            hand_card(10, 31446011, false),
+            hand_card(11, 31446021, false),
+        ],
+        2,
+    );
+    let reply = runtime.plan_auto_round(&AutoRoundRequest {
+        opers: vec![BeginRoundOper {
+            oper_type: Some(CardOpType::PlayCard.id()),
+            param1: Some(1),
+            to_id: Some(10),
+            ..Default::default()
+        }],
+        to_id: Some(-1),
+    });
+
+    assert_eq!(reply.opers.len(), 1);
+    assert_eq!(reply.opers[0].param1, Some(2));
+    assert_eq!(reply.devices_opers[0].index, Some(2));
+}
+
+fn coppelia_conduit_runtime(
+    ally: FightEntityInfo,
+    hand: Vec<CardInfo>,
+    act_point: i32,
+) -> BattleRuntime {
+    crate::test_support::init_config();
+    let mut runtime = runtime(Fight {
+        battle_id: Some(77),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3144),
+                    team_type: Some(1),
+                    position: Some(1),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ally,
+            ],
+            device_area: Some(FightDeviceAreaInfo::default()),
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                position: Some(1),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    runtime
+        .managers
+        .conduit
+        .execute(
+            crate::engine::manager::conduit::ConduitCommand::SelectGroup {
+                source_uid: 10,
+                group: 2,
+            },
+        )
+        .unwrap();
+    grant_buff(&mut runtime, 10, 10, 31440111);
+    grant_buff(&mut runtime, 10, 11, 31440111);
+    runtime
+        .managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand,
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        }))
+        .unwrap();
+    runtime.round_state.act_point = act_point;
+    runtime
 }
 
 fn twins_conduit_runtime(

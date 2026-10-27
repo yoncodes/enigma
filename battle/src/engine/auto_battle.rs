@@ -38,6 +38,7 @@ struct Candidate {
     energy: bool,
     preferred_energy: bool,
     energy_amount: i32,
+    special_energy: bool,
     first_for_owner: bool,
     support: Support,
     damage_rate: i32,
@@ -117,12 +118,23 @@ pub(crate) fn plan(
     }
 
     let live_pool = pool.runtime_view(managers);
-    let planned_devices = conduit::operations(
-        fight,
+    let (potential, potential_determinism) = conduit::lookahead::state(
+        &cards,
+        managers,
         &sim,
-        &pool.runtime_view(&sim),
+        &played_owners,
+        normal_ap,
+        request.to_id,
+        &pool,
         catalog,
         &sim_determinism,
+    );
+    let planned_devices = conduit::operations(
+        fight,
+        &potential,
+        &pool.runtime_view(&potential),
+        catalog,
+        &potential_determinism,
     );
     let selected_power_types = conduit::selected_power_types(&sim, &planned_devices);
     let mut opers = Vec::new();
@@ -503,6 +515,8 @@ fn best_candidate(
                     power_type == 0 || selected_power_types.contains(&power_type)
                 }),
                 energy_amount: energy_gain.map_or(0, |(_, amount)| amount),
+                special_energy: energy_gain.is_some()
+                    && managers.catalog().is_special_power_card(skill_id),
                 support,
                 damage_rate: catalog.damage_rate(skill_id),
                 rank: managers.catalog().card_skill_rank(card),
@@ -515,11 +529,14 @@ fn best_candidate(
                 candidate.free,
                 candidate.ultimate,
                 candidate.support == Support::Urgent,
-                // Give every hero a card before any hero plays a second one.
+                (
+                    candidate.preferred_energy,
+                    candidate.energy,
+                    candidate.energy_amount,
+                    candidate.special_energy,
+                ),
+                // Give every hero a card before any hero plays a second one when utility is equal.
                 candidate.first_for_owner,
-                candidate.preferred_energy,
-                candidate.energy,
-                candidate.energy_amount,
                 candidate.support,
                 strength,
                 Reverse(candidate.card_index),
