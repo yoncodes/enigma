@@ -617,13 +617,86 @@ fn auto_round_selects_conduit_groups_from_round_utility() {
 
 #[test]
 fn auto_round_does_not_report_a_future_card_driven_group_change() {
+    let runtime = everecho_switch_runtime(vec![hand_card(10, 31450181, false)], 1);
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers[0].param1, Some(1));
+    assert_eq!(reply.devices_opers[0].index, Some(1));
+}
+
+fn everecho_switch_runtime(hand: Vec<CardInfo>, act_point: i32) -> BattleRuntime {
     let mut runtime = team_runtime(
         vec![
             team_hero(10, 3145, 1_000, [31450111, 31450121]),
             team_hero(11, 3023, 500, [30230111, 30230121]),
         ],
-        vec![hand_card(10, 31450181, false)],
+        hand,
     );
+    runtime.round_state.act_point = act_point;
+    runtime
+        .managers
+        .conduit
+        .execute(ConduitCommand::StopSkill {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60294, "StopDeviceSkill"),
+            },
+            source_uid: 10,
+            team: 1,
+            skill_id: 31450111,
+        })
+        .unwrap();
+    runtime
+}
+
+#[test]
+fn auto_round_does_not_feed_one_devices_switch_with_another_owners_energy() {
+    let runtime = everecho_switch_runtime(
+        vec![
+            hand_card(11, 31446012, false),
+            hand_card(10, 31450181, false),
+        ],
+        2,
+    );
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers.len(), 2);
+    assert_eq!(reply.opers[0].param1, Some(2));
+    assert_eq!(reply.devices_opers[0].index, Some(1));
+}
+
+#[test]
+fn auto_round_feeds_a_devices_switch_with_its_own_later_energy() {
+    let runtime = everecho_switch_runtime(
+        vec![
+            hand_card(10, 31446062, false),
+            hand_card(10, 31450181, false),
+        ],
+        2,
+    );
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers.len(), 2);
+    assert_eq!(reply.opers[0].param1, Some(2));
+    assert_eq!(reply.devices_opers[0].index, Some(2));
+}
+
+#[test]
+fn auto_round_multi_device_plan_executes_without_cross_feeding_switches() {
+    let mut runtime = team_runtime(
+        vec![
+            team_hero(10, 3145, 1_000, [31450111, 31450121]),
+            team_hero(11, 3149, 1_000, [31490111, 31490121]),
+        ],
+        vec![
+            hand_card(10, 31450181, false),
+            hand_card(11, 31446012, false),
+        ],
+    );
+    runtime.round_state.act_point = 2;
     runtime
         .managers
         .conduit
@@ -639,7 +712,75 @@ fn auto_round_does_not_report_a_future_card_driven_group_change() {
         .unwrap();
 
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+    let everecho_group = reply
+        .devices_opers
+        .iter()
+        .find(|operation| operation.uid == Some(10))
+        .and_then(|operation| operation.index);
+    let twins_group = reply
+        .devices_opers
+        .iter()
+        .find(|operation| operation.uid == Some(11))
+        .and_then(|operation| operation.index);
+    assert_eq!(everecho_group, Some(1));
+    for operation in &reply.devices_opers {
+        runtime
+            .managers
+            .conduit
+            .execute(ConduitCommand::SelectGroup {
+                source_uid: operation.uid.unwrap(),
+                group: operation.index.unwrap(),
+            })
+            .unwrap();
+    }
+    let pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+        runtime.catalog_data.unwrap(),
+        &runtime.fight,
+    );
+    let mut catalog = runtime.catalog.clone();
+    runtime.managers.catalog().extend_skill_roots(
+        &mut catalog,
+        [31450181, 31446012],
+        std::iter::empty(),
+    );
+    let mut determinism = runtime.determinism.clone();
+    crate::engine::runtime::schedule::run_player_commands(
+        &mut runtime.managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        crate::engine::skill::target::TargetContext::default(),
+        reply
+            .opers
+            .iter()
+            .filter_map(crate::engine::round::command::RoundCommand::from_oper),
+        1,
+        crate::engine::manager::emitter::UID,
+    )
+    .unwrap();
 
+    assert_eq!(runtime.managers.conduit.selected_group(10), Some(2));
+    assert_eq!(runtime.managers.conduit.selected_group(11), twins_group);
+}
+
+#[test]
+fn auto_round_tracks_a_prefilled_conduit_switch_before_generated_energy() {
+    let runtime = everecho_switch_runtime(
+        vec![
+            hand_card(11, 31446012, false),
+            hand_card(10, 31450181, false),
+        ],
+        2,
+    );
+    let prefix = runtime.plan_auto_round(&AutoRoundRequest::default()).opers[0].clone();
+    assert_eq!(prefix.param1, Some(2));
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest {
+        opers: vec![prefix],
+        to_id: Some(-1),
+    });
+
+    assert_eq!(reply.opers.len(), 1);
     assert_eq!(reply.opers[0].param1, Some(1));
     assert_eq!(reply.devices_opers[0].index, Some(1));
 }
@@ -763,7 +904,7 @@ fn auto_round_conduit_lookahead_keeps_energy_order_after_prefix() {
         opers: vec![BeginRoundOper {
             oper_type: Some(CardOpType::PlayCard.id()),
             param1: Some(1),
-            to_id: Some(10),
+            to_id: Some(-1),
             ..Default::default()
         }],
         to_id: Some(-1),

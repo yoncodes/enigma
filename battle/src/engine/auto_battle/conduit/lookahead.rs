@@ -52,6 +52,7 @@ pub(in crate::engine::auto_battle) fn state(
             catalog,
             &sim_determinism,
             &selected_power_types,
+            &[],
             &mut reported_unsupported,
         ) else {
             break;

@@ -1,4 +1,7 @@
-use std::{cmp::Reverse, collections::HashSet};
+use std::{
+    cmp::Reverse,
+    collections::{HashMap, HashSet},
+};
 
 use sonettobuf::{Fight, FightDeviceOper};
 
@@ -25,12 +28,103 @@ mod tests;
 
 type GroupScore = (i32, i32, i64);
 
+#[derive(Debug, Default)]
+struct DeviceSelectionState {
+    round_start_group: i32,
+    switched_group: Option<i32>,
+    fed_after_switch: bool,
+    planned_group: Option<i32>,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct SelectionPlan {
+    devices: HashMap<i64, DeviceSelectionState>,
+}
+
+impl SelectionPlan {
+    pub(super) fn new(managers: &BattleManagers) -> Self {
+        Self {
+            devices: managers
+                .conduit
+                .devices()
+                .map(|device| {
+                    (
+                        device.uid,
+                        DeviceSelectionState {
+                            round_start_group: device.selected_group,
+                            ..Default::default()
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    pub(super) fn set_planned(&mut self, operations: &[FightDeviceOper]) {
+        for operation in operations {
+            if let Some(state) = operation.uid.and_then(|uid| self.devices.get_mut(&uid)) {
+                state.planned_group = operation.index;
+            }
+        }
+    }
+
+    pub(super) fn observe_card(
+        &mut self,
+        source_uid: i64,
+        before_group: Option<i32>,
+        after_group: Option<i32>,
+        is_energy: bool,
+    ) {
+        if is_energy
+            && let Some(state) = self
+                .devices
+                .get_mut(&source_uid)
+                .filter(|state| state.switched_group.is_some())
+        {
+            state.fed_after_switch = true;
+        }
+        if before_group != after_group
+            && let (Some(state), Some(group)) = (self.devices.get_mut(&source_uid), after_group)
+        {
+            state.switched_group = Some(group);
+            state.fed_after_switch = false;
+        }
+    }
+
+    fn rendered_group(&self, uid: i64, after_cards_group: i32, desired_group: i32) -> i32 {
+        let Some(state) = self.devices.get(&uid) else {
+            return desired_group;
+        };
+        if state.switched_group != Some(after_cards_group) || desired_group != after_cards_group {
+            return desired_group;
+        }
+        let planned_group_was_fed =
+            state.planned_group == Some(after_cards_group) && state.fed_after_switch;
+        if planned_group_was_fed {
+            desired_group
+        } else {
+            state.round_start_group
+        }
+    }
+}
+
 pub(super) fn operations(
     fight: &Fight,
     managers: &BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
+) -> Vec<FightDeviceOper> {
+    planned_operations(fight, managers, pool, catalog, determinism, None)
+}
+
+fn planned_operations(
+    fight: &Fight,
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &RoundDeterminism,
+    selection_plan: Option<&SelectionPlan>,
 ) -> Vec<FightDeviceOper> {
     let devices = managers.conduit.devices().cloned().collect::<Vec<_>>();
     let mut operations = Vec::with_capacity(devices.len());
@@ -57,9 +151,12 @@ pub(super) fn operations(
             }
         }
 
-        let index = best
+        let desired_group = best
             .map(|(.., Reverse(index))| index as i32 + 1)
             .unwrap_or(device.selected_group);
+        let index = selection_plan.map_or(desired_group, |plan| {
+            plan.rendered_group(device.uid, device.selected_group, desired_group)
+        });
         operations.push(FightDeviceOper {
             uid: Some(device.uid),
             index: Some(index),
@@ -69,29 +166,23 @@ pub(super) fn operations(
     operations
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn selection_operations(
     fight: &Fight,
-    round_start: &BattleManagers,
     after_cards: &BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
+    selection_plan: &SelectionPlan,
 ) -> Vec<FightDeviceOper> {
-    let mut operations = operations(fight, after_cards, pool, catalog, determinism);
-    // Card-driven group changes run after devicesOpers, so do not echo the same change early.
-    for operation in &mut operations {
-        let Some(uid) = operation.uid else { continue };
-        let Some(round_start_group) = round_start.conduit.selected_group(uid) else {
-            continue;
-        };
-        let Some(after_cards_group) = after_cards.conduit.selected_group(uid) else {
-            continue;
-        };
-        if round_start_group != after_cards_group && operation.index == Some(after_cards_group) {
-            operation.index = Some(round_start_group);
-        }
-    }
-    operations
+    planned_operations(
+        fight,
+        after_cards,
+        pool,
+        catalog,
+        determinism,
+        Some(selection_plan),
+    )
 }
 
 pub(super) fn selected_power_types(
