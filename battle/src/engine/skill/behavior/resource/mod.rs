@@ -386,9 +386,26 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                     .collect(),
             )
         }
-        BehaviorKind::ChangePower | BehaviorKind::RecoverPower => {
+        BehaviorKind::ChangePower => {
             power_args(&behavior.args).map(|(power_id, delta)| vec![eureka(power_id, delta)])
         }
+        BehaviorKind::RecoverPower => match behavior.args.as_slice() {
+            [-1] => {
+                let state = context
+                    .managers
+                    .eureka
+                    .get(context.target_uid, EUREKA_RESOURCE_ID);
+                let delta = state.max - state.current;
+                Some(
+                    (delta > 0)
+                        .then(|| eureka(EUREKA_RESOURCE_ID, delta))
+                        .into_iter()
+                        .collect(),
+                )
+            }
+            [amount] if *amount > 0 => Some(vec![eureka(EUREKA_RESOURCE_ID, *amount)]),
+            _ => None,
+        },
         BehaviorKind::RecoverPowerAndDelCardsUseSkill => {
             let [skill_id, target_rule] = behavior.args.as_slice() else {
                 return None;
@@ -741,7 +758,7 @@ pub(super) fn supports_power_change(behavior: &ParsedBehavior) -> bool {
 }
 
 pub(super) fn supports_recover_power(behavior: &ParsedBehavior) -> bool {
-    matches!(behavior.args.as_slice(), [amount] if *amount != 0)
+    matches!(behavior.args.as_slice(), [amount] if *amount == -1 || *amount > 0)
 }
 
 pub(super) fn supports_team_energy(behavior: &ParsedBehavior) -> bool {

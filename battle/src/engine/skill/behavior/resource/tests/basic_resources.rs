@@ -15,6 +15,11 @@ fn barcarola_resources_require_one_nonzero_configured_delta() {
     assert!(!supports_recover_power(&ParsedBehavior::new(
         60144,
         "RecoverPower",
+        vec![-2],
+    )));
+    assert!(!supports_recover_power(&ParsedBehavior::new(
+        60144,
+        "RecoverPower",
         vec![1, 3],
     )));
     assert!(supports_team_energy(&ParsedBehavior::new(
@@ -32,6 +37,55 @@ fn barcarola_resources_require_one_nonzero_configured_delta() {
         "AddTeamEnergy",
         vec![-1],
     )));
+}
+
+#[test]
+fn full_recovery_uses_the_owned_eureka_maximum() {
+    let entity = FightEntityInfo {
+        uid: Some(10),
+        power_infos: vec![PowerInfo {
+            power_id: Some(EUREKA_RESOURCE_ID),
+            num: Some(3),
+            max: Some(10),
+        }],
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::default();
+    managers.eureka.register(&entity);
+    let pool = crate::engine::skill::target::TargetPool::default();
+    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::new(60144, "RecoverPower", vec![-1]);
+
+    let ops = crate::engine::skill::behavior::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 0,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Command(BattleCommand::Eureka(
+            EurekaCommand::Change(EurekaChange {
+                power_id: EUREKA_RESOURCE_ID,
+                delta: 7,
+                ..
+            })
+        ))]
+    ));
 }
 
 #[test]

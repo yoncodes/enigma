@@ -77,6 +77,19 @@ impl Destiny {
             .map(|row| row.unique_skill_point.as_str())
     }
 
+    pub fn power_add(game: &config::GameDB, facets_id: i32, rank: i32) -> Option<&str> {
+        game.character_destiny_facets
+            .iter()
+            .filter(|row| {
+                row.facets_id == facets_id
+                    && row.level > 0
+                    && row.level <= rank
+                    && !row.power_add.is_empty()
+            })
+            .max_by_key(|row| row.level)
+            .map(|row| row.power_add.as_str())
+    }
+
     pub fn get(facets_id: i32, rank: i32) -> Option<HashMap<i32, i32>> {
         Self::get_ref(facets_id, rank).cloned()
     }
