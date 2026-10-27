@@ -468,6 +468,7 @@ fn best_candidate(
             let device = crate::engine::mechanic::card::CardMechanic.is_device_card(managers, card);
             // Stage-rule temporary cards are left for the player.
             if temporary
+                && card.hero_id != Some(source.model_id)
                 && managers.catalog().skill_hero_id(skill_id) != Some(source.model_id)
                 && !device
             {

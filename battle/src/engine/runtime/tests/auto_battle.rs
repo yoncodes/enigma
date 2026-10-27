@@ -1245,6 +1245,32 @@ fn auto_round_plays_temporary_device_cards_with_normal_cost() {
 }
 
 #[test]
+fn auto_round_prefers_an_owner_bound_temporary_skill() {
+    let mut runtime = team_runtime(
+        vec![
+            team_hero(10, 3124, 1_000, [312431212, 312451115]),
+            team_hero(11, 3123, 1_000, [312301142, 312301242]),
+        ],
+        vec![
+            CardInfo {
+                uid: Some(10),
+                skill_id: Some(312451011),
+                temp_card: Some(true),
+                card_type: Some(sonettobuf::card_info::CardType::Skill3 as i32),
+                hero_id: Some(3124),
+                ..Default::default()
+            },
+            hand_card(11, 312301142, false),
+        ],
+    );
+    runtime.round_state.act_point = 1;
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers[0].param1, Some(1));
+}
+
+#[test]
 fn auto_round_keeps_equal_energy_cards_in_hand_order_after_an_owner_plays() {
     let mut ally = team_hero(11, 3023, 1_000, [30230111, 30230121]);
     ally.ex_point = Some(5);
