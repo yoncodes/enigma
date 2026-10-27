@@ -355,7 +355,7 @@ fn active_skill_status_thresholds_preserve_strictness() {
         find_key(42203, "HasTypeBuffMoreThan")
             .unwrap()
             .skill_action_trigger,
-        SkillActionTriggerPolicy::AttackOnlyWithDeviceObservers(&[103374322])
+        SkillActionTriggerPolicy::AttackOnly
     );
     assert_eq!(
         find_key(43203, "HasTypeBuffLessThan").unwrap().role,

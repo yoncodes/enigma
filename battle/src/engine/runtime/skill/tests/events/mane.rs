@@ -192,7 +192,7 @@ fn committed_conduit_hit_satisfies_attack_conditions() {
 }
 
 #[test]
-fn twins_visible_status_threshold_runs_before_attacks_and_device_actions() {
+fn visible_status_threshold_runs_only_before_attacks() {
     crate::test_support::init_config();
     let mut status_buffs = [31450171, 31450143, 31440116, 31450111]
         .into_iter()
@@ -306,12 +306,12 @@ fn twins_visible_status_threshold_runs_before_attacks_and_device_actions() {
         .unwrap()
     };
 
-    assert!(emit(103374322, false, SkillExecutionMode::Active).is_empty());
-    assert!(emit(420000411, false, SkillExecutionMode::Device).is_empty());
-    for ops in [
-        emit(103374322, true, SkillExecutionMode::Active),
-        emit(103374322, false, SkillExecutionMode::Device),
-    ] {
+    for observer_skill_id in [103374322, 420000411] {
+        assert!(emit(observer_skill_id, false, SkillExecutionMode::Active).is_empty());
+        assert!(emit(observer_skill_id, false, SkillExecutionMode::Device).is_empty());
+    }
+    for mode in [SkillExecutionMode::Active, SkillExecutionMode::Device] {
+        let ops = emit(103374322, true, mode);
         assert!(ops.iter().any(|op| matches!(
         op,
         RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))

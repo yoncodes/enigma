@@ -552,7 +552,6 @@ pub(in crate::engine::runtime) fn emit_ops(
             })
             .is_some_and(|definition| {
                 definition.skill_action_trigger.rejects_action(
-                    invocation.plan.skill_id,
                     execution.context.active_skill_is_attack,
                     execution.context.active_skill_mode,
                     managers
