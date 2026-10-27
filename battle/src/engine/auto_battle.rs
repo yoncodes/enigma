@@ -590,7 +590,7 @@ fn best_candidate(
                 (
                     candidate.preferred_energy,
                     candidate.energy,
-                    candidate.temporary && candidate.preferred_energy && candidate.special_energy,
+                    candidate.temporary && candidate.special_energy,
                     candidate.energy_amount,
                     candidate.special_energy,
                     candidate.flexible_energy && !candidate.special_energy,

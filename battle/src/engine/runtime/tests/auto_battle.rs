@@ -1223,8 +1223,8 @@ fn auto_round_keeps_equal_special_energy_cards_in_hand_order() {
 }
 
 #[test]
-fn auto_round_plays_temporary_device_cards_with_normal_cost() {
-    let mut runtime = twins_conduit_runtime(1_000, 1, true, 0);
+fn auto_round_prefers_temporary_special_energy_for_a_ready_conduit() {
+    let mut runtime = twins_conduit_runtime(1_000, 1, false, 100);
     runtime
         .managers
         .execute_card(CardCommand::Setup(CardSetup {
