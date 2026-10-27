@@ -225,7 +225,11 @@ fn skill_score(
     let support_score = match support {
         Support::Urgent => 2,
         Support::Needed => 1,
-        Support::None if !buffs.is_empty() => 1,
+        Support::None
+            if !buffs.is_empty() && targets.iter().any(|target| *target != source_uid) =>
+        {
+            1
+        }
         _ => 0,
     };
     let attack_score = if catalog.is_attack(skill.skill_id) {
