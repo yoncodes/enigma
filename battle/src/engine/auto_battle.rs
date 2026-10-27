@@ -66,6 +66,17 @@ pub(crate) fn plan(
 ) -> AutoRoundReply {
     // Every card resolves before any skill runs, so indices, AP and readiness use round-start state.
     let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
+    let preferred_target = request
+        .to_id
+        .filter(|uid| pool.entity(*uid).is_some())
+        .or_else(|| {
+            let model_id = managers
+                .catalog()
+                .battle_win_target_model(fight.battle_id?)?;
+            pool.entities()
+                .find(|entity| entity.model_id == model_id && pool.team_type(entity.uid) == Some(2))
+                .map(|entity| entity.uid)
+        });
     let roots: Vec<i32> = managers
         .card
         .hand()
@@ -125,7 +136,7 @@ pub(crate) fn plan(
         &sim,
         &played_owners,
         normal_ap,
-        request.to_id,
+        preferred_target,
         &pool,
         catalog,
         &sim_determinism,
@@ -152,7 +163,7 @@ pub(crate) fn plan(
             &choices,
             &played_owners,
             normal_ap,
-            request.to_id,
+            preferred_target,
             managers,
             &sim,
             &live_pool,
