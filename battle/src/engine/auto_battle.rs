@@ -35,6 +35,7 @@ struct Candidate {
     chosen_skill_id: Option<i32>,
     free: bool,
     ultimate: bool,
+    temporary: bool,
     energy: bool,
     preferred_energy: bool,
     energy_amount: i32,
@@ -442,8 +443,12 @@ fn best_candidate(
             }
             let source = live_pool.entity(source_uid)?;
             let temporary = card.temp_card.unwrap_or_default();
+            let device = crate::engine::mechanic::card::CardMechanic.is_device_card(managers, card);
             // Stage-rule temporary cards are left for the player.
-            if temporary && managers.catalog().skill_hero_id(skill_id) != Some(source.model_id) {
+            if temporary
+                && managers.catalog().skill_hero_id(skill_id) != Some(source.model_id)
+                && !device
+            {
                 return None;
             }
             let ultimate = crate::engine::mechanic::card::CardMechanic
@@ -517,11 +522,11 @@ fn best_candidate(
                 chosen_skill_id,
                 free: normal_ap_cost == 0,
                 ultimate,
+                temporary,
                 first_for_owner: energy_gain.is_none()
                     && !played_owners.contains(&source_uid)
                     && support != Support::Unneeded,
-                energy: effect_tag
-                    == crate::engine::skill::effect::catalog::SkillEffectTag::Device as i32,
+                energy: device,
                 preferred_energy: energy_gain.is_some_and(|(power_type, _)| {
                     power_type == 0 || selected_power_types.contains(&power_type)
                 }),
@@ -544,6 +549,7 @@ fn best_candidate(
                 (
                     candidate.preferred_energy,
                     candidate.energy,
+                    candidate.temporary && candidate.preferred_energy && candidate.special_energy,
                     candidate.energy_amount,
                     candidate.special_energy,
                     candidate.flexible_energy && !candidate.special_energy,
@@ -670,7 +676,8 @@ fn action_point_cost(
     catalog: &SkillEffectCatalog,
 ) -> i32 {
     i32::from(
-        !card.temp_card.unwrap_or_default()
+        (!card.temp_card.unwrap_or_default()
+            || crate::engine::mechanic::card::CardMechanic.is_device_card(managers, card))
             && skill_uses_action_point(
                 &managers.buff.active_features(&managers.hp),
                 source_uid,

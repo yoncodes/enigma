@@ -1020,6 +1020,28 @@ fn auto_round_keeps_equal_special_energy_cards_in_hand_order() {
 }
 
 #[test]
+fn auto_round_plays_temporary_device_cards_with_normal_cost() {
+    let mut runtime = twins_conduit_runtime(1_000, 1, true, 0);
+    runtime
+        .managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![
+                hand_card(10, 31490211, true),
+                hand_card(10, 31446022, false),
+            ],
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        }))
+        .unwrap();
+    runtime.round_state.act_point = 1;
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers.len(), 1);
+    assert_eq!(reply.opers[0].param1, Some(1));
+}
+
+#[test]
 fn auto_round_keeps_equal_energy_cards_in_hand_order_after_an_owner_plays() {
     let mut ally = team_hero(11, 3023, 1_000, [30230111, 30230121]);
     ally.ex_point = Some(5);
