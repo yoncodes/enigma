@@ -799,6 +799,77 @@ pub fn run_start(
                 );
             }
             append(&mut result, settlement);
+            if version7_opening {
+                let (losses, settlement_plan) = run_round_start_loss_mechanics(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    None,
+                )?;
+                append(&mut result, losses);
+                if settlement_plan.capacity_groups.is_empty() {
+                    append(
+                        &mut result,
+                        run_round_start_after_loss_mechanics(
+                            managers,
+                            pool,
+                            catalog,
+                            determinism,
+                            context,
+                            &owner_uids,
+                            settlement_plan,
+                        )?,
+                    );
+                } else {
+                    let mut capacity_sync = begin_round_phase(RoundPhase::RoundStartCapacitySync);
+                    append_round_phase(
+                        &mut capacity_sync,
+                        run_round_start_owner_settlement(
+                            managers,
+                            pool,
+                            catalog,
+                            determinism,
+                            context,
+                            settlement_plan,
+                        )?,
+                    );
+                    append(&mut result, capacity_sync);
+
+                    let mut settlement = begin_round_phase(RoundPhase::RoundStartSettlement);
+                    append_opening_settlement(
+                        &mut settlement,
+                        run_round_start_skill_mechanics(
+                            managers,
+                            pool,
+                            catalog,
+                            determinism,
+                            context,
+                            &owner_uids,
+                        )?,
+                        true,
+                    );
+                    append(&mut result, settlement);
+                }
+                let duration_snapshot = opening_duration_snapshot
+                    .take()
+                    .expect("Version7 advances late duration after round-start reactions");
+                append(
+                    &mut result,
+                    drain::run(
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        duration_advance_rule(
+                            effect_time::ROUND_START_AFTER_REACTION_DURATION,
+                            &duration_snapshot,
+                        ),
+                    )?,
+                );
+            }
             continue;
         }
         if stage == SetupStage::CardSetup {
@@ -1029,6 +1100,7 @@ pub fn run_start(
                         .expect("Version7 keeps settlement open through duration setup"),
                     duration,
                 );
+                continue;
             }
             let (losses, settlement_plan) = run_round_start_loss_mechanics(
                 managers,
@@ -1088,28 +1160,6 @@ pub fn run_start(
                     version7_opening,
                 );
                 opening_settlement = Some(settlement);
-            }
-            if version7_opening {
-                let duration_snapshot = opening_duration_snapshot
-                    .take()
-                    .expect("Version7 advances late duration after round-start reactions");
-                let duration = drain::run(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
-                    duration_advance_rule(
-                        effect_time::ROUND_START_AFTER_REACTION_DURATION,
-                        &duration_snapshot,
-                    ),
-                )?;
-                append_opening_round_phase(
-                    opening_settlement
-                        .as_mut()
-                        .expect("Version7 keeps settlement open through late duration"),
-                    duration,
-                );
             }
         }
     }

@@ -197,6 +197,111 @@ fn step_contains_effect(step: &sonettobuf::FightStep, effect_type: i32) -> bool 
     !matches.is_empty()
 }
 
+fn step_contains_act(step: &sonettobuf::FightStep, act_id: i32) -> bool {
+    step.act_id == Some(act_id)
+        || step
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|nested| step_contains_act(nested, act_id))
+}
+
+fn step_deletes_buff(step: &sonettobuf::FightStep, buff_id: i32) -> bool {
+    step.act_effect.iter().any(|effect| {
+        (effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Buffdel as i32)
+            && effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(buff_id))
+            || effect
+                .fight_step
+                .as_ref()
+                .is_some_and(|nested| step_deletes_buff(nested, buff_id))
+    })
+}
+
+#[test]
+fn version_seven_opening_checks_round_start_skills_before_reset_and_buff_acts() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3053),
+                team_type: Some(1),
+                current_hp: Some(100),
+                passive_skill: vec![30530150, 30530151],
+                ..Default::default()
+            }],
+            device_area: Some(Default::default()),
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let (start, _) = run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        0,
+    )
+    .unwrap();
+    let steps = crate::engine::packet::timeline::project_for_version(&start.frames, 7).unwrap();
+    let call = steps
+        .iter()
+        .position(|step| step_contains_act(step, 305301511))
+        .unwrap();
+    let reset = steps
+        .iter()
+        .position(|step| {
+            step_contains_effect(
+                step,
+                sonettobuf::effect_type_enum::EffectType::Devicepowerclear as i32,
+            )
+        })
+        .unwrap();
+    let consume = steps
+        .iter()
+        .position(|step| step_deletes_buff(step, 30530201))
+        .unwrap();
+    let call_before_reset = call < reset
+        || (call == reset
+            && steps[call].act_effect.iter().position(|effect| {
+                effect
+                    .fight_step
+                    .as_ref()
+                    .is_some_and(|step| step_contains_act(step, 305301511))
+            }) < steps[reset].act_effect.iter().position(|effect| {
+                effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Devicepowerclear as i32)
+            }));
+
+    assert!(
+        call_before_reset && reset < consume,
+        "call={call} reset={reset} consume={consume}"
+    );
+}
+
 #[test]
 fn anjo_contract_is_offered_once_during_opening_and_not_on_later_rounds() {
     init_config();
