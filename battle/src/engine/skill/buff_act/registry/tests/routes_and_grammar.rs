@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn field_replacement_record_keeps_its_add_only_wire_contract() {
+    use super::super::super::wire::WirePhase;
+    use sonettobuf::effect_type_enum::EffectType;
+
+    let definition = find(1084, "RecordReplaceWqMagicCircle").unwrap();
+
+    assert!(definition.validate_arguments(None, &[], None));
+    assert!(!definition.validate_arguments(None, &[1], None));
+    assert_eq!(definition.destination(), None);
+    let wire = definition.wire.unwrap();
+    assert_eq!(wire.markers(WirePhase::Add), &[EffectType::None as i32]);
+    assert!(wire.markers(WirePhase::Static).is_empty());
+    assert!(wire.markers(WirePhase::Refresh).is_empty());
+}
+
+#[test]
 fn runtime_capability_lives_on_the_exact_registry_entry() {
     let definition = find(889, "BeAttackByEmitterDamage").unwrap();
 
