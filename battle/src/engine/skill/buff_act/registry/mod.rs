@@ -1475,7 +1475,7 @@ buff_act_definitions! {
         publication: BeforePublish, frame: CausingFrame,
         runtime: |context| super::eureka_to_inspiration::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::eureka_to_inspiration::supports,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1082, "UseSkillConsumeFromAddEmitterEnergy"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1082, "UseSkillConsumeFromAddEmitterEnergy"), &[EffectType::None as i32]));
     (1084, "RecordReplaceWqMagicCircle") => RecordReplaceWqMagicCircle,
         supports: |args| args.is_empty(),
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1084, "RecordReplaceWqMagicCircle"), &[EffectType::None as i32]));

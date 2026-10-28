@@ -134,6 +134,23 @@ fn grammar_keeps_cost_and_inspiration_distinct() {
     assert!(supports(&[3, 4]));
     assert!(!supports(&[2]));
     assert!(!supports(&[2, 0]));
+
+    let wire = super::super::registry::find(1082, "UseSkillConsumeFromAddEmitterEnergy")
+        .unwrap()
+        .wire
+        .unwrap();
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
 }
 
 #[test]
