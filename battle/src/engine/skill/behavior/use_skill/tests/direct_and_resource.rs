@@ -280,7 +280,7 @@ fn direct_use_skill_no_act_accepts_only_observed_arities() {
 }
 
 #[test]
-fn consume_power_skill_repeats_cost_and_nested_cast_for_each_affordable_use() {
+fn consume_power_skill_repeats_cost_and_extra_action_for_each_affordable_use() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -335,7 +335,7 @@ fn consume_power_skill_repeats_cost_and_nested_cast_for_each_affordable_use() {
             RuleOp::Skill(second),
         ] if [first, second].into_iter().all(|invocation|
             invocation.plan.skill_id == 31170121
-            && invocation.extra_skill_kind.is_none()
+            && invocation.extra_skill_kind == Some(ExtraSkillKind::ExtraAction)
             && invocation.mode
                 == crate::engine::skill::action::SkillExecutionMode::Nested
         )

@@ -554,12 +554,13 @@ impl BehaviorHandler for Handler {
                                 as i32,
                         }),
                     )));
-                    let invocation: crate::engine::skill::action::SkillInvocation =
+                    let mut invocation: crate::engine::skill::action::SkillInvocation =
                         crate::engine::skill::action::SkillRequest {
                             source_uid: context.source_uid,
                             skill_id: *skill_id,
                         }
                         .into();
+                    invocation.extra_skill_kind = Some(ExtraSkillKind::ExtraAction);
                     ops.push(RuleOp::Skill(invocation));
                 }
                 Some(ops)
