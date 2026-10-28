@@ -349,6 +349,58 @@ fn active_field_self_skills_are_runtime_subscribers() {
 }
 
 #[test]
+fn virtual_owner_buff_passives_are_runtime_subscribers() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            sub_entitys: vec![FightEntityInfo {
+                uid: Some(20),
+                team_type: Some(1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(116370321),
+                    uid: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+            crate::engine::manager::buff::BuffGrant {
+                origin: crate::engine::skill::rule::CommandOrigin {
+                    domain: crate::engine::skill::rule::RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: crate::engine::manager::emitter::UID,
+                buff_id: 116370321,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            },
+        ))
+        .unwrap();
+
+    assert!(
+        active_skills(&pool, &managers)
+            .contains(&(crate::engine::manager::emitter::UID, 116370321))
+    );
+    assert!(!active_skills(&pool, &managers).contains(&(20, 116370321)));
+}
+
+#[test]
 fn projected_passive_links_do_not_become_intrinsic_subscribers() {
     crate::test_support::init_config();
     let fight = Fight {

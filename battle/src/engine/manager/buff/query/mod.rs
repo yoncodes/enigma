@@ -1079,23 +1079,32 @@ impl BuffManager {
         self.buffs
             .iter()
             .filter(|active| active.owner_uid == uid)
-            .flat_map(|active| {
-                let owner_uid = passive_skill_owner(active);
-                let amount = count_or_layer_from(&active.buff, active.definition.as_ref());
-                active
-                    .definition
-                    .as_ref()
-                    .map(|definition| {
-                        passive_skill_links(
-                            Some(self.catalog().game_data()),
-                            owner_uid,
-                            definition.features(),
-                            amount,
-                        )
-                    })
-                    .unwrap_or_default()
-            })
+            .flat_map(|active| self.passive_skill_links_for_buff(active))
             .collect()
+    }
+
+    pub fn passive_skill_links(&self) -> Vec<BuffPassiveSkillLink> {
+        self.buffs
+            .iter()
+            .flat_map(|active| self.passive_skill_links_for_buff(active))
+            .collect()
+    }
+
+    fn passive_skill_links_for_buff(&self, active: &ActiveBuff) -> Vec<BuffPassiveSkillLink> {
+        let owner_uid = passive_skill_owner(active);
+        let amount = count_or_layer_from(&active.buff, active.definition.as_ref());
+        active
+            .definition
+            .as_ref()
+            .map(|definition| {
+                passive_skill_links(
+                    Some(self.catalog().game_data()),
+                    owner_uid,
+                    definition.features(),
+                    amount,
+                )
+            })
+            .unwrap_or_default()
     }
 
     pub fn static_power_max_adds(&self) -> Vec<BuffPowerMaxAdd> {
