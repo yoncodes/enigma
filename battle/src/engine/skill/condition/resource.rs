@@ -41,6 +41,10 @@ pub fn per_ex_point(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionK
     })
 }
 
+pub fn per_eureka(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty().then_some(ParsedConditionKind::PerEureka)
+}
+
 pub fn ex_point_decrease(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::ExPointDecrease {
         threshold: first_i32(args)?,

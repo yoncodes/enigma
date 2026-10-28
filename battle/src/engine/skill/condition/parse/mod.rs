@@ -182,6 +182,7 @@ pub enum ParsedConditionKind {
     PerExPoint {
         threshold: i32,
     },
+    PerEureka,
     ExPointDecrease {
         threshold: i32,
     },

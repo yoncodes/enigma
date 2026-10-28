@@ -298,6 +298,15 @@ fn condition_repeat_count(
                 })
                 .unwrap_or_default(),
         ),
+        ParsedConditionKind::PerEureka => managers.map(|managers| {
+            managers
+                .eureka
+                .get(
+                    source_uid,
+                    crate::engine::manager::eureka::EUREKA_RESOURCE_ID,
+                )
+                .current
+        }),
         ParsedConditionKind::PowerConsumed {
             power_id,
             max_count,
@@ -847,6 +856,16 @@ fn condition_kind_matches(
             condition_targets
                 .iter()
                 .any(|uid| managers.ex_point.get(*uid) >= *threshold)
+        }),
+        ParsedConditionKind::PerEureka => managers.is_some_and(|managers| {
+            managers
+                .eureka
+                .get(
+                    source_uid,
+                    crate::engine::manager::eureka::EUREKA_RESOURCE_ID,
+                )
+                .current
+                > 0
         }),
         ParsedConditionKind::Random { threshold } => context
             .condition_random_roll

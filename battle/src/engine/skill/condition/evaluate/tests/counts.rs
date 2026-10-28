@@ -5,4 +5,5 @@ use crate::engine::{
 };
 
 mod action_counts;
+mod resources;
 mod status_counts;
