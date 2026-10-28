@@ -84,8 +84,12 @@ impl IndicatorManager {
     }
 
     pub fn total(&self, indicator_id: IndicatorId) -> i32 {
+        self.value(indicator_id as i32)
+    }
+
+    pub fn value(&self, indicator_id: i32) -> i32 {
         self.totals
-            .get(&(indicator_id as i32))
+            .get(&indicator_id)
             .copied()
             .unwrap_or_default()
             .clamp(0, i64::from(i32::MAX)) as i32

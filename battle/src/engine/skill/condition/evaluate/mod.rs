@@ -922,6 +922,10 @@ fn condition_kind_matches(
         } => managers
             .and_then(|managers| managers.fight_progress.get(*progress_id))
             .is_some_and(|progress| compare_resource(progress.value, *compare_code, *threshold)),
+        ParsedConditionKind::IndicatorAtLeast {
+            indicator_id,
+            threshold,
+        } => managers.is_some_and(|managers| managers.indicator.value(*indicator_id) >= *threshold),
         ParsedConditionKind::ConduitExPoint {
             compare_code,
             threshold,

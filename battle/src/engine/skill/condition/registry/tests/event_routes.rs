@@ -774,6 +774,25 @@ fn round_end_buff_type_threshold_keeps_its_exact_route() {
 }
 
 #[test]
+fn round_end_indicator_threshold_keeps_its_exact_route() {
+    assert_eq!(
+        parse(98306, "IndicatorNum", &["3713".into(), "15".into()]),
+        Some(ParsedConditionKind::IndicatorAtLeast {
+            indicator_id: 3713,
+            threshold: 15,
+        })
+    );
+    assert_eq!(
+        find_key(98306, "IndicatorNum").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        })
+    );
+    assert!(find_key(98306, "Other").is_none());
+}
+
+#[test]
 fn dream_visit_threshold_runs_during_entity_settlement() {
     let definition = find_key(51303, "HasTypeIdBuffMoreThan").unwrap();
 

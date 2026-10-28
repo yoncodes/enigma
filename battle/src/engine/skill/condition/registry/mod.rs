@@ -1,6 +1,6 @@
 use super::{
     act_order, active_skill, battle_tag, buff, card, career, conduit, entity_count, extra, hp,
-    injury, lifecycle, magic_circle, none,
+    indicator, injury, lifecycle, magic_circle, none,
     parse::{self, ParsedCondition, ParsedConditionKind},
     resource, target_identity, trigger,
 };
@@ -661,6 +661,7 @@ condition_definitions! {
     [302] "None" => none::round_end, reaction_targets_owner(event_trigger(EventKind::RoundEnd, None));
     [305] "None" => none::round_end_after_settlement, in_independent_frame(event_trigger(EventKind::RoundEndAfterOwnerSettlement, None));
     [306] "None" => none::round_end, event_trigger(EventKind::RoundEnd, None);
+    [98306] "IndicatorNum" => indicator::at_least, event_trigger(EventKind::RoundEnd, None);
     [303] "None" => none::round_end_entity_settlement, reaction_targets_owner(event_trigger(EventKind::RoundEndEntitySettlement, None));
     [307] "None" => none::round_end_final_settlement, event_trigger(EventKind::RoundEndFinalSettlement, None);
     [304] "None" => none::round_end_after_settlement, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));

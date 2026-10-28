@@ -210,6 +210,10 @@ pub enum ParsedConditionKind {
         compare_code: i32,
         threshold: i32,
     },
+    IndicatorAtLeast {
+        indicator_id: i32,
+        threshold: i32,
+    },
     PowerIncrChange {
         power_id: i32,
         compare_code: i32,

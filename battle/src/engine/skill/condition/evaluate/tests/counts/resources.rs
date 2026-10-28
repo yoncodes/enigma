@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::engine::{
     event::kind::EventKind,
-    manager::eureka::EUREKA_RESOURCE_ID,
+    manager::{eureka::EUREKA_RESOURCE_ID, indicator::IndicatorCommand},
     skill::{action::SkillPhase, condition::registry::ConditionRole},
 };
 
@@ -45,4 +45,40 @@ fn per_aura_repeats_once_per_current_eureka() {
         ),
         4
     );
+}
+
+#[test]
+fn indicator_threshold_reads_the_configured_indicator() {
+    init_config();
+    let fight = Fight::default();
+    let mut managers = BattleManagers::seeded(&fight);
+    let condition = exact_condition(98306, "IndicatorNum", &["3713", "15"]);
+
+    managers.indicator.add(IndicatorCommand {
+        indicator_id: 3713,
+        amount: 14,
+        config_effect: 60016,
+    });
+    assert!(!conditions_match(
+        std::slice::from_ref(&condition),
+        0,
+        &[],
+        Some(&managers),
+        &TargetPool::from_fight(&fight),
+        TargetContext::default(),
+    ));
+
+    managers.indicator.add(IndicatorCommand {
+        indicator_id: 3713,
+        amount: 1,
+        config_effect: 60016,
+    });
+    assert!(conditions_match(
+        &[condition],
+        0,
+        &[],
+        Some(&managers),
+        &TargetPool::from_fight(&fight),
+        TargetContext::default(),
+    ));
 }
