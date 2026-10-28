@@ -9,7 +9,11 @@ use crate::engine::{
     mechanic::magic_circle_level::MagicCircleLevelCommand,
     runtime::determinism::RoundDeterminism,
     skill::{
-        behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
+        behavior::{
+            BehaviorOpContext,
+            classify::BehaviorKind,
+            registry::{BehaviorHandler, OutputOwner},
+        },
         condition::conditions_match,
         effect::{ParsedBehavior, SkillEffectCatalog},
         rule::{
@@ -231,6 +235,19 @@ impl BehaviorHandler for Handler {
             ),
             _ => None,
         }
+    }
+
+    fn output_owner(behavior: &ParsedBehavior, op: &RuleOp, _: usize) -> Option<OutputOwner> {
+        let RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantChild(grant))) = op else {
+            return None;
+        };
+        let linked = behavior
+            .arg(0)
+            .and_then(|circle_id| {
+                crate::catalog::BattleCatalog::try_global()?.magic_circle(circle_id)
+            })
+            .is_some_and(|circle| circle.linked_buffs.contains(&grant.buff_id));
+        (grant.target_uid == emitter::UID && linked).then_some(OutputOwner::SetupParent)
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
@@ -543,14 +560,21 @@ mod tests {
         let behavior = ParsedBehavior::new(50019, "AddMagicCircle", vec![42004]);
 
         let ops = deploy_rule_ops(&behavior, 10, 1, &BattleManagers::default(), &pool).unwrap();
+        let definition = crate::engine::skill::behavior::registry::find(&behavior).unwrap();
 
         assert!(matches!(ops[0], RuleOp::Command(BattleCommand::Field(_))));
+        assert_eq!((definition.output_owner_for)(&behavior, &ops[0], 0), None);
         assert_eq!(
             ops[1..]
                 .iter()
-                .map(|op| match op {
+                .enumerate()
+                .map(|(index, op)| match op {
                     RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantChild(grant))) => {
                         assert_eq!(grant.target_uid, emitter::UID);
+                        assert_eq!(
+                            (definition.output_owner_for)(&behavior, op, index + 1),
+                            Some(OutputOwner::SetupParent)
+                        );
                         grant.buff_id
                     }
                     _ => panic!("linked magic-circle output must be an emitter buff"),
