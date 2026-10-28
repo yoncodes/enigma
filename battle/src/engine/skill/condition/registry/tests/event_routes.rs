@@ -1040,7 +1040,7 @@ fn emitter_skill_condition_keeps_its_filtered_action_trigger() {
         definition.role,
         ConditionRole::Trigger {
             event: EventKind::SkillAction,
-            phase: None,
+            phase: Some(SkillPhase::Immediate),
         }
     );
 }

@@ -646,7 +646,7 @@ condition_definitions! {
     [208] "None" => none::skill_action_after_damage, uses_hit_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [210] "None" => none::skill_action_after_hit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [202, 204, 206, 207, 2011, 2082, 900, 901, 905, 908, 910, 930, 1041] "None" => none::skill_action, event_trigger(EventKind::SkillAction, None);
-    [903] "None" => none::emitter_skill_action, event_trigger(EventKind::SkillAction, None);
+    [903] "None" => none::emitter_skill_action, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [2092] "None" => trigger::parse_guard_broken, reaction_targets_owner(event_trigger(EventKind::ToughnessBroken, None));
     [783101] "IsBroken" => trigger::parse_entity_broken, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [783102] "IsBroken" => trigger::parse_entity_broken, setup_route(SetupStage::RoundStartCondition, 102, &[]);
