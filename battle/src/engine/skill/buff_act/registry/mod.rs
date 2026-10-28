@@ -302,6 +302,7 @@ pub enum BuffActKind {
     ToughnessRecover,
     TransferAddExPoint,
     TransferEnergyBuff,
+    UseSkillConsumeFromAddEmitterEnergy,
     UseSkillTeamAddEmitterEnergy,
     UseSkillAttrFix,
     UseSkillLoseHpNotFixed,
@@ -1449,6 +1450,11 @@ buff_act_definitions! {
         supports: super::consume_and_grant::supports, references: references_for_feature,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1077, "ConsumeCurBuffAndAuraAddBuff"), &[]));
     (1081, "EmitterFixSubTargetsDamageReduceRate") => EmitterFixSubTargetsDamageReduceRate;
+    (1082, "UseSkillConsumeFromAddEmitterEnergy") => UseSkillConsumeFromAddEmitterEnergy,
+        publication: BeforePublish, frame: CausingFrame,
+        runtime: |context| super::eureka_to_inspiration::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::eureka_to_inspiration::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1082, "UseSkillConsumeFromAddEmitterEnergy"), &[]));
     (1114, "HeatScaleBurnAddFix") => HeatScaleBurnAddFix;
     (1125, "TeamShareShield") => TeamShareShield, effect_time_subscription: false,
         supports: super::team_share_shield::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1125, "TeamShareShield"), &[]));
