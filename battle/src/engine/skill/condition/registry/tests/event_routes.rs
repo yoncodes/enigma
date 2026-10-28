@@ -553,6 +553,24 @@ fn round_start_field_presence_keeps_its_exact_key_and_route() {
 }
 
 #[test]
+fn post_ultimate_field_absence_uses_the_immediate_skill_action_route() {
+    let definition = find_key(544203, "NotInMagicCircleId").unwrap();
+
+    assert_eq!(
+        parse(544203, "NotInMagicCircleId", &["42001".into()]),
+        Some(ParsedConditionKind::NotInMagicCircleId(vec![42001]))
+    );
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        }
+    );
+    assert!(find_key(544203, "InMagicCircleId").is_none());
+}
+
+#[test]
 fn static_team_battle_tag_threshold_runs_at_battle_start() {
     for opcode in [762005, 762021] {
         assert_eq!(
