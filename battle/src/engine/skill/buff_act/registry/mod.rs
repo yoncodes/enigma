@@ -1499,7 +1499,7 @@ buff_act_definitions! {
     (1092, "EmitterChangeDmgType") => EmitterChangeDmgType,
         effect_time_subscription: false,
         supports: super::emitter_damage_type::supports, state_consumer: true,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1092, "EmitterChangeDmgType"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1092, "EmitterChangeDmgType"), &[EffectType::None as i32]));
     (1114, "HeatScaleBurnAddFix") => HeatScaleBurnAddFix;
     (1125, "TeamShareShield") => TeamShareShield, effect_time_subscription: false,
         supports: super::team_share_shield::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1125, "TeamShareShield"), &[]));

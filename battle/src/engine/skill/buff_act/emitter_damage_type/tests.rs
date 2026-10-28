@@ -107,6 +107,22 @@ fn exact_static_owner_converts_only_emitter_damage_to_reality() {
         super::super::registry::destination(1092, "EmitterChangeDmgType", &[1]),
         Some(super::super::registry::BuffActDestination::StateConsumer)
     );
+    let wire = super::super::registry::find(1092, "EmitterChangeDmgType")
+        .unwrap()
+        .wire
+        .unwrap();
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
 
     let managers = managers();
     assert_eq!(
