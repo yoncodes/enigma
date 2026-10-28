@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn field_replacement_record_keeps_its_add_only_wire_contract() {
+fn field_replacement_record_keeps_its_round_end_runtime_and_add_only_wire_contract() {
     use super::super::super::wire::WirePhase;
     use sonettobuf::effect_type_enum::EffectType;
 
@@ -9,7 +9,11 @@ fn field_replacement_record_keeps_its_add_only_wire_contract() {
 
     assert!(definition.validate_arguments(None, &[], None));
     assert!(!definition.validate_arguments(None, &[1], None));
-    assert_eq!(definition.destination(), None);
+    assert_eq!(definition.destination(), Some(BuffActDestination::Runtime));
+    assert_eq!(
+        definition.runtime.event_override,
+        Some(EventKind::RoundEndAfterFinalSettlement)
+    );
     let wire = definition.wire.unwrap();
     assert_eq!(wire.markers(WirePhase::Add), &[EffectType::None as i32]);
     assert!(wire.markers(WirePhase::Static).is_empty());
@@ -107,9 +111,17 @@ fn crystal_attack_grants_run_after_lethal_hit_settlement() {
 #[test]
 fn registered_handlers_have_one_execution_path_and_a_capability() {
     for definition in definitions() {
+        let runtime_handlers = [
+            definition.runtime.handler.is_some(),
+            definition.runtime.scoped_handler.is_some(),
+            definition.runtime.fallible_scoped_handler.is_some(),
+        ]
+        .into_iter()
+        .filter(|registered| *registered)
+        .count();
         assert!(
-            definition.runtime.handler.is_none() || definition.runtime.scoped_handler.is_none(),
-            "{:?} has two runtime handlers",
+            runtime_handlers <= 1,
+            "{:?} has multiple runtime handlers",
             definition.key
         );
         assert_eq!(
@@ -125,6 +137,7 @@ fn registered_handlers_have_one_execution_path_and_a_capability() {
         );
         if definition.runtime.handler.is_some()
             || definition.runtime.scoped_handler.is_some()
+            || definition.runtime.fallible_scoped_handler.is_some()
             || definition.transaction.handler.is_some()
             || definition.setup.handler.is_some()
         {

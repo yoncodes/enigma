@@ -218,6 +218,24 @@ impl BattleCatalog {
         })
     }
 
+    pub(crate) fn return_magic_circle_level(self, circle_id: i32) -> Option<MagicCircleLevel> {
+        let current = self.game_data.magic_wqsz.get(circle_id)?;
+        let returned = self
+            .game_data
+            .magic_wqsz
+            .iter()
+            .find(|row| row.group == current.group && row.level == current.return_level)?;
+        let circle = self.magic_circle(returned.id)?;
+        Some(MagicCircleLevel {
+            definition: FieldDefinition {
+                field_id: returned.id,
+                duration: circle.duration,
+            },
+            level: returned.level,
+            linked_buffs: circle.linked_buffs,
+        })
+    }
+
     pub(crate) fn buff_has_effect_count(self, buff_id: i32) -> bool {
         self.game_data
             .skill_buff

@@ -571,8 +571,8 @@ fn team_actor_buff_act_observes_an_allied_skill_action() {
     assert!(dispatched.buff_acts.iter().any(|(subscriber, ops)| {
         subscriber.key.definition == DefinitionKey::new(800, "TeammateInjuryCount")
             && matches!(
-                ops.as_deref(),
-                Some([buff_act::BuffActRuleOp {
+                ops,
+                Ok(Some(ops)) if matches!(ops.as_slice(), [buff_act::BuffActRuleOp {
                     op: RuleOp::Command(BattleCommand::Buff(BuffCommand::AccumulateActValue(_))),
                     ..
                 }])
@@ -692,7 +692,7 @@ fn exact_linked_buff_act_emits_a_skill_output() {
         dispatched.buff_acts.as_slice(),
         [(
             subscriber,
-            Some(ops)
+            Ok(Some(ops))
         )] if subscriber.key.definition == DefinitionKey::new(759, "UseSkillToEnemy")
             && matches!(ops.as_slice(), [buff_act::BuffActRuleOp {
                 op: RuleOp::Skill(
@@ -871,36 +871,33 @@ fn committed_hit_discovers_target_attacked_skill_and_be_attacked_buff_act() {
                 && subscriber.skill_id == 530000151
                 && subscriber.key.event == EventKind::TargetAttacked)
     );
-    assert!(
-        dispatched
-            .buff_acts
-            .iter()
-            .any(|(subscriber, ops)| subscriber.owner_uid == -1
-                && subscriber.key.event == EventKind::BeAttacked
-                && subscriber.key.definition == DefinitionKey::new(926, "ExPointAddByHit")
-                && ops.as_ref().is_some_and(|ops| matches!(
-                    ops.as_slice(),
-                    [
-                        buff_act::BuffActRuleOp {
-                            op: RuleOp::Command(
-                                crate::engine::skill::rule::output::BattleCommand::Buff(_)
-                            ),
+    assert!(dispatched.buff_acts.iter().any(|(subscriber, ops)| {
+        subscriber.owner_uid == -1
+            && subscriber.key.event == EventKind::BeAttacked
+            && subscriber.key.definition == DefinitionKey::new(926, "ExPointAddByHit")
+            && matches!(ops, Ok(Some(ops)) if matches!(
+                ops.as_slice(),
+                [
+                    buff_act::BuffActRuleOp {
+                        op: RuleOp::Command(
+                            crate::engine::skill::rule::output::BattleCommand::Buff(_)
+                        ),
+                        ..
+                    },
+                    buff_act::BuffActRuleOp {
+                        op: RuleOp::BuffFeatureMarker {
+                            buff_act_id: 926,
                             ..
                         },
-                        buff_act::BuffActRuleOp {
-                            op: RuleOp::BuffFeatureMarker {
-                                buff_act_id: 926,
-                                ..
-                            },
-                            ..
-                        },
-                        buff_act::BuffActRuleOp {
-                            op: RuleOp::Command(
-                                crate::engine::skill::rule::output::BattleCommand::ExPoint(_)
-                            ),
-                            ..
-                        }
-                    ]
-                )))
-    );
+                        ..
+                    },
+                    buff_act::BuffActRuleOp {
+                        op: RuleOp::Command(
+                            crate::engine::skill::rule::output::BattleCommand::ExPoint(_)
+                        ),
+                        ..
+                    }
+                ]
+            ))
+    }));
 }

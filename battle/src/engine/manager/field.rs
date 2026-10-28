@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::engine::{
     entity::attr::AttrId,
@@ -123,6 +123,7 @@ pub enum FieldCommandError {
 pub struct FieldManager {
     states: HashMap<i32, FieldState>,
     round_transfers: HashMap<i32, i32>,
+    deployed_this_round: HashSet<i32>,
 }
 
 pub(crate) struct FieldPlan {
@@ -151,6 +152,11 @@ impl FieldManager {
 
     pub(crate) fn begin_round(&mut self) {
         self.round_transfers.clear();
+        self.deployed_this_round.clear();
+    }
+
+    pub(crate) fn was_deployed_this_round(&self, team: i32) -> bool {
+        self.deployed_this_round.contains(&team)
     }
 
     pub fn attribute_delta(
@@ -221,6 +227,7 @@ impl FieldManager {
                 validate_thresholds(&thresholds)?;
                 thresholds.sort_by_key(|threshold| (threshold.progress, threshold.level));
                 let initial_level = initial_level.max(0);
+                let vacant = !self.states.contains_key(&command.team);
                 self.states.entry(command.team).or_insert(FieldState {
                     origin: command.origin,
                     definition,
@@ -232,6 +239,9 @@ impl FieldManager {
                     next_upgrade_progress: next_upgrade_progress(&thresholds, initial_level),
                     terminal_progress: terminal_progress(&thresholds),
                 });
+                if vacant {
+                    self.deployed_this_round.insert(command.team);
+                }
                 (FieldChangeKind::Deployed, 0, 0)
             }
             FieldOperation::DeployReplacement {
@@ -244,7 +254,7 @@ impl FieldManager {
                     || definition.duration < -1
                     || owner_uid == 0
                     || create_uid == 0
-                    || level <= 0
+                    || level < 0
                     || self.states.contains_key(&command.team)
                 {
                     return Err(FieldCommandError::InvalidCommand);
@@ -263,6 +273,7 @@ impl FieldManager {
                         terminal_progress: 0,
                     },
                 );
+                self.deployed_this_round.insert(command.team);
                 (FieldChangeKind::Deployed, 0, 0)
             }
             FieldOperation::ChangeProgress { delta } => {

@@ -9,6 +9,7 @@ pub enum DrainError {
         opcode: Option<i32>,
         type_name: String,
     },
+    BuffActRule(crate::engine::skill::buff_act::BuffActRuleError),
     MissingAssistBoss,
     InvalidAssistBossSkill(i32),
     InsufficientAssistBossPower(i32),
@@ -27,6 +28,12 @@ pub enum DrainError {
     MissingActiveSkillContext,
     MissingReactionSide(i64),
     MissingCardStateTeam(i64),
+}
+
+impl From<crate::engine::skill::buff_act::BuffActRuleError> for DrainError {
+    fn from(value: crate::engine::skill::buff_act::BuffActRuleError) -> Self {
+        Self::BuffActRule(value)
+    }
 }
 
 pub(super) fn required_buff_act_definition(

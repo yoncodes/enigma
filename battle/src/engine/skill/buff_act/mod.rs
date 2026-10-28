@@ -111,6 +111,7 @@ pub mod petrified;
 pub mod raspberry;
 pub mod real_damage_kill;
 pub mod rebound;
+pub mod record_replace_magic_circle;
 pub mod red_or_blue_count;
 pub mod registry;
 pub mod revive;
@@ -615,6 +616,17 @@ pub struct BuffActRuleOp {
     pub frame_owner: BuffActFrameOwner,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuffActRuleError {
+    RecordReplaceMagicCircle(record_replace_magic_circle::RecordReplaceMagicCircleError),
+}
+
+impl From<record_replace_magic_circle::RecordReplaceMagicCircleError> for BuffActRuleError {
+    fn from(value: record_replace_magic_circle::RecordReplaceMagicCircleError) -> Self {
+        Self::RecordReplaceMagicCircle(value)
+    }
+}
+
 impl BuffActRuleOp {
     pub fn causing(op: RuleOp) -> Self {
         Self {
@@ -735,7 +747,23 @@ pub fn rule_ops(
     subscriber: &BuffActSubscriber,
     event: Option<&BattleEvent>,
 ) -> Option<Vec<BuffActRuleOp>> {
-    let definition = registry::find(subscriber.key.definition.opcode, &subscriber.act_type)?;
+    try_rule_ops(managers, pool, catalog, determinism, subscriber, event)
+        .ok()
+        .flatten()
+}
+
+pub fn try_rule_ops(
+    managers: &BattleManagers,
+    pool: &crate::engine::skill::target::TargetPool,
+    catalog: &crate::engine::skill::effect::SkillEffectCatalog,
+    determinism: &mut crate::engine::runtime::determinism::RoundDeterminism,
+    subscriber: &BuffActSubscriber,
+    event: Option<&BattleEvent>,
+) -> Result<Option<Vec<BuffActRuleOp>>, BuffActRuleError> {
+    let Some(definition) = registry::find(subscriber.key.definition.opcode, &subscriber.act_type)
+    else {
+        return Ok(None);
+    };
     let mut context = registry::RuntimeContext {
         managers,
         pool,
@@ -745,28 +773,39 @@ pub fn rule_ops(
         event,
     };
     let ops = if let Some(handler) = definition.runtime.handler {
-        let ops = handler(&mut context)?;
+        let Some(ops) = handler(&mut context) else {
+            return Ok(None);
+        };
         scoped_rule_ops(
             definition.runtime.frame_scope,
             definition.runtime.frame_source,
             ops,
         )
     } else if let Some(handler) = definition.runtime.scoped_handler {
+        let Some(ops) = handler(&mut context) else {
+            return Ok(None);
+        };
+        ops
+    } else if let Some(handler) = definition.runtime.fallible_scoped_handler {
         handler(&mut context)?
     } else {
-        let ops = registry::linked_rule_ops(
+        let Some(ops) = registry::linked_rule_ops(
             subscriber.owner_uid,
             subscriber.key.definition.opcode,
             &subscriber.act_type,
             &subscriber.args,
-        )?;
+        ) else {
+            return Ok(None);
+        };
         scoped_rule_ops(
             definition.runtime.frame_scope,
             definition.runtime.frame_source,
             ops,
         )
     };
-    Some(with_runtime_marker(definition, subscriber, event, ops))
+    Ok(Some(with_runtime_marker(
+        definition, subscriber, event, ops,
+    )))
 }
 
 fn with_runtime_marker(

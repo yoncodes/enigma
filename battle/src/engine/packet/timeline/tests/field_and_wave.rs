@@ -153,6 +153,36 @@ fn replacement_field_keeps_owner_and_wire_creator_distinct() {
 }
 
 #[test]
+fn zero_level_replacement_omits_the_optional_wire_level() {
+    let mut fields = FieldManager::default();
+    let change = fields
+        .execute_command(FieldCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::BuffAct,
+                key: DefinitionKey::new(1084, "RecordReplaceWqMagicCircle"),
+            },
+            team: 1,
+            operation: FieldOperation::DeployReplacement {
+                definition: FieldDefinition {
+                    field_id: 42003,
+                    duration: -1,
+                },
+                owner_uid: 7,
+                create_uid: -1,
+                level: 0,
+            },
+        })
+        .unwrap();
+
+    let effects = project_change_for_test(&BattleChange::Field(change)).unwrap();
+
+    assert_eq!(
+        effects[0].magic_circle.as_ref().unwrap().electric_level,
+        None
+    );
+}
+
+#[test]
 fn wave_projection_uses_the_owned_fight_snapshot() {
     let change = crate::engine::manager::wave::WaveAdvanced {
         wave: 2,

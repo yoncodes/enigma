@@ -271,6 +271,18 @@ fn normalizes_wangqi_magic_circle_levels_and_linked_effects() {
             linked_buffs: vec![31410601, 31412602, 31410603, 31410604],
         })
     );
+    assert_eq!(
+        catalog.return_magic_circle_level(42004),
+        Some(MagicCircleLevel {
+            definition: FieldDefinition {
+                field_id: 42003,
+                duration: -1,
+            },
+            level: 3,
+            linked_buffs: vec![31410601, 31412602, 31410603],
+        })
+    );
+    assert_eq!(catalog.return_magic_circle_level(42003), None);
     let circle = catalog.magic_circle(42004).unwrap();
     assert_eq!(circle.self_skills, vec![31411153]);
     assert_eq!(

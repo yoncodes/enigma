@@ -1450,7 +1450,7 @@ fn magic_circle_snapshot(
                 magic_circle_id: Some(state.definition.field_id),
                 round: Some(state.definition.duration),
                 create_uid: Some(state.create_uid),
-                electric_level: Some(state.level),
+                electric_level: (state.level > 0).then_some(state.level),
                 electric_progress: Some(state.progress),
                 max_electric_progress: Some(state.next_upgrade_progress),
             },

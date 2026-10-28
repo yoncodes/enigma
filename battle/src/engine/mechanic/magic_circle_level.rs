@@ -60,7 +60,7 @@ pub(crate) fn execute(
         || command.expected_field_id <= 0
         || command.replacement.field_id <= 0
         || command.replacement.duration < -1
-        || command.level <= 0
+        || command.level < 0
     {
         return Err(MagicCircleLevelError::InvalidCommand);
     }
@@ -79,11 +79,13 @@ pub(crate) fn execute(
     let mut removed_buffs = Vec::new();
     for buff_id in command.removed_buffs {
         if next.buff.has_buff_id(emitter::UID, buff_id) {
-            removed_buffs.push(next.execute_buff(BuffCommand::Remove(BuffRemove {
-                origin: command.origin,
-                target_uid: emitter::UID,
-                selector: BuffRemoveSelector::ExactId(buff_id),
-            }))?);
+            removed_buffs.push(
+                next.execute_buff(BuffCommand::RemoveAfterTrigger(BuffRemove {
+                    origin: command.origin,
+                    target_uid: emitter::UID,
+                    selector: BuffRemoveSelector::ExactId(buff_id),
+                }))?,
+            );
         }
     }
     let removed_field = next.execute_field(FieldCommand {
@@ -194,7 +196,7 @@ mod tests {
                     field_id: 42004,
                     duration: 4,
                 },
-                level: 4,
+                level: 0,
                 removed_buffs: vec![31410601, 31412602, 31410603],
                 added_buffs: vec![31410601, 31412602, 31410603, 31410604],
             },
@@ -211,7 +213,7 @@ mod tests {
         assert_eq!(field.definition.field_id, 42004);
         assert_eq!(field.owner_uid, 7);
         assert_eq!(field.create_uid, -1);
-        assert_eq!(field.level, 4);
+        assert_eq!(field.level, 0);
         for buff_id in [31410601, 31412602, 31410603, 31410604] {
             assert!(managers.buff.has_buff_id(emitter::UID, buff_id));
         }

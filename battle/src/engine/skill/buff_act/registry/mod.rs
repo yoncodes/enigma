@@ -30,6 +30,10 @@ pub struct RuntimeContext<'a> {
 pub type RuntimeHandler = for<'a> fn(&mut RuntimeContext<'a>) -> Option<Vec<RuleOp>>;
 pub type ScopedRuntimeHandler =
     for<'a> fn(&mut RuntimeContext<'a>) -> Option<Vec<super::BuffActRuleOp>>;
+pub type FallibleScopedRuntimeHandler =
+    for<'a> fn(
+        &mut RuntimeContext<'a>,
+    ) -> Result<Vec<super::BuffActRuleOp>, super::BuffActRuleError>;
 pub type TransactionHandler = fn(&BattleManagers, &BattleEvent) -> Vec<(ActiveBuffFeature, RuleOp)>;
 
 pub struct SetupContext<'a> {
@@ -417,6 +421,7 @@ pub struct BuffActRuntimeDefinition {
     pub marker: Option<RuntimeMarker>,
     pub handler: Option<RuntimeHandler>,
     pub scoped_handler: Option<ScopedRuntimeHandler>,
+    pub fallible_scoped_handler: Option<FallibleScopedRuntimeHandler>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -519,7 +524,10 @@ impl BuffActDefinition {
     }
 
     fn destination(&self) -> Option<BuffActDestination> {
-        if self.runtime.handler.is_some() || self.runtime.scoped_handler.is_some() {
+        if self.runtime.handler.is_some()
+            || self.runtime.scoped_handler.is_some()
+            || self.runtime.fallible_scoped_handler.is_some()
+        {
             Some(BuffActDestination::Runtime)
         } else if self.transaction.handler.is_some() {
             Some(BuffActDestination::Transaction)
@@ -565,6 +573,7 @@ macro_rules! buff_act_definitions {
             $(, runtime_marker: $marker_position:ident($marker_target:ident $(, $marker_effect_type:expr)?))?
             $(, runtime: $runtime:expr)?
             $(, scoped_runtime: $scoped_runtime:expr)?
+            $(, fallible_scoped_runtime: $fallible_scoped_runtime:expr)?
             $(, transaction: $transaction:expr)?
             $(, setup_handler: $setup_handler:expr)?
             $(, supports: $supports:expr)?
@@ -602,6 +611,7 @@ macro_rules! buff_act_definitions {
                     marker: buff_act_definitions!(@runtime_marker $($marker_position($marker_target $(, $marker_effect_type)?))?),
                     handler: buff_act_definitions!(@runtime $($runtime)?),
                     scoped_handler: buff_act_definitions!(@scoped_runtime $($scoped_runtime)?),
+                    fallible_scoped_handler: buff_act_definitions!(@fallible_scoped_runtime $($fallible_scoped_runtime)?),
                 },
                 setup: BuffActSetupDefinition {
                     routes: buff_act_definitions!(@setup [$($($stage($priority)),*)?]),
@@ -674,6 +684,8 @@ macro_rules! buff_act_definitions {
     (@runtime) => { None };
     (@scoped_runtime $handler:expr) => { Some($handler) };
     (@scoped_runtime) => { None };
+    (@fallible_scoped_runtime $handler:expr) => { Some($handler) };
+    (@fallible_scoped_runtime) => { None };
     (@transaction $handler:expr) => { Some($handler) };
     (@transaction) => { None };
     (@setup_handler $handler:expr) => { Some($handler) };
@@ -1480,6 +1492,8 @@ buff_act_definitions! {
         supports: super::eureka_to_inspiration::supports,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1082, "UseSkillConsumeFromAddEmitterEnergy"), &[EffectType::None as i32]));
     (1084, "RecordReplaceWqMagicCircle") => RecordReplaceWqMagicCircle,
+        event: EventKind::RoundEndAfterFinalSettlement,
+        fallible_scoped_runtime: super::record_replace_magic_circle::scoped_rule_ops,
         supports: |args| args.is_empty(),
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1084, "RecordReplaceWqMagicCircle"), &[EffectType::None as i32]));
     (1085, "TeamPerPowerAddBuff") => TeamPerPowerAddBuff,

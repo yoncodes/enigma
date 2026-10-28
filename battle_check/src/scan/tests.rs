@@ -153,11 +153,7 @@ fn episode_roots_include_configured_trial_hero_builds() {
         &mut VecDeque::new(),
         &mut report,
     );
-    assert_eq!(
-        report.errors,
-        ["MissingSemanticConsumer path=episode 493708 > battle 116370080 > trial 116370041 > skill 31411141 (Precognition) > slot 9 > buff 31410409 act=1084 type=RecordReplaceWqMagicCircle route=StaticRead effectTime=0".to_owned()]
-            .into()
-    );
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
 }
 
 #[test]

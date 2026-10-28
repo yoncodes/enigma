@@ -152,7 +152,7 @@ fn update_wangqi_rule_ops(
             team,
             expected_field_id: current.definition.field_id,
             replacement: next.definition,
-            level: next.level,
+            level: 0,
             removed_buffs: circle.linked_buffs,
             added_buffs: next.linked_buffs,
         },
@@ -626,7 +626,7 @@ mod tests {
                         field_id: 42004,
                         duration: 4,
                     },
-                    level: 4,
+                    level: 0,
                     removed_buffs,
                     added_buffs,
                     ..
