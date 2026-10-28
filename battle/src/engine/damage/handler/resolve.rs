@@ -8,7 +8,7 @@ use crate::engine::{
     entity::attr::AttrId,
     manager::{
         attribute::AttributeManager,
-        buff::BuffManager,
+        buff::{ActiveBuffFeature, BuffManager},
         field::FieldManager,
         hp::{DamageEffectKind, HpCommand, HpDamage, HpManager, HurtDamageFromType, HurtInfoData},
     },
@@ -62,6 +62,21 @@ pub struct DamageRuntime<'a> {
 pub struct DamageFraction {
     pub numerator: i128,
     pub denominator: i128,
+}
+
+fn attack_career(
+    source: &TargetEntity,
+    requested: Option<i32>,
+    features: &[ActiveBuffFeature],
+) -> i32 {
+    requested.unwrap_or_else(|| {
+        if source.uid == crate::engine::manager::emitter::UID {
+            crate::engine::skill::buff_act::emitter_career::career(features)
+                .unwrap_or(source.career)
+        } else {
+            source.career
+        }
+    })
 }
 
 pub struct ResolvedAttack {
@@ -174,6 +189,7 @@ pub fn resolve_configured_replacement_damage_command(
         crate::engine::skill::buff_act::attack_replacement_rule(&feature, runtime.hp)?;
     let source = runtime.pool.entity(request.source_uid)?;
     let target = runtime.pool.entity(request.target_uid)?;
+    let active_features = runtime.buffs.active_features(runtime.hp);
     let (base_rate, added_rate) = composed_damage_rates(request.rate, request.rate_terms);
     let amount = direct_damage(
         request,
@@ -206,7 +222,7 @@ pub fn resolve_configured_replacement_damage_command(
             career_restraint: request.force_career_restraint
                 || restrains_target_either(
                     runtime.pool.catalog(),
-                    request.attack_career.unwrap_or(source.career),
+                    attack_career(source, request.attack_career, &active_features),
                     request.additional_attack_career,
                     target,
                 ),
@@ -248,12 +264,12 @@ fn resolve_row_damage_result(
     } = runtime;
     let source = pool.entity(source_uid)?;
     let target = pool.entity(target_uid)?;
-    let attack_replacement = buffs
-        .active_features(hp)
-        .into_iter()
+    let active_features = buffs.active_features(hp);
+    let attack_replacement = active_features
+        .iter()
         .filter(|feature| feature.owner_uid == source_uid)
         .find_map(|feature| {
-            crate::engine::skill::buff_act::direct_attack_replacement_rule(&feature, hp)
+            crate::engine::skill::buff_act::direct_attack_replacement_rule(feature, hp)
                 .map(|replacement| (feature.buff_id, replacement))
         });
     if crate::engine::damage::trace::enabled()
@@ -281,14 +297,13 @@ fn resolve_row_damage_result(
         },
     );
     let career_restraint = request.force_career_restraint
-        || buffs
-            .active_features(hp)
+        || active_features
             .iter()
             .filter(|feature| feature.owner_uid == source_uid)
             .any(crate::engine::skill::buff_act::forces_career_restraint)
         || restrains_target_either(
             runtime.pool.catalog(),
-            request.attack_career.unwrap_or(source.career),
+            attack_career(source, request.attack_career, &active_features),
             request.additional_attack_career,
             target,
         );
@@ -394,14 +409,18 @@ pub fn resolve_proportional_additional_damage_command(
     };
     let credited_source = runtime.pool.entity(credited_source_uid)?;
     let target = runtime.pool.entity(main.target_uid)?;
+    let active_features = runtime.buffs.active_features(runtime.hp);
     let career_restraint = force_career_restraint
-        || runtime
-            .buffs
-            .active_features(runtime.hp)
+        || active_features
             .iter()
             .filter(|feature| feature.owner_uid == credited_source_uid)
             .any(crate::engine::skill::buff_act::forces_career_restraint)
-        || restrains_target_either(runtime.pool.catalog(), credited_source.career, None, target);
+        || restrains_target_either(
+            runtime.pool.catalog(),
+            attack_career(credited_source, None, &active_features),
+            None,
+            target,
+        );
     (amount > 0).then_some(HpCommand::Damage(HpDamage {
         origin,
         source_uid: credited_source_uid,
@@ -469,11 +488,12 @@ fn resolve_additional_damage_result(
         additional_replaced_attack_damage_amount(request, runtime, formula, attack_replacement);
     let source = runtime.pool.entity(credited_source_uid)?;
     let target = runtime.pool.entity(target_uid)?;
+    let active_features = runtime.buffs.active_features(runtime.hp);
     let career_restraint = formula.rules().applies_career
         && (request.force_career_restraint
             || restrains_target_either(
                 runtime.pool.catalog(),
-                request.attack_career.unwrap_or(source.career),
+                attack_career(source, request.attack_career, &active_features),
                 request.additional_attack_career,
                 target,
             ));
@@ -886,14 +906,7 @@ fn direct_damage_trace(
             .iter()
             .filter(|feature| feature.owner_uid == source.uid)
             .any(crate::engine::skill::buff_act::forces_career_restraint);
-    let source_career = if let Some(career) = request.attack_career {
-        career
-    } else if source.uid == crate::engine::manager::emitter::UID {
-        crate::engine::skill::buff_act::emitter_career::career(&source_active_features)
-            .unwrap_or(source.career)
-    } else {
-        source.career
-    };
+    let source_career = attack_career(source, request.attack_career, &source_active_features);
     let natural_career = career_multiplier_against_either(
         runtime.pool.catalog(),
         source_career,
