@@ -711,25 +711,28 @@ pub(in crate::engine::runtime) fn emit_ops(
             {
                 targets.clone()
             } else {
-                behavior::use_skill::resolve_targets(
-                    invocation.plan.skill_id,
-                    invocation.plan.source_uid,
-                    slot.target.code,
-                    pool,
-                    determinism,
-                    &slot.behavior,
-                )
-                .unwrap_or_else(|| {
-                    TargetResolver::resolve_with_managers_and_context(
-                        &slot.target,
-                        invocation.plan.skill_id,
-                        invocation.plan.source_uid,
-                        pool,
-                        determinism,
-                        Some(managers),
-                        execution.context,
-                    )
-                })
+                behavior::buff::resolve_unbound_targets(slot.target.code, pool, &slot.behavior)
+                    .or_else(|| {
+                        behavior::use_skill::resolve_targets(
+                            invocation.plan.skill_id,
+                            invocation.plan.source_uid,
+                            slot.target.code,
+                            pool,
+                            determinism,
+                            &slot.behavior,
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        TargetResolver::resolve_with_managers_and_context(
+                            &slot.target,
+                            invocation.plan.skill_id,
+                            invocation.plan.source_uid,
+                            pool,
+                            determinism,
+                            Some(managers),
+                            execution.context,
+                        )
+                    })
             };
         if targets_are_hits && invocation.phase == Some(SkillPhase::AfterDamage) {
             targets.retain(|target_uid| managers.hp.current(*target_uid) > 0);

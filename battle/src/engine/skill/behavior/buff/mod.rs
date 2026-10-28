@@ -62,6 +62,15 @@ use layer::*;
 use poison::*;
 use replace::*;
 
+pub fn resolve_unbound_targets(
+    target_code: i32,
+    pool: &crate::engine::skill::target::TargetPool,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<i64>> {
+    (behavior.spec.kind == BehaviorKind::AddBuff && target_code == 301)
+        .then(|| pool.active_entities().map(|entity| entity.uid).collect())
+}
+
 pub(super) fn supports_consume_power_add_buff(behavior: &ParsedBehavior) -> bool {
     let exact_shape =
         behavior.raw_args.is_empty() && behavior.args.len() == 2 || behavior.raw_args.len() == 2;

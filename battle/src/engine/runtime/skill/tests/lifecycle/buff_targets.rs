@@ -1,5 +1,119 @@
 use super::*;
 
+fn target_301_fight() -> Fight {
+    let entity = |uid, hp| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(hp),
+        ..Default::default()
+    };
+    Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 100), entity(11, 0)],
+            sub_entitys: vec![entity(12, 100)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 100), entity(-3, 0)],
+            sub_entitys: vec![entity(-2, 100)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+fn buff_grant_targets(ops: &[RuleOp], buff_id: i32) -> Vec<i64> {
+    ops.iter()
+        .filter_map(|op| match op {
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))
+                if grant.buff_id == buff_id =>
+            {
+                Some(grant.target_uid)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn unbound_target_301_add_buff_covers_only_active_entities() {
+    crate::test_support::init_config();
+    let fight = target_301_fight();
+    let ops = emit_all_ops(
+        SkillRequest {
+            source_uid: 10,
+            skill_id: 303901431,
+        }
+        .into(),
+        &BattleManagers::seeded(&fight),
+        &TargetPool::from_fight(&fight),
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &SkillOpTrigger::Setup {
+            stage: SetupStage::EnterFight,
+            priority: 0,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(buff_grant_targets(&ops, 303901411), [10, -1]);
+}
+
+#[test]
+fn hit_bound_target_301_add_buff_stays_on_attacked_enemies() {
+    crate::test_support::init_config();
+    let fight = target_301_fight();
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: -1,
+        skill_id: 6190237,
+    }
+    .into();
+    invocation.condition_key = Some(DefinitionKey::new(208, "None"));
+    invocation.phase = Some(SkillPhase::AfterDamage);
+    invocation.mode = SkillExecutionMode::Active;
+    let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+        source_uid: -1,
+        skill_id: 6190237,
+        target_uid: 10,
+        target_uids: vec![10],
+        attacked_target_uids: vec![10],
+        phase: SkillPhase::AfterDamage,
+        skill_slot: 1,
+        is_attack: true,
+        rank: 1,
+        skill_type: 1,
+        effect_tag: 0,
+        assassinate: false,
+        ignore_riposte: false,
+        damage_amount: 1,
+        kill_count: 0,
+        crit_count: 0,
+        guard_break_count: 0,
+        additional_moxie: 0,
+        extra_skill_kind: 0,
+        mode: SkillExecutionMode::Active,
+        teammate_injury_count: 0,
+        teammate_injury_count_not_reset: 0,
+        team_injury_count_round: 0,
+        card_enchants: Vec::new(),
+        buff_additions: Vec::new(),
+    });
+    let ops = emit_all_ops(
+        invocation,
+        &BattleManagers::seeded(&fight),
+        &TargetPool::from_fight(&fight),
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &SkillOpTrigger::Event(event),
+    )
+    .unwrap();
+
+    for buff_id in [90271, 90231, 90161, 90221, 6190534] {
+        assert_eq!(buff_grant_targets(&ops, buff_id), [10]);
+    }
+}
+
 #[test]
 fn unsupported_behavior_is_skipped_without_aborting_the_skill() {
     crate::test_support::init_config();
