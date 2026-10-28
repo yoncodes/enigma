@@ -27,6 +27,7 @@ impl WaveStartAction {
             target_uid: super::rules::DEFENDER_SIDE_UID,
             effect_type: sonettobuf::effect_type_enum::EffectType::Trigger as i32,
             effect_num: self.action_id,
+            effect_num1: None,
             config_effect: 0,
             reserve_id: None,
             reserve_str: None,

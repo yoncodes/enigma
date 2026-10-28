@@ -203,6 +203,7 @@ pub enum BuffActKind {
     EmitterChangeDmgType,
     EmitterDamageUp,
     EmitterEnergyAddBuff,
+    EmitterExtraDamage,
     EmitterFixSubTargetsDamageReduceRate,
     EmitterNumChange,
     EmitterRendTarget,
@@ -1473,6 +1474,11 @@ buff_act_definitions! {
         parser: super::fantasy::parse,
         references: super::fantasy::references,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1086, "ToothFairyFantasy"), &[]));
+    (1087, "EmitterExtraDamage") => EmitterExtraDamage,
+        event: EventKind::SkillAction, phase: HitPassives, source: Applier, actor: OpposingTeam,
+        runtime: |context| super::emitter_extra_damage::rule_ops(context.subscriber, context.event?),
+        supports: super::emitter_extra_damage::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1087, "EmitterExtraDamage"), &[]));
     (1092, "EmitterChangeDmgType") => EmitterChangeDmgType,
         effect_time_subscription: false,
         supports: super::emitter_damage_type::supports, state_consumer: true,

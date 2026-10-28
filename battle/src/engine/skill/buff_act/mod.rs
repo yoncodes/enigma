@@ -75,6 +75,7 @@ pub mod emitter_card_energy_limit;
 pub mod emitter_career;
 pub mod emitter_damage_type;
 pub mod emitter_energy_add_buff;
+pub mod emitter_extra_damage;
 pub mod emitter_num_change;
 pub mod emitter_rend_target;
 pub mod emitter_skill;

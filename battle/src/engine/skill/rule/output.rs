@@ -132,6 +132,7 @@ pub enum RuleOp {
         target_uid: i64,
         effect_type: i32,
         effect_num: i32,
+        effect_num1: Option<i32>,
         config_effect: i32,
         reserve_id: Option<i64>,
         reserve_str: Option<String>,

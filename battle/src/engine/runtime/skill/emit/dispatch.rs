@@ -382,6 +382,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                     target_uid: invocation.plan.source_uid,
                     effect_type: sonettobuf::effect_type_enum::EffectType::Mustcrit as i32,
                     effect_num: 0,
+                    effect_num1: None,
                     config_effect: 0,
                     reserve_id: execution.primary_target_uid,
                     reserve_str: None,
