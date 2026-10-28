@@ -32,6 +32,7 @@ pub(crate) fn activation_entity() -> FightEntityInfo {
         entity_type: Some(6),
         user_id: Some(0),
         ex_point: Some(0),
+        ex_point_max: Some(0),
         level: Some(0),
         current_hp: Some(1),
         attr: Some(attr),
@@ -410,6 +411,7 @@ mod tests {
         assert_eq!(entity.entity_type, Some(6));
         assert_eq!(entity.team_type, Some(1));
         assert_eq!(entity.current_hp, Some(1));
+        assert_eq!(entity.ex_point_max, Some(0));
         assert_eq!(entity.attr.unwrap().hp, Some(0));
         assert_eq!(entity.base_attr.unwrap().hp, Some(0));
         assert_eq!(entity.guard, Some(-1));
