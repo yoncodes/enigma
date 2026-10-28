@@ -250,21 +250,23 @@ fn active_skill_buff_ceiling_is_inclusive() {
 
 #[test]
 fn active_skill_enemy_count_includes_special_entities() {
-    assert_eq!(
-        parse(548201, "EnemyNumIncludeSpEqual", &["2".into()]),
-        Some(ParsedConditionKind::EntityCount {
-            scope: super::super::super::parse::EntityCountScope::AliveEnemiesIncludeSp,
-            compare: super::super::super::parse::ConditionCompare::Equal,
-            count: 2,
-        })
-    );
-    assert_eq!(
-        find_key(548201, "EnemyNumIncludeSpEqual").map(|definition| definition.role),
-        Some(ConditionRole::Trigger {
-            event: EventKind::SkillAction,
-            phase: Some(SkillPhase::Immediate),
-        })
-    );
+    for opcode in [548201, 548903] {
+        assert_eq!(
+            parse(opcode, "EnemyNumIncludeSpEqual", &["2".into()]),
+            Some(ParsedConditionKind::EntityCount {
+                scope: super::super::super::parse::EntityCountScope::AliveEnemiesIncludeSp,
+                compare: super::super::super::parse::ConditionCompare::Equal,
+                count: 2,
+            })
+        );
+        assert_eq!(
+            find_key(opcode, "EnemyNumIncludeSpEqual").map(|definition| definition.role),
+            Some(ConditionRole::Trigger {
+                event: EventKind::SkillAction,
+                phase: Some(SkillPhase::Immediate),
+            })
+        );
+    }
 }
 
 #[test]
