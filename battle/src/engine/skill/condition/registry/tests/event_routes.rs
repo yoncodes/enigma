@@ -1029,3 +1029,18 @@ fn unregistered_family_parsers_do_not_bypass_exact_lookup() {
         })
     );
 }
+#[test]
+fn emitter_skill_condition_keeps_its_filtered_action_trigger() {
+    assert_eq!(
+        parse(903, "None", &[]),
+        Some(ParsedConditionKind::None(NoneMode::EmitterSkillAction))
+    );
+    let definition = find_key(903, "None").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: None,
+        }
+    );
+}

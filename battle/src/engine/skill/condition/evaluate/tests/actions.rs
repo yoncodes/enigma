@@ -1,6 +1,48 @@
 use super::*;
 
 #[test]
+fn emitter_skill_condition_rejects_regular_actions() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let condition = exact_condition(903, "None", &[]);
+    assert_eq!(
+        satisfied_conditions(
+            std::slice::from_ref(&condition),
+            DefinitionKey::new(903, "None"),
+        )[0]
+        .kind,
+        condition.kind
+    );
+    let matches = |active_skill_source_uid| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[10],
+            None,
+            &pool,
+            TargetContext {
+                active_skill_source_uid,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(!matches(10));
+    assert!(matches(crate::engine::manager::emitter::UID));
+}
+
+#[test]
 fn hand_skill_presence_reads_the_committed_spelldock() {
     init_config();
     let fight = Fight {

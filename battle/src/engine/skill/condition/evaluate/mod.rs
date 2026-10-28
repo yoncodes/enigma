@@ -67,7 +67,10 @@ pub fn satisfied_condition(
         ParsedConditionKind::Lifecycle(_)
         | ParsedConditionKind::AllyAttacked
         | ParsedConditionKind::EntityDead => true,
-        ParsedConditionKind::None(mode) => mode != super::none::NoneMode::AllyAction,
+        ParsedConditionKind::None(mode) => !matches!(
+            mode,
+            super::none::NoneMode::AllyAction | super::none::NoneMode::EmitterSkillAction
+        ),
         _ => false,
     };
     if trigger_key.matches(condition.opcode, &condition.type_name)
@@ -468,6 +471,9 @@ fn condition_kind_matches(
             condition_targets.contains(&source_uid)
                 || (context.active_skill_source_uid != 0
                     && condition_targets.contains(&context.active_skill_source_uid))
+        }
+        ParsedConditionKind::None(super::none::NoneMode::EmitterSkillAction) => {
+            context.active_skill_source_uid == crate::engine::manager::emitter::UID
         }
         ParsedConditionKind::None(_) => condition.allows_active_skill(),
         ParsedConditionKind::BuffId { mode, buff_ids } => {
