@@ -123,6 +123,7 @@ pub mod sleep;
 pub mod special_count_cast_channel;
 pub mod special_count_continue_channel;
 pub mod team_immunity_times;
+pub mod team_per_power_add_buff;
 pub mod team_share_shield;
 pub mod toughness;
 pub mod transfer_energy_buff;

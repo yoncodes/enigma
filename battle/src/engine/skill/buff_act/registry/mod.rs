@@ -297,6 +297,7 @@ pub enum BuffActKind {
     SubBuff,
     Taunt,
     TeamImmunityTimes,
+    TeamPerPowerAddBuff,
     TeamExElectricTransConsumeValueAttr,
     TeamShareShield,
     RecordTeamExElectricTransConsumeValue,
@@ -1468,6 +1469,12 @@ buff_act_definitions! {
         runtime: |context| super::eureka_to_inspiration::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::eureka_to_inspiration::supports,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1082, "UseSkillConsumeFromAddEmitterEnergy"), &[]));
+    (1085, "TeamPerPowerAddBuff") => TeamPerPowerAddBuff,
+        frame: CausingFrame,
+        runtime: |context| super::team_per_power_add_buff::rule_ops(context.managers, context.pool, context.subscriber, context.event?),
+        supports: super::team_per_power_add_buff::supports,
+        references: super::team_per_power_add_buff::references,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1085, "TeamPerPowerAddBuff"), &[]));
     (1086, "ToothFairyFantasy") => ToothFairyFantasy,
         scoped_runtime: super::fantasy::rule_ops,
         supports: super::fantasy::supports,
