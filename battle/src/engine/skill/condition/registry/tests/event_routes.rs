@@ -811,6 +811,7 @@ fn immediate_buff_type_threshold_observes_add_and_update() {
 fn buff_presence_action_opcodes_keep_their_exact_phases() {
     for (opcode, type_name, phase) in [
         (19203, "HasBuffId", SkillPhase::Immediate),
+        (19901, "HasBuffId", SkillPhase::Immediate),
         (19208, "HasBuffId", SkillPhase::AfterDamage),
         (57208, "NoBuffId", SkillPhase::AfterDamage),
     ] {
