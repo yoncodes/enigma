@@ -159,6 +159,10 @@ impl RoundDeterminism {
         }
     }
 
+    pub fn clear_card_energy_snapshots(&mut self) {
+        self.card_energy_snapshots.clear();
+    }
+
     pub fn take_card_energy_snapshot(
         &mut self,
         cards: &[CardInfo],
