@@ -358,6 +358,7 @@ pub enum CardConsumptionKind {
 pub enum CardCommand {
     Setup(CardSetup),
     PreserveRefillFloor,
+    PreserveDeckCount,
     ConsumeForEffect(CardConsumeForEffect),
     Move {
         origin: CommandOrigin,
@@ -608,6 +609,17 @@ pub(super) fn execute(
         }
         CardCommand::PreserveRefillFloor => {
             manager.preserve_refill_floor();
+            (
+                None,
+                CardChangeKind::Setup,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::PreserveDeckCount => {
+            manager.preserve_deck_count();
             (
                 None,
                 CardChangeKind::Setup,

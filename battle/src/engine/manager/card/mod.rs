@@ -62,6 +62,7 @@ pub struct CardManager {
     persisting_temporary: Vec<CardInstanceId>,
     hand_limit_bonus: i32,
     refill_floor: usize,
+    preserve_deck_count: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -138,6 +139,7 @@ impl CardManager {
             persisting_temporary: Vec::new(),
             hand_limit_bonus: 0,
             refill_floor: 0,
+            preserve_deck_count: false,
         }
     }
 
@@ -160,6 +162,7 @@ impl CardManager {
             persisting_temporary: Vec::new(),
             hand_limit_bonus: 0,
             refill_floor: 0,
+            preserve_deck_count: false,
         }
     }
 
@@ -205,11 +208,15 @@ impl CardManager {
     }
 
     pub fn refill_consumes_deck(&self) -> bool {
-        self.refill_floor == 0
+        !self.preserve_deck_count
     }
 
     pub(crate) fn preserve_refill_floor(&mut self) {
         self.refill_floor = self.normal_hand_len();
+    }
+
+    pub(crate) fn preserve_deck_count(&mut self) {
+        self.preserve_deck_count = true;
     }
 
     pub(crate) fn add_hand_limit_bonus(&mut self, delta: i32) {
@@ -347,6 +354,7 @@ impl CardManager {
         self.pending_temporary.clear();
         self.persisting_temporary.clear();
         self.refill_floor = 0;
+        self.preserve_deck_count = false;
     }
 
     pub fn seed(&mut self, fight: &sonettobuf::Fight) {

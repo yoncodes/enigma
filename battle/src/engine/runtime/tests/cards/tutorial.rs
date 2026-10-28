@@ -290,3 +290,93 @@ fn tutorial_without_scripted_refills_preserves_the_normal_hand_size() {
     assert_eq!(runtime.managers.card.normal_hand_len(), opening_size);
     assert!(!runtime.managers.card.refilled().is_empty());
 }
+
+#[test]
+fn mechanic_tutorial_refills_keep_the_deck_count() {
+    let mut runtime = kiperina_runtime(493708, 116370080);
+    let deck_num = runtime.managers.card.deck_num();
+
+    refill_after_one_play(&mut runtime);
+
+    assert_eq!(runtime.managers.card.refill_floor(), 0);
+    assert_eq!(runtime.managers.card.deck_num(), deck_num);
+}
+
+#[test]
+fn kiperina_refills_in_story_battles_consume_the_deck() {
+    let mut runtime = kiperina_runtime(3791001, 115370001);
+    let deck_num = runtime.managers.card.deck_num();
+    assert!(runtime.catalog.get(31170141).is_some());
+
+    refill_after_one_play(&mut runtime);
+
+    assert_eq!(runtime.managers.card.deck_num(), deck_num - 1);
+}
+
+fn kiperina_runtime(episode_id: i32, battle_id: i32) -> BattleRuntime {
+    crate::test_support::init_config();
+    let fight = Fight {
+        battle_id: Some(battle_id),
+        episode_id: Some(episode_id),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3117),
+                current_hp: Some(10_000),
+                skill_group1: vec![31170111, 31170112, 31170113],
+                skill_group2: vec![31170121, 31170122, 31170123],
+                passive_skill: vec![31170141],
+                ex_skill: Some(31170131),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-10),
+                current_hp: Some(100_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(fight);
+    runtime
+        .start_round_with_determinism(RoundDeterminism::with_seed(0x5eed))
+        .unwrap();
+    runtime
+}
+
+fn refill_after_one_play(runtime: &mut BattleRuntime) {
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Play(
+            crate::engine::manager::card::CardPlay {
+                origin: crate::engine::manager::card::CARD_PLAY_ORIGIN,
+                hand_index: 0,
+                target_uid: None,
+                chosen_skill_id: None,
+                choice: None,
+                recorded_skill: None,
+            },
+        ))
+        .unwrap();
+    let pool = crate::engine::skill::target::TargetPool::from_fight(&runtime.fight);
+    let hand_size = crate::engine::mechanic::card::CardMechanic.normal_hand_limit(
+        crate::engine::manager::card::start::hand_size(&runtime.fight),
+        &runtime.managers,
+        &pool,
+    );
+    schedule::run_round_refill(
+        &mut runtime.managers,
+        &pool,
+        &runtime.catalog,
+        &mut runtime.determinism,
+        Default::default(),
+        hand_size,
+        1,
+    )
+    .unwrap();
+}

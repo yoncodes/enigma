@@ -6,6 +6,7 @@ use crate::engine::skill::rule::{CommandOrigin, RuleDomain};
 const BURN_BUFF_FIGHT_CONST: i32 = 29;
 const CONTRACT_OWNER_BUFF_MAP: i32 = 30;
 const CONTRACT_BOUND_BUFF_MAP: i32 = 31;
+const MECHANIC_TUTORIAL_EPISODE_TYPE: i32 = 37;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MagicCircleDefinition {
@@ -645,6 +646,13 @@ impl BattleCatalog {
 
     pub(crate) fn teaching_cards(self, episode_id: i32) -> Option<ConfiguredTeachingCards> {
         configured_teaching_cards(self.game_data, episode_id)
+    }
+
+    pub(crate) fn is_mechanic_tutorial(self, episode_id: i32) -> bool {
+        self.game_data
+            .episode
+            .get(episode_id)
+            .is_some_and(|episode| episode.r#type == MECHANIC_TUTORIAL_EPISODE_TYPE)
     }
 
     pub(crate) fn device_card_weights(
