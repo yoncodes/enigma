@@ -482,19 +482,16 @@ impl BuffManager {
                             && active.buff.uid == Some(update.buff_uid)
                     })
                     .ok_or(BuffCommandError::InvalidDurationChange)?;
-                let duration = active
-                    .buff
-                    .duration
-                    .unwrap_or_default()
-                    .max(update.minimum_duration);
-                (
-                    update.origin,
-                    BuffPlanAction::ChangeDuration(vec![DurationChangePlan {
+                let current_duration = active.buff.duration.unwrap_or_default();
+                let plans = (current_duration < update.minimum_duration)
+                    .then_some(DurationChangePlan {
                         target_uid: update.target_uid,
                         buff_uid: update.buff_uid,
-                        duration,
-                    }]),
-                )
+                        duration: update.minimum_duration,
+                    })
+                    .into_iter()
+                    .collect();
+                (update.origin, BuffPlanAction::ChangeDuration(plans))
             }
             BuffCommand::RefreshDurationBySelector(update) => {
                 let selector_valid = match update.selector {

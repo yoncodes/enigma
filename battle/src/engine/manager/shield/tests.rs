@@ -111,10 +111,7 @@ fn shield_buff_is_attached_once_and_repeats_stack_to_the_cap() {
     assert_eq!(managers.hp.shield(1), 1_590);
 
     let second = execute(&mut managers, command()).unwrap();
-    let refreshed = &second.buff.as_ref().unwrap().change.refreshed;
-    assert_eq!(refreshed.len(), 1);
-    assert_eq!(refreshed[0].after.uid, Some(2));
-    assert_eq!(refreshed[0].after.duration, added.buff.duration);
+    assert!(second.buff.as_ref().unwrap().change.refreshed.is_empty());
     assert_eq!(second.hp.unwrap().shield_granted.unwrap().added, 1_590);
     assert_eq!(managers.hp.shield(1), 3_180);
 }
