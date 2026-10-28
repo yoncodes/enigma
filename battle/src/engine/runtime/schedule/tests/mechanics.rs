@@ -517,7 +517,7 @@ fn action_queue_commit_collects_played_card_energy_as_inspiration() {
 }
 
 #[test]
-fn player_actions_resolved_activates_internal_inspiration_thresholds() {
+fn player_actions_resolved_groups_visible_inspiration_thresholds() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -539,7 +539,7 @@ fn player_actions_resolved_activates_internal_inspiration_thresholds() {
                     buffs: vec![BuffInfo {
                         uid: Some(30),
                         buff_id: Some(31080151),
-                        from_uid: Some(99998),
+                        from_uid: Some(10),
                         ..Default::default()
                     }],
                     ..Default::default()
@@ -600,10 +600,32 @@ fn player_actions_resolved_activates_internal_inspiration_thresholds() {
             .iter()
             .map(BattleEvent::kind)
             .collect::<Vec<_>>(),
-        vec![EventKind::PlayerActionsResolved]
+        vec![
+            EventKind::PlayerActionsResolved,
+            EventKind::BuffAdded,
+            EventKind::BuffAdded,
+        ]
     );
     let steps = crate::engine::packet::timeline::project(&activated.frames).unwrap();
-    assert!(steps.is_empty());
+    assert_eq!(steps.len(), 1);
+    let threshold = steps[0].act_effect[0].fight_step.as_ref().unwrap();
+    assert_eq!(threshold.from_id, Some(10));
+    assert_eq!(threshold.to_id, Some(99998));
+    assert_eq!(threshold.act_id, Some(31080151));
+    assert_eq!(threshold.act_effect.len(), 4);
+    assert_eq!(
+        threshold
+            .act_effect
+            .iter()
+            .map(|effect| effect.effect_type.unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Buffadd as i32,
+            sonettobuf::effect_type_enum::EffectType::Emitternumchange as i32,
+            sonettobuf::effect_type_enum::EffectType::Buffadd as i32,
+            sonettobuf::effect_type_enum::EffectType::Emitternumchange as i32,
+        ]
+    );
     assert!(managers.buff.has_buff_id(99998, 31080152));
     assert!(managers.buff.has_buff_id(99998, 31080153));
     let plan = build_plan(&managers, 1, 99998).unwrap();
