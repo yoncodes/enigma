@@ -118,17 +118,13 @@ pub fn split_final_damage_delta_for(
         return 0;
     }
     let features = buffs.active_features(hp);
-    let configured_reduction = features
+    let configured_fix = features
         .iter()
         .filter(|feature| feature.owner_uid == emitter_uid)
         .filter(|feature| is_kind(feature, BuffActKind::EmitterFixSubTargetsDamageReduceRate))
         .filter_map(|feature| feature.values.get(1))
         .sum::<i32>();
-    -if configured_reduction == 0 {
-        DEFAULT_SPLIT_DAMAGE_REDUCTION
-    } else {
-        configured_reduction
-    }
+    -(DEFAULT_SPLIT_DAMAGE_REDUCTION - configured_fix).max(0)
 }
 
 fn attack_count_delta(feature: &ActiveBuffFeature) -> i32 {

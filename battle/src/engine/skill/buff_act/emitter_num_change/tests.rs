@@ -239,7 +239,7 @@ fn split_targets_use_the_default_final_damage_penalty() {
 }
 
 #[test]
-fn configured_split_damage_reduction_overrides_the_default() {
+fn configured_split_damage_fix_reduces_the_default_penalty() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -261,5 +261,31 @@ fn configured_split_damage_reduction_overrides_the_default() {
     let mut hp = HpManager::default();
     hp.seed(&fight);
 
-    assert_eq!(split_final_damage_delta(&buffs, &hp, 1), -500);
+    assert_eq!(split_final_damage_delta(&buffs, &hp, 1), -200);
+}
+
+#[test]
+fn full_split_damage_fix_cancels_the_default_penalty() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(emitter::UID),
+                current_hp: Some(1),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(31410603),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut buffs = BuffManager::default();
+    buffs.seed(&fight);
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+
+    assert_eq!(split_final_damage_delta(&buffs, &hp, 1), 0);
 }
