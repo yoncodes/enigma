@@ -23,7 +23,8 @@ use crate::engine::{
     },
     mechanic::{
         buff_precast::BuffPrecastCommand, field_transfer::FieldTransferCommand,
-        focus_all_entity_buff::FocusAllEntityBuffCommand, monster_change::MonsterChangeCommand,
+        focus_all_entity_buff::FocusAllEntityBuffCommand,
+        magic_circle_level::MagicCircleLevelCommand, monster_change::MonsterChangeCommand,
         nuo_di_ka::NuoDiKaCommand, shell::ShellCommand,
     },
     skill::action::{SkillInvocation, SkillLifecycle},
@@ -87,6 +88,7 @@ pub enum BattleCommand {
     FightProgress(FightProgressCommand),
     FightProgressValue(FightProgressValueCommand),
     FieldTransfer(FieldTransferCommand),
+    MagicCircleLevel(MagicCircleLevelCommand),
     FocusAllEntityBuff(FocusAllEntityBuffCommand),
     Shell(ShellCommand),
     NuoDiKa(NuoDiKaCommand),

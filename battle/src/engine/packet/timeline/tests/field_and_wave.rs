@@ -122,6 +122,37 @@ fn field_deploy_projects_the_complete_committed_snapshot() {
 }
 
 #[test]
+fn replacement_field_keeps_owner_and_wire_creator_distinct() {
+    let mut fields = FieldManager::default();
+    let change = fields
+        .execute_command(FieldCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60270, "UpdateWangQiMagicCircle"),
+            },
+            team: 1,
+            operation: FieldOperation::DeployReplacement {
+                definition: FieldDefinition {
+                    field_id: 42002,
+                    duration: -1,
+                },
+                owner_uid: 7,
+                create_uid: -1,
+                level: 2,
+            },
+        })
+        .unwrap();
+
+    let effects = project_change_for_test(&BattleChange::Field(change)).unwrap();
+    let info = effects[0].magic_circle.as_ref().unwrap();
+    assert_eq!(effects[0].target_id, Some(7));
+    assert_eq!(info.magic_circle_id, Some(42002));
+    assert_eq!(info.create_uid, Some(-1));
+    assert_eq!(info.electric_level, Some(2));
+    assert_eq!(info.round, Some(-1));
+}
+
+#[test]
 fn wave_projection_uses_the_owned_fight_snapshot() {
     let change = crate::engine::manager::wave::WaveAdvanced {
         wave: 2,

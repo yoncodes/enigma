@@ -278,6 +278,7 @@ pub mod investigate_clue;
 pub mod item;
 pub mod language_en;
 pub mod magic_circle;
+pub mod magic_wqsz;
 pub mod manufacture_building;
 pub mod manufacture_building_level;
 pub mod manufacture_building_trade_level;
@@ -703,6 +704,7 @@ pub struct GameDB {
     pub item: item::ItemTable,
     pub language_en: language_en::LanguageEnTable,
     pub magic_circle: magic_circle::MagicCircleTable,
+    pub magic_wqsz: magic_wqsz::MagicWqszTable,
     pub manufacture_building: manufacture_building::ManufactureBuildingTable,
     pub manufacture_building_level: manufacture_building_level::ManufactureBuildingLevelTable,
     pub manufacture_building_trade_level: manufacture_building_trade_level::ManufactureBuildingTradeLevelTable,
@@ -1684,6 +1686,9 @@ impl GameDB {
         let magic_circle = magic_circle::MagicCircleTable::load(
             &format!("{}/magic_circle.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load magic_circle.json: {}", e))?;
+        let magic_wqsz = magic_wqsz::MagicWqszTable::load(
+            &format!("{}/magic_wqsz.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load magic_wqsz.json: {}", e))?;
         let manufacture_building = manufacture_building::ManufactureBuildingTable::load(
             &format!("{}/manufacture_building.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load manufacture_building.json: {}", e))?;
@@ -2393,6 +2398,7 @@ impl GameDB {
             item,
             language_en,
             magic_circle,
+            magic_wqsz,
             manufacture_building,
             manufacture_building_level,
             manufacture_building_trade_level,

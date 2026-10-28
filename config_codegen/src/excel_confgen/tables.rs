@@ -188,6 +188,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "store_recommend",
     "same_currency_exchange",
     "magic_circle",
+    "magic_wqsz",
     "language_en",
     "const",
     "act139_dispatch_task",

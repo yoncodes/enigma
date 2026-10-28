@@ -733,6 +733,7 @@ behavior_definitions! {
     [50019] "AddMagicCircle" => super::magic_circle::Handler, AddMagicCircle, Immediate, destination;
     [50021] "RemoveMagicCircleById" => super::magic_circle::Handler, RemoveMagicCircleById, Immediate, destination;
     [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, destination;
+    [60270] "UpdateWangQiMagicCircle" => super::magic_circle::Handler, UpdateWangQiMagicCircle, Immediate, destination;
     [60195] "ElectricTransform" => super::electric::Handler, ElectricTransform, Immediate, destination, super::electric::supports;
     [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, owner_destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(0, "None"), stage: SetupStage::Unconditional, priority: 0 }), super::synchronization::supports_props;
     [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterHit, destination, super::synchronization::supports_big_skill_rate;

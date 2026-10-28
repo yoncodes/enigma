@@ -298,7 +298,9 @@ fn normalize_framed_step(effect: ActEffect) -> FightStep {
 }
 
 #[cfg(test)]
-fn project_change_for_test(change: &BattleChange) -> Result<Vec<ActEffect>, ProjectionError> {
+pub(crate) fn project_change_for_test(
+    change: &BattleChange,
+) -> Result<Vec<ActEffect>, ProjectionError> {
     project_change_with_reduce_hp(change, true)
 }
 
@@ -1248,7 +1250,7 @@ fn project_change(
                     .before
                     .map(|state| {
                         EffectPacket::magic_circle_delete(
-                            state.create_uid,
+                            state.owner_uid,
                             state.definition.field_id,
                         )
                     })
@@ -1440,7 +1442,7 @@ fn magic_circle_snapshot(
     let state = change.after?;
     Some(
         crate::engine::mechanic::magic_circle::MagicCircleApplyResult {
-            target_uid: state.create_uid,
+            target_uid: state.owner_uid,
             circle_id: state.definition.field_id,
             info: MagicCircleInfo {
                 magic_circle_id: Some(state.definition.field_id),

@@ -5,6 +5,7 @@ use crate::engine::{
         buff::{BuffCommand, BuffGrantChild},
         field::{FieldCommand, FieldDefinition, FieldOperation, FieldThreshold},
     },
+    mechanic::magic_circle_level::MagicCircleLevelCommand,
     runtime::determinism::RoundDeterminism,
     skill::{
         behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
@@ -103,6 +104,43 @@ fn remove_rule_ops(
     }))])
 }
 
+fn update_wangqi_rule_ops(
+    behavior: &ParsedBehavior,
+    source_uid: i64,
+    team: i32,
+    managers: &BattleManagers,
+) -> Option<Vec<RuleOp>> {
+    if behavior.spec.kind != BehaviorKind::UpdateWangQiMagicCircle
+        || behavior.args.as_slice() != [1]
+    {
+        return None;
+    }
+    let Some(current) = managers.field.get(team) else {
+        return Some(Vec::new());
+    };
+    let Some(circle) = managers.catalog().magic_circle(current.definition.field_id) else {
+        return Some(Vec::new());
+    };
+    let Some(next) = managers
+        .catalog()
+        .next_magic_circle_level(current.definition.field_id)
+    else {
+        return Some(Vec::new());
+    };
+    Some(vec![RuleOp::Command(BattleCommand::MagicCircleLevel(
+        MagicCircleLevelCommand {
+            origin: super::command_origin(behavior)?,
+            source_uid,
+            team,
+            expected_field_id: current.definition.field_id,
+            replacement: next.definition,
+            level: next.level,
+            removed_buffs: circle.linked_buffs,
+            added_buffs: next.linked_buffs,
+        },
+    ))])
+}
+
 pub(crate) fn field_thresholds(
     circle_id: i32,
     team: i32,
@@ -153,6 +191,7 @@ impl BehaviorHandler for Handler {
             }
             (BehaviorKind::RemoveMagicCircleById, [circle_id]) => configured(*circle_id),
             (BehaviorKind::MagicCircleAttr, _) => supports_magic_circle_attr(behavior),
+            (BehaviorKind::UpdateWangQiMagicCircle, [1]) => true,
             _ => false,
         }
     }
@@ -170,6 +209,12 @@ impl BehaviorHandler for Handler {
                 remove_rule_ops(behavior, context.source_team, context.managers)
             }
             BehaviorKind::MagicCircleAttr => supports_magic_circle_attr(behavior).then(Vec::new),
+            BehaviorKind::UpdateWangQiMagicCircle => update_wangqi_rule_ops(
+                behavior,
+                context.source_uid,
+                context.source_team,
+                context.managers,
+            ),
             _ => None,
         }
     }
@@ -229,7 +274,7 @@ pub fn emit_attack_attributes(
     else {
         return;
     };
-    let Some(owner) = pool.entity(field.create_uid) else {
+    let Some(owner) = pool.entity(field.owner_uid) else {
         return;
     };
     if pool.source_is_attacker(owner.uid) != pool.source_is_attacker(source_uid) {
@@ -465,5 +510,54 @@ mod tests {
             )))
         )));
         assert!(matches!(ops[2], RuleOp::Command(BattleCommand::Field(_))));
+    }
+
+    #[test]
+    fn wangqi_update_emits_one_config_derived_level_transaction() {
+        crate::test_support::init_config();
+        let origin = crate::engine::manager::buff::CommandOrigin {
+            domain: crate::engine::skill::rule::RuleDomain::Behavior,
+            key: crate::engine::skill::rule::DefinitionKey::new(50019, "AddMagicCircle"),
+        };
+        let mut managers = BattleManagers::default();
+        managers
+            .field
+            .execute_command(FieldCommand {
+                origin,
+                team: 1,
+                operation: FieldOperation::DeployIfAbsent {
+                    definition: FieldDefinition {
+                        field_id: 42003,
+                        duration: -1,
+                    },
+                    create_uid: 7,
+                    initial_level: 3,
+                    thresholds: Vec::new(),
+                },
+            })
+            .unwrap();
+
+        let behavior = ParsedBehavior::new(60270, "UpdateWangQiMagicCircle", vec![1]);
+        assert!(matches!(
+            update_wangqi_rule_ops(&behavior, 7, 1, &managers).as_deref(),
+            Some([RuleOp::Command(BattleCommand::MagicCircleLevel(
+                MagicCircleLevelCommand {
+                    expected_field_id: 42003,
+                    replacement: FieldDefinition {
+                        field_id: 42004,
+                        duration: 4,
+                    },
+                    level: 4,
+                    removed_buffs,
+                    added_buffs,
+                    ..
+                }
+            ))]) if removed_buffs == &vec![31410601, 31412602, 31410603]
+                && added_buffs == &vec![31410601, 31412602, 31410603, 31410604]
+        ));
+        assert!(crate::engine::skill::behavior::is_supported(&behavior));
+        assert!(!crate::engine::skill::behavior::is_supported(
+            &ParsedBehavior::new(60270, "UpdateWangQiMagicCircle", vec![2],)
+        ));
     }
 }

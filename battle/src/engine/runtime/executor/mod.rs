@@ -22,6 +22,7 @@ use crate::engine::{
         buff_precast::{BuffPrecastChanges, BuffPrecastError},
         field_transfer::{FieldTransferChanges, FieldTransferError},
         focus_all_entity_buff::{FocusAllEntityBuffChanges, FocusAllEntityBuffError},
+        magic_circle_level::{MagicCircleLevelChanges, MagicCircleLevelError},
         monster_change::{MonsterChangeChanges, MonsterChangeError},
         shell::{ShellChanges, ShellError},
     },
@@ -81,6 +82,7 @@ pub(crate) enum RuleOutcome {
     FightProgress(FightProgressChange),
     FightProgressValue(FightProgressValueChange),
     FieldTransfer(Box<FieldTransferChanges>),
+    MagicCircleLevel(Box<MagicCircleLevelChanges>),
     FocusAllEntityBuff(Box<FocusAllEntityBuffChanges>),
     Shell(Box<ShellChanges>),
     RaspberryCapacity(Box<CapacityResult>),
@@ -344,6 +346,21 @@ impl RuleOutcome {
                 .map(|change| BattleChange::Buff(Box::new(change)))
                 .chain(std::iter::once(BattleChange::Field(changes.field)))
                 .collect(),
+            Self::MagicCircleLevel(changes) => changes
+                .removed_buffs
+                .iter()
+                .cloned()
+                .map(|change| BattleChange::Buff(Box::new(change)))
+                .chain(std::iter::once(BattleChange::Field(changes.removed_field)))
+                .chain(
+                    changes
+                        .added_buffs
+                        .iter()
+                        .cloned()
+                        .map(|change| BattleChange::Buff(Box::new(change))),
+                )
+                .chain(std::iter::once(BattleChange::Field(changes.added_field)))
+                .collect(),
             Self::FocusAllEntityBuff(changes) => changes
                 .buffs
                 .iter()
@@ -400,6 +417,7 @@ pub(crate) enum RuleExecutionError {
     Field(FieldCommandError),
     FightProgress(FightProgressError),
     FieldTransfer(FieldTransferError),
+    MagicCircleLevel(MagicCircleLevelError),
     FocusAllEntityBuff(FocusAllEntityBuffError),
     Shell(ShellError),
     RaspberryCapacity(CapacityError),
@@ -502,6 +520,12 @@ impl From<FightProgressError> for RuleExecutionError {
 impl From<FieldTransferError> for RuleExecutionError {
     fn from(value: FieldTransferError) -> Self {
         Self::FieldTransfer(value)
+    }
+}
+
+impl From<MagicCircleLevelError> for RuleExecutionError {
+    fn from(value: MagicCircleLevelError) -> Self {
+        Self::MagicCircleLevel(value)
     }
 }
 
@@ -893,6 +917,26 @@ pub(crate) fn execute_rule_op_with(
                 events.push(event);
             }
             Ok(RuleOutcome::FieldTransfer(Box::new(changes)))
+        }
+        RuleOp::Command(BattleCommand::MagicCircleLevel(command)) => {
+            let changes = crate::engine::mechanic::magic_circle_level::execute(managers, command)?;
+            for buff in &changes.removed_buffs {
+                for event in buff.events() {
+                    events.push(event);
+                }
+            }
+            for event in changes.removed_field.events() {
+                events.push(event);
+            }
+            for buff in &changes.added_buffs {
+                for event in buff.events() {
+                    events.push(event);
+                }
+            }
+            for event in changes.added_field.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::MagicCircleLevel(Box::new(changes)))
         }
         RuleOp::Command(BattleCommand::FocusAllEntityBuff(command)) => {
             let Some(changes) =

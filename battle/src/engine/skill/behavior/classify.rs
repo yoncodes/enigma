@@ -143,6 +143,7 @@ pub enum BehaviorKind {
     AddMagicCircle,
     RemoveMagicCircleById,
     MagicCircleAttr,
+    UpdateWangQiMagicCircle,
     AddSummoned,
     ChangeSummonedLevel,
     AddSummonedLevel,
