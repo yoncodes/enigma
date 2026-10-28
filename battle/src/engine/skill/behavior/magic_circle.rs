@@ -312,8 +312,15 @@ pub fn emit_attack_attributes(
         return;
     }
 
-    for passive_skill in &owner.passive_skills {
-        let Some(effect) = effects.get(*passive_skill) else {
+    let mut passive_skills = owner.passive_skills.clone();
+    for link in managers.buff.passive_skill_links_for(owner.uid) {
+        if !passive_skills.contains(&link.skill_id) {
+            passive_skills.push(link.skill_id);
+        }
+    }
+
+    for passive_skill in passive_skills {
+        let Some(effect) = effects.get(passive_skill) else {
             continue;
         };
         for slot in effect
