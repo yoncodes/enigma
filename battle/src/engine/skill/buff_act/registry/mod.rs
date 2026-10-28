@@ -1484,7 +1484,7 @@ buff_act_definitions! {
         runtime: |context| super::team_per_power_add_buff::rule_ops(context.managers, context.pool, context.subscriber, context.event?),
         supports: super::team_per_power_add_buff::supports,
         references: super::team_per_power_add_buff::references,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1085, "TeamPerPowerAddBuff"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1085, "TeamPerPowerAddBuff"), &[EffectType::None as i32]));
     (1086, "ToothFairyFantasy") => ToothFairyFantasy,
         scoped_runtime: super::fantasy::rule_ops,
         supports: super::fantasy::supports,

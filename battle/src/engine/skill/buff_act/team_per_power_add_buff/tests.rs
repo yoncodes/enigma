@@ -61,6 +61,19 @@ fn route_and_arguments_are_exact() {
         destination(1085, "TeamPerPowerAddBuff", &feature.args),
         Some(BuffActDestination::Runtime)
     );
+    let wire = find(1085, "TeamPerPowerAddBuff").unwrap().wire.unwrap();
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
 }
 
 #[test]
