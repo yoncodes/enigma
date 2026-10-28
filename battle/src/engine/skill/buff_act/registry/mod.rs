@@ -204,6 +204,7 @@ pub enum BuffActKind {
     EmitterDamageUp,
     EmitterEnergyAddBuff,
     EmitterExtraDamage,
+    EmitterAttackNumLimitFixDamage,
     EmitterFixSubTargetsDamageReduceRate,
     EmitterNumChange,
     EmitterRendTarget,
@@ -1463,7 +1464,12 @@ buff_act_definitions! {
     (1079, "ChangeEmitterSkill") => ChangeEmitterSkill, effect_time_subscription: false,
         supports: super::emitter_skill::supports, references: references_for_feature, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1079, "ChangeEmitterSkill"), &[]));
-    (1081, "EmitterFixSubTargetsDamageReduceRate") => EmitterFixSubTargetsDamageReduceRate;
+    (1080, "EmitterAttackNumLimitFixDamage") => EmitterAttackNumLimitFixDamage,
+        supports: super::emitter_num_change::supports_limit,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1080, "EmitterAttackNumLimitFixDamage"), &[EffectType::None as i32]));
+    (1081, "EmitterFixSubTargetsDamageReduceRate") => EmitterFixSubTargetsDamageReduceRate,
+        supports: super::emitter_num_change::supports_reduction, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1081, "EmitterFixSubTargetsDamageReduceRate"), &[EffectType::None as i32]));
     (1082, "UseSkillConsumeFromAddEmitterEnergy") => UseSkillConsumeFromAddEmitterEnergy,
         publication: BeforePublish, frame: CausingFrame,
         runtime: |context| super::eureka_to_inspiration::rule_ops(context.managers, context.subscriber, context.event?),

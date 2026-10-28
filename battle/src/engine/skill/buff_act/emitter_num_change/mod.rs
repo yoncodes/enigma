@@ -17,6 +17,14 @@ pub fn supports_split(args: &[i32]) -> bool {
     matches!(args, [start, interval, count] if *start > 0 && *interval > 0 && *count > 0)
 }
 
+pub fn supports_limit(args: &[i32]) -> bool {
+    matches!(args, [limit, rate, maximum] if *limit > 0 && *rate > 0 && *maximum > 0)
+}
+
+pub fn supports_reduction(args: &[i32]) -> bool {
+    matches!(args, [rate] if *rate > 0)
+}
+
 pub fn attack_count(buffs: &BuffManager, hp: &HpManager) -> i32 {
     attack_count_for(buffs, hp, emitter::UID)
 }

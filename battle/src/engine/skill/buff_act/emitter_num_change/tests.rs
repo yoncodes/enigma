@@ -33,6 +33,52 @@ fn exact_split_route_requires_positive_cadence_and_count() {
     assert_eq!(destination(892, "AddSplitEmitterNum", &[1, 1, 2]), None);
 }
 
+#[test]
+fn exact_emitter_damage_modifiers_keep_distinct_support() {
+    use super::super::{
+        registry::{BuffActDestination, destination},
+        wire::{self, WirePhase},
+    };
+    use sonettobuf::effect_type_enum::EffectType;
+
+    let limit = super::super::registry::find(1080, "EmitterAttackNumLimitFixDamage").unwrap();
+    assert!(limit.validate_arguments(None, &[4, 2500, 4], None));
+    assert!(!limit.validate_arguments(None, &[4, 2500], None));
+    assert!(!limit.validate_arguments(None, &[0, 2500, 4], None));
+    assert_eq!(
+        destination(1080, "EmitterAttackNumLimitFixDamage", &[4, 2500, 4]),
+        None
+    );
+    let limit_wire = wire::find(1080, "EmitterAttackNumLimitFixDamage").unwrap();
+    assert_eq!(
+        limit_wire.markers(WirePhase::Add),
+        &[EffectType::None as i32]
+    );
+    assert!(limit_wire.markers(WirePhase::Static).is_empty());
+    assert!(limit_wire.markers(WirePhase::Refresh).is_empty());
+
+    let reduction =
+        super::super::registry::find(1081, "EmitterFixSubTargetsDamageReduceRate").unwrap();
+    assert!(reduction.validate_arguments(None, &[700], None));
+    assert!(!reduction.validate_arguments(None, &[], None));
+    assert!(!reduction.validate_arguments(None, &[0], None));
+    assert_eq!(
+        destination(1081, "EmitterFixSubTargetsDamageReduceRate", &[700]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    let reduction_wire = wire::find(1081, "EmitterFixSubTargetsDamageReduceRate").unwrap();
+    assert_eq!(
+        reduction_wire.markers(WirePhase::Add),
+        &[EffectType::None as i32]
+    );
+    assert!(reduction_wire.markers(WirePhase::Static).is_empty());
+    assert!(reduction_wire.markers(WirePhase::Refresh).is_empty());
+    assert_eq!(
+        destination(1081, "EmitterFixSubTargetsDamageReduceRate", &[0]),
+        None
+    );
+}
+
 fn split_feature() -> ActiveBuffFeature {
     ActiveBuffFeature {
         owner_uid: emitter::UID,
@@ -119,4 +165,30 @@ fn split_targets_use_the_default_final_damage_penalty() {
 
     assert_eq!(split_final_damage_delta(&buffs, &hp, 1), -700);
     assert_eq!(split_final_damage_delta(&buffs, &hp, 0), 0);
+}
+
+#[test]
+fn configured_split_damage_reduction_overrides_the_default() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(emitter::UID),
+                current_hp: Some(1),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(114340006),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut buffs = BuffManager::default();
+    buffs.seed(&fight);
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+
+    assert_eq!(split_final_damage_delta(&buffs, &hp, 1), -500);
 }
