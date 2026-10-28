@@ -422,7 +422,7 @@ fn card_level_change_ops(
         return Some(Vec::new());
     }
     if mode == 3 {
-        let hand_index = candidates.pop()?;
+        let hand_index = *candidates.first()?;
         return Some(vec![RuleOp::Command(BattleCommand::Card(
             CardCommand::RankUpHand(HandCardRankUp {
                 origin,
@@ -993,7 +993,7 @@ mod tests {
     }
 
     #[test]
-    fn card_level_change_mode_three_selects_rightmost_owned_eligible_card_without_randomness() {
+    fn card_level_change_mode_three_selects_visual_rightmost_owned_card() {
         use crate::engine::runtime::determinism::{HandRankChoice, RoundDeterminism};
         use sonettobuf::{CardInfo, Fight, FightEntityInfo, FightTeam};
 
@@ -1071,7 +1071,7 @@ mod tests {
             [RuleOp::Command(BattleCommand::Card(
                 CardCommand::RankUpHand(HandCardRankUp {
                     owner_uid: 10,
-                    hand_index: 6,
+                    hand_index: 0,
                     ..
                 })
             ))]
