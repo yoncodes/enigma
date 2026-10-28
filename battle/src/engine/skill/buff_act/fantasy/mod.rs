@@ -190,7 +190,7 @@ pub fn rule_ops(context: &mut RuntimeContext<'_>) -> Option<Vec<BuffActRuleOp>> 
             target_uid: subscriber.owner_uid,
             selector: BuffSelector::ExactId(rule.source_buff),
             amount: consumed,
-            depleted: DepletedBuff::Remove,
+            depleted: DepletedBuff::RemoveWithZeroLayer,
         })),
     ))];
     ops.extend(debuff_targets.into_iter().map(|target_uid| {

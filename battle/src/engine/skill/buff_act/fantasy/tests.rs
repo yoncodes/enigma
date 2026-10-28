@@ -8,7 +8,7 @@ use crate::engine::{
     },
     runtime::{
         determinism::RoundDeterminism,
-        drain::{self, ReactionLane},
+        drain::{self, DrainResult, ReactionLane},
     },
     skill::{
         effect::SkillEffectCatalog,
@@ -32,7 +32,7 @@ fn entity(uid: i64, team_type: i32, current_hp: i32, buffs: Vec<BuffInfo>) -> Fi
     }
 }
 
-fn fight() -> Fight {
+fn fight(teeth: i32) -> Fight {
     Fight {
         version: Some(7),
         attacker: Some(FightTeam {
@@ -46,7 +46,7 @@ fn fight() -> Fight {
                             uid: Some(20),
                             buff_id: Some(30530201),
                             from_uid: Some(10),
-                            layer: Some(6),
+                            layer: Some(teeth),
                             ..Default::default()
                         },
                         BuffInfo {
@@ -71,6 +71,36 @@ fn fight() -> Fight {
         }),
         ..Default::default()
     }
+}
+
+fn run_round_start(teeth: i32) -> (BattleManagers, DrainResult) {
+    crate::test_support::init_config();
+    let fight = fight(teeth);
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_gauge(GaugeCommand::new(
+            CommandOrigin {
+                domain: RuleDomain::Lifecycle,
+                key: DefinitionKey::new(0, "TestSetup"),
+            },
+            impromptu::inspiration_key(emitter::UID),
+            GaugeOperation::Enable { max: None },
+        ))
+        .unwrap();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [30530207]);
+    let result = drain::run_group_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::RoundStart,
+        ReactionLane::BuffActs,
+        Some(&[10]),
+    )
+    .unwrap();
+    (managers, result)
 }
 
 #[test]
@@ -125,34 +155,7 @@ fn grammar_uses_the_configured_cap_to_parse_bonus_buffs() {
 
 #[test]
 fn round_start_caps_teeth_and_keeps_results_in_the_causing_frame() {
-    crate::test_support::init_config();
-    let fight = fight();
-    let pool = TargetPool::from_fight(&fight);
-    let mut managers = BattleManagers::seeded(&fight);
-    managers
-        .execute_gauge(GaugeCommand::new(
-            CommandOrigin {
-                domain: RuleDomain::Lifecycle,
-                key: DefinitionKey::new(0, "TestSetup"),
-            },
-            impromptu::inspiration_key(emitter::UID),
-            GaugeOperation::Enable { max: None },
-        ))
-        .unwrap();
-    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [30530207]);
-
-    let result = drain::run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
-        BattleEvent::RoundStart,
-        ReactionLane::BuffActs,
-        Some(&[10]),
-    )
-    .unwrap();
-
+    let (managers, result) = run_round_start(6);
     let [root] = result.frames.as_slice() else {
         panic!("expected one causing frame")
     };
@@ -238,4 +241,41 @@ fn round_start_caps_teeth_and_keeps_results_in_the_causing_frame() {
             .current,
         10
     );
+}
+
+#[test]
+fn depleted_teeth_report_zero_before_removal() {
+    let (managers, result) = run_round_start(5);
+    let [root] = result.frames.as_slice() else {
+        panic!("expected one causing frame")
+    };
+    let removed = root.items.iter().find_map(|item| match item {
+        crate::engine::runtime::record::FrameItem::Child(child)
+            if matches!(
+                child.owner,
+                crate::engine::runtime::record::FrameOwner::BuffAct { key, .. }
+                    if key == DefinitionKey::new(1086, "ToothFairyFantasy")
+            ) =>
+        {
+            child.items.iter().find_map(|item| match item {
+                crate::engine::runtime::record::FrameItem::Change(change) => {
+                    let crate::engine::runtime::change::BattleChange::Buff(changes) =
+                        change.as_ref()
+                    else {
+                        return None;
+                    };
+                    changes
+                        .change
+                        .removed
+                        .iter()
+                        .find(|removed| removed.buff.buff_id == Some(30530201))
+                }
+                _ => None,
+            })
+        }
+        _ => None,
+    });
+
+    assert_eq!(removed.unwrap().buff.layer, Some(0));
+    assert!(!managers.buff.has_buff_id(10, 30530201));
 }
