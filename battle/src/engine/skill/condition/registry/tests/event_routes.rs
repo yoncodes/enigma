@@ -593,12 +593,12 @@ fn field_presence_modifier_keeps_its_exact_immediate_route() {
 }
 
 #[test]
-fn static_team_battle_tag_threshold_runs_at_battle_start() {
+fn static_team_battle_tag_threshold_runs_on_enter_fight() {
     for opcode in [762005, 762021] {
         assert_eq!(
             find_key(opcode, "BattleTagNum").map(|definition| definition.role),
             Some(ConditionRole::Setup {
-                stage: SetupStage::BattleStart,
+                stage: SetupStage::EnterFight,
                 priority: 0,
             })
         );
