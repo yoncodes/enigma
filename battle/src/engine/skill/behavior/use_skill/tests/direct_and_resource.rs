@@ -337,7 +337,7 @@ fn consume_power_skill_repeats_cost_and_extra_action_for_each_affordable_use() {
             invocation.plan.skill_id == 31170121
             && invocation.extra_skill_kind == Some(ExtraSkillKind::ExtraAction)
             && invocation.mode
-                == crate::engine::skill::action::SkillExecutionMode::Nested
+                == crate::engine::skill::action::SkillExecutionMode::NestedExtra
         )
     ));
 }

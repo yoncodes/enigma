@@ -145,6 +145,13 @@ fn config_extra_actions_and_ripostes_publish_as_actions_without_changing_other_n
         action_mode(SkillExecutionMode::Nested, None),
         SkillExecutionMode::Nested
     );
+    assert_eq!(
+        action_mode(
+            SkillExecutionMode::NestedExtra,
+            Some(ExtraSkillKind::ExtraAction)
+        ),
+        SkillExecutionMode::NestedExtra
+    );
 }
 
 #[test]

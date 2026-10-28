@@ -561,6 +561,7 @@ impl BehaviorHandler for Handler {
                         }
                         .into();
                     invocation.extra_skill_kind = Some(ExtraSkillKind::ExtraAction);
+                    invocation.mode = crate::engine::skill::action::SkillExecutionMode::NestedExtra;
                     ops.push(RuleOp::Skill(invocation));
                 }
                 Some(ops)
