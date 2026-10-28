@@ -7,6 +7,28 @@ pub(super) enum SetupFrameContainer {
     OpeningRoundPhase,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SetupSkillFilter {
+    All,
+    ParentOnly,
+    ExcludeParent,
+}
+
+impl SetupSkillFilter {
+    fn includes(self, behavior: &crate::engine::skill::effect::ParsedBehavior) -> bool {
+        let setup_parent =
+            crate::engine::skill::behavior::registry::find(behavior).is_some_and(|definition| {
+                definition.output_owner
+                    == crate::engine::skill::behavior::registry::OutputOwner::SetupParent
+            });
+        match self {
+            Self::All => true,
+            Self::ParentOnly => setup_parent,
+            Self::ExcludeParent => !setup_parent,
+        }
+    }
+}
+
 impl SetupFrameContainer {
     pub(super) fn owns_entity_scope(
         self,
@@ -48,6 +70,8 @@ pub fn run_setup_stage(
         None,
         &[],
         false,
+        SetupSkillFilter::All,
+        true,
         SetupFrameContainer::Standalone,
         DefenderCardCleanupOwner::DeathAction,
     )
@@ -75,6 +99,8 @@ pub fn run_setup_stage_for_owners(
         Some(owner_uids),
         &[],
         false,
+        SetupSkillFilter::All,
+        true,
         SetupFrameContainer::Standalone,
         DefenderCardCleanupOwner::DeathAction,
     )
@@ -101,6 +127,8 @@ pub fn run_opening_setup_stage_for_owners(
         priority,
         Some(player_owner_uids),
         &[],
+        true,
+        SetupSkillFilter::All,
         true,
         SetupFrameContainer::Standalone,
         DefenderCardCleanupOwner::DeathAction,
@@ -133,6 +161,8 @@ pub(super) fn run_skill_then_buff_act_setup_stage_filtered(
     owner_uids: Option<&[i64]>,
     excluded_owner_uids: &[i64],
     include_both_sides_opening: bool,
+    skill_filter: SetupSkillFilter,
+    include_buff_acts: bool,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
@@ -148,23 +178,26 @@ pub(super) fn run_skill_then_buff_act_setup_stage_filtered(
         owner_uids,
         excluded_owner_uids,
         include_both_sides_opening,
+        skill_filter,
         frame_container,
         cleanup_owner,
         &mut state,
     )?;
-    append_buff_act_setup_stage(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        stage,
-        priority,
-        owner_uids,
-        excluded_owner_uids,
-        cleanup_owner,
-        &mut state,
-    )?;
+    if include_buff_acts {
+        append_buff_act_setup_stage(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            stage,
+            priority,
+            owner_uids,
+            excluded_owner_uids,
+            cleanup_owner,
+            &mut state,
+        )?;
+    }
     Ok(state.result)
 }
 
@@ -195,6 +228,7 @@ pub(super) fn run_skill_setup_stage_filtered(
         owner_uids,
         excluded_owner_uids,
         include_both_sides_opening,
+        SetupSkillFilter::All,
         frame_container,
         cleanup_owner,
         &mut state,
@@ -243,6 +277,7 @@ fn append_skill_setup_stage(
     owner_uids: Option<&[i64]>,
     excluded_owner_uids: &[i64],
     include_both_sides_opening: bool,
+    skill_filter: SetupSkillFilter,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
     state: &mut SetupStageState,
@@ -255,7 +290,12 @@ fn append_skill_setup_stage(
     let subscribers = subscribers
             .into_iter()
             .filter(|(subscriber, _)| {
+                let included = catalog
+                    .get(subscriber.skill_id)
+                    .and_then(|effect| effect.slots.get(subscriber.slot_index))
+                    .is_some_and(|slot| skill_filter.includes(&slot.behavior));
                 !excluded_owner_uids.contains(&subscriber.owner_uid)
+                    && included
                     && (owner_uids.is_none_or(|uids| uids.contains(&subscriber.owner_uid))
                         || (include_both_sides_opening
                             && crate::engine::skill::condition::registry::opening_owner_eligibility(

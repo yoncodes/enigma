@@ -693,6 +693,7 @@ pub fn run_start(
     let mut opening_duration_snapshot = None;
     let mut opening_duration_captured = false;
     let mut opening_settlement = None;
+    let mut opening_late_ran = false;
     let version7_opening =
         crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
             == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
@@ -705,6 +706,7 @@ pub fn run_start(
                 determinism,
                 context,
                 &setup_owner_uids,
+                opening_late_ran,
             )?;
             let mut sync = begin_round_phase(RoundPhase::RoundStartSync);
             append_opening_round_phase(&mut sync, sync_setup);
@@ -800,7 +802,7 @@ pub fn run_start(
             }
             append(&mut result, settlement);
             if version7_opening {
-                let (losses, settlement_plan) = run_round_start_loss_mechanics(
+                let (mut losses, settlement_plan) = run_round_start_loss_mechanics(
                     managers,
                     pool,
                     catalog,
@@ -808,7 +810,19 @@ pub fn run_start(
                     context,
                     None,
                 )?;
-                append(&mut result, losses);
+                if !losses.frames.is_empty() {
+                    let late_setup = drain::run_opening_parent_late_setup(
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        &setup_owner_uids,
+                    )?;
+                    append_opening_round_phase(&mut losses, late_setup);
+                    opening_late_ran = true;
+                    append(&mut result, losses);
+                }
                 if settlement_plan.capacity_groups.is_empty() {
                     append(
                         &mut result,

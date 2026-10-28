@@ -197,6 +197,16 @@ fn step_contains_effect(step: &sonettobuf::FightStep, effect_type: i32) -> bool 
     !matches.is_empty()
 }
 
+fn step_contains_effect_delta(step: &sonettobuf::FightStep, effect_type: i32, delta: i32) -> bool {
+    let mut matches = Vec::new();
+    for effect in &step.act_effect {
+        collect_effects_of_type(effect, effect_type, &mut matches);
+    }
+    matches
+        .into_iter()
+        .any(|effect| effect.effect_num1 == Some(delta))
+}
+
 fn step_contains_act(step: &sonettobuf::FightStep, act_id: i32) -> bool {
     step.act_id == Some(act_id)
         || step
@@ -217,20 +227,45 @@ fn step_deletes_buff(step: &sonettobuf::FightStep, buff_id: i32) -> bool {
     })
 }
 
+fn count_frame_changes(
+    frame: &SemanticFrame,
+    predicate: impl Copy + Fn(&BattleChange) -> bool,
+) -> usize {
+    frame
+        .items
+        .iter()
+        .map(|item| match item {
+            FrameItem::Change(change) => usize::from(predicate(change)),
+            FrameItem::Child(child) => count_frame_changes(child, predicate),
+            FrameItem::Cue(_) => 0,
+        })
+        .sum()
+}
+
 #[test]
 fn version_seven_opening_checks_round_start_skills_before_reset_and_buff_acts() {
     init_config();
     let fight = Fight {
         version: Some(7),
         attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                model_id: Some(3053),
-                team_type: Some(1),
-                current_hp: Some(100),
-                passive_skill: vec![30530150, 30530151],
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3053),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill: vec![30530150, 30530151],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    model_id: Some(3039),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill: vec![303901431],
+                    ..Default::default()
+                },
+            ],
             device_area: Some(Default::default()),
             ..Default::default()
         }),
@@ -284,6 +319,57 @@ fn version_seven_opening_checks_round_start_skills_before_reset_and_buff_acts() 
         .iter()
         .position(|step| step_deletes_buff(step, 30530201))
         .unwrap();
+    let late_energy = steps
+        .iter()
+        .position(|step| {
+            step_contains_effect_delta(
+                step,
+                sonettobuf::effect_type_enum::EffectType::Teamenergychange as i32,
+                1,
+            )
+        })
+        .unwrap();
+    let removes_baby_tooth = |change: &BattleChange| {
+        matches!(
+            change,
+            BattleChange::Buff(result)
+                if result
+                    .change
+                    .removed
+                    .iter()
+                    .any(|removed| removed.buff.buff_id == Some(30530201))
+        )
+    };
+    let adds_team_energy = |change: &BattleChange| {
+        matches!(
+            change,
+            BattleChange::Gauge(change)
+                if change.key.kind == crate::engine::manager::gauge::GaugeKind::TeamEnergy
+                    && change.applied_delta == 1
+                    && change.origin.domain == RuleDomain::Behavior
+                    && change.origin.key
+                        == DefinitionKey::new(60264, "PerTypeBuffAddEnergyToTeam")
+        )
+    };
+    let reaction = start
+        .frames
+        .iter()
+        .find(|frame| count_frame_changes(frame, removes_baby_tooth) == 1)
+        .expect("opening reaction consumes Baby Tooth");
+    assert_eq!(
+        start
+            .frames
+            .iter()
+            .map(|frame| count_frame_changes(frame, adds_team_energy))
+            .sum::<usize>(),
+        1,
+        "An-an Lee contributes exactly one team energy change"
+    );
+    assert_eq!(
+        count_frame_changes(reaction, adds_team_energy),
+        1,
+        "An-an Lee's late setup remains nested in the Baby Tooth reaction"
+    );
     let call_before_reset = call < reset
         || (call == reset
             && steps[call].act_effect.iter().position(|effect| {
@@ -297,8 +383,8 @@ fn version_seven_opening_checks_round_start_skills_before_reset_and_buff_acts() 
             }));
 
     assert!(
-        call_before_reset && reset < consume,
-        "call={call} reset={reset} consume={consume}"
+        call_before_reset && reset < consume && consume == late_energy,
+        "call={call} reset={reset} consume={consume} late_energy={late_energy}"
     );
 }
 
