@@ -868,7 +868,8 @@ fn direct_damage_trace(
             .sum::<i32>()
     };
     let flat_attack =
-        crate::engine::manager::snapshotted_attribute_delta(buffs, hp, source.uid, AttrId::Attack);
+        crate::engine::manager::snapshotted_attribute_delta(buffs, hp, source.uid, AttrId::Attack)
+            .saturating_add(buffs.fixed_attribute_delta(source.uid, AttrId::Attack));
     let base_attack = attributes.base(source.uid, AttrId::Attack);
     let attack_rate = 1000
         + attributes.get(source.uid, AttrId::Attack)
