@@ -301,6 +301,7 @@ pub enum BuffActKind {
     RecordTeamExElectricTransConsumeValue,
     TargetingTag,
     TeammateInjuryCount,
+    ToothFairyFantasy,
     ToughnessOverflowRecord,
     ToughnessRecover,
     TransferAddExPoint,
@@ -1466,6 +1467,12 @@ buff_act_definitions! {
         runtime: |context| super::eureka_to_inspiration::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::eureka_to_inspiration::supports,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1082, "UseSkillConsumeFromAddEmitterEnergy"), &[]));
+    (1086, "ToothFairyFantasy") => ToothFairyFantasy,
+        scoped_runtime: super::fantasy::rule_ops,
+        supports: super::fantasy::supports,
+        parser: super::fantasy::parse,
+        references: super::fantasy::references,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1086, "ToothFairyFantasy"), &[]));
     (1092, "EmitterChangeDmgType") => EmitterChangeDmgType,
         effect_time_subscription: false,
         supports: super::emitter_damage_type::supports, state_consumer: true,

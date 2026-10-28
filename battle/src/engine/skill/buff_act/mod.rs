@@ -83,6 +83,7 @@ pub mod eureka_to_inspiration;
 pub mod ex_point_add_by_hit;
 pub mod ex_point_del;
 pub mod ex_point_overflow_bank;
+pub mod fantasy;
 pub mod fix_attr_by_sub_buff_layer;
 pub mod fix_attr_by_teammate_injury_count;
 pub mod fix_attr_team_energy;
