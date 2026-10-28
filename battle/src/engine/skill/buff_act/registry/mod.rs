@@ -198,6 +198,7 @@ pub enum BuffActKind {
     Dizzy,
     EmitterCardAllocateChange,
     EmitterCareerChange,
+    EmitterChangeDmgType,
     EmitterDamageUp,
     EmitterEnergyAddBuff,
     EmitterFixSubTargetsDamageReduceRate,
@@ -1455,6 +1456,10 @@ buff_act_definitions! {
         runtime: |context| super::eureka_to_inspiration::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::eureka_to_inspiration::supports,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1082, "UseSkillConsumeFromAddEmitterEnergy"), &[]));
+    (1092, "EmitterChangeDmgType") => EmitterChangeDmgType,
+        effect_time_subscription: false,
+        supports: super::emitter_damage_type::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1092, "EmitterChangeDmgType"), &[]));
     (1114, "HeatScaleBurnAddFix") => HeatScaleBurnAddFix;
     (1125, "TeamShareShield") => TeamShareShield, effect_time_subscription: false,
         supports: super::team_share_shield::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1125, "TeamShareShield"), &[]));

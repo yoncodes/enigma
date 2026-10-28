@@ -683,10 +683,9 @@ pub(super) fn damage_ops(
             execution.context.damage_target_count_kind,
             crate::engine::entity::attr::AttrId::DmgBonus,
         );
-    let source_damage_type = pool
-        .entity(source_uid)
-        .map(|entity| entity.damage_type)
-        .unwrap_or_default();
+    let source_damage_type = crate::engine::skill::buff_act::emitter_damage_type::source_type(
+        source_uid, pool, managers,
+    );
     let mut damage_commands = Vec::new();
     let mut additional_damage_commands = Vec::new();
     let mut avoided = Vec::new();
@@ -698,9 +697,7 @@ pub(super) fn damage_ops(
                 managers,
                 target_uid,
                 pool.skill_slot(managers, source_uid, skill_id),
-                pool.entity(source_uid)
-                    .map(|entity| entity.damage_type)
-                    .unwrap_or_default(),
+                source_damage_type,
             )
         {
             avoided.push(feature);
@@ -1041,10 +1038,12 @@ pub(super) fn damage_ops(
                     action_owner_uid,
                     additional.credited_source_uid,
                 );
-                let additional_damage_type = pool
-                    .entity(additional.credited_source_uid)
-                    .map(|entity| entity.damage_type)
-                    .unwrap_or_default();
+                let additional_damage_type =
+                    crate::engine::skill::buff_act::emitter_damage_type::source_type(
+                        additional.credited_source_uid,
+                        pool,
+                        managers,
+                    );
                 let incoming_reduction =
                     crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
                         managers,

@@ -72,6 +72,7 @@ pub mod effect_time;
 pub mod electric_transform;
 pub mod emitter_card_allocate_change;
 pub mod emitter_career;
+pub mod emitter_damage_type;
 pub mod emitter_energy_add_buff;
 pub mod emitter_num_change;
 pub mod emitter_rend_target;

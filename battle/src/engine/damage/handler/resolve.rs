@@ -639,6 +639,12 @@ fn direct_damage_trace(
     let formula_rules = formula.rules();
     let source_active_features = buffs.active_features(hp);
     let target_active_features = target_buffs.active_features(hp);
+    let source_damage_type = crate::engine::skill::buff_act::emitter_damage_type::resolve(
+        source.damage_type,
+        source.uid,
+        buffs,
+        hp,
+    );
     let include_trigger_history = formula_rules.includes_trigger_history;
     let attribute_delta = |entity: &TargetEntity, attr_id: AttrId| -> i32 {
         let (entity_buffs, active_features) = if entity.uid == target.uid {
@@ -693,7 +699,11 @@ fn direct_damage_trace(
                     .map(|feature| {
                         crate::engine::skill::buff_act::attr_by_damage_type::attribute_delta(
                             feature,
-                            entity.damage_type,
+                            if entity.uid == source.uid {
+                                source_damage_type
+                            } else {
+                                entity.damage_type
+                            },
                             attr_id,
                         )
                     })
@@ -854,7 +864,7 @@ fn direct_damage_trace(
         final_atk
     };
     let defense_attr =
-        if source.damage_type == crate::engine::skill::target::EntityDamageType::Mental {
+        if source_damage_type == crate::engine::skill::target::EntityDamageType::Mental {
             AttrId::MentalDef
         } else {
             AttrId::RealityDef
@@ -1045,7 +1055,7 @@ fn direct_damage_trace(
     };
     let crit_multiplier = crit_multiplier.max(0);
     let inputs = DamageInputs {
-        kind: if source.damage_type == crate::engine::skill::target::EntityDamageType::Mental {
+        kind: if source_damage_type == crate::engine::skill::target::EntityDamageType::Mental {
             DamageKind::Mental
         } else {
             DamageKind::Reality
