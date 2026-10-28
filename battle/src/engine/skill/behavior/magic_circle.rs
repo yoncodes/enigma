@@ -3,6 +3,7 @@ use crate::engine::{
     manager::{
         BattleManagers,
         buff::{BuffCommand, BuffGrantChild},
+        emitter,
         field::{FieldCommand, FieldDefinition, FieldOperation, FieldThreshold},
     },
     mechanic::magic_circle_level::MagicCircleLevelCommand,
@@ -79,6 +80,19 @@ pub fn deploy_rule_ops(
         })
         .collect::<Vec<_>>();
     ops.push(field);
+    ops.extend(definition.linked_buffs.into_iter().map(|buff_id| {
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantChild(
+            BuffGrantChild {
+                origin,
+                source_uid,
+                target_uid: emitter::UID,
+                buff_id,
+                amount: None,
+                params: None,
+                act_info: None,
+            },
+        )))
+    }));
     Some(ops)
 }
 
@@ -510,6 +524,40 @@ mod tests {
             )))
         )));
         assert!(matches!(ops[2], RuleOp::Command(BattleCommand::Field(_))));
+    }
+
+    #[test]
+    fn qi_panorama_deployment_grants_its_linked_emitter_buffs_after_the_field() {
+        crate::test_support::init_config();
+        let fight = sonettobuf::Fight {
+            attacker: Some(sonettobuf::FightTeam {
+                entitys: vec![sonettobuf::FightEntityInfo {
+                    uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let behavior = ParsedBehavior::new(50019, "AddMagicCircle", vec![42004]);
+
+        let ops = deploy_rule_ops(&behavior, 10, 1, &BattleManagers::default(), &pool).unwrap();
+
+        assert!(matches!(ops[0], RuleOp::Command(BattleCommand::Field(_))));
+        assert_eq!(
+            ops[1..]
+                .iter()
+                .map(|op| match op {
+                    RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantChild(grant))) => {
+                        assert_eq!(grant.target_uid, emitter::UID);
+                        grant.buff_id
+                    }
+                    _ => panic!("linked magic-circle output must be an emitter buff"),
+                })
+                .collect::<Vec<_>>(),
+            [31410601, 31412602, 31410603, 31410604]
+        );
     }
 
     #[test]
