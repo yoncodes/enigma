@@ -1,6 +1,7 @@
 use super::*;
 
 mod mane;
+mod resource;
 
 fn attack_crit_route_catalog(condition_opcode: i32) -> SkillEffectCatalog {
     let mut slot = SkillEffectSlot::new(

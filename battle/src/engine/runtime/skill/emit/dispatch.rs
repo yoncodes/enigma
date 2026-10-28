@@ -679,6 +679,15 @@ pub(in crate::engine::runtime) fn emit_ops(
                 )
             })
             .and_then(|definition| definition.skill_action_trigger.child_skill_kind());
+        let child_target_source = condition_key
+            .and_then(|condition_key| {
+                crate::engine::skill::condition::registry::find_key(
+                    condition_key.opcode,
+                    condition_key.type_name,
+                )
+            })
+            .map(|definition| definition.child_target_source)
+            .unwrap_or_default();
         let uses_action_targets = uses_action_targets(
             slot,
             condition_uses_active_skill_targets || condition_uses_hit_targets,
@@ -767,7 +776,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                 behavior::registry::FireCountMode::Transfer => (1, fire_count),
             };
             for _ in 0..emissions {
-                let behavior_ops = behavior::registry::emit_runtime_ops(
+                let mut behavior_ops = behavior::registry::emit_runtime_ops(
                     definition,
                     BehaviorOpContext {
                         source_uid: invocation.plan.source_uid,
@@ -789,6 +798,16 @@ pub(in crate::engine::runtime) fn emit_ops(
                     skill_id: invocation.plan.skill_id,
                     key: definition.key,
                 })?;
+                if child_target_source
+                    == crate::engine::skill::condition::registry::ChildTargetSource::Event
+                    && let Some(target_uid) = selected_event.and_then(|event| event.target_uid())
+                {
+                    for op in &mut behavior_ops {
+                        if let RuleOp::Skill(child) = op {
+                            child.target = SkillTarget::Explicit(target_uid);
+                        }
+                    }
+                }
                 outputs.extend(behavior_ops.into_iter().enumerate().map(|(index, op)| {
                     let owner = (definition.output_owner_for)(&slot.behavior, &op, index)
                         .unwrap_or(definition.output_owner)

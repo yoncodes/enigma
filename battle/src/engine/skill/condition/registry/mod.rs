@@ -78,6 +78,13 @@ pub enum BehaviorTargetSource {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ChildTargetSource {
+    #[default]
+    Behavior,
+    Event,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ReactionFrameTarget {
     #[default]
     Counterparty,
@@ -214,6 +221,7 @@ pub struct ConditionDefinition {
     pub filters_behavior_targets: bool,
     pub behavior_target_order: BehaviorTargetOrder,
     pub behavior_target_source: BehaviorTargetSource,
+    pub child_target_source: ChildTargetSource,
     pub reaction_observer_scope: ReactionObserverScope,
     pub reaction_frame_source: ReactionFrameSource,
     pub reaction_frame_target: ReactionFrameTarget,
@@ -240,6 +248,7 @@ pub struct ConditionMetadata {
     pub filters_behavior_targets: bool,
     pub behavior_target_order: BehaviorTargetOrder,
     pub behavior_target_source: BehaviorTargetSource,
+    pub child_target_source: ChildTargetSource,
     pub reaction_observer_scope: ReactionObserverScope,
     pub reaction_frame_source: ReactionFrameSource,
     pub reaction_frame_target: ReactionFrameTarget,
@@ -273,6 +282,7 @@ pub const fn definition(
         filters_behavior_targets: metadata.filters_behavior_targets,
         behavior_target_order: metadata.behavior_target_order,
         behavior_target_source: metadata.behavior_target_source,
+        child_target_source: metadata.child_target_source,
         reaction_observer_scope: metadata.reaction_observer_scope,
         reaction_frame_source: metadata.reaction_frame_source,
         reaction_frame_target: metadata.reaction_frame_target,
@@ -300,6 +310,7 @@ pub const fn predicate(dependencies: &'static [EventKind]) -> ConditionMetadata 
         filters_behavior_targets: false,
         behavior_target_order: BehaviorTargetOrder::Resolved,
         behavior_target_source: BehaviorTargetSource::Resolved,
+        child_target_source: ChildTargetSource::Behavior,
         reaction_observer_scope: ReactionObserverScope::AnySubscriber,
         reaction_frame_source: ReactionFrameSource::Subscriber,
         reaction_frame_target: ReactionFrameTarget::Counterparty,
@@ -327,6 +338,7 @@ pub const fn event_trigger(event: EventKind, phase: Option<SkillPhase>) -> Condi
         filters_behavior_targets: false,
         behavior_target_order: BehaviorTargetOrder::Resolved,
         behavior_target_source: BehaviorTargetSource::Resolved,
+        child_target_source: ChildTargetSource::Behavior,
         reaction_observer_scope: ReactionObserverScope::AnySubscriber,
         reaction_frame_source: ReactionFrameSource::Subscriber,
         reaction_frame_target: ReactionFrameTarget::Counterparty,
@@ -358,6 +370,7 @@ pub const fn setup_route(
         filters_behavior_targets: false,
         behavior_target_order: BehaviorTargetOrder::Resolved,
         behavior_target_source: BehaviorTargetSource::Resolved,
+        child_target_source: ChildTargetSource::Behavior,
         reaction_observer_scope: ReactionObserverScope::AnySubscriber,
         reaction_frame_source: ReactionFrameSource::Subscriber,
         reaction_frame_target: ReactionFrameTarget::Counterparty,
@@ -490,6 +503,11 @@ pub const fn uses_active_skill_target_group(mut metadata: ConditionMetadata) -> 
 
 pub const fn uses_hit_targets(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.behavior_target_source = BehaviorTargetSource::HitTargets;
+    metadata
+}
+
+pub const fn child_targets_event(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.child_target_source = ChildTargetSource::Event;
     metadata
 }
 
@@ -803,7 +821,7 @@ condition_definitions! {
     [710301] "PerHandCardHasSkillId" => card::hand_skill_presence, event_trigger(EventKind::SmallRoundEnd, None);
     [622304] "RoundUseSkillLevel" => card::round_used_minimum_rank, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
     [745304] "ExPointMax" => resource::ex_point_full, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
-    [571017] "LostPower" => resource::lost_power, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
+    [571017] "LostPower" => resource::lost_power, child_targets_event(reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None)));
     [788210] "PerDeviceCurrCost" => resource::owner_conduit_current_cost, in_causing_frame(reaction_targets_owner(event_trigger(EventKind::ConduitActivated, None)));
     [788212] "PerDeviceCurrCost" => resource::team_conduit_current_cost, psychube_after_action(reaction_targets_causing_frame(event_trigger(EventKind::ConduitActivated, None)));
     [792208] "UseDeviceSkill" => none::unconditional_without_arguments, in_causing_frame(reaction_targets_owner(event_trigger(EventKind::ConduitActivated, None)));
