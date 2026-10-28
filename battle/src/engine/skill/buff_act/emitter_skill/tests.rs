@@ -34,6 +34,22 @@ fn exact_static_owner_replaces_only_the_emitter_skill() {
         super::super::registry::destination(1079, "ChangeEmitterSkill", &[31411001]),
         Some(super::super::registry::BuffActDestination::StateConsumer)
     );
+    let wire = super::super::registry::find(1079, "ChangeEmitterSkill")
+        .unwrap()
+        .wire
+        .unwrap();
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
     assert_eq!(
         parsed.references(Some(config::configs::get())).skills,
         [31411001]
