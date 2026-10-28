@@ -1469,7 +1469,7 @@ buff_act_definitions! {
         supports: super::emitter_skill::supports, references: references_for_feature, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1079, "ChangeEmitterSkill"), &[EffectType::None as i32]));
     (1080, "EmitterAttackNumLimitFixDamage") => EmitterAttackNumLimitFixDamage,
-        supports: super::emitter_num_change::supports_limit,
+        supports: super::emitter_num_change::supports_limit, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1080, "EmitterAttackNumLimitFixDamage"), &[EffectType::None as i32]));
     (1081, "EmitterFixSubTargetsDamageReduceRate") => EmitterFixSubTargetsDamageReduceRate,
         supports: super::emitter_num_change::supports_reduction, state_consumer: true,

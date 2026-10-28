@@ -388,17 +388,20 @@ pub fn build_plan(managers: &BattleManagers, team: i32, emitter_uid: i64) -> Opt
         &features,
         emitter_uid,
     )?;
+    let attacks = crate::engine::skill::buff_act::emitter_num_change::resolve(
+        &managers.buff,
+        &managers.hp,
+        emitter_uid,
+    );
     Some(ImpromptuPlan {
         source_uid: emitter_uid,
         skill_id: definition.skill_id(),
         inspiration,
-        attack_count: crate::engine::skill::buff_act::emitter_num_change::attack_count_for(
-            &managers.buff,
-            &managers.hp,
-            emitter_uid,
-        ),
+        attack_count: attacks.count,
         damage_rate_opcode: definition.damage_up_act_id(),
-        damage_rate: definition.damage_rate(inspiration),
+        damage_rate: definition
+            .damage_rate(inspiration)
+            .saturating_add(attacks.damage_rate),
     })
 }
 

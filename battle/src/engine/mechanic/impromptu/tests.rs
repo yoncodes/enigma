@@ -176,6 +176,69 @@ fn configured_emitter_skill_drives_the_queue_and_plan() {
 }
 
 #[test]
+fn emitter_attack_limit_reaches_the_impromptu_plan() {
+    crate::test_support::init_config();
+    let emitter_uid = crate::engine::manager::emitter::UID;
+    let fight = sonettobuf::Fight {
+        attacker: Some(sonettobuf::FightTeam {
+            entitys: vec![
+                sonettobuf::FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    buffs: vec![sonettobuf::BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(2_240_000),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                sonettobuf::FightEntityInfo {
+                    uid: Some(emitter_uid),
+                    current_hp: Some(1),
+                    buffs: [
+                        30_530_302, 31_410_101, 31_080_152, 31_080_153, 31_080_154, 31_080_155,
+                        31_412_602,
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, buff_id)| sonettobuf::BuffInfo {
+                        uid: Some(30 + index as i64),
+                        buff_id: Some(buff_id),
+                        from_uid: Some(emitter_uid),
+                        ..Default::default()
+                    })
+                    .collect(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = buff_act::configured_command_origin(875, BuffActKind::EmitterTag).unwrap();
+    for operation in [
+        GaugeOperation::Enable { max: None },
+        GaugeOperation::ChangeValue { delta: 25 },
+    ] {
+        managers
+            .execute_gauge(GaugeCommand::new(
+                origin,
+                inspiration_key(emitter_uid),
+                operation,
+            ))
+            .unwrap();
+    }
+
+    let plan = build_plan(&managers, 1, emitter_uid).unwrap();
+    let definition =
+        crate::catalog::impromptu_definition(crate::test_support::game_data()).unwrap();
+    assert_eq!(plan.attack_count, 4);
+    assert_eq!(plan.damage_rate, definition.damage_rate(25) + 10_000);
+}
+
+#[test]
 fn configured_card_energy_limit_drives_allocation() {
     crate::test_support::init_config();
     let emitter_uid = crate::engine::manager::emitter::UID;

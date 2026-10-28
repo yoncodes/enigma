@@ -47,7 +47,7 @@ fn exact_emitter_damage_modifiers_keep_distinct_support() {
     assert!(!limit.validate_arguments(None, &[0, 2500, 4], None));
     assert_eq!(
         destination(1080, "EmitterAttackNumLimitFixDamage", &[4, 2500, 4]),
-        None
+        Some(BuffActDestination::StateConsumer)
     );
     let limit_wire = wire::find(1080, "EmitterAttackNumLimitFixDamage").unwrap();
     assert_eq!(
@@ -77,6 +77,77 @@ fn exact_emitter_damage_modifiers_keep_distinct_support() {
         destination(1081, "EmitterFixSubTargetsDamageReduceRate", &[0]),
         None
     );
+}
+
+#[test]
+fn emitter_limit_converts_excess_attacks_to_damage() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(emitter::UID),
+                current_hp: Some(1),
+                buffs: vec![
+                    BuffInfo {
+                        buff_id: Some(30530302),
+                        from_uid: Some(-2),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31410101),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31080152),
+                        from_uid: Some(emitter::UID),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31080153),
+                        from_uid: Some(emitter::UID),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31080154),
+                        from_uid: Some(emitter::UID),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31080155),
+                        from_uid: Some(emitter::UID),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31412602),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut buffs = BuffManager::default();
+    buffs.seed(&fight);
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+
+    assert_eq!(
+        resolve(&buffs, &hp, emitter::UID),
+        Resolution {
+            count: 4,
+            damage_rate: 10_000,
+        }
+    );
+    let limit = buffs
+        .active_features(&hp)
+        .into_iter()
+        .find(|feature| is_kind(feature, BuffActKind::EmitterAttackNumLimitFixDamage))
+        .unwrap();
+    assert_eq!(attack_limit(&limit, 10), Some((4, 10_000)));
 }
 
 fn split_feature() -> ActiveBuffFeature {

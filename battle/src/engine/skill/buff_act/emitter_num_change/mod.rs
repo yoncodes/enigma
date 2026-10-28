@@ -9,6 +9,12 @@ use super::{is_kind, registry::BuffActKind};
 const BASE_ATTACKS: i32 = 1;
 const DEFAULT_SPLIT_DAMAGE_REDUCTION: i32 = 700;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Resolution {
+    pub count: i32,
+    pub damage_rate: i32,
+}
+
 pub fn supports(args: &[i32]) -> bool {
     matches!(args, [count] if *count > 0)
 }
@@ -30,14 +36,44 @@ pub fn attack_count(buffs: &BuffManager, hp: &HpManager) -> i32 {
 }
 
 pub fn attack_count_for(buffs: &BuffManager, hp: &HpManager, emitter_uid: i64) -> i32 {
-    let direct = buffs
-        .active_features(hp)
+    resolve(buffs, hp, emitter_uid).count
+}
+
+pub fn resolve(buffs: &BuffManager, hp: &HpManager, emitter_uid: i64) -> Resolution {
+    let features = buffs.active_features(hp);
+    let raw_count = BASE_ATTACKS
+        + features
+            .iter()
+            .filter(|feature| feature.owner_uid == emitter_uid)
+            .map(attack_count_delta)
+            .sum::<i32>();
+    let mut count = raw_count.max(BASE_ATTACKS);
+    let mut damage_rate: i32 = 0;
+    for (limit, rate) in features
         .iter()
         .filter(|feature| feature.owner_uid == emitter_uid)
-        .map(attack_count_delta)
-        .sum::<i32>();
+        .filter_map(|feature| attack_limit(feature, raw_count))
+    {
+        count = count.min(limit);
+        damage_rate = damage_rate.saturating_add(rate);
+    }
 
-    (BASE_ATTACKS + direct).max(BASE_ATTACKS)
+    Resolution { count, damage_rate }
+}
+
+fn attack_limit(feature: &ActiveBuffFeature, raw_count: i32) -> Option<(i32, i32)> {
+    let [_, limit, rate, maximum, ..] = feature.values.as_slice() else {
+        return None;
+    };
+    if !is_kind(feature, BuffActKind::EmitterAttackNumLimitFixDamage)
+        || *limit <= 0
+        || *rate <= 0
+        || *maximum <= 0
+    {
+        return None;
+    }
+    let excess = raw_count.saturating_sub(*limit).min(*maximum);
+    Some((*limit, rate.saturating_mul(excess)))
 }
 
 pub fn split_count(buffs: &BuffManager, hp: &HpManager, attack_index: i32) -> i32 {

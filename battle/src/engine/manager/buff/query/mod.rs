@@ -932,7 +932,8 @@ impl BuffManager {
 
     pub fn team_type(&self, uid: i64) -> Option<i32> {
         match uid {
-            crate::engine::fight::rules::ATTACKER_SIDE_UID => Some(1),
+            crate::engine::fight::rules::ATTACKER_SIDE_UID
+            | crate::engine::manager::emitter::UID => Some(1),
             crate::engine::fight::rules::DEFENDER_SIDE_UID => Some(2),
             _ => self.team_types.get(&uid).copied(),
         }
