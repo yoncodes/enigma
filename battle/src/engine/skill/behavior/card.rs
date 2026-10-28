@@ -418,6 +418,9 @@ fn card_level_change_ops(
         .filter_map(|(hand_index, card)| next_skill(owner, card.skill_id?).map(|_| hand_index))
         .collect::<Vec<_>>();
     let origin = super::command_origin(behavior)?;
+    if candidates.is_empty() {
+        return Some(Vec::new());
+    }
     if mode == 3 {
         let hand_index = candidates.pop()?;
         return Some(vec![RuleOp::Command(BattleCommand::Card(
