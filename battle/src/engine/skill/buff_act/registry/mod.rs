@@ -1490,7 +1490,7 @@ buff_act_definitions! {
         supports: super::fantasy::supports,
         parser: super::fantasy::parse,
         references: super::fantasy::references,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1086, "ToothFairyFantasy"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1086, "ToothFairyFantasy"), &[EffectType::None as i32]));
     (1087, "EmitterExtraDamage") => EmitterExtraDamage,
         event: EventKind::SkillAction, phase: HitPassives, source: Applier, actor: OpposingTeam,
         runtime: |context| super::emitter_extra_damage::rule_ops(context.subscriber, context.event?),

@@ -96,6 +96,22 @@ fn grammar_uses_the_configured_cap_to_parse_bonus_buffs() {
         super::super::registry::destination(1086, "ToothFairyFantasy", &parsed),
         Some(super::super::registry::BuffActDestination::Runtime)
     );
+    let wire = super::super::registry::find(1086, "ToothFairyFantasy")
+        .unwrap()
+        .wire
+        .unwrap();
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
 
     let mut wrong_count = raw;
     wrong_count[5] = "4150001".to_owned();
