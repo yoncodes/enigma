@@ -344,7 +344,7 @@ fn use_ex_skill_checks_the_active_skill_payload() {
     let condition = ParsedCondition {
         opcode: 25210,
         type_name: String::new(),
-        kind: ParsedConditionKind::UseExSkill,
+        kind: ParsedConditionKind::UseExSkill { slot: 0 },
         raw_args: Vec::new(),
     };
     let matches = |active_skill_id| {
@@ -376,6 +376,30 @@ fn use_ex_skill_checks_the_active_skill_payload() {
             ..Default::default()
         },
     ));
+
+    let slot_condition = ParsedCondition {
+        opcode: 25203,
+        type_name: "UseExSkill".into(),
+        kind: ParsedConditionKind::UseExSkill { slot: 3 },
+        raw_args: vec!["3".into()],
+    };
+    let matches_slot = |active_skill_slot| {
+        condition_matches(
+            &slot_condition,
+            10,
+            &[10],
+            Some(&managers),
+            &pool,
+            TargetContext {
+                active_skill_id: 31345131,
+                active_skill_slot,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches_slot(3));
+    assert!(!matches_slot(2));
 }
 
 #[test]
@@ -397,7 +421,7 @@ fn negated_use_ex_skill_matches_basic_incantations_only() {
     let condition = ParsedCondition {
         opcode: 25208,
         type_name: "UseExSkill".into(),
-        kind: ParsedConditionKind::Not(Box::new(ParsedConditionKind::UseExSkill)),
+        kind: ParsedConditionKind::Not(Box::new(ParsedConditionKind::UseExSkill { slot: 0 })),
         raw_args: Vec::new(),
     };
     let matches = |active_skill_id| {
@@ -437,7 +461,7 @@ fn use_ex_skill_does_not_treat_an_enhanced_basic_skill_as_an_ultimate() {
     let condition = ParsedCondition {
         opcode: 25210,
         type_name: "UseExSkill".into(),
-        kind: ParsedConditionKind::UseExSkill,
+        kind: ParsedConditionKind::UseExSkill { slot: 0 },
         raw_args: Vec::new(),
     };
     let matches = |active_skill_id| {

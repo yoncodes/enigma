@@ -917,7 +917,7 @@ fn maximum_buff_layer_gate_is_an_exact_inline_predicate() {
 fn own_ultimate_use_fires_before_the_ultimate_damages() {
     assert_eq!(
         parse(25201, "UseExSkill", &[]),
-        Some(ParsedConditionKind::UseExSkill)
+        Some(ParsedConditionKind::UseExSkill { slot: 0 })
     );
     assert_eq!(
         find_key(25201, "UseExSkill").map(|definition| definition.role),
@@ -929,16 +929,20 @@ fn own_ultimate_use_fires_before_the_ultimate_damages() {
 }
 
 #[test]
-fn paper_heron_ultimate_mode_uses_the_existing_immediate_route() {
+fn paper_heron_ultimate_slot_uses_the_existing_immediate_route() {
     assert_eq!(
         parse(25203, "UseExSkill", &[]),
-        Some(ParsedConditionKind::UseExSkill)
+        Some(ParsedConditionKind::UseExSkill { slot: 0 })
     );
     assert_eq!(
         parse(25203, "UseExSkill", &["3".into()]),
-        Some(ParsedConditionKind::UseExSkill)
+        Some(ParsedConditionKind::UseExSkill { slot: 3 })
     );
-    assert!(parse(25203, "UseExSkill", &["2".into()]).is_none());
+    assert_eq!(
+        parse(25203, "UseExSkill", &["2".into()]),
+        Some(ParsedConditionKind::UseExSkill { slot: 2 })
+    );
+    assert!(parse(25203, "UseExSkill", &["3".into(), "4".into()]).is_none());
     assert_eq!(
         find_key(25203, "UseExSkill").map(|definition| definition.role),
         Some(ConditionRole::Trigger {

@@ -1117,21 +1117,24 @@ fn condition_kind_matches(
             pool,
             context,
         ),
-        ParsedConditionKind::UseExSkill => pool
-            .entity(if context.active_skill_source_uid != 0 {
-                context.active_skill_source_uid
-            } else {
-                source_uid
-            })
-            .is_some_and(|source| {
-                managers.is_some_and(|managers| {
-                    crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
-                        managers,
-                        context.active_skill_id,
-                        source,
-                    )
-                })
-            }),
+        ParsedConditionKind::UseExSkill { slot } => {
+            (*slot == 0 || context.active_skill_slot == *slot)
+                && pool
+                    .entity(if context.active_skill_source_uid != 0 {
+                        context.active_skill_source_uid
+                    } else {
+                        source_uid
+                    })
+                    .is_some_and(|source| {
+                        managers.is_some_and(|managers| {
+                            crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                                managers,
+                                context.active_skill_id,
+                                source,
+                            )
+                        })
+                    })
+        }
         ParsedConditionKind::TargetUseExSkill => {
             context.active_skill_source_uid != 0
                 && condition_targets.contains(&context.active_skill_source_uid)
