@@ -6,7 +6,7 @@ use crate::engine::{
     skill::effect::SkillEffectCatalog,
 };
 
-const MAX_CARD_ENERGY: i32 = 5;
+pub const BASE_LIMIT: i32 = 5;
 const BASE_WEIGHT: i32 = 100;
 
 pub fn allocate(
@@ -15,16 +15,17 @@ pub fn allocate(
     catalog: &SkillEffectCatalog,
     cards: &[CardInfo],
     available: i32,
-    use_priority_rule: bool,
+    limit: i32,
     determinism: &mut RoundDeterminism,
 ) -> Option<Vec<CardInfo>> {
     let battle_catalog = buffs
         .try_catalog()
         .or_else(crate::catalog::BattleCatalog::try_global);
-    if available <= 0 {
+    if available <= 0 || limit <= 0 {
         return None;
     }
 
+    let use_priority_rule = available > 4;
     let eligible = eligible_cards(cards, catalog, battle_catalog, use_priority_rule);
     if eligible.is_empty() {
         return None;
@@ -34,13 +35,7 @@ pub fn allocate(
     let before = card_energy(&output);
     let capacity = eligible
         .iter()
-        .map(|(index, _)| {
-            MAX_CARD_ENERGY
-                - output[*index]
-                    .energy
-                    .unwrap_or_default()
-                    .clamp(0, MAX_CARD_ENERGY)
-        })
+        .map(|(index, _)| limit - output[*index].energy.unwrap_or_default().clamp(0, limit))
         .sum::<i32>();
     let mut remaining = available.min(capacity);
     if use_priority_rule {
@@ -48,7 +43,7 @@ pub fn allocate(
         while remaining > 0 {
             let candidates = eligible
                 .iter()
-                .filter(|(index, _)| output[*index].energy != Some(MAX_CARD_ENERGY))
+                .filter(|(index, _)| output[*index].energy != Some(limit))
                 .map(|(index, card)| {
                     let bonus = features
                         .iter()
@@ -67,12 +62,12 @@ pub fn allocate(
             let Some(index) = weighted_index(&candidates, determinism) else {
                 break;
             };
-            remaining -= add_energy(&mut output, index, 1);
+            remaining -= add_energy(&mut output, index, 1, limit);
         }
     } else {
         let mut index = 0;
         while remaining > 0 && !eligible.is_empty() {
-            remaining -= add_energy(&mut output, eligible[index].0, 1);
+            remaining -= add_energy(&mut output, eligible[index].0, 1, limit);
             index = (index + 1) % eligible.len();
         }
     }
@@ -119,12 +114,12 @@ fn weighted_index(
     None
 }
 
-fn add_energy(cards: &mut [CardInfo], index: usize, amount: i32) -> i32 {
+fn add_energy(cards: &mut [CardInfo], index: usize, amount: i32, limit: i32) -> i32 {
     let Some(card) = cards.get_mut(index) else {
         return 0;
     };
     let current = card.energy.unwrap_or_default();
-    let added = amount.min(MAX_CARD_ENERGY - current).max(0);
+    let added = amount.min(limit - current).max(0);
     card.energy = Some(current + added);
     added
 }
@@ -137,34 +132,4 @@ fn card_energy(cards: &[CardInfo]) -> i32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn allocation_preserves_old_energy_and_stops_at_card_capacity() {
-        let cards = (1..=3)
-            .map(|uid| CardInfo {
-                uid: Some(uid),
-                skill_id: Some(uid as i32),
-                card_effect: Some(1),
-                energy: Some(4),
-                ..Default::default()
-            })
-            .collect::<Vec<_>>();
-        let allocated = allocate(
-            &BuffManager::default(),
-            &HpManager::default(),
-            &SkillEffectCatalog::default(),
-            &cards,
-            99,
-            false,
-            &mut RoundDeterminism::default(),
-        )
-        .unwrap();
-
-        assert_eq!(
-            allocated.iter().map(|card| card.energy).collect::<Vec<_>>(),
-            vec![Some(4), Some(4), Some(5)]
-        );
-    }
-}
+mod tests;

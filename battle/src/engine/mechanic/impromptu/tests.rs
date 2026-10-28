@@ -176,6 +176,59 @@ fn configured_emitter_skill_drives_the_queue_and_plan() {
 }
 
 #[test]
+fn configured_card_energy_limit_drives_allocation() {
+    crate::test_support::init_config();
+    let emitter_uid = crate::engine::manager::emitter::UID;
+
+    for (owner, expected) in [(None, 5), (Some(10), 5), (Some(emitter_uid), 8)] {
+        let mut managers = energy_limit_managers(owner);
+        managers
+            .execute_card(CardCommand::Setup(
+                crate::engine::manager::card::CardSetup {
+                    hand: vec![CardInfo {
+                        uid: Some(10),
+                        skill_id: Some(31_410_111),
+                        card_effect: Some(1),
+                        energy: Some(0),
+                        ..Default::default()
+                    }],
+                    draw_pile: Vec::new(),
+                    deck_num: 1,
+                },
+            ))
+            .unwrap();
+        let origin = buff_act::configured_command_origin(875, BuffActKind::EmitterTag).unwrap();
+        for operation in [
+            GaugeOperation::Enable { max: None },
+            GaugeOperation::ChangeValue { delta: 8 },
+        ] {
+            managers
+                .execute_gauge(GaugeCommand::new(origin, team_energy_key(1), operation))
+                .unwrap();
+        }
+
+        let ops = allocate_team_energy_rule_ops(
+            &managers,
+            &SkillEffectCatalog::default(),
+            &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
+            1,
+        )
+        .unwrap()
+        .unwrap();
+        let allocation = ops.into_iter().find_map(|op| match op {
+            RuleOp::Command(BattleCommand::Card(CardCommand::AllocateEnergy(allocation))) => {
+                Some(allocation)
+            }
+            _ => None,
+        });
+
+        let allocation = allocation.unwrap();
+        assert_eq!(allocation.limit, expected);
+        assert_eq!(allocation.energies, [expected]);
+    }
+}
+
+#[test]
 fn inputs_fail_closed_without_the_exact_feature_or_enabled_gauge() {
     let tag = feature(10, 1, 20, "EmitterTag", vec![875]);
     let wrong = feature(10, 1, 21, "EmitterTag", vec![875]);
@@ -184,6 +237,51 @@ fn inputs_fail_closed_without_the_exact_feature_or_enabled_gauge() {
     assert!(team_energy_gain_rule_op(&managers.gauge, &wrong, 2).is_none());
     assert!(collect_inspiration_rule_op(&managers.gauge, &tag, 99998, &[]).is_none());
     assert!(reset_inspiration_rule_op(&managers.gauge, &tag, 99998).is_none());
+}
+
+fn energy_limit_managers(limit_owner: Option<i64>) -> BattleManagers {
+    let emitter_uid = crate::engine::manager::emitter::UID;
+    let limit = || sonettobuf::BuffInfo {
+        uid: Some(30),
+        buff_id: Some(31_410_401),
+        from_uid: Some(3_141),
+        ..Default::default()
+    };
+    let mut hero_buffs = vec![sonettobuf::BuffInfo {
+        uid: Some(20),
+        buff_id: Some(2_240_000),
+        from_uid: Some(10),
+        ..Default::default()
+    }];
+    if limit_owner == Some(10) {
+        hero_buffs.push(limit());
+    }
+    let emitter_buffs = (limit_owner == Some(emitter_uid))
+        .then(limit)
+        .into_iter()
+        .collect();
+    BattleManagers::seeded(&sonettobuf::Fight {
+        attacker: Some(sonettobuf::FightTeam {
+            entitys: vec![
+                sonettobuf::FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(100),
+                    team_type: Some(1),
+                    buffs: hero_buffs,
+                    ..Default::default()
+                },
+                sonettobuf::FightEntityInfo {
+                    uid: Some(emitter_uid),
+                    current_hp: Some(100),
+                    team_type: Some(1),
+                    buffs: emitter_buffs,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    })
 }
 
 fn impromptu_managers(replacement_owner: Option<i64>) -> BattleManagers {

@@ -163,15 +163,17 @@ impl RoundDeterminism {
         &mut self,
         cards: &[CardInfo],
         expected_energy: i32,
+        limit: i32,
     ) -> Option<Vec<CardInfo>> {
         let captured = self.card_energy_snapshots.pop_front()?;
-        if captured.len() != cards.len()
+        if limit <= 0
+            || captured.len() != cards.len()
             || captured.iter().zip(cards).any(|(captured, current)| {
                 captured.uid != current.uid || captured.skill_id != current.skill_id
             })
             || captured
                 .iter()
-                .any(|card| !(0..=5).contains(&card.energy.unwrap_or_default()))
+                .any(|card| !(0..=limit).contains(&card.energy.unwrap_or_default()))
             || captured.iter().zip(cards).any(|(captured, current)| {
                 captured.energy.unwrap_or_default() < current.energy.unwrap_or_default()
             })

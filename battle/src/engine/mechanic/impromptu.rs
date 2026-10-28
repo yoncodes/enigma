@@ -209,13 +209,18 @@ pub fn allocate_team_energy_rule_ops(
     else {
         return Ok(None);
     };
+    let limit = buff_act::emitter_card_energy_limit::resolve(
+        crate::engine::manager::card::energy::BASE_LIMIT,
+        &features,
+        crate::engine::manager::emitter::UID,
+    );
     let available = managers
         .gauge
         .get(team_energy_key(team))
         .ok_or(ImpromptuError::MissingTeamEnergy(team))?
         .current;
     let Some(cards) = determinism
-        .take_card_energy_snapshot(managers.card.hand(), available)
+        .take_card_energy_snapshot(managers.card.hand(), available, limit)
         .or_else(|| {
             crate::engine::manager::card::energy::allocate(
                 &managers.buff,
@@ -223,7 +228,7 @@ pub fn allocate_team_energy_rule_ops(
                 catalog,
                 managers.card.hand(),
                 available,
-                available > 4,
+                limit,
                 determinism,
             )
         })
@@ -247,6 +252,7 @@ pub fn allocate_team_energy_rule_ops(
                     .into_iter()
                     .map(|card| card.energy.unwrap_or_default())
                     .collect(),
+                limit,
             },
         ))),
     ]))

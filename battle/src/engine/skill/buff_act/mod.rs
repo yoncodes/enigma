@@ -71,6 +71,7 @@ pub mod each_change_attr_one_way;
 pub mod effect_time;
 pub mod electric_transform;
 pub mod emitter_card_allocate_change;
+pub mod emitter_card_energy_limit;
 pub mod emitter_career;
 pub mod emitter_damage_type;
 pub mod emitter_energy_add_buff;

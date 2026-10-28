@@ -25,6 +25,28 @@ fn setup_initializes_owned_card_state_without_publishing_a_change() {
 }
 
 #[test]
+fn energy_allocation_obeys_its_configured_limit() {
+    let mut manager = CardManager::new(vec![CardInfo::default()]);
+
+    manager
+        .execute_command(CardCommand::AllocateEnergy(CardEnergyAllocation {
+            origin: ORIGIN,
+            energies: vec![8],
+            limit: 8,
+        }))
+        .unwrap();
+    assert_eq!(manager.hand()[0].energy, Some(8));
+    assert_eq!(
+        manager.execute_command(CardCommand::AllocateEnergy(CardEnergyAllocation {
+            origin: ORIGIN,
+            energies: vec![9],
+            limit: 8,
+        })),
+        Err(CardCommandError::InvalidCommand)
+    );
+}
+
+#[test]
 fn hand_rank_change_mutates_one_registered_card_and_records_its_one_based_index() {
     crate::test_support::init_config();
     let mut manager = CardManager::new(vec![CardInfo {
@@ -478,6 +500,7 @@ fn card_setup_rules_commit_enchants_and_temporary_lifecycle_through_the_manager(
         .execute_command(CardCommand::AllocateEnergy(CardEnergyAllocation {
             origin: ORIGIN,
             energies: vec![1, 2, 3],
+            limit: 5,
         }))
         .unwrap();
     manager

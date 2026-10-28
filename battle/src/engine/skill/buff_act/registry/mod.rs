@@ -197,6 +197,7 @@ pub enum BuffActKind {
     Disarm,
     Dizzy,
     EmitterCardAllocateChange,
+    ChangeEmitterCardEnergyLimit,
     EmitterCareerChange,
     ChangeEmitterSkill,
     EmitterChangeDmgType,
@@ -1453,6 +1454,9 @@ buff_act_definitions! {
         runtime: |context| super::consume_and_grant::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::consume_and_grant::supports, references: references_for_feature,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1077, "ConsumeCurBuffAndAuraAddBuff"), &[]));
+    (1078, "ChangeEmitterCardEnergyLimit") => ChangeEmitterCardEnergyLimit, effect_time_subscription: false,
+        supports: super::emitter_card_energy_limit::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1078, "ChangeEmitterCardEnergyLimit"), &[]));
     (1079, "ChangeEmitterSkill") => ChangeEmitterSkill, effect_time_subscription: false,
         supports: super::emitter_skill::supports, references: references_for_feature, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1079, "ChangeEmitterSkill"), &[]));

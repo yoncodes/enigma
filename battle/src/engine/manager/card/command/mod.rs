@@ -125,6 +125,7 @@ pub struct CardPersistTemporary {
 pub struct CardEnergyAllocation {
     pub origin: CommandOrigin,
     pub energies: Vec<i32>,
+    pub limit: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1185,11 +1186,12 @@ pub(super) fn execute(
             )
         }
         CardCommand::AllocateEnergy(allocation) => {
-            if allocation.energies.len() != manager.hand().len()
+            if allocation.limit <= 0
+                || allocation.energies.len() != manager.hand().len()
                 || allocation
                     .energies
                     .iter()
-                    .any(|value| !(0..=5).contains(value))
+                    .any(|value| !(0..=allocation.limit).contains(value))
             {
                 return Err(CardCommandError::InvalidCommand);
             }
