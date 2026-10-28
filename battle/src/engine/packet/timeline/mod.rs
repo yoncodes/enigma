@@ -1032,7 +1032,9 @@ fn project_change(
             vec![CardPacket::allocate_card_energy(changes.after.clone(), 1)]
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::EnergyChanged => {
-            vec![CardPacket::allocate_card_energy(changes.after.clone(), 1)]
+            CardPacket::change_card_energy(&changes.before, &changes.after, 1)
+                .into_iter()
+                .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::EnergyCleared => {
             vec![CardPacket::clear_card_energy(changes.after.clone(), 1)]

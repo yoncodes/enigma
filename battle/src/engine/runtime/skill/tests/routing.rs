@@ -21,7 +21,7 @@ fn compiled_slot_emits_its_registered_destination_op() {
         slots: vec![SkillEffectSlot::new(
             ParsedBehavior::from_spec(
                 BehaviorSpec::new(60189, "AddEnergyToCard"),
-                vec![1, 2, 3],
+                vec![1, -1, 2],
                 Vec::new(),
             ),
             TargetRequest::self_only(),
@@ -47,7 +47,7 @@ fn compiled_slot_emits_its_registered_destination_op() {
             [RuleOp::Command(BattleCommand::Card(
                 CardCommand::ChangeBasicEnergy(CardEnergyChange {
                     delta: 2,
-                    count: 3,
+                    count: 1,
                     ..
                 })
             ))]

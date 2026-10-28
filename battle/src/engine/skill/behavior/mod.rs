@@ -161,8 +161,8 @@ mod op_tests {
             ),
             Some(ops) if matches!(ops.as_slice(), [RuleOp::Command(BattleCommand::Card(
                 CardCommand::ChangeBasicEnergy(CardEnergyChange {
-                    delta: -1,
-                    count: 3,
+                    delta: 3,
+                    count: 1,
                     ..
                 })
             ))])

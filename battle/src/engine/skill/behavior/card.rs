@@ -19,23 +19,23 @@ use crate::engine::{
 };
 
 pub fn rule_op(behavior: &ParsedBehavior) -> Option<RuleOp> {
-    let [1, delta, count] = behavior.args.as_slice() else {
+    let [1, -1, amount] = behavior.args.as_slice() else {
         return None;
     };
-    if *delta == 0 || *count <= 0 {
+    if *amount <= 0 {
         return None;
     }
     Some(RuleOp::Command(BattleCommand::Card(
         CardCommand::ChangeBasicEnergy(CardEnergyChange {
             origin: super::command_origin(behavior)?,
-            delta: *delta,
-            count: *count,
+            delta: *amount,
+            count: 1,
         }),
     )))
 }
 
 pub(super) fn supports_basic_card_energy(behavior: &ParsedBehavior) -> bool {
-    matches!(behavior.args.as_slice(), [1, -1, count] if *count > 0)
+    matches!(behavior.args.as_slice(), [1, -1, amount] if *amount > 0)
 }
 
 pub(super) struct Handler;

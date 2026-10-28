@@ -388,7 +388,7 @@ fn active_skill_commits_immediate_ops_and_keeps_cast_state() {
             SkillEffectSlot::new(
                 ParsedBehavior::from_spec(
                     BehaviorSpec::new(60189, "AddEnergyToCard"),
-                    vec![1, 2, 1],
+                    vec![1, -1, 2],
                     Vec::new(),
                 ),
                 TargetRequest::self_only(),
