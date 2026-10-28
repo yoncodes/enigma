@@ -182,7 +182,7 @@ fn advance_round_discards_state_after_late_projection_failure() {
 }
 
 #[test]
-fn no_conduit_round_clears_card_energy_once() {
+fn enabled_impromptu_gauge_without_tag_keeps_the_generic_card_clear() {
     crate::test_support::init_config();
     let fight = Fight {
         version: Some(7),
@@ -205,6 +205,21 @@ fn no_conduit_round_clears_card_energy_once() {
         ..Default::default()
     };
     let mut runtime = runtime(fight);
+    let origin = crate::engine::skill::buff_act::configured_command_origin(
+        875,
+        crate::engine::skill::buff_act::registry::BuffActKind::EmitterTag,
+    )
+    .unwrap();
+    runtime
+        .managers
+        .execute_gauge(crate::engine::manager::gauge::GaugeCommand::new(
+            origin,
+            crate::engine::mechanic::impromptu::inspiration_key(
+                crate::engine::manager::emitter::UID,
+            ),
+            crate::engine::manager::gauge::GaugeOperation::Enable { max: None },
+        ))
+        .unwrap();
     runtime
         .managers
         .execute_card(crate::engine::manager::card::CardCommand::Setup(

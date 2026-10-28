@@ -243,6 +243,8 @@ impl BattleRuntime {
             crate::engine::manager::emitter::UID,
         )
         .map_err(|error| format!("{error:?}"))?;
+        let card_energy_finalized = player.card_energy_finalized;
+        let player = player.drain;
         let ended_by_player = battle_ended(&self.fight, &pool, &self.managers);
         self.objectives
             .record_player_round(&commands, catalog, &player, ended_by_player);
@@ -270,12 +272,13 @@ impl BattleRuntime {
             )
             .map_err(|error| format!("{error:?}"))?
         };
-        let card_energy_clear = schedule::run_card_energy_clear(
+        let card_energy_clear = schedule::run_pending_card_energy_clear(
             &mut self.managers,
             &pool,
             catalog,
             &mut self.determinism,
             context,
+            card_energy_finalized,
         )
         .map_err(|error| format!("{error:?}"))?;
         let hand_size = crate::engine::mechanic::card::CardMechanic.normal_hand_limit(

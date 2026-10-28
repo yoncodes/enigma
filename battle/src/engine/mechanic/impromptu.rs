@@ -348,29 +348,31 @@ pub fn finalize_action_queue_rule_ops(
     team: i32,
     emitter_uid: i64,
 ) -> Vec<RuleOp> {
-    let features = managers.buff.active_features(&managers.hp);
-    let Some(tag) = emitter_tags(&features)
-        .into_iter()
-        .find(|feature| feature.team_type == team)
-    else {
-        return Vec::new();
-    };
-    let Some(origin) = buff_act::feature_command_origin(tag) else {
+    let Some(origin) = action_queue_finalization_origin(managers, team, emitter_uid) else {
         return Vec::new();
     };
     let key = inspiration_key(emitter_uid);
-    if managers.gauge.get(key).is_none() {
-        return Vec::new();
-    }
-    let ops = vec![
+    vec![
         RuleOp::Command(BattleCommand::Card(CardCommand::ClearEnergy { origin })),
         RuleOp::Command(BattleCommand::Gauge(GaugeCommand::new(
             origin,
             key,
             GaugeOperation::Snapshot,
         ))),
-    ];
-    ops
+    ]
+}
+
+fn action_queue_finalization_origin(
+    managers: &BattleManagers,
+    team: i32,
+    emitter_uid: i64,
+) -> Option<crate::engine::skill::rule::CommandOrigin> {
+    let features = managers.buff.active_features(&managers.hp);
+    let tag = emitter_tags(&features)
+        .into_iter()
+        .find(|feature| feature.team_type == team)?;
+    managers.gauge.get(inspiration_key(emitter_uid))?;
+    buff_act::feature_command_origin(tag)
 }
 
 pub fn build_plan(managers: &BattleManagers, team: i32, emitter_uid: i64) -> Option<ImpromptuPlan> {

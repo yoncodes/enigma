@@ -116,6 +116,7 @@ fn immediately_monster_promotes_only_the_marked_team_after_the_action() {
         0,
     )
     .unwrap();
+    let result = result.drain;
 
     assert_eq!(managers.hp.current(-1), 0);
     assert_eq!(
