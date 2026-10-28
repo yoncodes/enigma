@@ -122,6 +122,45 @@ fn transformed_models_expand_the_checked_skill_closure() {
 }
 
 #[test]
+fn episode_roots_include_configured_trial_hero_builds() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut skills = VecDeque::new();
+    let mut report = Report::default();
+
+    collect_episode_roots(493_708, db, &mut skills, &mut report).unwrap();
+
+    let ids = skills
+        .iter()
+        .map(|pending| pending.id)
+        .collect::<HashSet<_>>();
+    for id in [
+        31_410_111, 30_530_111, 31_411_141, 436_315, 30_530_150, 431_115,
+    ] {
+        assert!(ids.contains(&id), "missing trial hero skill {id}");
+    }
+
+    let mut catalog = SkillEffectCatalog::from_roots(
+        db,
+        skills.iter().map(|pending| pending.id),
+        std::iter::empty(),
+    );
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut VecDeque::new(),
+        &mut report,
+    );
+    assert_eq!(
+        report.errors,
+        ["MissingSemanticConsumer path=episode 493708 > battle 116370080 > trial 116370041 > skill 31411141 (Precognition) > slot 9 > buff 31410409 act=1084 type=RecordReplaceWqMagicCircle route=StaticRead effectTime=0".to_owned()]
+            .into()
+    );
+}
+
+#[test]
 fn summoned_definitions_expand_the_checked_skill_closure() {
     crate::init_config().unwrap();
     let db = config::get();
