@@ -23,6 +23,7 @@ pub mod magic_circle;
 pub mod monster_change;
 pub mod nuo_di_ka;
 pub mod poison;
+pub mod power_queue_rank;
 pub mod precast;
 pub mod rate;
 pub mod registry;

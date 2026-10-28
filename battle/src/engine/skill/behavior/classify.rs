@@ -58,6 +58,7 @@ pub enum BehaviorKind {
     CardLevelChange,
     CardDeckTopRankCorrect,
     ConsumePowerUpgradeSkillCard,
+    ConsumePowerUpdateActorCard,
     AddUniversalCard,
     RedealCardKeepStar2,
     AddQueuedSkillCard,

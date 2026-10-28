@@ -444,6 +444,10 @@ fn before_ap_resolution_keeps_its_exact_event_and_queue_preparation_roles() {
         parse(1061, "None", &[]),
         Some(ParsedConditionKind::None(NoneMode::ActionQueueCommitted))
     );
+    assert_eq!(
+        find_key(1061, "None").map(|definition| definition.reaction_frame_scope),
+        Some(ReactionFrameScope::Independent)
+    );
 }
 
 #[test]

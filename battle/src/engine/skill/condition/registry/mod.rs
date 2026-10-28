@@ -631,7 +631,7 @@ condition_definitions! {
     [2092] "None" => trigger::parse_guard_broken, reaction_targets_owner(event_trigger(EventKind::ToughnessBroken, None));
     [783101] "IsBroken" => trigger::parse_entity_broken, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [783102] "IsBroken" => trigger::parse_entity_broken, setup_route(SetupStage::RoundStartCondition, 102, &[]);
-    [1061] "None" => none::action_queue_committed, event_trigger(EventKind::ActionQueueCommitted, None);
+    [1061] "None" => none::action_queue_committed, in_independent_frame(event_trigger(EventKind::ActionQueueCommitted, None));
     [2081] "None" => none::skill_cast, uses_active_skill_targets(event_trigger(EventKind::SkillCast, None));
     [209, 211] "None" => none::attacked, attacked_skills(event_trigger(EventKind::BeAttacked, None));
     [212] "None" => none::ally_action, reaction_targets_causing_frame(event_trigger(EventKind::AllyAction, None));

@@ -550,6 +550,29 @@ impl CardManager {
         Some(skill_id)
     }
 
+    pub(crate) fn available_played_rank_ups(&self, card_index: i32, limit: i32) -> i32 {
+        let Some(played) = self
+            .played
+            .iter()
+            .find(|played| played.card_index == card_index)
+        else {
+            return 0;
+        };
+        let mut skill_id = played.skill_id;
+        let mut levels = 0;
+        while levels < limit {
+            let Some(next) = self.rank_up.get(&(played.caster_uid, skill_id)).copied() else {
+                break;
+            };
+            if self.skill_rank(next) <= self.skill_rank(skill_id) {
+                break;
+            }
+            skill_id = next;
+            levels += 1;
+        }
+        levels
+    }
+
     pub(crate) fn change_played_rank(
         &mut self,
         card_index: i32,

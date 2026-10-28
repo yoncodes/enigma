@@ -247,7 +247,7 @@ impl BehaviorHandler for Handler {
         .collect::<Vec<_>>();
         (!changes.is_empty()).then(|| {
             vec![RuleOp::Command(BattleCommand::Card(
-                CardCommand::ChangeAroundQueuedRanks {
+                CardCommand::ChangeQueuedRanks {
                     origin: super::command_origin(behavior)
                         .expect("registered queue preparation has an origin"),
                     changes,
@@ -874,9 +874,8 @@ mod tests {
         let ops = <Handler as BehaviorHandler>::collect_queue_preparation(6, &behavior).unwrap();
 
         let [
-            RuleOp::Command(BattleCommand::Card(CardCommand::ChangeAroundQueuedRanks {
-                changes,
-                ..
+            RuleOp::Command(BattleCommand::Card(CardCommand::ChangeQueuedRanks {
+                changes, ..
             })),
         ] = ops.as_slice()
         else {

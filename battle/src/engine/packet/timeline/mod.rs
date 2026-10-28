@@ -980,7 +980,7 @@ fn project_change(
                 })
                 .collect()
         }
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::AroundRanksChanged => {
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::QueuedRanksChanged => {
             changes
                 .rank_results
                 .iter()

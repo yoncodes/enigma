@@ -425,7 +425,7 @@ pub enum CardCommand {
         upgrades: Vec<QueuedCardRankUp>,
         rewritten: bool,
     },
-    ChangeAroundQueuedRanks {
+    ChangeQueuedRanks {
         origin: CommandOrigin,
         changes: Vec<QueuedCardRankChange>,
     },
@@ -497,7 +497,7 @@ pub enum CardChangeKind {
     HandLimitChanged,
     HandLimitCleared,
     QueuedRankChanged,
-    AroundRanksChanged,
+    QueuedRanksChanged,
     HandRankChanged,
     DeckTopRanksChanged,
     ActionQueueCommitted,
@@ -1301,7 +1301,7 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
-        CardCommand::ChangeAroundQueuedRanks { origin, changes } => {
+        CardCommand::ChangeQueuedRanks { origin, changes } => {
             if changes.is_empty()
                 || changes
                     .iter()
@@ -1317,7 +1317,7 @@ pub(super) fn execute(
             }
             (
                 Some(origin),
-                CardChangeKind::AroundRanksChanged,
+                CardChangeKind::QueuedRanksChanged,
                 None,
                 None,
                 Vec::new(),
