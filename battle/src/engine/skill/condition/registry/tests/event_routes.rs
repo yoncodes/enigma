@@ -911,6 +911,27 @@ fn own_ultimate_use_fires_before_the_ultimate_damages() {
 }
 
 #[test]
+fn paper_heron_ultimate_mode_uses_the_existing_immediate_route() {
+    assert_eq!(
+        parse(25203, "UseExSkill", &[]),
+        Some(ParsedConditionKind::UseExSkill)
+    );
+    assert_eq!(
+        parse(25203, "UseExSkill", &["3".into()]),
+        Some(ParsedConditionKind::UseExSkill)
+    );
+    assert!(parse(25203, "UseExSkill", &["2".into()]).is_none());
+    assert_eq!(
+        find_key(25203, "UseExSkill").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        })
+    );
+    assert!(parse(25201, "UseExSkill", &["3".into()]).is_none());
+}
+
+#[test]
 fn trigger_families_reject_unconfigured_ids_and_wrong_types() {
     assert_eq!(
         parse(741402, "TriggerTypeBullet", &[]),

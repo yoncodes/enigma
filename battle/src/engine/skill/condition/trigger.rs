@@ -38,8 +38,9 @@ pub fn parse_entity_broken(_: i32, _: &str, args: &[String]) -> Option<ParsedCon
     args.is_empty().then_some(ParsedConditionKind::EntityBroken)
 }
 
-pub fn parse_use_ex_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
-    args.is_empty().then_some(ParsedConditionKind::UseExSkill)
+pub fn parse_use_ex_skill(key: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    (args.is_empty() || matches!(args, [mode] if key == 25203 && mode == "3"))
+        .then_some(ParsedConditionKind::UseExSkill)
 }
 
 pub fn parse_target_use_ex_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
