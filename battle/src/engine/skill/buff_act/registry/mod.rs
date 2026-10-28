@@ -1461,7 +1461,7 @@ buff_act_definitions! {
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1077, "ConsumeCurBuffAndAuraAddBuff"), &[]));
     (1078, "ChangeEmitterCardEnergyLimit") => ChangeEmitterCardEnergyLimit, effect_time_subscription: false,
         supports: super::emitter_card_energy_limit::supports, state_consumer: true,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1078, "ChangeEmitterCardEnergyLimit"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1078, "ChangeEmitterCardEnergyLimit"), &[EffectType::None as i32]));
     (1079, "ChangeEmitterSkill") => ChangeEmitterSkill, effect_time_subscription: false,
         supports: super::emitter_skill::supports, references: references_for_feature, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1079, "ChangeEmitterSkill"), &[]));

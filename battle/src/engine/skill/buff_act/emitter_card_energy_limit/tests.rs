@@ -29,6 +29,22 @@ fn exact_static_owner_increases_only_the_emitter_card_limit() {
         super::super::registry::destination(1_078, "ChangeEmitterCardEnergyLimit", &[3]),
         Some(super::super::registry::BuffActDestination::StateConsumer)
     );
+    let wire = super::super::registry::find(1_078, "ChangeEmitterCardEnergyLimit")
+        .unwrap()
+        .wire
+        .unwrap();
+    assert_eq!(
+        wire.markers(super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
     assert_eq!(resolve(5, &[feature(emitter_uid, 3)], emitter_uid), 8);
     assert_eq!(resolve(5, &[feature(3_141, 3)], emitter_uid), 5);
 }
