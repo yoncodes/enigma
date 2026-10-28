@@ -203,6 +203,7 @@ impl BuffManager {
         self.act_states.clear();
         self.act_values.clear();
         self.grant_values.clear();
+        self.attr_snapshots.clear();
         self.mode_attributes = rouge2_attributes(fight);
         self.transition_progress.clear();
         let fight_version = fight.version.unwrap_or_default();

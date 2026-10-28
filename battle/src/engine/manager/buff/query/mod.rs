@@ -874,7 +874,8 @@ impl BuffManager {
     }
 
     pub fn fixed_attribute_delta(&self, uid: i64, attr_id: AttrId) -> i32 {
-        self.buffs
+        let one_way = self
+            .buffs
             .iter()
             .filter(|active| active.effective && active.owner_uid == uid)
             .filter(|active| {
@@ -887,7 +888,31 @@ impl BuffManager {
                 })
             })
             .filter_map(|active| self.fixed_attribute_value(active.buff.uid?, attr_id))
-            .sum()
+            .fold(0, i32::saturating_add);
+        let each_change = self
+            .buffs
+            .iter()
+            .filter(|active| active.effective)
+            .filter_map(|active| {
+                let buff_uid = active.buff.uid?;
+                let amount = attribute_amount(&active.buff);
+                active
+                    .definition
+                    .as_ref()?
+                    .features()
+                    .iter()
+                    .any(|feature| {
+                        feature.arguments_supported
+                            && feature.kind == Some(BuffActKind::EachChangeAttr)
+                    })
+                    .then(|| {
+                        crate::engine::skill::buff_act::each_change_attr::attribute_delta(
+                            buff_uid, uid, amount, attr_id, self,
+                        )
+                    })
+            })
+            .fold(0, i32::saturating_add);
+        one_way.saturating_add(each_change)
     }
 
     pub fn configured_attribute_deltas(buff_id: i32) -> Vec<(AttrId, i32)> {
@@ -1025,6 +1050,29 @@ impl BuffManager {
         let game = catalog.game_data();
         let definition = BuffDefinition::configured(game, buff_id);
         configured_features(Some(game), buff_id, definition.as_ref())
+    }
+
+    pub(crate) fn each_change_attr_sources(&self) -> Vec<(i64, i32, i64, i64)> {
+        self.buffs
+            .iter()
+            .filter(|active| active.effective)
+            .filter(|active| {
+                active.definition.as_ref().is_some_and(|definition| {
+                    definition.features().iter().any(|feature| {
+                        feature.arguments_supported
+                            && feature.kind == Some(BuffActKind::EachChangeAttr)
+                    })
+                })
+            })
+            .filter_map(|active| {
+                Some((
+                    active.buff.uid?,
+                    active.buff.buff_id?,
+                    active.buff.from_uid.unwrap_or(active.owner_uid),
+                    active.owner_uid,
+                ))
+            })
+            .collect()
     }
 
     pub fn passive_skill_links_for(&self, uid: i64) -> Vec<BuffPassiveSkillLink> {

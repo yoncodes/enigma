@@ -245,11 +245,11 @@ impl BattleManagers {
                 );
                 (base + flat + base * delta / 1000).clamp(0, i64::from(i32::MAX)) as i32
             }
-            AttrId::CriticalDmg => {
-                self.attribute.get(uid, attr_id)
-                    + self.persistent_attribute_delta(uid, attr_id)
-                    + self.buff.fixed_attribute_delta(uid, attr_id)
-            }
+            AttrId::CriticalRate | AttrId::CriticalDmg => self
+                .attribute
+                .get(uid, attr_id)
+                .saturating_add(self.persistent_attribute_delta(uid, attr_id))
+                .saturating_add(self.buff.fixed_attribute_delta(uid, attr_id)),
             _ => self.attribute.get(uid, attr_id) + self.persistent_attribute_delta(uid, attr_id),
         }
     }
@@ -383,6 +383,12 @@ impl BattleManagers {
                 )
         {
             plan.initialize_added_act_info_without_markers(act_info);
+        }
+        if let Some((source_uid, target_uid, buff_id)) = plan.each_change_attr_route() {
+            let values = crate::engine::skill::buff_act::each_change_attr::definition_snapshot(
+                self, buff_id, source_uid, target_uid,
+            );
+            plan.add_attr_snapshots(values);
         }
         Ok(plan)
     }
@@ -1530,6 +1536,7 @@ impl BattleManagers {
         managers.eureka.seed(fight);
         managers.buff.set_catalog(catalog);
         managers.buff.seed(fight);
+        crate::engine::skill::buff_act::each_change_attr::seed(&mut managers);
         managers.card.set_catalog(catalog);
         managers.card.seed(fight);
         managers.conduit = ConduitManager::configured(catalog, fight);

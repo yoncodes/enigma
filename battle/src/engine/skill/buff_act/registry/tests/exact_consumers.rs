@@ -62,6 +62,21 @@ fn attr_transactions_follow_the_buff_lifecycle_boundary() {
 }
 
 #[test]
+fn each_change_attr_requires_exact_attribute_arguments() {
+    let definition = find(834, "EachChangeAttr").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert!(supports(&[205, 0, 102, 150]));
+    assert!(!supports(&[205, 0, 102]));
+    assert!(!supports(&[999, 0, 102, 150]));
+    assert!(!supports(&[205, -1, 102, 150]));
+    assert!(!supports(&[205, 0, 999, 150]));
+    assert!(!supports(&[205, 0, 102, -1]));
+    assert!(!supports(&[101, 40, 101, 40]));
+    assert!(!supports(&[206, 0, 206, 100]));
+}
+
+#[test]
 fn registry_requires_exact_id_and_type() {
     assert_eq!(
         find(1075, "CardLimitAdd").unwrap().kind,

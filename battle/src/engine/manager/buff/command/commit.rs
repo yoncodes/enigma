@@ -486,6 +486,7 @@ impl BuffManager {
         if let Some(buff_uid) = snapshot_buff_uid {
             self.commit_grant_snapshots(buff_uid, &plan.dot_snapshots);
             self.commit_grant_values(buff_uid, &plan.grant_values);
+            self.commit_attr_snapshots(buff_uid, &plan.attr_snapshots);
         }
         if change.added.is_some() {
             for uid in plan.post_add_uids {

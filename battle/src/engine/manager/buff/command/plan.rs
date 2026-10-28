@@ -1250,6 +1250,7 @@ impl BuffManager {
             initial_act_info_markers: None,
             dot_snapshots,
             grant_values,
+            attr_snapshots: Vec::new(),
             immunity_action: immunity.map(|(_, owner_uid, action)| (owner_uid, action)),
             transition_progress,
             transition: None,

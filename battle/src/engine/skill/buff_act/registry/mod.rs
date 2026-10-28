@@ -1133,7 +1133,10 @@ buff_act_definitions! {
     (834, "EachChangeAttr") => EachChangeAttr,
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,
-        transaction: super::each_change_attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(834, "EachChangeAttr"), &[EffectType::None as i32]));
+        stat_read: OnGrant,
+        transaction: super::each_change_attr::transaction_rule_ops,
+        supports: super::each_change_attr::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(834, "EachChangeAttr"), &[EffectType::None as i32]));
     (1131, "EachChangeAttrOneWay") => EachChangeAttrOneWay,
         transactions: [EventKind::BuffAdded, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,

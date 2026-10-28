@@ -19,5 +19,6 @@ use crate::engine::{
 
 use super::{BattleManagers, base_hero_sp_attribute};
 
+mod each_change_attr;
 mod projection_and_upgrade;
 mod resources_and_limits;
