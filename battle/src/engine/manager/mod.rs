@@ -1529,6 +1529,7 @@ impl BattleManagers {
             ..Self::default()
         };
         managers.attribute.seed_with_catalog(catalog, fight);
+        managers.emitter.seed(fight);
         managers.battle_rule = battle_rule::BattleRuleManager::seed_with_catalog(catalog, fight);
         managers.hp.seed(fight);
         managers.toughness.seed_configured(catalog, fight);

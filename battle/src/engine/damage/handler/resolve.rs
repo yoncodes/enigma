@@ -646,7 +646,6 @@ fn direct_damage_trace(
         target_buffs,
         hp,
         fields,
-        emitter,
         team_inspiration,
         ..
     } = runtime;
@@ -673,14 +672,11 @@ fn direct_damage_trace(
             (buffs, &source_active_features)
         };
         let emitter_attribute = if entity.uid == crate::engine::manager::emitter::UID {
-            crate::engine::manager::emitter::average_ally_buff_attribute(
-                runtime.pool,
-                buffs,
-                hp,
-                attr_id,
-            ) + emitter
-                .map(|emitter| emitter.ally_attribute(attr_id))
-                .unwrap_or_default()
+            runtime.emitter.map_or(0, |emitter| {
+                crate::engine::manager::emitter::average_ally_attribute_delta(
+                    emitter, attributes, buffs, hp, attr_id,
+                )
+            })
         } else {
             0
         };
@@ -869,7 +865,18 @@ fn direct_damage_trace(
     };
     let flat_attack =
         crate::engine::manager::snapshotted_attribute_delta(buffs, hp, source.uid, AttrId::Attack)
-            .saturating_add(buffs.fixed_attribute_delta(source.uid, AttrId::Attack));
+            .saturating_add(buffs.fixed_attribute_delta(source.uid, AttrId::Attack))
+            .saturating_add(if source.uid == crate::engine::manager::emitter::UID {
+                runtime.emitter.map_or(0, |emitter| {
+                    crate::engine::manager::emitter::average_ally_fixed_attribute(
+                        emitter,
+                        buffs,
+                        AttrId::Attack,
+                    )
+                })
+            } else {
+                0
+            });
     let base_attack = attributes.base(source.uid, AttrId::Attack);
     let attack_rate = 1000
         + attributes.get(source.uid, AttrId::Attack)
@@ -1148,38 +1155,52 @@ fn direct_damage_trace(
                 )
             })
             .collect::<Vec<_>>();
-        let emitter_ally_inputs = (source.uid == crate::engine::manager::emitter::UID).then(|| {
-            runtime
-                .pool
-                .main_allies(source.uid)
+        let emitter_ally_inputs = runtime
+            .emitter
+            .filter(|_| source.uid == crate::engine::manager::emitter::UID)
+            .map(|emitter| {
+                emitter
+                .ally_uids()
                 .iter()
-                .filter(|ally| hp.current(ally.uid) > 0)
-                .map(|ally| {
-                    let stored_rate = attributes.get(ally.uid, AttrId::Attack);
-                    let dynamic_rate = attribute_delta(ally, AttrId::Attack);
+                .map(|uid| {
+                    let parts = |attr_id| {
+                        (
+                            attributes.get(*uid, attr_id),
+                            buffs.attribute_delta(*uid, attr_id),
+                            buffs.fixed_attribute_delta(*uid, attr_id),
+                            crate::engine::manager::emitter::ally_derived_attribute(
+                                *uid,
+                                &source_active_features,
+                                buffs,
+                                hp,
+                                attr_id,
+                            ),
+                        )
+                    };
+                    let fixed_attack = buffs.fixed_attribute_delta(*uid, AttrId::Attack);
+                    let snapshotted_attack = crate::engine::manager::snapshotted_attribute_delta(
+                        buffs,
+                        hp,
+                        *uid,
+                        AttrId::Attack,
+                    );
                     format!(
-                        "uid={} attack={}/{stored_rate}/{dynamic_rate} crit={}/{}/{} damage={}/{} might={}/{}/{}/{} penetration={}/{} final={}/{} playmode={}/{}",
-                        ally.uid,
-                        attributes.base(ally.uid, AttrId::Attack),
-                        attributes.get(ally.uid, AttrId::CriticalDmg),
-                        ally.technic,
-                        attribute_delta(ally, AttrId::CriticalDmg),
-                        attributes.get(ally.uid, AttrId::DmgBonus),
-                        attribute_delta(ally, AttrId::DmgBonus),
-                        attributes.get(ally.uid, AttrId::IncantationMight),
-                        attribute_delta(ally, AttrId::IncantationMight),
-                        attributes.get(ally.uid, AttrId::UltimateMight),
-                        attribute_delta(ally, AttrId::UltimateMight),
-                        attributes.get(ally.uid, AttrId::Penetration),
-                        attribute_delta(ally, AttrId::Penetration),
-                        attributes.get(ally.uid, AttrId::FinalDmgBonus),
-                        attribute_delta(ally, AttrId::FinalDmgBonus),
-                        attributes.get(ally.uid, AttrId::PlaymodeDmgIncrease),
-                        attribute_delta(ally, AttrId::PlaymodeDmgIncrease),
+                        "uid={uid} attack[base/stored/ordinary/fixed/snapshot]={}/{}/{}/{fixed_attack}/{snapshotted_attack} critical_rate[stored/ordinary/fixed/derived]={:?} critical_dmg[stored/ordinary/fixed/derived]={:?} damage[stored/ordinary/fixed/derived]={:?} incantation_might[stored/ordinary/fixed/derived]={:?} ultimate_might[stored/ordinary/fixed/derived]={:?} penetration[stored/ordinary/fixed/derived]={:?} final[stored/ordinary/fixed/derived]={:?} playmode[stored/ordinary/fixed/derived]={:?}",
+                        attributes.base(*uid, AttrId::Attack),
+                        attributes.get(*uid, AttrId::Attack),
+                        buffs.attribute_delta(*uid, AttrId::Attack),
+                        parts(AttrId::CriticalRate),
+                        parts(AttrId::CriticalDmg),
+                        parts(AttrId::DmgBonus),
+                        parts(AttrId::IncantationMight),
+                        parts(AttrId::UltimateMight),
+                        parts(AttrId::Penetration),
+                        parts(AttrId::FinalDmgBonus),
+                        parts(AttrId::PlaymodeDmgIncrease),
                     )
                 })
                 .collect::<Vec<_>>()
-        });
+            });
         eprintln!(
             "damage formula={formula:?} skill={skill_id} source={} target={} source_hp={}/{} target_hp={}/{} shield={} attack={final_atk}({base_attack}*{attack_rate}/1000+{flat_attack}) emitter_ally_inputs={emitter_ally_inputs:?} source_buffs={source_buffs:?} target_buffs={target_buffs:?} penetration={penetration} regular={source_regular}({source_base_regular}+{source_buff_regular}+{source_attack_regular}+{})+action({action_bonus}, {})-{target_regular}({target_base_regular}+{target_buff_regular}) local_bonus={local_damage_bonus:?} ultimate_might={}+{}+{} extra={} rebound={} reuse={} hp_pct={} atk_pct={} crit={source_crit}+{technique_crit}+{buff_crit}-({target_base_crit}+{target_buff_crit}) trace={damage_trace:?}",
             source.uid,

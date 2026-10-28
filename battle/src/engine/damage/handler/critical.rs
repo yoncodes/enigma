@@ -165,12 +165,13 @@ fn raw_chance(
         source_uid, pool, managers,
     );
     let emitter_attribute = if source_uid == crate::engine::manager::emitter::UID {
-        crate::engine::manager::emitter::average_ally_buff_attribute(
-            pool,
+        crate::engine::manager::emitter::average_ally_attribute_delta(
+            &managers.emitter,
+            &managers.attribute,
             &managers.buff,
             &managers.hp,
             AttrId::CriticalRate,
-        ) + managers.emitter.ally_attribute(AttrId::CriticalRate)
+        )
     } else {
         0
     };

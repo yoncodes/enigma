@@ -955,7 +955,7 @@ pub(super) fn damage_ops(
             target_buffs: &managers.buff,
             hp: &managers.hp,
             fields: Some((&managers.field, managers.catalog())),
-            emitter: None,
+            emitter: Some(&managers.emitter),
             team_inspiration: 0,
         };
         let main_origin = CommandOrigin {
@@ -1132,7 +1132,7 @@ pub(super) fn damage_ops(
                         target_buffs: &managers.buff,
                         hp: &managers.hp,
                         fields: Some((&managers.field, managers.catalog())),
-                        emitter: None,
+                        emitter: Some(&managers.emitter),
                         team_inspiration: 0,
                     },
                     additional.formula,

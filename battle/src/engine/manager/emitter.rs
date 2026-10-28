@@ -1,15 +1,12 @@
 use std::collections::HashMap;
 
-use sonettobuf::{CardInfo, EnhanceInfoBox, FightEntityInfo, HeroAttribute};
+use sonettobuf::{CardInfo, EnhanceInfoBox, Fight, FightEntityInfo, HeroAttribute};
 
 use crate::engine::{
     entity::attr::AttrId,
     manager::{buff::BuffManager, card::PlayedCard, hp::HpManager},
     mechanic::impromptu::ImpromptuDefinition,
-    skill::{
-        buff_act::{is_kind, registry::BuffActKind},
-        target::TargetPool,
-    },
+    skill::buff_act::{is_kind, registry::BuffActKind},
 };
 
 pub const UID: i64 = 99998;
@@ -111,10 +108,28 @@ pub struct EmitterChange {
 pub struct EmitterManager {
     definition: Option<ImpromptuDefinition>,
     energy: i32,
+    ally_uids: Vec<i64>,
     ally_attributes: HashMap<AttrId, i32>,
 }
 
 impl EmitterManager {
+    pub fn seed(&mut self, fight: &Fight) {
+        self.ally_uids = fight
+            .attacker
+            .as_ref()
+            .map(|team| {
+                team.entitys
+                    .iter()
+                    .filter_map(|entity| entity.uid)
+                    .collect()
+            })
+            .unwrap_or_default();
+    }
+
+    pub(crate) fn ally_uids(&self) -> &[i64] {
+        &self.ally_uids
+    }
+
     pub fn execute_command(&mut self, command: EmitterCommand) -> EmitterChange {
         let enabled_before = self.definition.is_some();
         match command.operation {
@@ -158,12 +173,7 @@ impl EmitterManager {
         self.energy
     }
 
-    pub fn snapshot_ally_attributes(
-        &mut self,
-        pool: &TargetPool,
-        buffs: &BuffManager,
-        hp: &HpManager,
-    ) {
+    pub fn snapshot_ally_attributes(&mut self, buffs: &BuffManager, hp: &HpManager) {
         self.ally_attributes.clear();
         for attr_id in [
             AttrId::CriticalRate,
@@ -188,7 +198,7 @@ impl EmitterManager {
         ] {
             self.ally_attributes.insert(
                 attr_id,
-                average_ally_derived_attribute(pool, buffs, hp, attr_id),
+                average_ally_derived_attribute(&self.ally_uids, buffs, hp, attr_id),
             );
         }
     }
@@ -271,62 +281,103 @@ impl EmitterManager {
     }
 }
 
-pub fn average_ally_buff_attribute(
-    pool: &TargetPool,
+pub fn average_ally_attribute_delta(
+    emitter: &EmitterManager,
+    attributes: &crate::engine::manager::attribute::AttributeManager,
     buffs: &BuffManager,
     hp: &HpManager,
     attr_id: AttrId,
 ) -> i32 {
-    let allies = pool
-        .main_allies(UID)
-        .iter()
-        .filter(|ally| hp.current(ally.uid) > 0)
-        .collect::<Vec<_>>();
-    if allies.is_empty() {
+    if emitter.ally_uids.is_empty() {
         return 0;
     }
-    allies
+    if matches!(
+        attr_id,
+        AttrId::Hp
+            | AttrId::Attack
+            | AttrId::RealityDef
+            | AttrId::MentalDef
+            | AttrId::CriticalTechnique
+    ) {
+        return emitter
+            .ally_uids
+            .iter()
+            .map(|uid| i64::from(buffs.attribute_delta(*uid, attr_id)))
+            .sum::<i64>()
+            .checked_div(emitter.ally_uids.len() as i64)
+            .unwrap_or_default() as i32;
+    }
+    let features = buffs.active_features(hp);
+    let delta = emitter
+        .ally_uids
         .iter()
-        .map(|ally| buffs.attribute_delta(ally.uid, attr_id))
+        .map(|uid| {
+            attributes
+                .get(*uid, attr_id)
+                .saturating_add(buffs.attribute_delta(*uid, attr_id))
+                .saturating_add(buffs.fixed_attribute_delta(*uid, attr_id))
+                .saturating_add(ally_derived_attribute(*uid, &features, buffs, hp, attr_id))
+        })
         .map(i64::from)
         .sum::<i64>()
-        .checked_div(allies.len() as i64)
+        .checked_div(emitter.ally_uids.len() as i64)
+        .unwrap_or_default()
+        .saturating_sub(i64::from(attributes.get(UID, attr_id)));
+    delta.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
+pub fn average_ally_fixed_attribute(
+    emitter: &EmitterManager,
+    buffs: &BuffManager,
+    attr_id: AttrId,
+) -> i32 {
+    if emitter.ally_uids.is_empty() {
+        return 0;
+    }
+    emitter
+        .ally_uids
+        .iter()
+        .map(|uid| buffs.fixed_attribute_delta(*uid, attr_id))
+        .map(i64::from)
+        .sum::<i64>()
+        .checked_div(emitter.ally_uids.len() as i64)
         .unwrap_or_default() as i32
 }
 
 fn average_ally_derived_attribute(
-    pool: &TargetPool,
+    ally_uids: &[i64],
     buffs: &BuffManager,
     hp: &HpManager,
     attr_id: AttrId,
 ) -> i32 {
-    let allies = pool
-        .main_allies(UID)
-        .iter()
-        .filter(|ally| hp.current(ally.uid) > 0)
-        .collect::<Vec<_>>();
-    if allies.is_empty() {
+    if ally_uids.is_empty() {
         return 0;
     }
     let features = buffs.active_features(hp);
-    allies
+    ally_uids
         .iter()
-        .map(|ally| {
-            features
-                .iter()
-                .filter(|feature| feature.owner_uid == ally.uid)
-                .filter(|feature| is_kind(feature, BuffActKind::AttrByShield))
-                .map(|feature| {
-                    crate::engine::skill::buff_act::attack_attribute_delta(
-                        feature, attr_id, buffs, hp,
-                    )
-                })
-                .sum::<i32>()
-        })
+        .map(|uid| ally_derived_attribute(*uid, &features, buffs, hp, attr_id))
         .map(i64::from)
         .sum::<i64>()
-        .checked_div(allies.len() as i64)
+        .checked_div(ally_uids.len() as i64)
         .unwrap_or_default() as i32
+}
+
+pub(crate) fn ally_derived_attribute(
+    uid: i64,
+    features: &[crate::engine::manager::buff::ActiveBuffFeature],
+    buffs: &BuffManager,
+    hp: &HpManager,
+    attr_id: AttrId,
+) -> i32 {
+    features
+        .iter()
+        .filter(|feature| feature.owner_uid == uid)
+        .filter(|feature| is_kind(feature, BuffActKind::AttrByShield))
+        .map(|feature| {
+            crate::engine::skill::buff_act::attack_attribute_delta(feature, attr_id, buffs, hp)
+        })
+        .sum()
 }
 
 #[cfg(test)]
@@ -337,6 +388,7 @@ mod tests {
     use crate::engine::{
         manager::hp::{HpCommand, MaxHpAdjust},
         skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
+        skill::target::TargetPool,
     };
 
     fn definition() -> ImpromptuDefinition {
@@ -508,7 +560,6 @@ mod tests {
             }),
             ..Default::default()
         };
-        let pool = TargetPool::from_fight(&fight);
         let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
         managers.buff.add(&managers.hp, 10, 10, 31080121, 0);
         managers.buff.add(&managers.hp, 11, 11, 31080122, 0);
@@ -516,15 +567,33 @@ mod tests {
         managers.buff.add(&managers.hp, 11, 11, 31080146, 0);
 
         assert_eq!(
-            average_ally_buff_attribute(&pool, &managers.buff, &managers.hp, AttrId::DmgBonus),
+            average_ally_attribute_delta(
+                &managers.emitter,
+                &managers.attribute,
+                &managers.buff,
+                &managers.hp,
+                AttrId::DmgBonus,
+            ),
             275
         );
         assert_eq!(
-            average_ally_buff_attribute(&pool, &managers.buff, &managers.hp, AttrId::CriticalRate,),
+            average_ally_attribute_delta(
+                &managers.emitter,
+                &managers.attribute,
+                &managers.buff,
+                &managers.hp,
+                AttrId::CriticalRate,
+            ),
             37
         );
         assert_eq!(
-            average_ally_buff_attribute(&pool, &managers.buff, &managers.hp, AttrId::CriticalDmg,),
+            average_ally_attribute_delta(
+                &managers.emitter,
+                &managers.attribute,
+                &managers.buff,
+                &managers.hp,
+                AttrId::CriticalDmg,
+            ),
             37
         );
     }
@@ -544,7 +613,6 @@ mod tests {
             }),
             ..Default::default()
         };
-        let pool = TargetPool::from_fight(&fight);
         let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
         let added = managers
             .buff
@@ -568,7 +636,13 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            average_ally_buff_attribute(&pool, &managers.buff, &managers.hp, AttrId::DmgBonus),
+            average_ally_attribute_delta(
+                &managers.emitter,
+                &managers.attribute,
+                &managers.buff,
+                &managers.hp,
+                AttrId::DmgBonus,
+            ),
             0
         );
     }
@@ -588,7 +662,6 @@ mod tests {
             }),
             ..Default::default()
         };
-        let pool = TargetPool::from_fight(&fight);
         let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
         managers.buff.add(&managers.hp, 10, 10, 31170002, 0);
         managers.buff.add(&managers.hp, 11, 11, 31170002, 0);
@@ -597,7 +670,7 @@ mod tests {
 
         managers
             .emitter
-            .snapshot_ally_attributes(&pool, &managers.buff, &managers.hp);
+            .snapshot_ally_attributes(&managers.buff, &managers.hp);
 
         assert_eq!(managers.emitter.ally_attribute(AttrId::DmgBonus), 90);
     }
