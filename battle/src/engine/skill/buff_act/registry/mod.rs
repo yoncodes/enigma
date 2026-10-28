@@ -198,6 +198,7 @@ pub enum BuffActKind {
     Dizzy,
     EmitterCardAllocateChange,
     EmitterCareerChange,
+    ChangeEmitterSkill,
     EmitterChangeDmgType,
     EmitterDamageUp,
     EmitterEnergyAddBuff,
@@ -1452,6 +1453,9 @@ buff_act_definitions! {
         runtime: |context| super::consume_and_grant::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::consume_and_grant::supports, references: references_for_feature,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1077, "ConsumeCurBuffAndAuraAddBuff"), &[]));
+    (1079, "ChangeEmitterSkill") => ChangeEmitterSkill, effect_time_subscription: false,
+        supports: super::emitter_skill::supports, references: references_for_feature, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1079, "ChangeEmitterSkill"), &[]));
     (1081, "EmitterFixSubTargetsDamageReduceRate") => EmitterFixSubTargetsDamageReduceRate;
     (1082, "UseSkillConsumeFromAddEmitterEnergy") => UseSkillConsumeFromAddEmitterEnergy,
         publication: BeforePublish, frame: CausingFrame,
@@ -1560,6 +1564,7 @@ fn references_for_feature(
         Some(BuffActKind::AddPassiveSkills)
         | Some(BuffActKind::AddSpTempCard)
         | Some(BuffActKind::CastChannel)
+        | Some(BuffActKind::ChangeEmitterSkill)
         | Some(BuffActKind::CountContinueChannel)
         | Some(BuffActKind::SpecialCountCastChannel) => {
             add_skill(&mut references, feature.values.get(1).copied())

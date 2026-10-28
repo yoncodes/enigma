@@ -76,6 +76,7 @@ pub mod emitter_damage_type;
 pub mod emitter_energy_add_buff;
 pub mod emitter_num_change;
 pub mod emitter_rend_target;
+pub mod emitter_skill;
 pub mod emitter_tag;
 pub mod eureka_to_inspiration;
 pub mod ex_point_add_by_hit;
