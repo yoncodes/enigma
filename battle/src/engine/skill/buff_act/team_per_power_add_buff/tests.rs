@@ -1,9 +1,12 @@
-use sonettobuf::{Fight, FightEntityInfo, FightTeam, PowerInfo};
+use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, PowerInfo};
 
 use super::*;
 use crate::engine::{
     event::subscription::SubscriptionKey,
-    manager::eureka::{EurekaChange, EurekaCommand},
+    manager::{
+        buff::BuffAccumulateActValue,
+        eureka::{EurekaChange, EurekaCommand},
+    },
     skill::{
         buff_act::registry::{BuffActDestination, RuntimeFrameScope, destination, find},
         rule::{CommandOrigin, DefinitionKey, RuleDomain},
@@ -77,7 +80,7 @@ fn route_and_arguments_are_exact() {
 }
 
 #[test]
-fn grants_one_layer_for_each_four_team_eureka_spent() {
+fn carries_partial_team_eureka_spend_across_rounds() {
     crate::test_support::init_config();
     let entities = [1, 2, 3, 4].map(|uid| FightEntityInfo {
         uid: Some(uid),
@@ -88,6 +91,15 @@ fn grants_one_layer_for_each_four_team_eureka_spent() {
             num: Some(10),
             max: Some(10),
         }],
+        buffs: (uid == 2)
+            .then(|| BuffInfo {
+                uid: Some(50),
+                buff_id: Some(30530205),
+                from_uid: Some(2),
+                ..Default::default()
+            })
+            .into_iter()
+            .collect(),
         ..Default::default()
     });
     let fight = Fight {
@@ -99,7 +111,16 @@ fn grants_one_layer_for_each_four_team_eureka_spent() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
-    for (uid, spent) in [(1, 8), (2, 2), (3, 4), (4, 2)] {
+    managers
+        .execute_buff(BuffCommand::AccumulateActValue(BuffAccumulateActValue {
+            origin: origin(),
+            target_uid: 2,
+            buff_uid: 50,
+            act_id: 1085,
+            delta: 2,
+        }))
+        .unwrap();
+    for (uid, spent) in [(1, 6), (2, 2), (3, 4), (4, 2)] {
         managers
             .execute_eureka(EurekaCommand::Change(EurekaChange {
                 origin: origin(),
@@ -121,14 +142,17 @@ fn grants_one_layer_for_each_four_team_eureka_spent() {
     .unwrap();
     assert!(matches!(
         ops.as_slice(),
-        [RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
-            BuffGrant {
+        [
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
                 source_uid: 2,
                 target_uid: 2,
                 buff_id: 30530201,
                 amount: Some(4),
                 ..
-            }
-        )))]
+            }))),
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::AccumulateActValue(
+                BuffAccumulateActValue { delta: -2, .. }
+            )))
+        ]
     ));
 }

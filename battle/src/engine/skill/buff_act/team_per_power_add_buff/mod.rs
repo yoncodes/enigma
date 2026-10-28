@@ -2,7 +2,7 @@ use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
     manager::{
         BattleManagers,
-        buff::{BuffCommand, BuffGrant},
+        buff::{BuffAccumulateActValue, BuffCommand, BuffGrant},
     },
     skill::{
         buff_act::registry::{BuffActKind, ParsedBuffAct},
@@ -54,22 +54,40 @@ pub fn rule_ops(
         .iter()
         .map(|ally| managers.eureka.round_change(ally.uid, *power_id).consumed)
         .sum::<i32>();
-    let amount = consumed / divisor * layers;
-    if amount <= 0 {
-        return Some(Vec::new());
+    let previous = managers
+        .buff
+        .act_value(subscriber.buff_uid, subscriber.key.definition.opcode);
+    let total = previous.saturating_add(consumed);
+    let amount = total / divisor * layers;
+    let remainder = total % divisor;
+    let mut ops = Vec::with_capacity(2);
+    let origin = super::command_origin(subscriber)?;
+    if amount > 0 {
+        ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
+            BuffGrant {
+                origin,
+                source_uid: subscriber.owner_uid,
+                target_uid: subscriber.owner_uid,
+                buff_id: *buff_id,
+                amount: Some(amount),
+                occurrences: 1,
+                child_uid_reservations: 0,
+            },
+        ))));
     }
-
-    Some(vec![RuleOp::Command(BattleCommand::Buff(
-        BuffCommand::Grant(BuffGrant {
-            origin: super::command_origin(subscriber)?,
-            source_uid: subscriber.owner_uid,
-            target_uid: subscriber.owner_uid,
-            buff_id: *buff_id,
-            amount: Some(amount),
-            occurrences: 1,
-            child_uid_reservations: 0,
-        }),
-    ))])
+    let delta = remainder - previous;
+    if delta != 0 {
+        ops.push(RuleOp::Command(BattleCommand::Buff(
+            BuffCommand::AccumulateActValue(BuffAccumulateActValue {
+                origin,
+                target_uid: subscriber.owner_uid,
+                buff_uid: subscriber.buff_uid,
+                act_id: subscriber.key.definition.opcode,
+                delta,
+            }),
+        )));
+    }
+    Some(ops)
 }
 
 #[cfg(test)]
