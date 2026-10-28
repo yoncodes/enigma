@@ -165,6 +165,7 @@ pub enum BuffActKind {
     ChangeRemoveBuffUseSkillParam,
     ContractCastChannel,
     NoneCastChannel,
+    ConsumeCurBuffAndAuraAddBuff,
     ConsumeBuffAddBuffContinueChannel,
     ConsumeBuffContinueChannel,
     ControlTeamInjuryCountRound,
@@ -1443,6 +1444,10 @@ buff_act_definitions! {
         supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1070, "HeatScaleAddFix"), &[EffectType::None as i32]));
     (1075, "CardLimitAdd") => CardLimitAdd, effect_time_subscription: false,
         supports: |args| matches!(args, [delta] if *delta != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1075, "CardLimitAdd"), &[EffectType::None as i32]));
+    (1077, "ConsumeCurBuffAndAuraAddBuff") => ConsumeCurBuffAndAuraAddBuff,
+        runtime: |context| super::consume_and_grant::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::consume_and_grant::supports, references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1077, "ConsumeCurBuffAndAuraAddBuff"), &[]));
     (1081, "EmitterFixSubTargetsDamageReduceRate") => EmitterFixSubTargetsDamageReduceRate;
     (1114, "HeatScaleBurnAddFix") => HeatScaleBurnAddFix;
     (1125, "TeamShareShield") => TeamShareShield, effect_time_subscription: false,
@@ -1534,6 +1539,10 @@ fn references_for_feature(
         Some(BuffActKind::TransferEnergyBuff) => add_buff(
             &mut references,
             super::transfer_energy_buff::referenced_buff(&feature.args),
+        ),
+        Some(BuffActKind::ConsumeCurBuffAndAuraAddBuff) => add_buff(
+            &mut references,
+            super::consume_and_grant::referenced_buff(&feature.args),
         ),
         Some(BuffActKind::AddPassiveSkills)
         | Some(BuffActKind::AddSpTempCard)
