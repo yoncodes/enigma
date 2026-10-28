@@ -679,7 +679,6 @@ pub fn run_start(
     }
     let mut card_setup = Some(card_setup);
     let mut dealt_cards = None;
-    let mut opening_deck_counts = None;
     let mut opening_hand_limit = None;
     let mut opening_draws = Vec::new();
     let owner_uids = pool
@@ -1000,7 +999,18 @@ pub fn run_start(
             }
             dealt_cards = Some(managers.card.hand().to_vec());
             push_cue(&mut result.frames, RoundCue::EnterFightDeal);
-            opening_deck_counts = Some((initial_deck_num, managers.card.deck_num()));
+            let mut deck_counts = Vec::new();
+            if initial_deck_num > 0 {
+                deck_counts.push(RoundCue::DeckCount {
+                    count: initial_deck_num,
+                    team_type: 1,
+                });
+            }
+            deck_counts.push(RoundCue::DeckCount {
+                count: managers.card.deck_num(),
+                team_type: 1,
+            });
+            push_cues(&mut result.frames, deck_counts);
         }
         let stage_result = if matches!(
             stage,
@@ -1177,7 +1187,7 @@ pub fn run_start(
             }
         }
     }
-    let mut opening_refill = super::run_opening_hand_refill(
+    let opening_refill = super::run_opening_hand_refill(
         managers,
         pool,
         catalog,
@@ -1189,22 +1199,6 @@ pub fn run_start(
         },
     )?;
     determinism.clear_card_draws();
-    let (initial_deck_num, setup_deck_num) =
-        opening_deck_counts.expect("start schedule has one CardSetup stage");
-    let mut setup_deck_counts = DrainResult::default();
-    let mut deck_counts = Vec::new();
-    if initial_deck_num > 0 {
-        deck_counts.push(RoundCue::DeckCount {
-            count: initial_deck_num,
-            team_type: 1,
-        });
-    }
-    deck_counts.push(RoundCue::DeckCount {
-        count: setup_deck_num,
-        team_type: 1,
-    });
-    push_cues(&mut setup_deck_counts.frames, deck_counts);
-    append_round_phase(&mut opening_refill, setup_deck_counts);
     append(&mut result, opening_refill);
     let owner_uids = pool
         .attacker_main
