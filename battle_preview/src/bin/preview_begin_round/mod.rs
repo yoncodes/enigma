@@ -11,13 +11,14 @@ use battle::tooling::{
 };
 use battle_preview::{
     array_len_diff_lines, begin_round_inputs, build_metadata_source, canonical_comparison,
-    expand_compressed_fight_steps, first_diff_path, normalize_live_json, opening_determinism,
-    preview_attributes_with_request, preview_output_text, render_json_with_capture_conventions,
-    seed_action_determinism, seed_round_determinism, tower_plan_id_from_request,
-    value_at_diff_path,
+    comparable_json, expand_compressed_fight_steps, first_diff_path, normalize_live_json,
+    opening_determinism, preview_attributes_with_request, preview_output_text,
+    render_json_with_capture_conventions, seed_action_determinism, seed_round_determinism,
+    tower_plan_id_from_request, value_at_diff_path,
 };
 use sonettobuf::{
-    BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep, UseClothSkillReply,
+    AutoRoundReply, AutoRoundRequest, BeginRoundReply, BeginRoundRequest, Fight, FightRound,
+    FightStep, UseClothSkillReply,
 };
 
 mod capture;
@@ -94,6 +95,16 @@ fn run() -> anyhow::Result<()> {
             replay_rounds(db, &battle, through, resync)
         });
         if let Ok(run) = run.as_ref() {
+            for outcome in &run.auto_outcomes {
+                if let Err(error) = report_auto_input(
+                    &input_root,
+                    &output_root,
+                    &outcome.captured,
+                    &outcome.generated,
+                ) {
+                    println!("{} auto=ERROR {error:#}", outcome.captured.display());
+                }
+            }
             for outcome in &run.cloth_outcomes {
                 if let Err(error) = report_cloth_input(
                     &input_root,
@@ -117,6 +128,84 @@ fn run() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn report_auto_input(
+    input_root: &Path,
+    output_root: &Path,
+    input: &Path,
+    generated: &AutoRoundReply,
+) -> anyhow::Result<()> {
+    let original_text = fs::read_to_string(input)?;
+    let original: serde_json::Value = serde_json::from_str(&original_text)?;
+    let generated = serde_json::to_value(generated)?;
+    let output_value = render_json_with_capture_conventions(&generated, &original);
+    let generated_compare = comparable_json(generated);
+    let original_compare = comparable_json(original.clone());
+    let matches = generated_compare == original_compare;
+    if !matches {
+        for path in auto_reply_diff_paths(&generated_compare, &original_compare) {
+            eprintln!("  auto diff: {path}");
+            let array_lines =
+                array_len_diff_lines(&generated_compare, &original_compare, &path, "");
+            if array_lines.is_empty() {
+                eprintln!(
+                    "    generated={} captured={}",
+                    value_at_diff_path(&generated_compare, &path, "")
+                        .map_or_else(|| "-".to_owned(), serde_json::Value::to_string),
+                    value_at_diff_path(&original_compare, &path, "")
+                        .map_or_else(|| "-".to_owned(), serde_json::Value::to_string),
+                );
+            } else {
+                for line in array_lines {
+                    eprintln!("    {line}");
+                }
+            }
+        }
+    }
+    let output = output_path(input_root, output_root, input)?;
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(
+        &output,
+        preview_output_text(&output_value, &original, original_text)?,
+    )?;
+    println!(
+        "{} auto={}",
+        output.display(),
+        if matches { "MATCH" } else { "DIFF" },
+    );
+    Ok(())
+}
+
+fn auto_reply_diff_paths(
+    generated: &serde_json::Value,
+    captured: &serde_json::Value,
+) -> Vec<String> {
+    let (serde_json::Value::Object(generated), serde_json::Value::Object(captured)) =
+        (generated, captured)
+    else {
+        return first_diff_path(generated, captured, "")
+            .into_iter()
+            .collect();
+    };
+    let mut fields = generated.keys().chain(captured.keys()).collect::<Vec<_>>();
+    fields.sort_unstable();
+    fields.dedup();
+    fields
+        .into_iter()
+        .filter_map(|field| {
+            let path = format!("/{field}");
+            match (generated.get(field), captured.get(field)) {
+                (Some(generated), Some(captured)) if generated != captured => {
+                    first_diff_path(generated, captured, &path).or(Some(path))
+                }
+                (None, Some(_)) | (Some(_), None) => Some(path),
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 fn report_cloth_input(
@@ -311,8 +400,14 @@ struct ClothOutcome {
     generated: UseClothSkillReply,
 }
 
+struct AutoOutcome {
+    captured: PathBuf,
+    generated: AutoRoundReply,
+}
+
 struct ReplayRun {
     outcomes: Vec<RoundOutcome>,
+    auto_outcomes: Vec<AutoOutcome>,
     cloth_outcomes: Vec<ClothOutcome>,
     stopped: Option<String>,
     build: &'static str,
@@ -370,6 +465,7 @@ fn replay_rounds(
     }
     let mut run = ReplayRun {
         outcomes: Vec::new(),
+        auto_outcomes: Vec::new(),
         cloth_outcomes: Vec::new(),
         stopped: None,
         build: build_metadata_source(&battle.metadata)?,
@@ -398,18 +494,22 @@ fn replay_rounds(
 
     for round in battle.rounds.iter().filter(|round| round.index <= through) {
         let index = round.index;
+        replay_auto_inputs(&round.autos, 0, &runtime, &mut run.auto_outcomes)?;
         // Capture problems block this round and every later one, never the earlier results.
         let prepared = (|| -> anyhow::Result<(BeginRoundRequest, FightRound)> {
             let request = begin_round_request(&round.request)?;
             let captured = captured_round(&round.reply)?;
             validate_captured_round_continuity(&previous_captured_round, &captured)?;
-            replay_cloth_input(
-                &round.cloth,
-                &mut runtime,
-                resync,
-                &mut resynced,
-                &mut run.cloth_outcomes,
-            )?;
+            for (index, cloth) in round.cloth.iter().enumerate() {
+                replay_cloth_input(
+                    std::slice::from_ref(cloth),
+                    &mut runtime,
+                    resync,
+                    &mut resynced,
+                    &mut run.cloth_outcomes,
+                )?;
+                replay_auto_inputs(&round.autos, index + 1, &runtime, &mut run.auto_outcomes)?;
+            }
             Ok((request, captured))
         })();
         let (request, captured) = match prepared {
@@ -444,6 +544,25 @@ fn replay_rounds(
     }
 
     Ok(run)
+}
+
+fn replay_auto_inputs(
+    inputs: &[capture::CapturedAuto],
+    after_cloth: usize,
+    runtime: &ReplayBattle,
+    outcomes: &mut Vec<AutoOutcome>,
+) -> anyhow::Result<()> {
+    for input in inputs
+        .iter()
+        .filter(|input| input.after_cloth == after_cloth)
+    {
+        let request = auto_round_request(&input.request)?;
+        outcomes.push(AutoOutcome {
+            captured: input.reply.clone(),
+            generated: runtime.plan_auto_round(&request),
+        });
+    }
+    Ok(())
 }
 
 fn resync_round(
@@ -676,6 +795,12 @@ fn report_damage_comparison(generated: &FightRound, captured: &FightRound) {
 }
 
 fn begin_round_request(path: &Path) -> anyhow::Result<BeginRoundRequest> {
+    let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    normalize_live_json(&mut value);
+    Ok(serde_json::from_value(value)?)
+}
+
+fn auto_round_request(path: &Path) -> anyhow::Result<AutoRoundRequest> {
     let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
     normalize_live_json(&mut value);
     Ok(serde_json::from_value(value)?)

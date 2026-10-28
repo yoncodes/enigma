@@ -125,6 +125,117 @@ fn active_skill_rate_modifier_reads_the_authoritative_field_state() {
 }
 
 #[test]
+fn active_skill_rate_modifier_reads_state_before_its_own_buff_grants() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [312451011], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 312451011,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-1);
+    let mut execution = SkillExecution::new(TargetContext::default());
+    let mut determinism = RoundDeterminism::default();
+
+    loop {
+        let emission = emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            &mut execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap();
+        for emission in emission.ops {
+            if let RuleOp::Command(BattleCommand::Buff(command)) = emission.op {
+                managers.execute_buff(command).unwrap();
+            }
+        }
+        let Some(continuation) = emission.continuation else {
+            break;
+        };
+        if continuation.phase != Some(SkillPhase::Immediate) {
+            break;
+        }
+        invocation = continuation;
+    }
+
+    assert!(managers.buff.has_buff_id(-1, 4011));
+    assert!(execution.modifiers.rates.is_empty());
+
+    let mut live_fight = fight.clone();
+    live_fight.attacker.as_mut().unwrap().entitys[0].buffs = vec![BuffInfo {
+        uid: Some(1),
+        buff_id: Some(925011011),
+        from_uid: Some(10),
+        layer: Some(3),
+        ..Default::default()
+    }];
+    let live_managers = BattleManagers::seeded(&live_fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [925011721], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 925011721,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-1);
+    let mut execution = SkillExecution::new(TargetContext::default());
+    execution.action_start_managers = Some(std::sync::Arc::new(BattleManagers::seeded(&fight)));
+    emit_ops(
+        invocation,
+        &live_managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        &mut execution,
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+
+    assert!(
+        execution
+            .modifiers
+            .rates
+            .iter()
+            .any(|modifier| { modifier.opcode == 10001 && modifier.fixed_value() == Some(1_000) })
+    );
+}
+
+#[test]
 fn active_modifier_inheriting_its_condition_target_counts_each_target_separately() {
     crate::test_support::init_config();
     let burn = |uid, layer| BuffInfo {

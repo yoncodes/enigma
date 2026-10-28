@@ -27,3 +27,13 @@ pub fn begin_round(
         round: Some(battle.runtime_mut().advance_round(request)?),
     })
 }
+
+/// Advances a disposable server-side candidate without cloning it again.
+pub fn begin_round_candidate(
+    battle: &mut Battle,
+    request: BeginRoundRequest,
+) -> Result<BeginRoundReply, String> {
+    Ok(BeginRoundReply {
+        round: Some(battle.runtime_mut().advance_round_candidate(request)?),
+    })
+}

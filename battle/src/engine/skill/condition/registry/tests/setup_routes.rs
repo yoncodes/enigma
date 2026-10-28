@@ -135,7 +135,7 @@ fn missing_buff_round_end_gate_keeps_the_actor_target() {
 fn conditional_round_start_interval_preserves_period_then_start_order() {
     assert_eq!(
         parse(45101, "HeroRoundInterval", &["99".into(), "15".into()]),
-        Some(ParsedConditionKind::RoundInterval {
+        Some(ParsedConditionKind::CompletedRoundInterval {
             start_round: 15,
             period: 99,
         })

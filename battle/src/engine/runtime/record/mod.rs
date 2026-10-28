@@ -66,6 +66,9 @@ pub enum FrameOwner {
         target_uid: i64,
     },
     RoundPhase(RoundPhase),
+    SynchronizationCardState {
+        source_uid: i64,
+    },
     Command,
 }
 

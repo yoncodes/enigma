@@ -60,6 +60,21 @@ pub fn period_then_start(_: i32, _: &str, args: &[String]) -> Option<ParsedCondi
     })
 }
 
+pub fn completed_period_then_start(
+    _: i32,
+    _: &str,
+    args: &[String],
+) -> Option<ParsedConditionKind> {
+    if args.len() != 2 {
+        return None;
+    }
+
+    Some(ParsedConditionKind::CompletedRoundInterval {
+        period: first_i32(args)?,
+        start_round: parse_i32(args.get(1)?)?,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LifecycleMode {
     BattleStart,

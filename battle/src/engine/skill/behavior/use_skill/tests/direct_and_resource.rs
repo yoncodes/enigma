@@ -40,6 +40,8 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
         [RuleOp::Skill(invocation)]
             if invocation.mode
                 == crate::engine::skill::action::SkillExecutionMode::Active
+                && invocation.start
+                    == crate::engine::skill::action::SkillStart::AfterCurrentAction
     ));
     assert!(matches!(
         no_act.as_slice(),

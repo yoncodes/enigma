@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn auto_reply_diffs_report_each_mismatched_field() {
+    let generated = serde_json::json!({
+        "clothSkill": null,
+        "devicesOpers": [{"uid": "10", "index": 2}],
+        "opers": [{"param1": 3}],
+        "toId": "-1"
+    });
+    let captured = serde_json::json!({
+        "clothSkill": 4,
+        "devicesOpers": [{"uid": "10", "index": 2}],
+        "opers": [{"param1": 7}],
+        "toId": "-2"
+    });
+
+    assert_eq!(
+        auto_reply_diff_paths(&generated, &captured),
+        ["/clothSkill", "/opers[0]/param1", "/toId"]
+    );
+}
+
+#[test]
 fn damage_observations_use_the_damage_source_over_the_outer_actor() {
     let damage = |source_uid| sonettobuf::ActEffect {
         effect_type: Some(sonettobuf::effect_type_enum::EffectType::Additionaldamage as i32),

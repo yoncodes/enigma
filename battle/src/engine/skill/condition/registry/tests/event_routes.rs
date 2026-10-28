@@ -1,6 +1,17 @@
 use super::*;
 
 #[test]
+fn exact_life_less_uses_the_default_hp_lost_reaction_lane() {
+    let definition = find_key(1, "LifeLess").unwrap();
+
+    assert_eq!(definition.dependencies, &[EventKind::HpLost]);
+    assert_eq!(
+        definition.reaction_timing.resolve(Default::default()),
+        ReactionTiming::Immediate
+    );
+}
+
+#[test]
 fn shared_damage_reacts_once_per_event_batch() {
     assert_eq!(
         find_key(695213, "ShareDamage").map(|definition| definition.reaction_multiplicity),
@@ -809,6 +820,13 @@ fn lethal_injury_skill_rate_gate_has_its_own_immediate_route() {
             event: EventKind::SkillAction,
             phase: Some(SkillPhase::Immediate),
         }
+    );
+    assert_eq!(definition.read_timing, ConditionReadTiming::ActionStart);
+    assert_eq!(
+        find_key(51203, "HasTypeIdBuffMoreThan")
+            .unwrap()
+            .read_timing,
+        ConditionReadTiming::Current
     );
     assert!(find_key(51201, "HasBuffId").is_none());
 }

@@ -407,6 +407,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution,
         );
     }
+    let action_start_managers = execution.action_start_managers.clone();
     for (slot_index, slot) in effect.slots.iter().enumerate().skip(resume_slot) {
         if execution.immediate_source_death()
             && matches!(
@@ -428,6 +429,11 @@ pub(in crate::engine::runtime) fn emit_ops(
                 type_name: slot.behavior.spec.key.type_name.clone(),
             }
         })?;
+        let managers = if attack_modifier_reads_action_start(slot) {
+            action_start_managers.as_deref().unwrap_or(managers)
+        } else {
+            managers
+        };
         if active_phase.is_some() && definition.attack_modifier_only && slot.target_from_condition {
             continue;
         }
@@ -546,7 +552,6 @@ pub(in crate::engine::runtime) fn emit_ops(
             })
             .is_some_and(|definition| {
                 definition.skill_action_trigger.rejects_action(
-                    invocation.plan.skill_id,
                     execution.context.active_skill_is_attack,
                     execution.context.active_skill_mode,
                     managers
@@ -844,6 +849,15 @@ pub(in crate::engine::runtime) fn emit_ops(
                 invocation.plan.skill_id,
             )?
         {
+            if execution.action_start_managers.is_none()
+                && later_attack_modifier_runs_in_phase(
+                    &effect.slots[slot_index + 1..],
+                    phase,
+                    invocation.plan.skill_id,
+                )?
+            {
+                execution.action_start_managers = Some(std::sync::Arc::new(managers.clone()));
+            }
             execution.resume_slot = slot_index + 1;
             let mut continuation = invocation.clone();
             continuation.phase = Some(phase);
@@ -1334,6 +1348,34 @@ fn later_condition_runs_in_phase(
         }
     }
     Ok(false)
+}
+
+fn later_attack_modifier_runs_in_phase(
+    slots: &[SkillEffectSlot],
+    phase: SkillPhase,
+    skill_id: i32,
+) -> Result<bool, SkillOpError> {
+    for slot in slots {
+        if attack_modifier_reads_action_start(slot) && slot_runs_in_phase(slot, phase, skill_id)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn attack_modifier_reads_action_start(slot: &SkillEffectSlot) -> bool {
+    behavior::registry::find(&slot.behavior)
+        .is_some_and(|definition| definition.attack_modifier_only)
+        && slot.conditions.iter().any(|condition| {
+            crate::engine::skill::condition::registry::find_key(
+                condition.opcode,
+                &condition.type_name,
+            )
+            .is_some_and(|definition| {
+                definition.read_timing
+                    == crate::engine::skill::condition::registry::ConditionReadTiming::ActionStart
+            })
+        })
 }
 
 fn skill_runs_in_phase(

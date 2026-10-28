@@ -489,12 +489,12 @@ pub async fn on_begin_round(
 ) -> Result<(), AppError> {
     let player_id = ctx.player()?.id;
     let request = BeginRoundRequest::decode(&req.data[..])?;
-    let mut active = ctx
+    let active = ctx
         .player()?
         .battle
         .active_snapshot()
         .ok_or(AppError::InvalidRequest)?;
-    let reply = active.begin_round(request)?;
+    let (active, reply) = active.advance_round_candidate(request)?;
     let pool = ctx.state.db;
     ctx.player_mut()?
         .battle

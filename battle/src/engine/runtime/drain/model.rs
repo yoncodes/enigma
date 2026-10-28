@@ -26,6 +26,7 @@ pub enum DrainError {
     RecursionLimitExceeded,
     MissingActiveSkillContext,
     MissingReactionSide(i64),
+    MissingCardStateTeam(i64),
 }
 
 pub(super) fn required_buff_act_definition(
