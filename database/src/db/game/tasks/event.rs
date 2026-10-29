@@ -229,16 +229,17 @@ pub async fn sync_event_tasks_in_transaction(
     ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::ActBp).await?;
     ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::VersionActivity).await?;
     ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::Activity125).await?;
-    if matches!(event, TaskEvent::HeroStoryPlotFinish { .. }) {
-        ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::NecrologistStory).await?;
-    }
+    let mut updated = if matches!(event, TaskEvent::HeroStoryPlotFinish { .. }) {
+        super::reconcile_necrologist_story_tasks_in_transaction(tx, user_id).await?
+    } else {
+        Vec::new()
+    };
 
     let bp_id = current_battle_pass_id();
     let include_bp = match bp_id {
         Some(bp_id) => !battle_pass::score_maxed_in_transaction(tx, user_id, bp_id).await?,
         None => false,
     };
-    let mut updated = Vec::new();
     for target in event_task_targets(event, bp_id.filter(|_| include_bp)) {
         if let Some(task) = add_progress_in_transaction(
             tx,
@@ -442,7 +443,7 @@ fn matches_pair_param(value: &str, first: i32, second: i32) -> bool {
     parts.next() == Some(first) && parts.next() == Some(second)
 }
 
-fn matches_activity_pair_param(value: &str, activity_id: i32, second: i32) -> bool {
+pub(super) fn matches_activity_pair_param(value: &str, activity_id: i32, second: i32) -> bool {
     let mut parts = value.split('#').filter_map(|part| part.parse::<i32>().ok());
     parts
         .next()

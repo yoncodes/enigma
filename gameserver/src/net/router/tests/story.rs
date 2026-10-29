@@ -1,4 +1,6 @@
 use super::*;
+use std::collections::HashMap;
+
 use sonettobuf::{
     HeroStoryPlotFinishReply, HeroStoryPlotFinishRequest, UnlocHeroStoryReply,
     UnlocHeroStoryRequest, UpdateAchievementPush,
@@ -119,6 +121,14 @@ async fn hero_story_plot_finish_routes_task_update_before_reply() {
     .execute(&pool)
     .await
     .unwrap();
+    sqlx::query(
+        "INSERT INTO user_necrologist_story_plots (user_id, story_id, plot_id, state)
+         VALUES (?, 26, 303701, 4)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
     let (outbound, mut packets) = mpsc::channel(4);
@@ -143,13 +153,14 @@ async fn hero_story_plot_finish_routes_task_update_before_reply() {
         panic!("Hero story plot finish did not emit a task update");
     };
     assert_eq!(cmd_id, CmdId::UpdateTaskPushCmd);
-    let task = UpdateTaskPush::decode(&*body)
+    let tasks = UpdateTaskPush::decode(&*body)
         .unwrap()
         .task_info
         .into_iter()
-        .find(|task| task.id == 650007)
-        .unwrap();
-    assert_eq!(task.progress, 1);
+        .map(|task| (task.id, task.progress))
+        .collect::<HashMap<_, _>>();
+    assert_eq!(tasks.get(&650001), Some(&1));
+    assert_eq!(tasks.get(&650007), Some(&1));
 
     let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
         panic!("Hero story plot finish did not emit an achievement update");

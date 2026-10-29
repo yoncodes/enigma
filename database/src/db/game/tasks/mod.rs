@@ -192,6 +192,56 @@ pub async fn ensure_tasks_for_type(
     tx.commit().await
 }
 
+pub async fn reconcile_necrologist_story_tasks(
+    pool: &SqlitePool,
+    user_id: i64,
+) -> sqlx::Result<Vec<UserTask>> {
+    let mut tx = pool.begin().await?;
+    let updated = reconcile_necrologist_story_tasks_in_transaction(&mut tx, user_id).await?;
+    tx.commit().await?;
+    Ok(updated)
+}
+
+async fn reconcile_necrologist_story_tasks_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+) -> sqlx::Result<Vec<UserTask>> {
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::NecrologistStory).await?;
+    let finished = super::necrologist_story::finished_plots(tx, user_id).await?;
+    let configs = config::configs::get();
+    let mut updated = Vec::new();
+
+    for task in configs.hero_story_task.iter().filter(|task| {
+        task.is_online != 0
+            && task.listener_type == "HeroStoryPlotFinish"
+            && configs.hero_story.get(task.story_id).is_some_and(|story| {
+                finished.iter().any(|(story_id, plot_id)| {
+                    *story_id == task.story_id
+                        && event::matches_activity_pair_param(
+                            &task.listener_param,
+                            story.activity_id,
+                            *plot_id,
+                        )
+                })
+            })
+    }) {
+        if let Some(task) = add_progress_in_transaction(
+            tx,
+            user_id,
+            TaskType::NecrologistStory.id(),
+            task.id,
+            task.max_progress,
+            task.max_progress,
+        )
+        .await?
+        {
+            updated.push(task);
+        }
+    }
+
+    Ok(updated)
+}
+
 pub(super) async fn ensure_tasks_for_type_in_transaction(
     pool: &mut SqliteConnection,
     user_id: i64,
