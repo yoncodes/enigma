@@ -4,7 +4,8 @@ use crate::{
 };
 use prost::Message;
 use sonettobuf::{
-    BeforeStartWeekwalkBattleRequest, CmdId, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
+    BeforeStartWeekwalkBattleRequest, ChangeWeekwalkHeroGroupSelectRequest, CmdId,
+    MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
 };
 
 pub async fn on_get_explore_simple_info(
@@ -42,6 +43,30 @@ pub async fn on_before_start_weekwalk_battle(
         .await?;
     ctx.send_reply(CmdId::BeforeStartWeekwalkBattleCmd, reply, 0, req.up_tag)
         .await
+}
+
+pub async fn on_change_weekwalk_hero_group_select(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = ChangeWeekwalkHeroGroupSelectRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .weekwalk
+        .change_group_selection(
+            ctx.state.db,
+            request.layer_id.ok_or(AppError::InvalidRequest)?,
+            request.battle_id.ok_or(AppError::InvalidRequest)?,
+            request.select.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.send_reply(
+        CmdId::ChangeWeekwalkHeroGroupSelectCmd,
+        reply,
+        0,
+        req.up_tag,
+    )
+    .await
 }
 
 pub async fn on_mark_pop_shallow_settle(

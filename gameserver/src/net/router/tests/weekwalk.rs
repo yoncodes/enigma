@@ -1,6 +1,7 @@
 use super::*;
 use sonettobuf::{
-    BeforeStartWeekwalkBattleReply, BeforeStartWeekwalkBattleRequest, EndDungeonReply,
+    BeforeStartWeekwalkBattleReply, BeforeStartWeekwalkBattleRequest,
+    ChangeWeekwalkHeroGroupSelectReply, ChangeWeekwalkHeroGroupSelectRequest, EndDungeonReply,
     EndDungeonRequest, EndFightReply, EndFightRequest, Fight, FightEntityInfo, FightTeam,
     GetWeekwalkInfoReply, GetWeekwalkInfoRequest, StartDungeonReply, StartDungeonRequest,
     WeekwalkInfoUpdatePush,
@@ -205,10 +206,77 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
         })
     );
     assert!(ctx.player().unwrap().weekwalk.selected_battle().is_err());
+    assert!(ctx.player().unwrap().battle.has_active());
+}
 
-    let mut active = ctx.player().unwrap().battle.active_snapshot().unwrap();
-    active.runtime = victory_runtime(expected_battle);
-    ctx.player_mut().unwrap().battle.restore_active(active);
+#[tokio::test]
+async fn fight_end_victory_advances_weekwalk() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 923;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'weekwalk-fight-end', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(4);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    let info = ctx
+        .player()
+        .unwrap()
+        .weekwalk
+        .info(ctx.state.db)
+        .await
+        .unwrap()
+        .info
+        .unwrap();
+    let map = &info.map_info[0];
+    let element_id = map.element_infos[0].element_id.unwrap();
+    let db = ctx.state.db;
+    ctx.player_mut()
+        .unwrap()
+        .weekwalk
+        .select_battle(db, map.id.unwrap(), element_id)
+        .await
+        .unwrap();
+    let context = ctx.player().unwrap().weekwalk.selected_battle().unwrap();
+    let fight_id = database::db::game::battle::create_fight_instance(
+        ctx.state.db,
+        database::db::game::battle::NewFightInstance {
+            user_id: player_id,
+            episode_id: 90101,
+            battle_id: context.battle_id,
+            multiplication: 1,
+            entry_cost: "{}",
+            checkpoint: "{}",
+            created_at: 0,
+        },
+    )
+    .await
+    .unwrap();
+    ctx.player_mut()
+        .unwrap()
+        .battle
+        .restore_active(crate::player::battle::ActiveBattle {
+            chapter_id: 901,
+            episode_id: 90101,
+            battle_id: context.battle_id,
+            fight_id: Some(fight_id),
+            runtime: victory_runtime(context.battle_id),
+            weekwalk_context: Some(context),
+            ..Default::default()
+        });
+
     let mut data = Vec::new();
     EndFightRequest {
         is_abort: Some(false),
@@ -218,7 +286,7 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
     dispatch_command(
         &mut ctx,
         ClientPacket {
-            sequence: 4,
+            sequence: 1,
             cmd_id: CmdId::FightEndFightCmd as i16,
             up_tag: 54,
             data,
@@ -239,7 +307,7 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
         .unwrap()
         .info
         .unwrap();
-    let updated_map = update.map_info.first().unwrap();
+    let updated_map = &update.map_info[0];
     assert_eq!(updated_map.element_infos.len(), 2);
     assert!(updated_map.element_infos.iter().any(|element| {
         element.element_id == Some(element_id) && element.is_finish == Some(true)
@@ -267,6 +335,92 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
     EndFightReply::decode(&*body).unwrap();
     assert!(packets.try_recv().is_err());
     assert!(!ctx.player().unwrap().battle.has_active());
+}
+
+#[tokio::test]
+async fn weekwalk_group_selection_routes_and_persists() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 922;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'weekwalk-group', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    database::db::starter_data::load_all_starter_data(&pool, player_id)
+        .await
+        .unwrap();
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(1);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    let info = ctx
+        .player()
+        .unwrap()
+        .weekwalk
+        .info(ctx.state.db)
+        .await
+        .unwrap()
+        .info
+        .unwrap();
+    let map = &info.map_info[0];
+    let battle_id = map.battle_infos[0].battle_id.unwrap();
+
+    let mut data = Vec::new();
+    ChangeWeekwalkHeroGroupSelectRequest {
+        layer_id: map.id,
+        battle_id: Some(battle_id),
+        select: Some(1),
+    }
+    .encode(&mut data)
+    .unwrap();
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::ChangeWeekwalkHeroGroupSelectCmd as i16,
+            up_tag: 52,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let CommandPacket::Reply {
+        cmd_id: CmdId::ChangeWeekwalkHeroGroupSelectCmd,
+        body,
+        result_code: 0,
+        up_tag: 52,
+        ..
+    } = packets.recv().await.unwrap()
+    else {
+        panic!("Weekwalk group selection did not reach its handler");
+    };
+    let reply = ChangeWeekwalkHeroGroupSelectReply::decode(&*body).unwrap();
+    assert_eq!(
+        (reply.layer_id, reply.battle_id, reply.select),
+        (map.id, Some(battle_id), Some(1))
+    );
+    let (_, maps) = database::db::game::weekwalk::get_weekwalk_info(ctx.state.db, player_id)
+        .await
+        .unwrap();
+    assert_eq!(maps[0].battle_infos[0].hero_group_select, Some(1));
+    assert!(
+        ctx.player()
+            .unwrap()
+            .weekwalk
+            .change_group_selection(ctx.state.db, map.id.unwrap(), battle_id, i32::MAX)
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]

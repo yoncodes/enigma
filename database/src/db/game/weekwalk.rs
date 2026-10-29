@@ -113,6 +113,27 @@ pub async fn select_battle(
     }))
 }
 
+pub async fn set_hero_group_selection(
+    pool: &SqlitePool,
+    user_id: i64,
+    map_id: i32,
+    battle_id: i32,
+    selection: i32,
+) -> Result<bool> {
+    Ok(sqlx::query(
+        "UPDATE user_weekwalk_battles SET hero_group_select = ?
+         WHERE user_id = ? AND map_id = ? AND battle_id = ?",
+    )
+    .bind(selection)
+    .bind(user_id)
+    .bind(map_id)
+    .bind(battle_id)
+    .execute(pool)
+    .await?
+    .rows_affected()
+        == 1)
+}
+
 pub async fn complete_battle(
     pool: &SqlitePool,
     user_id: i64,

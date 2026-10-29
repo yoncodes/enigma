@@ -1,11 +1,14 @@
 use crate::error::AppError;
 use common::time::ServerTime;
 use config::{GameDB, episode::Episode};
-use database::db::game::weekwalk::{self, WeekwalkBattleSelection, WeekwalkMapSeed};
+use database::db::game::{
+    hero_groups,
+    weekwalk::{self, WeekwalkBattleSelection, WeekwalkMapSeed},
+};
 use serde::{Deserialize, Serialize};
 use sonettobuf::{
-    BeforeStartWeekwalkBattleReply, GetWeekwalkInfoReply, MarkPopDeepSettleReply,
-    MarkPopShallowSettleReply, WeekwalkInfo, WeekwalkInfoUpdatePush,
+    BeforeStartWeekwalkBattleReply, ChangeWeekwalkHeroGroupSelectReply, GetWeekwalkInfoReply,
+    MarkPopDeepSettleReply, MarkPopShallowSettleReply, WeekwalkInfo, WeekwalkInfoUpdatePush,
 };
 use sqlx::SqlitePool;
 
@@ -87,6 +90,31 @@ impl WeekwalkManager {
 
     pub fn clear_selection(&mut self) {
         self.pending = None;
+    }
+
+    pub async fn change_group_selection(
+        &self,
+        db: &SqlitePool,
+        map_id: i32,
+        battle_id: i32,
+        selection: i32,
+    ) -> Result<ChangeWeekwalkHeroGroupSelectReply, AppError> {
+        self.ensure_cycle(db).await?;
+        if selection < 0
+            || (selection > 0
+                && hero_groups::get_hero_group(db, self.player_id, selection)
+                    .await?
+                    .is_none())
+            || !weekwalk::set_hero_group_selection(db, self.player_id, map_id, battle_id, selection)
+                .await?
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        Ok(ChangeWeekwalkHeroGroupSelectReply {
+            layer_id: Some(map_id),
+            battle_id: Some(battle_id),
+            select: Some(selection),
+        })
     }
 
     pub async fn mark_pop_shallow_settle(
