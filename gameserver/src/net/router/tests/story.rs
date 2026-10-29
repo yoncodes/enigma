@@ -1,5 +1,8 @@
 use super::*;
-use sonettobuf::{UnlocHeroStoryReply, UnlocHeroStoryRequest};
+use sonettobuf::{
+    HeroStoryPlotFinishReply, HeroStoryPlotFinishRequest, UnlocHeroStoryReply,
+    UnlocHeroStoryRequest, UpdateAchievementPush,
+};
 
 #[tokio::test]
 async fn hero_story_unlock_routes_cost_push_before_reply() {
@@ -81,5 +84,143 @@ async fn hero_story_unlock_routes_cost_push_before_reply() {
         .fetch_one(state.db)
         .await
         .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn hero_story_plot_finish_routes_task_update_before_reply() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 922;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'hero-story-plot-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(
+        logic::story::StoryManager::new(player_id)
+            .finish_hero_story_plot(&pool, 303707, configs::get())
+            .await
+            .is_err()
+    );
+    sqlx::query(
+        "INSERT INTO user_hero_story_state (user_id, story_id, unlock, updated_at)
+         VALUES (?, 26, 1, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(4);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+    let mut data = Vec::new();
+    HeroStoryPlotFinishRequest { plot: Some(303707) }
+        .encode(&mut data)
+        .unwrap();
+    let request = ClientPacket {
+        sequence: 1,
+        cmd_id: CmdId::HeroStoryPlotFinishCmd as i16,
+        up_tag: 13,
+        data,
+    }
+    .encode();
+
+    dispatch_command(&mut ctx, request.clone()).await.unwrap();
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Hero story plot finish did not emit a task update");
+    };
+    assert_eq!(cmd_id, CmdId::UpdateTaskPushCmd);
+    let task = UpdateTaskPush::decode(&*body)
+        .unwrap()
+        .task_info
+        .into_iter()
+        .find(|task| task.id == 650007)
+        .unwrap();
+    assert_eq!(task.progress, 1);
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Hero story plot finish did not emit an achievement update");
+    };
+    assert_eq!(cmd_id, CmdId::UpdateAchievementPushCmd);
+    let achievement = UpdateAchievementPush::decode(&*body).unwrap();
+    assert_eq!(achievement.infos[0].id, Some(41250701));
+    assert_eq!(achievement.infos[0].progress, Some(1));
+
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        result_code,
+        up_tag,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("Hero story plot finish did not emit its reply");
+    };
+    assert_eq!(cmd_id, CmdId::HeroStoryPlotFinishCmd);
+    assert_eq!(result_code, 0);
+    assert_eq!(up_tag, 13);
+    assert_eq!(
+        HeroStoryPlotFinishReply::decode(&*body).unwrap().plot,
+        Some(303707)
+    );
+    assert!(packets.try_recv().is_err());
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>(
+            "SELECT progress FROM user_tasks
+             WHERE user_id = ? AND type_id = 65 AND task_id = 650007",
+        )
+        .bind(player_id)
+        .fetch_one(state.db)
+        .await
+        .unwrap(),
+        1
+    );
+
+    dispatch_command(&mut ctx, request).await.unwrap();
+    let CommandPacket::Reply {
+        cmd_id,
+        result_code,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("Replayed hero story plot finish did not emit its reply");
+    };
+    assert_eq!(cmd_id, CmdId::HeroStoryPlotFinishCmd);
+    assert_eq!(result_code, 0);
+    assert!(packets.try_recv().is_err());
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>(
+            "SELECT progress FROM user_tasks
+             WHERE user_id = ? AND type_id = 65 AND task_id = 650007",
+        )
+        .bind(player_id)
+        .fetch_one(state.db)
+        .await
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>(
+            "SELECT progress FROM user_achievements
+             WHERE user_id = ? AND achievement_id = 41250701",
+        )
+        .bind(player_id)
+        .fetch_one(state.db)
+        .await
+        .unwrap(),
+        1
     );
 }

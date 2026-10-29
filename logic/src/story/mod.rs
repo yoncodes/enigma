@@ -1,9 +1,10 @@
-use crate::{error::AppError, reward};
+use crate::{error::AppError, reward, task::TaskEvent};
 use database::db::game::{necrologist_story, stories};
 use sonettobuf::{
     GetHeroStoryReply, GetNecrologistStoryReply, GetStoryFinishReply, GetStoryReply,
-    NecrologistStory, NecrologistStoryPlotInfo, NecrologistStorySituationValue,
-    UnlocHeroStoryReply, UpdateNecrologistStoryReply, UpdateStoryReply,
+    HeroStoryPlotFinishReply, NecrologistStory, NecrologistStoryPlotInfo,
+    NecrologistStorySituationValue, UnlocHeroStoryReply, UpdateNecrologistStoryReply,
+    UpdateStoryReply,
 };
 use sqlx::SqlitePool;
 use std::collections::BTreeMap;
@@ -170,6 +171,35 @@ impl StoryManager {
         }
 
         Ok(GetNecrologistStoryReply { story })
+    }
+
+    pub async fn finish_hero_story_plot(
+        &self,
+        db: &SqlitePool,
+        plot_id: i32,
+        tables: &config::GameDB,
+    ) -> Result<(HeroStoryPlotFinishReply, TaskEvent), AppError> {
+        let group = tables
+            .hero_story_plot_group
+            .get(plot_id)
+            .ok_or(AppError::InvalidRequest)?;
+        let story = tables
+            .hero_story
+            .get(group.story_id)
+            .ok_or(AppError::InvalidRequest)?;
+        if !stories::is_hero_story_unlocked(db, self.player_id, story.id).await? {
+            return Err(AppError::InvalidRequest);
+        }
+
+        Ok((
+            HeroStoryPlotFinishReply {
+                plot: Some(plot_id),
+            },
+            TaskEvent::HeroStoryPlotFinish {
+                activity_id: story.activity_id,
+                plot_group_id: group.id,
+            },
+        ))
     }
 
     pub async fn update_necrologist_story(

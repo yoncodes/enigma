@@ -112,6 +112,23 @@ pub async fn get_hero_story_states(pool: &SqlitePool, user_id: i64) -> Result<Ve
     Ok(states)
 }
 
+pub async fn is_hero_story_unlocked(
+    pool: &SqlitePool,
+    user_id: i64,
+    story_id: i32,
+) -> Result<bool> {
+    Ok(sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM user_hero_story_state
+            WHERE user_id = ? AND story_id = ? AND unlock = 1
+        )",
+    )
+    .bind(user_id)
+    .bind(story_id)
+    .fetch_one(pool)
+    .await?)
+}
+
 pub async fn unlock_hero_story(
     tx: &mut Transaction<'_, Sqlite>,
     user_id: i64,

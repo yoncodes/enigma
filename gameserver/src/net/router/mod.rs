@@ -434,6 +434,7 @@ async fn dispatch_registered_command(
         CmdId::GetHeroStoryCmd => story::on_get_hero_story,
         CmdId::UnlocHeroStoryCmd => story::on_unlock_hero_story,
         CmdId::GetNecrologistStoryCmd => story::on_get_necrologist_story,
+        CmdId::HeroStoryPlotFinishCmd => story::on_finish_hero_story_plot,
         CmdId::UpdateNecrologistStoryCmd => story::on_update_necrologist_story,
         CmdId::FinishNecrologistStoryModeCmd => story::on_finish_necrologist_story_mode,
         CmdId::GetExploreSimpleInfoCmd => exploration::on_get_explore_simple_info,
