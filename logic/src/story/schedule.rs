@@ -12,3 +12,9 @@ pub(super) fn times() -> Vec<HeroStoryTime> {
         })
         .collect()
 }
+
+pub(super) fn is_active(story_id: i32, now: i32) -> bool {
+    common::hero_story_schedule()
+        .iter()
+        .any(|row| row.story_id == story_id && now >= row.start_time && now <= row.end_time)
+}

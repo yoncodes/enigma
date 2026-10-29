@@ -6,7 +6,7 @@ use crate::{
 use prost::Message;
 use sonettobuf::{
     CmdId, FinishNecrologistStoryModeReply, FinishNecrologistStoryModeRequest, GetHeroStoryRequest,
-    GetNecrologistStoryRequest, GetStoryFinishRequest, StoryFinishPush,
+    GetNecrologistStoryRequest, GetStoryFinishRequest, StoryFinishPush, UnlocHeroStoryRequest,
     UpdateNecrologistStoryRequest, UpdateStoryRequest,
 };
 
@@ -67,6 +67,22 @@ pub async fn on_get_hero_story(
     GetHeroStoryRequest::decode(&req.data[..])?;
     let reply = ctx.player()?.story.hero_story(ctx.state.db).await?;
     ctx.send_reply(CmdId::GetHeroStoryCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_unlock_hero_story(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
+    let msg = UnlocHeroStoryRequest::decode(&req.data[..])?;
+    let (reply, consumed) = ctx
+        .player()?
+        .story
+        .unlock_hero_story(ctx.state.db, msg.story_id.ok_or(AppError::InvalidRequest)?)
+        .await?;
+    push::send_cost_pushes(ctx, player_id, consumed.item_ids, consumed.currency_ids).await?;
+    ctx.send_reply(CmdId::UnlocHeroStoryCmd, reply, 0, req.up_tag)
         .await
 }
 

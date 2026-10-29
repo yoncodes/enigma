@@ -432,6 +432,7 @@ async fn dispatch_registered_command(
         CmdId::GainInviteRewardCmd => hero_invitation::on_gain_reward,
         CmdId::GainFinalInviteRewardCmd => hero_invitation::on_gain_final_reward,
         CmdId::GetHeroStoryCmd => story::on_get_hero_story,
+        CmdId::UnlocHeroStoryCmd => story::on_unlock_hero_story,
         CmdId::GetNecrologistStoryCmd => story::on_get_necrologist_story,
         CmdId::UpdateNecrologistStoryCmd => story::on_update_necrologist_story,
         CmdId::FinishNecrologistStoryModeCmd => story::on_finish_necrologist_story_mode,

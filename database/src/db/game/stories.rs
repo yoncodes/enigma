@@ -112,6 +112,28 @@ pub async fn get_hero_story_states(pool: &SqlitePool, user_id: i64) -> Result<Ve
     Ok(states)
 }
 
+pub async fn unlock_hero_story(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    story_id: i32,
+) -> Result<Option<HeroStoryState>> {
+    let state = sqlx::query_as::<_, HeroStoryState>(
+        "UPDATE user_hero_story_state
+         SET unlock = 1, updated_at = ?
+         WHERE user_id = ? AND story_id = ? AND unlock = 0
+         RETURNING user_id, story_id, progress, get_reward, get_score_bonus, score,
+                   challenge_wave, challenge_max_wave, get_challenge_reward, unlock,
+                   is_new, updated_at",
+    )
+    .bind(common::time::ServerTime::now_ms())
+    .bind(user_id)
+    .bind(story_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(state)
+}
+
 pub async fn sync_hero_story_states(
     pool: &SqlitePool,
     user_id: i64,

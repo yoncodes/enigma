@@ -1,9 +1,9 @@
-use crate::error::AppError;
+use crate::{error::AppError, reward};
 use database::db::game::{necrologist_story, stories};
 use sonettobuf::{
     GetHeroStoryReply, GetNecrologistStoryReply, GetStoryFinishReply, GetStoryReply,
     NecrologistStory, NecrologistStoryPlotInfo, NecrologistStorySituationValue,
-    UpdateNecrologistStoryReply, UpdateStoryReply,
+    UnlocHeroStoryReply, UpdateNecrologistStoryReply, UpdateStoryReply,
 };
 use sqlx::SqlitePool;
 use std::collections::BTreeMap;
@@ -85,6 +85,40 @@ impl StoryManager {
             week_progress: Some(0),
             week_has_get: Some(false),
         })
+    }
+
+    pub async fn unlock_hero_story(
+        &self,
+        db: &SqlitePool,
+        story_id: i32,
+    ) -> Result<(UnlocHeroStoryReply, reward::ConsumedRewards), AppError> {
+        let story = config::configs::get()
+            .hero_story
+            .get(story_id)
+            .ok_or(AppError::InvalidRequest)?;
+        let cost = if schedule::is_active(story_id, common::time::ServerTime::now_sec_i32()) {
+            &story.unlock
+        } else {
+            &story.permanent_unlock
+        };
+        let cost = reward::parse_strict(cost)?;
+
+        stories::sync_hero_story_states(db, self.player_id, config::configs::get()).await?;
+        let mut tx = db.begin().await?;
+        let state = stories::unlock_hero_story(&mut tx, self.player_id, story_id)
+            .await?
+            .ok_or(AppError::InvalidRequest)?;
+        let consumed = reward::RewardManager::new(self.player_id)
+            .consume(&mut tx, &cost)
+            .await?;
+        tx.commit().await?;
+
+        Ok((
+            UnlocHeroStoryReply {
+                info: Some(state.into()),
+            },
+            consumed,
+        ))
     }
 
     pub async fn necrologist_story(
