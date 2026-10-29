@@ -8,6 +8,8 @@ use sonettobuf::{
 use sqlx::SqlitePool;
 use std::collections::BTreeMap;
 
+mod schedule;
+
 pub struct StoryUpdate {
     pub reply: UpdateStoryReply,
     pub finished_story_id: Option<i32>,
@@ -77,7 +79,7 @@ impl StoryManager {
                 .map(|state| state.story_id)
                 .collect(),
             story_infos: states.into_iter().map(Into::into).collect(),
-            times: Vec::new(),
+            times: schedule::times(),
             left_num: Some(0),
             today_exchange: Some(0),
             week_progress: Some(0),
