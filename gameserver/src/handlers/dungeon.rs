@@ -786,6 +786,7 @@ async fn send_dungeon_settlement(
     player_id: i64,
     settlement: dungeon::DungeonSettlement,
 ) -> Result<(), AppError> {
+    task_events::notify_tasks(ctx, settlement.tasks).await?;
     push::send_hero_update_push(ctx, player_id, settlement.hero_ids).await?;
     if !settlement.open_infos.is_empty() {
         ctx.notify(
@@ -872,6 +873,7 @@ async fn send_refund(
     player_id: i64,
     settlement: dungeon::RefundSettlement,
 ) -> Result<(), AppError> {
+    task_events::notify_tasks(ctx, settlement.tasks).await?;
     push::send_applied_reward_pushes(ctx, player_id, settlement.rewards, Vec::new(), None).await
 }
 

@@ -4,6 +4,7 @@ use sqlx::{Sqlite, SqliteConnection, SqlitePool, Transaction};
 
 use super::battle_pass;
 
+pub mod act128;
 mod activity;
 mod event;
 

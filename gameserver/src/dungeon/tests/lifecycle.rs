@@ -386,6 +386,7 @@ async fn completed_tutorial_sends_tasks_before_room_unlock() {
             open_infos: vec![OpenInfo::default()],
             end_dungeon: EndDungeonPush::default(),
             compose_push: None,
+            tasks: Vec::new(),
         },
     )
     .await
