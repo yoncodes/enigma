@@ -422,7 +422,9 @@ pub mod udimo;
 pub mod udimo_background;
 pub mod udimo_decoration;
 pub mod weekwalk;
+pub mod weekwalk_dialog;
 pub mod weekwalk_element;
+pub mod weekwalk_scene;
 pub mod weekwalk_type;
 
 use std::sync::{Mutex, OnceLock};
@@ -850,7 +852,9 @@ pub struct GameDB {
     pub udimo_background: udimo_background::UdimoBackgroundTable,
     pub udimo_decoration: udimo_decoration::UdimoDecorationTable,
     pub weekwalk: weekwalk::WeekwalkTable,
+    pub weekwalk_dialog: weekwalk_dialog::WeekwalkDialogTable,
     pub weekwalk_element: weekwalk_element::WeekwalkElementTable,
+    pub weekwalk_scene: weekwalk_scene::WeekwalkSceneTable,
     pub weekwalk_type: weekwalk_type::WeekwalkTypeTable,
 }
 
@@ -2122,9 +2126,15 @@ impl GameDB {
         let weekwalk = weekwalk::WeekwalkTable::load(
             &format!("{}/weekwalk.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk.json: {}", e))?;
+        let weekwalk_dialog = weekwalk_dialog::WeekwalkDialogTable::load(
+            &format!("{}/weekwalk_dialog.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_dialog.json: {}", e))?;
         let weekwalk_element = weekwalk_element::WeekwalkElementTable::load(
             &format!("{}/weekwalk_element.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_element.json: {}", e))?;
+        let weekwalk_scene = weekwalk_scene::WeekwalkSceneTable::load(
+            &format!("{}/weekwalk_scene.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_scene.json: {}", e))?;
         let weekwalk_type = weekwalk_type::WeekwalkTypeTable::load(
             &format!("{}/weekwalk_type.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_type.json: {}", e))?;
@@ -2552,7 +2562,9 @@ impl GameDB {
             udimo_background,
             udimo_decoration,
             weekwalk,
+            weekwalk_dialog,
             weekwalk_element,
+            weekwalk_scene,
             weekwalk_type,
         })
     }

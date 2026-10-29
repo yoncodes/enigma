@@ -439,6 +439,8 @@ async fn dispatch_registered_command(
         CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
         CmdId::BeforeStartWeekwalkBattleCmd => exploration::on_before_start_weekwalk_battle,
         CmdId::ChangeWeekwalkHeroGroupSelectCmd => exploration::on_change_weekwalk_hero_group_select,
+        CmdId::WeekwalkDialogCmd => exploration::on_weekwalk_dialog,
+        CmdId::WeekwalkDialogHistoryCmd => exploration::on_weekwalk_dialog_history,
         CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
         CmdId::MarkPopDeepSettleCmd => exploration::on_mark_pop_deep_settle,
         CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,

@@ -5,7 +5,8 @@ use crate::{
 use prost::Message;
 use sonettobuf::{
     BeforeStartWeekwalkBattleRequest, ChangeWeekwalkHeroGroupSelectRequest, CmdId,
-    MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
+    MarkPopDeepSettleRequest, MarkPopShallowSettleRequest, WeekwalkDialogHistoryRequest,
+    WeekwalkDialogRequest,
 };
 
 pub async fn on_get_explore_simple_info(
@@ -67,6 +68,45 @@ pub async fn on_change_weekwalk_hero_group_select(
         req.up_tag,
     )
     .await
+}
+
+pub async fn on_weekwalk_dialog(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = WeekwalkDialogRequest::decode(&req.data[..])?;
+    let (reply, update) = ctx
+        .player()?
+        .weekwalk
+        .dialog(
+            ctx.state.db,
+            request.layer_id.ok_or(AppError::InvalidRequest)?,
+            request.element_id.ok_or(AppError::InvalidRequest)?,
+            request.option.unwrap_or_default(),
+        )
+        .await?;
+    ctx.send_reply(CmdId::WeekwalkDialogCmd, reply, 0, req.up_tag)
+        .await?;
+    ctx.notify(CmdId::WeekwalkInfoUpdatePushCmd, update).await
+}
+
+pub async fn on_weekwalk_dialog_history(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = WeekwalkDialogHistoryRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .weekwalk
+        .store_dialog_history(
+            ctx.state.db,
+            request.layer_id.ok_or(AppError::InvalidRequest)?,
+            request.element_id.ok_or(AppError::InvalidRequest)?,
+            request.historylist,
+        )
+        .await?;
+    ctx.send_reply(CmdId::WeekwalkDialogHistoryCmd, reply, 0, req.up_tag)
+        .await
 }
 
 pub async fn on_mark_pop_shallow_settle(

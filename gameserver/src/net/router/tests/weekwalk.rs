@@ -4,15 +4,27 @@ use sonettobuf::{
     ChangeWeekwalkHeroGroupSelectReply, ChangeWeekwalkHeroGroupSelectRequest, EndDungeonReply,
     EndDungeonRequest, EndFightReply, EndFightRequest, Fight, FightEntityInfo, FightTeam,
     GetWeekwalkInfoReply, GetWeekwalkInfoRequest, StartDungeonReply, StartDungeonRequest,
-    WeekwalkInfoUpdatePush,
+    WeekwalkDialogHistoryReply, WeekwalkDialogHistoryRequest, WeekwalkDialogReply,
+    WeekwalkDialogRequest, WeekwalkInfoUpdatePush,
 };
 
 fn victory_runtime(battle_id: i32) -> ::battle::Battle {
+    let wave = i32::try_from(
+        configs::get()
+            .battle
+            .get(battle_id)
+            .unwrap()
+            .monster_group_ids
+            .split('#')
+            .count(),
+    )
+    .unwrap();
     ::battle::tooling::unstarted_battle(
         ::battle::catalog::BattleCatalog::new(configs::get()),
         Fight {
             battle_id: Some(battle_id),
             cur_round: Some(1),
+            cur_wave: Some(wave),
             attacker: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
                     uid: Some(1),
@@ -93,6 +105,7 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
     };
     let info = GetWeekwalkInfoReply::decode(&*body).unwrap().info.unwrap();
     assert_eq!(info.issue_id, Some(59));
+    assert_eq!(info.max_layer, Some(1));
     assert_eq!(
         info.end_time.unwrap() - info.time.unwrap(),
         30 * 24 * 60 * 60
@@ -101,8 +114,9 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
     let element = map.element_infos.first().unwrap();
     let element_id = element.element_id.unwrap();
     assert_eq!(element.visible, Some(true));
-    assert_eq!(map.element_infos.len(), 1);
-    assert_eq!(map.battle_infos.len(), 2);
+    assert_eq!(map.id, Some(101));
+    assert_eq!(map.element_infos.len(), 5);
+    assert_eq!(map.battle_infos.len(), 5);
     let expected_battle = map
         .battle_infos
         .iter()
@@ -110,6 +124,98 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
         .unwrap()
         .battle_id
         .unwrap();
+    assert!(
+        ctx.player()
+            .unwrap()
+            .weekwalk
+            .dialog(ctx.state.db, map.id.unwrap(), element_id, i32::MAX,)
+            .await
+            .is_err()
+    );
+
+    let history = vec!["id#101121".to_string()];
+    let mut data = Vec::new();
+    WeekwalkDialogHistoryRequest {
+        element_id: Some(element_id),
+        historylist: history.clone(),
+        layer_id: map.id,
+    }
+    .encode(&mut data)
+    .unwrap();
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 2,
+            cmd_id: CmdId::WeekwalkDialogHistoryCmd as i16,
+            up_tag: 52,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let CommandPacket::Reply {
+        cmd_id: CmdId::WeekwalkDialogHistoryCmd,
+        body,
+        result_code: 0,
+        up_tag: 52,
+        ..
+    } = packets.recv().await.unwrap()
+    else {
+        panic!("Weekwalk dialog history did not reach its handler");
+    };
+    assert_eq!(
+        WeekwalkDialogHistoryReply::decode(&*body)
+            .unwrap()
+            .historylist,
+        history
+    );
+    let (_, stored_maps) = database::db::game::weekwalk::get_weekwalk_info(ctx.state.db, player_id)
+        .await
+        .unwrap();
+    assert_eq!(stored_maps[0].element_infos[0].historylist, history);
+
+    let mut data = Vec::new();
+    WeekwalkDialogRequest {
+        element_id: Some(element_id),
+        option: Some(0),
+        layer_id: map.id,
+    }
+    .encode(&mut data)
+    .unwrap();
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 3,
+            cmd_id: CmdId::WeekwalkDialogCmd as i16,
+            up_tag: 53,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let CommandPacket::Reply {
+        cmd_id: CmdId::WeekwalkDialogCmd,
+        body,
+        result_code: 0,
+        up_tag: 53,
+        ..
+    } = packets.recv().await.unwrap()
+    else {
+        panic!("Weekwalk dialog did not reach its handler");
+    };
+    assert_eq!(
+        WeekwalkDialogReply::decode(&*body).unwrap().element_id,
+        Some(element_id)
+    );
+    let CommandPacket::Push {
+        cmd_id: CmdId::WeekwalkInfoUpdatePushCmd,
+        ..
+    } = packets.recv().await.unwrap()
+    else {
+        panic!("Weekwalk dialog did not project its state transition");
+    };
 
     let mut data = Vec::new();
     BeforeStartWeekwalkBattleRequest {
@@ -121,9 +227,9 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
     dispatch_command(
         &mut ctx,
         ClientPacket {
-            sequence: 2,
+            sequence: 4,
             cmd_id: CmdId::BeforeStartWeekwalkBattleCmd as i16,
-            up_tag: 52,
+            up_tag: 54,
             data,
         }
         .encode(),
@@ -134,7 +240,7 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
         cmd_id: CmdId::BeforeStartWeekwalkBattleCmd,
         body,
         result_code: 0,
-        up_tag: 52,
+        up_tag: 54,
         ..
     } = packets.recv().await.unwrap()
     else {
@@ -168,9 +274,9 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
     dispatch_command(
         &mut ctx,
         ClientPacket {
-            sequence: 3,
+            sequence: 5,
             cmd_id: CmdId::StartDungeonCmd as i16,
-            up_tag: 53,
+            up_tag: 55,
             data,
         }
         .encode(),
@@ -181,7 +287,7 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
         cmd_id: CmdId::StartDungeonCmd,
         body,
         result_code: 0,
-        up_tag: 53,
+        up_tag: 55,
         ..
     } = packets.recv().await.unwrap()
     else {
@@ -243,6 +349,12 @@ async fn fight_end_victory_advances_weekwalk() {
     let map = &info.map_info[0];
     let element_id = map.element_infos[0].element_id.unwrap();
     let db = ctx.state.db;
+    ctx.player()
+        .unwrap()
+        .weekwalk
+        .dialog(db, map.id.unwrap(), element_id, 0)
+        .await
+        .unwrap();
     ctx.player_mut()
         .unwrap()
         .weekwalk
@@ -276,6 +388,14 @@ async fn fight_end_victory_advances_weekwalk() {
             weekwalk_context: Some(context),
             ..Default::default()
         });
+    assert!(
+        ctx.player()
+            .unwrap()
+            .battle
+            .active_snapshot()
+            .unwrap()
+            .is_victory()
+    );
 
     let mut data = Vec::new();
     EndFightRequest {
@@ -295,25 +415,28 @@ async fn fight_end_victory_advances_weekwalk() {
     )
     .await
     .unwrap();
+    let packet = packets.recv().await.unwrap();
+    let actual = match &packet {
+        CommandPacket::Reply { cmd_id, .. } | CommandPacket::Push { cmd_id, .. } => *cmd_id,
+    };
     let CommandPacket::Push {
         cmd_id: CmdId::WeekwalkInfoUpdatePushCmd,
         body,
         ..
-    } = packets.recv().await.unwrap()
+    } = packet
     else {
-        panic!("Weekwalk victory did not project its progression");
+        panic!("Weekwalk victory did not project its progression: {actual:?}");
     };
     let update = WeekwalkInfoUpdatePush::decode(&*body)
         .unwrap()
         .info
         .unwrap();
     let updated_map = &update.map_info[0];
-    assert_eq!(updated_map.element_infos.len(), 2);
+    assert_eq!(updated_map.element_infos.len(), 5);
     assert!(updated_map.element_infos.iter().any(|element| {
-        element.element_id == Some(element_id) && element.is_finish == Some(true)
-    }));
-    assert!(updated_map.element_infos.iter().any(|element| {
-        element.element_id != Some(element_id) && element.visible == Some(true)
+        element.element_id == Some(element_id)
+            && element.is_finish == Some(false)
+            && element.index == Some(2)
     }));
     let CommandPacket::Push {
         cmd_id: CmdId::FightEndFightPushCmd,
@@ -459,6 +582,12 @@ async fn dungeon_end_victory_advances_weekwalk_without_dungeon_settlement() {
     let element_id = map.element_infos.first().unwrap().element_id.unwrap();
     let map_id = map.id.unwrap();
     let db = ctx.state.db;
+    ctx.player()
+        .unwrap()
+        .weekwalk
+        .dialog(db, map_id, element_id, 0)
+        .await
+        .unwrap();
     ctx.player_mut()
         .unwrap()
         .weekwalk
@@ -492,6 +621,14 @@ async fn dungeon_end_victory_advances_weekwalk_without_dungeon_settlement() {
             weekwalk_context: Some(context),
             ..Default::default()
         });
+    assert!(
+        ctx.player()
+            .unwrap()
+            .battle
+            .active_snapshot()
+            .unwrap()
+            .is_victory()
+    );
 
     let mut data = Vec::new();
     EndDungeonRequest {
@@ -512,19 +649,23 @@ async fn dungeon_end_victory_advances_weekwalk_without_dungeon_settlement() {
     )
     .await
     .unwrap();
+    let packet = packets.recv().await.unwrap();
+    let actual = match &packet {
+        CommandPacket::Reply { cmd_id, .. } | CommandPacket::Push { cmd_id, .. } => *cmd_id,
+    };
     let CommandPacket::Push {
         cmd_id: CmdId::WeekwalkInfoUpdatePushCmd,
         body,
         ..
-    } = packets.recv().await.unwrap()
+    } = packet
     else {
-        panic!("DungeonEnd did not project Weekwalk progression");
+        panic!("DungeonEnd did not project Weekwalk progression: {actual:?}");
     };
     let update = WeekwalkInfoUpdatePush::decode(&*body)
         .unwrap()
         .info
         .unwrap();
-    assert_eq!(update.map_info[0].element_infos.len(), 2);
+    assert_eq!(update.map_info[0].element_infos.len(), 5);
     let CommandPacket::Reply {
         cmd_id: CmdId::DungeonEndDungeonCmd,
         body,

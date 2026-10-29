@@ -24,10 +24,37 @@ fn map(map_id: i32, layer: i32) -> WeekwalkMapSeed {
         map_id,
         scene_id: map_id,
         layer,
-        front_battle_id: map_id * 10 + 1,
-        front_element_id: map_id * 10 + 2,
-        rear_battle_id: map_id * 10 + 3,
-        rear_element_id: map_id * 10 + 4,
+        is_deep: layer >= 11,
+        buff_id: 0,
+        encounters: vec![
+            WeekwalkEncounterSeed {
+                battle_id: map_id * 10 + 1,
+                element_id: map_id * 10 + 2,
+                visible: true,
+            },
+            WeekwalkEncounterSeed {
+                battle_id: map_id * 10 + 3,
+                element_id: map_id * 10 + 4,
+                visible: false,
+            },
+        ],
+    }
+}
+
+fn front(map: &WeekwalkMapSeed) -> WeekwalkEncounterSeed {
+    map.encounters[0]
+}
+
+fn rear(map: &WeekwalkMapSeed) -> WeekwalkEncounterSeed {
+    map.encounters[1]
+}
+
+fn finished(next_map: Option<WeekwalkMapSeed>) -> WeekwalkElementState {
+    WeekwalkElementState {
+        current_index: 0,
+        next_index: 1,
+        is_finish: true,
+        next_map,
     }
 }
 
@@ -53,15 +80,17 @@ async fn cycle_selects_front_then_rear_and_persists_next_map() {
     let pool = pool().await;
     let first = map(10, 11);
     let next = map(20, 12);
-    ensure_cycle(&pool, 1, 7, 100, 200, first).await.unwrap();
+    ensure_cycle(&pool, 1, 7, 100, 200, &first).await.unwrap();
 
-    let front = select_battle(&pool, 1, first.map_id, first.front_element_id)
+    let front_seed = front(&first);
+    let rear_seed = rear(&first);
+    let front_selection = select_battle(&pool, 1, first.map_id, front_seed.element_id)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(front.battle_id, first.front_battle_id);
+    assert_eq!(front_selection.battle_id, front_seed.battle_id);
     assert!(
-        select_battle(&pool, 1, first.map_id, first.rear_element_id)
+        select_battle(&pool, 1, first.map_id, rear_seed.element_id)
             .await
             .unwrap()
             .is_none()
@@ -71,23 +100,31 @@ async fn cycle_selects_front_then_rear_and_persists_next_map() {
         complete_battle(
             &pool,
             1,
-            front,
+            front_selection,
             3,
-            fight(&pool, front.battle_id).await,
-            first.rear_element_id,
-            Some(next),
+            fight(&pool, front_selection.battle_id).await,
+            Some(rear_seed.element_id),
+            finished(Some(next.clone())),
         )
         .await
         .unwrap()
     );
-    let rear = select_battle(&pool, 1, first.map_id, first.rear_element_id)
+    let rear = select_battle(&pool, 1, first.map_id, rear_seed.element_id)
         .await
         .unwrap()
         .unwrap();
     assert!(
-        !complete_battle(&pool, 1, front, 3, 0, first.rear_element_id, Some(next))
-            .await
-            .unwrap()
+        !complete_battle(
+            &pool,
+            1,
+            front_selection,
+            3,
+            0,
+            None,
+            finished(Some(next.clone()))
+        )
+        .await
+        .unwrap()
     );
     assert!(
         complete_battle(
@@ -96,8 +133,8 @@ async fn cycle_selects_front_then_rear_and_persists_next_map() {
             rear,
             2,
             fight(&pool, rear.battle_id).await,
-            first.rear_element_id,
-            Some(next),
+            None,
+            finished(Some(next.clone())),
         )
         .await
         .unwrap()
@@ -109,7 +146,7 @@ async fn cycle_selects_front_then_rear_and_persists_next_map() {
     assert_eq!(maps[0].is_finished, Some(1));
     assert_eq!(maps[1].id, Some(next.map_id));
     assert!(
-        select_battle(&pool, 1, next.map_id, next.front_element_id)
+        select_battle(&pool, 1, next.map_id, front(&next).element_id)
             .await
             .unwrap()
             .is_some()
@@ -122,29 +159,152 @@ async fn hidden_rear_cannot_skip_the_front_encounter() {
     let pool = pool().await;
     let first = map(10, 11);
     let next = map(20, 12);
-    ensure_cycle(&pool, 1, 7, 100, 200, first).await.unwrap();
+    ensure_cycle(&pool, 1, 7, 100, 200, &first).await.unwrap();
 
     let forged_rear = WeekwalkBattleSelection {
         map_id: first.map_id,
-        element_id: first.rear_element_id,
-        battle_id: first.rear_battle_id,
+        element_id: rear(&first).element_id,
+        battle_id: rear(&first).battle_id,
     };
     assert!(
-        !complete_battle(
-            &pool,
-            1,
-            forged_rear,
-            3,
-            0,
-            first.rear_element_id,
-            Some(next),
-        )
-        .await
-        .unwrap()
+        !complete_battle(&pool, 1, forged_rear, 3, 0, None, finished(Some(next)))
+            .await
+            .unwrap()
     );
     let (_, maps) = get_weekwalk_info(&pool, 1).await.unwrap();
     assert_eq!(maps.len(), 1);
     assert_eq!(maps[0].is_finished, Some(0));
+}
+
+#[tokio::test]
+async fn shallow_map_unlocks_next_after_all_encounters_finish() {
+    let pool = pool().await;
+    let first = WeekwalkMapSeed {
+        map_id: 101,
+        scene_id: 101,
+        layer: 1,
+        is_deep: false,
+        buff_id: 0,
+        encounters: (1..=5)
+            .map(|index| WeekwalkEncounterSeed {
+                battle_id: 800_100 + index,
+                element_id: 10_110 + index,
+                visible: true,
+            })
+            .collect(),
+    };
+    let next = WeekwalkMapSeed {
+        map_id: 102,
+        scene_id: 102,
+        layer: 2,
+        ..first.clone()
+    };
+    ensure_cycle(&pool, 1, 7, 100, 200, &first).await.unwrap();
+
+    for (index, encounter) in first.encounters.iter().enumerate() {
+        let selection = select_battle(&pool, 1, first.map_id, encounter.element_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            complete_battle(
+                &pool,
+                1,
+                selection,
+                2,
+                fight(&pool, selection.battle_id).await,
+                None,
+                finished(Some(next.clone())),
+            )
+            .await
+            .unwrap()
+        );
+        let (info, maps) = get_weekwalk_info(&pool, 1).await.unwrap();
+        assert_eq!(maps.len(), if index == 4 { 2 } else { 1 });
+        assert_eq!(info.max_layer, if index == 4 { 2 } else { 1 });
+    }
+}
+
+#[tokio::test]
+async fn current_deep_only_state_gains_the_first_shallow_map() {
+    let pool = pool().await;
+    let deep = map(900, 11);
+    ensure_cycle(&pool, 1, 7, 100, 200, &deep).await.unwrap();
+    let shallow = WeekwalkMapSeed {
+        layer: 1,
+        ..map(101, 1)
+    };
+
+    ensure_cycle(&pool, 1, 7, 150, 250, &shallow).await.unwrap();
+
+    let (_, maps) = get_weekwalk_info(&pool, 1).await.unwrap();
+    assert!(maps.iter().any(|map| map.id == Some(deep.map_id)));
+    assert!(maps.iter().any(|map| map.id == Some(shallow.map_id)));
+
+    let first = select_battle(&pool, 1, shallow.map_id, front(&shallow).element_id)
+        .await
+        .unwrap()
+        .unwrap();
+    complete_battle(
+        &pool,
+        1,
+        first,
+        2,
+        fight(&pool, first.battle_id).await,
+        Some(rear(&shallow).element_id),
+        finished(Some(deep.clone())),
+    )
+    .await
+    .unwrap();
+    let second = select_battle(&pool, 1, shallow.map_id, rear(&shallow).element_id)
+        .await
+        .unwrap()
+        .unwrap();
+    complete_battle(
+        &pool,
+        1,
+        second,
+        2,
+        fight(&pool, second.battle_id).await,
+        None,
+        finished(Some(deep.clone())),
+    )
+    .await
+    .unwrap();
+    let (info, maps) = get_weekwalk_info(&pool, 1).await.unwrap();
+    assert_eq!(info.max_layer, 11);
+    assert_eq!(maps.len(), 2);
+}
+
+#[tokio::test]
+async fn dialog_history_replaces_only_the_selected_players_element() {
+    let pool = pool().await;
+    let map = map(101, 1);
+    ensure_cycle(&pool, 1, 7, 100, 200, &map).await.unwrap();
+    ensure_cycle(&pool, 2, 7, 100, 200, &map).await.unwrap();
+    let element_id = front(&map).element_id;
+
+    assert!(
+        replace_element_history(&pool, 1, map.map_id, element_id, &["first".into()])
+            .await
+            .unwrap()
+    );
+    assert!(
+        replace_element_history(&pool, 1, map.map_id, element_id, &["replacement".into()])
+            .await
+            .unwrap()
+    );
+    assert!(
+        replace_element_history(&pool, 2, map.map_id, element_id, &["other".into()])
+            .await
+            .unwrap()
+    );
+
+    let (_, first) = get_weekwalk_info(&pool, 1).await.unwrap();
+    let (_, other) = get_weekwalk_info(&pool, 2).await.unwrap();
+    assert_eq!(first[0].element_infos[0].historylist, ["replacement"]);
+    assert_eq!(other[0].element_infos[0].historylist, ["other"]);
+    assert!(first[0].element_infos[1].historylist.is_empty());
 }
 
 #[tokio::test]
@@ -163,8 +323,8 @@ async fn overlapping_cycle_initialization_keeps_one_current_map() {
     .unwrap();
     let first = map(10, 11);
     let (left, right) = tokio::join!(
-        ensure_cycle(&pool, 1, 7, 100, 200, first),
-        ensure_cycle(&pool, 1, 7, 100, 200, first),
+        ensure_cycle(&pool, 1, 7, 100, 200, &first),
+        ensure_cycle(&pool, 1, 7, 100, 200, &first),
     );
     left.unwrap();
     right.unwrap();
@@ -180,11 +340,11 @@ async fn overlapping_cycle_initialization_keeps_one_current_map() {
 async fn expired_cycle_is_replaced_but_current_progress_is_kept() {
     let pool = pool().await;
     let first = map(10, 11);
-    ensure_cycle(&pool, 2, 7, 100, 200, map(40, 11))
+    ensure_cycle(&pool, 2, 7, 100, 200, &map(40, 11))
         .await
         .unwrap();
-    ensure_cycle(&pool, 1, 7, 100, 200, first).await.unwrap();
-    let selection = select_battle(&pool, 1, first.map_id, first.front_element_id)
+    ensure_cycle(&pool, 1, 7, 100, 200, &first).await.unwrap();
+    let selection = select_battle(&pool, 1, first.map_id, front(&first).element_id)
         .await
         .unwrap()
         .unwrap();
@@ -194,20 +354,20 @@ async fn expired_cycle_is_replaced_but_current_progress_is_kept() {
         selection,
         3,
         fight(&pool, selection.battle_id).await,
-        first.rear_element_id,
-        None,
+        Some(rear(&first).element_id),
+        finished(None),
     )
     .await
     .unwrap();
 
-    ensure_cycle(&pool, 1, 7, 150, 250, first).await.unwrap();
+    ensure_cycle(&pool, 1, 7, 150, 250, &first).await.unwrap();
     assert!(
-        select_battle(&pool, 1, first.map_id, first.front_element_id)
+        select_battle(&pool, 1, first.map_id, front(&first).element_id)
             .await
             .unwrap()
             .is_none()
     );
-    ensure_cycle(&pool, 1, 8, 250, 350, map(30, 11))
+    ensure_cycle(&pool, 1, 8, 250, 350, &map(30, 11))
         .await
         .unwrap();
     let (info, maps) = get_weekwalk_info(&pool, 1).await.unwrap();

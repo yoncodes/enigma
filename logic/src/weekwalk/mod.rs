@@ -1,18 +1,23 @@
 use crate::error::AppError;
 use common::time::ServerTime;
-use config::{GameDB, episode::Episode};
+use config::episode::Episode;
 use database::db::game::{
     hero_groups,
-    weekwalk::{self, WeekwalkBattleSelection, WeekwalkMapSeed},
+    weekwalk::{self, WeekwalkBattleSelection, WeekwalkElementState},
 };
 use serde::{Deserialize, Serialize};
 use sonettobuf::{
     BeforeStartWeekwalkBattleReply, ChangeWeekwalkHeroGroupSelectReply, GetWeekwalkInfoReply,
-    MarkPopDeepSettleReply, MarkPopShallowSettleReply, WeekwalkInfo, WeekwalkInfoUpdatePush,
+    MarkPopDeepSettleReply, MarkPopShallowSettleReply, WeekwalkDialogHistoryReply,
+    WeekwalkDialogReply, WeekwalkInfo, WeekwalkInfoUpdatePush,
 };
 use sqlx::SqlitePool;
 
 const CYCLE_SECONDS: i32 = 30 * 24 * 60 * 60;
+
+mod cycle;
+
+use cycle::{current as current_cycle, dialog_option_valid, element_step};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WeekwalkBattleContext {
@@ -72,12 +77,30 @@ impl WeekwalkManager {
         element_id: i32,
     ) -> Result<BeforeStartWeekwalkBattleReply, AppError> {
         self.ensure_cycle(db).await?;
-        self.pending = Some(
-            weekwalk::select_battle(db, self.player_id, map_id, element_id)
-                .await?
-                .ok_or(AppError::InvalidRequest)?
-                .into(),
-        );
+        let selection = weekwalk::select_battle(db, self.player_id, map_id, element_id)
+            .await?
+            .ok_or(AppError::InvalidRequest)?;
+        let cycle = current_cycle(config::configs::get())?;
+        let map = cycle
+            .maps
+            .iter()
+            .find(|map| map.map_id == map_id)
+            .ok_or(AppError::InvalidRequest)?;
+        let encounter = map
+            .encounters
+            .iter()
+            .find(|encounter| encounter.element_id == element_id)
+            .ok_or(AppError::InvalidRequest)?;
+        let index = self.element_index(db, map_id, element_id).await?;
+        let (kind, configured_battle_id, _) =
+            element_step(config::configs::get(), element_id, index)?;
+        if kind != 1
+            || encounter.battle_id != selection.battle_id
+            || (!map.is_deep && configured_battle_id != selection.battle_id)
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        self.pending = Some(selection.into());
         Ok(BeforeStartWeekwalkBattleReply {
             element_id: Some(element_id),
             layer_id: Some(map_id),
@@ -146,23 +169,40 @@ impl WeekwalkManager {
             .iter()
             .position(|map| map.map_id == context.map_id)
             .ok_or(AppError::InvalidRequest)?;
-        let map = cycle.maps[index];
-        let expected_battle = if context.element_id == map.front_element_id {
-            map.front_battle_id
-        } else if context.element_id == map.rear_element_id {
-            map.rear_battle_id
-        } else {
+        let map = &cycle.maps[index];
+        let encounter = map
+            .encounters
+            .iter()
+            .find(|encounter| encounter.element_id == context.element_id)
+            .ok_or(AppError::InvalidRequest)?;
+        let current_index = self
+            .element_index(db, context.map_id, context.element_id)
+            .await?;
+        let (kind, configured_battle_id, step_count) =
+            element_step(config::configs::get(), context.element_id, current_index)?;
+        if kind != 1 || (!map.is_deep && configured_battle_id != encounter.battle_id) {
             return Err(AppError::InvalidRequest);
-        };
-        if context.battle_id != expected_battle
+        }
+        let next_index = current_index + 1;
+        if context.battle_id != encounter.battle_id
             || !weekwalk::complete_battle(
                 db,
                 self.player_id,
                 context.into(),
                 star,
                 fight_id,
-                map.rear_element_id,
-                cycle.maps.get(index + 1).copied(),
+                map.encounters
+                    .iter()
+                    .skip_while(|candidate| candidate.element_id != context.element_id)
+                    .nth(1)
+                    .filter(|candidate| !candidate.visible)
+                    .map(|candidate| candidate.element_id),
+                WeekwalkElementState {
+                    current_index,
+                    next_index,
+                    is_finish: next_index >= step_count,
+                    next_map: cycle.maps.get(index + 1).cloned(),
+                },
             )
             .await?
         {
@@ -171,6 +211,112 @@ impl WeekwalkManager {
         let (info, map_info) = weekwalk::get_weekwalk_info(db, self.player_id).await?;
         Ok(WeekwalkInfoUpdatePush {
             info: Some(project_info(info, map_info)),
+        })
+    }
+
+    pub async fn dialog(
+        &self,
+        db: &SqlitePool,
+        map_id: i32,
+        element_id: i32,
+        option: i32,
+    ) -> Result<(WeekwalkDialogReply, WeekwalkInfoUpdatePush), AppError> {
+        self.ensure_cycle(db).await?;
+        let current_index = self.element_index(db, map_id, element_id).await?;
+        let (kind, dialog_id, _) = element_step(config::configs::get(), element_id, current_index)?;
+        if kind != 4 || !dialog_option_valid(config::configs::get(), dialog_id, option) {
+            return Err(AppError::InvalidRequest);
+        }
+        self.advance_element(db, map_id, element_id, 4).await?;
+        Ok((
+            WeekwalkDialogReply {
+                element_id: Some(element_id),
+                option: Some(option),
+                layer_id: Some(map_id),
+            },
+            self.update(db).await?,
+        ))
+    }
+
+    pub async fn store_dialog_history(
+        &self,
+        db: &SqlitePool,
+        map_id: i32,
+        element_id: i32,
+        history: Vec<String>,
+    ) -> Result<WeekwalkDialogHistoryReply, AppError> {
+        self.ensure_cycle(db).await?;
+        if !weekwalk::replace_element_history(db, self.player_id, map_id, element_id, &history)
+            .await?
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        Ok(WeekwalkDialogHistoryReply {
+            element_id: Some(element_id),
+            historylist: history,
+            layer_id: Some(map_id),
+        })
+    }
+
+    async fn advance_element(
+        &self,
+        db: &SqlitePool,
+        map_id: i32,
+        element_id: i32,
+        expected_kind: i32,
+    ) -> Result<(), AppError> {
+        self.ensure_cycle(db).await?;
+        let cycle = current_cycle(config::configs::get())?;
+        let map_index = cycle
+            .maps
+            .iter()
+            .position(|map| map.map_id == map_id)
+            .ok_or(AppError::InvalidRequest)?;
+        let current_index = self.element_index(db, map_id, element_id).await?;
+        let (kind, _, step_count) =
+            element_step(config::configs::get(), element_id, current_index)?;
+        if kind != expected_kind
+            || !weekwalk::advance_element(
+                db,
+                self.player_id,
+                map_id,
+                element_id,
+                WeekwalkElementState {
+                    current_index,
+                    next_index: current_index + 1,
+                    is_finish: current_index + 1 >= step_count,
+                    next_map: cycle.maps.get(map_index + 1).cloned(),
+                },
+            )
+            .await?
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        Ok(())
+    }
+
+    async fn element_index(
+        &self,
+        db: &SqlitePool,
+        map_id: i32,
+        element_id: i32,
+    ) -> Result<i32, AppError> {
+        let (_, maps) = weekwalk::get_weekwalk_info(db, self.player_id).await?;
+        maps.into_iter()
+            .find(|map| map.id == Some(map_id))
+            .and_then(|map| {
+                map.element_infos
+                    .into_iter()
+                    .find(|element| element.element_id == Some(element_id))
+            })
+            .and_then(|element| element.index)
+            .ok_or(AppError::InvalidRequest)
+    }
+
+    async fn update(&self, db: &SqlitePool) -> Result<WeekwalkInfoUpdatePush, AppError> {
+        let (info, maps) = weekwalk::get_weekwalk_info(db, self.player_id).await?;
+        Ok(WeekwalkInfoUpdatePush {
+            info: Some(project_info(info, maps)),
         })
     }
 
@@ -183,7 +329,7 @@ impl WeekwalkManager {
             cycle.issue_id,
             now,
             now.saturating_add(CYCLE_SECONDS),
-            cycle.maps[0],
+            &cycle.maps[0],
         )
         .await?;
         Ok(())
@@ -192,65 +338,6 @@ impl WeekwalkManager {
 
 pub fn is_weekwalk_episode(episode: &Episode) -> bool {
     episode.r#type == 9
-}
-
-struct WeekwalkCycle {
-    issue_id: i32,
-    maps: Vec<WeekwalkMapSeed>,
-}
-
-fn current_cycle(tables: &GameDB) -> Result<WeekwalkCycle, AppError> {
-    let issue_id = tables
-        .weekwalk
-        .iter()
-        .filter(|map| map.issue_id > 0 && map.fight_id_front > 0 && map.fight_id_rear > 0)
-        .map(|map| map.issue_id)
-        .max()
-        .ok_or_else(|| AppError::Custom("no usable Weekwalk issue configured".into()))?;
-    let mut maps = tables
-        .weekwalk
-        .iter()
-        .filter(|map| map.issue_id == issue_id)
-        .collect::<Vec<_>>();
-    maps.sort_unstable_by_key(|map| map.layer);
-    let first_layer = maps.first().ok_or(AppError::InvalidRequest)?.layer;
-    let scene_family = maps.first().ok_or(AppError::InvalidRequest)?.scene_id / 10;
-    let mut front = battle_elements(tables, scene_family, 1);
-    let mut rear = battle_elements(tables, scene_family, 2);
-    front.sort_unstable();
-    rear.sort_unstable();
-
-    let maps = maps
-        .into_iter()
-        .map(|map| {
-            let index =
-                usize::try_from(map.layer - first_layer).map_err(|_| AppError::InvalidRequest)?;
-            Ok(WeekwalkMapSeed {
-                map_id: map.id,
-                scene_id: map.scene_id,
-                layer: map.layer,
-                front_battle_id: map.fight_id_front,
-                front_element_id: *front.get(index).ok_or(AppError::InvalidRequest)?,
-                rear_battle_id: map.fight_id_rear,
-                rear_element_id: *rear.get(index).ok_or(AppError::InvalidRequest)?,
-            })
-        })
-        .collect::<Result<Vec<_>, AppError>>()?;
-    Ok(WeekwalkCycle { issue_id, maps })
-}
-
-fn battle_elements(tables: &GameDB, scene_family: i32, round_id: i32) -> Vec<i32> {
-    tables
-        .weekwalk_element
-        .iter()
-        .filter(|element| {
-            element.id / 100_000 == scene_family
-                && element.round_id == round_id
-                && element.skip_finish == 0
-                && element.r#type.split('#').any(|kind| kind == "1")
-        })
-        .map(|element| element.id)
-        .collect()
 }
 
 fn project_info(
