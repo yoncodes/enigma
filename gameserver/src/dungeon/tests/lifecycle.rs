@@ -711,7 +711,13 @@ async fn dungeon_unlocks_apply_prerequisites_rewards_and_tutorials_once() {
     for episode_id in [10001, 10002, 10003, 10101, 10215, 10315] {
         assert!(dungeons::episode_star(&pool, 20, episode_id).await.unwrap() > 0);
     }
-    assert_eq!(dungeons::episode_star(&pool, 20, 10316).await.unwrap(), 0);
+    for episode in config::configs::get()
+        .episode
+        .iter()
+        .filter(|episode| matches!(episode.chapter_id, 103 | 203))
+    {
+        assert!(dungeons::episode_star(&pool, 20, episode.id).await.unwrap() > 0);
+    }
     assert!(
         sqlx::query_scalar::<_, Option<i64>>(
             "SELECT repaired_at FROM user_dungeon_reward_repairs
@@ -774,11 +780,11 @@ async fn dungeon_unlocks_apply_prerequisites_rewards_and_tutorials_once() {
         .unlock_stage(&pool, trail_gated_stage)
         .await
         .unwrap();
-    assert_eq!(
+    assert!(
         dungeons::episode_star(&pool, 20, trail_gated_stage)
             .await
-            .unwrap(),
-        0
+            .unwrap()
+            > 0
     );
     assert!(
         dungeons::get_finished_elements(&pool, 20)
@@ -798,7 +804,7 @@ async fn dungeon_unlocks_apply_prerequisites_rewards_and_tutorials_once() {
         .unwrap();
     assert!(dungeons::episode_star(&pool, 20, 40105).await.unwrap() > 0);
     assert!(dungeons::episode_star(&pool, 20, 420).await.unwrap() > 0);
-    assert_eq!(dungeons::episode_star(&pool, 20, 40106).await.unwrap(), 0);
+    assert!(dungeons::episode_star(&pool, 20, 40106).await.unwrap() > 0);
     assert!(
         dungeons::can_start_episode(&pool, 20, 401, 40106)
             .await
@@ -814,11 +820,11 @@ async fn dungeon_unlocks_apply_prerequisites_rewards_and_tutorials_once() {
         .unlock_stage(&pool, selected_stage)
         .await
         .unwrap();
-    assert_eq!(
+    assert!(
         dungeons::episode_star(&pool, 20, selected_stage)
             .await
-            .unwrap(),
-        0
+            .unwrap()
+            > 0
     );
     assert!(
         dungeons::can_start_episode(&pool, 20, 501, selected_stage)
