@@ -89,6 +89,22 @@ pub fn run_action(
     )
 }
 
+fn append_fight_task_update(result: &mut DrainResult, managers: &mut BattleManagers) {
+    let Some(change) = managers.fight_task.take_pending(1) else {
+        return;
+    };
+    let path = push_root(
+        &mut result.frames,
+        FrameOwner::Command,
+        FrameTrigger::Active,
+    );
+    push_change(
+        &mut result.frames,
+        &path,
+        crate::engine::runtime::change::BattleChange::FightTask(change),
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run_action_with_cost(
     managers: &mut BattleManagers,
@@ -198,7 +214,7 @@ fn run_action_with_cost_and_cleanup_owner(
         subscriber: None,
         caster_frame: None,
     });
-    drain_queue_with_frames_and_cleanup_owner(
+    let mut result = drain_queue_with_frames_and_cleanup_owner(
         managers,
         pool,
         catalog,
@@ -207,7 +223,9 @@ fn run_action_with_cost_and_cleanup_owner(
         &mut queue,
         frames,
         cleanup_owner,
-    )
+    )?;
+    append_fight_task_update(&mut result, managers);
+    Ok(result)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -453,6 +471,7 @@ pub fn run_conduit_action(
     result.outcomes.append(&mut completed.outcomes);
     result.events.append(&mut completed.events);
     result.frames = completed.frames;
+    append_fight_task_update(&mut result, managers);
     Ok(result)
 }
 

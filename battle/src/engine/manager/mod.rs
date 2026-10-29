@@ -12,6 +12,7 @@ pub mod eureka;
 pub mod ex_point;
 pub mod field;
 pub mod fight_progress;
+pub mod fight_task;
 pub mod gauge;
 pub mod hp;
 pub mod indicator;
@@ -75,6 +76,7 @@ pub struct BattleManagers {
     pub nuo_di_ka: crate::engine::mechanic::nuo_di_ka::NuoDiKa,
     pub field: field::FieldManager,
     pub fight_progress: fight_progress::FightProgressManager,
+    pub fight_task: fight_task::FightTaskManager,
     pub upgrade: UpgradeManager,
     pub summon: SummonManager,
     pub toughness: toughness::ToughnessManager,
@@ -462,8 +464,7 @@ impl BattleManagers {
     ) -> Result<HpExecution, hp::HpCommandError> {
         let commit = self.execute_hp_commit_with_target_count(command, 1)?;
         let indicator = self
-            .indicator
-            .record_damage(commit.changes.target_uid, commit.changes.applied_damage());
+            .record_damage_indicator(commit.changes.target_uid, commit.changes.applied_damage());
         Ok(HpExecution {
             changes: commit.changes,
             before_hp_markers: commit.before_hp_markers,
@@ -533,9 +534,10 @@ impl BattleManagers {
         Ok(commits
             .into_iter()
             .map(|commit| {
-                let indicator = self
-                    .indicator
-                    .record_damage(commit.changes.target_uid, commit.changes.applied_damage());
+                let indicator = self.record_damage_indicator(
+                    commit.changes.target_uid,
+                    commit.changes.applied_damage(),
+                );
                 HpExecution {
                     changes: commit.changes,
                     before_hp_markers: commit.before_hp_markers,
@@ -543,6 +545,29 @@ impl BattleManagers {
                 }
             })
             .collect())
+    }
+
+    pub(crate) fn execute_indicator(
+        &mut self,
+        command: indicator::IndicatorCommand,
+    ) -> Option<crate::engine::skill::rule::output::EffectMarker> {
+        let indicator_id = command.indicator_id;
+        let marker = self.indicator.add(command)?;
+        self.fight_task
+            .record_indicator(indicator_id, self.indicator.value(indicator_id));
+        Some(marker)
+    }
+
+    fn record_damage_indicator(
+        &mut self,
+        target_uid: i64,
+        amount: i32,
+    ) -> Option<crate::engine::skill::rule::output::EffectMarker> {
+        let marker = self.indicator.record_damage(target_uid, amount)?;
+        let indicator_id = marker.target_uid as i32;
+        self.fight_task
+            .record_indicator(indicator_id, self.indicator.value(indicator_id));
+        Some(marker)
     }
 
     fn execute_hp_commit_with_target_count(
@@ -1543,6 +1568,7 @@ impl BattleManagers {
         managers.conduit = ConduitManager::configured(catalog, fight);
         managers.entity = entity::EntityManager::configured(catalog, fight);
         managers.fight_progress.seed(fight);
+        managers.fight_task = fight_task::FightTaskManager::seed(catalog, fight);
         managers.wave = wave::WaveManager::seed_with_catalog(catalog, fight);
         managers
     }
@@ -1573,6 +1599,7 @@ impl BattleManagers {
         }
         self.eureka.sync_fight(fight);
         self.fight_progress.sync_fight(fight);
+        self.fight_task.sync_fight(fight);
         let features = self.buff.active_features(&self.hp);
         if let Some(attacker) = fight.attacker.as_mut() {
             attacker.heat_scale = self.heat_scale_snapshot(1, &features);

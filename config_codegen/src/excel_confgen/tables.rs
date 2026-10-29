@@ -181,6 +181,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "fight_effect",
     "fight_effect_group",
     "fight_prompt",
+    "fight_task",
     "fight_device",
     "fight_dnsz",
     "trigger",

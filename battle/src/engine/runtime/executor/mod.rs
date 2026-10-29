@@ -233,7 +233,7 @@ impl RuleOutcome {
         match self {
             Self::PublishedEvent => Vec::new(),
             Self::SkillLifecycle(change) => vec![BattleChange::SkillLifecycle(change.clone())],
-            Self::DeathSettlement(death) => vec![BattleChange::Death(*death)],
+            Self::DeathSettlement(_) => Vec::new(),
             Self::SkillActionStarted { lifecycle, cost } => vec![
                 BattleChange::SkillLifecycle(lifecycle.clone()),
                 BattleChange::ExPoint(*cost),
@@ -668,8 +668,7 @@ pub(crate) fn execute_rule_op_with(
             .map(RuleOutcome::EffectMarker)
             .map_or(Ok(RuleOutcome::StateChanged), Ok),
         RuleOp::Command(BattleCommand::Indicator(command)) => managers
-            .indicator
-            .add(command)
+            .execute_indicator(command)
             .map(RuleOutcome::EffectMarker)
             .map_or(Ok(RuleOutcome::StateChanged), Ok),
         RuleOp::NuoDiKaHit(hit) => Ok(RuleOutcome::NuoDiKaHit(hit)),

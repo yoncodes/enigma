@@ -143,11 +143,7 @@ pub(super) fn drain_skill(
                 result,
                 state,
             )?;
-            push_change(
-                &mut result.frames,
-                &frame_path,
-                crate::engine::runtime::change::BattleChange::Death(death),
-            );
+            push_death(&mut result.frames, &frame_path, managers, death);
             defeated_owner_card_cleanups.push(death);
         }
     }

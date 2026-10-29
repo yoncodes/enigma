@@ -55,6 +55,26 @@ use reactions::{dispatch_event_groups, dispatch_owner_reactions, dispatch_reacti
 use skill_dispatch::drain_skill;
 use state::DrainState;
 
+fn push_death(
+    frames: &mut [SemanticFrame],
+    path: &[usize],
+    managers: &mut BattleManagers,
+    death: crate::engine::manager::hp::DeathTransition,
+) {
+    if let Some(change) = managers.fight_task.record_kill(death.target_uid, 1) {
+        push_change(
+            frames,
+            path,
+            crate::engine::runtime::change::BattleChange::FightTask(change),
+        );
+    }
+    push_change(
+        frames,
+        path,
+        crate::engine::runtime::change::BattleChange::Death(death),
+    );
+}
+
 fn drain_queue(
     managers: &mut BattleManagers,
     pool: &TargetPool,
