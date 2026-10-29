@@ -447,6 +447,7 @@ async fn dispatch_registered_command(
         CmdId::TowerComposeGetInfoCmd => tower_compose::on_tower_compose_get_info,
         CmdId::TowerComposeSetModsCmd => tower_compose::on_tower_compose_set_mods,
         CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
+        CmdId::BeforeStartWeekwalkBattleCmd => exploration::on_before_start_weekwalk_battle,
         CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
         CmdId::MarkPopDeepSettleCmd => exploration::on_mark_pop_deep_settle,
         CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,

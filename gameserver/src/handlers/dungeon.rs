@@ -322,7 +322,15 @@ pub async fn on_start_dungeon(
         return Err(AppError::InvalidRequest);
     }
 
-    let battle_id = dungeon::episode_battle_id(ctx.state.db, player_id, episode_cfg).await?;
+    let weekwalk_context = if logic::weekwalk::is_weekwalk_episode(episode_cfg) {
+        Some(ctx.player()?.weekwalk.selected_battle()?)
+    } else {
+        None
+    };
+    let battle_id = match weekwalk_context {
+        Some(context) => context.battle_id,
+        None => dungeon::episode_battle_id(ctx.state.db, player_id, episode_cfg).await?,
+    };
     if battle_id == 0 {
         let settlement = dungeon::settle_battleless(
             ctx.state.db,
@@ -363,6 +371,7 @@ pub async fn on_start_dungeon(
 
     let mut active =
         ActiveBattle::prepare(ctx.state.db, player_id, episode_id, battle_id, request).await?;
+    active.weekwalk_context = weekwalk_context;
     let cost = active
         .activate(
             ctx.state.db,
@@ -371,6 +380,9 @@ pub async fn on_start_dungeon(
         )
         .await?;
     ctx.player_mut()?.battle.start_active(active);
+    if weekwalk_context.is_some() {
+        ctx.player_mut()?.weekwalk.clear_selection();
+    }
 
     push::send_cost_pushes(ctx, player_id, cost.item_ids, cost.currency_ids).await?;
     send_active_battle_start(ctx, req.up_tag).await
@@ -533,6 +545,7 @@ pub async fn on_fight_end_fight(
     let mut refund_settlement = None;
     let mut act128_score_updates = None;
     let mut act229_finish = None;
+    let mut weekwalk_update = None;
     if let Some(active) = active.as_ref() {
         let is_abort = msg.is_abort.unwrap_or(false);
         let compose_handled = tower_compose::matches_battle(active);
@@ -543,7 +556,9 @@ pub async fn on_fight_end_fight(
             None
         };
 
-        if !is_abort
+        if !is_abort && won && active.weekwalk_context.is_some() {
+            weekwalk_update = settle_weekwalk_victory(ctx, active).await?;
+        } else if !is_abort
             && won
             && (compose_handled || (active.tower_type.is_none() && active.act229_context.is_none()))
         {
@@ -617,6 +632,9 @@ pub async fn on_fight_end_fight(
     if let Some(finish) = act229_finish {
         ctx.notify(CmdId::Act229BattleFinishPushCmd, finish).await?;
     }
+    if let Some(update) = weekwalk_update {
+        ctx.notify(CmdId::WeekwalkInfoUpdatePushCmd, update).await?;
+    }
     if let Some(end) = end {
         push::send_end_fight_push(ctx, end).await?;
     }
@@ -674,7 +692,12 @@ pub async fn on_dungeon_end_dungeon(
     let active = ctx.player()?.battle.active_snapshot();
 
     if let Some(active) = active.as_ref() {
-        if msg.is_abort.unwrap_or(false) {
+        if msg.is_abort.unwrap_or(false) && active.weekwalk_context.is_some() {
+            let refund = dungeon::settle_refund(ctx.state.db, player_id, active, false).await?;
+            ctx.player_mut()?.battle.clear_active();
+            send_refund(ctx, player_id, refund).await?;
+            push::send_end_fight_push(ctx, dungeon::abort_end_fight(active)).await?;
+        } else if msg.is_abort.unwrap_or(false) {
             let tower_push = tower::abort_finish_push(ctx.state.db, player_id, active).await?;
             let (dungeon_update, end_dungeon) =
                 match dungeon::act128_score_dungeon_updates(ctx.state.db, player_id, active).await?
@@ -696,36 +719,41 @@ pub async fn on_dungeon_end_dungeon(
                 .await?;
             push::send_end_fight_push(ctx, dungeon::abort_end_fight(active)).await?;
         } else if active.is_victory() {
-            let star = active.star()?;
-            let round = active.current_round();
-            let record =
-                dungeon::prepare_dungeon_record(ctx.state.db, player_id, active, round).await?;
-            let mut settlement = dungeon::settle_active(
-                ctx.state.db,
-                player_id,
-                active,
-                dungeon::DungeonCompletion {
-                    star,
-                    total_round: round,
-                    multiplier: active.multiplication.unwrap_or(1).max(1),
-                    fight_group: active.fight_group.as_ref(),
-                },
-                &record,
-            )
-            .await?;
-            ctx.player_mut()?.battle.complete_active(record.pending);
-            if let Some(compose) = settlement.compose_push.take() {
-                ctx.notify(CmdId::TowerComposeFightSettlePushCmd, compose)
-                    .await?;
+            if let Some(update) = settle_weekwalk_victory(ctx, active).await? {
+                ctx.player_mut()?.battle.clear_active();
+                ctx.notify(CmdId::WeekwalkInfoUpdatePushCmd, update).await?;
+            } else {
+                let star = active.star()?;
+                let round = active.current_round();
+                let record =
+                    dungeon::prepare_dungeon_record(ctx.state.db, player_id, active, round).await?;
+                let mut settlement = dungeon::settle_active(
+                    ctx.state.db,
+                    player_id,
+                    active,
+                    dungeon::DungeonCompletion {
+                        star,
+                        total_round: round,
+                        multiplier: active.multiplication.unwrap_or(1).max(1),
+                        fight_group: active.fight_group.as_ref(),
+                    },
+                    &record,
+                )
+                .await?;
+                ctx.player_mut()?.battle.complete_active(record.pending);
+                if let Some(compose) = settlement.compose_push.take() {
+                    ctx.notify(CmdId::TowerComposeFightSettlePushCmd, compose)
+                        .await?;
+                }
+                send_completed_dungeon(
+                    ctx,
+                    player_id,
+                    active.chapter_id,
+                    active.episode_id,
+                    settlement,
+                )
+                .await?;
             }
-            send_completed_dungeon(
-                ctx,
-                player_id,
-                active.chapter_id,
-                active.episode_id,
-                settlement,
-            )
-            .await?;
         } else {
             let score_updates =
                 dungeon::act128_score_dungeon_updates(ctx.state.db, player_id, active).await?;
@@ -753,6 +781,22 @@ pub async fn on_dungeon_end_dungeon(
         req.up_tag,
     )
     .await
+}
+
+async fn settle_weekwalk_victory(
+    ctx: &mut ConnectionContext,
+    active: &ActiveBattle,
+) -> Result<Option<sonettobuf::WeekwalkInfoUpdatePush>, AppError> {
+    let Some(context) = active.weekwalk_context else {
+        return Ok(None);
+    };
+    let fight_id = active.fight_id.ok_or(AppError::InvalidRequest)?;
+    let update = ctx
+        .player()?
+        .weekwalk
+        .complete_battle(ctx.state.db, context, active.star()?, fight_id)
+        .await?;
+    Ok(Some(update))
 }
 
 pub async fn on_cover_dungeon_record(

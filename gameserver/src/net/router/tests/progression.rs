@@ -60,19 +60,14 @@ async fn settlement_acknowledgements_reach_handlers_and_clear_their_flags() {
         assert!(packets.try_recv().is_err());
     }
 
-    let info = ctx
-        .player()
-        .unwrap()
-        .exploration
-        .weekwalk_info(ctx.state.db)
+    let info = database::db::game::weekwalk::get_weekwalk_info(ctx.state.db, player_id)
         .await
         .unwrap()
-        .info
-        .unwrap();
-    assert_eq!(info.issue_id, Some(59));
-    assert_eq!(info.is_pop_shallow_settle, Some(false));
-    assert_eq!(info.is_pop_deep_rule, Some(true));
-    assert_eq!(info.is_pop_deep_settle, Some(true));
+        .0;
+    assert_eq!(info.issue_id, 59);
+    assert!(!info.is_pop_shallow_settle);
+    assert!(info.is_pop_deep_rule);
+    assert!(info.is_pop_deep_settle);
 
     let mut data = Vec::new();
     MarkPopDeepSettleRequest {}.encode(&mut data).unwrap();
@@ -99,17 +94,12 @@ async fn settlement_acknowledgements_reach_handlers_and_clear_their_flags() {
     MarkPopDeepSettleReply::decode(&*body).unwrap();
     assert!(packets.try_recv().is_err());
 
-    let info = ctx
-        .player()
-        .unwrap()
-        .exploration
-        .weekwalk_info(ctx.state.db)
+    let info = database::db::game::weekwalk::get_weekwalk_info(ctx.state.db, player_id)
         .await
         .unwrap()
-        .info
-        .unwrap();
-    assert_eq!(info.is_pop_shallow_settle, Some(false));
-    assert_eq!(info.is_pop_deep_settle, Some(false));
+        .0;
+    assert!(!info.is_pop_shallow_settle);
+    assert!(!info.is_pop_deep_settle);
 }
 
 #[tokio::test]
