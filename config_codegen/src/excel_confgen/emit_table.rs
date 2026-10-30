@@ -16,10 +16,12 @@ pub fn emit_table_store(
     let struct_name = snake_to_pascal(table_name);
 
     let id_field = detect_id_field(field_types);
-    let group_field = detect_group_field(field_types);
+    let repeated_id = table_name == "weekwalk_dialog";
+    let group_field =
+        detect_group_field(field_types).or_else(|| repeated_id.then(|| id_field.clone()).flatten());
 
     // Act128 reward ids repeat per activity, so a global id index would be lossy.
-    let has_id_index = id_field.is_some() && table_name != "activity128_rewards";
+    let has_id_index = id_field.is_some() && table_name != "activity128_rewards" && !repeated_id;
     let has_group_index =
         group_field.is_some() && !has_vec_group_type(field_types, group_field.as_ref());
 
@@ -81,7 +83,7 @@ pub fn emit_table_store(
         out.push("".into());
         out.push("        for (idx, record) in records.iter().enumerate() {".into());
 
-        if let Some(id_field) = &id_field {
+        if has_id_index && let Some(id_field) = &id_field {
             let id_snake = camel_to_snake(id_field);
             let optional = check_if_optional(records, id_field);
 
@@ -228,5 +230,17 @@ mod tests {
 
         assert!(!output.contains("by_id"));
         assert!(!output.contains("pub fn get("));
+    }
+
+    #[test]
+    fn weekwalk_dialog_indexes_every_row_in_an_id_group() {
+        let records = vec![
+            json!({"id": 101, "stepId": 1}),
+            json!({"id": 101, "stepId": 2}),
+        ];
+        let output = emit_table_store("weekwalk_dialog", &analyze_field_types(&records), &records);
+
+        assert!(!output.contains("pub fn get("));
+        assert!(output.contains("pub fn by_group(&self, group_id: i32)"));
     }
 }

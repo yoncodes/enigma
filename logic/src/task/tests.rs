@@ -2,6 +2,100 @@ use super::*;
 use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
+async fn weekwalk_task_info_repairs_stars_without_reopening_claimed_rewards() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (1, 'weekwalk-task-repair', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    database::db::game::weekwalk::ensure_cycle(
+        &pool,
+        1,
+        59,
+        0,
+        i32::MAX,
+        &database::db::game::weekwalk::WeekwalkMapSeed {
+            map_id: 101,
+            scene_id: 101,
+            layer: 1,
+            is_deep: false,
+            buff_id: 0,
+            encounters: vec![database::db::game::weekwalk::WeekwalkEncounterSeed {
+                battle_id: 800101,
+                element_id: 10112,
+                visible: true,
+            }],
+        },
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE user_weekwalk_battles SET star = 2, max_star = 2
+         WHERE user_id = 1 AND map_id = 101 AND battle_id = 800101",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO user_tasks
+         (user_id, type_id, task_id, progress, has_finished, finish_count)
+         VALUES (1, 7, 73011, 0, 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let mut tasks = TaskManager::new(1);
+    let repaired = tasks
+        .get_info(&pool, vec![TaskType::WeekWalk.id() as u32])
+        .await
+        .unwrap();
+    let repaired = repaired
+        .task_info
+        .iter()
+        .find(|task| task.id == 73011)
+        .unwrap();
+    assert_eq!(repaired.progress, 2);
+    assert!(repaired.has_finished);
+
+    let claimed = tasks.finish(&pool, 73011).await.unwrap();
+    assert_eq!(claimed.reply.finish_count, Some(1));
+    let refreshed = tasks
+        .get_info(&pool, vec![TaskType::WeekWalk.id() as u32])
+        .await
+        .unwrap();
+    let refreshed = refreshed
+        .task_info
+        .iter()
+        .find(|task| task.id == 73011)
+        .unwrap();
+    assert_eq!(refreshed.progress, 2);
+    assert_eq!(refreshed.finish_count, Some(1));
+    assert!(!refreshed.has_finished);
+
+    sqlx::query(
+        "UPDATE user_tasks SET progress = 1, has_finished = 1
+         WHERE user_id = 1 AND type_id = 7 AND task_id = 72001",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(tasks.finish(&pool, 72001).await.is_err());
+    let inactive = task_db::get_by_id(&pool, 1, 72001).await.unwrap().unwrap();
+    assert_eq!(inactive.finish_count, 0);
+}
+
+#[tokio::test]
 async fn claimed_task_is_persisted_as_no_longer_claimable() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);

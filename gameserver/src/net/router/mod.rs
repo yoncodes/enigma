@@ -18,7 +18,7 @@ macro_rules! dispatch {
     }) => {
         match $cmd_id {
             $(
-                $variant => $handler($ctx, $packet).await,
+                $variant => Box::pin($handler($ctx, $packet)).await,
             )*
             v => Err(AppError::Cmd(CmdError::UnhandledCmd(v))),
         }
@@ -52,7 +52,7 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         };
     }
 
-    let result = Box::pin(dispatch_registered_command(ctx, cmd_id, req)).await;
+    let result = dispatch_registered_command(ctx, cmd_id, req).await;
 
     match result {
         Ok(()) => Ok(()),
@@ -436,6 +436,14 @@ async fn dispatch_registered_command(
         CmdId::UpdateNecrologistStoryCmd => story::on_update_necrologist_story,
         CmdId::FinishNecrologistStoryModeCmd => story::on_finish_necrologist_story_mode,
         CmdId::GetExploreSimpleInfoCmd => exploration::on_get_explore_simple_info,
+        CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
+        CmdId::BeforeStartWeekwalkBattleCmd => exploration::on_before_start_weekwalk_battle,
+        CmdId::ChangeWeekwalkHeroGroupSelectCmd => exploration::on_change_weekwalk_hero_group_select,
+        CmdId::WeekwalkDialogCmd => exploration::on_weekwalk_dialog,
+        CmdId::WeekwalkDialogHistoryCmd => exploration::on_weekwalk_dialog_history,
+        CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
+        CmdId::MarkPopDeepSettleCmd => exploration::on_mark_pop_deep_settle,
+        CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,
         CmdId::GetTowerInfoCmd => tower::on_get_info,
         CmdId::TowerMopUpCmd => tower::on_mop_up,
         CmdId::TowerResetSubEpisodeCmd => tower::on_reset_sub_episode,
@@ -446,10 +454,6 @@ async fn dispatch_registered_command(
         CmdId::TowerRenameTalentPlanCmd => tower::on_rename_talent_plan,
         CmdId::TowerComposeGetInfoCmd => tower_compose::on_tower_compose_get_info,
         CmdId::TowerComposeSetModsCmd => tower_compose::on_tower_compose_set_mods,
-        CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
-        CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
-        CmdId::MarkPopDeepSettleCmd => exploration::on_mark_pop_deep_settle,
-        CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,
         CmdId::GetBlockPackageInfoRequsetCmd => room::on_get_block_package_info,
         CmdId::HideBlockPackageReddotCmd => room::on_hide_block_package_reddot,
         CmdId::HideBuildingReddotRequsetCmd => room::on_hide_building_reddot,

@@ -58,3 +58,4 @@ mod arcade;
 mod progression;
 mod social;
 mod teaching;
+mod weekwalk;
