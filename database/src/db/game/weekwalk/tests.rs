@@ -2,6 +2,8 @@ use super::*;
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn pool() -> SqlitePool {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect("sqlite::memory:")
@@ -108,13 +110,14 @@ async fn cycle_selects_front_then_rear_and_persists_next_map() {
         )
         .await
         .unwrap()
+        .is_some()
     );
     let rear = select_battle(&pool, 1, first.map_id, rear_seed.element_id)
         .await
         .unwrap()
         .unwrap();
     assert!(
-        !complete_battle(
+        complete_battle(
             &pool,
             1,
             front_selection,
@@ -125,6 +128,7 @@ async fn cycle_selects_front_then_rear_and_persists_next_map() {
         )
         .await
         .unwrap()
+        .is_none()
     );
     assert!(
         complete_battle(
@@ -138,6 +142,7 @@ async fn cycle_selects_front_then_rear_and_persists_next_map() {
         )
         .await
         .unwrap()
+        .is_some()
     );
 
     let (info, maps) = get_weekwalk_info(&pool, 1).await.unwrap();
@@ -167,9 +172,10 @@ async fn hidden_rear_cannot_skip_the_front_encounter() {
         battle_id: rear(&first).battle_id,
     };
     assert!(
-        !complete_battle(&pool, 1, forged_rear, 3, 0, None, finished(Some(next)))
+        complete_battle(&pool, 1, forged_rear, 3, 0, None, finished(Some(next)))
             .await
             .unwrap()
+            .is_none()
     );
     let (_, maps) = get_weekwalk_info(&pool, 1).await.unwrap();
     assert_eq!(maps.len(), 1);
@@ -218,6 +224,7 @@ async fn shallow_map_unlocks_next_after_all_encounters_finish() {
             )
             .await
             .unwrap()
+            .is_some()
         );
         let (info, maps) = get_weekwalk_info(&pool, 1).await.unwrap();
         assert_eq!(maps.len(), if index == 4 { 2 } else { 1 });
@@ -245,32 +252,38 @@ async fn current_deep_only_state_gains_the_first_shallow_map() {
         .await
         .unwrap()
         .unwrap();
-    complete_battle(
-        &pool,
-        1,
-        first,
-        2,
-        fight(&pool, first.battle_id).await,
-        Some(rear(&shallow).element_id),
-        finished(Some(deep.clone())),
-    )
-    .await
-    .unwrap();
+    assert!(
+        complete_battle(
+            &pool,
+            1,
+            first,
+            2,
+            fight(&pool, first.battle_id).await,
+            Some(rear(&shallow).element_id),
+            finished(Some(deep.clone())),
+        )
+        .await
+        .unwrap()
+        .is_some()
+    );
     let second = select_battle(&pool, 1, shallow.map_id, rear(&shallow).element_id)
         .await
         .unwrap()
         .unwrap();
-    complete_battle(
-        &pool,
-        1,
-        second,
-        2,
-        fight(&pool, second.battle_id).await,
-        None,
-        finished(Some(deep.clone())),
-    )
-    .await
-    .unwrap();
+    assert!(
+        complete_battle(
+            &pool,
+            1,
+            second,
+            2,
+            fight(&pool, second.battle_id).await,
+            None,
+            finished(Some(deep.clone())),
+        )
+        .await
+        .unwrap()
+        .is_some()
+    );
     let (info, maps) = get_weekwalk_info(&pool, 1).await.unwrap();
     assert_eq!(info.max_layer, 11);
     assert_eq!(maps.len(), 2);
@@ -348,17 +361,20 @@ async fn expired_cycle_is_replaced_but_current_progress_is_kept() {
         .await
         .unwrap()
         .unwrap();
-    complete_battle(
-        &pool,
-        1,
-        selection,
-        3,
-        fight(&pool, selection.battle_id).await,
-        Some(rear(&first).element_id),
-        finished(None),
-    )
-    .await
-    .unwrap();
+    assert!(
+        complete_battle(
+            &pool,
+            1,
+            selection,
+            3,
+            fight(&pool, selection.battle_id).await,
+            Some(rear(&first).element_id),
+            finished(None),
+        )
+        .await
+        .unwrap()
+        .is_some()
+    );
 
     ensure_cycle(&pool, 1, 7, 150, 250, &first).await.unwrap();
     assert!(

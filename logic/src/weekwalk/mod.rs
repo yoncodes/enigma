@@ -5,6 +5,7 @@ use database::db::game::{
     hero_groups,
     weekwalk::{self, WeekwalkBattleSelection, WeekwalkElementState},
 };
+use database::models::game::tasks::UserTask;
 use serde::{Deserialize, Serialize};
 use sonettobuf::{
     BeforeStartWeekwalkBattleReply, ChangeWeekwalkHeroGroupSelectReply, GetWeekwalkInfoReply,
@@ -162,7 +163,7 @@ impl WeekwalkManager {
         context: WeekwalkBattleContext,
         star: i32,
         fight_id: i64,
-    ) -> Result<WeekwalkInfoUpdatePush, AppError> {
+    ) -> Result<(WeekwalkInfoUpdatePush, Vec<UserTask>), AppError> {
         let cycle = current_cycle(config::configs::get())?;
         let index = cycle
             .maps
@@ -184,34 +185,39 @@ impl WeekwalkManager {
             return Err(AppError::InvalidRequest);
         }
         let next_index = current_index + 1;
-        if context.battle_id != encounter.battle_id
-            || !weekwalk::complete_battle(
-                db,
-                self.player_id,
-                context.into(),
-                star,
-                fight_id,
-                map.encounters
-                    .iter()
-                    .skip_while(|candidate| candidate.element_id != context.element_id)
-                    .nth(1)
-                    .filter(|candidate| !candidate.visible)
-                    .map(|candidate| candidate.element_id),
-                WeekwalkElementState {
-                    current_index,
-                    next_index,
-                    is_finish: next_index >= step_count,
-                    next_map: cycle.maps.get(index + 1).cloned(),
-                },
-            )
-            .await?
-        {
+        if context.battle_id != encounter.battle_id {
             return Err(AppError::InvalidRequest);
         }
+        let Some(task_updates) = weekwalk::complete_battle(
+            db,
+            self.player_id,
+            context.into(),
+            star,
+            fight_id,
+            map.encounters
+                .iter()
+                .skip_while(|candidate| candidate.element_id != context.element_id)
+                .nth(1)
+                .filter(|candidate| !candidate.visible)
+                .map(|candidate| candidate.element_id),
+            WeekwalkElementState {
+                current_index,
+                next_index,
+                is_finish: next_index >= step_count,
+                next_map: cycle.maps.get(index + 1).cloned(),
+            },
+        )
+        .await?
+        else {
+            return Err(AppError::InvalidRequest);
+        };
         let (info, map_info) = weekwalk::get_weekwalk_info(db, self.player_id).await?;
-        Ok(WeekwalkInfoUpdatePush {
-            info: Some(project_info(info, map_info)),
-        })
+        Ok((
+            WeekwalkInfoUpdatePush {
+                info: Some(project_info(info, map_info)),
+            },
+            task_updates,
+        ))
     }
 
     pub async fn dialog(

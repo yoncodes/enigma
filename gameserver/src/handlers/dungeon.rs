@@ -632,8 +632,9 @@ pub async fn on_fight_end_fight(
     if let Some(finish) = act229_finish {
         ctx.notify(CmdId::Act229BattleFinishPushCmd, finish).await?;
     }
-    if let Some(update) = weekwalk_update {
+    if let Some((update, tasks)) = weekwalk_update {
         ctx.notify(CmdId::WeekwalkInfoUpdatePushCmd, update).await?;
+        task_events::notify_tasks(ctx, tasks).await?;
     }
     if let Some(end) = end {
         push::send_end_fight_push(ctx, end).await?;
@@ -719,9 +720,10 @@ pub async fn on_dungeon_end_dungeon(
                 .await?;
             push::send_end_fight_push(ctx, dungeon::abort_end_fight(active)).await?;
         } else if active.is_victory() {
-            if let Some(update) = settle_weekwalk_victory(ctx, active).await? {
+            if let Some((update, tasks)) = settle_weekwalk_victory(ctx, active).await? {
                 ctx.player_mut()?.battle.clear_active();
                 ctx.notify(CmdId::WeekwalkInfoUpdatePushCmd, update).await?;
+                task_events::notify_tasks(ctx, tasks).await?;
             } else {
                 let star = active.star()?;
                 let round = active.current_round();
@@ -786,17 +788,24 @@ pub async fn on_dungeon_end_dungeon(
 async fn settle_weekwalk_victory(
     ctx: &mut ConnectionContext,
     active: &ActiveBattle,
-) -> Result<Option<sonettobuf::WeekwalkInfoUpdatePush>, AppError> {
+) -> Result<
+    Option<(
+        sonettobuf::WeekwalkInfoUpdatePush,
+        Vec<logic::task::UserTask>,
+    )>,
+    AppError,
+> {
     let Some(context) = active.weekwalk_context else {
         return Ok(None);
     };
     let fight_id = active.fight_id.ok_or(AppError::InvalidRequest)?;
-    let update = ctx
+    let (update, tasks) = ctx
         .player()?
         .weekwalk
         .complete_battle(ctx.state.db, context, active.star()?, fight_id)
         .await?;
-    Ok(Some(update))
+    ctx.player_mut()?.tasks.record_updates(&tasks);
+    Ok(Some((update, tasks)))
 }
 
 pub async fn on_cover_dungeon_record(

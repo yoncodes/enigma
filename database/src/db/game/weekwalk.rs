@@ -1,4 +1,7 @@
-use crate::{db::game::battle, models::game::weekwalk::*};
+use crate::{
+    db::game::{battle, tasks},
+    models::game::{tasks::UserTask, weekwalk::*},
+};
 use anyhow::Result;
 use sonettobuf;
 use sqlx::SqlitePool;
@@ -170,7 +173,7 @@ pub async fn complete_battle(
     fight_id: i64,
     reveal_element_id: Option<i32>,
     state: WeekwalkElementState,
-) -> Result<bool> {
+) -> Result<Option<Vec<UserTask>>> {
     let mut tx = pool.begin().await?;
     let changed = sqlx::query(
         "UPDATE user_weekwalk_battles
@@ -203,7 +206,7 @@ pub async fn complete_battle(
     .rows_affected();
     if changed == 0 {
         tx.rollback().await?;
-        return Ok(false);
+        return Ok(None);
     }
     sqlx::query(
         "UPDATE user_weekwalk_elements SET index_num = ?, is_finish = ?
@@ -229,9 +232,10 @@ pub async fn complete_battle(
         .await?;
     }
     finish_map_if_complete(&mut tx, user_id, selection.map_id, state.next_map).await?;
+    let task_updates = tasks::sync_weekwalk_tasks_in_transaction(&mut tx, user_id).await?;
     battle::finish_fight_instance_in_transaction(&mut tx, user_id, fight_id).await?;
     tx.commit().await?;
-    Ok(true)
+    Ok(Some(task_updates))
 }
 
 pub async fn advance_element(

@@ -4,7 +4,7 @@ use sonettobuf::{
     ChangeWeekwalkHeroGroupSelectReply, ChangeWeekwalkHeroGroupSelectRequest, EndDungeonReply,
     EndDungeonRequest, EndFightReply, EndFightRequest, Fight, FightEntityInfo, FightTeam,
     GetWeekwalkInfoReply, GetWeekwalkInfoRequest, StartDungeonReply, StartDungeonRequest,
-    WeekwalkDialogHistoryReply, WeekwalkDialogHistoryRequest, WeekwalkDialogReply,
+    UpdateTaskPush, WeekwalkDialogHistoryReply, WeekwalkDialogHistoryRequest, WeekwalkDialogReply,
     WeekwalkDialogRequest, WeekwalkInfoUpdatePush,
 };
 
@@ -439,6 +439,22 @@ async fn fight_end_victory_advances_weekwalk() {
             && element.index == Some(2)
     }));
     let CommandPacket::Push {
+        cmd_id: CmdId::UpdateTaskPushCmd,
+        body,
+        ..
+    } = packets.recv().await.unwrap()
+    else {
+        panic!("Weekwalk victory did not update its reward tasks");
+    };
+    let task_update = UpdateTaskPush::decode(&*body).unwrap();
+    let threshold = task_update
+        .task_info
+        .iter()
+        .find(|task| task.id == 73011)
+        .unwrap();
+    assert_eq!(threshold.progress, 2);
+    assert!(threshold.has_finished);
+    let CommandPacket::Push {
         cmd_id: CmdId::FightEndFightPushCmd,
         ..
     } = packets.recv().await.unwrap()
@@ -666,6 +682,13 @@ async fn dungeon_end_victory_advances_weekwalk_without_dungeon_settlement() {
         .info
         .unwrap();
     assert_eq!(update.map_info[0].element_infos.len(), 5);
+    let CommandPacket::Push {
+        cmd_id: CmdId::UpdateTaskPushCmd,
+        ..
+    } = packets.recv().await.unwrap()
+    else {
+        panic!("DungeonEnd did not update Weekwalk reward tasks");
+    };
     let CommandPacket::Reply {
         cmd_id: CmdId::DungeonEndDungeonCmd,
         body,
