@@ -27,6 +27,7 @@ fn configured_kill_fight(catalog: crate::catalog::BattleCatalog) -> Fight {
                 .collect(),
             ..Default::default()
         }),
+        episode_id: Some(493_708),
         fight_task_box: Some(configured_box(catalog, 493_708).unwrap()),
         ..Default::default()
     }
@@ -50,8 +51,9 @@ fn indicator_updates_emit_changed_tasks_in_box_order() {
     let mut manager = FightTaskManager::seed(
         catalog,
         &Fight {
+            episode_id: Some(493_707),
             fight_task_box: Some(FightTaskBox {
-                tasks: vec![task(370_701, 5), task(370_703, 3), task(370_702, 1)],
+                tasks: vec![task(370_701, 5), task(370_702, 1), task(370_703, 3)],
             }),
             ..Default::default()
         },
@@ -134,11 +136,44 @@ fn invalid_task_snapshots_are_rejected() {
         task(26_004, 1),
     ] {
         let fight = Fight {
+            episode_id: Some(493_708),
             fight_task_box: Some(FightTaskBox {
                 tasks: vec![invalid_task],
             }),
             ..Default::default()
         };
+        assert!(FightTaskManager::seed(catalog, &fight).is_err());
+    }
+}
+
+#[test]
+fn invalid_task_sequences_are_rejected() {
+    crate::test_support::init_config();
+    let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+    let mut invalid = Vec::new();
+
+    let mut missing_box = configured_kill_fight(catalog);
+    missing_box.fight_task_box = None;
+    invalid.push(missing_box);
+
+    let mut omitted = configured_kill_fight(catalog);
+    omitted.fight_task_box.as_mut().unwrap().tasks.pop();
+    invalid.push(omitted);
+
+    let mut reordered = configured_kill_fight(catalog);
+    reordered.fight_task_box.as_mut().unwrap().tasks.swap(1, 2);
+    invalid.push(reordered);
+
+    let mut duplicate = configured_kill_fight(catalog);
+    let tasks = &mut duplicate.fight_task_box.as_mut().unwrap().tasks;
+    tasks[2] = tasks[1].clone();
+    invalid.push(duplicate);
+
+    let mut foreign = configured_kill_fight(catalog);
+    foreign.fight_task_box = Some(configured_box(catalog, 493_707).unwrap());
+    invalid.push(foreign);
+
+    for fight in invalid {
         assert!(FightTaskManager::seed(catalog, &fight).is_err());
     }
 }

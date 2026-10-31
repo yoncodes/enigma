@@ -41,11 +41,24 @@ impl FightTaskManager {
             .as_ref()
             .map(|task_box| task_box.tasks.clone())
             .unwrap_or_default();
+        let expected_ids = configured_box(catalog, fight.episode_id.unwrap_or_default())?
+            .tasks
+            .into_iter()
+            .filter_map(|task| task.task_id)
+            .collect::<Vec<_>>();
+        let actual_ids = tasks
+            .iter()
+            .map(|task| {
+                task.task_id
+                    .context("fight task snapshot contains a task without an id")
+            })
+            .collect::<Result<Vec<_>>>()?;
+        ensure!(
+            actual_ids == expected_ids,
+            "fight task snapshot sequence differs from episode config"
+        );
         let mut rules = HashMap::new();
-        for task in &tasks {
-            let task_id = task
-                .task_id
-                .context("fight task snapshot contains a task without an id")?;
+        for (task, task_id) in tasks.iter().zip(actual_ids) {
             let row = catalog
                 .game_data()
                 .fight_task
