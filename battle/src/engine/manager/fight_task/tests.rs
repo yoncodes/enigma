@@ -53,7 +53,7 @@ fn indicator_updates_emit_changed_tasks_in_box_order() {
         &Fight {
             episode_id: Some(493_707),
             fight_task_box: Some(FightTaskBox {
-                tasks: vec![task(370_701, 5), task(370_702, 1), task(370_703, 3)],
+                tasks: vec![task(370_701, 5), task(370_703, 3), task(370_702, 1)],
             }),
             ..Default::default()
         },
@@ -80,23 +80,30 @@ fn indicator_updates_emit_changed_tasks_in_box_order() {
 }
 
 #[test]
-fn teaching_episode_builds_configured_task_states() {
+fn teaching_episode_builds_capture_ordered_task_states() {
     crate::test_support::init_config();
     let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
 
+    for (episode_id, expected) in [
+        (493_701, vec![370_101, 370_103, 370_102]),
+        (493_702, vec![370_201, 370_203, 370_202]),
+        (493_707, vec![370_701, 370_703, 370_702]),
+        (493_708, vec![370_801, 370_803, 370_802]),
+    ] {
+        assert_eq!(
+            configured_box(catalog, episode_id)
+                .unwrap()
+                .tasks
+                .iter()
+                .filter_map(|task| task.task_id)
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
     let task_box = configured_box(catalog, 493_708).unwrap();
-
-    assert_eq!(
-        task_box
-            .tasks
-            .iter()
-            .filter_map(|task| task.task_id)
-            .collect::<Vec<_>>(),
-        vec![370_801, 370_802, 370_803]
-    );
     assert_eq!(task_box.tasks[0].values[0].max_progress, Some(15));
-    assert_eq!(task_box.tasks[1].values[0].max_progress, Some(1));
-    assert_eq!(task_box.tasks[2].values[0].max_progress, Some(3));
+    assert_eq!(task_box.tasks[1].values[0].max_progress, Some(3));
+    assert_eq!(task_box.tasks[2].values[0].max_progress, Some(1));
 }
 
 #[test]

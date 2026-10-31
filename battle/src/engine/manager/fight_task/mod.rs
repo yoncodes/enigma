@@ -41,11 +41,6 @@ impl FightTaskManager {
             .as_ref()
             .map(|task_box| task_box.tasks.clone())
             .unwrap_or_default();
-        let expected_ids = configured_box(catalog, fight.episode_id.unwrap_or_default())?
-            .tasks
-            .into_iter()
-            .filter_map(|task| task.task_id)
-            .collect::<Vec<_>>();
         let actual_ids = tasks
             .iter()
             .map(|task| {
@@ -53,10 +48,23 @@ impl FightTaskManager {
                     .context("fight task snapshot contains a task without an id")
             })
             .collect::<Result<Vec<_>>>()?;
-        ensure!(
-            actual_ids == expected_ids,
-            "fight task snapshot sequence differs from episode config"
-        );
+        let episode_id = fight.episode_id.unwrap_or_default();
+        if catalog
+            .game_data()
+            .teaching_episode
+            .get(episode_id)
+            .is_some()
+        {
+            let expected_ids = configured_box(catalog, episode_id)?
+                .tasks
+                .into_iter()
+                .filter_map(|task| task.task_id)
+                .collect::<Vec<_>>();
+            ensure!(
+                actual_ids == expected_ids,
+                "fight task snapshot sequence differs from episode config"
+            );
+        }
         let mut rules = HashMap::new();
         for (task, task_id) in tasks.iter().zip(actual_ids) {
             let row = catalog
@@ -238,7 +246,7 @@ pub(crate) fn configured_box(
         return Ok(FightTaskBox::default());
     }
     let mut rows = Vec::new();
-    for raw_task_id in episode.battle_tasks.split('|') {
+    for (index, raw_task_id) in episode.battle_tasks.split('|').enumerate() {
         let task_id = raw_task_id.parse::<i32>().with_context(|| {
             format!("teaching episode {episode_id} has invalid fight task id '{raw_task_id}'")
         })?;
@@ -246,11 +254,24 @@ pub(crate) fn configured_box(
             format!("teaching episode {episode_id} references missing fight task {task_id}")
         })?;
         let rules = task_rules(row).with_context(|| format!("invalid fight task {task_id}"))?;
-        rows.push((task_id, rules));
+        rows.push((index, task_id, rules));
     }
+    // Captured tutorials keep the primary objective first, then defeat, then auxiliaries.
+    rows.sort_by_key(|(index, _, rules)| {
+        if *index == 0 {
+            0
+        } else if rules
+            .iter()
+            .any(|(rule, _)| matches!(rule.progress, TaskProgress::KillMonster(_)))
+        {
+            1
+        } else {
+            2
+        }
+    });
     let tasks = rows
         .into_iter()
-        .map(|(task_id, rules)| {
+        .map(|(_, task_id, rules)| {
             let values = rules
                 .into_iter()
                 .map(|(rule, max_progress)| FightTaskValue {
