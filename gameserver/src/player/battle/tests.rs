@@ -153,6 +153,12 @@ fn active_fight_reconnects_from_its_committed_checkpoint() {
                     )
                     .await
                     .unwrap();
+                    let weekwalk_context = logic::weekwalk::WeekwalkBattleContext {
+                        map_id: 10,
+                        element_id: 20,
+                        battle_id: 1002,
+                    };
+                    active.weekwalk_context = Some(weekwalk_context);
                     active
                         .activate(&pool, 9, &RewardSet::default())
                         .await
@@ -233,6 +239,7 @@ fn active_fight_reconnects_from_its_committed_checkpoint() {
                     assert_eq!(restored.start_reply(), expected_start);
                     assert_eq!(restored.card_info_push(), expected_cards);
                     assert_eq!(restored.oper_records(), expected_records);
+                    assert_eq!(restored.weekwalk_context, Some(weekwalk_context));
                     battle::finish_fight_instance(&pool, 9, fight_id)
                         .await
                         .unwrap();

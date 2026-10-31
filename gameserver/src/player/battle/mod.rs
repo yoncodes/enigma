@@ -159,6 +159,8 @@ struct BattleCheckpoint {
     tower_context: Option<crate::logic::battle_setup::tower::BattleContext>,
     act229_context: Option<Act229BattleContext>,
     #[serde(default)]
+    weekwalk_context: Option<logic::weekwalk::WeekwalkBattleContext>,
+    #[serde(default)]
     rounds: Vec<CommittedRound>,
     #[serde(default)]
     pending_cloth_skill_opers: Vec<UseClothSkillRequest>,
@@ -197,6 +199,7 @@ pub struct ActiveBattle {
     pub(crate) start_request: Option<StartDungeonRequest>,
     pub(crate) tower_context: Option<crate::logic::battle_setup::tower::BattleContext>,
     pub(crate) act229_context: Option<Act229BattleContext>,
+    pub(crate) weekwalk_context: Option<logic::weekwalk::WeekwalkBattleContext>,
     pub(crate) rounds: Vec<CommittedRound>,
     pub(crate) pending_cloth_skill_opers: Vec<UseClothSkillRequest>,
 }
@@ -227,6 +230,7 @@ impl Default for ActiveBattle {
             start_request: None,
             tower_context: None,
             act229_context: None,
+            weekwalk_context: None,
             rounds: Vec::new(),
             pending_cloth_skill_opers: Vec::new(),
         }
@@ -474,6 +478,7 @@ impl ActiveBattle {
             start_request: Some(request),
             tower_context,
             act229_context,
+            weekwalk_context: None,
             rounds: Vec::new(),
             pending_cloth_skill_opers: Vec::new(),
         })
@@ -541,6 +546,7 @@ impl ActiveBattle {
             checkpoint.seed,
         )?;
         active.fight_id = Some(record.id);
+        active.weekwalk_context = checkpoint.weekwalk_context;
         active
             .replay_committed_progress(&checkpoint.rounds, &checkpoint.pending_cloth_skill_opers)?;
         Ok(active)
@@ -553,6 +559,7 @@ impl ActiveBattle {
             seed: self.seed,
             tower_context: self.tower_context,
             act229_context: self.act229_context,
+            weekwalk_context: self.weekwalk_context,
             rounds: self.rounds.clone(),
             pending_cloth_skill_opers: self.pending_cloth_skill_opers.clone(),
         })?)
