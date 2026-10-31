@@ -159,7 +159,7 @@ fn missing_return_mapping_fails_before_countdown() {
         ),
         Err(crate::engine::runtime::drain::DrainError::BuffActRule(
             super::super::BuffActRuleError::RecordReplaceMagicCircle(
-                RecordReplaceMagicCircleError::MissingCircle(999999),
+                RecordReplaceMagicCircleError::Circle(999999),
             )
         ))
     ));

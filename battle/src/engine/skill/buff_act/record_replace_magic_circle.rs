@@ -18,9 +18,9 @@ use crate::engine::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordReplaceMagicCircleError {
-    MissingOrigin,
-    MissingCircle(i32),
-    MissingReturn(i32),
+    Origin,
+    Circle(i32),
+    Return(i32),
 }
 
 pub fn scoped_rule_ops(
@@ -33,8 +33,7 @@ fn round_end_rule_ops(
     managers: &BattleManagers,
     subscriber: &BuffActSubscriber,
 ) -> Result<Vec<BuffActRuleOp>, RecordReplaceMagicCircleError> {
-    let origin =
-        super::command_origin(subscriber).ok_or(RecordReplaceMagicCircleError::MissingOrigin)?;
+    let origin = super::command_origin(subscriber).ok_or(RecordReplaceMagicCircleError::Origin)?;
     let Some(field) = managers.field.get(subscriber.team_type) else {
         return Ok(Vec::new());
     };
@@ -49,11 +48,11 @@ fn round_end_rule_ops(
     let current = managers
         .catalog()
         .magic_circle(circle_id)
-        .ok_or(RecordReplaceMagicCircleError::MissingCircle(circle_id))?;
+        .ok_or(RecordReplaceMagicCircleError::Circle(circle_id))?;
     let returned = managers
         .catalog()
         .return_magic_circle_level(circle_id)
-        .ok_or(RecordReplaceMagicCircleError::MissingReturn(circle_id))?;
+        .ok_or(RecordReplaceMagicCircleError::Return(circle_id))?;
 
     let lifecycle = |op| BuffActRuleOp {
         op,
