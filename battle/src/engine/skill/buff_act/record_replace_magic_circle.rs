@@ -11,21 +11,14 @@ use crate::engine::{
             BuffActFrameOwner, BuffActFrameScope, BuffActFrameSource, BuffActRuleOp,
             registry::RuntimeContext,
         },
-        rule::{
-            CommandOrigin, DefinitionKey, RuleDomain,
-            output::{BattleCommand, RuleOp},
-        },
+        rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
     },
 };
 
-const ORIGIN: CommandOrigin = CommandOrigin {
-    domain: RuleDomain::BuffAct,
-    key: DefinitionKey::new(1084, "RecordReplaceWqMagicCircle"),
-};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordReplaceMagicCircleError {
+    MissingOrigin,
     MissingCircle(i32),
     MissingReturn(i32),
 }
@@ -40,6 +33,8 @@ fn round_end_rule_ops(
     managers: &BattleManagers,
     subscriber: &BuffActSubscriber,
 ) -> Result<Vec<BuffActRuleOp>, RecordReplaceMagicCircleError> {
+    let origin =
+        super::command_origin(subscriber).ok_or(RecordReplaceMagicCircleError::MissingOrigin)?;
     let Some(field) = managers.field.get(subscriber.team_type) else {
         return Ok(Vec::new());
     };
@@ -70,7 +65,7 @@ fn round_end_rule_ops(
     if field.definition.duration > 1 {
         return Ok(vec![lifecycle(RuleOp::Command(BattleCommand::Field(
             FieldCommand {
-                origin: ORIGIN,
+                origin,
                 team: field.team,
                 operation: FieldOperation::ChangeDuration { delta: -1 },
             },
@@ -84,7 +79,7 @@ fn round_end_rule_ops(
         .map(|buff_id| {
             lifecycle(RuleOp::Command(BattleCommand::Buff(
                 BuffCommand::RemoveAfterTrigger(BuffRemove {
-                    origin: ORIGIN,
+                    origin,
                     target_uid: emitter::UID,
                     selector: BuffRemoveSelector::ExactId(buff_id),
                 }),
@@ -93,7 +88,7 @@ fn round_end_rule_ops(
         .collect::<Vec<_>>();
     operations.push(lifecycle(RuleOp::Command(BattleCommand::Field(
         FieldCommand {
-            origin: ORIGIN,
+            origin,
             team: field.team,
             operation: FieldOperation::Remove,
         },
@@ -101,7 +96,7 @@ fn round_end_rule_ops(
     operations.extend(returned.linked_buffs.into_iter().map(|buff_id| {
         BuffActRuleOp::causing(RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
             BuffGrant {
-                origin: ORIGIN,
+                origin,
                 source_uid: field.owner_uid,
                 target_uid: emitter::UID,
                 buff_id,
@@ -113,7 +108,7 @@ fn round_end_rule_ops(
     }));
     operations.push(BuffActRuleOp::causing(RuleOp::Command(
         BattleCommand::Field(FieldCommand {
-            origin: ORIGIN,
+            origin,
             team: field.team,
             operation: FieldOperation::DeployReplacement {
                 definition: returned.definition,

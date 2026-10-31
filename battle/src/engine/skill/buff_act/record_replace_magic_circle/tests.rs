@@ -2,6 +2,12 @@ use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
 use super::*;
 use crate::engine::manager::field::{FieldDefinition, FieldOperation};
+use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
+
+const ORIGIN: CommandOrigin = CommandOrigin {
+    domain: RuleDomain::BuffAct,
+    key: DefinitionKey::new(1084, "RecordReplaceWqMagicCircle"),
+};
 
 fn managers_with_circle(circle_id: i32, duration: i32) -> BattleManagers {
     crate::test_support::init_config();
