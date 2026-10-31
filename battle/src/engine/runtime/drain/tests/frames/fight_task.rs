@@ -20,7 +20,7 @@ fn queued_death_updates_kill_task_before_dead() {
         ..Default::default()
     };
     let pool = TargetPool::from_fight_with_catalog(catalog, &fight);
-    let mut managers = BattleManagers::seeded_with_catalog(catalog, &fight);
+    let mut managers = BattleManagers::seeded_with_catalog(catalog, &fight).unwrap();
     let effects = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut determinism = RoundDeterminism::default();
 

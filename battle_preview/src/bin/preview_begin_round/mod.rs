@@ -445,13 +445,15 @@ fn replay_rounds(
         .and_then(tower_plan_id_from_request)
         .map(|plan_id| battle::tooling::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
-    let opening_determinism = opening_determinism(db, &fight, &captured_start_round);
+    let opening_determinism =
+        opening_determinism(db, &fight, &captured_start_round).map_err(anyhow::Error::msg)?;
     let mut runtime = ReplayBattle::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
         ex_attributes,
         sp_attributes,
-    );
+    )
+    .map_err(anyhow::Error::msg)?;
     runtime
         .inherit_absorb_hurt_map_layout(&captured_start_round)
         .map_err(anyhow::Error::msg)?;

@@ -55,7 +55,8 @@ fn indicator_updates_emit_changed_tasks_in_box_order() {
             }),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
 
     manager.record_indicator(3712, 10);
     manager.record_indicator(3711, 1);
@@ -100,7 +101,7 @@ fn teaching_episode_builds_configured_task_states() {
 fn configured_kills_emit_each_matching_death() {
     crate::test_support::init_config();
     let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
-    let mut manager = FightTaskManager::seed(catalog, &configured_kill_fight(catalog));
+    let mut manager = FightTaskManager::seed(catalog, &configured_kill_fight(catalog)).unwrap();
 
     let first = manager.record_kill(-1, 1).unwrap();
     let second = manager.record_kill(-2, 1).unwrap();
@@ -121,7 +122,29 @@ fn unsupported_and_malformed_rules_fail_loud() {
 }
 
 #[test]
-fn malformed_snapshot_cannot_mutate_task_progress() {
+fn invalid_task_snapshots_are_rejected() {
+    crate::test_support::init_config();
+    let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+    for invalid_task in [
+        FightTask {
+            task_id: None,
+            ..Default::default()
+        },
+        task(i32::MAX, 1),
+        task(26_004, 1),
+    ] {
+        let fight = Fight {
+            fight_task_box: Some(FightTaskBox {
+                tasks: vec![invalid_task],
+            }),
+            ..Default::default()
+        };
+        assert!(FightTaskManager::seed(catalog, &fight).is_err());
+    }
+}
+
+#[test]
+fn malformed_snapshot_is_rejected() {
     crate::test_support::init_config();
     let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
     let mut invalid = Vec::new();
@@ -138,12 +161,19 @@ fn malformed_snapshot_cannot_mutate_task_progress() {
     configured_task_mut(&mut wrong_finished, 370_803).values[0].finished = Some(true);
     invalid.push(wrong_finished);
 
+    let mut missing_progress = configured_kill_fight(catalog);
+    configured_task_mut(&mut missing_progress, 370_803).values[0].progress = None;
+    invalid.push(missing_progress);
+
+    let mut missing_finished = configured_kill_fight(catalog);
+    configured_task_mut(&mut missing_finished, 370_803).values[0].finished = None;
+    invalid.push(missing_finished);
+
     let mut wrong_status = configured_kill_fight(catalog);
     configured_task_mut(&mut wrong_status, 370_803).status = Some(FINISHED);
     invalid.push(wrong_status);
 
     for fight in invalid {
-        let mut manager = FightTaskManager::seed(catalog, &fight);
-        assert!(manager.record_kill(-1, 1).is_none());
+        assert!(FightTaskManager::seed(catalog, &fight).is_err());
     }
 }

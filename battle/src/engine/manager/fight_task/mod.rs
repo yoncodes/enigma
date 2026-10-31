@@ -35,7 +35,7 @@ pub struct FightTaskManager {
 }
 
 impl FightTaskManager {
-    pub fn seed(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
+    pub fn seed(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Result<Self> {
         let tasks = fight
             .fight_task_box
             .as_ref()
@@ -43,38 +43,33 @@ impl FightTaskManager {
             .unwrap_or_default();
         let mut rules = HashMap::new();
         for task in &tasks {
-            let Some(task_id) = task.task_id else {
-                tracing::error!("fight task snapshot contains a task without an id");
-                continue;
-            };
-            let Some(row) = catalog.game_data().fight_task.get(task_id) else {
-                tracing::error!(task_id, "fight task snapshot references missing config");
-                continue;
-            };
-            match task_rules(row) {
-                Ok(definitions) => {
-                    if let Err(error) = validate_snapshot(task, &definitions) {
-                        tracing::error!(task_id, %error, "fight task snapshot has invalid state");
-                        continue;
-                    }
-                    rules.insert(
-                        task_id,
-                        definitions.into_iter().map(|(rule, _)| rule).collect(),
-                    );
-                }
-                Err(error) => {
-                    tracing::error!(task_id, %error, "unsupported fight task config");
-                }
-            }
+            let task_id = task
+                .task_id
+                .context("fight task snapshot contains a task without an id")?;
+            let row = catalog
+                .game_data()
+                .fight_task
+                .get(task_id)
+                .with_context(|| {
+                    format!("fight task snapshot references missing config {task_id}")
+                })?;
+            let definitions =
+                task_rules(row).with_context(|| format!("unsupported fight task {task_id}"))?;
+            validate_snapshot(task, &definitions)
+                .with_context(|| format!("invalid fight task snapshot {task_id}"))?;
+            rules.insert(
+                task_id,
+                definitions.into_iter().map(|(rule, _)| rule).collect(),
+            );
         }
-        Self {
+        Ok(Self {
             tasks,
             rules,
             models: super::entities(fight)
                 .filter_map(|entity| Some((entity.uid?, entity.model_id?)))
                 .collect(),
             pending: HashSet::new(),
-        }
+        })
     }
 
     pub fn record_indicator(&mut self, indicator_id: i32, value: i32) {
@@ -306,7 +301,9 @@ fn validate_snapshot(task: &FightTask, rules: &[(TaskRule, i32)]) -> Result<()> 
             "progress maximum differs at index {}",
             rule.value_index
         );
-        let progress = value.progress.unwrap_or_default();
+        let progress = value
+            .progress
+            .with_context(|| format!("progress is missing at index {}", rule.value_index))?;
         ensure!(
             (0..=*expected_max).contains(&progress),
             "progress is out of range at index {}",
@@ -314,7 +311,7 @@ fn validate_snapshot(task: &FightTask, rules: &[(TaskRule, i32)]) -> Result<()> 
         );
         let finished = progress >= *expected_max;
         ensure!(
-            value.finished.unwrap_or_default() == finished,
+            value.finished == Some(finished),
             "finished state differs at index {}",
             rule.value_index
         );

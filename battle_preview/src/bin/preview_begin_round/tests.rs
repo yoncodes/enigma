@@ -431,7 +431,8 @@ fn captured_116385711_keeps_opening_owner_and_source_threshold_semantics() {
         fight,
         ex_attributes,
         sp_attributes,
-    );
+    )
+    .unwrap();
     runtime.start_round().unwrap();
     let generated = battle::tooling::start_reply(&runtime).round.unwrap();
 

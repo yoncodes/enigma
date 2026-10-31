@@ -26,7 +26,7 @@ impl Battle {
             battle_rule_skills,
         } = built;
         let mut runtime =
-            BattleRuntime::new_with_attributes(catalog, fight, ex_attributes, sp_attributes);
+            BattleRuntime::new_with_attributes(catalog, fight, ex_attributes, sp_attributes)?;
         runtime.extend_battle_rule_skills(battle_rule_skills);
         runtime.start_round_with_determinism(RoundDeterminism::with_seed(seed))?;
         Ok(Self { runtime })
@@ -142,7 +142,8 @@ mod tests {
             fight.clone(),
             std::iter::empty(),
             std::iter::empty(),
-        );
+        )
+        .unwrap();
         expected.extend_battle_rule_skills([rule_skill]);
         expected
             .start_round_with_determinism(RoundDeterminism::with_seed(seed))

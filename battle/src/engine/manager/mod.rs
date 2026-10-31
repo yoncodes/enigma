@@ -1612,7 +1612,10 @@ impl BattleManagers {
     }
 
     /// Seeds every manager from the initial fight snapshot exactly once.
-    pub fn seeded_with_catalog(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
+    pub fn seeded_with_catalog(
+        catalog: crate::catalog::BattleCatalog,
+        fight: &Fight,
+    ) -> anyhow::Result<Self> {
         let mut managers = Self {
             catalog_data: Some(catalog),
             fight_version: fight.version.unwrap_or_default(),
@@ -1633,9 +1636,9 @@ impl BattleManagers {
         managers.conduit = ConduitManager::configured(catalog, fight);
         managers.entity = entity::EntityManager::configured(catalog, fight);
         managers.fight_progress.seed(fight);
-        managers.fight_task = fight_task::FightTaskManager::seed(catalog, fight);
+        managers.fight_task = fight_task::FightTaskManager::seed(catalog, fight)?;
         managers.wave = wave::WaveManager::seed_with_catalog(catalog, fight);
-        managers
+        Ok(managers)
     }
 
     #[cfg(test)]
@@ -1644,6 +1647,7 @@ impl BattleManagers {
             crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
             fight,
         )
+        .expect("test fight must have a valid task snapshot")
     }
 
     /// Projects manager-owned entity state into the response `Fight` snapshot.

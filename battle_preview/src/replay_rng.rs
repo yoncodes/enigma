@@ -14,7 +14,7 @@ pub fn opening_determinism(
     game_data: &'static config::GameDB,
     fight: &Fight,
     round: &FightRound,
-) -> RoundDeterminism {
+) -> Result<RoundDeterminism, String> {
     let mut determinism =
         RoundDeterminism::with_seed(fight.battle_id.unwrap_or_default().max(0) as u64);
     determinism.enqueue_hand_rank_choices(opening_hand_rank_choices(game_data, fight, round));
@@ -40,15 +40,15 @@ pub fn opening_determinism(
                 .zip(card.skill_id)
                 .is_some_and(|identity| ultimate_identities.contains(&identity))
         })
-        .filter(|card| {
-            !ultimate_ignores_limit(
+        .try_fold(0, |count, card| {
+            let ignores_limit = ultimate_ignores_limit(
                 battle::catalog::BattleCatalog::new(game_data),
                 fight,
                 card.uid.unwrap_or_default(),
                 card.skill_id.unwrap_or_default(),
-            )
-        })
-        .count();
+            )?;
+            Ok::<_, String>(count + usize::from(!ignores_limit))
+        })?;
     let normal_draws = draws
         .into_iter()
         .filter(|card| {
@@ -68,7 +68,7 @@ pub fn opening_determinism(
             reserved_ultimate_slots,
         );
     }
-    determinism
+    Ok(determinism)
 }
 
 pub fn seed_round_determinism(
@@ -935,7 +935,8 @@ mod tests {
                 ai_use_cards: ai.clone(),
                 ..Default::default()
             },
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             determinism.take_start_decks(),
@@ -1085,7 +1086,8 @@ mod tests {
         let mut runtime = ReplayBattle::new(
             battle::catalog::BattleCatalog::new(config::configs::get()),
             fight,
-        );
+        )
+        .unwrap();
         runtime.start_round().unwrap();
         let stale = card(-1, 40340111, false);
         let expected = card(-1, 40340121, false);

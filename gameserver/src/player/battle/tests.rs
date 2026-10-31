@@ -6,6 +6,7 @@ fn runtime(fight: sonettobuf::Fight) -> ::battle::Battle {
         ::battle::catalog::BattleCatalog::new(config::configs::get()),
         fight,
     )
+    .unwrap()
 }
 
 #[test]

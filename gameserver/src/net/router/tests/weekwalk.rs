@@ -44,6 +44,7 @@ fn victory_runtime(battle_id: i32) -> ::battle::Battle {
             ..Default::default()
         },
     )
+    .unwrap()
 }
 
 #[tokio::test]

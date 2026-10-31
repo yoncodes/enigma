@@ -303,7 +303,7 @@ impl BattleRuntime {
     }
 
     /// Builds a runtime by seeding every manager and exact skill catalog from a fight.
-    pub fn new(catalog: BattleCatalog, fight: Fight) -> Self {
+    pub fn new(catalog: BattleCatalog, fight: Fight) -> Result<Self, String> {
         Self::new_with_ex_attributes(catalog, fight, std::iter::empty())
     }
 
@@ -311,7 +311,7 @@ impl BattleRuntime {
         catalog: BattleCatalog,
         fight: Fight,
         ex_attributes: impl IntoIterator<Item = (i64, HeroExAttribute)>,
-    ) -> Self {
+    ) -> Result<Self, String> {
         Self::new_with_attributes(catalog, fight, ex_attributes, std::iter::empty())
     }
 
@@ -321,8 +321,9 @@ impl BattleRuntime {
         fight: Fight,
         ex_attributes: impl IntoIterator<Item = (i64, HeroExAttribute)>,
         sp_attributes: impl IntoIterator<Item = (i64, HeroSpAttribute)>,
-    ) -> Self {
-        let mut managers = BattleManagers::seeded_with_catalog(catalog, &fight);
+    ) -> Result<Self, String> {
+        let mut managers = BattleManagers::seeded_with_catalog(catalog, &fight)
+            .map_err(|error| error.to_string())?;
         if let Some(target_model_ids) = catalog.boss_rush_target_models(
             fight.episode_id.unwrap_or_default(),
             fight.battle_id.unwrap_or_default(),
@@ -357,7 +358,7 @@ impl BattleRuntime {
             fight.version.unwrap_or_default(),
         );
 
-        Self {
+        Ok(Self {
             catalog_data: Some(catalog),
             fight,
             managers,
@@ -370,7 +371,7 @@ impl BattleRuntime {
             cloth_skill_uses: HashMap::new(),
             objectives: Default::default(),
             absorb_hurt_map_layout,
-        }
+        })
     }
 }
 
