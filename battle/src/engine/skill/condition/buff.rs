@@ -65,6 +65,29 @@ pub fn added_count_repeats(
     repeats
 }
 
+pub fn added_type_count_repeats(
+    condition: &ParsedCondition,
+    managers: &BattleManagers,
+    context: crate::engine::skill::target::TargetContext,
+) -> i32 {
+    let ParsedConditionKind::AccBuffTypeAddedCount {
+        type_ids,
+        threshold,
+    } = &condition.kind
+    else {
+        return 0;
+    };
+    if context.added_buff_amount <= 0 || !type_ids.contains(&context.added_buff_type_id) {
+        return 0;
+    }
+    let total = managers
+        .buff
+        .added_type_count_for_owner(context.added_buff_target_uid, type_ids);
+    let threshold = (*threshold).max(1);
+    let previous = (total - context.added_buff_amount).max(0);
+    total / threshold - previous / threshold
+}
+
 pub fn buff_group(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::BuffGroup(parse_buff_ids(raw_args)?))
 }
@@ -218,6 +241,13 @@ pub fn owner_added_count(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedC
         buff_ids: parse_buff_ids(raw_args.get(..1)?)?,
         threshold: raw_args.get(1)?.parse().ok()?,
         scope: BuffAddedScope::Owner,
+    })
+}
+
+pub fn owner_added_type_count(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::AccBuffTypeAddedCount {
+        type_ids: parse_buff_ids(raw_args.get(..1)?)?,
+        threshold: raw_args.get(1)?.parse().ok()?,
     })
 }
 

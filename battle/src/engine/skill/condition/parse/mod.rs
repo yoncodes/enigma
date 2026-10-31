@@ -137,6 +137,10 @@ pub enum ParsedConditionKind {
         threshold: i32,
         scope: BuffAddedScope,
     },
+    AccBuffTypeAddedCount {
+        type_ids: Vec<i32>,
+        threshold: i32,
+    },
     HpPermille {
         compare: ConditionCompare,
         threshold: i32,

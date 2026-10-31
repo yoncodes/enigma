@@ -404,6 +404,16 @@ impl BuffManager {
             .sum()
     }
 
+    pub fn added_type_count_for_owner(&self, owner_uid: i64, type_ids: &[i32]) -> i32 {
+        self.added_by_owner
+            .iter()
+            .filter(|((uid, buff_id), _)| {
+                *uid == owner_uid && type_ids.contains(&self.catalog().buff_type_id(*buff_id))
+            })
+            .map(|(_, amount)| *amount)
+            .sum()
+    }
+
     pub fn added_count_for_team(&self, team_type: i32, buff_ids: &[i32]) -> i32 {
         buff_ids
             .iter()

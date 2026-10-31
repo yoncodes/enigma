@@ -376,6 +376,11 @@ fn condition_repeat_count(
                 })
                 .unwrap_or_default(),
         ),
+        ParsedConditionKind::AccBuffTypeAddedCount { .. } => Some(
+            managers
+                .map(|managers| super::buff::added_type_count_repeats(condition, managers, context))
+                .unwrap_or_default(),
+        ),
         ParsedConditionKind::BurnOverflow => Some(context.buff_overflow_amount),
         _ => None,
     }
@@ -744,6 +749,9 @@ fn condition_kind_matches(
         }
         ParsedConditionKind::AccBuffAddedCount { .. } => managers.is_some_and(|managers| {
             super::buff::added_count_repeats(condition, source_uid, managers, context) > 0
+        }),
+        ParsedConditionKind::AccBuffTypeAddedCount { .. } => managers.is_some_and(|managers| {
+            super::buff::added_type_count_repeats(condition, managers, context) > 0
         }),
         ParsedConditionKind::HpPermille { compare, threshold } => {
             let Some(managers) = managers else {

@@ -453,6 +453,47 @@ fn accumulated_team_buff_count_preserves_all_crossed_thresholds() {
 }
 
 #[test]
+fn accumulated_owner_buff_type_count_crosses_the_configured_threshold() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.buff.add(&managers.hp, 10, 10, 31402004, 8);
+    let condition = exact_condition(
+        730212,
+        "AccAddBuffCountByBuffTypeIdAllEffect",
+        &["31400004", "8"],
+    );
+
+    assert_eq!(
+        conditions_fire_count(
+            &[condition],
+            10,
+            &[10],
+            Some(&managers),
+            &TargetPool::from_fight(&fight),
+            TargetContext {
+                added_buff_id: 31402004,
+                added_buff_type_id: 31400004,
+                added_buff_amount: 8,
+                added_buff_target_uid: 10,
+                ..Default::default()
+            },
+        ),
+        1
+    );
+}
+
+#[test]
 fn round_power_conditions_preserve_consumed_and_overflow_counts() {
     init_config();
     let fight = Fight {
