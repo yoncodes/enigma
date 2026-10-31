@@ -292,6 +292,31 @@ fn normalizes_wangqi_magic_circle_levels_and_linked_effects() {
 }
 
 #[test]
+fn validates_magic_circle_complex_effect_grammar() {
+    assert_eq!(
+        parse_magic_circle_complex_effect("1:null,31411151,31410601#31412602"),
+        Ok((Some(31411151), vec![31410601, 31412602]))
+    );
+    assert_eq!(
+        parse_magic_circle_complex_effect(""),
+        Ok((None, Vec::new()))
+    );
+    for invalid in [
+        "null,31411151,31410601",
+        "2:null,31411151,31410601",
+        "1:value,31411151,31410601",
+        "1:null,skill,31410601",
+        "1:null,31411151,",
+        "1:null,31411151,31410601,extra",
+    ] {
+        assert!(
+            parse_magic_circle_complex_effect(invalid).is_err(),
+            "{invalid}"
+        );
+    }
+}
+
+#[test]
 fn normalizes_magic_circle_linked_battle_rules() {
     crate::test_support::init_config();
 

@@ -1103,7 +1103,13 @@ fn magic_circle_definition(
     circle_id: i32,
 ) -> Option<MagicCircleDefinition> {
     let row = game_data.magic_circle.get(circle_id)?;
-    let (complex_skill, linked_buffs) = parse_magic_circle_complex_effect(&row.complex_effect);
+    let (complex_skill, linked_buffs) = parse_magic_circle_complex_effect(&row.complex_effect)
+        .unwrap_or_else(|reason| {
+            panic!(
+                "invalid magic circle {circle_id} complexEffect {:?}: {reason}",
+                row.complex_effect
+            )
+        });
     Some(MagicCircleDefinition {
         duration: row.round,
         allied_attributes: parse_attribute_pairs(&row.self_attrs),
@@ -1118,15 +1124,35 @@ fn magic_circle_definition(
     })
 }
 
-fn parse_magic_circle_complex_effect(raw: &str) -> (Option<i32>, Vec<i32>) {
-    let Some((_, payload)) = raw.split_once(':') else {
-        return (None, Vec::new());
-    };
+fn parse_magic_circle_complex_effect(raw: &str) -> Result<(Option<i32>, Vec<i32>), &'static str> {
+    if raw.is_empty() {
+        return Ok((None, Vec::new()));
+    }
+    let (kind, payload) = raw.split_once(':').ok_or("missing kind separator")?;
+    if kind != "1" {
+        return Err("unsupported kind");
+    }
     let mut fields = payload.split(',');
-    let _ = fields.next();
-    let skill = fields.next().and_then(|value| value.parse().ok());
-    let buffs = fields.next().map(parse_positive_ids).unwrap_or_default();
-    (skill.filter(|id| *id > 0), buffs)
+    if fields.next() != Some("null") {
+        return Err("invalid marker");
+    }
+    let skill = fields
+        .next()
+        .and_then(|value| value.parse::<i32>().ok())
+        .filter(|id| *id > 0)
+        .ok_or("invalid skill")?;
+    let buffs = fields
+        .next()
+        .ok_or("missing buffs")?
+        .split('#')
+        .map(|value| value.parse::<i32>().ok().filter(|id| *id > 0))
+        .collect::<Option<Vec<_>>>()
+        .filter(|buffs| !buffs.is_empty())
+        .ok_or("invalid buffs")?;
+    if fields.next().is_some() {
+        return Err("unexpected field");
+    }
+    Ok((Some(skill), buffs))
 }
 
 fn parse_attribute_pairs(raw: &str) -> Vec<(i32, i32)> {
