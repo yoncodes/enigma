@@ -778,6 +778,7 @@ behavior_definitions! {
     [100017] "IgnoreSkillConfigDamageRate" => super::general::DamageRateMarkerHandler, IgnoreSkillConfigDamageRate, Immediate, destination, arguments::none;
     [60036] "ConsumeBuffChangeTargets" => super::skill_modifier::Handler, ConsumeBuffChangeTargets, Immediate, destination;
     [60034] "ConsumeBuffUpSkillDamageRate" => super::skill_modifier::Handler, ConsumeBuffUpSkillDamageRate, Immediate, destination;
+    [60307] "FoundationCounterClear" => super::foundation_counter::Handler, FoundationCounterClear, Immediate, destination;
     [60035] "ConsumeBuffAttrFix" => super::skill_modifier::Handler, ConsumeBuffAttrFix, Immediate, destination;
     [100019] "ConsumeBuffFixMixedRate" => super::skill_modifier::Handler, ConsumeBuffFixMixedRate, Immediate, destination, super::skill_modifier::supports_mixed_rate;
     [60206] "CreateAdditionalDamageAddBuff" => super::additional_damage::Handler, CreateAdditionalDamageAddBuff, Immediate, destination;

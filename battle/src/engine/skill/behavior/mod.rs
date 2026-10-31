@@ -15,6 +15,7 @@ pub mod electric;
 pub mod fake_hp;
 pub mod fight_progress;
 pub mod focus_all_entity_buff;
+pub mod foundation_counter;
 pub mod gauge;
 pub mod general;
 pub mod injury_bank;

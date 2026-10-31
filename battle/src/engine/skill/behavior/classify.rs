@@ -25,6 +25,7 @@ pub enum BehaviorKind {
     AddBuffRound2,
     SupplyShield2,
     SupplyTeamShareShield,
+    FoundationCounterClear,
     AddExPoint,
     AddAdrenalineExPoint,
     AddSynchronization,

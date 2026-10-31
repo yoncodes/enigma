@@ -1,11 +1,12 @@
-use sonettobuf::BuffActInfo;
+use sonettobuf::{BuffActInfo, BuffInfo};
 
 use crate::engine::{
     damage::scale_permille,
     manager::{
         BattleManagers,
-        buff::{BuffActInfoMarkerResult, BuffCommand, BuffSetState},
+        buff::{ActiveBuffFeature, BuffActInfoMarkerResult, BuffCommand, BuffSetState},
     },
+    skill::rule::CommandOrigin,
 };
 
 use super::registry::BuffActKind;
@@ -20,6 +21,14 @@ pub enum CounterError {
 pub struct CounterUpdate {
     pub command: BuffCommand,
     pub marker: BuffActInfoMarkerResult,
+}
+
+struct CounterState {
+    feature: ActiveBuffFeature,
+    buff: BuffInfo,
+    act_id: i32,
+    current: i32,
+    maximum: i32,
 }
 
 pub fn supports(args: &[i32]) -> bool {
@@ -46,6 +55,29 @@ pub fn update(
     if amount <= 0 {
         return Ok(None);
     }
+    let state = state(managers, owner_uid)?;
+    let next = state.current.saturating_add(amount).min(state.maximum);
+    if next == state.current {
+        return Ok(None);
+    }
+    let origin = super::feature_command_origin(&state.feature).ok_or(CounterError::InvalidState)?;
+    Ok(Some(set(state, next, origin)?))
+}
+
+pub fn consume(
+    managers: &BattleManagers,
+    owner_uid: i64,
+    origin: CommandOrigin,
+) -> Result<Option<(CounterUpdate, i32)>, CounterError> {
+    let state = state(managers, owner_uid)?;
+    if state.current <= 0 {
+        return Ok(None);
+    }
+    let current = state.current;
+    Ok(Some((set(state, 0, origin)?, current)))
+}
+
+fn state(managers: &BattleManagers, owner_uid: i64) -> Result<CounterState, CounterError> {
     let mut features = managers
         .buff
         .active_features(&managers.hp)
@@ -61,13 +93,13 @@ pub fn update(
         return Err(CounterError::MultipleCarriers);
     }
     let act_id = feature.act_id().ok_or(CounterError::InvalidState)?;
-    let mut buff = managers
+    let buff = managers
         .buff
         .snapshot(owner_uid, feature.buff_uid)
         .ok_or(CounterError::InvalidState)?;
     let mut matching = buff
         .act_info
-        .iter_mut()
+        .iter()
         .filter(|info| info.act_id == Some(act_id));
     let info = matching.next().ok_or(CounterError::InvalidState)?;
     if matching.next().is_some() || info.str_param.as_deref() != Some("") {
@@ -79,31 +111,49 @@ pub fn update(
     if *maximum <= 0 || !(0..=*maximum).contains(current) {
         return Err(CounterError::InvalidState);
     }
-    let next = current.saturating_add(amount).min(*maximum);
-    if next == *current {
-        return Ok(None);
-    }
+    let current = *current;
     let maximum = *maximum;
+    Ok(CounterState {
+        feature,
+        buff,
+        act_id,
+        current,
+        maximum,
+    })
+}
+
+fn set(
+    mut state: CounterState,
+    next: i32,
+    origin: CommandOrigin,
+) -> Result<CounterUpdate, CounterError> {
+    let info = state
+        .buff
+        .act_info
+        .iter_mut()
+        .find(|info| info.act_id == Some(state.act_id))
+        .ok_or(CounterError::InvalidState)?;
+    let maximum = state.maximum;
     info.param = vec![next, maximum];
     info.str_param = Some(String::new());
-    Ok(Some(CounterUpdate {
+    Ok(CounterUpdate {
         command: BuffCommand::SetInternalState(BuffSetState {
-            origin: super::feature_command_origin(&feature).ok_or(CounterError::InvalidState)?,
-            target_uid: owner_uid,
-            buff_uid: feature.buff_uid,
+            origin,
+            target_uid: state.feature.owner_uid,
+            buff_uid: state.feature.buff_uid,
             ex_info: None,
             params: None,
-            act_info: Some(buff.act_info),
+            act_info: Some(state.buff.act_info),
         }),
         marker: BuffActInfoMarkerResult {
-            target_uid: owner_uid,
-            buff_uid: feature.buff_uid,
-            act_id,
+            target_uid: state.feature.owner_uid,
+            buff_uid: state.feature.buff_uid,
+            act_id: state.act_id,
             params: vec![next, maximum],
             str_param: Some(String::new()),
             team_type: 0,
         },
-    }))
+    })
 }
 
 #[cfg(test)]
