@@ -18,9 +18,6 @@ pub fn opening_determinism(
     let mut determinism =
         RoundDeterminism::with_seed(fight.battle_id.unwrap_or_default().max(0) as u64);
     determinism.enqueue_hand_rank_choices(opening_hand_rank_choices(game_data, fight, round));
-    for cards in captured_card_energy_snapshots(round) {
-        determinism.enqueue_card_energy_snapshot(cards);
-    }
     let draws = round
         .team_a_cards1
         .iter()
@@ -78,7 +75,6 @@ pub fn seed_round_determinism(
 ) {
     // The deal after actions draws teamACards2; the round-start refill then draws teamACards1.
     runtime.seed_card_draws(captured_round_draws(round));
-    runtime.seed_card_energy_snapshots(captured_card_energy_snapshots(round));
     runtime.seed_crystal_cards(
         round
             .before_cards1
@@ -90,29 +86,6 @@ pub fn seed_round_determinism(
         runtime.seed_next_ai_cards(round.ai_use_cards.clone());
     }
     seed_action_determinism(runtime, catalog, round);
-}
-
-fn captured_card_energy_snapshots(round: &FightRound) -> Vec<Vec<CardInfo>> {
-    fn visit(step: &FightStep, snapshots: &mut Vec<Vec<CardInfo>>) {
-        for effect in &step.act_effect {
-            if effect.effect_type
-                == Some(sonettobuf::effect_type_enum::EffectType::Allocatecardenergy as i32)
-                && effect.effect_num1 == Some(1)
-                && !effect.card_info_list.is_empty()
-            {
-                snapshots.push(effect.card_info_list.clone());
-            }
-            if let Some(nested) = effect.fight_step.as_ref() {
-                visit(nested, snapshots);
-            }
-        }
-    }
-
-    let mut snapshots = Vec::new();
-    for step in round.fight_step.iter().chain(&round.next_round_begin_step) {
-        visit(step, &mut snapshots);
-    }
-    snapshots
 }
 
 pub fn seed_action_determinism(
@@ -941,45 +914,6 @@ mod tests {
         assert_eq!(
             determinism.take_start_decks(),
             Some((ai, normal.clone(), normal, 0))
-        );
-    }
-
-    #[test]
-    fn card_energy_import_keeps_allocations_and_ignores_clears() {
-        let mut allocated = card(10, 101, false);
-        allocated.energy = Some(3);
-        let clear = sonettobuf::ActEffect {
-            effect_type: Some(sonettobuf::effect_type_enum::EffectType::Allocatecardenergy as i32),
-            effect_num1: Some(0),
-            card_info_list: vec![card(10, 101, false)],
-            ..Default::default()
-        };
-        let allocation = sonettobuf::ActEffect {
-            effect_type: clear.effect_type,
-            effect_num1: Some(1),
-            card_info_list: vec![allocated.clone()],
-            ..Default::default()
-        };
-
-        assert_eq!(
-            captured_card_energy_snapshots(&FightRound {
-                fight_step: vec![FightStep {
-                    act_effect: vec![clear],
-                    ..Default::default()
-                }],
-                next_round_begin_step: vec![FightStep {
-                    act_effect: vec![sonettobuf::ActEffect {
-                        fight_step: Some(FightStep {
-                            act_effect: vec![allocation],
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }],
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            vec![vec![allocated]]
         );
     }
 

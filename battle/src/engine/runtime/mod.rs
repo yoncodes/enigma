@@ -142,16 +142,6 @@ impl BattleRuntime {
         self.determinism.enqueue_card_draws(cards);
     }
 
-    pub fn seed_card_energy_snapshots(
-        &mut self,
-        snapshots: impl IntoIterator<Item = Vec<CardInfo>>,
-    ) {
-        self.determinism.clear_card_energy_snapshots();
-        for cards in snapshots {
-            self.determinism.enqueue_card_energy_snapshot(cards);
-        }
-    }
-
     pub(crate) fn seed_observed_redeal(&mut self, hand: &[CardInfo]) -> Result<(), String> {
         let draws = self
             .managers

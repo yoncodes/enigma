@@ -219,20 +219,15 @@ pub fn allocate_team_energy_rule_ops(
         .get(team_energy_key(team))
         .ok_or(ImpromptuError::MissingTeamEnergy(team))?
         .current;
-    let Some(cards) = determinism
-        .take_card_energy_snapshot(managers.card.hand(), available, limit)
-        .or_else(|| {
-            crate::engine::manager::card::energy::allocate(
-                &managers.buff,
-                &managers.hp,
-                catalog,
-                managers.card.hand(),
-                available,
-                limit,
-                determinism,
-            )
-        })
-    else {
+    let Some(cards) = crate::engine::manager::card::energy::allocate(
+        &managers.buff,
+        &managers.hp,
+        catalog,
+        managers.card.hand(),
+        available,
+        limit,
+        determinism,
+    ) else {
         return Ok(Some(Vec::new()));
     };
     let allocated = cards
