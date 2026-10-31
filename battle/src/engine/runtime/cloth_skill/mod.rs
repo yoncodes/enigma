@@ -354,11 +354,39 @@ impl BattleRuntime {
                     )
                     .ok()?;
                 changes.push(change::BattleChange::Buff(Box::new(completed)));
-                project_changes(changes, fight_version, absorb_hurt_map_layout)
-                    .inspect_err(
-                        |error| tracing::warn!(%error, "conduit selection projection failed"),
-                    )
-                    .ok()?
+                let frames = [
+                    record::SemanticFrame {
+                        owner: record::FrameOwner::EventEffect {
+                            source_uid: owner_uid,
+                            target_uid: 0,
+                        },
+                        trigger: record::FrameTrigger::Active,
+                        items: changes
+                            .into_iter()
+                            .map(|change| record::FrameItem::Change(Box::new(change)))
+                            .collect(),
+                    },
+                    record::SemanticFrame {
+                        owner: record::FrameOwner::Command,
+                        trigger: record::FrameTrigger::Active,
+                        items: vec![
+                            record::FrameItem::Cue(record::RoundCue::RedealHandSync {
+                                cards: self.managers.card.hand().to_vec(),
+                            }),
+                            record::FrameItem::Cue(record::RoundCue::DeckCount {
+                                count: self.managers.card.deck_num(),
+                                team_type: feature.team_type,
+                            }),
+                        ],
+                    },
+                ];
+                crate::engine::packet::timeline::project_for_version_with_absorb_map_layout(
+                    &frames,
+                    fight_version,
+                    absorb_hurt_map_layout,
+                )
+                .inspect_err(|error| tracing::warn!(?error, "conduit selection projection failed"))
+                .ok()?
             }
             ClothSkillType::ExtraRound => {
                 if request.skill_id.unwrap_or_default() != 0
@@ -481,6 +509,13 @@ impl BattleRuntime {
             self.managers.card.ai_queue(),
         );
         self.managers.sync_entities(&mut self.fight);
+        let hero_sp_attributes = self.managers.hero_sp_attributes(&self.fight);
+        if hero_sp_attributes == self.round_state.hero_sp_attributes {
+            round.hero_sp_attributes.clear();
+        } else {
+            self.round_state.hero_sp_attributes = hero_sp_attributes.clone();
+            round.hero_sp_attributes = hero_sp_attributes;
+        }
         round.fight_step = steps;
         self.round = Some(round.clone());
         Some(UseClothSkillReply { round: Some(round) })
