@@ -315,6 +315,7 @@ fn kiperina_refills_in_story_battles_consume_the_deck() {
 
 fn kiperina_runtime(episode_id: i32, battle_id: i32) -> BattleRuntime {
     crate::test_support::init_config();
+    let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
     let fight = Fight {
         battle_id: Some(battle_id),
         episode_id: Some(episode_id),
@@ -340,6 +341,9 @@ fn kiperina_runtime(episode_id: i32, battle_id: i32) -> BattleRuntime {
             }],
             ..Default::default()
         }),
+        fight_task_box: Some(
+            crate::engine::manager::fight_task::configured_box(catalog, episode_id).unwrap(),
+        ),
         ..Default::default()
     };
     let mut runtime = runtime(fight);

@@ -14,6 +14,7 @@ fn queued_death_updates_kill_task_before_dead() {
             }],
             ..Default::default()
         }),
+        episode_id: Some(493_708),
         fight_task_box: Some(
             crate::engine::manager::fight_task::configured_box(catalog, 493_708).unwrap(),
         ),
