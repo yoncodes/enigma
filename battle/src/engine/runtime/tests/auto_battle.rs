@@ -537,6 +537,26 @@ fn auto_round_plays_energy_cards_before_other_cards() {
 }
 
 #[test]
+fn auto_round_keeps_the_captured_empty_cloth_skill_envelope() {
+    let runtime = team_runtime(
+        vec![team_hero(10, 3149, 1_000, [31490111, 31490121])],
+        vec![hand_card(10, 31446011, false)],
+    );
+
+    assert_eq!(
+        runtime
+            .plan_auto_round(&AutoRoundRequest::default())
+            .cloth_skill,
+        Some(sonettobuf::ClothSkillInfo {
+            skill_id: Some(0),
+            from_id: Some(0),
+            to_id: Some(0),
+            r#type: Some(0),
+        })
+    );
+}
+
+#[test]
 fn auto_round_loads_visible_conduit_card_roots() {
     let runtime = team_runtime(
         vec![team_hero(10, 3144, 1_000, [31440111, 31440121])],
