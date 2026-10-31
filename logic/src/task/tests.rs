@@ -2,6 +2,72 @@ use super::*;
 use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
+async fn anecdote_tasks_reconcile_finished_plot_groups() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (1, 'story-tasks', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO user_hero_story_state (user_id, story_id, unlock)
+         VALUES (1, 31, 1)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    task_db::ensure_tasks_for_type(&pool, 1, TaskType::NecrologistStory)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE user_tasks
+         SET progress = 1, has_finished = 0, finish_count = 1
+         WHERE user_id = 1 AND type_id = 65 AND task_id = 650509",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO user_necrologist_story_plots (user_id, story_id, plot_id, state)
+         VALUES (1, 31, 315401, 4),
+                (1, 31, 315407, 4),
+                (1, 31, 302001, 4),
+                (1, 32, 302001, 4)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let reply = TaskManager::new(1)
+        .get_info(&pool, Vec::new())
+        .await
+        .unwrap();
+    let progress = reply
+        .task_info
+        .into_iter()
+        .map(|task| (task.id, task.progress))
+        .collect::<HashMap<_, _>>();
+
+    assert_eq!(progress.get(&650501), Some(&1));
+    assert_eq!(progress.get(&650508), Some(&1));
+    assert_eq!(progress.get(&650509), Some(&1));
+    assert_eq!(progress.get(&650601), Some(&0));
+    assert_eq!(progress.get(&650608), Some(&0));
+    let claimed = task_db::get_by_id(&pool, 1, 650509).await.unwrap().unwrap();
+    assert_eq!(claimed.finish_count, 1);
+    assert!(!claimed.has_finished);
+}
+
+#[tokio::test]
 async fn weekwalk_task_info_repairs_stars_without_reopening_claimed_rewards() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);

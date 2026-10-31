@@ -43,7 +43,12 @@ async fn incomplete_act128_settlement_persists_score_without_dungeon_completion(
         runtime,
         ..Default::default()
     };
-    settle_failed(&pool, 27, &active, true).await.unwrap();
+    let failure = settle_failed(&pool, 27, &active, true).await.unwrap();
+    assert!(
+        failure.tasks.iter().any(|task| {
+            task.activity_id == 138520 && task.progress == expected_score.min(50_000)
+        })
+    );
 
     let reply = logic::activity::ActivityManager::new(27)
         .act128_info(&pool, Some(138520))
@@ -87,7 +92,10 @@ async fn incomplete_act128_settlement_persists_score_without_dungeon_completion(
         runtime: abort_runtime,
         ..Default::default()
     };
-    settle_refund(&pool, 28, &abort, false).await.unwrap();
+    let refund = settle_refund(&pool, 28, &abort, false).await.unwrap();
+    assert!(refund.tasks.iter().any(|task| {
+        task.activity_id == 138520 && task.progress == abort_expected_score.min(50_000)
+    }));
     let abort_reply = logic::activity::ActivityManager::new(28)
         .act128_info(&pool, Some(138520))
         .await
@@ -112,7 +120,7 @@ async fn act128_end_routes_emit_the_current_run_score() {
         player::{Player, PlayerState},
     };
     use prost::Message;
-    use sonettobuf::{CmdId, EndDungeonPush, EndDungeonRequest, EndFightRequest};
+    use sonettobuf::{CmdId, EndDungeonPush, EndDungeonRequest, EndFightRequest, UpdateTaskPush};
     use tokio::sync::mpsc;
 
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -124,11 +132,12 @@ async fn act128_end_routes_emit_the_current_run_score() {
         .activity128_battle(13500416, 109380001)
         .unwrap();
 
-    for (player_id, dungeon_route, is_abort) in [
-        (37, false, false),
-        (38, true, false),
-        (41, false, true),
-        (42, true, true),
+    for (player_id, dungeon_route, is_abort, won) in [
+        (37, false, false, false),
+        (38, true, false, false),
+        (41, false, true, false),
+        (42, true, true, false),
+        (43, true, false, true),
     ] {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         database::run_migrations(&pool).await.unwrap();
@@ -169,30 +178,20 @@ async fn act128_end_routes_emit_the_current_run_score() {
             13500416,
             109380001,
             109380001,
-            if is_abort { 1 } else { 19 },
-            1_000_000,
+            if is_abort || won { 1 } else { 19 },
+            if won { 1 } else { 1_000_000 },
         );
         assert_eq!(
             runtime.outcome(),
             if is_abort {
                 ::battle::BattleOutcome::Unfinished
+            } else if won {
+                ::battle::BattleOutcome::Victory
             } else {
                 ::battle::BattleOutcome::OutOfRounds
             }
         );
         let run_score = runtime.activity_score();
-        let prior_score = 37;
-        let mut tx = pool.begin().await.unwrap();
-        logic::activity::settle_act128_score_in_transaction(
-            &mut tx,
-            player_id,
-            13500416,
-            109380001,
-            prior_score,
-        )
-        .await
-        .unwrap();
-        tx.commit().await.unwrap();
 
         let active = ActiveBattle {
             fight_id: Some(fight_id),
@@ -246,18 +245,33 @@ async fn act128_end_routes_emit_the_current_run_score() {
             .unwrap();
         }
 
-        let score_push = std::iter::from_fn(|| packets.try_recv().ok()).find_map(|packet| {
+        let pushes = std::iter::from_fn(|| packets.try_recv().ok()).collect::<Vec<_>>();
+        let score_push = pushes.iter().find_map(|packet| {
             let CommandPacket::Push { cmd_id, body, .. } = packet else {
                 return None;
             };
-            (cmd_id == CmdId::DungeonEndDungeonPushCmd)
-                .then(|| EndDungeonPush::decode(&*body).unwrap())
+            (*cmd_id == CmdId::DungeonEndDungeonPushCmd)
+                .then(|| EndDungeonPush::decode(&**body).unwrap())
         });
         let score_push = score_push.expect("Activity 128 completion must emit EndDungeonPush");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&score_push.extra_str.unwrap()).unwrap(),
             serde_json::json!({ "score": run_score })
         );
+        let task = pushes
+            .iter()
+            .filter_map(|packet| {
+                let CommandPacket::Push { cmd_id, body, .. } = packet else {
+                    return None;
+                };
+                (*cmd_id == CmdId::UpdateTaskPushCmd)
+                    .then(|| UpdateTaskPush::decode(&**body).unwrap())
+            })
+            .flat_map(|push| push.task_info)
+            .find(|task| task.id == 221363)
+            .expect("Activity 128 settlement must forward the first boss score task");
+        assert_eq!(task.r#type, Some(22));
+        assert_eq!(task.progress, run_score.min(50_000));
 
         let info = logic::activity::ActivityManager::new(player_id)
             .act128_info(ctx.state.db, Some(route.activity_id))
@@ -268,7 +282,7 @@ async fn act128_end_routes_emit_the_current_run_score() {
             .iter()
             .find(|boss| boss.boss_id == Some(route.boss_id))
             .unwrap();
-        assert_eq!(boss.total_point, Some(prior_score + run_score));
+        assert_eq!(boss.total_point, Some(run_score));
         assert_eq!(boss.highest_point, Some(run_score));
     }
 }

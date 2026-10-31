@@ -1,13 +1,13 @@
 use crate::{
     error::AppError,
     net::{context::ConnectionContext, packet::ClientPacket},
-    util::push,
+    util::{push, task_events},
 };
 use prost::Message;
 use sonettobuf::{
     CmdId, FinishNecrologistStoryModeReply, FinishNecrologistStoryModeRequest, GetHeroStoryRequest,
-    GetNecrologistStoryRequest, GetStoryFinishRequest, StoryFinishPush,
-    UpdateNecrologistStoryRequest, UpdateStoryRequest,
+    GetNecrologistStoryRequest, GetStoryFinishRequest, HeroStoryPlotFinishRequest, StoryFinishPush,
+    UnlocHeroStoryRequest, UpdateNecrologistStoryRequest, UpdateStoryRequest,
 };
 
 pub async fn on_get_story(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
@@ -70,6 +70,22 @@ pub async fn on_get_hero_story(
         .await
 }
 
+pub async fn on_unlock_hero_story(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
+    let msg = UnlocHeroStoryRequest::decode(&req.data[..])?;
+    let (reply, consumed) = ctx
+        .player()?
+        .story
+        .unlock_hero_story(ctx.state.db, msg.story_id.ok_or(AppError::InvalidRequest)?)
+        .await?;
+    push::send_cost_pushes(ctx, player_id, consumed.item_ids, consumed.currency_ids).await?;
+    ctx.send_reply(CmdId::UnlocHeroStoryCmd, reply, 0, req.up_tag)
+        .await
+}
+
 pub async fn on_get_necrologist_story(
     ctx: &mut ConnectionContext,
     req: ClientPacket,
@@ -85,6 +101,26 @@ pub async fn on_get_necrologist_story(
         )
         .await?;
     ctx.send_reply(CmdId::GetNecrologistStoryCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_finish_hero_story_plot(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
+    let msg = HeroStoryPlotFinishRequest::decode(&req.data[..])?;
+    let (reply, event) = ctx
+        .player()?
+        .story
+        .finish_hero_story_plot(
+            ctx.state.db,
+            msg.plot.ok_or(AppError::InvalidRequest)?,
+            ctx.state.tables,
+        )
+        .await?;
+    task_events::notify(ctx, player_id, event).await?;
+    ctx.send_reply(CmdId::HeroStoryPlotFinishCmd, reply, 0, req.up_tag)
         .await
 }
 

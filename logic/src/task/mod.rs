@@ -74,6 +74,10 @@ impl TaskManager {
                 .sync_room_tasks(db, config::configs::get())
                 .await?;
         }
+        if db_type_ids.is_empty() || db_type_ids.contains(&task_db::TaskType::NecrologistStory.id())
+        {
+            task_db::reconcile_necrologist_story_tasks(db, self.player_id).await?;
+        }
         if db_type_ids.is_empty() || db_type_ids.contains(&task_db::TaskType::WeekWalk.id()) {
             task_db::sync_weekwalk_tasks(db, self.player_id).await?;
         }
