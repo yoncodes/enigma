@@ -349,6 +349,32 @@ fn conduit_selection_adds_the_configured_precast_and_commits_the_choice() {
     assert_eq!(card.temp_card, Some(true));
     assert_eq!(card.hero_id, Some(3149));
     assert_eq!(runtime.managers.card.normal_hand_len(), 0);
+    assert!(reply.hero_sp_attributes.is_empty());
+    assert_eq!(reply.fight_step.len(), 2);
+    assert_eq!(reply.fight_step[0].from_id, Some(10));
+    assert_eq!(reply.fight_step[0].to_id, Some(0));
+    assert_eq!(reply.fight_step[1].from_id, Some(0));
+    assert_eq!(reply.fight_step[1].to_id, Some(0));
+    assert_eq!(
+        reply.fight_step[1]
+            .act_effect
+            .iter()
+            .map(|effect| effect.effect_type.unwrap_or_default())
+            .collect::<Vec<_>>(),
+        [
+            sonettobuf::effect_type_enum::EffectType::Cardspush as i32,
+            sonettobuf::effect_type_enum::EffectType::Carddecknum as i32,
+        ]
+    );
+    assert_eq!(
+        reply.fight_step[1].act_effect[0].card_info_list,
+        runtime.card_hand()
+    );
+    assert_eq!(reply.fight_step[1].act_effect[1].team_type, Some(1));
+    assert_eq!(
+        reply.fight_step[1].act_effect[1].effect_num,
+        Some(runtime.managers.card.deck_num())
+    );
     let effects = reply
         .fight_step
         .iter()
@@ -357,6 +383,9 @@ fn conduit_selection_adds_the_configured_precast_and_commits_the_choice() {
     assert!(effects.iter().any(|effect| {
         effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Addhandcard as i32)
             && effect.card_info.as_ref().and_then(|card| card.skill_id) == Some(31446012)
+            && effect.card_info_list.is_empty()
+            && effect.effect_num == Some(0)
+            && effect.team_type == Some(1)
     }));
     assert!(effects.iter().any(|effect| {
         effect.effect_type

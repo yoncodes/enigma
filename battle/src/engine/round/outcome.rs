@@ -25,13 +25,20 @@ impl BattleOutcome {
 }
 
 fn team_defeated(team_type: i32, managers: &BattleManagers) -> bool {
-    let mut roster = managers
+    let roster = managers
         .entity
         .ordered_uids()
         .filter(|uid| managers.entity.team_type(*uid) == Some(team_type))
         .filter(|uid| managers.entity.roster_lane(*uid) == Some(RosterLane::Main))
-        .peekable();
-    roster.peek().is_some() && roster.all(|uid| managers.hp.current(uid) <= 0)
+        .collect::<Vec<_>>();
+    !roster.is_empty()
+        && roster.iter().all(|uid| managers.hp.current(*uid) <= 0)
+        && (team_type != 2
+            || roster.iter().all(|uid| {
+                !managers
+                    .entity
+                    .has_pending_reserve_promotion(*uid, &managers.hp)
+            }))
 }
 
 pub(crate) fn defenders_defeated(_pool: &TargetPool, managers: &BattleManagers) -> bool {
