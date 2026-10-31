@@ -268,7 +268,12 @@ fn reply(
     AutoRoundReply {
         opers,
         to_id: request.to_id,
-        cloth_skill: None,
+        cloth_skill: Some(sonettobuf::ClothSkillInfo {
+            skill_id: Some(0),
+            from_id: Some(0),
+            to_id: Some(0),
+            r#type: Some(0),
+        }),
         devices_opers,
     }
 }

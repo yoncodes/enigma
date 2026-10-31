@@ -196,11 +196,32 @@ fn twins_full_harmonization_proc_survives_a_wave_transition() {
                 || effect.fight_step.as_ref().is_some_and(has_switch)
         })
     }
+    fn has_device_snapshot(step: &sonettobuf::FightStep) -> bool {
+        step.act_effect.iter().any(|effect| {
+            (effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Newchangewave as i32)
+                && effect
+                    .fight
+                    .as_ref()
+                    .and_then(|fight| fight.attacker.as_ref())
+                    .and_then(|team| team.device_area.as_ref())
+                    .is_some_and(|area| {
+                        area.devices
+                            .iter()
+                            .any(|device| device.uid == Some(10) && !device.skills.is_empty())
+                    }))
+                || effect.fight_step.as_ref().is_some_and(has_device_snapshot)
+        })
+    }
     assert_eq!(runtime.fight.cur_wave, Some(2));
     assert_eq!(runtime.managers.conduit.selected_group(10), Some(3));
     assert!(
         round.fight_step.iter().any(has_switch)
             || round.next_round_begin_step.iter().any(has_switch)
+    );
+    assert!(
+        round.fight_step.iter().any(has_device_snapshot)
+            || round.next_round_begin_step.iter().any(has_device_snapshot)
     );
 }
 

@@ -132,9 +132,13 @@ impl CardPacket {
         ActEffect {
             target_id: Some(target_uid),
             effect_type: Some(EffectType::Addhandcard as i32),
-            effect_num: card.skill_id,
-            card_info: Some(card.clone()),
-            card_info_list: vec![card],
+            effect_num: Some(0),
+            config_effect: Some(0),
+            buff_act_id: Some(0),
+            reserve_id: Some(0),
+            card_info: Some(card),
+            team_type: Some(1),
+            effect_num1: Some(0),
             ..Default::default()
         }
     }
@@ -443,8 +447,10 @@ mod tests {
         let deal = CardPacket::deal_card1();
 
         assert_eq!(add.effect_type, Some(EffectType::Addhandcard as i32));
-        assert_eq!(add.effect_num, Some(100));
+        assert_eq!(add.effect_num, Some(0));
+        assert_eq!(add.team_type, Some(1));
         assert_eq!(add.card_info.as_ref().unwrap().uid, Some(10));
+        assert!(add.card_info_list.is_empty());
         assert_eq!(push.effect_type, Some(EffectType::Cardspush as i32));
         assert_eq!(push.card_info_list.len(), 1);
         assert_eq!(temp.effect_type, Some(EffectType::Changetotempcard as i32));
