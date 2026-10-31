@@ -219,6 +219,7 @@ pub enum BuffActKind {
     EachChangeAttrOneWay,
     ExPointAddByHit,
     ExPointDel,
+    ExPointFix,
     ExPointCardMove,
     ExPointCantAdd,
     ExSkillPointChange,
@@ -799,6 +800,16 @@ buff_act_definitions! {
         scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool),
         supports: |args| matches!(args, [buff_id] if *buff_id > 0),
         wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(305, "AddToAttacker"), &[], &[EffectType::Addtoattacker as i32], &[]));
+    (306, "ExPointFix") => ExPointFix, event: EventKind::BeAttacked,
+        runtime: |context| super::ex_point_fix::rule_ops(context.subscriber, context.event?),
+        supports: super::ex_point_fix::supports_holder,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(306, "ExPointFix"), &[])
+            .without_initial_state_marker());
+    (307, "ExPointFix") => ExPointFix, event: EventKind::BeAttacked,
+        runtime: |context| super::ex_point_fix::rule_ops(context.subscriber, context.event?),
+        supports: super::ex_point_fix::supports_attacker,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(307, "ExPointFix"), &[])
+            .without_initial_state_marker());
     (401, "Dizzy") => Dizzy, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(401, "Dizzy"), &[EffectType::Dizzy as i32]));
     (402, "Petrified") => Petrified, event: EventKind::TargetAttacked, frame: CausingFrame,

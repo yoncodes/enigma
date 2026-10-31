@@ -83,6 +83,7 @@ pub mod emitter_tag;
 pub mod eureka_to_inspiration;
 pub mod ex_point_add_by_hit;
 pub mod ex_point_del;
+pub mod ex_point_fix;
 pub mod ex_point_overflow_bank;
 pub mod fantasy;
 pub mod fix_attr_by_sub_buff_layer;
