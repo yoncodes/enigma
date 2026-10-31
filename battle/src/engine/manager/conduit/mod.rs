@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 use crate::engine::skill::rule::CommandOrigin;
 
 mod execute;
+mod projection;
 mod seed;
 #[cfg(test)]
 mod tests;
