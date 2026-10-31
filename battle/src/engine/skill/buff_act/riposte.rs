@@ -1,5 +1,6 @@
 use crate::engine::{
     event::payload::BattleEvent,
+    manager::hp::HurtDamageFromType,
     skill::{
         action::{SkillInvocation, SkillRequest, SkillTarget},
         buff_act::registry::BuffActKind,
@@ -25,6 +26,7 @@ pub fn shielded_ally_rule_ops(
         || hit.ignore_riposte
         || pool.source_is_attacker(hit.source_uid) == pool.source_is_attacker(subscriber.owner_uid)
         || pool.source_is_attacker(hit.target_uid) != pool.source_is_attacker(subscriber.owner_uid)
+        || hit.damage_from != HurtDamageFromType::Skill
         || hit.shield_absorbed <= 0
     {
         return Some(Vec::new());
@@ -485,6 +487,16 @@ mod tests {
 
         assert!(
             shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &hit(-1, 11))
+                .unwrap()
+                .is_empty()
+        );
+        let mut effect_hit = shielded_hit.clone();
+        let BattleEvent::Hit(effect) = &mut effect_hit else {
+            unreachable!()
+        };
+        effect.damage_from = HurtDamageFromType::SkillEffect;
+        assert!(
+            shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &effect_hit)
                 .unwrap()
                 .is_empty()
         );
