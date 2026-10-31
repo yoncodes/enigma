@@ -469,6 +469,34 @@ fn buff_owned_charge_is_supported_and_expands_linked_skill() {
 }
 
 #[test]
+fn player_facing_buff_act_requires_description_evidence() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut catalog = SkillEffectCatalog::default();
+    let mut skills = VecDeque::new();
+    let mut buffs = VecDeque::from([Pending {
+        id: 114_380_002,
+        path: "test root".to_owned(),
+    }]);
+    let mut report = Report {
+        quiet: true,
+        ..Default::default()
+    };
+
+    scan_closure(
+        db,
+        battle::catalog::BattleCatalog::new(db),
+        &mut catalog,
+        &mut skills,
+        &mut buffs,
+        &mut report,
+    );
+
+    let key = CapabilityKey::new("buff-act", 1146, "FoundationShield");
+    assert!(report.gaps[&key].contains("missing description evidence"));
+}
+
+#[test]
 fn bendith_replacement_expands_every_reachable_skill() {
     crate::init_config().unwrap();
     let db = config::get();

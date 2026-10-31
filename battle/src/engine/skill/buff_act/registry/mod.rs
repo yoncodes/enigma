@@ -233,6 +233,7 @@ pub enum BuffActKind {
     FixAttrTeamEnergyAndBuff,
     FixElectricUpgrade,
     FixedHurt,
+    FoundationShield,
     FixTempAttrByBuffLayer,
     MustCritAndFixTempAttr,
     Forbid,
@@ -460,6 +461,7 @@ pub enum BuffActInitialStateRule {
     CurrentHpPermille,
     SourceAttackThreshold,
     SourceAttackAttribute,
+    SourceAttack,
     FirstArgument,
     SecondArgument,
     StringCounter,
@@ -479,6 +481,7 @@ pub struct BuffActDefinition {
     pub raw_supports: Option<RawSupportsHandler>,
     pub parser: Option<FeatureParser>,
     pub references: FeatureReferences,
+    pub description_required: bool,
     pub completion_gap: Option<&'static str>,
     pub wire: Option<super::wire::BuffActWireDefinition>,
 }
@@ -585,6 +588,7 @@ macro_rules! buff_act_definitions {
             $(, hp_loss_state: $hp_loss_state:expr)?
             $(, state_consumer: $state_consumer:expr)?
             $(, initial_state: $initial_state:ident)?
+            $(, description_required: $description_required:expr)?
             $(, completion_gap: $completion_gap:literal)?
             $(, wire: ($wire:expr))?
         );*
@@ -637,6 +641,7 @@ macro_rules! buff_act_definitions {
                 raw_supports: buff_act_definitions!(@raw_supports $($raw_supports)?),
                 parser: buff_act_definitions!(@parser $($parser)?),
                 references: buff_act_definitions!(@references $($references)?),
+                description_required: buff_act_definitions!(@description_required $($description_required)?),
                 completion_gap: buff_act_definitions!(@completion_gap $($completion_gap)?),
                 wire: buff_act_definitions!(@wire $($wire)?),
             }),*
@@ -699,6 +704,8 @@ macro_rules! buff_act_definitions {
     (@parser) => { None };
     (@references $handler:expr) => { $handler };
     (@references) => { empty_references };
+    (@description_required $value:expr) => { $value };
+    (@description_required) => { false };
     (@completion_gap $gap:literal) => { Some($gap) };
     (@completion_gap) => { None };
     (@attack_replacement $handler:expr) => { Some($handler) };
@@ -1374,6 +1381,13 @@ buff_act_definitions! {
         runtime: |context| super::hurt_to_progress::rule_ops(context.subscriber, context.event?),
         supports: super::hurt_to_progress::supports,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1148, "HurtToProgress"), &[EffectType::None as i32]));
+    (1146, "FoundationShield") => FoundationShield, effect_time_subscription: false,
+        supports: super::foundation::supports_shield, state_consumer: true,
+        initial_state: SourceAttack, description_required: true,
+        wire: (super::wire::BuffActWireDefinition::all(
+            DefinitionKey::new(1146, "FoundationShield"),
+            &[],
+        ).without_initial_state_marker());
     (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,
         effect_time_subscription: false,
         supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,

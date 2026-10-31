@@ -623,10 +623,10 @@ impl BattleManagers {
         } else {
             None
         };
-        if let hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) =
-            &mut command
-            && let Some(cap) = self
-                .buff
+        let damage_cap = if let hp::HpCommand::Damage(damage)
+        | hp::HpCommand::SettleAccumulatedDamage(damage) = &mut command
+        {
+            self.buff
                 .active_features(hp)
                 .into_iter()
                 .filter(|feature| feature.owner_uid == damage.target_uid)
@@ -634,8 +634,46 @@ impl BattleManagers {
                     crate::engine::skill::buff_act::damage_not_more_than::cap(&feature, hp)
                 })
                 .min()
+        } else {
+            None
+        };
+        if let hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) =
+            &mut command
+            && let Some(cap) = damage_cap
         {
             damage.amount = damage.amount.min(cap);
+        }
+        if let hp::HpCommand::Damage(damage) = &mut command
+            && matches!(
+                damage.effect_kind,
+                hp::DamageEffectKind::Normal | hp::DamageEffectKind::Critical
+            )
+            && let Some(after) = crate::engine::skill::buff_act::foundation::mitigate(
+                self,
+                damage.target_uid,
+                damage.amount,
+            )
+            .map_err(|_| hp::HpCommandError::InvalidFoundationState)?
+        {
+            let unsupported = share.is_some()
+                || damage_cap.is_some()
+                || crate::engine::skill::buff_act::lock_hp::max_loss(
+                    &self.buff,
+                    hp,
+                    damage.target_uid,
+                )
+                .is_some()
+                || self.buff.has_buff_act_kind(
+                    damage.target_uid,
+                    crate::engine::skill::buff_act::registry::BuffActKind::LostHpToFakeHp,
+                )
+                || !self
+                    .team_shared_shield_plans(hp, damage.target_uid, target_count)
+                    .is_empty();
+            if unsupported {
+                return Err(hp::HpCommandError::UnsupportedFoundationInteraction);
+            }
+            damage.amount = after;
         }
         match &mut command {
             hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) => {

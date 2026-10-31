@@ -466,6 +466,8 @@ impl HpChanges {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HpCommandError {
     InvalidCommand,
+    InvalidFoundationState,
+    UnsupportedFoundationInteraction,
     MissingTarget(i64),
     InvalidTeamSharedState,
     InvalidShareHurtState,

@@ -440,6 +440,19 @@ fn scan_buff(
             let key = CapabilityKey::new("buff-act", act.id, &act.r#type);
             report.capability(key.clone());
             let definition = buff_act_registry::find(act.id, &act.r#type);
+            if definition.is_some_and(|definition| definition.description_required)
+                && (buff.desc.trim().is_empty()
+                    || db
+                        .language_en
+                        .get(&buff.desc)
+                        .is_none_or(|description| description.trim().is_empty()))
+            {
+                report.gap(key.clone(), "missing description evidence");
+                report.error(format!(
+                    "MissingBuffDescription path={} > buff {} act={} type={}",
+                    pending.path, pending.id, act.id, act.r#type
+                ));
+            }
             if definition.is_some()
                 && let Some(message) = malformed_buff_act_error(
                     &pending.path,

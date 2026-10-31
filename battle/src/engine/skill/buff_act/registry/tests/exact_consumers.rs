@@ -492,6 +492,33 @@ fn damage_cap_is_an_exact_static_consumer_with_its_captured_marker() {
 }
 
 #[test]
+fn foundation_shield_is_an_exact_snapshotted_damage_consumer() {
+    let definition = find(1146, "FoundationShield").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::FoundationShield);
+    assert_eq!(
+        definition.state.initial,
+        Some(BuffActInitialStateRule::SourceAttack)
+    );
+    assert!(
+        !definition
+            .wire
+            .expect("FoundationShield has static wire metadata")
+            .initial_state_marker
+    );
+    assert_eq!(
+        destination(1146, "FoundationShield", &[102, 800, 31_400_007, 1600]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(
+        1146,
+        "FoundationShield",
+        &[101, 800, 31_400_007, 1600]
+    ));
+    assert!(find(1146, "FoundationCounter").is_none());
+}
+
+#[test]
 fn fixed_damage_accepts_zero_without_collapsing_identity() {
     let definition = find(511, "FixedHurt").unwrap();
 

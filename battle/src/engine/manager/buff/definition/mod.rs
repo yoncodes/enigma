@@ -170,6 +170,22 @@ impl BuffDefinition {
         let status_id = buff_type.map(|row| row.r#type).unwrap_or(row.is_good_buff);
         let include_entries = parse_include_entries(include_types);
         let include_types_valid = include_entries.is_ok();
+        let mut resolved_features = super::feature::resolve_features_from(Some(game), features);
+        let has_description = !row.desc.trim().is_empty()
+            && game
+                .language_en
+                .get(&row.desc)
+                .is_some_and(|description| !description.trim().is_empty());
+        if !has_description {
+            for feature in &mut resolved_features {
+                if feature.values.first().is_some_and(|act_id| {
+                    crate::engine::skill::buff_act::registry::find(*act_id, &feature.act_type)
+                        .is_some_and(|definition| definition.description_required)
+                }) {
+                    feature.arguments_supported = false;
+                }
+            }
+        }
         Self {
             id: row.id,
             type_id: row.type_id,
@@ -185,7 +201,7 @@ impl BuffDefinition {
             include_entries: include_entries.unwrap_or_default(),
             include_types_valid,
             attribute_deltas: parse_attribute_deltas(game, features),
-            features: super::feature::resolve_features_from(Some(game), features),
+            features: resolved_features,
             has_features: !features.trim().is_empty(),
             act_common_params: initial_act_common_params(game, features),
             take_stage: buff_type.map(|row| row.take_stage).unwrap_or_default(),
@@ -533,7 +549,8 @@ impl BuffDefinition {
                         0,
                     ),
                     BuffActInitialStateRule::SourceAttackThreshold
-                    | BuffActInitialStateRule::SourceAttackAttribute => return None,
+                    | BuffActInitialStateRule::SourceAttackAttribute
+                    | BuffActInitialStateRule::SourceAttack => return None,
                     BuffActInitialStateRule::FirstArgument => (
                         vec![feature.values.get(1).copied().unwrap_or_default()],
                         String::new(),
@@ -624,6 +641,11 @@ impl BuffDefinition {
                             str_param: Some(format!("{}#{value}", attr_id.id())),
                         })
                     }
+                    BuffActInitialStateRule::SourceAttack => Some(sonettobuf::BuffActInfo {
+                        act_id: Some(act_id),
+                        param: vec![source_attack?.max(0)],
+                        str_param: Some(String::new()),
+                    }),
                     BuffActInitialStateRule::GrantValue => {
                         let value = grant_values
                             .iter()
