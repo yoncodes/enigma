@@ -950,7 +950,8 @@ mod tests {
         let mut runtime = crate::engine::runtime::BattleRuntime::new(
             crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
             built.fight.clone(),
-        );
+        )
+        .unwrap();
         let round = runtime.start_round().unwrap();
         let cards = runtime.card_info_push();
         let deal = round

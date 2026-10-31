@@ -298,7 +298,9 @@ fn normalize_framed_step(effect: ActEffect) -> FightStep {
 }
 
 #[cfg(test)]
-fn project_change_for_test(change: &BattleChange) -> Result<Vec<ActEffect>, ProjectionError> {
+pub(crate) fn project_change_for_test(
+    change: &BattleChange,
+) -> Result<Vec<ActEffect>, ProjectionError> {
     project_change_with_reduce_hp(change, true)
 }
 
@@ -408,6 +410,7 @@ fn project_change(
         BattleChange::FightProgressValue(change) => {
             vec![EffectPacket::fight_progress_changed(*change)]
         }
+        BattleChange::FightTask(change) => vec![EffectPacket::fight_task_update(change)],
         BattleChange::BuffActTrigger(trigger) => {
             vec![EffectPacket::buff_act_trigger(*trigger)]
         }
@@ -978,7 +981,7 @@ fn project_change(
                 })
                 .collect()
         }
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::AroundRanksChanged => {
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::QueuedRanksChanged => {
             changes
                 .rank_results
                 .iter()
@@ -1030,7 +1033,9 @@ fn project_change(
             vec![CardPacket::allocate_card_energy(changes.after.clone(), 1)]
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::EnergyChanged => {
-            vec![CardPacket::allocate_card_energy(changes.after.clone(), 1)]
+            CardPacket::change_card_energy(&changes.before, &changes.after, 1)
+                .into_iter()
+                .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::EnergyCleared => {
             vec![CardPacket::clear_card_energy(changes.after.clone(), 1)]
@@ -1248,7 +1253,7 @@ fn project_change(
                     .before
                     .map(|state| {
                         EffectPacket::magic_circle_delete(
-                            state.create_uid,
+                            state.owner_uid,
                             state.definition.field_id,
                         )
                     })
@@ -1440,13 +1445,13 @@ fn magic_circle_snapshot(
     let state = change.after?;
     Some(
         crate::engine::mechanic::magic_circle::MagicCircleApplyResult {
-            target_uid: state.create_uid,
+            target_uid: state.owner_uid,
             circle_id: state.definition.field_id,
             info: MagicCircleInfo {
                 magic_circle_id: Some(state.definition.field_id),
                 round: Some(state.definition.duration),
                 create_uid: Some(state.create_uid),
-                electric_level: Some(state.level),
+                electric_level: (state.level > 0).then_some(state.level),
                 electric_progress: Some(state.progress),
                 max_electric_progress: Some(state.next_upgrade_progress),
             },

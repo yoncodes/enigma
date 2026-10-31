@@ -8,6 +8,11 @@ pub struct ImpromptuResolution {
     pub critical_action_count: i32,
 }
 
+pub struct ImpromptuResult {
+    pub drain: DrainResult,
+    pub card_energy_finalized: bool,
+}
+
 pub fn run_player_actions_resolved(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -48,6 +53,21 @@ pub fn run_card_energy_clear(
     )
 }
 
+pub fn run_pending_card_energy_clear(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    card_energy_finalized: bool,
+) -> Result<DrainResult, DrainError> {
+    if card_energy_finalized {
+        Ok(DrainResult::default())
+    } else {
+        run_card_energy_clear(managers, pool, catalog, determinism, context)
+    }
+}
+
 pub fn run_impromptu_resolved(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -86,16 +106,26 @@ pub fn run_impromptu(
     context: TargetContext,
     team: i32,
     emitter_uid: i64,
-) -> Result<DrainResult, DrainError> {
-    let mut result = run_player_actions_resolved(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        team,
-        emitter_uid,
-    )?;
+) -> Result<ImpromptuResult, DrainError> {
+    let mut result = DrainResult::default();
+    if impromptu::build_plan(managers, team, emitter_uid).is_some() {
+        append(
+            &mut result,
+            run_card_energy_clear(managers, pool, catalog, determinism, context)?,
+        );
+    }
+    append(
+        &mut result,
+        run_player_actions_resolved(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            team,
+            emitter_uid,
+        )?,
+    );
     let mut critical_action_count = 0;
     if let Some(plan) = impromptu::build_plan(managers, team, emitter_uid) {
         for attack_index in 1..=plan.attack_count {
@@ -210,11 +240,15 @@ pub fn run_impromptu(
         );
     }
     let finalization = impromptu::finalize_action_queue_rule_ops(managers, team, emitter_uid);
-    if !finalization.is_empty() {
+    let card_energy_finalized = !finalization.is_empty();
+    if card_energy_finalized {
         append(
             &mut result,
             drain::run_command_group(managers, pool, catalog, determinism, context, finalization)?,
         );
     }
-    Ok(result)
+    Ok(ImpromptuResult {
+        drain: result,
+        card_energy_finalized,
+    })
 }

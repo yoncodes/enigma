@@ -15,8 +15,8 @@ pub use setup::*;
 #[cfg(test)]
 use setup::context_for_setup_stage;
 use setup::{
-    SetupFrameContainer, run_buff_act_setup_stage_filtered, run_skill_setup_stage_filtered,
-    run_skill_then_buff_act_setup_stage_filtered,
+    SetupFrameContainer, SetupSkillFilter, run_buff_act_setup_stage_filtered,
+    run_skill_setup_stage_filtered, run_skill_then_buff_act_setup_stage_filtered,
 };
 
 #[cfg(test)]

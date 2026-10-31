@@ -21,7 +21,7 @@ fn opening_cards_exist_before_card_setup_rules_run() {
     let mut slot = SkillEffectSlot::new(
         ParsedBehavior::from_spec(
             BehaviorSpec::new(60189, "AddEnergyToCard"),
-            vec![1, 2, 1],
+            vec![1, -1, 2],
             Vec::new(),
         ),
         TargetRequest::self_only(),
@@ -87,13 +87,10 @@ fn opening_cards_exist_before_card_setup_rules_run() {
         steps.first().unwrap().act_effect[0].effect_type,
         Some(sonettobuf::effect_type_enum::EffectType::Enterfightdeal as i32)
     );
-    assert!(steps.iter().any(|step| {
-        step.act_effect.len() == 2
-            && step.act_effect.iter().all(|effect| {
-                effect.effect_type
-                    == Some(sonettobuf::effect_type_enum::EffectType::Carddecknum as i32)
-                    && effect.effect_num == Some(30)
-            })
+    assert_eq!(steps[1].act_effect.len(), 2);
+    assert!(steps[1].act_effect.iter().all(|effect| {
+        effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Carddecknum as i32)
+            && effect.effect_num == Some(30)
     }));
     assert_eq!(
         steps.last().unwrap().act_effect[0].effect_type,

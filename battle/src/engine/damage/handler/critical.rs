@@ -46,6 +46,9 @@ pub fn damage_multiplier(
     pool: &TargetPool,
     managers: &BattleManagers,
 ) -> i32 {
+    let source_damage_type = crate::engine::skill::buff_act::emitter_damage_type::source_type(
+        source_uid, pool, managers,
+    );
     let technique = pool
         .entity(source_uid)
         .zip(pool.entity(target_uid))
@@ -68,9 +71,7 @@ pub fn damage_multiplier(
             &managers.buff,
             &managers.hp,
             source_uid,
-            pool.entity(source_uid)
-                .map(|entity| entity.damage_type)
-                .unwrap_or_default(),
+            source_damage_type,
             AttrId::CriticalDmg,
         )
         - managers.attribute.get(target_uid, AttrId::CriticalDef)
@@ -160,13 +161,17 @@ fn raw_chance(
     let Some(target) = pool.entity(target_uid) else {
         return 0;
     };
+    let source_damage_type = crate::engine::skill::buff_act::emitter_damage_type::source_type(
+        source_uid, pool, managers,
+    );
     let emitter_attribute = if source_uid == crate::engine::manager::emitter::UID {
-        crate::engine::manager::emitter::average_ally_buff_attribute(
-            pool,
+        crate::engine::manager::emitter::average_ally_attribute_delta(
+            &managers.emitter,
+            &managers.attribute,
             &managers.buff,
             &managers.hp,
             AttrId::CriticalRate,
-        ) + managers.emitter.ally_attribute(AttrId::CriticalRate)
+        )
     } else {
         0
     };
@@ -182,7 +187,7 @@ fn raw_chance(
             &managers.buff,
             &managers.hp,
             source_uid,
-            source.damage_type,
+            source_damage_type,
             AttrId::CriticalRate,
         )
         + emitter_attribute

@@ -217,6 +217,16 @@ impl BattleRuntime {
                 .execute_card(CardCommand::PreserveRefillFloor)
                 .map_err(|error| format!("{error:?}"))?;
         }
+        if preserve_refill_floor
+            || self
+                .managers
+                .catalog()
+                .is_mechanic_tutorial(self.fight.episode_id.unwrap_or_default())
+        {
+            self.managers
+                .execute_card(CardCommand::PreserveDeckCount)
+                .map_err(|error| format!("{error:?}"))?;
+        }
         visible_cards.extend_from_slice(self.managers.card.team_cards());
         self.round_state.act_point = crate::engine::round::state::next_action_points(
             &self.fight,

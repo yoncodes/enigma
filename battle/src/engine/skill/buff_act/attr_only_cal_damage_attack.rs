@@ -35,6 +35,7 @@ pub fn supports_be_attacked(args: &[i32]) -> bool {
 
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId) -> i32 {
     match feature.values.as_slice() {
+        [113, raw_attr_id, value, ..] if *raw_attr_id == attr_id as i32 => *value,
         [_, raw_attr_id, value, ..] if *raw_attr_id == attr_id as i32 => value * feature.amount,
         _ => 0,
     }
@@ -164,10 +165,21 @@ mod tests {
 
     #[test]
     fn type_owned_args_are_an_attack_local_consumable_attribute() {
-        let morale = feature(vec![113, AttrId::DmgBonus as i32, 500, 1]);
+        let morale = ActiveBuffFeature {
+            amount: 3,
+            ..feature(vec![113, AttrId::DmgBonus as i32, 500, 1])
+        };
         assert_eq!(attribute_delta(&morale, AttrId::DmgBonus), 500);
         assert_eq!(attribute_delta(&morale, AttrId::CriticalDmg), 0);
         assert!(consumes_after_attack(&morale));
+
+        let ultimate = ActiveBuffFeature {
+            amount: 3,
+            act_type: "AttrOnlyCalDamageAttackBigSkill".to_owned(),
+            values: vec![1001, AttrId::DmgBonus as i32, 500, 1],
+            ..feature(Vec::new())
+        };
+        assert_eq!(attribute_delta(&ultimate, AttrId::DmgBonus), 1_500);
     }
 
     #[test]

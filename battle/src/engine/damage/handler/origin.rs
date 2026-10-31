@@ -53,12 +53,14 @@ pub(super) fn amount(
                 source_uid,
                 AttrId::CriticalDmg,
             )
-            + pool.entity(source_uid).map_or(0, |source| {
+            + pool.entity(source_uid).map_or(0, |_| {
                 modifiers::damage_type_attribute_delta(
                     &managers.buff,
                     &managers.hp,
                     source_uid,
-                    source.damage_type,
+                    crate::engine::skill::buff_act::emitter_damage_type::source_type(
+                        source_uid, pool, managers,
+                    ),
                     AttrId::CriticalDmg,
                 )
             })

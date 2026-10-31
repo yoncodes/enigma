@@ -15,6 +15,7 @@ enum TargetRule {
     EventSubject,
     EventSource,
     Source,
+    AllActiveEntities,
     Allies,
     AlliesPreservingSelection,
     AssistBoss,
@@ -231,6 +232,9 @@ impl TargetResolver {
             TargetRule::EventSubject => runtime_target(context),
             TargetRule::EventSource => event_source(context),
             TargetRule::Source => vec![source_uid],
+            TargetRule::AllActiveEntities => {
+                pool.active_entities().map(|entity| entity.uid).collect()
+            }
             TargetRule::Allies | TargetRule::AlliesPreservingSelection => {
                 if crate::engine::fight::rules::is_side_uid(source_uid) {
                     vec![source_uid]
@@ -636,6 +640,7 @@ pub fn targets_enemy(code: i32) -> Option<bool> {
         | TargetRule::Fixed(_)
         | TargetRule::EventSubject
         | TargetRule::EventSource
+        | TargetRule::AllActiveEntities
         | TargetRule::Runtime
         | TargetRule::SelectedTarget
         | TargetRule::SynchronizationTarget => None,
@@ -715,7 +720,8 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         247 => TargetRule::EnemyWithConfiguredBuffType,
         249 => TargetRule::AlliesWithStatus,
         250 => TargetRule::AlliesWithoutStatus,
-        301 | 302 => TargetRule::Enemies,
+        301 => TargetRule::AllActiveEntities,
+        302 => TargetRule::Enemies,
         307 => TargetRule::EnemyWithBuffAct,
         4101 => TargetRule::EnemiesWithMonsterLabel(101),
         _ => return None,

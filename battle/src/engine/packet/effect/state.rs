@@ -1,6 +1,18 @@
 use super::*;
 
 impl EffectPacket {
+    pub fn fight_task_update(
+        change: &crate::engine::manager::fight_task::FightTaskChange,
+    ) -> ActEffect {
+        ActEffect {
+            target_id: Some(0),
+            effect_type: Some(EffectType::Fighttaskupdate as i32),
+            fight_tasks: change.tasks.clone(),
+            team_type: Some(change.team_type),
+            ..Default::default()
+        }
+    }
+
     pub fn fight_progress_initialized(
         state: crate::engine::manager::fight_progress::FightProgressState,
     ) -> [ActEffect; 2] {

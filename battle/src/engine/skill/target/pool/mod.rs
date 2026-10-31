@@ -436,6 +436,10 @@ impl TargetPool {
             .find(|entity| entity.uid == uid)
     }
 
+    pub fn is_virtual_entity(&self, uid: i64) -> bool {
+        self.virtual_entities.iter().any(|entity| entity.uid == uid)
+    }
+
     pub fn skill_slot(&self, managers: &BattleManagers, source_uid: i64, skill_id: i32) -> i32 {
         let Some(source) = self.entity(source_uid) else {
             return -1;

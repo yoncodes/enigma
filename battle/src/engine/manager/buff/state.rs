@@ -32,6 +32,17 @@ impl BuffManager {
         self.grant_values.get(&(buff_uid, act_id)).copied()
     }
 
+    pub fn attr_snapshot(
+        &self,
+        buff_uid: i64,
+        owner_uid: i64,
+        attr_id: crate::engine::entity::attr::AttrId,
+    ) -> Option<i32> {
+        self.attr_snapshots
+            .get(&(buff_uid, owner_uid, attr_id))
+            .copied()
+    }
+
     pub(super) fn accumulate_act_value(&mut self, buff_uid: i64, act_id: i32, delta: i32) {
         *self.act_values.entry((buff_uid, act_id)).or_default() += delta;
     }
@@ -78,6 +89,17 @@ impl BuffManager {
     pub(super) fn commit_grant_values(&mut self, buff_uid: i64, snapshots: &[(i32, i32)]) {
         for &(act_id, value) in snapshots {
             self.grant_values.insert((buff_uid, act_id), value);
+        }
+    }
+
+    pub(crate) fn commit_attr_snapshots(
+        &mut self,
+        buff_uid: i64,
+        snapshots: &[(i64, crate::engine::entity::attr::AttrId, i32)],
+    ) {
+        for &(owner_uid, attr_id, value) in snapshots {
+            self.attr_snapshots
+                .insert((buff_uid, owner_uid, attr_id), value);
         }
     }
 
@@ -251,6 +273,8 @@ impl BuffManager {
             .retain(|(state_buff_uid, _), _| *state_buff_uid != buff_uid);
         self.grant_values
             .retain(|(state_buff_uid, _), _| *state_buff_uid != buff_uid);
+        self.attr_snapshots
+            .retain(|(state_buff_uid, _, _), _| *state_buff_uid != buff_uid);
     }
 }
 

@@ -341,3 +341,80 @@ fn direct_damage_uses_manager_combat_stats_instead_of_stale_pool_values() {
         HpCommand::Damage(HpDamage { amount: 1_500, .. })
     ));
 }
+
+#[test]
+fn direct_damage_uses_each_change_attr_attack_snapshot() {
+    init_config();
+    let mut paper_heron = entity(1, 1, 1, 1_000, 0);
+    paper_heron.buffs = vec![BuffInfo {
+        uid: Some(1),
+        buff_id: Some(101),
+        from_uid: Some(1),
+        ..Default::default()
+    }];
+    let mut ally = entity(2, 1, 1, 1_000, 0);
+    ally.buffs = vec![BuffInfo {
+        uid: Some(2),
+        buff_id: Some(31_410_407),
+        from_uid: Some(1),
+        ..Default::default()
+    }];
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![paper_heron, ally],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1, 0, 0)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+
+    let command = resolve_attack_command(
+        &AttackPlan {
+            source_uid: 2,
+            target_uid: -1,
+            skill_id: 1,
+            rate: 1_000,
+            rate_terms: Vec::new(),
+            attack_attributes: Vec::new(),
+            career_ratio_bonus: 0,
+            attack_career: None,
+            additional_attack_career: None,
+            force_career_restraint: false,
+            critical_multiplier_remainder: 0,
+            is_conduit: false,
+            is_crit: false,
+            assassinate: false,
+            main_target: true,
+            extra_skill_kind: 0,
+            performs_extra_action: false,
+            additional_enabled: false,
+            additional_is_crit: None,
+        },
+        DamageRuntime {
+            fight_version: 7,
+            pool: &pool,
+            attributes: &managers.attribute,
+            buffs: &managers.buff,
+            target_buffs: &managers.buff,
+            hp: &managers.hp,
+            fields: None,
+            emitter: None,
+            team_inspiration: 0,
+        },
+        CommandOrigin {
+            domain: crate::engine::skill::rule::RuleDomain::Skill,
+            key: crate::engine::skill::rule::DefinitionKey::new(1, "SkillDamage"),
+        },
+    )
+    .unwrap();
+
+    assert!(matches!(
+        command,
+        HpCommand::Damage(HpDamage { amount: 1_157, .. })
+    ));
+}

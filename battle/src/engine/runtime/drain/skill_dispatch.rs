@@ -21,9 +21,11 @@ pub(super) fn drain_skill(
     subscriber: Option<SubscriberContext>,
     caster_frame: Option<FrameOwner>,
 ) -> Result<(), DrainError> {
+    let active_cast = matches!(trigger, SkillOpTrigger::Active)
+        || matches!(&frame_owner, Some(FrameOwner::BuffAct { .. }));
     // After terminal commitment, skip active skills that have not
     // started a frame. Existing-frame continuations may finish settling.
-    if matches!(trigger, SkillOpTrigger::Active)
+    if active_cast
         && frame_path.is_none()
         && managers.terminal_outcome().is_some()
         && !invocation.mode.finishes_selected_conduit_phase()
@@ -31,9 +33,9 @@ pub(super) fn drain_skill(
         cancel_invocation_progress(managers, state, None, &invocation);
         return Ok(());
     }
-    let attack_has_no_target = matches!(trigger, SkillOpTrigger::Active)
+    let attack_has_no_target = active_cast
         && attack_has_no_target(&invocation, catalog, pool, managers, determinism, context);
-    if matches!(trigger, SkillOpTrigger::Active)
+    if active_cast
         && base_pool.team_type(invocation.plan.source_uid).is_some()
         && ((frame_path.is_none()
             && base_pool.entity(invocation.plan.source_uid).is_some()
@@ -143,11 +145,7 @@ pub(super) fn drain_skill(
                 result,
                 state,
             )?;
-            push_change(
-                &mut result.frames,
-                &frame_path,
-                crate::engine::runtime::change::BattleChange::Death(death),
-            );
+            push_death(&mut result.frames, &frame_path, managers, death);
             defeated_owner_card_cleanups.push(death);
         }
     }

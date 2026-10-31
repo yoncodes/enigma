@@ -30,6 +30,10 @@ pub struct RuntimeContext<'a> {
 pub type RuntimeHandler = for<'a> fn(&mut RuntimeContext<'a>) -> Option<Vec<RuleOp>>;
 pub type ScopedRuntimeHandler =
     for<'a> fn(&mut RuntimeContext<'a>) -> Option<Vec<super::BuffActRuleOp>>;
+pub type FallibleScopedRuntimeHandler =
+    for<'a> fn(
+        &mut RuntimeContext<'a>,
+    ) -> Result<Vec<super::BuffActRuleOp>, super::BuffActRuleError>;
 pub type TransactionHandler = fn(&BattleManagers, &BattleEvent) -> Vec<(ActiveBuffFeature, RuleOp)>;
 
 pub struct SetupContext<'a> {
@@ -165,6 +169,7 @@ pub enum BuffActKind {
     ChangeRemoveBuffUseSkillParam,
     ContractCastChannel,
     NoneCastChannel,
+    ConsumeCurBuffAndAuraAddBuff,
     ConsumeBuffAddBuffContinueChannel,
     ConsumeBuffContinueChannel,
     ControlTeamInjuryCountRound,
@@ -196,9 +201,14 @@ pub enum BuffActKind {
     Disarm,
     Dizzy,
     EmitterCardAllocateChange,
+    ChangeEmitterCardEnergyLimit,
     EmitterCareerChange,
+    ChangeEmitterSkill,
+    EmitterChangeDmgType,
     EmitterDamageUp,
     EmitterEnergyAddBuff,
+    EmitterExtraDamage,
+    EmitterAttackNumLimitFixDamage,
     EmitterFixSubTargetsDamageReduceRate,
     EmitterNumChange,
     EmitterRendTarget,
@@ -209,6 +219,7 @@ pub enum BuffActKind {
     EachChangeAttrOneWay,
     ExPointAddByHit,
     ExPointDel,
+    ExPointFix,
     ExPointCardMove,
     ExPointCantAdd,
     ExSkillPointChange,
@@ -222,6 +233,8 @@ pub enum BuffActKind {
     FixAttrTeamEnergyAndBuff,
     FixElectricUpgrade,
     FixedHurt,
+    FoundationCounter,
+    FoundationShield,
     FixTempAttrByBuffLayer,
     MustCritAndFixTempAttr,
     Forbid,
@@ -276,6 +289,7 @@ pub enum BuffActKind {
     RealHarmSkillEffectFix,
     RealHurtFix,
     RealDamageKill,
+    RecordReplaceWqMagicCircle,
     Rebound,
     ReboundBasedOnDamage,
     Revive,
@@ -292,15 +306,18 @@ pub enum BuffActKind {
     SubBuff,
     Taunt,
     TeamImmunityTimes,
+    TeamPerPowerAddBuff,
     TeamExElectricTransConsumeValueAttr,
     TeamShareShield,
     RecordTeamExElectricTransConsumeValue,
     TargetingTag,
     TeammateInjuryCount,
+    ToothFairyFantasy,
     ToughnessOverflowRecord,
     ToughnessRecover,
     TransferAddExPoint,
     TransferEnergyBuff,
+    UseSkillConsumeFromAddEmitterEnergy,
     UseSkillTeamAddEmitterEnergy,
     UseSkillAttrFix,
     UseSkillLoseHpNotFixed,
@@ -407,6 +424,7 @@ pub struct BuffActRuntimeDefinition {
     pub marker: Option<RuntimeMarker>,
     pub handler: Option<RuntimeHandler>,
     pub scoped_handler: Option<ScopedRuntimeHandler>,
+    pub fallible_scoped_handler: Option<FallibleScopedRuntimeHandler>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -444,6 +462,8 @@ pub enum BuffActInitialStateRule {
     CurrentHpPermille,
     SourceAttackThreshold,
     SourceAttackAttribute,
+    SourceAttack,
+    FoundationCounter,
     FirstArgument,
     SecondArgument,
     StringCounter,
@@ -463,6 +483,7 @@ pub struct BuffActDefinition {
     pub raw_supports: Option<RawSupportsHandler>,
     pub parser: Option<FeatureParser>,
     pub references: FeatureReferences,
+    pub description_required: bool,
     pub completion_gap: Option<&'static str>,
     pub wire: Option<super::wire::BuffActWireDefinition>,
 }
@@ -509,7 +530,10 @@ impl BuffActDefinition {
     }
 
     fn destination(&self) -> Option<BuffActDestination> {
-        if self.runtime.handler.is_some() || self.runtime.scoped_handler.is_some() {
+        if self.runtime.handler.is_some()
+            || self.runtime.scoped_handler.is_some()
+            || self.runtime.fallible_scoped_handler.is_some()
+        {
             Some(BuffActDestination::Runtime)
         } else if self.transaction.handler.is_some() {
             Some(BuffActDestination::Transaction)
@@ -555,6 +579,7 @@ macro_rules! buff_act_definitions {
             $(, runtime_marker: $marker_position:ident($marker_target:ident $(, $marker_effect_type:expr)?))?
             $(, runtime: $runtime:expr)?
             $(, scoped_runtime: $scoped_runtime:expr)?
+            $(, fallible_scoped_runtime: $fallible_scoped_runtime:expr)?
             $(, transaction: $transaction:expr)?
             $(, setup_handler: $setup_handler:expr)?
             $(, supports: $supports:expr)?
@@ -565,6 +590,7 @@ macro_rules! buff_act_definitions {
             $(, hp_loss_state: $hp_loss_state:expr)?
             $(, state_consumer: $state_consumer:expr)?
             $(, initial_state: $initial_state:ident)?
+            $(, description_required: $description_required:expr)?
             $(, completion_gap: $completion_gap:literal)?
             $(, wire: ($wire:expr))?
         );*
@@ -592,6 +618,7 @@ macro_rules! buff_act_definitions {
                     marker: buff_act_definitions!(@runtime_marker $($marker_position($marker_target $(, $marker_effect_type)?))?),
                     handler: buff_act_definitions!(@runtime $($runtime)?),
                     scoped_handler: buff_act_definitions!(@scoped_runtime $($scoped_runtime)?),
+                    fallible_scoped_handler: buff_act_definitions!(@fallible_scoped_runtime $($fallible_scoped_runtime)?),
                 },
                 setup: BuffActSetupDefinition {
                     routes: buff_act_definitions!(@setup [$($($stage($priority)),*)?]),
@@ -616,6 +643,7 @@ macro_rules! buff_act_definitions {
                 raw_supports: buff_act_definitions!(@raw_supports $($raw_supports)?),
                 parser: buff_act_definitions!(@parser $($parser)?),
                 references: buff_act_definitions!(@references $($references)?),
+                description_required: buff_act_definitions!(@description_required $($description_required)?),
                 completion_gap: buff_act_definitions!(@completion_gap $($completion_gap)?),
                 wire: buff_act_definitions!(@wire $($wire)?),
             }),*
@@ -664,6 +692,8 @@ macro_rules! buff_act_definitions {
     (@runtime) => { None };
     (@scoped_runtime $handler:expr) => { Some($handler) };
     (@scoped_runtime) => { None };
+    (@fallible_scoped_runtime $handler:expr) => { Some($handler) };
+    (@fallible_scoped_runtime) => { None };
     (@transaction $handler:expr) => { Some($handler) };
     (@transaction) => { None };
     (@setup_handler $handler:expr) => { Some($handler) };
@@ -676,6 +706,8 @@ macro_rules! buff_act_definitions {
     (@parser) => { None };
     (@references $handler:expr) => { $handler };
     (@references) => { empty_references };
+    (@description_required $value:expr) => { $value };
+    (@description_required) => { false };
     (@completion_gap $gap:literal) => { Some($gap) };
     (@completion_gap) => { None };
     (@attack_replacement $handler:expr) => { Some($handler) };
@@ -777,6 +809,16 @@ buff_act_definitions! {
         scoped_runtime: |context| super::add_to_target::scoped_rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool),
         supports: |args| matches!(args, [buff_id] if *buff_id > 0),
         wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(305, "AddToAttacker"), &[], &[EffectType::Addtoattacker as i32], &[]));
+    (306, "ExPointFix") => ExPointFix, event: EventKind::BeAttacked,
+        runtime: |context| super::ex_point_fix::rule_ops(context.subscriber, context.event?),
+        supports: super::ex_point_fix::supports_holder,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(306, "ExPointFix"), &[])
+            .without_initial_state_marker());
+    (307, "ExPointFix") => ExPointFix, event: EventKind::BeAttacked,
+        runtime: |context| super::ex_point_fix::rule_ops(context.subscriber, context.event?),
+        supports: super::ex_point_fix::supports_attacker,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(307, "ExPointFix"), &[])
+            .without_initial_state_marker());
     (401, "Dizzy") => Dizzy, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(401, "Dizzy"), &[EffectType::Dizzy as i32]));
     (402, "Petrified") => Petrified, event: EventKind::TargetAttacked, frame: CausingFrame,
@@ -1123,7 +1165,10 @@ buff_act_definitions! {
     (834, "EachChangeAttr") => EachChangeAttr,
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,
-        transaction: super::each_change_attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(834, "EachChangeAttr"), &[EffectType::None as i32]));
+        stat_read: OnGrant,
+        transaction: super::each_change_attr::transaction_rule_ops,
+        supports: super::each_change_attr::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(834, "EachChangeAttr"), &[EffectType::None as i32]));
     (1131, "EachChangeAttrOneWay") => EachChangeAttrOneWay,
         transactions: [EventKind::BuffAdded, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,
@@ -1218,7 +1263,9 @@ buff_act_definitions! {
         runtime: |context| super::be_attack_by_emitter_damage::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::be_attack_by_emitter_damage::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(889, "BeAttackByEmitterDamage"), &[EffectType::None as i32]));
     (891, "AddSplitEmitterNum") => AddSplitEmitterNum, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(891, "AddSplitEmitterNum"), &[EffectType::Addsplitemitternum as i32]));
-    (892, "AttackNumSplitEmitterNum") => AttackNumSplitEmitterNum, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(892, "AttackNumSplitEmitterNum"), &[EffectType::Conditionsplitemitternum as i32]));
+    (892, "AttackNumSplitEmitterNum") => AttackNumSplitEmitterNum, effect_time_subscription: false,
+        supports: super::emitter_num_change::supports_split, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(892, "AttackNumSplitEmitterNum"), &[EffectType::Conditionsplitemitternum as i32]));
     (893, "EmitterEnergyAddBuff") => EmitterEnergyAddBuff,
         event: EventKind::PlayerActionsResolved, frame: IndependentEvent,
         scoped_runtime: |context| super::emitter_energy_add_buff::rule_ops(context.managers, context.subscriber, context.event?),
@@ -1336,6 +1383,20 @@ buff_act_definitions! {
         runtime: |context| super::hurt_to_progress::rule_ops(context.subscriber, context.event?),
         supports: super::hurt_to_progress::supports,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1148, "HurtToProgress"), &[EffectType::None as i32]));
+    (1146, "FoundationShield") => FoundationShield, effect_time_subscription: false,
+        supports: super::foundation::supports_shield, state_consumer: true,
+        initial_state: SourceAttack, description_required: true,
+        wire: (super::wire::BuffActWireDefinition::all(
+            DefinitionKey::new(1146, "FoundationShield"),
+            &[],
+        ).without_initial_state_marker());
+    (1147, "FoundationCounter") => FoundationCounter, effect_time_subscription: false,
+        supports: super::foundation_counter::supports, state_consumer: true,
+        initial_state: FoundationCounter, description_required: true,
+        wire: (super::wire::BuffActWireDefinition::all(
+            DefinitionKey::new(1147, "FoundationCounter"),
+            &[],
+        ).without_initial_state_marker());
     (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,
         effect_time_subscription: false,
         supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,
@@ -1443,7 +1504,53 @@ buff_act_definitions! {
         supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1070, "HeatScaleAddFix"), &[EffectType::None as i32]));
     (1075, "CardLimitAdd") => CardLimitAdd, effect_time_subscription: false,
         supports: |args| matches!(args, [delta] if *delta != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1075, "CardLimitAdd"), &[EffectType::None as i32]));
-    (1081, "EmitterFixSubTargetsDamageReduceRate") => EmitterFixSubTargetsDamageReduceRate;
+    (1077, "ConsumeCurBuffAndAuraAddBuff") => ConsumeCurBuffAndAuraAddBuff,
+        runtime: |context| super::consume_and_grant::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::consume_and_grant::supports, references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1077, "ConsumeCurBuffAndAuraAddBuff"), &[]));
+    (1078, "ChangeEmitterCardEnergyLimit") => ChangeEmitterCardEnergyLimit, effect_time_subscription: false,
+        supports: super::emitter_card_energy_limit::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1078, "ChangeEmitterCardEnergyLimit"), &[EffectType::None as i32]));
+    (1079, "ChangeEmitterSkill") => ChangeEmitterSkill, effect_time_subscription: false,
+        supports: super::emitter_skill::supports, references: references_for_feature, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1079, "ChangeEmitterSkill"), &[EffectType::None as i32]));
+    (1080, "EmitterAttackNumLimitFixDamage") => EmitterAttackNumLimitFixDamage,
+        supports: super::emitter_num_change::supports_limit, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1080, "EmitterAttackNumLimitFixDamage"), &[EffectType::None as i32]));
+    (1081, "EmitterFixSubTargetsDamageReduceRate") => EmitterFixSubTargetsDamageReduceRate,
+        supports: super::emitter_num_change::supports_reduction, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1081, "EmitterFixSubTargetsDamageReduceRate"), &[EffectType::None as i32]));
+    (1082, "UseSkillConsumeFromAddEmitterEnergy") => UseSkillConsumeFromAddEmitterEnergy,
+        publication: BeforePublish, frame: CausingFrame,
+        runtime: |context| super::eureka_to_inspiration::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::eureka_to_inspiration::supports,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1082, "UseSkillConsumeFromAddEmitterEnergy"), &[EffectType::None as i32]));
+    (1084, "RecordReplaceWqMagicCircle") => RecordReplaceWqMagicCircle,
+        event: EventKind::RoundEndAfterFinalSettlement,
+        fallible_scoped_runtime: super::record_replace_magic_circle::scoped_rule_ops,
+        supports: |args| args.is_empty(),
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1084, "RecordReplaceWqMagicCircle"), &[EffectType::None as i32]));
+    (1085, "TeamPerPowerAddBuff") => TeamPerPowerAddBuff,
+        frame: CausingFrame,
+        runtime: |context| super::team_per_power_add_buff::rule_ops(context.managers, context.pool, context.subscriber, context.event?),
+        supports: super::team_per_power_add_buff::supports,
+        references: super::team_per_power_add_buff::references,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1085, "TeamPerPowerAddBuff"), &[EffectType::None as i32]));
+    (1086, "ToothFairyFantasy") => ToothFairyFantasy,
+        scoped_runtime: super::fantasy::rule_ops,
+        supports: super::fantasy::supports,
+        parser: super::fantasy::parse,
+        references: super::fantasy::references,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1086, "ToothFairyFantasy"), &[EffectType::None as i32]));
+    (1087, "EmitterExtraDamage") => EmitterExtraDamage,
+        event: EventKind::SkillAction, phase: HitPassives, source: Applier, actor: OpposingTeam,
+        runtime: |context| super::emitter_extra_damage::rule_ops(context.subscriber, context.event?),
+        supports: super::emitter_extra_damage::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1087, "EmitterExtraDamage"), &[]));
+    (1092, "EmitterChangeDmgType") => EmitterChangeDmgType,
+        effect_time_subscription: false,
+        supports: super::emitter_damage_type::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1092, "EmitterChangeDmgType"), &[EffectType::None as i32]));
     (1114, "HeatScaleBurnAddFix") => HeatScaleBurnAddFix;
     (1125, "TeamShareShield") => TeamShareShield, effect_time_subscription: false,
         supports: super::team_share_shield::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1125, "TeamShareShield"), &[]));
@@ -1535,9 +1642,14 @@ fn references_for_feature(
             &mut references,
             super::transfer_energy_buff::referenced_buff(&feature.args),
         ),
+        Some(BuffActKind::ConsumeCurBuffAndAuraAddBuff) => add_buff(
+            &mut references,
+            super::consume_and_grant::referenced_buff(&feature.args),
+        ),
         Some(BuffActKind::AddPassiveSkills)
         | Some(BuffActKind::AddSpTempCard)
         | Some(BuffActKind::CastChannel)
+        | Some(BuffActKind::ChangeEmitterSkill)
         | Some(BuffActKind::CountContinueChannel)
         | Some(BuffActKind::SpecialCountCastChannel) => {
             add_skill(&mut references, feature.values.get(1).copied())

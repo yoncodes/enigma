@@ -538,7 +538,8 @@ fn cards_without_a_living_current_enemy_resolve_support_effects_or_only_grant_mo
             1,
             0,
         )
-        .unwrap();
+        .unwrap()
+        .drain;
         (result, managers)
     };
 
@@ -666,7 +667,8 @@ fn terminal_player_action_stops_the_remaining_action_queue() {
         1,
         0,
     )
-    .unwrap();
+    .unwrap()
+    .drain;
 
     assert_eq!(managers.hp.current(-1), 0);
     assert_eq!(managers.ex_point.get(20), 0);
@@ -766,7 +768,8 @@ fn repeated_play_index_tracks_the_composed_mutating_hand() {
         1,
         0,
     )
-    .unwrap();
+    .unwrap()
+    .drain;
 
     let completed = result
         .outcomes

@@ -75,6 +75,7 @@ pub struct BuffManager {
     act_states: HashMap<(i64, i32), state::DotState>,
     act_values: HashMap<(i64, i32), i32>,
     grant_values: HashMap<(i64, i32), i32>,
+    attr_snapshots: HashMap<(i64, i64, AttrId), i32>,
     mode_attributes: HashMap<i32, i32>,
     transition_progress: HashMap<(i64, i32), i32>,
     reserved_grant_uids: HashMap<(i64, i32), VecDeque<i64>>,
@@ -97,6 +98,7 @@ impl Default for BuffManager {
             act_states: HashMap::new(),
             act_values: HashMap::new(),
             grant_values: HashMap::new(),
+            attr_snapshots: HashMap::new(),
             mode_attributes: HashMap::new(),
             transition_progress: HashMap::new(),
             reserved_grant_uids: HashMap::new(),
@@ -399,6 +401,16 @@ impl BuffManager {
                     .copied()
                     .unwrap_or(0)
             })
+            .sum()
+    }
+
+    pub fn added_type_count_for_owner(&self, owner_uid: i64, type_ids: &[i32]) -> i32 {
+        self.added_by_owner
+            .iter()
+            .filter(|((uid, buff_id), _)| {
+                *uid == owner_uid && type_ids.contains(&self.catalog().buff_type_id(*buff_id))
+            })
+            .map(|(_, amount)| *amount)
             .sum()
     }
 

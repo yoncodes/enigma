@@ -437,6 +437,32 @@ pub fn run_ai_actions(
                     reason: CardInvalidReason::Default,
                 },
             );
+            let is_ultimate = pool.entity(choice.source_uid).is_some_and(|entity| {
+                crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                    managers,
+                    choice.skill_id,
+                    entity,
+                )
+            });
+            if let Some(delta) = card_play_resource_delta(
+                managers,
+                choice.source_uid,
+                catalog.grants_resource_on_card_play(choice.skill_id),
+                is_ultimate,
+            ) {
+                append(
+                    &mut result,
+                    run_card_composition_rewards(
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        CARD_PLAY_ORIGIN,
+                        [(choice.source_uid, delta)],
+                    )?,
+                );
+            }
             continue;
         }
         if let Some(entity) = pool.entity(choice.source_uid)

@@ -66,7 +66,6 @@ pub struct RoundDeterminism {
     pub skill_targets: Vec<SkillTargetChoice>,
     start_decks: VecDeque<StartDeckSeed>,
     card_draws: VecDeque<CardInfo>,
-    card_energy_snapshots: VecDeque<Vec<CardInfo>>,
     crystal_cards: VecDeque<CardInfo>,
     card_plays: VecDeque<CardPlayChoice>,
     condition_random_choices: Vec<ConditionRandomChoice>,
@@ -151,51 +150,6 @@ impl RoundDeterminism {
                 Some(candidates[index].clone())
             })
             .collect()
-    }
-
-    pub fn enqueue_card_energy_snapshot(&mut self, cards: Vec<CardInfo>) {
-        if !cards.is_empty() {
-            self.card_energy_snapshots.push_back(cards);
-        }
-    }
-
-    pub fn take_card_energy_snapshot(
-        &mut self,
-        cards: &[CardInfo],
-        expected_energy: i32,
-    ) -> Option<Vec<CardInfo>> {
-        let captured = self.card_energy_snapshots.pop_front()?;
-        if captured.len() != cards.len()
-            || captured.iter().zip(cards).any(|(captured, current)| {
-                captured.uid != current.uid || captured.skill_id != current.skill_id
-            })
-            || captured
-                .iter()
-                .any(|card| !(0..=5).contains(&card.energy.unwrap_or_default()))
-            || captured.iter().zip(cards).any(|(captured, current)| {
-                captured.energy.unwrap_or_default() < current.energy.unwrap_or_default()
-            })
-            || captured
-                .iter()
-                .zip(cards)
-                .map(|(captured, current)| {
-                    captured.energy.unwrap_or_default() - current.energy.unwrap_or_default()
-                })
-                .sum::<i32>()
-                != expected_energy
-        {
-            return None;
-        }
-        Some(
-            cards
-                .iter()
-                .zip(captured)
-                .map(|(current, captured)| CardInfo {
-                    energy: captured.energy,
-                    ..current.clone()
-                })
-                .collect(),
-        )
     }
 
     pub fn enqueue_crystal_cards(&mut self, cards: impl IntoIterator<Item = CardInfo>) {

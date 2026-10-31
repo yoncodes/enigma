@@ -458,6 +458,7 @@ fn slot_node(db: &config::GameDB, raw: RawSlot, skill_observed: bool) -> Option<
             } else {
                 "Unexercised"
             },
+            capture_sources: Vec::new(),
         },
         conditions: flatten_conditions(&conditions)
             .into_iter()
@@ -507,6 +508,7 @@ fn condition_node(condition: &ParsedCondition, raw: &str, skill_observed: bool) 
         } else {
             "Unexercised"
         },
+        capture_sources: Vec::new(),
     }
 }
 
@@ -539,7 +541,7 @@ fn buff(
         .features
         .split('|')
         .filter(|raw| !raw.trim().is_empty())
-        .filter_map(|raw| buff_act(db, raw, wire_evidence))
+        .filter_map(|raw| buff_act(db, id, raw, wire_evidence))
         .collect();
     Some(Buff {
         id,
@@ -554,6 +556,7 @@ fn buff(
 
 fn buff_act(
     db: &config::GameDB,
+    buff_id: i32,
     raw: &str,
     wire_evidence: &crate::wire_evidence::Evidence,
 ) -> Option<BuffAct> {
@@ -587,11 +590,15 @@ fn buff_act(
             detail: definition
                 .map(|definition| format!("kind={:?}", definition.kind))
                 .unwrap_or_default(),
-            observation: if wire_evidence.observed_act(opcode, &row.r#type) {
+            observation: if !wire_evidence
+                .carrier_sources(opcode, &row.r#type, buff_id)
+                .is_empty()
+            {
                 "Exact wire marker observed"
             } else {
                 "Unexercised"
             },
+            capture_sources: wire_evidence.carrier_sources(opcode, &row.r#type, buff_id),
         },
         effect_time: row.effect_time,
         event: buff_act_registry::runtime_event(opcode, &row.r#type, row.effect_time).map_or_else(
@@ -863,6 +870,7 @@ mod text_tests {
 
         let supported = buff_act(
             db,
+            0,
             "1138#1:31460211,31460212,31460213#2:31460221,31460222,31460223",
             &wire_evidence,
         )
@@ -874,7 +882,7 @@ mod text_tests {
             "1138#1:30120111,30120112,30120113#2:30120121,30120122,30120123",
         ] {
             assert_eq!(
-                buff_act(db, raw, &wire_evidence).unwrap().node.semantic,
+                buff_act(db, 0, raw, &wire_evidence).unwrap().node.semantic,
                 "unsupported arguments",
                 "{raw}"
             );
@@ -887,7 +895,7 @@ mod text_tests {
         let db = config::get();
         let wire_evidence = crate::wire_evidence::Evidence::default();
 
-        let charge = buff_act(db, "1139#100000#150000#31460183", &wire_evidence).unwrap();
+        let charge = buff_act(db, 0, "1139#100000#150000#31460183", &wire_evidence).unwrap();
 
         assert_eq!(charge.node.registry, "exact");
         assert_eq!(charge.node.semantic, "supported");

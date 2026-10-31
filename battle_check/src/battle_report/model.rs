@@ -78,6 +78,8 @@ pub(crate) struct Node {
     pub(crate) semantic: &'static str,
     pub(crate) detail: String,
     pub(crate) observation: &'static str,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) capture_sources: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]

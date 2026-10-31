@@ -321,6 +321,34 @@ impl CardPacket {
         Self::card_energy(cards, team_type, 0)
     }
 
+    pub fn change_card_energy(
+        before: &[CardInfo],
+        after: &[CardInfo],
+        team_type: i32,
+    ) -> Option<ActEffect> {
+        let changes = before
+            .iter()
+            .zip(after)
+            .enumerate()
+            .filter_map(|(index, (before, after))| {
+                let delta = after.energy.unwrap_or_default() - before.energy.unwrap_or_default();
+                (delta != 0).then(|| format!("{}#{delta}", index + 1))
+            })
+            .collect::<Vec<_>>();
+        (!changes.is_empty()).then(|| ActEffect {
+            target_id: Some(0),
+            effect_type: Some(EffectType::Changecardenergy as i32),
+            effect_num: Some(team_type),
+            config_effect: Some(0),
+            buff_act_id: Some(0),
+            reserve_id: Some(0),
+            reserve_str: Some(changes.join("|")),
+            team_type: Some(0),
+            effect_num1: Some(0),
+            ..Default::default()
+        })
+    }
+
     fn card_energy(cards: Vec<CardInfo>, team_type: i32, operation: i32) -> ActEffect {
         ActEffect {
             effect_type: Some(EffectType::Allocatecardenergy as i32),
@@ -527,6 +555,40 @@ mod tests {
             CardPacket::clear_card_energy(Vec::new(), 1).effect_num1,
             Some(0)
         );
+    }
+
+    #[test]
+    fn card_energy_change_projects_changed_positions_and_deltas() {
+        let before = vec![
+            CardInfo {
+                energy: Some(2),
+                ..Default::default()
+            },
+            CardInfo {
+                energy: Some(4),
+                ..Default::default()
+            },
+        ];
+        let after = vec![
+            CardInfo {
+                energy: Some(3),
+                ..Default::default()
+            },
+            CardInfo {
+                energy: Some(6),
+                ..Default::default()
+            },
+        ];
+
+        let effect = CardPacket::change_card_energy(&before, &after, 1).unwrap();
+
+        assert_eq!(
+            effect.effect_type,
+            Some(EffectType::Changecardenergy as i32)
+        );
+        assert_eq!(effect.effect_num, Some(1));
+        assert_eq!(effect.reserve_str.as_deref(), Some("1#1|2#2"));
+        assert!(effect.card_info_list.is_empty());
     }
 
     #[test]

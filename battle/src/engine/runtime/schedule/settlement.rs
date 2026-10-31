@@ -628,6 +628,20 @@ pub fn run_round_end_final_settlement(
             entity_advances,
         )?,
     );
+    let mut after_buff_acts = drain::run_group_event(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        after.clone(),
+        drain::ReactionLane::BuffActs,
+        None,
+    )?;
+    if after_buff_acts.events.first() == Some(&after) {
+        after_buff_acts.events.remove(0);
+    }
+    append_round_phase(&mut after_phase, after_buff_acts);
     let mut after_skills = drain::run_group_event(
         managers,
         pool,

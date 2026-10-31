@@ -256,6 +256,7 @@ pub mod fight_eziozhuangbei;
 pub mod fight_eziozhuangbei_icon;
 pub mod fight_jgz_const;
 pub mod fight_prompt;
+pub mod fight_task;
 pub mod formula;
 pub mod friendless;
 pub mod guide;
@@ -278,6 +279,7 @@ pub mod investigate_clue;
 pub mod item;
 pub mod language_en;
 pub mod magic_circle;
+pub mod magic_wqsz;
 pub mod manufacture_building;
 pub mod manufacture_building_level;
 pub mod manufacture_building_trade_level;
@@ -686,6 +688,7 @@ pub struct GameDB {
     pub fight_eziozhuangbei_icon: fight_eziozhuangbei_icon::FightEziozhuangbeiIconTable,
     pub fight_jgz_const: fight_jgz_const::FightJgzConstTable,
     pub fight_prompt: fight_prompt::FightPromptTable,
+    pub fight_task: fight_task::FightTaskTable,
     pub formula: formula::FormulaTable,
     pub friendless: friendless::FriendlessTable,
     pub guide: guide::GuideTable,
@@ -708,6 +711,7 @@ pub struct GameDB {
     pub item: item::ItemTable,
     pub language_en: language_en::LanguageEnTable,
     pub magic_circle: magic_circle::MagicCircleTable,
+    pub magic_wqsz: magic_wqsz::MagicWqszTable,
     pub manufacture_building: manufacture_building::ManufactureBuildingTable,
     pub manufacture_building_level: manufacture_building_level::ManufactureBuildingLevelTable,
     pub manufacture_building_trade_level: manufacture_building_trade_level::ManufactureBuildingTradeLevelTable,
@@ -1628,6 +1632,9 @@ impl GameDB {
         let fight_prompt = fight_prompt::FightPromptTable::load(
             &format!("{}/fight_prompt.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load fight_prompt.json: {}", e))?;
+        let fight_task = fight_task::FightTaskTable::load(
+            &format!("{}/fight_task.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load fight_task.json: {}", e))?;
         let formula = formula::FormulaTable::load(
             &format!("{}/formula.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load formula.json: {}", e))?;
@@ -1694,6 +1701,9 @@ impl GameDB {
         let magic_circle = magic_circle::MagicCircleTable::load(
             &format!("{}/magic_circle.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load magic_circle.json: {}", e))?;
+        let magic_wqsz = magic_wqsz::MagicWqszTable::load(
+            &format!("{}/magic_wqsz.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load magic_wqsz.json: {}", e))?;
         let manufacture_building = manufacture_building::ManufactureBuildingTable::load(
             &format!("{}/manufacture_building.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load manufacture_building.json: {}", e))?;
@@ -2396,6 +2406,7 @@ impl GameDB {
             fight_eziozhuangbei_icon,
             fight_jgz_const,
             fight_prompt,
+            fight_task,
             formula,
             friendless,
             guide,
@@ -2418,6 +2429,7 @@ impl GameDB {
             item,
             language_en,
             magic_circle,
+            magic_wqsz,
             manufacture_building,
             manufacture_building_level,
             manufacture_building_trade_level,

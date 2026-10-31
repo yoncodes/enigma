@@ -14,6 +14,7 @@ pub enum NoneMode {
     BeforeApResolve,
     ActionQueueCommitted,
     SkillAction,
+    EmitterSkillAction,
     SkillActionStart,
     SkillActionAfterDamage,
     SkillActionAfterHit,
@@ -67,6 +68,7 @@ parser!(card_setup, CardSetup);
 parser!(before_ap_resolve, BeforeApResolve);
 parser!(action_queue_committed, ActionQueueCommitted);
 parser!(skill_action, SkillAction);
+parser!(emitter_skill_action, EmitterSkillAction);
 parser!(skill_action_start, SkillActionStart);
 parser!(skill_action_after_damage, SkillActionAfterDamage);
 parser!(skill_action_after_hit, SkillActionAfterHit);

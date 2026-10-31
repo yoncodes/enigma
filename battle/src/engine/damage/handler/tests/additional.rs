@@ -596,3 +596,90 @@ fn career_ratio_fix_extends_the_existing_advantage_lane() {
     assert_eq!(amount(0), 1_300);
     assert_eq!(amount(300), 1_600);
 }
+
+#[test]
+fn stronger_afflatus_multiplier_extends_the_advantage_lane() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(1),
+                career: Some(2),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                career: Some(1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .buff
+        .add(&managers.hp, 1, 1, 31_460_003, 4)
+        .expect("Rapport should be configured");
+    let resolve = |target_uid| {
+        let HpCommand::Damage(damage) = resolve_attack_command(
+            &AttackPlan {
+                source_uid: 1,
+                target_uid,
+                skill_id: 100,
+                rate: 1_000,
+                rate_terms: Vec::new(),
+                attack_attributes: Vec::new(),
+                career_ratio_bonus: 0,
+                attack_career: None,
+                additional_attack_career: None,
+                force_career_restraint: false,
+                critical_multiplier_remainder: 0,
+                is_conduit: false,
+                is_crit: false,
+                assassinate: false,
+                main_target: true,
+                extra_skill_kind: 0,
+                performs_extra_action: false,
+                additional_enabled: false,
+                additional_is_crit: None,
+            },
+            DamageRuntime {
+                fight_version: 6,
+                pool: &pool,
+                attributes: &managers.attribute,
+                buffs: &managers.buff,
+                target_buffs: &managers.buff,
+                hp: &managers.hp,
+                fields: None,
+                emitter: None,
+                team_inspiration: 0,
+            },
+            CommandOrigin {
+                domain: crate::engine::skill::rule::RuleDomain::BuffAct,
+                key: crate::engine::skill::rule::DefinitionKey::new(100, "Attr"),
+            },
+        )
+        .expect("the attack should resolve") else {
+            panic!("expected damage");
+        };
+        damage.amount
+    };
+
+    assert_eq!(resolve(-1), 1_500);
+}

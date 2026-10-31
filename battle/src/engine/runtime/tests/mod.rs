@@ -18,4 +18,5 @@ fn runtime(fight: Fight) -> BattleRuntime {
         crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
         fight,
     )
+    .unwrap()
 }

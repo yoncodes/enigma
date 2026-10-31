@@ -643,6 +643,14 @@ fn additional_skill_owners(
         })
         .chain(
             managers
+                .buff
+                .passive_skill_links()
+                .into_iter()
+                .filter(|link| pool.is_virtual_entity(link.owner_uid))
+                .map(|link| (link.owner_uid, link.skill_id, PassiveSourceKind::Unknown)),
+        )
+        .chain(
+            managers
                 .battle_rule
                 .owned_skills()
                 .map(|(owner_uid, skill_id)| (owner_uid, skill_id, PassiveSourceKind::BattleRule)),

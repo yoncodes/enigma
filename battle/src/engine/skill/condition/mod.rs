@@ -10,6 +10,7 @@ pub mod evaluate;
 pub mod ex_point;
 pub mod extra;
 pub mod hp;
+pub mod indicator;
 pub mod injury;
 pub mod lifecycle;
 pub mod magic_circle;

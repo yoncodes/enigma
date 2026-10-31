@@ -221,6 +221,63 @@ fn initial_wire_state_comes_from_the_resolved_exact_feature() {
 }
 
 #[test]
+fn foundation_shield_snapshots_source_attack_without_a_runtime_marker() {
+    crate::test_support::init_config();
+
+    let definition = BuffDefinition::get(31_400_002).unwrap();
+    let act_info = definition
+        .initial_planned_act_info(Some(2_121), &[])
+        .unwrap();
+
+    assert_eq!(
+        act_info,
+        [sonettobuf::BuffActInfo {
+            act_id: Some(1146),
+            param: vec![2_121],
+            str_param: Some(String::new()),
+        }]
+    );
+    assert!(definition.initial_wire_states(10, 20, 1, 5_000).is_empty());
+}
+
+#[test]
+fn foundation_shield_requires_carrier_description_evidence() {
+    crate::test_support::init_config();
+
+    assert!(BuffDefinition::get(31_400_002).unwrap().features()[1].arguments_supported);
+    assert!(!BuffDefinition::get(114_380_002).unwrap().features()[1].arguments_supported);
+}
+
+#[test]
+fn foundation_counter_snapshots_its_configured_source_attack_capacity() {
+    crate::test_support::init_config();
+
+    let definition = BuffDefinition::get(31_400_003).unwrap();
+    let act_info = definition
+        .initial_planned_act_info(Some(2_121), &[])
+        .unwrap();
+
+    assert_eq!(
+        act_info,
+        [sonettobuf::BuffActInfo {
+            act_id: Some(1147),
+            param: vec![0, 10_605],
+            str_param: Some(String::new()),
+        }]
+    );
+    assert!(definition.initial_wire_states(10, 20, 1, 5_000).is_empty());
+    assert!(
+        !BuffDefinition::get(114_380_003)
+            .unwrap()
+            .features()
+            .iter()
+            .find(|feature| feature.values.first() == Some(&1147))
+            .unwrap()
+            .arguments_supported
+    );
+}
+
+#[test]
 fn buff_owned_charge_starts_at_zero_on_its_carrier() {
     crate::test_support::init_config();
 

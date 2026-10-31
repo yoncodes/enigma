@@ -679,7 +679,6 @@ pub fn run_start(
     }
     let mut card_setup = Some(card_setup);
     let mut dealt_cards = None;
-    let mut opening_deck_counts = None;
     let mut opening_hand_limit = None;
     let mut opening_draws = Vec::new();
     let owner_uids = pool
@@ -693,6 +692,7 @@ pub fn run_start(
     let mut opening_duration_snapshot = None;
     let mut opening_duration_captured = false;
     let mut opening_settlement = None;
+    let mut opening_late_ran = false;
     let version7_opening =
         crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
             == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
@@ -705,6 +705,7 @@ pub fn run_start(
                 determinism,
                 context,
                 &setup_owner_uids,
+                opening_late_ran,
             )?;
             let mut sync = begin_round_phase(RoundPhase::RoundStartSync);
             append_opening_round_phase(&mut sync, sync_setup);
@@ -799,6 +800,89 @@ pub fn run_start(
                 );
             }
             append(&mut result, settlement);
+            if version7_opening {
+                let (mut losses, settlement_plan) = run_round_start_loss_mechanics(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    None,
+                )?;
+                if !losses.frames.is_empty() {
+                    let late_setup = drain::run_opening_parent_late_setup(
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        &setup_owner_uids,
+                    )?;
+                    append_opening_round_phase(&mut losses, late_setup);
+                    opening_late_ran = true;
+                    append(&mut result, losses);
+                }
+                if settlement_plan.capacity_groups.is_empty() {
+                    append(
+                        &mut result,
+                        run_round_start_after_loss_mechanics(
+                            managers,
+                            pool,
+                            catalog,
+                            determinism,
+                            context,
+                            &owner_uids,
+                            settlement_plan,
+                        )?,
+                    );
+                } else {
+                    let mut capacity_sync = begin_round_phase(RoundPhase::RoundStartCapacitySync);
+                    append_round_phase(
+                        &mut capacity_sync,
+                        run_round_start_owner_settlement(
+                            managers,
+                            pool,
+                            catalog,
+                            determinism,
+                            context,
+                            settlement_plan,
+                        )?,
+                    );
+                    append(&mut result, capacity_sync);
+
+                    let mut settlement = begin_round_phase(RoundPhase::RoundStartSettlement);
+                    append_opening_settlement(
+                        &mut settlement,
+                        run_round_start_skill_mechanics(
+                            managers,
+                            pool,
+                            catalog,
+                            determinism,
+                            context,
+                            &owner_uids,
+                        )?,
+                        true,
+                    );
+                    append(&mut result, settlement);
+                }
+                let duration_snapshot = opening_duration_snapshot
+                    .take()
+                    .expect("Version7 advances late duration after round-start reactions");
+                append(
+                    &mut result,
+                    drain::run(
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        duration_advance_rule(
+                            effect_time::ROUND_START_AFTER_REACTION_DURATION,
+                            &duration_snapshot,
+                        ),
+                    )?,
+                );
+            }
             continue;
         }
         if stage == SetupStage::CardSetup {
@@ -915,7 +999,18 @@ pub fn run_start(
             }
             dealt_cards = Some(managers.card.hand().to_vec());
             push_cue(&mut result.frames, RoundCue::EnterFightDeal);
-            opening_deck_counts = Some((initial_deck_num, managers.card.deck_num()));
+            let mut deck_counts = Vec::new();
+            if initial_deck_num > 0 {
+                deck_counts.push(RoundCue::DeckCount {
+                    count: initial_deck_num,
+                    team_type: 1,
+                });
+            }
+            deck_counts.push(RoundCue::DeckCount {
+                count: managers.card.deck_num(),
+                team_type: 1,
+            });
+            push_cues(&mut result.frames, deck_counts);
         }
         let stage_result = if matches!(
             stage,
@@ -1029,6 +1124,7 @@ pub fn run_start(
                         .expect("Version7 keeps settlement open through duration setup"),
                     duration,
                 );
+                continue;
             }
             let (losses, settlement_plan) = run_round_start_loss_mechanics(
                 managers,
@@ -1089,31 +1185,9 @@ pub fn run_start(
                 );
                 opening_settlement = Some(settlement);
             }
-            if version7_opening {
-                let duration_snapshot = opening_duration_snapshot
-                    .take()
-                    .expect("Version7 advances late duration after round-start reactions");
-                let duration = drain::run(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
-                    duration_advance_rule(
-                        effect_time::ROUND_START_AFTER_REACTION_DURATION,
-                        &duration_snapshot,
-                    ),
-                )?;
-                append_opening_round_phase(
-                    opening_settlement
-                        .as_mut()
-                        .expect("Version7 keeps settlement open through late duration"),
-                    duration,
-                );
-            }
         }
     }
-    let mut opening_refill = super::run_opening_hand_refill(
+    let opening_refill = super::run_opening_hand_refill(
         managers,
         pool,
         catalog,
@@ -1125,22 +1199,6 @@ pub fn run_start(
         },
     )?;
     determinism.clear_card_draws();
-    let (initial_deck_num, setup_deck_num) =
-        opening_deck_counts.expect("start schedule has one CardSetup stage");
-    let mut setup_deck_counts = DrainResult::default();
-    let mut deck_counts = Vec::new();
-    if initial_deck_num > 0 {
-        deck_counts.push(RoundCue::DeckCount {
-            count: initial_deck_num,
-            team_type: 1,
-        });
-    }
-    deck_counts.push(RoundCue::DeckCount {
-        count: setup_deck_num,
-        team_type: 1,
-    });
-    push_cues(&mut setup_deck_counts.frames, deck_counts);
-    append_round_phase(&mut opening_refill, setup_deck_counts);
     append(&mut result, opening_refill);
     let owner_uids = pool
         .attacker_main

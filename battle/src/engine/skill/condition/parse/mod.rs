@@ -137,6 +137,10 @@ pub enum ParsedConditionKind {
         threshold: i32,
         scope: BuffAddedScope,
     },
+    AccBuffTypeAddedCount {
+        type_ids: Vec<i32>,
+        threshold: i32,
+    },
     HpPermille {
         compare: ConditionCompare,
         threshold: i32,
@@ -182,6 +186,7 @@ pub enum ParsedConditionKind {
     PerExPoint {
         threshold: i32,
     },
+    PerEureka,
     ExPointDecrease {
         threshold: i32,
     },
@@ -207,6 +212,10 @@ pub enum ParsedConditionKind {
     FightProgressValue {
         progress_id: i32,
         compare_code: i32,
+        threshold: i32,
+    },
+    IndicatorAtLeast {
+        indicator_id: i32,
         threshold: i32,
     },
     PowerIncrChange {
@@ -312,7 +321,9 @@ pub enum ParsedConditionKind {
         group: i32,
         rank: i32,
     },
-    UseExSkill,
+    UseExSkill {
+        slot: i32,
+    },
     TargetUseExSkill,
     TeammateUseExSkill,
     ActiveSkillRank {

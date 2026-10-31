@@ -41,6 +41,10 @@ pub fn per_ex_point(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionK
     })
 }
 
+pub fn per_eureka(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty().then_some(ParsedConditionKind::PerEureka)
+}
+
 pub fn ex_point_decrease(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::ExPointDecrease {
         threshold: first_i32(args)?,
@@ -506,7 +510,8 @@ fn event_condition_count(
         ParsedConditionKind::Random { threshold } => {
             random_roll.map_or(1, |roll| i32::from(roll < *threshold))
         }
-        ParsedConditionKind::AccBuffAddedCount { .. } => 0,
+        ParsedConditionKind::AccBuffAddedCount { .. }
+        | ParsedConditionKind::AccBuffTypeAddedCount { .. } => 0,
         _ => i32::from(conditions_match(
             std::slice::from_ref(condition),
             source_uid,

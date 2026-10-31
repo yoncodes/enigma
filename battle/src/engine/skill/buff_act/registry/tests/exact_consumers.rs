@@ -62,6 +62,21 @@ fn attr_transactions_follow_the_buff_lifecycle_boundary() {
 }
 
 #[test]
+fn each_change_attr_requires_exact_attribute_arguments() {
+    let definition = find(834, "EachChangeAttr").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert!(supports(&[205, 0, 102, 150]));
+    assert!(!supports(&[205, 0, 102]));
+    assert!(!supports(&[999, 0, 102, 150]));
+    assert!(!supports(&[205, -1, 102, 150]));
+    assert!(!supports(&[205, 0, 999, 150]));
+    assert!(!supports(&[205, 0, 102, -1]));
+    assert!(!supports(&[101, 40, 101, 40]));
+    assert!(!supports(&[206, 0, 206, 100]));
+}
+
+#[test]
 fn registry_requires_exact_id_and_type() {
     assert_eq!(
         find(1075, "CardLimitAdd").unwrap().kind,
@@ -474,6 +489,55 @@ fn damage_cap_is_an_exact_static_consumer_with_its_captured_marker() {
             .markers(super::super::super::wire::WirePhase::Add),
         &[sonettobuf::effect_type_enum::EffectType::Damagenotmorethan as i32]
     );
+}
+
+#[test]
+fn foundation_shield_is_an_exact_snapshotted_damage_consumer() {
+    let definition = find(1146, "FoundationShield").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::FoundationShield);
+    assert_eq!(
+        definition.state.initial,
+        Some(BuffActInitialStateRule::SourceAttack)
+    );
+    assert!(
+        !definition
+            .wire
+            .expect("FoundationShield has static wire metadata")
+            .initial_state_marker
+    );
+    assert_eq!(
+        destination(1146, "FoundationShield", &[102, 800, 31_400_007, 1600]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(
+        1146,
+        "FoundationShield",
+        &[101, 800, 31_400_007, 1600]
+    ));
+    assert!(find(1146, "FoundationCounter").is_none());
+}
+
+#[test]
+fn foundation_counter_is_an_exact_snapshotted_state_consumer() {
+    let definition = find(1147, "FoundationCounter").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::FoundationCounter);
+    assert_eq!(
+        definition.state.initial,
+        Some(BuffActInitialStateRule::FoundationCounter)
+    );
+    assert!(definition.state.consumer);
+    assert_eq!(
+        destination(1147, "FoundationCounter", &[5000, 1000, 1000]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(
+        1147,
+        "FoundationCounter",
+        &[0, 1000, 1000]
+    ));
+    assert!(find(1147, "FoundationShield").is_none());
 }
 
 #[test]

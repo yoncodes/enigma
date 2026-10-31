@@ -588,6 +588,28 @@ fn accumulated_owner_buff_count_keeps_owner_scope_and_exact_key() {
 }
 
 #[test]
+fn accumulated_owner_buff_type_count_keeps_its_exact_key() {
+    assert_eq!(
+        parse(
+            730212,
+            "AccAddBuffCountByBuffTypeIdAllEffect",
+            &["31400004".into(), "8".into()],
+        ),
+        Some(ParsedConditionKind::AccBuffTypeAddedCount {
+            type_ids: vec![31400004],
+            threshold: 8,
+        })
+    );
+    let definition = find_key(730212, "AccAddBuffCountByBuffTypeIdAllEffect").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(
+        definition.dependencies,
+        &[EventKind::BuffAdded, EventKind::BuffChanged]
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+}
+
+#[test]
 fn final_settlement_buff_threshold_is_boolean_and_exact() {
     assert_eq!(
         parse(

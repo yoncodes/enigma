@@ -44,6 +44,11 @@ impl ImpromptuDefinition {
         self.skill_id
     }
 
+    pub const fn with_skill(mut self, skill_id: i32) -> Self {
+        self.skill_id = skill_id;
+        self
+    }
+
     pub const fn damage_up_act_id(self) -> i32 {
         self.damage_up_act_id
     }
@@ -204,25 +209,25 @@ pub fn allocate_team_energy_rule_ops(
     else {
         return Ok(None);
     };
+    let limit = buff_act::emitter_card_energy_limit::resolve(
+        crate::engine::manager::card::energy::BASE_LIMIT,
+        &features,
+        crate::engine::manager::emitter::UID,
+    );
     let available = managers
         .gauge
         .get(team_energy_key(team))
         .ok_or(ImpromptuError::MissingTeamEnergy(team))?
         .current;
-    let Some(cards) = determinism
-        .take_card_energy_snapshot(managers.card.hand(), available)
-        .or_else(|| {
-            crate::engine::manager::card::energy::allocate(
-                &managers.buff,
-                &managers.hp,
-                catalog,
-                managers.card.hand(),
-                available,
-                available > 4,
-                determinism,
-            )
-        })
-    else {
+    let Some(cards) = crate::engine::manager::card::energy::allocate(
+        &managers.buff,
+        &managers.hp,
+        catalog,
+        managers.card.hand(),
+        available,
+        limit,
+        determinism,
+    ) else {
         return Ok(Some(Vec::new()));
     };
     let allocated = cards
@@ -242,6 +247,7 @@ pub fn allocate_team_energy_rule_ops(
                     .into_iter()
                     .map(|card| card.energy.unwrap_or_default())
                     .collect(),
+                limit,
             },
         ))),
     ]))
@@ -311,7 +317,11 @@ pub fn action_queue_committed_rule_ops(
         .into_iter()
         .collect::<Vec<_>>();
     if current.saturating_add(gained) > 0
-        && let Some(definition) = managers.catalog().impromptu_definition()
+        && let Some(definition) = buff_act::emitter_skill::resolve(
+            managers.catalog().impromptu_definition(),
+            &features,
+            emitter_uid,
+        )
         && let Some(origin) = buff_act::feature_command_origin(tag)
     {
         ops.push(RuleOp::Command(BattleCommand::Card(
@@ -333,29 +343,31 @@ pub fn finalize_action_queue_rule_ops(
     team: i32,
     emitter_uid: i64,
 ) -> Vec<RuleOp> {
-    let features = managers.buff.active_features(&managers.hp);
-    let Some(tag) = emitter_tags(&features)
-        .into_iter()
-        .find(|feature| feature.team_type == team)
-    else {
-        return Vec::new();
-    };
-    let Some(origin) = buff_act::feature_command_origin(tag) else {
+    let Some(origin) = action_queue_finalization_origin(managers, team, emitter_uid) else {
         return Vec::new();
     };
     let key = inspiration_key(emitter_uid);
-    if managers.gauge.get(key).is_none() {
-        return Vec::new();
-    }
-    let ops = vec![
+    vec![
         RuleOp::Command(BattleCommand::Card(CardCommand::ClearEnergy { origin })),
         RuleOp::Command(BattleCommand::Gauge(GaugeCommand::new(
             origin,
             key,
             GaugeOperation::Snapshot,
         ))),
-    ];
-    ops
+    ]
+}
+
+fn action_queue_finalization_origin(
+    managers: &BattleManagers,
+    team: i32,
+    emitter_uid: i64,
+) -> Option<crate::engine::skill::rule::CommandOrigin> {
+    let features = managers.buff.active_features(&managers.hp);
+    let tag = emitter_tags(&features)
+        .into_iter()
+        .find(|feature| feature.team_type == team)?;
+    managers.gauge.get(inspiration_key(emitter_uid))?;
+    buff_act::feature_command_origin(tag)
 }
 
 pub fn build_plan(managers: &BattleManagers, team: i32, emitter_uid: i64) -> Option<ImpromptuPlan> {
@@ -368,18 +380,25 @@ pub fn build_plan(managers: &BattleManagers, team: i32, emitter_uid: i64) -> Opt
     if inspiration <= 0 {
         return None;
     }
-    let definition = managers.catalog().impromptu_definition()?;
+    let definition = buff_act::emitter_skill::resolve(
+        managers.catalog().impromptu_definition(),
+        &features,
+        emitter_uid,
+    )?;
+    let attacks = crate::engine::skill::buff_act::emitter_num_change::resolve(
+        &managers.buff,
+        &managers.hp,
+        emitter_uid,
+    );
     Some(ImpromptuPlan {
         source_uid: emitter_uid,
         skill_id: definition.skill_id(),
         inspiration,
-        attack_count: crate::engine::skill::buff_act::emitter_num_change::attack_count_for(
-            &managers.buff,
-            &managers.hp,
-            emitter_uid,
-        ),
+        attack_count: attacks.count,
         damage_rate_opcode: definition.damage_up_act_id(),
-        damage_rate: definition.damage_rate(inspiration),
+        damage_rate: definition
+            .damage_rate(inspiration)
+            .saturating_add(attacks.damage_rate),
     })
 }
 
@@ -433,197 +452,4 @@ fn change(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::engine::manager::BattleManagers;
-
-    #[test]
-    fn active_impromptu_without_team_energy_is_an_error() {
-        crate::test_support::init_config();
-        let fight = sonettobuf::Fight {
-            attacker: Some(sonettobuf::FightTeam {
-                entitys: vec![sonettobuf::FightEntityInfo {
-                    uid: Some(10),
-                    current_hp: Some(100),
-                    team_type: Some(1),
-                    buffs: vec![sonettobuf::BuffInfo {
-                        uid: Some(20),
-                        buff_id: Some(2_240_000),
-                        from_uid: Some(10),
-                        ..Default::default()
-                    }],
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        assert_eq!(
-            allocate_team_energy_rule_ops(
-                &BattleManagers::seeded(&fight),
-                &SkillEffectCatalog::default(),
-                &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
-                1,
-            ),
-            Err(ImpromptuError::MissingTeamEnergy(1))
-        );
-    }
-
-    #[test]
-    fn team_energy_and_inspiration_have_distinct_lifetimes() {
-        crate::test_support::init_config();
-        let tag = feature(10, 1, 20, "EmitterTag", vec![875]);
-        let gain = feature(10, 1, 21, "UseSkillTeamAddEmitterEnergy", vec![881, 1, 2]);
-        let mut managers = BattleManagers::default();
-        let enable = enable_rule_ops(
-            crate::catalog::impromptu_definition(crate::test_support::game_data()),
-            &managers.gauge,
-            &[tag.clone(), gain.clone()],
-            99998,
-        )
-        .pop()
-        .unwrap();
-        for output in [enable.team_energy, enable.inspiration] {
-            let RuleOp::Command(BattleCommand::Gauge(command)) = output else {
-                panic!("gauge command");
-            };
-            managers.execute_gauge(command).unwrap();
-        }
-
-        let RuleOp::Command(BattleCommand::Gauge(command)) =
-            team_energy_gain_rule_op(&managers.gauge, &gain, 2).unwrap()
-        else {
-            panic!("gauge command");
-        };
-        managers.execute_gauge(command).unwrap();
-        let cards = [CardInfo {
-            energy: Some(3),
-            ..Default::default()
-        }];
-        let RuleOp::Command(BattleCommand::Gauge(command)) =
-            collect_inspiration_rule_op(&managers.gauge, &tag, 99998, &cards).unwrap()
-        else {
-            panic!("gauge command");
-        };
-        managers.execute_gauge(command).unwrap();
-
-        let RuleOp::Command(BattleCommand::Gauge(command)) =
-            reset_inspiration_rule_op(&managers.gauge, &tag, 99998).unwrap()
-        else {
-            panic!("gauge command");
-        };
-        managers.execute_gauge(command).unwrap();
-
-        assert_eq!(managers.gauge.get(team_energy_key(1)).unwrap().current, 2);
-        assert_eq!(
-            managers.gauge.get(inspiration_key(99998)).unwrap().current,
-            0
-        );
-    }
-
-    #[test]
-    fn finalization_snapshots_only_after_inspiration_participates() {
-        crate::test_support::init_config();
-        let fight = sonettobuf::Fight {
-            attacker: Some(sonettobuf::FightTeam {
-                entitys: vec![sonettobuf::FightEntityInfo {
-                    uid: Some(10),
-                    current_hp: Some(100),
-                    team_type: Some(1),
-                    buffs: vec![sonettobuf::BuffInfo {
-                        uid: Some(20),
-                        buff_id: Some(2_240_000),
-                        from_uid: Some(10),
-                        ..Default::default()
-                    }],
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let mut managers = BattleManagers::seeded(&fight);
-        let key = inspiration_key(99_998);
-        let origin = buff_act::configured_command_origin(875, BuffActKind::EmitterTag).unwrap();
-        managers
-            .execute_gauge(GaugeCommand::new(
-                origin,
-                key,
-                GaugeOperation::Enable { max: None },
-            ))
-            .unwrap();
-        managers.begin_round();
-
-        let idle = finalize_action_queue_rule_ops(&managers, 1, 99_998);
-        assert!(matches!(
-            idle.as_slice(),
-            [
-                RuleOp::Command(BattleCommand::Card(CardCommand::ClearEnergy { .. })),
-                RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
-                    operation: GaugeOperation::Snapshot,
-                    ..
-                }))
-            ]
-        ));
-
-        for delta in [1, -1] {
-            managers
-                .execute_gauge(GaugeCommand::new(
-                    origin,
-                    key,
-                    GaugeOperation::ChangeValue { delta },
-                ))
-                .unwrap();
-        }
-        let participated = finalize_action_queue_rule_ops(&managers, 1, 99_998);
-        assert!(matches!(
-            participated.as_slice(),
-            [
-                RuleOp::Command(BattleCommand::Card(CardCommand::ClearEnergy { .. })),
-                RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
-                    operation: GaugeOperation::Snapshot,
-                    ..
-                }))
-            ]
-        ));
-    }
-
-    #[test]
-    fn inputs_fail_closed_without_the_exact_feature_or_enabled_gauge() {
-        let tag = feature(10, 1, 20, "EmitterTag", vec![875]);
-        let wrong = feature(10, 1, 21, "EmitterTag", vec![875]);
-        let managers = BattleManagers::default();
-
-        assert!(team_energy_gain_rule_op(&managers.gauge, &wrong, 2).is_none());
-        assert!(collect_inspiration_rule_op(&managers.gauge, &tag, 99998, &[]).is_none());
-        assert!(reset_inspiration_rule_op(&managers.gauge, &tag, 99998).is_none());
-    }
-
-    fn feature(
-        owner_uid: i64,
-        team_type: i32,
-        buff_uid: i64,
-        act_type: &str,
-        values: Vec<i32>,
-    ) -> ActiveBuffFeature {
-        ActiveBuffFeature {
-            owner_uid,
-            source_uid: owner_uid,
-            buff_uid,
-            buff_id: 2240008,
-            amount: 1,
-            team_type,
-            owner_alive: true,
-            act_type: act_type.to_owned(),
-            effect_time: 0,
-            effect_condition: 0,
-            raw: values
-                .iter()
-                .map(i32::to_string)
-                .collect::<Vec<_>>()
-                .join("#"),
-            values,
-        }
-    }
-}
+mod tests;

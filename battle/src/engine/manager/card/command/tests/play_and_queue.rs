@@ -530,7 +530,7 @@ fn around_rank_change_records_success_and_rank_floor_failure_in_order() {
     manager.played[4].skill_id = 30480223;
 
     let changes = manager
-        .execute_command(CardCommand::ChangeAroundQueuedRanks {
+        .execute_command(CardCommand::ChangeQueuedRanks {
             origin: ORIGIN,
             changes: vec![
                 QueuedCardRankChange {

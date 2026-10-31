@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::engine::{
     entity::attr::AttrId,
@@ -24,6 +24,7 @@ pub struct FieldState {
     pub origin: CommandOrigin,
     pub definition: FieldDefinition,
     pub team: i32,
+    pub owner_uid: i64,
     pub create_uid: i64,
     pub level: i32,
     pub progress: i32,
@@ -38,6 +39,12 @@ pub enum FieldOperation {
         create_uid: i64,
         initial_level: i32,
         thresholds: Vec<FieldThreshold>,
+    },
+    DeployReplacement {
+        definition: FieldDefinition,
+        owner_uid: i64,
+        create_uid: i64,
+        level: i32,
     },
     ChangeProgress {
         delta: i32,
@@ -116,6 +123,7 @@ pub enum FieldCommandError {
 pub struct FieldManager {
     states: HashMap<i32, FieldState>,
     round_transfers: HashMap<i32, i32>,
+    deployed_this_round: HashSet<i32>,
 }
 
 pub(crate) struct FieldPlan {
@@ -144,6 +152,11 @@ impl FieldManager {
 
     pub(crate) fn begin_round(&mut self) {
         self.round_transfers.clear();
+        self.deployed_this_round.clear();
+    }
+
+    pub(crate) fn was_deployed_this_round(&self, team: i32) -> bool {
+        self.deployed_this_round.contains(&team)
     }
 
     pub fn attribute_delta(
@@ -208,22 +221,59 @@ impl FieldManager {
                 initial_level,
                 mut thresholds,
             } => {
-                if definition.field_id <= 0 || create_uid == 0 || definition.duration < 0 {
+                if definition.field_id <= 0 || create_uid == 0 || definition.duration < -1 {
                     return Err(FieldCommandError::InvalidCommand);
                 }
                 validate_thresholds(&thresholds)?;
                 thresholds.sort_by_key(|threshold| (threshold.progress, threshold.level));
                 let initial_level = initial_level.max(0);
+                let vacant = !self.states.contains_key(&command.team);
                 self.states.entry(command.team).or_insert(FieldState {
                     origin: command.origin,
                     definition,
                     team: command.team,
+                    owner_uid: create_uid,
                     create_uid,
                     level: initial_level,
                     progress: 0,
                     next_upgrade_progress: next_upgrade_progress(&thresholds, initial_level),
                     terminal_progress: terminal_progress(&thresholds),
                 });
+                if vacant {
+                    self.deployed_this_round.insert(command.team);
+                }
+                (FieldChangeKind::Deployed, 0, 0)
+            }
+            FieldOperation::DeployReplacement {
+                definition,
+                owner_uid,
+                create_uid,
+                level,
+            } => {
+                if definition.field_id <= 0
+                    || definition.duration < -1
+                    || owner_uid == 0
+                    || create_uid == 0
+                    || level < 0
+                    || self.states.contains_key(&command.team)
+                {
+                    return Err(FieldCommandError::InvalidCommand);
+                }
+                self.states.insert(
+                    command.team,
+                    FieldState {
+                        origin: command.origin,
+                        definition,
+                        team: command.team,
+                        owner_uid,
+                        create_uid,
+                        level,
+                        progress: 0,
+                        next_upgrade_progress: 0,
+                        terminal_progress: 0,
+                    },
+                );
+                self.deployed_this_round.insert(command.team);
                 (FieldChangeKind::Deployed, 0, 0)
             }
             FieldOperation::ChangeProgress { delta } => {
@@ -315,7 +365,7 @@ fn validate_thresholds(thresholds: &[FieldThreshold]) -> Result<(), FieldCommand
         threshold.level <= 0
             || threshold.progress < 0
             || threshold.definition.field_id <= 0
-            || threshold.definition.duration < 0
+            || threshold.definition.duration < -1
     }) {
         return Err(FieldCommandError::InvalidCommand);
     }

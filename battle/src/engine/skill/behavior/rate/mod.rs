@@ -52,6 +52,7 @@ impl BehaviorHandler for Handler {
                     target_uid: context.source_uid,
                     effect_type: sonettobuf::effect_type_enum::EffectType::Twinsupcount as i32,
                     effect_num: consumed,
+                    effect_num1: None,
                     config_effect: behavior.spec.key.opcode,
                     reserve_id: None,
                     reserve_str: None,
@@ -320,6 +321,7 @@ fn conduit_power_up_ops(
             target_uid: context.source_uid,
             effect_type: sonettobuf::effect_type_enum::EffectType::Twinspowerupcount as i32,
             effect_num: spent,
+            effect_num1: None,
             config_effect: behavior.spec.key.opcode,
             reserve_id: None,
             reserve_str: None,
@@ -389,7 +391,7 @@ pub struct RateRuntime<'a> {
     pub context: TargetContext,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModifierSide {
     Source,
     IncomingTarget,
@@ -480,6 +482,7 @@ fn collect_attack_modifier_slot(
         return false;
     };
     for conditions in condition_sets {
+        let rate_count_before = modifiers.rates.len();
         let targets = TargetResolver::resolve_with_managers_and_context(
             &slot.target,
             active_skill_id,
@@ -575,6 +578,15 @@ fn collect_attack_modifier_slot(
             );
         }
         if collected {
+            if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Damage)
+                && modifiers.rates.len() > rate_count_before
+            {
+                eprintln!(
+                    "attack modifier rate side={side:?} owner={owner_uid} skill={owner_skill_id} active_skill={active_skill_id} opcode={} rates={:?}",
+                    slot.behavior.spec.key.opcode,
+                    &modifiers.rates[rate_count_before..],
+                );
+            }
             modifiers.consume_team_injury_count_round = modifiers
                 .consume_team_injury_count_round
                 .or_else(|| team_injury_count_key(&conditions));

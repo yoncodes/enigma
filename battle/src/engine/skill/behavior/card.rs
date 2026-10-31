@@ -19,23 +19,23 @@ use crate::engine::{
 };
 
 pub fn rule_op(behavior: &ParsedBehavior) -> Option<RuleOp> {
-    let [1, delta, count] = behavior.args.as_slice() else {
+    let [1, -1, amount] = behavior.args.as_slice() else {
         return None;
     };
-    if *delta == 0 || *count <= 0 {
+    if *amount <= 0 {
         return None;
     }
     Some(RuleOp::Command(BattleCommand::Card(
         CardCommand::ChangeBasicEnergy(CardEnergyChange {
             origin: super::command_origin(behavior)?,
-            delta: *delta,
-            count: *count,
+            delta: *amount,
+            count: 1,
         }),
     )))
 }
 
 pub(super) fn supports_basic_card_energy(behavior: &ParsedBehavior) -> bool {
-    matches!(behavior.args.as_slice(), [1, -1, count] if *count > 0)
+    matches!(behavior.args.as_slice(), [1, -1, amount] if *amount > 0)
 }
 
 pub(super) struct Handler;
@@ -247,7 +247,7 @@ impl BehaviorHandler for Handler {
         .collect::<Vec<_>>();
         (!changes.is_empty()).then(|| {
             vec![RuleOp::Command(BattleCommand::Card(
-                CardCommand::ChangeAroundQueuedRanks {
+                CardCommand::ChangeQueuedRanks {
                     origin: super::command_origin(behavior)
                         .expect("registered queue preparation has an origin"),
                     changes,
@@ -418,8 +418,11 @@ fn card_level_change_ops(
         .filter_map(|(hand_index, card)| next_skill(owner, card.skill_id?).map(|_| hand_index))
         .collect::<Vec<_>>();
     let origin = super::command_origin(behavior)?;
+    if candidates.is_empty() {
+        return Some(Vec::new());
+    }
     if mode == 3 {
-        let hand_index = candidates.pop()?;
+        let hand_index = *candidates.first()?;
         return Some(vec![RuleOp::Command(BattleCommand::Card(
             CardCommand::RankUpHand(HandCardRankUp {
                 origin,
@@ -871,9 +874,8 @@ mod tests {
         let ops = <Handler as BehaviorHandler>::collect_queue_preparation(6, &behavior).unwrap();
 
         let [
-            RuleOp::Command(BattleCommand::Card(CardCommand::ChangeAroundQueuedRanks {
-                changes,
-                ..
+            RuleOp::Command(BattleCommand::Card(CardCommand::ChangeQueuedRanks {
+                changes, ..
             })),
         ] = ops.as_slice()
         else {
@@ -991,7 +993,7 @@ mod tests {
     }
 
     #[test]
-    fn card_level_change_mode_three_selects_rightmost_owned_eligible_card_without_randomness() {
+    fn card_level_change_mode_three_selects_visual_rightmost_owned_card() {
         use crate::engine::runtime::determinism::{HandRankChoice, RoundDeterminism};
         use sonettobuf::{CardInfo, Fight, FightEntityInfo, FightTeam};
 
@@ -1069,7 +1071,7 @@ mod tests {
             [RuleOp::Command(BattleCommand::Card(
                 CardCommand::RankUpHand(HandCardRankUp {
                     owner_uid: 10,
-                    hand_index: 6,
+                    hand_index: 0,
                     ..
                 })
             ))]

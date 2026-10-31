@@ -656,6 +656,7 @@ behavior_definitions! {
     [50011] "CardLevelChange" => super::card::Handler, CardLevelChange, Immediate, destination, super::card::supports_card_level_change;
     [60116] "CardDeckTopRankCorrect" => super::card::Handler, CardDeckTopRankCorrect, Immediate, destination, super::card::supports_deck_top_rank_correct;
     [50034] "ConsumePowerUpgradeSkillCard" => super::card::Handler, ConsumePowerUpgradeSkillCard, Immediate, destination, super::card::supports_power_card_upgrade;
+    [60265] "ConsumePowerUpdateActorCard" => super::power_queue_rank::Handler, ConsumePowerUpdateActorCard, Immediate, parent_destination, super::power_queue_rank::supports_arguments;
     [60002] "AddUniversalCard" => super::card::Handler, AddUniversalCard, Immediate, destination;
     [60012] "RedealCardKeepStar2" => super::card::Handler, RedealCardKeepStar2, Immediate, destination;
     [60070] "AddUseSkillCard" => super::card::Handler, AddQueuedSkillCard, Immediate, destination, super::card::supports_queued_skill_card;
@@ -733,6 +734,7 @@ behavior_definitions! {
     [50019] "AddMagicCircle" => super::magic_circle::Handler, AddMagicCircle, Immediate, destination;
     [50021] "RemoveMagicCircleById" => super::magic_circle::Handler, RemoveMagicCircleById, Immediate, destination;
     [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, destination;
+    [60270] "UpdateWangQiMagicCircle" => super::magic_circle::Handler, UpdateWangQiMagicCircle, Immediate, destination;
     [60195] "ElectricTransform" => super::electric::Handler, ElectricTransform, Immediate, destination, super::electric::supports;
     [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, owner_destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(0, "None"), stage: SetupStage::Unconditional, priority: 0 }), super::synchronization::supports_props;
     [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterHit, destination, super::synchronization::supports_big_skill_rate;
@@ -776,6 +778,7 @@ behavior_definitions! {
     [100017] "IgnoreSkillConfigDamageRate" => super::general::DamageRateMarkerHandler, IgnoreSkillConfigDamageRate, Immediate, destination, arguments::none;
     [60036] "ConsumeBuffChangeTargets" => super::skill_modifier::Handler, ConsumeBuffChangeTargets, Immediate, destination;
     [60034] "ConsumeBuffUpSkillDamageRate" => super::skill_modifier::Handler, ConsumeBuffUpSkillDamageRate, Immediate, destination;
+    [60307] "FoundationCounterClear" => super::foundation_counter::Handler, FoundationCounterClear, Immediate, destination;
     [60035] "ConsumeBuffAttrFix" => super::skill_modifier::Handler, ConsumeBuffAttrFix, Immediate, destination;
     [100019] "ConsumeBuffFixMixedRate" => super::skill_modifier::Handler, ConsumeBuffFixMixedRate, Immediate, destination, super::skill_modifier::supports_mixed_rate;
     [60206] "CreateAdditionalDamageAddBuff" => super::additional_damage::Handler, CreateAdditionalDamageAddBuff, Immediate, destination;

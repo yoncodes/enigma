@@ -360,4 +360,55 @@ mod tests {
                 .any(|info| info.act_id == Some(1031) && info.str_param.as_deref() == Some("50"))
         );
     }
+
+    #[test]
+    fn targetless_round_end_channel_does_not_start_its_attack() {
+        use crate::engine::{
+            runtime::{
+                determinism::RoundDeterminism,
+                drain::{self, ReactionLane},
+                record::{FrameItem, FrameOwner, SemanticFrame},
+            },
+            skill::{
+                effect::SkillEffectCatalog,
+                target::{TargetContext, TargetPool},
+            },
+        };
+
+        fn contains_attack(frame: &SemanticFrame) -> bool {
+            matches!(
+                frame.owner,
+                FrameOwner::Skill {
+                    skill_id: 31280151,
+                    ..
+                }
+            ) || frame
+                .items
+                .iter()
+                .any(|item| matches!(item, FrameItem::Child(child) if contains_attack(child)))
+        }
+
+        let fight = fight(110, 0);
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        managers.hp.lose(-1, 1_000, 10);
+        let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [31280115]);
+
+        let result = drain::run_group_event(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 2,
+                ..Default::default()
+            },
+            BattleEvent::Kind(EventKind::RoundEnd),
+            ReactionLane::BuffActs,
+            Some(&[10]),
+        )
+        .unwrap();
+
+        assert!(!result.frames.iter().any(contains_attack));
+    }
 }

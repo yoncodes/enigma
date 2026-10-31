@@ -39,7 +39,17 @@ pub fn parse_entity_broken(_: i32, _: &str, args: &[String]) -> Option<ParsedCon
 }
 
 pub fn parse_use_ex_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
-    args.is_empty().then_some(ParsedConditionKind::UseExSkill)
+    args.is_empty()
+        .then_some(ParsedConditionKind::UseExSkill { slot: 0 })
+}
+
+pub fn parse_use_ex_skill_slot(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let slot = match args {
+        [] => 0,
+        [slot] => slot.parse().ok()?,
+        _ => return None,
+    };
+    Some(ParsedConditionKind::UseExSkill { slot })
 }
 
 pub fn parse_target_use_ex_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
@@ -68,7 +78,7 @@ mod tests {
         );
         assert_eq!(
             parse_use_ex_skill(25210, "UseExSkill", &[]),
-            Some(ParsedConditionKind::UseExSkill)
+            Some(ParsedConditionKind::UseExSkill { slot: 0 })
         );
         assert_eq!(
             parse_use_ex_skill(25210, "UseExSkill", &["1".to_owned()]),

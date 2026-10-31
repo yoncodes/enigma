@@ -402,7 +402,7 @@ mod tests {
                         target_buffs: &managers.buff,
                         hp: &managers.hp,
                         fields: None,
-                        emitter: None,
+                        emitter: Some(&managers.emitter),
                         team_inspiration: 0,
                     },
                     CommandOrigin {

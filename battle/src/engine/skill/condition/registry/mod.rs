@@ -1,6 +1,6 @@
 use super::{
     act_order, active_skill, battle_tag, buff, card, career, conduit, entity_count, extra, hp,
-    injury, lifecycle, magic_circle, none,
+    indicator, injury, lifecycle, magic_circle, none,
     parse::{self, ParsedCondition, ParsedConditionKind},
     resource, target_identity, trigger,
 };
@@ -75,6 +75,13 @@ pub enum BehaviorTargetSource {
     ActiveSkillTargets,
     ActiveSkillTargetGroup,
     HitTargets,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ChildTargetSource {
+    #[default]
+    Behavior,
+    Event,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -214,6 +221,7 @@ pub struct ConditionDefinition {
     pub filters_behavior_targets: bool,
     pub behavior_target_order: BehaviorTargetOrder,
     pub behavior_target_source: BehaviorTargetSource,
+    pub child_target_source: ChildTargetSource,
     pub reaction_observer_scope: ReactionObserverScope,
     pub reaction_frame_source: ReactionFrameSource,
     pub reaction_frame_target: ReactionFrameTarget,
@@ -240,6 +248,7 @@ pub struct ConditionMetadata {
     pub filters_behavior_targets: bool,
     pub behavior_target_order: BehaviorTargetOrder,
     pub behavior_target_source: BehaviorTargetSource,
+    pub child_target_source: ChildTargetSource,
     pub reaction_observer_scope: ReactionObserverScope,
     pub reaction_frame_source: ReactionFrameSource,
     pub reaction_frame_target: ReactionFrameTarget,
@@ -273,6 +282,7 @@ pub const fn definition(
         filters_behavior_targets: metadata.filters_behavior_targets,
         behavior_target_order: metadata.behavior_target_order,
         behavior_target_source: metadata.behavior_target_source,
+        child_target_source: metadata.child_target_source,
         reaction_observer_scope: metadata.reaction_observer_scope,
         reaction_frame_source: metadata.reaction_frame_source,
         reaction_frame_target: metadata.reaction_frame_target,
@@ -300,6 +310,7 @@ pub const fn predicate(dependencies: &'static [EventKind]) -> ConditionMetadata 
         filters_behavior_targets: false,
         behavior_target_order: BehaviorTargetOrder::Resolved,
         behavior_target_source: BehaviorTargetSource::Resolved,
+        child_target_source: ChildTargetSource::Behavior,
         reaction_observer_scope: ReactionObserverScope::AnySubscriber,
         reaction_frame_source: ReactionFrameSource::Subscriber,
         reaction_frame_target: ReactionFrameTarget::Counterparty,
@@ -327,6 +338,7 @@ pub const fn event_trigger(event: EventKind, phase: Option<SkillPhase>) -> Condi
         filters_behavior_targets: false,
         behavior_target_order: BehaviorTargetOrder::Resolved,
         behavior_target_source: BehaviorTargetSource::Resolved,
+        child_target_source: ChildTargetSource::Behavior,
         reaction_observer_scope: ReactionObserverScope::AnySubscriber,
         reaction_frame_source: ReactionFrameSource::Subscriber,
         reaction_frame_target: ReactionFrameTarget::Counterparty,
@@ -358,6 +370,7 @@ pub const fn setup_route(
         filters_behavior_targets: false,
         behavior_target_order: BehaviorTargetOrder::Resolved,
         behavior_target_source: BehaviorTargetSource::Resolved,
+        child_target_source: ChildTargetSource::Behavior,
         reaction_observer_scope: ReactionObserverScope::AnySubscriber,
         reaction_frame_source: ReactionFrameSource::Subscriber,
         reaction_frame_target: ReactionFrameTarget::Counterparty,
@@ -490,6 +503,11 @@ pub const fn uses_active_skill_target_group(mut metadata: ConditionMetadata) -> 
 
 pub const fn uses_hit_targets(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.behavior_target_source = BehaviorTargetSource::HitTargets;
+    metadata
+}
+
+pub const fn child_targets_event(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.child_target_source = ChildTargetSource::Event;
     metadata
 }
 
@@ -627,11 +645,12 @@ condition_definitions! {
     [205] "None" => none::skill_action_start, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [208] "None" => none::skill_action_after_damage, uses_hit_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [210] "None" => none::skill_action_after_hit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
-    [202, 204, 206, 207, 2011, 2082, 900, 901, 903, 905, 908, 910, 930, 1041] "None" => none::skill_action, event_trigger(EventKind::SkillAction, None);
+    [202, 204, 206, 207, 2011, 2082, 900, 901, 905, 908, 910, 930, 1041] "None" => none::skill_action, event_trigger(EventKind::SkillAction, None);
+    [903] "None" => none::emitter_skill_action, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [2092] "None" => trigger::parse_guard_broken, reaction_targets_owner(event_trigger(EventKind::ToughnessBroken, None));
     [783101] "IsBroken" => trigger::parse_entity_broken, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [783102] "IsBroken" => trigger::parse_entity_broken, setup_route(SetupStage::RoundStartCondition, 102, &[]);
-    [1061] "None" => none::action_queue_committed, event_trigger(EventKind::ActionQueueCommitted, None);
+    [1061] "None" => none::action_queue_committed, in_independent_frame(event_trigger(EventKind::ActionQueueCommitted, None));
     [2081] "None" => none::skill_cast, uses_active_skill_targets(event_trigger(EventKind::SkillCast, None));
     [209, 211] "None" => none::attacked, attacked_skills(event_trigger(EventKind::BeAttacked, None));
     [212] "None" => none::ally_action, reaction_targets_causing_frame(event_trigger(EventKind::AllyAction, None));
@@ -642,6 +661,7 @@ condition_definitions! {
     [302] "None" => none::round_end, reaction_targets_owner(event_trigger(EventKind::RoundEnd, None));
     [305] "None" => none::round_end_after_settlement, in_independent_frame(event_trigger(EventKind::RoundEndAfterOwnerSettlement, None));
     [306] "None" => none::round_end, event_trigger(EventKind::RoundEnd, None);
+    [98306] "IndicatorNum" => indicator::at_least, event_trigger(EventKind::RoundEnd, None);
     [303] "None" => none::round_end_entity_settlement, reaction_targets_owner(event_trigger(EventKind::RoundEndEntitySettlement, None));
     [307] "None" => none::round_end_final_settlement, event_trigger(EventKind::RoundEndFinalSettlement, None);
     [304] "None" => none::round_end_after_settlement, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
@@ -669,7 +689,7 @@ condition_definitions! {
     [19021, 19201] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [19204] "HasBuffId" => buff::buff_present, incoming_attack_modifier(filters_behavior_targets(predicate(&[EventKind::BuffChanged])));
     [19205] "HasBuffId" => buff::exact_buff_present, filters_behavior_targets(predicate(&[]));
-    [19203] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate)));
+    [19203, 19901] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate)));
     [192032] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
     [19208] "HasBuffId" => buff::buff_present_and_consume, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [19209] "HasBuffId" => buff::buff_present, after_shared_hit(filters_behavior_targets(predicate(&[EventKind::TargetAttacked])));
@@ -783,6 +803,7 @@ condition_definitions! {
     [73203] "TeammateAliveNum" => entity_count::teammates_equal, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [583004] "AccTeamAddBuffCountByBuffId" => buff::team_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [581] "AccAddBuffCountByBuffId" => buff::owner_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
+    [730212] "AccAddBuffCountByBuffTypeIdAllEffect" => buff::owner_added_type_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [581307] "AccAddBuffCountByBuffId" => buff::buff_id_at_least, event_trigger(EventKind::RoundEndFinalSettlement, None);
     [579018] "ExPointIncrChange" => resource::self_ex_point_increase, reaction_targets_owner(before_publish(event_trigger(EventKind::ExPointChanged, None)));
     [579023] "ExPointIncrChange" => resource::other_ally_ex_point_increase, reaction_targets_owner(before_publish(event_trigger(EventKind::ExPointChanged, None)));
@@ -803,7 +824,7 @@ condition_definitions! {
     [710301] "PerHandCardHasSkillId" => card::hand_skill_presence, event_trigger(EventKind::SmallRoundEnd, None);
     [622304] "RoundUseSkillLevel" => card::round_used_minimum_rank, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
     [745304] "ExPointMax" => resource::ex_point_full, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
-    [571017] "LostPower" => resource::lost_power, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
+    [571017] "LostPower" => resource::lost_power, child_targets_event(reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None)));
     [788210] "PerDeviceCurrCost" => resource::owner_conduit_current_cost, in_causing_frame(reaction_targets_owner(event_trigger(EventKind::ConduitActivated, None)));
     [788212] "PerDeviceCurrCost" => resource::team_conduit_current_cost, psychube_after_action(reaction_targets_causing_frame(event_trigger(EventKind::ConduitActivated, None)));
     [792208] "UseDeviceSkill" => none::unconditional_without_arguments, in_causing_frame(reaction_targets_owner(event_trigger(EventKind::ConduitActivated, None)));
@@ -825,7 +846,7 @@ condition_definitions! {
     [5462032] "EnemyNumIncludeSpMoreThan" => entity_count::enemies_with_special_at_least, predicate(&[]);
     [546208] "EnemyNumIncludeSpMoreThan" => entity_count::enemies_with_special_at_least, predicate(&[]);
     [546210] "EnemyNumIncludeSpMoreThan" => entity_count::enemies_with_special_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
-    [548201] "EnemyNumIncludeSpEqual" => entity_count::enemies_with_special_equal, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [548201, 548903] "EnemyNumIncludeSpEqual" => entity_count::enemies_with_special_equal, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [548210] "EnemyNumIncludeSpEqual" => entity_count::enemies_with_special_equal, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [717210] "TargetCount" => entity_count::target_count, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [5472032] "EnemyNumIncludeSpLessThan" => entity_count::enemies_with_special_at_most, predicate(&[]);
@@ -842,8 +863,8 @@ condition_definitions! {
     [16002] "TargetCareer" => career::target_career, filters_behavior_targets(setup_route(SetupStage::EnterFight, 0, &[]));
     [16021] "TargetCareer" => career::target_career, setup_route(SetupStage::BattleStart, 0, &[]);
     [16204] "TargetCareer" => career::target_career, predicate(&[]);
-    [762005] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::BattleStart, 0, &[]);
-    [762021] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::BattleStart, 0, &[]);
+    [762005] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::EnterFight, 0, &[]);
+    [762021] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::EnterFight, 0, &[]);
     [1021002] "BattleTagCheck" => battle_tag::present, setup_route(SetupStage::BattleStart, 0, &[]);
     [1021209] "BattleTagCheck" => battle_tag::present, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
     [762103] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::RoundStart, 1, &[]);
@@ -898,7 +919,7 @@ condition_definitions! {
     [1001212] "Assassinate" => trigger::parse_assassinate, psychube_requires_synchronization_damage(reaction_targets_causing_frame(team_observes(event_trigger(EventKind::AllyAction, None))));
     [791210] "ToBrokenEnemy" => trigger::parse_target_guard_broken, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [25201] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
-    [25203] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [25203] "UseExSkill" => trigger::parse_use_ex_skill_slot, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [25204] "UseExSkill" => trigger::parse_use_ex_skill, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate))));
     [25208] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [25210] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
@@ -941,8 +962,9 @@ condition_definitions! {
     [1008101] "Synchronization" => resource::synchronization, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [526203, 526210] "ExpointLessThan" => resource::ex_point_at_most, predicate(&[EventKind::ExPointChanged]);
     [544100] "NotInMagicCircleId" => magic_circle::absent, setup_route(SetupStage::RoundStartCondition, 100, &[EventKind::FieldChanged]);
+    [544203] "NotInMagicCircleId" => magic_circle::absent, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [542103, 542104] "InMagicCircleId" => magic_circle::present, setup_route(SetupStage::RoundStart, 1, &[EventKind::FieldChanged]);
-    [542203] "InMagicCircleId" => magic_circle::present, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [542203, 542903] "InMagicCircleId" => magic_circle::present, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [542210] "InMagicCircleId" => magic_circle::present, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [542004] "InMagicCircleId" => magic_circle::present, predicate(&[EventKind::FieldChanged]);
     [711039] "AddMagicCircle" => magic_circle::added, event_trigger(EventKind::FieldChanged, None);
@@ -979,6 +1001,7 @@ condition_definitions! {
     [538203] "EntityHurtMagic" => parse::mental_damage, predicate(&[]);
     [540203] "EntityHurtReal" => parse::reality_damage, predicate(&[]);
     [58201] "PerExPoint" => resource::per_ex_point, predicate(&[]);
+    [765203] "PerAura" => resource::per_eureka, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [1] "LifeLess" => parse::hp_less, reaction_targets_owner(predicate(&[EventKind::HpLost]));
     [1103] "LifeLess" => parse::hp_less, setup_route(SetupStage::RoundStart, 1, &[]);
     [1104] "LifeLess" => parse::hp_less, setup_route(SetupStage::RoundStartLate, 0, &[]);

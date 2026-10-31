@@ -280,7 +280,7 @@ fn direct_use_skill_no_act_accepts_only_observed_arities() {
 }
 
 #[test]
-fn consume_power_skill_repeats_cost_and_extra_action_for_each_affordable_cast() {
+fn consume_power_skill_repeats_cost_and_extra_action_for_each_affordable_use() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -302,7 +302,7 @@ fn consume_power_skill_repeats_cost_and_extra_action_for_each_affordable_cast() 
     let mut determinism = RoundDeterminism::default();
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     let mut target = crate::engine::skill::target::TargetContext::default();
-    let behavior = ParsedBehavior::new(60188, "ConsumePowerUseSkill", vec![2, 31170145]);
+    let behavior = ParsedBehavior::new(60188, "ConsumePowerUseSkill", vec![2, 31170121]);
 
     let ops = Handler::emit_ops(
         BehaviorOpContext {
@@ -334,10 +334,10 @@ fn consume_power_skill_repeats_cost_and_extra_action_for_each_affordable_cast() 
             ))),
             RuleOp::Skill(second),
         ] if [first, second].into_iter().all(|invocation|
-            invocation.plan.skill_id == 31170145
+            invocation.plan.skill_id == 31170121
             && invocation.extra_skill_kind == Some(ExtraSkillKind::ExtraAction)
             && invocation.mode
-                == crate::engine::skill::action::SkillExecutionMode::Active
+                == crate::engine::skill::action::SkillExecutionMode::NestedExtra
         )
     ));
 }
