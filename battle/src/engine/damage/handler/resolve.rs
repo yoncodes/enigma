@@ -941,6 +941,10 @@ fn direct_damage_trace(
             .map(crate::engine::skill::buff_act::career_ratio_bonus)
             .sum::<i32>()
             + career_ratio_bonus
+            + attributes.get(source.uid, AttrId::StrongerAfflatusDmgMultiplier)
+            + attribute_delta(source, AttrId::StrongerAfflatusDmgMultiplier)
+            + attack_attribute_delta(AttrId::StrongerAfflatusDmgMultiplier)
+            + attack_local_attribute(AttrId::StrongerAfflatusDmgMultiplier)
     } else {
         1000
     };
