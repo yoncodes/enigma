@@ -42,6 +42,10 @@ pub enum TaskEvent {
         hero_id: i32,
         level: i32,
     },
+    HeroStoryPlotFinish {
+        activity_id: i32,
+        plot_group_id: i32,
+    },
     ProductionLine {
         action: ProductionLineAction,
         count: i32,
@@ -85,6 +89,7 @@ impl TaskEvent {
             | Self::TowerMopUp { count } => count.max(1),
             Self::EpisodeFinish { .. }
             | Self::HeroLevelReach { .. }
+            | Self::HeroStoryPlotFinish { .. }
             | Self::StoreGoodsBought { .. }
             | Self::TaskFinish { .. } => 1,
         }
@@ -132,6 +137,13 @@ impl TaskEvent {
                 (listener_type == "HeroLevelReach"
                     && matches_hero_level_reach_param(listener_param, hero_id, level))
                     || (listener_type == "DoneCount" && listener_param == "HeroLevelUp")
+            }
+            Self::HeroStoryPlotFinish {
+                activity_id,
+                plot_group_id,
+            } => {
+                listener_type == "HeroStoryPlotFinish"
+                    && matches_activity_pair_param(listener_param, activity_id, plot_group_id)
             }
             Self::ProductionLine { action, .. } => {
                 listener_type == "ProductionLine"
@@ -181,6 +193,14 @@ impl TaskEvent {
             {
                 Some(1)
             }
+            Self::HeroStoryPlotFinish {
+                activity_id,
+                plot_group_id,
+            } if listener_type == "HeroStoryPlotFinish"
+                && matches_activity_pair_param(listener_param, activity_id, plot_group_id) =>
+            {
+                Some(1)
+            }
             _ => None,
         }
     }
@@ -209,13 +229,17 @@ pub async fn sync_event_tasks_in_transaction(
     ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::ActBp).await?;
     ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::VersionActivity).await?;
     ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::Activity125).await?;
+    let mut updated = if matches!(event, TaskEvent::HeroStoryPlotFinish { .. }) {
+        super::reconcile_necrologist_story_tasks_in_transaction(tx, user_id).await?
+    } else {
+        Vec::new()
+    };
 
     let bp_id = current_battle_pass_id();
     let include_bp = match bp_id {
         Some(bp_id) => !battle_pass::score_maxed_in_transaction(tx, user_id, bp_id).await?,
         None => false,
     };
-    let mut updated = Vec::new();
     for target in event_task_targets(event, bp_id.filter(|_| include_bp)) {
         if let Some(task) = add_progress_in_transaction(
             tx,
@@ -394,6 +418,15 @@ fn event_task_targets(event: TaskEvent, bp_id: Option<i32>) -> Vec<TaskTarget> {
             })
             .map(|task| TaskTarget::new(TaskType::ActBp, task.id, task.max_progress)),
     );
+    targets.extend(
+        tables
+            .hero_story_task
+            .iter()
+            .filter(|task| {
+                task.is_online != 0 && event.matches(&task.listener_type, &task.listener_param)
+            })
+            .map(|task| TaskTarget::new(TaskType::NecrologistStory, task.id, task.max_progress)),
+    );
 
     targets
 }
@@ -408,6 +441,14 @@ fn contains_i32_param(value: &str, expected: i32) -> bool {
 fn matches_pair_param(value: &str, first: i32, second: i32) -> bool {
     let mut parts = value.split('#').filter_map(|part| part.parse::<i32>().ok());
     parts.next() == Some(first) && parts.next() == Some(second)
+}
+
+pub(super) fn matches_activity_pair_param(value: &str, activity_id: i32, second: i32) -> bool {
+    let mut parts = value.split('#').filter_map(|part| part.parse::<i32>().ok());
+    parts
+        .next()
+        .is_some_and(|configured| configured == 0 || configured == activity_id)
+        && parts.next() == Some(second)
 }
 
 fn matches_hero_level_reach_param(value: &str, hero_id: i32, level: i32) -> bool {

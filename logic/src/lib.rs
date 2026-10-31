@@ -43,6 +43,7 @@ pub mod time;
 pub mod turnback;
 pub mod types;
 pub mod udimo;
+pub mod weekwalk;
 
 pub use error::LogicError;
 

@@ -57,4 +57,6 @@ mod activity_rewards;
 mod arcade;
 mod progression;
 mod social;
+mod story;
 mod teaching;
+mod weekwalk;

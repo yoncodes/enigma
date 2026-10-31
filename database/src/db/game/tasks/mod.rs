@@ -4,8 +4,10 @@ use sqlx::{Sqlite, SqliteConnection, SqlitePool, Transaction};
 
 use super::battle_pass;
 
+pub mod act128;
 mod activity;
 mod event;
+mod weekwalk;
 
 pub use activity::{
     add_activity, add_activity_in_transaction, claim_activity_bonus,
@@ -15,6 +17,8 @@ pub use event::{
     ProductionLineAction, TaskEvent, sync_event_tasks, sync_event_tasks_in_transaction,
     sync_hero_invitation_claims_in_transaction,
 };
+pub use weekwalk::sync_weekwalk_tasks;
+pub(crate) use weekwalk::sync_weekwalk_tasks_in_transaction;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskType {
@@ -189,6 +193,56 @@ pub async fn ensure_tasks_for_type(
     let mut tx = pool.begin().await?;
     ensure_tasks_for_type_in_transaction(&mut tx, user_id, task_type).await?;
     tx.commit().await
+}
+
+pub async fn reconcile_necrologist_story_tasks(
+    pool: &SqlitePool,
+    user_id: i64,
+) -> sqlx::Result<Vec<UserTask>> {
+    let mut tx = pool.begin().await?;
+    let updated = reconcile_necrologist_story_tasks_in_transaction(&mut tx, user_id).await?;
+    tx.commit().await?;
+    Ok(updated)
+}
+
+async fn reconcile_necrologist_story_tasks_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+) -> sqlx::Result<Vec<UserTask>> {
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::NecrologistStory).await?;
+    let finished = super::necrologist_story::finished_plots(tx, user_id).await?;
+    let configs = config::configs::get();
+    let mut updated = Vec::new();
+
+    for task in configs.hero_story_task.iter().filter(|task| {
+        task.is_online != 0
+            && task.listener_type == "HeroStoryPlotFinish"
+            && configs.hero_story.get(task.story_id).is_some_and(|story| {
+                finished.iter().any(|(story_id, plot_id)| {
+                    *story_id == task.story_id
+                        && event::matches_activity_pair_param(
+                            &task.listener_param,
+                            story.activity_id,
+                            *plot_id,
+                        )
+                })
+            })
+    }) {
+        if let Some(task) = add_progress_in_transaction(
+            tx,
+            user_id,
+            TaskType::NecrologistStory.id(),
+            task.id,
+            task.max_progress,
+            task.max_progress,
+        )
+        .await?
+        {
+            updated.push(task);
+        }
+    }
+
+    Ok(updated)
 }
 
 pub(super) async fn ensure_tasks_for_type_in_transaction(
@@ -846,28 +900,10 @@ pub async fn finish_task(
     let Some(task) = get_by_id(pool, user_id, task_id).await? else {
         return Ok(None);
     };
-    if !task.has_finished || task.finish_count >= max_finish_count(task.type_id, task.task_id) {
-        return Ok(None);
-    }
-
-    let now = ServerTime::now_ms();
-    let result = sqlx::query(
-        "UPDATE user_tasks
-         SET finish_count = finish_count + 1, has_finished = 0, updated_at = ?
-         WHERE user_id = ? AND type_id = ? AND task_id = ?",
-    )
-    .bind(now)
-    .bind(user_id)
-    .bind(task.type_id)
-    .bind(task_id)
-    .execute(pool)
-    .await?;
-
-    if result.rows_affected() == 0 {
-        return Ok(None);
-    }
-
-    get_by_id(pool, user_id, task_id).await
+    let mut tx = pool.begin().await?;
+    let task = finish_task_in_transaction(&mut tx, &task).await?;
+    tx.commit().await?;
+    Ok(task)
 }
 
 pub async fn finish_task_in_transaction(
@@ -875,6 +911,11 @@ pub async fn finish_task_in_transaction(
     task: &UserTask,
 ) -> sqlx::Result<Option<UserTask>> {
     if !task.has_finished || task.finish_count >= max_finish_count(task.type_id, task.task_id) {
+        return Ok(None);
+    }
+    if task.type_id == TaskType::WeekWalk.id()
+        && !weekwalk::task_applies_in_transaction(tx, task.user_id, task.task_id).await?
+    {
         return Ok(None);
     }
     let now = ServerTime::now_ms();

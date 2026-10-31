@@ -1663,6 +1663,7 @@ impl BattleManagers {
             self.project_entity_state(entity);
         }
         self.eureka.sync_fight(fight);
+        self.conduit.sync_fight(fight);
         self.fight_progress.sync_fight(fight);
         self.fight_task.sync_fight(fight);
         let features = self.buff.active_features(&self.hp);
