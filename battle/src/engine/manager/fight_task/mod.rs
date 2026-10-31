@@ -230,7 +230,7 @@ pub(crate) fn configured_box(
         return Ok(FightTaskBox::default());
     }
     let mut rows = Vec::new();
-    for (index, raw_task_id) in episode.battle_tasks.split('|').enumerate() {
+    for raw_task_id in episode.battle_tasks.split('|') {
         let task_id = raw_task_id.parse::<i32>().with_context(|| {
             format!("teaching episode {episode_id} has invalid fight task id '{raw_task_id}'")
         })?;
@@ -238,24 +238,11 @@ pub(crate) fn configured_box(
             format!("teaching episode {episode_id} references missing fight task {task_id}")
         })?;
         let rules = task_rules(row).with_context(|| format!("invalid fight task {task_id}"))?;
-        rows.push((index, task_id, rules));
+        rows.push((task_id, rules));
     }
-    // Captures keep the primary objective first and place the defeat objective before auxiliaries.
-    rows.sort_by_key(|(index, _, rules)| {
-        if *index == 0 {
-            0
-        } else if rules
-            .iter()
-            .any(|(rule, _)| matches!(rule.progress, TaskProgress::KillMonster(_)))
-        {
-            1
-        } else {
-            2
-        }
-    });
     let tasks = rows
         .into_iter()
-        .map(|(_, task_id, rules)| {
+        .map(|(task_id, rules)| {
             let values = rules
                 .into_iter()
                 .map(|(rule, max_progress)| FightTaskValue {

@@ -32,6 +32,17 @@ fn configured_kill_fight(catalog: crate::catalog::BattleCatalog) -> Fight {
     }
 }
 
+fn configured_task_mut(fight: &mut Fight, task_id: i32) -> &mut FightTask {
+    fight
+        .fight_task_box
+        .as_mut()
+        .unwrap()
+        .tasks
+        .iter_mut()
+        .find(|task| task.task_id == Some(task_id))
+        .unwrap()
+}
+
 #[test]
 fn indicator_updates_emit_changed_tasks_in_box_order() {
     crate::test_support::init_config();
@@ -78,11 +89,11 @@ fn teaching_episode_builds_configured_task_states() {
             .iter()
             .filter_map(|task| task.task_id)
             .collect::<Vec<_>>(),
-        vec![370_801, 370_803, 370_802]
+        vec![370_801, 370_802, 370_803]
     );
     assert_eq!(task_box.tasks[0].values[0].max_progress, Some(15));
-    assert_eq!(task_box.tasks[1].values[0].max_progress, Some(3));
-    assert_eq!(task_box.tasks[2].values[0].max_progress, Some(1));
+    assert_eq!(task_box.tasks[1].values[0].max_progress, Some(1));
+    assert_eq!(task_box.tasks[2].values[0].max_progress, Some(3));
 }
 
 #[test]
@@ -116,19 +127,19 @@ fn malformed_snapshot_cannot_mutate_task_progress() {
     let mut invalid = Vec::new();
 
     let mut wrong_max = configured_kill_fight(catalog);
-    wrong_max.fight_task_box.as_mut().unwrap().tasks[1].values[0].max_progress = Some(99);
+    configured_task_mut(&mut wrong_max, 370_803).values[0].max_progress = Some(99);
     invalid.push(wrong_max);
 
     let mut negative_progress = configured_kill_fight(catalog);
-    negative_progress.fight_task_box.as_mut().unwrap().tasks[1].values[0].progress = Some(-1);
+    configured_task_mut(&mut negative_progress, 370_803).values[0].progress = Some(-1);
     invalid.push(negative_progress);
 
     let mut wrong_finished = configured_kill_fight(catalog);
-    wrong_finished.fight_task_box.as_mut().unwrap().tasks[1].values[0].finished = Some(true);
+    configured_task_mut(&mut wrong_finished, 370_803).values[0].finished = Some(true);
     invalid.push(wrong_finished);
 
     let mut wrong_status = configured_kill_fight(catalog);
-    wrong_status.fight_task_box.as_mut().unwrap().tasks[1].status = Some(FINISHED);
+    configured_task_mut(&mut wrong_status, 370_803).status = Some(FINISHED);
     invalid.push(wrong_status);
 
     for fight in invalid {
