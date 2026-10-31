@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn immediately_monster_promotes_only_the_marked_team_after_the_action() {
+fn player_and_marked_monster_reserves_promote_after_the_action() {
     init_config();
     let entity = |uid, team_type, position, hp, attack| FightEntityInfo {
         uid: Some(uid),
@@ -125,7 +125,7 @@ fn immediately_monster_promotes_only_the_marked_team_after_the_action() {
     );
     assert_eq!(
         managers.entity.roster_lane(11),
-        Some(crate::engine::manager::entity::RosterLane::Reserve)
+        Some(crate::engine::manager::entity::RosterLane::Main)
     );
 
     fn collect(step: &sonettobuf::FightStep, order: &mut Vec<&'static str>) {
@@ -153,7 +153,7 @@ fn immediately_monster_promotes_only_the_marked_team_after_the_action() {
     for step in crate::engine::packet::timeline::project(&result.frames).unwrap() {
         collect(&step, &mut order);
     }
-    assert_eq!(order, ["death", "promotion", "next action"]);
+    assert_eq!(order, ["death", "promotion", "promotion", "next action"]);
 }
 
 #[test]
