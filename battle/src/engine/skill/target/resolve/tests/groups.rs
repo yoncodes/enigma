@@ -125,7 +125,7 @@ fn resolves_relative_ally_and_enemy_groups_from_fight() {
             &pool,
             &mut determinism,
         ),
-        vec![10, 11, 12]
+        vec![10, 11, -10, -11]
     );
 }
 
