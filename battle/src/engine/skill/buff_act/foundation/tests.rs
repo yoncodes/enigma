@@ -19,7 +19,17 @@ fn fight(enhanced: bool) -> Fight {
         buffs,
         ..Default::default()
     };
-    let mut source_buffs = Vec::new();
+    let mut source_buffs = vec![BuffInfo {
+        uid: Some(13),
+        buff_id: Some(31_400_003),
+        from_uid: Some(10),
+        act_info: vec![BuffActInfo {
+            act_id: Some(1147),
+            param: vec![0, 10_605],
+            str_param: Some(String::new()),
+        }],
+        ..Default::default()
+    }];
     if enhanced {
         source_buffs.push(BuffInfo {
             uid: Some(12),
@@ -105,6 +115,38 @@ fn mitigates_with_the_grant_time_attack_snapshot_before_ordinary_shields() {
 }
 
 #[test]
+fn records_the_prevented_amount_before_the_damage_effect() {
+    crate::test_support::init_config();
+    let mut managers = BattleManagers::seeded(&fight(false));
+
+    let execution = managers
+        .execute_rule_hp_batch(vec![damage(3_823)])
+        .unwrap()
+        .pop()
+        .unwrap();
+
+    assert_eq!(execution.before_hp_markers.len(), 1);
+    assert_eq!(execution.before_hp_markers[0].act_id, 1147);
+    assert_eq!(execution.before_hp_markers[0].params, [1_696, 10_605]);
+    assert_eq!(execution.changes.damage.unwrap().amount, 2_127);
+}
+
+#[test]
+fn batched_hits_accumulate_against_the_staged_counter_state() {
+    crate::test_support::init_config();
+    let mut managers = BattleManagers::seeded(&fight(false));
+
+    let executions = managers
+        .execute_rule_hp_batch(vec![damage(3_823), damage(3_823)])
+        .unwrap();
+
+    assert_eq!(executions[0].before_hp_markers[0].params, [1_696, 10_605]);
+    assert_eq!(executions[1].before_hp_markers[0].params, [3_392, 10_605]);
+    let counter = managers.buff.snapshot(10, 13).unwrap();
+    assert_eq!(counter.act_info[0].param, [3_392, 10_605]);
+}
+
+#[test]
 fn delivery_process_selects_the_configured_enhanced_rate() {
     crate::test_support::init_config();
     let mut managers = BattleManagers::seeded(&fight(true));
@@ -172,5 +214,18 @@ fn unproven_protection_overlap_fails_loudly() {
     assert_eq!(
         managers.execute_hp(damage(3_823)),
         Err(crate::engine::manager::hp::HpCommandError::UnsupportedFoundationInteraction)
+    );
+}
+
+#[test]
+fn missing_foundation_counter_fails_loudly() {
+    crate::test_support::init_config();
+    let mut fight = fight(false);
+    fight.attacker.as_mut().unwrap().entitys[0].buffs.clear();
+    let mut managers = BattleManagers::seeded(&fight);
+
+    assert_eq!(
+        managers.execute_hp(damage(3_823)),
+        Err(crate::engine::manager::hp::HpCommandError::InvalidFoundationCounterState)
     );
 }

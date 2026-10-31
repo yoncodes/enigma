@@ -94,6 +94,7 @@ struct HpPlan {
     team_shared: Option<hp::TeamSharedShieldPlan>,
     team_shared_buff: Option<BuffPlan>,
     share: Option<ShareHurtPlan>,
+    foundation_counter: Option<FoundationCounterPlan>,
     hp_loss_state: Vec<HpLossStatePlan>,
 }
 
@@ -103,6 +104,11 @@ struct ShareHurtPlan {
 }
 
 struct HpLossStatePlan {
+    buff: BuffPlan,
+    marker: buff::BuffActInfoMarkerResult,
+}
+
+struct FoundationCounterPlan {
     buff: BuffPlan,
     marker: buff::BuffActInfoMarkerResult,
 }
@@ -643,12 +649,13 @@ impl BattleManagers {
         {
             damage.amount = damage.amount.min(cap);
         }
+        let mut foundation_counter = None;
         if let hp::HpCommand::Damage(damage) = &mut command
             && matches!(
                 damage.effect_kind,
                 hp::DamageEffectKind::Normal | hp::DamageEffectKind::Critical
             )
-            && let Some(after) = crate::engine::skill::buff_act::foundation::mitigate(
+            && let Some(mitigation) = crate::engine::skill::buff_act::foundation::mitigate(
                 self,
                 damage.target_uid,
                 damage.amount,
@@ -673,7 +680,22 @@ impl BattleManagers {
             if unsupported {
                 return Err(hp::HpCommandError::UnsupportedFoundationInteraction);
             }
-            damage.amount = after;
+            foundation_counter = crate::engine::skill::buff_act::foundation_counter::update(
+                self,
+                mitigation.source_uid,
+                mitigation.prevented,
+            )
+            .map_err(|_| hp::HpCommandError::InvalidFoundationCounterState)?
+            .map(|update| {
+                Ok(FoundationCounterPlan {
+                    buff: self
+                        .plan_buff(update.command)
+                        .map_err(|_| hp::HpCommandError::InvalidFoundationCounterState)?,
+                    marker: update.marker,
+                })
+            })
+            .transpose()?;
+            damage.amount = mitigation.damage;
         }
         match &mut command {
             hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) => {
@@ -738,6 +760,7 @@ impl BattleManagers {
             team_shared,
             team_shared_buff,
             share,
+            foundation_counter,
             hp_loss_state: Vec::new(),
         })
     }
@@ -763,6 +786,9 @@ impl BattleManagers {
     }
 
     fn commit_hp_preview(&mut self, plan: &HpPlan) {
+        if let Some(state) = &plan.foundation_counter {
+            self.commit_buff(state.buff.clone());
+        }
         for share in plan.share.iter().flat_map(|share| &share.shares) {
             self.hp
                 .commit_validated_command_with_team_shared(*share, None);
@@ -772,14 +798,15 @@ impl BattleManagers {
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> HpCommit {
-        let before_hp_markers = plan
-            .hp_loss_state
-            .into_iter()
-            .map(|state| {
-                self.commit_buff(state.buff);
-                state.marker
-            })
-            .collect();
+        let mut before_hp_markers = Vec::new();
+        if let Some(state) = plan.foundation_counter {
+            self.commit_buff(state.buff);
+            before_hp_markers.push(state.marker);
+        }
+        before_hp_markers.extend(plan.hp_loss_state.into_iter().map(|state| {
+            self.commit_buff(state.buff);
+            state.marker
+        }));
         let shared_hurt = plan.share.map(|share| {
             let consumed = self.commit_buff(share.consume);
             let shares = share

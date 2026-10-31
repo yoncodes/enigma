@@ -233,6 +233,7 @@ pub enum BuffActKind {
     FixAttrTeamEnergyAndBuff,
     FixElectricUpgrade,
     FixedHurt,
+    FoundationCounter,
     FoundationShield,
     FixTempAttrByBuffLayer,
     MustCritAndFixTempAttr,
@@ -462,6 +463,7 @@ pub enum BuffActInitialStateRule {
     SourceAttackThreshold,
     SourceAttackAttribute,
     SourceAttack,
+    FoundationCounter,
     FirstArgument,
     SecondArgument,
     StringCounter,
@@ -1386,6 +1388,13 @@ buff_act_definitions! {
         initial_state: SourceAttack, description_required: true,
         wire: (super::wire::BuffActWireDefinition::all(
             DefinitionKey::new(1146, "FoundationShield"),
+            &[],
+        ).without_initial_state_marker());
+    (1147, "FoundationCounter") => FoundationCounter, effect_time_subscription: false,
+        supports: super::foundation_counter::supports, state_consumer: true,
+        initial_state: FoundationCounter, description_required: true,
+        wire: (super::wire::BuffActWireDefinition::all(
+            DefinitionKey::new(1147, "FoundationCounter"),
             &[],
         ).without_initial_state_marker());
     (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,

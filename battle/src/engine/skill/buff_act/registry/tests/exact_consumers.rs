@@ -519,6 +519,28 @@ fn foundation_shield_is_an_exact_snapshotted_damage_consumer() {
 }
 
 #[test]
+fn foundation_counter_is_an_exact_snapshotted_state_consumer() {
+    let definition = find(1147, "FoundationCounter").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::FoundationCounter);
+    assert_eq!(
+        definition.state.initial,
+        Some(BuffActInitialStateRule::FoundationCounter)
+    );
+    assert!(definition.state.consumer);
+    assert_eq!(
+        destination(1147, "FoundationCounter", &[5000, 1000, 1000]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(
+        1147,
+        "FoundationCounter",
+        &[0, 1000, 1000]
+    ));
+    assert!(find(1147, "FoundationShield").is_none());
+}
+
+#[test]
 fn fixed_damage_accepts_zero_without_collapsing_identity() {
     let definition = find(511, "FixedHurt").unwrap();
 

@@ -8,6 +8,13 @@ pub enum FoundationError {
     MultipleCarriers,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Mitigation {
+    pub damage: i32,
+    pub prevented: i32,
+    pub source_uid: i64,
+}
+
 pub fn supports_shield(args: &[i32]) -> bool {
     matches!(args, [attr, rate, enhanced_buff, enhanced_rate]
         if AttrId::from_raw(*attr) == Some(AttrId::Attack)
@@ -20,7 +27,7 @@ pub fn mitigate(
     managers: &BattleManagers,
     target_uid: i64,
     damage: i32,
-) -> Result<Option<i32>, FoundationError> {
+) -> Result<Option<Mitigation>, FoundationError> {
     let mut features = managers
         .buff
         .active_features(&managers.hp)
@@ -57,7 +64,12 @@ pub fn mitigate(
         })
         .ok_or(FoundationError::InvalidState)?;
     let reduction = scale_permille(attack, rate);
-    Ok(Some(damage.saturating_sub(reduction).max(0)))
+    let after = damage.saturating_sub(reduction).max(0);
+    Ok(Some(Mitigation {
+        damage: after,
+        prevented: damage.saturating_sub(after).max(0),
+        source_uid: feature.source_uid,
+    }))
 }
 
 #[cfg(test)]

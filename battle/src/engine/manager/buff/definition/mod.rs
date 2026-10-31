@@ -550,7 +550,8 @@ impl BuffDefinition {
                     ),
                     BuffActInitialStateRule::SourceAttackThreshold
                     | BuffActInitialStateRule::SourceAttackAttribute
-                    | BuffActInitialStateRule::SourceAttack => return None,
+                    | BuffActInitialStateRule::SourceAttack
+                    | BuffActInitialStateRule::FoundationCounter => return None,
                     BuffActInitialStateRule::FirstArgument => (
                         vec![feature.values.get(1).copied().unwrap_or_default()],
                         String::new(),
@@ -646,6 +647,12 @@ impl BuffDefinition {
                         param: vec![source_attack?.max(0)],
                         str_param: Some(String::new()),
                     }),
+                    BuffActInitialStateRule::FoundationCounter => Some(
+                        crate::engine::skill::buff_act::foundation_counter::initial_act_info(
+                            source_attack?,
+                            &feature.values,
+                        )?,
+                    ),
                     BuffActInitialStateRule::GrantValue => {
                         let value = grant_values
                             .iter()
