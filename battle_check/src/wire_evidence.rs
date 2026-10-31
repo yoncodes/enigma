@@ -33,6 +33,7 @@ impl MarkerKey {
 #[derive(Clone, Default)]
 pub(crate) struct Evidence {
     sources: BTreeMap<MarkerKey, BTreeSet<String>>,
+    carrier_sources: BTreeMap<(i32, String, i32), BTreeSet<String>>,
 }
 
 impl Evidence {
@@ -47,37 +48,50 @@ impl Evidence {
         let mut evidence = Self::default();
         let mut warned_ambiguous = BTreeSet::new();
         for root in roots {
+            let mut directories = BTreeMap::<PathBuf, Vec<PathBuf>>::new();
             for path in response_files(root) {
-                let Some(battle_dir) = path.parent() else {
-                    continue;
-                };
-                let (episode_id, battle_id) = match fight_identity(battle_dir) {
-                    Ok(Some((7, episode_id, battle_id))) => (episode_id, battle_id),
-                    Ok(_) => continue,
-                    Err(()) => {
-                        if warned_ambiguous.insert(battle_dir.to_owned()) {
-                            eprintln!(
-                                "WARN skipping capture directory with multiple fight identities: {}",
-                                battle_dir.display()
-                            );
+                if let Some(directory) = path.parent() {
+                    directories
+                        .entry(directory.to_owned())
+                        .or_default()
+                        .push(path);
+                }
+            }
+            for (battle_dir, paths) in directories {
+                let identities = IdentityIndex::collect(&battle_dir);
+                for path in paths {
+                    let identity = identities
+                        .as_ref()
+                        .map_err(|_| ())
+                        .and_then(|index| index.response(&path));
+                    let (episode_id, battle_id) = match identity {
+                        Ok(Some((7, episode_id, battle_id))) => (episode_id, battle_id),
+                        Ok(_) => continue,
+                        Err(()) => {
+                            if warned_ambiguous.insert(battle_dir.clone()) {
+                                eprintln!(
+                                    "WARN skipping capture directory with ambiguous or unreadable fight boundaries: {}",
+                                    battle_dir.display()
+                                );
+                            }
+                            continue;
                         }
+                    };
+                    let Ok(contents) = fs::read_to_string(&path) else {
+                        continue;
+                    };
+                    let Ok(mut value) = serde_json::from_str(&contents) else {
+                        continue;
+                    };
+                    if battle_preview::expand_compressed_fight_steps(&mut value).is_err() {
                         continue;
                     }
-                };
-                let Ok(contents) = fs::read_to_string(&path) else {
-                    continue;
-                };
-                let Ok(mut value) = serde_json::from_str(&contents) else {
-                    continue;
-                };
-                if battle_preview::expand_compressed_fight_steps(&mut value).is_err() {
-                    continue;
+                    evidence.inspect(
+                        &value,
+                        db,
+                        &format!("episode {episode_id} / battle {battle_id}"),
+                    );
                 }
-                evidence.inspect(
-                    &value,
-                    db,
-                    &format!("episode {episode_id} / battle {battle_id}"),
-                );
             }
         }
         evidence
@@ -95,10 +109,15 @@ impl Evidence {
             .map(|sources| sources.iter().cloned().collect::<Vec<_>>().join(","))
     }
 
-    pub(crate) fn observed_act(&self, opcode: i32, type_name: &str) -> bool {
-        self.sources
-            .keys()
-            .any(|key| key.opcode == opcode && key.type_name == type_name)
+    pub(crate) fn carrier_sources(
+        &self,
+        opcode: i32,
+        type_name: &str,
+        buff_id: i32,
+    ) -> Vec<String> {
+        self.carrier_sources
+            .get(&(opcode, type_name.to_owned(), buff_id))
+            .map_or_else(Vec::new, |sources| sources.iter().cloned().collect())
     }
 
     fn inspect(&mut self, value: &Value, db: &GameDB, source: &str) {
@@ -175,7 +194,11 @@ impl Evidence {
             }
             for key in expected {
                 self.sources
-                    .entry(key)
+                    .entry(key.clone())
+                    .or_default()
+                    .insert(source.to_owned());
+                self.carrier_sources
+                    .entry((key.opcode, key.type_name, buff_id))
                     .or_default()
                     .insert(source.to_owned());
             }
@@ -190,20 +213,23 @@ impl Evidence {
         else {
             return;
         };
-        let definitions = if let Some(buff) = effect
+        let (definitions, buff_id) = if let Some(buff) = effect
             .get("buff")
             .and_then(|buff| buff.get("buffId"))
             .and_then(Value::as_i64)
             .and_then(|id| i32::try_from(id).ok())
             .and_then(|id| db.skill_buff.get(id))
         {
-            buff.features
-                .split('|')
-                .filter_map(|raw| buff_act_registry::resolve_feature(Some(db), raw))
-                .filter(|feature| !feature.is_malformed())
-                .filter_map(|feature| feature.act_id)
-                .filter_map(|id| db.buff_act.get(id))
-                .collect::<Vec<_>>()
+            (
+                buff.features
+                    .split('|')
+                    .filter_map(|raw| buff_act_registry::resolve_feature(Some(db), raw))
+                    .filter(|feature| !feature.is_malformed())
+                    .filter_map(|feature| feature.act_id)
+                    .filter_map(|id| db.buff_act.get(id))
+                    .collect::<Vec<_>>(),
+                buff.id,
+            )
         } else {
             let Some((act, carrier)) = effect
                 .get("buffActId")
@@ -228,7 +254,7 @@ impl Evidence {
             {
                 return;
             }
-            vec![act]
+            (vec![act], carrier.id)
         };
         let candidates = definitions
             .into_iter()
@@ -245,18 +271,20 @@ impl Evidence {
                 .entry(key.clone())
                 .or_default()
                 .insert(source.to_owned());
+            self.carrier_sources
+                .entry((key.opcode, key.type_name.clone(), buff_id))
+                .or_default()
+                .insert(source.to_owned());
         }
     }
 }
 
+#[cfg(test)]
 fn fight_identity(battle_dir: &Path) -> Result<Option<(i32, i64, i64)>, ()> {
     let identities = fs::read_dir(battle_dir)
         .map_err(|_| ())?
         .flatten()
-        .filter(|entry| {
-            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
-            name.contains("start") && name.contains("reply") && name.ends_with(".json")
-        })
+        .filter(|entry| is_setup_name(&entry.file_name().to_string_lossy()))
         .filter_map(|entry| {
             let metadata = fs::symlink_metadata(entry.path()).ok()?;
             if !metadata.is_file() || is_link_or_reparse(&metadata) {
@@ -277,6 +305,104 @@ fn fight_identity(battle_dir: &Path) -> Result<Option<(i32, i64, i64)>, ()> {
         1 => Ok(identities.into_iter().next()),
         _ => Err(()),
     }
+}
+
+type FightIdentity = (i32, i64, i64);
+type IdentityBoundary = (String, Result<FightIdentity, ()>);
+
+struct IdentityIndex {
+    boundaries: Vec<IdentityBoundary>,
+}
+
+impl IdentityIndex {
+    fn collect(directory: &Path) -> Result<Self, ()> {
+        let mut boundaries = Vec::new();
+        for entry in fs::read_dir(directory).map_err(|_| ())?.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !is_setup_name(&name) {
+                continue;
+            }
+            let Ok(metadata) = fs::symlink_metadata(entry.path()) else {
+                boundaries.push((name, Err(())));
+                continue;
+            };
+            if !metadata.is_file() || is_link_or_reparse(&metadata) {
+                continue;
+            }
+            let identity = fs::read_to_string(entry.path())
+                .ok()
+                .and_then(|contents| serde_json::from_str::<Value>(&contents).ok())
+                .and_then(|value| {
+                    let fight = find_fight(&value)?;
+                    Some((
+                        i32::try_from(fight.get("version")?.as_i64()?).ok()?,
+                        fight.get("episodeId")?.as_i64()?,
+                        fight.get("battleId")?.as_i64()?,
+                    ))
+                })
+                .ok_or(());
+            boundaries.push((name, identity));
+        }
+        boundaries.sort_by(|left, right| left.0.cmp(&right.0));
+        Ok(Self { boundaries })
+    }
+
+    fn response(&self, response: &Path) -> Result<Option<FightIdentity>, ()> {
+        let response_name = response
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+        if timestamped(response_name) {
+            return self
+                .boundaries
+                .iter()
+                .rev()
+                .find(|(name, _)| timestamped(name) && name.as_str() <= response_name)
+                .map_or(Ok(None), |(_, identity)| (*identity).map(Some));
+        }
+        if self
+            .boundaries
+            .iter()
+            .any(|(_, identity)| identity.is_err())
+        {
+            return Err(());
+        }
+        let identities = self
+            .boundaries
+            .iter()
+            .filter_map(|(_, identity)| identity.as_ref().ok().copied())
+            .collect::<BTreeSet<_>>();
+        match identities.len() {
+            0 => Ok(None),
+            1 => Ok(identities.into_iter().next()),
+            _ => Err(()),
+        }
+    }
+}
+
+#[cfg(test)]
+fn response_identity(response: &Path) -> Result<Option<FightIdentity>, ()> {
+    let directory = response.parent().ok_or(())?;
+    IdentityIndex::collect(directory)?.response(response)
+}
+
+fn timestamped(name: &str) -> bool {
+    let mut parts = name.split('_');
+    matches!(
+        (parts.next(), parts.next()),
+        (Some(date), Some(time))
+            if date.len() == 8
+                && time.len() >= 6
+                && date.bytes().all(|value| value.is_ascii_digit())
+                && time.bytes().all(|value| value.is_ascii_digit())
+    )
+}
+
+fn is_setup_name(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name.ends_with(".json")
+        && (name.contains("startdungeonreply")
+            || (name.contains("start") && name.contains("battle") && name.contains("reply")))
 }
 
 fn find_fight(value: &Value) -> Option<&serde_json::Map<String, Value>> {
@@ -316,9 +442,11 @@ fn response_files(root: &Path) -> Vec<PathBuf> {
             };
             let name = name.to_ascii_lowercase();
             !name.contains("request")
-                && ((name.contains("start") && name.contains("reply"))
+                && (is_setup_name(&name)
                     || name.contains("beginroundreply")
-                    || name.starts_with("begin_round_"))
+                    || name.starts_with("begin_round_")
+                    || name.contains("autoroundreply")
+                    || name.starts_with("auto_round_"))
         })
         .collect()
 }
@@ -405,7 +533,7 @@ pub(crate) fn is_link_or_reparse(metadata: &fs::Metadata) -> bool {
 }
 
 #[cfg(test)]
-mod format_tests {
+mod tests {
     use super::*;
 
     #[cfg(windows)]
@@ -471,6 +599,60 @@ mod format_tests {
         }
 
         assert_eq!(fight_identity(&root), Err(()));
+        let response = root.join("ZZ_BeginRoundReply.json");
+        fs::write(&response, "{}").unwrap();
+        assert_eq!(response_identity(&response), Err(()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn flat_capture_stream_uses_latest_preceding_setup() {
+        let root = std::env::temp_dir().join(format!(
+            "enigma-wire-evidence-flat-stream-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        for (name, episode_id) in [
+            ("20261031_100000_StartDungeonReply.json", 10),
+            ("20261031_110000_StartDungeonReply.json", 11),
+        ] {
+            fs::write(
+                root.join(name),
+                format!(r#"{{"fight":{{"version":7,"episodeId":{episode_id},"battleId":20}}}}"#),
+            )
+            .unwrap();
+        }
+        let response = root.join("20261031_100100_BeginRoundReply.json");
+        fs::write(&response, "{}").unwrap();
+        let auto = root.join("20261031_100200_AutoRoundReply.json");
+        fs::write(&auto, "{}").unwrap();
+
+        assert_eq!(response_identity(&response), Ok(Some((7, 10, 20))));
+        assert!(response_files(&root).contains(&auto.canonicalize().unwrap()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unreadable_setup_preserves_its_session_boundary() {
+        let root = std::env::temp_dir().join(format!(
+            "enigma-wire-evidence-unreadable-boundary-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("20261031_100000_StartDungeonReply.json"),
+            r#"{"fight":{"version":7,"episodeId":10,"battleId":20}}"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("20261031_110000_StartDungeonReply.json"),
+            "not json",
+        )
+        .unwrap();
+        let response = root.join("20261031_110100_BeginRoundReply.json");
+        fs::write(&response, "{}").unwrap();
+
+        assert_eq!(response_identity(&response), Err(()));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -581,7 +763,7 @@ mod format_tests {
         fs::create_dir_all(&battle).unwrap();
         let start = battle.join("StartDungeonReply.json");
         fs::write(
-            battle.join("BeginRoundReply.json"),
+            battle.join("AutoRoundReply.json"),
             r#"{"fightStep":[{"actEffect":[{"effectType":5,"buff":{"buffId":31340003}},{"effectType":0}]}]}"#,
         )
         .unwrap();
@@ -635,17 +817,23 @@ mod format_tests {
                 .source(305, "AddToAttacker", WirePhase::Static, 42)
                 .is_some()
         );
+        assert_eq!(
+            evidence.carrier_sources(305, "AddToAttacker", 500110),
+            ["episode 38540113 / battle 116385406"]
+        );
+        assert!(
+            evidence
+                .carrier_sources(305, "AddToAttacker", 500111)
+                .is_empty()
+        );
         fs::remove_dir_all(root).unwrap();
     }
-}
 
-#[cfg(all(test, feature = "private-fixtures"))]
-mod tests {
-    use super::*;
-    use sonettobuf::effect_type_enum::EffectType;
-
+    #[cfg(feature = "private-fixtures")]
     #[test]
     fn derives_marker_evidence_from_captures() {
+        use sonettobuf::effect_type_enum::EffectType;
+
         crate::init_config().unwrap();
         let evidence = Evidence::collect(config::configs::get(), &[]);
 

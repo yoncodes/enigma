@@ -11,7 +11,7 @@ use serde::Serialize;
 use super::model::Subject;
 
 pub(crate) const ROOT: &str = "battle-support-data";
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 
 #[derive(Serialize)]
 struct Manifest {
@@ -115,7 +115,7 @@ mod tests {
             &fs::read_to_string(root.join(ROOT).join("manifest.json")).unwrap(),
         )
         .unwrap();
-        assert_eq!(manifest["schema_version"], 2);
+        assert_eq!(manifest["schema_version"], 3);
         assert_eq!(manifest["reports"]["stage"][0], "stage/42.json");
         let subject: serde_json::Value = serde_json::from_str(
             &fs::read_to_string(root.join(ROOT).join("stage").join("42.json")).unwrap(),
