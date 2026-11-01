@@ -218,6 +218,7 @@ pub enum BuffActKind {
     EachChangeAttr,
     EachChangeAttrOneWay,
     ExPointAddByHit,
+    ExPointAdd,
     ExPointDel,
     ExPointFix,
     ExPointCardMove,
@@ -902,6 +903,11 @@ buff_act_definitions! {
     (605, "ExPointDel") => ExPointDel,
         runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
         supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(605, "ExPointDel"), &[]));
+    (823, "ExPointAdd") => ExPointAdd, event: EventKind::RoundStartCard, source: Owner,
+        runtime_marker: BeforeChanges(Owner),
+        runtime: |context| super::round_start_ex_point::rule_ops(context.subscriber, context.event?),
+        supports: super::round_start_ex_point::supports,
+        wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(823, "ExPointAdd"), &[], &[EffectType::Expointadd as i32], &[]));
     (609, "ExPointDel") => ExPointDel,
         runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
         supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(609, "ExPointDel"), &[]));
