@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn player_level_gate_keeps_its_configured_enter_fight_lane() {
+    assert_eq!(
+        parse(793002, "Level", &["1".into(), "20".into()]),
+        Some(ParsedConditionKind::PlayerLevel {
+            compare: crate::engine::skill::condition::parse::ConditionCompare::GreaterThan,
+            threshold: 20,
+        })
+    );
+    assert_eq!(
+        parse(793002, "Level", &["2".into(), "41".into()]),
+        Some(ParsedConditionKind::PlayerLevel {
+            compare: crate::engine::skill::condition::parse::ConditionCompare::LessThan,
+            threshold: 41,
+        })
+    );
+    assert_eq!(
+        find_key(793002, "Level").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::EnterFight,
+            priority: 0,
+        })
+    );
+    for invalid in [
+        vec![],
+        vec!["1".into()],
+        vec!["0".into(), "20".into()],
+        vec!["3".into(), "20".into()],
+        vec!["1".into(), "0".into()],
+        vec!["1".into(), "20".into(), "30".into()],
+    ] {
+        assert_eq!(parse(793002, "Level", &invalid), None);
+    }
+}
+
+#[test]
 fn hero_round_interval_keeps_its_exact_round_transition_lane() {
     assert_eq!(
         parse(45102, "HeroRoundInterval", &["4".into(), "1".into()]),

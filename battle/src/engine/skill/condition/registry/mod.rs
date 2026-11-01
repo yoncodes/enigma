@@ -2,7 +2,7 @@ use super::{
     act_order, active_skill, battle_tag, buff, card, career, conduit, entity_count, extra, hp,
     indicator, injury, lifecycle, magic_circle, none,
     parse::{self, ParsedCondition, ParsedConditionKind},
-    resource, target_identity, trigger,
+    player, resource, target_identity, trigger,
 };
 use crate::engine::{
     entity::passive::PassiveSourceKind,
@@ -829,6 +829,7 @@ condition_definitions! {
     [749209] "PowerRatio" => resource::power_ratio, attacked_skills(predicate(&[EventKind::TargetAttacked]));
     [1010301] "ProgressValue" => resource::fight_progress_value, reaction_targets_owner(event_trigger(EventKind::DefenderActionPhaseStart, None));
     [1010012] "ProgressValue" => resource::fight_progress_value, event_target_observes(reaction_targets_owner(event_trigger(EventKind::EntityDied, None)));
+    [793002] "Level" => player::level, setup_route(SetupStage::EnterFight, 0, &[]);
     [1010003] "ProgressValue" => resource::progress_complete, predicate(&[]);
     [1010004] "ProgressValue" => resource::progress_band, predicate(&[]);
     [710301] "PerHandCardHasSkillId" => card::hand_skill_presence, event_trigger(EventKind::SmallRoundEnd, None);

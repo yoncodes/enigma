@@ -17,6 +17,7 @@ pub mod gauge;
 pub mod hp;
 pub mod indicator;
 pub mod injury;
+pub mod player;
 pub mod revive;
 pub mod shield;
 pub mod summon;
@@ -70,6 +71,7 @@ pub struct BattleManagers {
     pub hp: HpManager,
     pub indicator: indicator::IndicatorManager,
     pub injury: injury::InjuryManager,
+    pub player: player::BattlePlayerManager,
     pub ex_point: ExPointManager,
     pub eureka: EurekaManager,
     pub gauge: gauge::GaugeManager,

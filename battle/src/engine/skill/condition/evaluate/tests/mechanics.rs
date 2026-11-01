@@ -1,6 +1,34 @@
 use super::*;
 
 #[test]
+fn player_level_reads_the_battle_player_owner() {
+    let matches = |level, compare, threshold| {
+        let mut managers = BattleManagers::default();
+        managers.player = crate::engine::manager::player::BattlePlayerManager::new(level);
+        condition_matches(
+            &ParsedCondition {
+                opcode: 793002,
+                type_name: "Level".into(),
+                kind: ParsedConditionKind::PlayerLevel { compare, threshold },
+                raw_args: Vec::new(),
+            },
+            1,
+            &[1],
+            Some(&managers),
+            &TargetPool::default(),
+            TargetContext::default(),
+        )
+    };
+
+    assert!(matches(54, ConditionCompare::GreaterThan, 40));
+    assert!(matches(54, ConditionCompare::LessThan, 55));
+    assert!(matches(55, ConditionCompare::GreaterThan, 40));
+    assert!(!matches(55, ConditionCompare::LessThan, 55));
+    assert!(matches(56, ConditionCompare::GreaterThan, 40));
+    assert!(!matches(56, ConditionCompare::LessThan, 55));
+}
+
+#[test]
 fn blood_pool_max_uses_runtime_state() {
     init_config();
     let condition = ParsedCondition {

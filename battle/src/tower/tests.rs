@@ -18,6 +18,7 @@ fn boss_five_setup_is_derived_from_the_captured_config_chain() {
         .unwrap();
     let talents = fight::system_plan_talents(tables, 5, 10, &plan.talent_ids);
     let mut built = BuiltFight {
+        player_level: 0,
         fight: Fight {
             attacker: Some(FightTeam {
                 entitys: (1..=4)
@@ -61,6 +62,7 @@ fn boss_five_setup_is_derived_from_the_captured_config_chain() {
 fn tower_extra_rules_keep_virtual_and_entity_ownership_separate() {
     let tables = tables();
     let mut built = BuiltFight {
+        player_level: 0,
         fight: Fight {
             attacker: Some(FightTeam {
                 entitys: (1..=4)

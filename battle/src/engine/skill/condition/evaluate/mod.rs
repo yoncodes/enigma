@@ -930,6 +930,12 @@ fn condition_kind_matches(
         } => managers
             .and_then(|managers| managers.fight_progress.get(*progress_id))
             .is_some_and(|progress| compare_resource(progress.value, *compare_code, *threshold)),
+        ParsedConditionKind::PlayerLevel { compare, threshold } => {
+            managers.is_some_and(|managers| {
+                managers.player.level() > 0
+                    && compare_value(managers.player.level(), *compare, *threshold)
+            })
+        }
         ParsedConditionKind::IndicatorAtLeast {
             indicator_id,
             threshold,

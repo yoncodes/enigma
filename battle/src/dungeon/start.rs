@@ -5,6 +5,7 @@ use sonettobuf::{Fight, FightGroup, fight::FightActType};
 
 pub struct BuiltFight {
     pub fight: Fight,
+    pub player_level: i32,
     pub ex_attributes: Vec<(i64, sonettobuf::HeroExAttribute)>,
     pub sp_attributes: Vec<(i64, sonettobuf::HeroSpAttribute)>,
     pub(crate) battle_rule_skills: Vec<crate::engine::fight::rules::OwnedBattleSkill>,
@@ -47,6 +48,7 @@ pub fn build_fight(
     )?;
 
     Ok(BuiltFight {
+        player_level: roster.player_level,
         fight: Fight {
             attacker: Some(attacker.team),
             defender: Some(defender.team),

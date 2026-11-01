@@ -312,8 +312,19 @@ impl BattleRuntime {
         ex_attributes: impl IntoIterator<Item = (i64, HeroExAttribute)>,
         sp_attributes: impl IntoIterator<Item = (i64, HeroSpAttribute)>,
     ) -> Result<Self, String> {
+        Self::new_with_player_level(catalog, fight, ex_attributes, sp_attributes, 0)
+    }
+
+    pub(crate) fn new_with_player_level(
+        catalog: BattleCatalog,
+        fight: Fight,
+        ex_attributes: impl IntoIterator<Item = (i64, HeroExAttribute)>,
+        sp_attributes: impl IntoIterator<Item = (i64, HeroSpAttribute)>,
+        player_level: i32,
+    ) -> Result<Self, String> {
         let mut managers = BattleManagers::seeded_with_catalog(catalog, &fight)
             .map_err(|error| error.to_string())?;
+        managers.player = crate::engine::manager::player::BattlePlayerManager::new(player_level);
         if let Some(target_model_ids) = catalog.boss_rush_target_models(
             fight.episode_id.unwrap_or_default(),
             fight.battle_id.unwrap_or_default(),

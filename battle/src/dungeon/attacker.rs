@@ -60,6 +60,7 @@ pub struct BattleFighter {
 #[derive(Clone, Debug, Default)]
 pub struct BattleRoster {
     pub user_id: i64,
+    pub player_level: i32,
     pub fighters: Vec<BattleFighter>,
     pub compose_support: Option<HeroBuildInput>,
 }
@@ -827,6 +828,7 @@ mod tests {
             crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
             &BattleRoster {
                 user_id: 1,
+                player_level: 42,
                 ..Default::default()
             },
             10103,
@@ -836,6 +838,7 @@ mod tests {
             None,
         )
         .unwrap();
+        assert_eq!(built.player_level, 42);
         let attacker = built.fight.attacker.unwrap();
 
         assert_eq!(
