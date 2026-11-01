@@ -370,11 +370,14 @@ impl BattleManagers {
             _ => None,
         };
         let source_attack = source_uid.map(|uid| self.attack(uid));
+        let source_max_hp = source_uid
+            .map(|uid| self.origin_attribute(uid, crate::engine::entity::attr::AttrId::Hp));
         let mut plan = self.buff.plan_with_source_attack(
             &self.hp,
             command,
             buff::GrantInputs {
                 source_attack,
+                source_max_hp,
                 resist_roll,
             },
         )?;

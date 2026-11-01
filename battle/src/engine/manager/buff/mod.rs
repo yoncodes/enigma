@@ -233,6 +233,7 @@ struct TrackedEntity {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct GrantInputs {
     pub source_attack: Option<i32>,
+    pub source_max_hp: Option<i32>,
     pub resist_roll: Option<ResistRoll>,
 }
 
