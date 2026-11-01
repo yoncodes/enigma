@@ -47,6 +47,8 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) resume_target: usize,
     // SkillEffectStarted subscribers settle before the skill's immediate slots.
     pub(super) effect_started: bool,
+    // Action healing modifiers are collected once, after start subscribers settle.
+    pub(super) healing_modifiers_collected: bool,
     // Extra-action opening effects settle once after SkillEffectStarted subscribers.
     pub(super) opening_effects_emitted: bool,
     // An exact immediate-settlement rule defeated this action's source.
@@ -132,6 +134,7 @@ impl SkillExecution {
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
+            healing_modifiers_collected: false,
             opening_effects_emitted: false,
             immediate_source_death: false,
         }
@@ -168,6 +171,7 @@ impl SkillExecution {
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
+            healing_modifiers_collected: false,
             opening_effects_emitted: false,
             immediate_source_death: false,
         }

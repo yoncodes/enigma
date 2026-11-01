@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn source_life_less_uses_a_strict_hp_percentage_threshold() {
+    init_config();
+    let condition = exact_condition(1201, "LifeLess", &["500"]);
+    let matches = |current_hp| {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    current_hp: Some(current_hp),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        condition_matches(
+            &condition,
+            10,
+            &[10],
+            Some(&managers),
+            &TargetPool::from_fight(&fight),
+            TargetContext::default(),
+        )
+    };
+
+    assert!(matches(499));
+    assert!(!matches(500));
+}
+
+#[test]
 fn added_magic_circle_matches_its_configured_id() {
     init_config();
     let pool = TargetPool::default();

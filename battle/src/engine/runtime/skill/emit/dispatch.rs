@@ -363,6 +363,59 @@ pub(in crate::engine::runtime) fn emit_ops(
             .slots
             .iter()
             .any(|slot| slot.behavior.spec.kind == BehaviorKind::IgnoreSkillConfigDamageRate);
+    let has_healing = effect.slots.iter().any(|slot| {
+        matches!(
+            slot.behavior.spec.kind,
+            BehaviorKind::Heal
+                | BehaviorKind::HealCantCrit
+                | BehaviorKind::HealByTwoAttr
+                | BehaviorKind::FakeHpToHeal
+                | BehaviorKind::NuoDiKaDamage
+        )
+    });
+    if active_phase == Some(SkillPhase::Immediate)
+        && has_healing
+        && !execution.healing_modifiers_collected
+    {
+        execution.healing_modifiers_collected = true;
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        behavior::rate::emit_active_target_attack_attributes(
+            &mut modifiers,
+            invocation.plan.source_uid,
+            effect_skill_id,
+            invocation.plan.skill_id,
+            behavior::rate::RateRuntime {
+                effects: catalog,
+                managers,
+                pool,
+                context: execution.context,
+            },
+            determinism,
+        );
+        let passive_skills = pool
+            .entity(invocation.plan.source_uid)
+            .map(|entity| entity.passive_skills.as_slice())
+            .unwrap_or_default();
+        behavior::rate::emit_passive_attack_attributes(
+            &mut modifiers,
+            invocation.plan.source_uid,
+            invocation.plan.skill_id,
+            passive_skills,
+            behavior::rate::RateRuntime {
+                effects: catalog,
+                managers,
+                pool,
+                context: execution.context,
+            },
+            determinism,
+        );
+        execution.modifiers.attack_attributes.extend(
+            modifiers
+                .attack_attributes
+                .into_iter()
+                .filter(|(attr, _)| *attr == crate::engine::entity::attr::AttrId::HealingDone),
+        );
+    }
     // An extra action's Force Field Eureka cost and forced crit open the action, before its own
     // effects; other additional-damage activations follow those effects.
     if active_phase == Some(SkillPhase::Immediate) && !execution.opening_effects_emitted {

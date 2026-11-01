@@ -724,6 +724,22 @@ fn active_life_more_gate_keeps_its_exact_static_route() {
 }
 
 #[test]
+fn source_life_less_gate_keeps_its_exact_static_route() {
+    assert_eq!(
+        find_key(1201, "LifeLess").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert_eq!(
+        parse(1201, "LifeLess", &["500".into()]),
+        Some(ParsedConditionKind::HpPermille {
+            compare: super::super::super::parse::ConditionCompare::LessThan,
+            threshold: 500,
+        })
+    );
+    assert!(find_key(1201, "LifeMore").is_none());
+}
+
+#[test]
 fn hp_loss_life_less_gate_keeps_its_exact_identity() {
     assert_eq!(
         find_key(1, "LifeLess").map(|definition| definition.role),
