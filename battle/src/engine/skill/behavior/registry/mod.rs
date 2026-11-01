@@ -761,7 +761,7 @@ behavior_definitions! {
     [60284] "PoisonConvertToPowerfulPoisonBuff" => super::poison::Handler, PoisonConvertToPowerfulPoisonBuff, AfterDamage, destination, super::poison::supports_conversion;
     [60111] "ConsumePoisonSettleDeadlyPoison" => super::poison::Handler, ConsumePoisonSettleDeadlyPoison, AfterDamage, destination;
     [100005] "Assassinate" => super::general::AssassinateHandler, Assassinate, Immediate, destination, arguments::none;
-    [60037] "NotifyUpgradeHero" => super::general::Handler, NotifyUpgradeHero, Immediate, destination;
+    [60037] "NotifyUpgradeHero" => super::general::Handler, NotifyUpgradeHero, Immediate, destination, super::general::supports_notify_upgrade;
     [60092] "NotifyHeroContract" => super::contract::Handler, NotifyHeroContract, Immediate, destination;
     [60093] "ContractEndClearBuff" => super::contract::EndHandler, ContractEndClearBuff, Immediate, destination;
     [60198] "ClientEffect" => super::general::Handler, ClientEffect, Immediate, destination, arguments::at_least_one;
