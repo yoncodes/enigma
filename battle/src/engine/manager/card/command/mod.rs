@@ -3,7 +3,10 @@ use sonettobuf::{CardInfo, FightEntityInfo};
 use crate::engine::skill::rule::{DefinitionKey, RuleDomain};
 use crate::engine::{event::payload::BattleEvent, skill::rule::CommandOrigin};
 
-use super::{CardChange, CardManager, CardPlayChoice, EnchantedType, PlayedCard};
+use super::{
+    CardChange, CardManager, CardPlayChoice, CardPrepareAiSkill, EnchantedType, PlayedCard,
+    PreparedAiSkill,
+};
 
 pub const CARD_PLAY_ORIGIN: CommandOrigin = CommandOrigin {
     domain: RuleDomain::Lifecycle,
@@ -397,6 +400,7 @@ pub enum CardCommand {
     RefillOne(CardRefillOne),
     SetUltimateAvailability(CardSetUltimateAvailability),
     RefreshAiQueue(CardRefreshAiQueue),
+    PrepareAiSkill(CardPrepareAiSkill),
     SetAiQueue(CardSetAiQueue),
     SetTeamCards(CardSetTeamCards),
     RemoveOwner(CardRemoveOwner),
@@ -485,6 +489,7 @@ pub enum CardChangeKind {
     Refilled,
     UltimateAvailabilityChanged,
     AiQueueRefreshed,
+    AiSkillPrepared,
     AiQueueSet,
     TeamCardsSet,
     AiOwnerRemoved,
@@ -1064,6 +1069,23 @@ pub(super) fn execute(
                 Some(set.origin),
                 CardChangeKind::UltimateAvailabilityChanged,
                 set.available.then_some(set.card),
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::PrepareAiSkill(prepare) => {
+            if prepare.owner_uid == 0 || prepare.skill_id <= 0 {
+                return Err(CardCommandError::InvalidCommand);
+            }
+            manager.prepared_ai_skills.push(PreparedAiSkill {
+                owner_uid: prepare.owner_uid,
+                skill_id: prepare.skill_id,
+            });
+            (
+                Some(prepare.origin),
+                CardChangeKind::AiSkillPrepared,
+                None,
                 None,
                 Vec::new(),
                 Vec::new(),

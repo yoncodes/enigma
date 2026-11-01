@@ -706,7 +706,7 @@ behavior_definitions! {
     [60172] "Drive" => super::use_skill::Handler, Drive, Immediate, destination, super::use_skill::supports_drive;
     [60175] "DirectUseBigSkill" => super::use_skill::Handler, DirectUseBigSkill, Immediate, parent_destination, arguments::none;
     [50010] "DirectUseGroupAndStarSkill" => super::use_skill::Handler, DirectUseGroupAndStarSkill, Immediate, destination, super::use_skill::supports_group_and_star_skill;
-    [50015] "UseExtraSkill" => super::use_skill::Handler, UseExtraSkill, Immediate, plain;
+    [50015] "UseExtraSkill" => super::prepare_skill::Handler, UseExtraSkill, Immediate, destination;
     [60242] "CrystalReuse" => super::use_skill::Handler, CrystalReuse, Immediate, destination, super::use_skill::supports_crystal_reuse;
     [60222] "ConsumeCardAddBuff" => super::buff::Handler, ConsumeCardAddBuff, Immediate, destination, super::buff::supports_consume_card_add_buff;
     [60112] "AddTargetBuffByPoison" => super::buff::Handler, AddTargetBuffByPoison, AfterDamage, destination, super::buff::supports_add_target_buff_by_poison;

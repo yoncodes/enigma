@@ -9,6 +9,7 @@ pub mod enchant;
 pub mod energy;
 pub mod op;
 pub mod pool;
+pub(crate) mod prepared;
 pub mod start;
 pub mod temp;
 pub mod types;
@@ -31,6 +32,7 @@ pub use deck::CardDeck;
 use deck::CardInstanceId;
 pub use enchant::EnchantedType;
 pub use op::CardOpType;
+pub use prepared::{CardPrepareAiSkill, PreparedAiSkill};
 pub use start::{hand_size, start_decks_from_fight};
 pub use temp::{precast_card, selected_precast_card, temp_card};
 pub use types::{CardPlayChoice, PlayedCard, UniversalCardSkill};
@@ -50,6 +52,7 @@ pub struct CardManager {
     deck_num: i32,
     deck_capacity: i32,
     ai_queue: Vec<CardInfo>,
+    prepared_ai_skills: Vec<PreparedAiSkill>,
     cleaned_owners: HashSet<i64>,
     played: Vec<PlayedCard>,
     refilled: Vec<CardInfo>,
@@ -127,6 +130,7 @@ impl CardManager {
             deck_num: 0,
             deck_capacity: 0,
             ai_queue: Vec::new(),
+            prepared_ai_skills: Vec::new(),
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
             refilled: Vec::new(),
@@ -150,6 +154,7 @@ impl CardManager {
             deck_num: 0,
             deck_capacity: 0,
             ai_queue: Vec::new(),
+            prepared_ai_skills: Vec::new(),
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
             refilled: Vec::new(),
@@ -245,11 +250,16 @@ impl CardManager {
         &self.ai_queue
     }
 
+    pub(crate) fn prepared_ai_skills(&self) -> &[PreparedAiSkill] {
+        &self.prepared_ai_skills
+    }
+
     fn set_ai_queue(&mut self, cards: Vec<CardInfo>) {
         for owner_uid in cards.iter().filter_map(|card| card.uid) {
             self.cleaned_owners.remove(&owner_uid);
         }
         self.ai_queue = cards;
+        self.prepared_ai_skills.clear();
     }
 
     fn refresh_ai_queue(&mut self, cards: Vec<CardInfo>) -> Vec<i64> {
@@ -266,6 +276,8 @@ impl CardManager {
     }
 
     fn invalidate_ai_owner(&mut self, owner_uid: i64) -> Vec<(i32, CardInfo)> {
+        self.prepared_ai_skills
+            .retain(|prepared| prepared.owner_uid != owner_uid);
         let mut card_index = 0;
         let mut invalidated = Vec::new();
         self.ai_queue.retain(|card| {
@@ -293,6 +305,8 @@ impl CardManager {
     }
 
     fn remove_ai_owner_cards(&mut self, owner_uid: i64) -> Option<Vec<i64>> {
+        self.prepared_ai_skills
+            .retain(|prepared| prepared.owner_uid != owner_uid);
         if !self.cleaned_owners.insert(owner_uid) {
             return None;
         }
@@ -343,6 +357,7 @@ impl CardManager {
             self.deck = std::mem::take(&mut self.deck).with_catalog(catalog);
         }
         self.team_cards.clear();
+        self.prepared_ai_skills.clear();
         self.deck_num = deck_num;
         self.deck_capacity = deck_num;
         self.played.clear();
