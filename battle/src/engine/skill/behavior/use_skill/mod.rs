@@ -56,6 +56,17 @@ pub(super) fn supports_consume_buff_use_skill(behavior: &ParsedBehavior) -> bool
         if *buff_id > 0 && *amount > 0 && *skill_id > 0)
 }
 
+pub(super) fn supports_consume_buff_use_skill2(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [buff_id, amount, group, star]
+    if *buff_id > 0
+        && *amount > 0
+        && match group {
+            1 | 2 => (1..=3).contains(star),
+            3 => *star == 0,
+            _ => false,
+        })
+}
+
 pub(super) fn supports_consume_buff_use_skill3(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [buff_id, amount, skill_id]
         if *buff_id > 0 && *amount > 0 && *skill_id > 0)
@@ -133,6 +144,42 @@ impl BehaviorHandler for Handler {
                         amount: *amount,
                         depleted: DepletedBuff::Remove,
                     }))),
+                ])
+            }
+            BehaviorKind::ConsumeBuffUseSkill2 => {
+                let [buff_id, amount, group, star] = behavior.args.as_slice() else {
+                    return None;
+                };
+                if context
+                    .managers
+                    .buff
+                    .buff_id_amount(context.source_uid, *buff_id)
+                    < *amount
+                {
+                    return Some(Vec::new());
+                }
+                let Some(skill_id) = loadout_skill(context.pool, context.source_uid, *group, *star)
+                else {
+                    return Some(Vec::new());
+                };
+                let origin = super::command_origin(behavior)?;
+                let mut invocation: crate::engine::skill::action::SkillInvocation =
+                    crate::engine::skill::action::SkillRequest {
+                        source_uid: context.source_uid,
+                        skill_id,
+                    }
+                    .into();
+                invocation.target =
+                    crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
+                Some(vec![
+                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                        origin,
+                        target_uid: context.source_uid,
+                        selector: BuffSelector::ExactId(*buff_id),
+                        amount: *amount,
+                        depleted: DepletedBuff::Remove,
+                    }))),
+                    RuleOp::Skill(invocation),
                 ])
             }
             BehaviorKind::ConsumeBuffUseSkill3 => {
@@ -672,6 +719,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
     };
     let buffs = match behavior.spec.kind {
         BehaviorKind::ConsumeBuffUseSkill
+        | BehaviorKind::ConsumeBuffUseSkill2
         | BehaviorKind::ConsumeBuffUseSkill3
         | BehaviorKind::ConsumeTargetBuffUseSkill => behavior.arg(0).into_iter().collect(),
         BehaviorKind::RemoveBuffUseSkill => behavior.arg(0).into_iter().collect(),
@@ -900,6 +948,17 @@ fn skill_from_group_and_star(
     let skills = match group {
         1 => Skill::get_skill_groups_with_destiny(source.model_id, 0, None).0,
         2 => Skill::get_skill_groups_with_destiny(source.model_id, 0, None).1,
+        3 => return (source.ex_skill > 0).then_some(source.ex_skill),
+        _ => return None,
+    };
+    skills.get(star.saturating_sub(1) as usize).copied()
+}
+
+fn loadout_skill(pool: &TargetPool, source_uid: i64, group: i32, star: i32) -> Option<i32> {
+    let source = pool.entity(source_uid)?;
+    let skills = match group {
+        1 => &source.skill_group1,
+        2 => &source.skill_group2,
         3 => return (source.ex_skill > 0).then_some(source.ex_skill),
         _ => return None,
     };

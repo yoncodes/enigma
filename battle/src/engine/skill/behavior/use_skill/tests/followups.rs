@@ -111,6 +111,74 @@ fn consume_buff_use_skill_settles_exact_buff_after_extra_action() {
     ));
 }
 
+#[test]
+fn consume_buff_use_skill_two_resolves_group_after_consuming_marker() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3047),
+                current_hp: Some(100),
+                skill_group2: vec![30470151, 30470152, 30470153],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(30470171),
+                    layer: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+    let behavior = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60128, "ConsumeBuffUseSkill2"),
+        vec![30470171, 1, 2, 1],
+        Vec::new(),
+    );
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 30470171,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                target_uid: 10,
+                selector: BuffSelector::ExactId(30470171),
+                amount: 1,
+                ..
+            }))),
+            RuleOp::Skill(invocation)
+        ] if invocation.plan.skill_id == 30470151
+            && invocation.target == crate::engine::skill::action::SkillTarget::Explicit(10)
+            && invocation.mode == crate::engine::skill::action::SkillExecutionMode::Nested
+    ));
+    assert!(supports_consume_buff_use_skill2(&behavior));
+}
+
 fn ezio_reuse_ops(
     source_uid: i64,
     card_index: i32,

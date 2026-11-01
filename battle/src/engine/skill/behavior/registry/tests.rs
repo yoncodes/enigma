@@ -304,6 +304,22 @@ fn per_consume_ex_point_direct_use_skill_keeps_its_exact_five_argument_shape() {
 }
 
 #[test]
+fn consume_buff_use_skill_two_keeps_group_and_rank_shape() {
+    let valid = ParsedBehavior::new(60128, "ConsumeBuffUseSkill2", vec![30470171, 1, 2, 1]);
+    let definition = find(&valid).expect("exact consume-and-cast behavior must be registered");
+
+    assert_eq!(definition.kind, BehaviorKind::ConsumeBuffUseSkill2);
+    assert!(definition.supports.unwrap()(&valid));
+    assert_eq!((definition.references)(&valid).buffs, vec![30470171]);
+    assert!(!definition.supports.unwrap()(&ParsedBehavior::new(
+        60128,
+        "ConsumeBuffUseSkill2",
+        vec![30470171, 1, 3, 1],
+    )));
+    assert!(find_key(60128, "ConsumeBuffUseSkill").is_none());
+}
+
+#[test]
 fn destination_readiness_belongs_to_the_exact_registry_row() {
     let root_add =
         ParsedBehavior::from_spec(BehaviorSpec::new(1, "AddBuff"), vec![100, 1], Vec::new());

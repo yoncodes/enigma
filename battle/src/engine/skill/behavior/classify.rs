@@ -96,6 +96,7 @@ pub enum BehaviorKind {
     ConsumePowerDirectUseSkill,
     PerConsumeExPointDirectUseSkill,
     ConsumeBuffUseSkill,
+    ConsumeBuffUseSkill2,
     ConsumeBuffUseSkill3,
     ConsumeTargetBuffUseSkill,
     RemoveBuffUseSkill,
