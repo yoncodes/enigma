@@ -93,6 +93,16 @@ pub fn effect_tags(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKi
     (!tags.is_empty()).then_some(ParsedConditionKind::ActiveSkillEffectTag(tags))
 }
 
+pub fn single_effect_tag(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [raw] = args else {
+        return None;
+    };
+    let tag = raw.parse().ok()?;
+    (1..=6)
+        .contains(&tag)
+        .then_some(ParsedConditionKind::ActiveSkillEffectTag(vec![tag]))
+}
+
 pub fn rank(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::ActiveSkillRank {
         compare: ConditionCompare::Equal,

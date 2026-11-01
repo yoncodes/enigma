@@ -996,6 +996,7 @@ condition_definitions! {
     [500210] "SkillType" => active_skill::skill_type, predicate(&[EventKind::SkillAction]);
     [34203] "UseSkillEffectTag" => active_skill::effect_tag, event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate));
     [34212] "UseSkillEffectTag" => active_skill::effect_tag, predicate(&[]);
+    [551213] "BeAttackedByEffectTag" => active_skill::single_effect_tag, opposing_team_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)));
     [33201] "HurtRestraint" => parse::hurt_restrained, predicate(&[]);
     [33204] "HurtRestraint" => parse::hurt_restrained, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate))));
     [33209] "HurtRestraint" => parse::hurt_restrained, attacked_skills(predicate(&[EventKind::TargetAttacked]));

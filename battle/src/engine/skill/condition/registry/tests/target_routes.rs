@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn enemy_effect_tag_keeps_its_exact_action_route() {
+    for tag in 1..=6 {
+        assert_eq!(
+            parse(551213, "BeAttackedByEffectTag", &[tag.to_string()]),
+            Some(ParsedConditionKind::ActiveSkillEffectTag(vec![tag]))
+        );
+    }
+    let definition = find_key(551213, "BeAttackedByEffectTag").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::HitPassives),
+        }
+    );
+    assert_eq!(
+        definition.skill_action_observer,
+        SkillActionObserver::OpposingTeam
+    );
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["7".into()],
+        vec!["1,2".into()],
+        vec!["1".into(), "2".into()],
+    ] {
+        assert_eq!(parse(551213, "BeAttackedByEffectTag", &invalid), None);
+    }
+}
+
+#[test]
 fn other_ally_extra_action_keeps_its_exact_route() {
     assert_eq!(
         parse(403212, "SkillExtraType", &["1".into()]),
