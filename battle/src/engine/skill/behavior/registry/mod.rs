@@ -755,7 +755,7 @@ behavior_definitions! {
     [60056] "SummonSp2" => super::summon::Handler, SummonSp2, AfterDamage, destination;
     [60015] "Kill" => super::kill::Handler, Kill, Immediate, destination, super::kill::supports;
     [60018] "Kill" => super::kill::Handler, LethalHpLoss, Immediate, destination, super::kill::supports;
-    [60019] "KillTargets" => super::kill::Handler, KillTargets, AfterDamage, destination;
+    [60019] "KillTargets" => super::kill::Handler, KillTargets, AfterDamage, destination, super::kill::supports_targets;
     [40006] "MonsterChange" => super::monster_change::Handler, MonsterChange, Immediate, destination, super::monster_change::supports;
     [40020] "ImmediatelyMonster" => super::general::ImmediatelyMonsterHandler, ImmediatelyMonster, Immediate, once_destination, arguments::none;
     [60074] "CatapultBuff" => super::poison::Handler, CatapultBuff, AfterDamage, destination;

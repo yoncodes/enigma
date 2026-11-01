@@ -36,6 +36,11 @@ pub(super) fn supports(behavior: &ParsedBehavior) -> bool {
     behavior.args.is_empty()
 }
 
+pub(super) fn supports_targets(behavior: &ParsedBehavior) -> bool {
+    (behavior.raw_args.is_empty() || behavior.raw_args.len() == 2)
+        && matches!(behavior.args.as_slice(), [0, 102 | 103])
+}
+
 pub(super) struct Handler;
 
 impl BehaviorHandler for Handler {
@@ -152,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn kill_targets_resolves_its_configured_selector_without_killing_the_caster() {
+    fn selector_kills_commit_to_hp() {
         let entity = |uid, hp| FightEntityInfo {
             uid: Some(uid),
             team_type: Some(1),
@@ -171,7 +176,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        let managers = BattleManagers::seeded(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
         let pool = TargetPool::from_fight(&fight);
         let mut determinism = RoundDeterminism::default();
         let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
@@ -182,7 +187,7 @@ mod tests {
             vec!["0".into(), "102".into()],
         );
 
-        let ops = Handler::emit_ops(
+        let ops = super::super::rule_ops(
             BehaviorOpContext {
                 source_uid: 10,
                 source_team: 1,
@@ -211,6 +216,43 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![11, 12]
         );
+        for op in ops {
+            let RuleOp::Command(BattleCommand::Hp(command)) = op else {
+                panic!("selector kill must use the HP manager");
+            };
+            let changes = managers.hp.execute_command(command).unwrap();
+            assert!(changes.death.is_some());
+            assert!(changes.kill.is_some());
+        }
+        assert_eq!(managers.hp.current(10), 100);
+        assert_eq!(managers.hp.current(11), 0);
+        assert_eq!(managers.hp.current(12), 0);
+
+        let behavior = ParsedBehavior::new(60019, "KillTargets", vec![0, 103]);
+        let ops = super::super::rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 11,
+                active_skill_id: 1,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+        let [RuleOp::Command(BattleCommand::Hp(command))] = ops.as_slice() else {
+            panic!("self selector must emit exactly one kill");
+        };
+        let changes = managers.hp.execute_command(*command).unwrap();
+        assert!(changes.death.is_some());
+        assert!(changes.kill.is_some());
+        assert_eq!(managers.hp.current(10), 0);
     }
 
     #[test]
