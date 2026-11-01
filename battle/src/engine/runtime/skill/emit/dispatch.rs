@@ -369,11 +369,12 @@ pub(in crate::engine::runtime) fn emit_ops(
             BehaviorKind::Heal
                 | BehaviorKind::HealCantCrit
                 | BehaviorKind::HealByTwoAttr
+                | BehaviorKind::HealOrAddBuffByHp
                 | BehaviorKind::FakeHpToHeal
                 | BehaviorKind::NuoDiKaDamage
         )
     });
-    if active_phase == Some(SkillPhase::Immediate)
+    if (active_phase == Some(SkillPhase::Immediate) || matches!(trigger, SkillOpTrigger::Event(_)))
         && has_healing
         && !execution.healing_modifiers_collected
     {

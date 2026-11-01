@@ -128,7 +128,7 @@ impl BuffManager {
             .iter()
             .filter_map(|active| {
                 let definition = active.definition.as_ref()?;
-                if definition.keeps_permanent_instance() {
+                if definition.preserves_action_lifetime() {
                     return None;
                 }
                 let take_action = definition.take_action()?;
@@ -578,6 +578,10 @@ impl BuffManager {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "lifecycle/tests.rs"]
+mod tests;
 
 fn rouge2_attributes(fight: &Fight) -> HashMap<i32, i32> {
     #[derive(serde::Deserialize)]

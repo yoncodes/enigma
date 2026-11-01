@@ -391,7 +391,7 @@ type IndirectHealCrit = ((i32, i64, i64), bool);
 
 // Each effect the engine rolls a crit for is rolled under its own step's skill (or buff) and
 // source, in step order. Config effects name the rolling source: skill row damage (-1), healing
-// behaviors 20001/90001, Spirit Shell heals (0), and crit-capable origin damage 30015/60127.
+// behaviors 20001/90001/60179, Spirit Shell heals (0), and crit-capable origin damage 30015/60127.
 fn crit_choices(
     game_data: &'static config::GameDB,
     round: &FightRound,
@@ -485,7 +485,7 @@ fn crit_choices(
                                 })
                             })
                             .or_else(|| {
-                                heal_crit.filter(|_| matches!(config_effect, 20001 | 90001))
+                                heal_crit.filter(|_| matches!(config_effect, 20001 | 60179 | 90001))
                             })
                             .or_else(|| {
                                 crit(EffectType::Origindamage, EffectType::Origincrit)
@@ -1102,6 +1102,7 @@ mod tests {
                     effect(EffectType::Heal, 10, 20016),
                     effect(EffectType::Damage, -2, -1),
                     effect(EffectType::Heal, 10, 20001),
+                    effect(EffectType::Healcrit, 10, 60179),
                     effect(EffectType::Buffadd, -2, 0),
                     ActEffect {
                         effect_type: Some(EffectType::Eziobigskilldamage as i32),
@@ -1137,6 +1138,7 @@ mod tests {
                 ((31090111, 10), true),
                 ((31090111, 10), false),
                 ((31090111, 10), false),
+                ((31090111, 10), true),
                 ((31090111, 10), true),
                 ((31090111, 10), false)
             ]

@@ -196,6 +196,7 @@ pub enum BehaviorKind {
     Heal,
     HealCantCrit,
     HealByTwoAttr,
+    HealOrAddBuffByHp,
     FakeHpToHeal,
     Bloodlust,
     Detonate2,

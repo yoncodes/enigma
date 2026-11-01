@@ -1,6 +1,11 @@
 use super::*;
 
-fn healing_amount(current_hp: i32, start_subscriber: bool) -> i32 {
+fn healing_amount(
+    current_hp: i32,
+    start_subscriber: bool,
+    event_triggered: bool,
+    conditional: bool,
+) -> i32 {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -37,10 +42,19 @@ fn healing_amount(current_hp: i32, start_subscriber: bool) -> i32 {
     let managers = BattleManagers::seeded(&fight);
     let pool = TargetPool::from_fight(&fight);
     let mut catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let behavior = if conditional {
+        ParsedBehavior::new(
+            60179,
+            "HealOrAddBuffByHp",
+            vec![500, 0, AttrId::Attack.id(), 1_000, 1],
+        )
+    } else {
+        ParsedBehavior::new(20001, "Heal", vec![0, AttrId::Attack.id(), 1_000])
+    };
     catalog.insert(ParsedSkillEffect {
         skill_id: 100,
         slots: vec![SkillEffectSlot::new(
-            ParsedBehavior::new(20001, "Heal", vec![0, AttrId::Attack.id(), 1_000]),
+            behavior,
             TargetRequest {
                 code: 1,
                 raw: Vec::new(),
@@ -73,6 +87,11 @@ fn healing_amount(current_hp: i32, start_subscriber: bool) -> i32 {
     invocation.mode = SkillExecutionMode::Active;
     invocation.target = SkillTarget::Explicit(11);
 
+    let trigger = if event_triggered {
+        SkillOpTrigger::Event(BattleEvent::Kind(EventKind::RoundEnd))
+    } else {
+        SkillOpTrigger::Active
+    };
     emit_all_ops(
         invocation,
         &managers,
@@ -80,7 +99,7 @@ fn healing_amount(current_hp: i32, start_subscriber: bool) -> i32 {
         &catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &SkillOpTrigger::Active,
+        &trigger,
     )
     .unwrap()
     .into_iter()
@@ -93,11 +112,16 @@ fn healing_amount(current_hp: i32, start_subscriber: bool) -> i32 {
 
 #[test]
 fn conditional_passive_healing_done_reaches_a_runtime_heal() {
-    assert_eq!(healing_amount(499, false), 1_100);
-    assert_eq!(healing_amount(500, false), 1_000);
+    assert_eq!(healing_amount(499, false, false, false), 1_100);
+    assert_eq!(healing_amount(500, false, false, false), 1_000);
 }
 
 #[test]
 fn healing_modifier_survives_an_action_start_continuation() {
-    assert_eq!(healing_amount(499, true), 1_100);
+    assert_eq!(healing_amount(499, true, false, false), 1_100);
+}
+
+#[test]
+fn event_triggered_hp_branch_collects_passive_modifiers() {
+    assert_eq!(healing_amount(499, false, true, true), 1_100);
 }
