@@ -490,6 +490,16 @@ pub fn single_buff_absent(_: i32, _: &str, raw_args: &[String]) -> Option<Parsed
     })
 }
 
+pub fn positive_buff_absent(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let condition = buff_presence(raw_args, BuffConditionMode::Absent)?;
+    matches!(
+        &condition,
+        ParsedConditionKind::BuffId { buff_ids, .. }
+            if buff_ids.iter().all(|buff_id| *buff_id > 0)
+    )
+    .then_some(condition)
+}
+
 fn buff_presence(raw_args: &[String], mode: BuffConditionMode) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::BuffId {
         mode,

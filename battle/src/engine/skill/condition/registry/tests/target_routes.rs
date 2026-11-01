@@ -422,6 +422,43 @@ fn single_absent_buff_gate_keeps_its_round_start_lane() {
 }
 
 #[test]
+fn absent_buff_lists_keep_their_round_end_lane() {
+    for (args, buff_ids) in [
+        (vec!["8085".into()], vec![8085]),
+        (
+            vec!["8085".into(), "8407".into(), "8410".into()],
+            vec![8085, 8407, 8410],
+        ),
+        (vec!["4150007,4150015".into()], vec![4150007, 4150015]),
+    ] {
+        assert_eq!(
+            parse(57302, "NoBuffId", &args),
+            Some(ParsedConditionKind::BuffId {
+                mode: BuffConditionMode::Absent,
+                buff_ids,
+            })
+        );
+    }
+    for args in [
+        vec![],
+        vec!["0".into()],
+        vec!["-1".into()],
+        vec!["8085,bad".into()],
+    ] {
+        assert_eq!(parse(57302, "NoBuffId", &args), None);
+    }
+    let definition = find_key(57302, "NoBuffId").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        }
+    );
+    assert!(definition.filters_behavior_targets);
+}
+
+#[test]
 fn nested_no_action_teammate_death_keeps_its_exact_event_key() {
     assert_eq!(
         parse(17012, "TeammateDead", &[]),
