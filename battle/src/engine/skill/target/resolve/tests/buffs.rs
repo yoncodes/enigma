@@ -61,6 +61,39 @@ fn resolves_buff_type_feature_and_monster_label_targets() {
 }
 
 #[test]
+fn energy_target_uses_the_monster_role_on_its_own_side() {
+    init_config();
+    let monster = |uid, model_id, position| FightEntityInfo {
+        model_id: Some(model_id),
+        entity_type: Some(2),
+        ..entity_at(uid, position)
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![monster(10, 900100402, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![monster(-6, 900100101, 4), monster(-9, 900100402, 1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+
+    assert_eq!(
+        resolve_code(
+            1004,
+            crate::engine::fight::rules::DEFENDER_SIDE_UID,
+            &pool,
+            &mut RoundDeterminism::default(),
+        ),
+        vec![-9]
+    );
+    assert_eq!(targets_enemy(1004), Some(false));
+}
+
+#[test]
 fn alternating_monster_targets_keep_their_exact_label_rules() {
     init_config();
     let fight = Fight {
