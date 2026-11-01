@@ -100,13 +100,30 @@ pub fn parse_reward_id(reward_id: i32) -> RewardSet {
     parse_reward_id_with_cost(reward_id, 0)
 }
 
-fn parse_reward_id_with_cost(reward_id: i32, cost: i32) -> RewardSet {
-    let Some(row) = config::configs::get().reward(reward_id) else {
-        return RewardSet::default();
-    };
-
+pub fn parse_fixed_reward(reward_id: i32, cost: i32) -> RewardSet {
+    let tables = config::configs::get();
     let mut rewards = RewardSet::default();
-    for group in [
+    let Some(row) = tables.reward(reward_id) else {
+        return rewards;
+    };
+    for group_ref in groups(row).into_iter().filter(|group| !group.is_empty()) {
+        let Some((group, "NORMAL")) = group_ref.split_once(':') else {
+            tracing::warn!(
+                reward_id,
+                group = group_ref,
+                "Unsupported reward group in guaranteed payout"
+            );
+            continue;
+        };
+        for row in tables.reward_group(group) {
+            collect_reward_group_row(&mut rewards, row, cost);
+        }
+    }
+    rewards
+}
+
+fn groups(row: &config::reward::Reward) -> [&str; 8] {
+    [
         &row.reward_group1,
         &row.reward_group2,
         &row.reward_group3,
@@ -115,7 +132,16 @@ fn parse_reward_id_with_cost(reward_id: i32, cost: i32) -> RewardSet {
         &row.reward_group6,
         &row.reward_group7,
         &row.reward_group8,
-    ] {
+    ]
+}
+
+fn parse_reward_id_with_cost(reward_id: i32, cost: i32) -> RewardSet {
+    let Some(row) = config::configs::get().reward(reward_id) else {
+        return RewardSet::default();
+    };
+
+    let mut rewards = RewardSet::default();
+    for group in groups(row) {
         collect_reward_group(&mut rewards, group, cost);
     }
 
