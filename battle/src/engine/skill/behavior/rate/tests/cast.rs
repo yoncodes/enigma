@@ -323,6 +323,27 @@ fn bullet_crit_conversion_counts_configured_buff_group_types() {
             raw_args: Vec::new(),
         },
     ];
+    slot.compiled_route =
+        crate::engine::skill::rule::route::ConditionRoute::compile(&slot.conditions);
+    assert!(slot.compiled_subscriptions().unwrap().is_empty());
+    assert!(slot.subscriptions().is_empty());
+    let no_group = crate::engine::skill::effect::catalog::global()
+        .get(82200003)
+        .unwrap();
+    assert!(
+        !no_group.slots[0]
+            .compiled_subscriptions()
+            .unwrap()
+            .is_empty()
+    );
+    let mut ordinary_modifier = slot.clone();
+    ordinary_modifier.behavior = ParsedBehavior::new(40001, "CritRateAlter", vec![400]);
+    assert!(
+        !ordinary_modifier
+            .compiled_subscriptions()
+            .unwrap()
+            .is_empty()
+    );
     let mut effects = SkillEffectCatalog::default();
     effects.insert(ParsedSkillEffect {
         skill_id: 31020162,

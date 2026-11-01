@@ -3,6 +3,7 @@ use crate::engine::round::modifier::RoundModifiers;
 use crate::engine::skill::{
     action::SkillPhase,
     behavior::{AttackModifierContext, BehaviorOpContext, classify::BehaviorKind},
+    condition::ParsedCondition,
     effect::{ParsedBehavior, SkillEffectCatalog},
     rule::{DefinitionKey, RuleReferences, SetupStage, output::RuleOp},
 };
@@ -102,6 +103,7 @@ pub struct BehaviorDefinition {
     pub collect_attack_modifier:
         Option<for<'a> fn(AttackModifierContext<'a>, &ParsedBehavior) -> bool>,
     pub attack_modifier_only: bool,
+    pub attack_context: Option<fn(&[ParsedCondition]) -> bool>,
     pub supports_attack_modifier:
         Option<fn(&crate::engine::manager::BattleManagers, i32, &ParsedBehavior) -> bool>,
     pub collect_attack_modifier_from_committed_state:
@@ -161,6 +163,10 @@ pub trait BehaviorHandler {
         true
     }
 
+    fn matches_attack_context(_: &[ParsedCondition]) -> bool {
+        false
+    }
+
     fn has_committed_attack_modifier(
         _: &crate::engine::manager::BattleManagers,
         _: i64,
@@ -203,6 +209,7 @@ pub const fn definition<H: BehaviorHandler>(
         emit_ops: H::emit_ops,
         collect_attack_modifier: None,
         attack_modifier_only: false,
+        attack_context: None,
         supports_attack_modifier: None,
         collect_attack_modifier_from_committed_state: None,
         collect_round_modifier: None,
@@ -456,6 +463,18 @@ pub const fn modifier_definition<H: BehaviorHandler>(
     }
 }
 
+pub const fn context_modifier_definition<H: BehaviorHandler>(
+    opcode: i32,
+    type_name: &'static str,
+    kind: BehaviorKind,
+    phase: BehaviorPhase,
+) -> BehaviorDefinition {
+    BehaviorDefinition {
+        attack_context: Some(H::matches_attack_context),
+        ..modifier_definition::<H>(opcode, type_name, kind, phase)
+    }
+}
+
 pub const fn round_modifier_only_definition<H: BehaviorHandler>(
     opcode: i32,
     type_name: &'static str,
@@ -590,6 +609,9 @@ macro_rules! behavior_definitions {
     };
     (@definition modifier, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::modifier_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
+    };
+    (@definition context_modifier, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
+        $crate::engine::skill::behavior::registry::context_modifier_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
     };
     (@definition round_modifier_only, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::round_modifier_only_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
@@ -803,7 +825,7 @@ behavior_definitions! {
     [100031] "TwinsPowerUp" => super::rate::Handler, ConduitPowerUp, Immediate, modifier, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(203, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::SourceOpening) }), super::rate::supports_conduit_power_up;
     [60243] "CrystalAddSkillRate" => super::rate::Handler, CrystalAddSkillRate, Immediate, destination, super::rate::supports_crystal_skill_rate;
     [60244] "CrystalAddCardRank" => super::rate::Handler, CrystalAddCardRank, Immediate, destination;
-    [60086] "BulletCritRateAlter" => super::rate::Handler, BulletCritRateAlter, Immediate, modifier, super::rate::supports_bullet_crit_rate;
+    [60086] "BulletCritRateAlter" => super::rate::Handler, BulletCritRateAlter, Immediate, context_modifier, super::rate::supports_bullet_crit_rate;
     [40001] "CritRateAlter" => super::rate::Handler, CritRateAlter, Immediate, modifier, super::rate::supports_crit_rate_alter;
     [100023] "CritRateAlter2" => super::rate::Handler, CritRateAlter2, Immediate, modifier, super::rate::supports_crit_rate_alter;
     [60228] "CritRateAlter2" => super::rate::Handler, CritRateAlter2, Immediate, modifier, super::rate::supports_crit_rate_alter;

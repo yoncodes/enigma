@@ -8,7 +8,10 @@ use crate::engine::{
             AttackModifierContext, BehaviorOpContext, classify::BehaviorKind,
             registry::BehaviorHandler,
         },
-        condition::{conditions_fire_count, registry as condition_registry, satisfied_conditions},
+        condition::{
+            ParsedCondition, ParsedConditionKind, conditions_fire_count,
+            registry as condition_registry, satisfied_conditions,
+        },
         effect::{ParsedBehavior, SkillEffectCatalog, SkillEffectSlot},
         rule::output::{BattleCommand, RuleOp},
         target::{TargetContext, TargetPool, TargetResolver},
@@ -220,17 +223,7 @@ impl BehaviorHandler for Handler {
         let [base_rate, bonus_rate, max_count] = behavior.args.as_slice() else {
             return false;
         };
-        let Some(group_ids) =
-            context
-                .conditions
-                .iter()
-                .find_map(|condition| match &condition.kind {
-                    crate::engine::skill::condition::ParsedConditionKind::BuffGroup(ids) => {
-                        Some(ids.as_slice())
-                    }
-                    _ => None,
-                })
-        else {
+        let Some(group_ids) = bullet_groups(context.conditions) else {
             return false;
         };
         let count = context
@@ -242,6 +235,19 @@ impl BehaviorHandler for Handler {
         context.operation.modifiers.excess_crit_conversion_rate += base_rate + bonus_rate * count;
         true
     }
+
+    fn matches_attack_context(conditions: &[ParsedCondition]) -> bool {
+        bullet_groups(conditions).is_some()
+    }
+}
+
+fn bullet_groups(conditions: &[ParsedCondition]) -> Option<&[i32]> {
+    conditions
+        .iter()
+        .find_map(|condition| match &condition.kind {
+            ParsedConditionKind::BuffGroup(ids) => Some(ids.as_slice()),
+            _ => None,
+        })
 }
 
 pub(super) fn supports_conduit_rate(behavior: &ParsedBehavior) -> bool {
