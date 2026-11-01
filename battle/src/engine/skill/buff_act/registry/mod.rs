@@ -1262,7 +1262,9 @@ buff_act_definitions! {
     (889, "BeAttackByEmitterDamage") => BeAttackByEmitterDamage,
         runtime: |context| super::be_attack_by_emitter_damage::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::be_attack_by_emitter_damage::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(889, "BeAttackByEmitterDamage"), &[EffectType::None as i32]));
-    (891, "AddSplitEmitterNum") => AddSplitEmitterNum, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(891, "AddSplitEmitterNum"), &[EffectType::Addsplitemitternum as i32]));
+    (891, "AddSplitEmitterNum") => AddSplitEmitterNum,
+        supports: super::emitter_num_change::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(891, "AddSplitEmitterNum"), &[EffectType::Addsplitemitternum as i32]));
     (892, "AttackNumSplitEmitterNum") => AttackNumSplitEmitterNum, effect_time_subscription: false,
         supports: super::emitter_num_change::supports_split, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(892, "AttackNumSplitEmitterNum"), &[EffectType::Conditionsplitemitternum as i32]));

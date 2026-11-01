@@ -11,6 +11,11 @@ fn exact_emitter_count_route_requires_one_positive_count() {
         Some(BuffActDestination::StateConsumer)
     );
     assert_eq!(destination(878, "EmitterNumChange", &[0]), None);
+    assert_eq!(
+        destination(891, "AddSplitEmitterNum", &[1]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert_eq!(destination(891, "AddSplitEmitterNum", &[0]), None);
     assert_eq!(destination(878, "AttrByShield", &[1]), None);
 }
 
