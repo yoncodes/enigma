@@ -643,6 +643,8 @@ fn direct_use_skill_two_preserves_the_configured_reinforced_subtype() {
     let mut target = crate::engine::skill::target::TargetContext::default();
     let behavior = ParsedBehavior::new(60053, "DirectUseSkill2", vec![30860143, 0, 0, 5]);
 
+    assert!(supports_direct_use_skill_two(&behavior));
+
     let ops = Handler::emit_ops(
         BehaviorOpContext {
             source_uid: 10,
@@ -669,4 +671,13 @@ fn direct_use_skill_two_preserves_the_configured_reinforced_subtype() {
                     == crate::engine::skill::action::SkillTarget::Explicit(-1)
                 && invocation.extra_skill_kind == Some(ExtraSkillKind::Reinforced)
     ));
+}
+
+#[test]
+fn direct_use_skill_two_rejects_unproven_modes() {
+    assert!(!supports_direct_use_skill_two(&ParsedBehavior::new(
+        60053,
+        "DirectUseSkill2",
+        vec![102011481, 0, 1, 5],
+    )));
 }

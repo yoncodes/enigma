@@ -40,6 +40,15 @@ pub(super) fn supports_per_consume_ex_point_direct_use_skill(behavior: &ParsedBe
     )
 }
 
+pub(super) fn supports_direct_use_skill_two(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [skill_id, 0, 0, extra_kind]
+            if *skill_id > 0
+                && skill_kind_from_is_extra(*extra_kind) == Some(ExtraSkillKind::Reinforced)
+    ) && behavior.raw_args.len() <= 4
+}
+
 pub(super) fn supports_random_skill(behavior: &ParsedBehavior) -> bool {
     matches!(
         behavior.raw_args.as_slice(),
