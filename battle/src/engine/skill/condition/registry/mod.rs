@@ -721,6 +721,7 @@ condition_definitions! {
     [57012] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[]));
     [57100] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[EventKind::RoundStart]));
     [57101] "NoBuffId" => buff::buff_absent, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 101, &[]));
+    [57102] "NoBuffId" => buff::single_buff_absent, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 102, &[]));
     [57104] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[EventKind::RoundStart]));
     [57213] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)));
     [57301] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SmallRoundEnd, None));
