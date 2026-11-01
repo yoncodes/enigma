@@ -952,6 +952,39 @@ fn death_team_buff_type_gate_keeps_its_exact_predicate_route() {
 }
 
 #[test]
+fn death_team_buff_type_absence_keeps_its_exact_predicate_route() {
+    assert_eq!(
+        parse(
+            514012,
+            "SelfTeamHasBuffTypeLayerLessThan",
+            &["0".into(), "7254037".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![7254037],
+            compare: super::super::super::parse::ConditionCompare::LessThanOrEqual,
+            threshold: 0,
+        })
+    );
+    let definition = find_key(514012, "SelfTeamHasBuffTypeLayerLessThan").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::EntityDied]);
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["x".into(), "7254037".into()],
+        vec!["1".into(), "7254037".into()],
+        vec!["0".into(), "0".into()],
+        vec!["0".into(), "7254037,7254039".into()],
+        vec!["0".into(), "7254037".into(), "0".into()],
+    ] {
+        assert_eq!(
+            parse(514012, "SelfTeamHasBuffTypeLayerLessThan", &invalid),
+            None
+        );
+    }
+}
+
+#[test]
 fn round_start_power_gate_keeps_its_exact_phase_and_payload_order() {
     assert_eq!(
         parse(

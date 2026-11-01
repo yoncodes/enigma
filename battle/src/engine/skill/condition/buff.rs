@@ -342,6 +342,19 @@ pub fn death_team_buff_type_layer(
     })
 }
 
+pub fn death_team_buff_type_absent(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [threshold, type_id] = parse_fixed(raw_args)?;
+    (threshold == 0 && type_id > 0).then_some(ParsedConditionKind::BuffTypeCount {
+        threshold,
+        type_ids: vec![type_id],
+        compare: ConditionCompare::LessThanOrEqual,
+    })
+}
+
 fn buff_type_count(raw_args: &[String], compare: ConditionCompare) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::BuffTypeCount {
         type_ids: parse_buff_ids(raw_args.get(..1)?)?,
