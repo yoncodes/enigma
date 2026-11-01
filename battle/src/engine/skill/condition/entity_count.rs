@@ -124,6 +124,20 @@ pub fn summoned_equal(_: i32, _: &str, args: &[String]) -> Option<ParsedConditio
     summoned_count(args, ConditionCompare::Equal)
 }
 
+pub fn mature_summoned_equal(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let condition = summoned_count(args, ConditionCompare::Equal)?;
+    matches!(
+        &condition,
+        ParsedConditionKind::SummonedCount {
+            summoned_id,
+            required_level: 4,
+            count: 1 | 2,
+            ..
+        } if *summoned_id > 0
+    )
+    .then_some(condition)
+}
+
 pub fn summoned_at_least(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     summoned_count(args, ConditionCompare::GreaterThanOrEqual)
 }

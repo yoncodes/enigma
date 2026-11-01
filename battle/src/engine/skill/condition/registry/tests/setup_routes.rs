@@ -78,6 +78,43 @@ fn round_start_interval_keeps_its_exact_lane() {
 }
 
 #[test]
+fn summoned_count_keeps_its_round_start_condition_lane() {
+    assert_eq!(
+        parse(
+            525102,
+            "SummonedNumEqual",
+            &["15001".into(), "4".into(), "2".into()],
+        ),
+        Some(ParsedConditionKind::SummonedCount {
+            summoned_id: 15001,
+            required_level: 4,
+            compare: ConditionCompare::Equal,
+            count: 2,
+        })
+    );
+    assert_eq!(
+        parse(525102, "SummonedNumEqual", &["15001".into(), "4".into()],),
+        None
+    );
+    for args in [
+        ["-1".into(), "4".into(), "1".into()],
+        ["15001".into(), "3".into(), "1".into()],
+        ["15001".into(), "4".into(), "3".into()],
+    ] {
+        assert_eq!(parse(525102, "SummonedNumEqual", &args), None);
+    }
+    let definition = find_key(525102, "SummonedNumEqual").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 102,
+        }
+    );
+    assert_eq!(definition.dependencies, &[EventKind::SummonChanged]);
+}
+
+#[test]
 fn none_round_start_opcodes_keep_their_exact_lanes() {
     assert_eq!(
         find_key(100, "None").map(|definition| definition.role),

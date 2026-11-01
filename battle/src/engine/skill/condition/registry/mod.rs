@@ -839,6 +839,7 @@ condition_definitions! {
     [591, 592, 593] "None" => none::healed, event_trigger(EventKind::HpHealed, None);
     [613026, 613403] "PerTeamEntityExitCount" => lifecycle::team_entity_exited, event_trigger(EventKind::EntityDied, None);
     [520203, 520210] "SummonedNumMoreThan" => entity_count::summoned_at_least, predicate(&[EventKind::SummonChanged]);
+    [525102] "SummonedNumEqual" => entity_count::mature_summoned_equal, setup_route(SetupStage::RoundStartCondition, 102, &[EventKind::SummonChanged]);
     [525104] "SummonedNumEqual" => entity_count::summoned_equal, setup_route(SetupStage::RoundStart, 1, &[EventKind::SummonChanged]);
     [525203, 525210] "SummonedNumEqual" => entity_count::summoned_equal, predicate(&[EventKind::SummonChanged]);
     [525212] "SummonedNumEqual" => entity_count::summoned_equal, event_trigger(EventKind::AllyAction, None);
