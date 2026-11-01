@@ -61,7 +61,7 @@ fn resolves_buff_type_feature_and_monster_label_targets() {
 }
 
 #[test]
-fn energy_target_uses_the_monster_role_on_its_own_side() {
+fn role_targets_select_allies_by_monster_label() {
     init_config();
     let monster = |uid, model_id, position| FightEntityInfo {
         model_id: Some(model_id),
@@ -70,27 +70,30 @@ fn energy_target_uses_the_monster_role_on_its_own_side() {
     };
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![monster(10, 900100402, 1)],
+            entitys: vec![monster(10, 900100402, 1), monster(11, 900100304, 2)],
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![monster(-6, 900100101, 4), monster(-9, 900100402, 1)],
+            entitys: vec![
+                monster(-6, 900100101, 4),
+                monster(-9, 900100402, 1),
+                monster(-7, 900100304, 2),
+            ],
             ..Default::default()
         }),
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
 
-    assert_eq!(
-        resolve_code(
-            1004,
-            crate::engine::fight::rules::DEFENDER_SIDE_UID,
-            &pool,
-            &mut RoundDeterminism::default(),
-        ),
-        vec![-9]
-    );
-    assert_eq!(targets_enemy(1004), Some(false));
+    for (code, expected) in [(1003, -7), (1004, -9)] {
+        for source in [crate::engine::fight::rules::DEFENDER_SIDE_UID, -6] {
+            assert_eq!(
+                resolve_code(code, source, &pool, &mut RoundDeterminism::default()),
+                vec![expected]
+            );
+        }
+        assert_eq!(targets_enemy(code), Some(false));
+    }
 }
 
 #[test]
