@@ -1,6 +1,6 @@
 use crate::engine::{
     manager::{
-        buff::{BuffCommand, BuffSetState},
+        buff::{BuffCommand, BuffConsume, BuffSelector, BuffSetState, DepletedBuff},
         card::{
             CardAddTemporary, CardAddUniversal, CardCommand, CardEnchantHand, CardEnergyChange,
             CardMarkTemporary, CardQueueUse, EnchantedType, HandCardRankUp, QueuedCardRankUp,
@@ -42,6 +42,12 @@ pub(super) struct Handler;
 
 impl BehaviorHandler for Handler {
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
+        if behavior.spec.kind == BehaviorKind::RemoveBuffToEnchant {
+            return RuleReferences {
+                buffs: behavior.args.first().copied().into_iter().collect(),
+                ..Default::default()
+            };
+        }
         if matches!(
             behavior.spec.kind,
             BehaviorKind::AddQueuedSkillCard
@@ -66,6 +72,9 @@ impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         if behavior.spec.kind == BehaviorKind::EnchantHand {
             return enchant_hand_ops(context, behavior);
+        }
+        if behavior.spec.kind == BehaviorKind::RemoveBuffToEnchant {
+            return remove_buff_to_enchant_ops(context, behavior);
         }
         if behavior.spec.kind == BehaviorKind::ChangeHandToTemporary {
             return mark_hand_temporary_ops(context, behavior);
@@ -324,7 +333,7 @@ fn queued_skill_card_arguments(behavior: &ParsedBehavior) -> Option<(Vec<i32>, V
 }
 
 fn enchant_hand_ops(
-    context: BehaviorOpContext<'_>,
+    mut context: BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
 ) -> Option<Vec<RuleOp>> {
     let [enchant_id, duration, 3, count] = behavior.args.as_slice() else {
@@ -340,14 +349,105 @@ fn enchant_hand_ops(
         .filter(|(_, card)| !card.temp_card.unwrap_or_default())
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
+    let indices = choose_hand_indices(
+        &mut context,
+        behavior,
+        &mut candidates,
+        usize::try_from(*count).ok()?,
+    )?;
+    (!indices.is_empty()).then(|| {
+        vec![RuleOp::Command(BattleCommand::Card(
+            CardCommand::EnchantHand(CardEnchantHand {
+                origin: super::command_origin(behavior)
+                    .expect("registered card enchant has an origin"),
+                indices,
+                enchant,
+                duration: *duration,
+                team_type: 1,
+            }),
+        ))]
+    })
+}
+
+fn remove_buff_to_enchant_ops(
+    mut context: BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    let [buff_id, enchant_id, duration] = behavior.args.as_slice() else {
+        return None;
+    };
+    let enchant = EnchantedType::try_from(*enchant_id).ok()?;
+    let count = usize::try_from(
+        context
+            .managers
+            .buff
+            .buff_id_amount(context.source_uid, *buff_id),
+    )
+    .ok()?;
+    if count == 0 {
+        return Some(Vec::new());
+    }
+
+    let catalog = context.managers.catalog();
+    let hand = context.managers.card.hand();
+    let (mut owned, mut allied): (Vec<_>, Vec<_>) = hand
+        .iter()
+        .enumerate()
+        .filter(|(_, card)| {
+            !card.temp_card.unwrap_or_default()
+                && card
+                    .skill_id
+                    .is_some_and(|skill_id| !catalog.skill_is_big(skill_id))
+                && (1..=3).contains(&catalog.card_skill_rank(card))
+        })
+        .map(|(index, _)| index)
+        .partition(|index| hand[*index].uid == Some(context.source_uid));
+    let mut indices = choose_hand_indices(&mut context, behavior, &mut owned, count)?;
+    indices.extend(choose_hand_indices(
+        &mut context,
+        behavior,
+        &mut allied,
+        count.saturating_sub(indices.len()),
+    )?);
+
+    let origin = super::command_origin(behavior)?;
+    let mut ops = vec![RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(
+        BuffConsume {
+            origin,
+            target_uid: context.source_uid,
+            selector: BuffSelector::ExactId(*buff_id),
+            amount: i32::try_from(count).ok()?,
+            depleted: DepletedBuff::Remove,
+        },
+    )))];
+    if !indices.is_empty() {
+        ops.push(RuleOp::Command(BattleCommand::Card(
+            CardCommand::EnchantHand(CardEnchantHand {
+                origin,
+                indices,
+                enchant,
+                duration: *duration,
+                team_type: context.source_team,
+            }),
+        )));
+    }
+    Some(ops)
+}
+
+fn choose_hand_indices(
+    context: &mut BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+    candidates: &mut Vec<usize>,
+    count: usize,
+) -> Option<Vec<usize>> {
     let mut indices = Vec::new();
-    for _ in 0..usize::try_from(*count).ok()?.min(candidates.len()) {
+    for _ in 0..count.min(candidates.len()) {
         let hand_index = context
             .determinism
             .take_hand_card_choice(
                 context.active_skill_id,
                 behavior.spec.key.opcode,
-                &candidates,
+                candidates,
             )
             .or_else(|| {
                 context
@@ -361,18 +461,7 @@ fn enchant_hand_ops(
         candidates.swap_remove(selected);
         indices.push(hand_index);
     }
-    (!indices.is_empty()).then(|| {
-        vec![RuleOp::Command(BattleCommand::Card(
-            CardCommand::EnchantHand(CardEnchantHand {
-                origin: super::command_origin(behavior)
-                    .expect("registered card enchant has an origin"),
-                indices,
-                enchant,
-                duration: *duration,
-                team_type: 1,
-            }),
-        ))]
-    })
+    Some(indices)
 }
 
 fn mark_hand_temporary_ops(
@@ -588,6 +677,17 @@ pub(super) fn supports_enchant_hand(behavior: &ParsedBehavior) -> bool {
     )
 }
 
+pub(super) fn supports_remove_buff_to_enchant(behavior: &ParsedBehavior) -> bool {
+    (behavior.raw_args.is_empty() || behavior.raw_args.len() == 3)
+        && matches!(
+            behavior.args.as_slice(),
+            [buff_id, enchant_id, duration]
+                if *buff_id > 0
+                    && *enchant_id == EnchantedType::Ramona.id()
+                    && matches!(*duration, 1 | 2)
+        )
+}
+
 pub(super) fn supports_mark_hand_temporary(behavior: &ParsedBehavior) -> bool {
     behavior.args.as_slice() == [3, 0]
 }
@@ -638,6 +738,125 @@ pub(super) fn supports_rank_by_effect_tag(behavior: &ParsedBehavior) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn buff_layers_enchant_owned_basic_cards_before_allied_cards() {
+        use crate::engine::runtime::determinism::{HandCardChoice, RoundDeterminism};
+        use sonettobuf::{BuffInfo, CardInfo, Fight, FightEntityInfo, FightTeam};
+
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![
+                    FightEntityInfo {
+                        uid: Some(10),
+                        model_id: Some(3142),
+                        team_type: Some(1),
+                        current_hp: Some(100),
+                        buffs: vec![BuffInfo {
+                            uid: Some(30),
+                            buff_id: Some(31420001),
+                            from_uid: Some(10),
+                            layer: Some(2),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    FightEntityInfo {
+                        uid: Some(20),
+                        model_id: Some(3104),
+                        team_type: Some(1),
+                        current_hp: Some(100),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let card = |uid, skill_id, temp_card| CardInfo {
+            uid: Some(uid),
+            skill_id: Some(skill_id),
+            temp_card: Some(temp_card),
+            ..Default::default()
+        };
+        let mut managers = crate::engine::manager::BattleManagers::seeded(&fight);
+        managers.card = crate::engine::manager::card::CardManager::new(vec![
+            card(10, 31420131, false),
+            card(20, 31040121, false),
+            card(10, 31420111, false),
+            card(20, 31040111, true),
+            card(20, 31040111, false),
+        ]);
+        let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+        let behavior = ParsedBehavior::new(60285, "RemoveBuffToEnchant", vec![31420001, 10011, 1]);
+        let mut determinism = RoundDeterminism::default();
+        determinism.enqueue_hand_card_choices([HandCardChoice {
+            skill_id: 31420151,
+            opcode: 60285,
+            hand_index: 1,
+        }]);
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext::default();
+
+        let ops = Handler::emit_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 31420151,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            ops.as_slice(),
+            [
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(consume))),
+                RuleOp::Command(BattleCommand::Card(CardCommand::EnchantHand(enchant)))
+            ] if consume.target_uid == 10
+                && consume.selector == BuffSelector::ExactId(31420001)
+                && consume.amount == 2
+                && consume.depleted == DepletedBuff::Remove
+                && enchant.indices == [2, 1]
+                && enchant.enchant == EnchantedType::Ramona
+                && enchant.duration == 1
+                && enchant.team_type == 1
+        ));
+        assert_eq!(Handler::references(&behavior).buffs, vec![31420001]);
+
+        for op in ops {
+            match op {
+                RuleOp::Command(BattleCommand::Buff(command)) => {
+                    managers.execute_buff(command).unwrap();
+                }
+                RuleOp::Command(BattleCommand::Card(command)) => {
+                    managers.card.execute_command(command).unwrap();
+                }
+                _ => unreachable!("opcode emits only buff and card commands"),
+            }
+        }
+        assert_eq!(managers.buff.buff_id_amount(10, 31420001), 0);
+        for index in [1, 2] {
+            assert!(matches!(
+                managers.card.hand()[index].enchants.as_slice(),
+                [enchant]
+                    if enchant.enchant_id == Some(EnchantedType::Ramona.id())
+                        && enchant.duration == Some(1)
+            ));
+        }
+        for index in [0, 3, 4] {
+            assert!(managers.card.hand()[index].enchants.is_empty());
+        }
+    }
 
     #[test]
     fn special_temporary_card_uses_the_source_model_as_reserve_id() {

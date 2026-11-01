@@ -591,6 +591,32 @@ fn remove_buff_use_skill_keeps_its_exact_identity_and_phase() {
 }
 
 #[test]
+fn remove_buff_to_enchant_keeps_its_exact_configured_shape() {
+    let definition = find_key(60285, "RemoveBuffToEnchant").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::RemoveBuffToEnchant);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert!(supports(&ParsedBehavior::new(
+        60285,
+        "RemoveBuffToEnchant",
+        vec![31420001, 10011, 1],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60285,
+        "RemoveBuffToEnchant",
+        vec![31420001, 10002, 1],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60285,
+        "RemoveBuffToEnchant",
+        vec![31420001, 10011, 3],
+    )));
+    assert!(find_key(60285, "Enchant").is_none());
+}
+
+#[test]
 fn special_temporary_card_keeps_its_exact_identity_and_arguments() {
     let definition = find_key(60300, "AddSpTempCard2").unwrap();
     let supports = definition.supports.unwrap();

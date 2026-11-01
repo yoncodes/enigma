@@ -54,6 +54,7 @@ pub enum BehaviorKind {
     TotalSkillRankToPower,
     AddEnergyToCard,
     EnchantHand,
+    RemoveBuffToEnchant,
     ChangeHandToTemporary,
     AroundChangeRank,
     CardLevelChange,

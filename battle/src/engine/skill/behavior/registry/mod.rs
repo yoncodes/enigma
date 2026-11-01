@@ -652,6 +652,7 @@ behavior_definitions! {
     [60233] "RaspberryBigSkill" => super::resource::Handler, RaspberryBigSkill, Immediate, destination, super::resource::supports_raspberry_big_skill;
     [60189] "AddEnergyToCard" => super::card::Handler, AddEnergyToCard, Immediate, destination, super::card::supports_basic_card_energy;
     [60041] "Enchant" => super::card::Handler, EnchantHand, Immediate, once_destination, super::card::supports_enchant_hand;
+    [60285] "RemoveBuffToEnchant" => super::card::Handler, RemoveBuffToEnchant, Immediate, once_destination, super::card::supports_remove_buff_to_enchant;
     [50023] "ChangeToTempCards" => super::card::Handler, ChangeHandToTemporary, Immediate, once_destination, super::card::supports_mark_hand_temporary;
     [60075] "AroundChangeRank" => super::card::Handler, AroundChangeRank, Immediate, queue_preparation, super::card::supports_around_change_rank;
     [50011] "CardLevelChange" => super::card::Handler, CardLevelChange, Immediate, destination, super::card::supports_card_level_change;
