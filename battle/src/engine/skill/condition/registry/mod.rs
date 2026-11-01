@@ -955,6 +955,7 @@ condition_definitions! {
     [403201, 403208] "SkillExtraType" => extra::active_action, predicate(&[]);
     [403203] "SkillExtraType" => extra::active_action, event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate));
     [403210] "SkillExtraType" => extra::active_action, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
+    [626210] "ActionSkillExtraType" => extra::active_action_kinds, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [403212] "SkillExtraType" => extra::other_ally_action, event_trigger(EventKind::AllyAction, None);
     [626212] "ActionSkillExtraType" => extra::other_ally_action, event_trigger(EventKind::AllyAction, None);
     [656212] "SelfBuffTypeTargetBuffTypes" => buff::self_buff_type_target_buff_types, event_trigger(EventKind::AllyAction, None);

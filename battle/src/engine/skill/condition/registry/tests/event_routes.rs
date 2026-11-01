@@ -1,6 +1,44 @@
 use super::*;
 
 #[test]
+fn active_extra_action_kind_keeps_its_exact_after_hit_route() {
+    assert_eq!(
+        parse(626210, "ActionSkillExtraType", &["1".into()]),
+        Some(ParsedConditionKind::ExtraAction {
+            mode: super::super::super::extra::ExtraActionConditionMode::ActiveAction,
+            kinds: vec![1],
+        })
+    );
+    assert_eq!(
+        parse(626210, "ActionSkillExtraType", &["1,2,3".into()]),
+        Some(ParsedConditionKind::ExtraAction {
+            mode: super::super::super::extra::ExtraActionConditionMode::ActiveAction,
+            kinds: vec![1, 2, 3],
+        })
+    );
+    assert_eq!(
+        find_key(626210, "ActionSkillExtraType").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterHit),
+        })
+    );
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["2".into()],
+        vec!["4".into()],
+        vec!["1,2".into()],
+        vec!["1,1".into()],
+        vec!["1,,2".into()],
+        vec!["1,x".into()],
+        vec!["1".into(), "2".into()],
+    ] {
+        assert_eq!(parse(626210, "ActionSkillExtraType", &invalid), None);
+    }
+}
+
+#[test]
 fn exact_life_less_uses_the_default_hp_lost_reaction_lane() {
     let definition = find_key(1, "LifeLess").unwrap();
 
