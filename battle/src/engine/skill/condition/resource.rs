@@ -144,6 +144,17 @@ pub fn fight_progress_value(_: i32, _: &str, args: &[String]) -> Option<ParsedCo
     })
 }
 
+pub fn progress_complete(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [progress_id, compare_code, threshold] = parse_fixed(args)?;
+    (progress_id == 8 && compare_code == 3 && threshold == 100).then_some(
+        ParsedConditionKind::FightProgressValue {
+            progress_id,
+            compare_code,
+            threshold,
+        },
+    )
+}
+
 pub fn power_increase(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [power_id, compare_code, threshold] = parse_fixed(args)?;
     Some(ParsedConditionKind::PowerIncrChange {

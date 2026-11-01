@@ -492,6 +492,36 @@ fn defender_action_phase_fight_progress_gate_keeps_its_exact_route_and_payload_o
 }
 
 #[test]
+fn hp_loss_progress_completion_keeps_its_exact_predicate() {
+    assert_eq!(
+        parse(
+            1010003,
+            "ProgressValue",
+            &["8".into(), "3".into(), "100".into()]
+        ),
+        Some(ParsedConditionKind::FightProgressValue {
+            progress_id: 8,
+            compare_code: 3,
+            threshold: 100,
+        })
+    );
+    assert_eq!(
+        find_key(1010003, "ProgressValue").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    for invalid in [
+        vec![],
+        vec!["8".into(), "3".into()],
+        vec!["7".into(), "3".into(), "100".into()],
+        vec!["8".into(), "2".into(), "100".into()],
+        vec!["8".into(), "3".into(), "99".into()],
+        vec!["8".into(), "3".into(), "100".into(), "0".into()],
+    ] {
+        assert_eq!(parse(1010003, "ProgressValue", &invalid), None);
+    }
+}
+
+#[test]
 fn synchronization_runs_in_its_captured_round_start_stage() {
     let definition = find_key(1008101, "Synchronization").unwrap();
 
