@@ -311,7 +311,7 @@ fn hit_context_uses_the_explicit_skill_catalog_rank() {
         target_uid: -1,
         skill_id,
         amount: 1,
-        resolved_damage: 1,
+        resolved_damage: 321,
         shield_absorbed: 0,
         career_restraint: true,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
@@ -332,6 +332,7 @@ fn hit_context_uses_the_explicit_skill_catalog_rank() {
         db.skill.get(skill_id).unwrap().skill_rank
     );
     assert_eq!(context.hit_career_restraint, Some(true));
+    assert_eq!(context.hit_resolved_damage, 321);
     assert!(context.active_skill_is_attack);
     assert_eq!(context.active_skill_mode, SkillExecutionMode::Active);
     assert_eq!(context.damage_target_count_kind, 1);

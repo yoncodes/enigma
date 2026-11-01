@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn hit_damage_percent_keeps_its_exact_attacked_skill_route_and_grammar() {
+    assert_eq!(
+        parse(41, "DamagePercentMoreThan", &["300".into()]),
+        Some(ParsedConditionKind::HitDamagePercentMoreThan {
+            threshold_permille: 300,
+        })
+    );
+    let definition = find_key(41, "DamagePercentMoreThan").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::TargetAttacked,
+            phase: None,
+        }
+    );
+    assert_eq!(
+        definition.reaction_timing,
+        ReactionTimingPolicy::Fixed(ReactionTiming::AttackedSkills)
+    );
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["x".into()],
+        vec!["300".into(), "1".into()],
+    ] {
+        assert_eq!(parse(41, "DamagePercentMoreThan", &invalid), None);
+    }
+    assert!(find_key(41, "DamagePercentLessThan").is_none());
+}
+
+#[test]
 fn attacked_afflatus_conditions_keep_their_exact_event_route() {
     for (opcode, type_name) in [(33209, "HurtRestraint"), (47209, "HurtNotRestraint")] {
         let definition = find_key(opcode, type_name).unwrap();

@@ -848,6 +848,7 @@ condition_definitions! {
     [794107] "DeviceSkillIndex" => conduit::selected_group, event_trigger(EventKind::ActionQueueCommitted, None);
     [794210] "DeviceSkillIndex" => conduit::selected_group, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [591, 592, 593] "None" => none::healed, event_trigger(EventKind::HpHealed, None);
+    [41] "DamagePercentMoreThan" => hp::hit_damage_percent_more_than, attacked_skills(event_trigger(EventKind::TargetAttacked, None));
     [613026, 613403] "PerTeamEntityExitCount" => lifecycle::team_entity_exited, event_trigger(EventKind::EntityDied, None);
     [520203, 520210] "SummonedNumMoreThan" => entity_count::summoned_at_least, predicate(&[EventKind::SummonChanged]);
     [525102] "SummonedNumEqual" => entity_count::mature_summoned_equal, setup_route(SetupStage::RoundStartCondition, 102, &[EventKind::SummonChanged]);

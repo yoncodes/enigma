@@ -260,6 +260,9 @@ pub enum ParsedConditionKind {
         threshold: i32,
     },
     TargetAttacked,
+    HitDamagePercentMoreThan {
+        threshold_permille: i32,
+    },
     AllyAttacked,
     ShareDamage,
     Assassinate,

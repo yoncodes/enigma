@@ -17,6 +17,16 @@ pub fn per_lost_hp(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKi
     (interval_permille > 0).then_some(ParsedConditionKind::PerLostHp { interval_permille })
 }
 
+pub fn hit_damage_percent_more_than(
+    _: i32,
+    _: &str,
+    args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [threshold_permille] = parse_fixed(args)?;
+    (threshold_permille > 0)
+        .then_some(ParsedConditionKind::HitDamagePercentMoreThan { threshold_permille })
+}
+
 pub fn lost_hp_interval_count(uid: i64, interval_permille: i32, managers: &BattleManagers) -> i32 {
     let max = managers.hp.max(uid);
     if max <= 0 || interval_permille <= 0 {

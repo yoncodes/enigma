@@ -976,6 +976,16 @@ fn condition_kind_matches(
         ParsedConditionKind::TargetAttacked => {
             context.hit_target_uid != 0 && condition_targets.contains(&context.hit_target_uid)
         }
+        ParsedConditionKind::HitDamagePercentMoreThan { threshold_permille } => managers
+            .is_some_and(|managers| {
+                context.hit_resolved_damage > 0
+                    && context.hit_target_uid != 0
+                    && condition_targets.contains(&context.hit_target_uid)
+                    && managers.hp.max(context.hit_target_uid) > 0
+                    && i64::from(context.hit_resolved_damage) * 1000
+                        > i64::from(managers.hp.max(context.hit_target_uid))
+                            * i64::from(*threshold_permille)
+            }),
         ParsedConditionKind::AllyAttacked => {
             context.hit_target_uid != 0
                 && pool.entity(source_uid).is_some()
