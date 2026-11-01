@@ -202,6 +202,7 @@ pub enum BehaviorKind {
     FakeHpToHeal,
     Bloodlust,
     Detonate2,
+    SettleDotAndCostDotDuration,
     LostLife,
     ToughnessOverflowDamage,
     ToughnessRecover,

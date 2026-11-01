@@ -834,6 +834,7 @@ behavior_definitions! {
     [60039] "RealDamageSelfAndAddBuffToTarget" => super::injury_bank::Handler, RealDamageSelfAndAddBuffToTarget, Immediate, destination;
     [60040] "ClearInjuryBankBuffOriginDamage" => super::injury_bank::Handler, ClearInjuryBankBuffOriginDamage, AfterDamage, destination;
     [20009] "Detonate2" => super::detonate::Handler, Detonate2, AfterDamage, destination;
+    [60083] "SettleDotAndCostDotDuration" => super::periodic::Handler, SettleDotAndCostDotDuration, AfterDamage, destination, super::periodic::supports;
     [60183] "SupplyShield2" => super::shield::ChildUidHandler, SupplyShield2, Immediate, destination;
     [60259] "SupplyShield2" => super::shield::Handler, SupplyShield2, Immediate, destination;
     [60263] "FocusAllEntityBuff" => super::focus_all_entity_buff::Handler, FocusAllEntityBuff, Immediate, destination, super::focus_all_entity_buff::supports_arguments;
