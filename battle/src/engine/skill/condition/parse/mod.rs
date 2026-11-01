@@ -531,6 +531,21 @@ pub(super) fn hp_less(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCond
     })
 }
 
+pub(super) fn hp_less_permille(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [raw_threshold] = raw_args else {
+        return None;
+    };
+    let threshold = parse_i32(raw_threshold)?;
+    (0 < threshold && threshold < 1000).then_some(ParsedConditionKind::HpPermille {
+        compare: ConditionCompare::LessThan,
+        threshold,
+    })
+}
+
 pub(super) fn hp_more(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::HpPermille {
         compare: ConditionCompare::GreaterThan,

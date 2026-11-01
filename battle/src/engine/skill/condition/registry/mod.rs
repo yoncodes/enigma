@@ -1010,6 +1010,7 @@ condition_definitions! {
     [765203] "PerAura" => resource::per_eureka, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [1] "LifeLess" => parse::hp_less, reaction_targets_owner(predicate(&[EventKind::HpLost]));
     [1201] "LifeLess" => parse::hp_less, predicate(&[]);
+    [1101] "LifeLess" => parse::hp_less_permille, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [1103] "LifeLess" => parse::hp_less, setup_route(SetupStage::RoundStart, 1, &[]);
     [1104] "LifeLess" => parse::hp_less, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [1105] "LifeLess" => parse::hp_less, setup_route(SetupStage::AfterRoundStart, 0, &[]);

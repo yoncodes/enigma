@@ -476,6 +476,30 @@ fn nested_no_action_teammate_death_keeps_its_exact_event_key() {
 
 #[test]
 fn hp_less_round_start_keys_keep_their_distinct_lanes() {
+    for threshold in [100, 250, 500, 750, 800] {
+        assert_eq!(
+            parse(1101, "LifeLess", &[threshold.to_string()]),
+            Some(ParsedConditionKind::HpPermille {
+                compare: ConditionCompare::LessThan,
+                threshold,
+            })
+        );
+    }
+    for args in [
+        vec![],
+        vec!["0".into()],
+        vec!["1000".into()],
+        vec!["500".into(), "extra".into()],
+    ] {
+        assert_eq!(parse(1101, "LifeLess", &args), None);
+    }
+    assert_eq!(
+        find_key(1101, "LifeLess").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 101,
+        })
+    );
     assert_eq!(
         find_key(1103, "LifeLess").map(|definition| definition.role),
         Some(ConditionRole::Setup {
