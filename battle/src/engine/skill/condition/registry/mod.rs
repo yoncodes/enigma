@@ -710,6 +710,7 @@ condition_definitions! {
     [750307] "PlayerHasBuff" => buff::player_buff_presence, event_trigger(EventKind::RoundEndAfterFinalSettlement, None);
     [514100] "SelfTeamHasBuffTypeLayerLessThan" => buff::team_buff_type_layer_at_most, setup_route(SetupStage::RoundStartCondition, 100, &[EventKind::BuffChanged]);
     [514012] "SelfTeamHasBuffTypeLayerLessThan" => buff::death_team_buff_type_absent, predicate(&[EventKind::EntityDied]);
+    [514104] "SelfTeamHasBuffTypeLayerLessThan" => buff::round_team_buff_type_at_most, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [550102] "AllInBuffByTypeId" => buff::all_targets_buff_type_at_least, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [513101] "SelfTeamHasBuffTypeLayerMoreThan" => buff::team_buff_type_layer_at_least, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [513102] "SelfTeamHasBuffTypeLayerMoreThan" => buff::team_buff_type_layer_at_least, setup_route(SetupStage::RoundStartCondition, 102, &[]);

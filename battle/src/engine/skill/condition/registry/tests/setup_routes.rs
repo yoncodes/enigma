@@ -743,6 +743,43 @@ fn round_start_team_buff_layers_keep_their_exact_payload_order() {
 }
 
 #[test]
+fn late_round_start_team_buff_ceiling_keeps_its_exact_lane() {
+    assert_eq!(
+        parse(
+            514104,
+            "SelfTeamHasBuffTypeLayerLessThan",
+            &["180".into(), "900005101".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![900005101],
+            compare: crate::engine::skill::condition::parse::ConditionCompare::LessThanOrEqual,
+            threshold: 180,
+        })
+    );
+    assert_eq!(
+        find_key(514104, "SelfTeamHasBuffTypeLayerLessThan").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartLate,
+            priority: 0,
+        })
+    );
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["x".into(), "900005101".into()],
+        vec!["-1".into(), "900005101".into()],
+        vec!["0".into(), "0".into()],
+        vec!["0".into(), "2190002,6200524".into()],
+        vec!["0".into(), "2190002".into(), "1".into()],
+    ] {
+        assert_eq!(
+            parse(514104, "SelfTeamHasBuffTypeLayerLessThan", &invalid),
+            None
+        );
+    }
+}
+
+#[test]
 fn skill_target_count_is_a_filter_with_an_event_dependency() {
     let definition = find_key(500210, "SkillType").unwrap();
 
