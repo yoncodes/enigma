@@ -324,8 +324,8 @@ pub enum ParsedConditionKind {
     UseExSkill {
         slot: i32,
     },
-    TargetUseExSkill,
     TeammateUseExSkill,
+    ActiveSkillSourceIsTarget,
     ActiveSkillRank {
         compare: ConditionCompare,
         ranks: Vec<i32>,

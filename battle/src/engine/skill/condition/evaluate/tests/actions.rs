@@ -573,7 +573,7 @@ fn teammate_ex_skill_requires_the_other_ally_as_runtime_source() {
 }
 
 #[test]
-fn target_use_ex_skill_requires_the_selected_runtime_actor() {
+fn effect_entity_supplies_the_selected_actor_gate_for_ally_ultimates() {
     init_config();
     let managers = BattleManagers::default();
     let pool = TargetPool::from_fight(&Fight {
@@ -594,31 +594,64 @@ fn target_use_ex_skill_requires_the_selected_runtime_actor() {
         }),
         ..Default::default()
     });
-    let condition = ParsedCondition {
+    let ultimate = ParsedCondition {
         opcode: 25212,
         type_name: "UseExSkill".into(),
-        kind: ParsedConditionKind::TargetUseExSkill,
+        kind: ParsedConditionKind::UseExSkill { slot: 0 },
         raw_args: Vec::new(),
     };
-    let matches = |condition_targets: &[i64], active_skill_source_uid, active_skill_id| {
-        condition_matches(
-            &condition,
+    let effect_entity = ParsedCondition {
+        opcode: 737212,
+        type_name: "IsEffectEntity".into(),
+        kind: ParsedConditionKind::ActiveSkillSourceIsTarget,
+        raw_args: Vec::new(),
+    };
+    let matches = |conditions: &[ParsedCondition], condition_targets: &[i64]| {
+        conditions_match(
+            conditions,
             10,
             condition_targets,
             Some(&managers),
             &pool,
             TargetContext {
-                active_skill_source_uid,
-                active_skill_id,
+                active_skill_source_uid: 11,
+                active_skill_id: 200,
                 ..Default::default()
             },
         )
     };
 
-    assert!(matches(&[11], 11, 200));
-    assert!(!matches(&[11], 10, 100));
-    assert!(!matches(&[11], 11, 100));
-    assert!(matches(&[10], 10, 100));
+    assert!(matches(std::slice::from_ref(&ultimate), &[10]));
+    let conditions = [ultimate, effect_entity];
+    assert!(matches(&conditions, &[11]));
+    assert!(!matches(&conditions, &[10]));
+}
+
+#[test]
+fn effect_entity_requires_the_selected_runtime_actor() {
+    let condition = ParsedCondition {
+        opcode: 737212,
+        type_name: "IsEffectEntity".into(),
+        kind: ParsedConditionKind::ActiveSkillSourceIsTarget,
+        raw_args: Vec::new(),
+    };
+    let matches = |condition_targets: &[i64], active_skill_source_uid| {
+        condition_matches(
+            &condition,
+            10,
+            condition_targets,
+            None,
+            &TargetPool::default(),
+            TargetContext {
+                active_skill_source_uid,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(&[11], 11));
+    assert!(!matches(&[11], 10));
+    assert!(!matches(&[11], 0));
 }
 
 #[test]
@@ -701,13 +734,7 @@ fn ally_ultimate_and_summon_selectors_use_runtime_owners() {
     };
 
     assert!(matches(
-        ParsedConditionKind::TargetUseExSkill,
-        &[11],
-        11,
-        999
-    ));
-    assert!(!matches(
-        ParsedConditionKind::TargetUseExSkill,
+        ParsedConditionKind::UseExSkill { slot: 0 },
         &[10],
         11,
         999

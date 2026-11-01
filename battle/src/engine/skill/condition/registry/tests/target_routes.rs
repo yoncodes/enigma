@@ -32,6 +32,23 @@ fn enemy_effect_tag_keeps_its_exact_action_route() {
 }
 
 #[test]
+fn effect_entity_keeps_its_exact_actor_predicate() {
+    assert_eq!(
+        parse(25212, "UseExSkill", &[]),
+        Some(ParsedConditionKind::UseExSkill { slot: 0 })
+    );
+    assert_eq!(
+        parse(737212, "IsEffectEntity", &[]),
+        Some(ParsedConditionKind::ActiveSkillSourceIsTarget)
+    );
+    assert_eq!(
+        find_key(737212, "IsEffectEntity").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert_eq!(parse(737212, "IsEffectEntity", &["1".into()]), None);
+}
+
+#[test]
 fn other_ally_extra_action_keeps_its_exact_route() {
     assert_eq!(
         parse(403212, "SkillExtraType", &["1".into()]),

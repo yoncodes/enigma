@@ -1153,22 +1153,6 @@ fn condition_kind_matches(
                         })
                     })
         }
-        ParsedConditionKind::TargetUseExSkill => {
-            context.active_skill_source_uid != 0
-                && condition_targets.contains(&context.active_skill_source_uid)
-                && pool
-                    .entity(context.active_skill_source_uid)
-                    .is_some_and(|actor| {
-                        actor.ex_skill != 0
-                            && managers.is_some_and(|managers| {
-                                crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
-                                    managers,
-                                    context.active_skill_id,
-                                    actor,
-                                )
-                            })
-                    })
-        }
         ParsedConditionKind::TeammateUseExSkill => pool.allies(source_uid).iter().any(|ally| {
             ally.uid != source_uid
                 && ally.uid == context.active_skill_source_uid
@@ -1181,6 +1165,10 @@ fn condition_kind_matches(
                     )
                 })
         }),
+        ParsedConditionKind::ActiveSkillSourceIsTarget => {
+            context.active_skill_source_uid != 0
+                && condition_targets.contains(&context.active_skill_source_uid)
+        }
         ParsedConditionKind::ActiveSkillRank { compare, ranks } => {
             context.active_skill_rank != 0
                 && ranks
