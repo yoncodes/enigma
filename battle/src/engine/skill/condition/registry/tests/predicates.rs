@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn hit_damage_percent_keeps_its_exact_attacked_skill_route_and_grammar() {
+    assert_eq!(
+        parse(41, "DamagePercentMoreThan", &["300".into()]),
+        Some(ParsedConditionKind::HitDamagePercentMoreThan {
+            threshold_permille: 300,
+        })
+    );
+    let definition = find_key(41, "DamagePercentMoreThan").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::TargetAttacked,
+            phase: None,
+        }
+    );
+    assert_eq!(
+        definition.reaction_timing,
+        ReactionTimingPolicy::Fixed(ReactionTiming::AttackedSkills)
+    );
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["x".into()],
+        vec!["300".into(), "1".into()],
+    ] {
+        assert_eq!(parse(41, "DamagePercentMoreThan", &invalid), None);
+    }
+    assert!(find_key(41, "DamagePercentLessThan").is_none());
+}
+
+#[test]
 fn attacked_afflatus_conditions_keep_their_exact_event_route() {
     for (opcode, type_name) in [(33209, "HurtRestraint"), (47209, "HurtNotRestraint")] {
         let definition = find_key(opcode, type_name).unwrap();
@@ -366,6 +397,43 @@ fn active_skill_status_thresholds_preserve_strictness() {
 }
 
 #[test]
+fn psychube_status_threshold_keeps_its_pre_attack_lane() {
+    for (args, threshold, status_ids) in [
+        (vec!["2".into(), "6".into()], 2, vec![6]),
+        (vec!["3".into(), "1,5".into()], 3, vec![1, 5]),
+    ] {
+        assert_eq!(
+            parse(42201, "HasTypeBuffMoreThan", &args),
+            Some(ParsedConditionKind::VisibleStackedStatusTypeCount {
+                status_ids,
+                compare: ConditionCompare::GreaterThanOrEqual,
+                threshold,
+            })
+        );
+    }
+    for args in [
+        vec!["0".into(), "6".into()],
+        vec!["4".into(), "6".into()],
+        vec!["2".into(), "0".into()],
+        vec!["2".into(), "6".into(), "extra".into()],
+    ] {
+        assert_eq!(parse(42201, "HasTypeBuffMoreThan", &args), None);
+    }
+    let definition = find_key(42201, "HasTypeBuffMoreThan").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillEffectStarted,
+            phase: Some(SkillPhase::Immediate),
+        }
+    );
+    assert_eq!(
+        definition.skill_action_trigger,
+        SkillActionTriggerPolicy::AttackOnly
+    );
+}
+
+#[test]
 fn post_hit_status_ceiling_is_inclusive() {
     assert_eq!(
         parse(
@@ -452,6 +520,69 @@ fn defender_action_phase_fight_progress_gate_keeps_its_exact_route_and_payload_o
         ),
         None
     );
+}
+
+#[test]
+fn hp_loss_progress_completion_keeps_its_exact_predicate() {
+    assert_eq!(
+        parse(
+            1010003,
+            "ProgressValue",
+            &["8".into(), "3".into(), "100".into()]
+        ),
+        Some(ParsedConditionKind::FightProgressValue {
+            progress_id: 8,
+            compare_code: 3,
+            threshold: 100,
+        })
+    );
+    assert_eq!(
+        find_key(1010003, "ProgressValue").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    for invalid in [
+        vec![],
+        vec!["8".into(), "3".into()],
+        vec!["7".into(), "3".into(), "100".into()],
+        vec!["8".into(), "2".into(), "100".into()],
+        vec!["8".into(), "3".into(), "99".into()],
+        vec!["8".into(), "3".into(), "100".into(), "0".into()],
+    ] {
+        assert_eq!(parse(1010003, "ProgressValue", &invalid), None);
+    }
+}
+
+#[test]
+fn hp_loss_progress_bands_keep_their_exact_predicate() {
+    for (compare_code, threshold) in [(1, 0), (1, 30), (1, 60), (2, 29), (2, 59), (2, 99)] {
+        assert_eq!(
+            parse(
+                1010004,
+                "ProgressValue",
+                &["8".into(), compare_code.to_string(), threshold.to_string()]
+            ),
+            Some(ParsedConditionKind::FightProgressValue {
+                progress_id: 8,
+                compare_code,
+                threshold,
+            })
+        );
+    }
+    assert_eq!(
+        find_key(1010004, "ProgressValue").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    for invalid in [
+        vec![],
+        vec!["8".into(), "1".into()],
+        vec!["7".into(), "1".into(), "30".into()],
+        vec!["8".into(), "3".into(), "30".into()],
+        vec!["8".into(), "1".into(), "29".into()],
+        vec!["8".into(), "2".into(), "30".into()],
+        vec!["8".into(), "1".into(), "30".into(), "0".into()],
+    ] {
+        assert_eq!(parse(1010004, "ProgressValue", &invalid), None);
+    }
 }
 
 #[test]
@@ -879,6 +1010,72 @@ fn round_start_team_buff_type_gate_keeps_its_exact_payload_order() {
         })
     );
     assert!(find_key(514101, "SelfTeamHasBuffTypeLayerLessThan").is_none());
+}
+
+#[test]
+fn death_team_buff_type_gate_keeps_its_exact_predicate_route() {
+    assert_eq!(
+        parse(
+            513012,
+            "SelfTeamHasBuffTypeLayerMoreThan",
+            &["1".into(), "7254037".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![7254037],
+            compare: super::super::super::parse::ConditionCompare::GreaterThanOrEqual,
+            threshold: 1,
+        })
+    );
+    let definition = find_key(513012, "SelfTeamHasBuffTypeLayerMoreThan").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::EntityDied]);
+    for invalid in [
+        vec![],
+        vec!["1".into()],
+        vec!["x".into(), "7254037".into()],
+        vec!["2".into(), "7254037".into()],
+        vec!["1".into(), "0".into()],
+        vec!["1".into(), "7254037,7254039".into()],
+        vec!["1".into(), "7254037".into(), "1".into()],
+    ] {
+        assert_eq!(
+            parse(513012, "SelfTeamHasBuffTypeLayerMoreThan", &invalid),
+            None
+        );
+    }
+}
+
+#[test]
+fn death_team_buff_type_absence_keeps_its_exact_predicate_route() {
+    assert_eq!(
+        parse(
+            514012,
+            "SelfTeamHasBuffTypeLayerLessThan",
+            &["0".into(), "7254037".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![7254037],
+            compare: super::super::super::parse::ConditionCompare::LessThanOrEqual,
+            threshold: 0,
+        })
+    );
+    let definition = find_key(514012, "SelfTeamHasBuffTypeLayerLessThan").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::EntityDied]);
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["x".into(), "7254037".into()],
+        vec!["1".into(), "7254037".into()],
+        vec!["0".into(), "0".into()],
+        vec!["0".into(), "7254037,7254039".into()],
+        vec!["0".into(), "7254037".into(), "0".into()],
+    ] {
+        assert_eq!(
+            parse(514012, "SelfTeamHasBuffTypeLayerLessThan", &invalid),
+            None
+        );
+    }
 }
 
 #[test]

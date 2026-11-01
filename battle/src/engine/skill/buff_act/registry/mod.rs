@@ -218,6 +218,7 @@ pub enum BuffActKind {
     EachChangeAttr,
     EachChangeAttrOneWay,
     ExPointAddByHit,
+    ExPointAdd,
     ExPointDel,
     ExPointFix,
     ExPointCardMove,
@@ -746,7 +747,7 @@ buff_act_definitions! {
         supports: |args| super::cure::supports(BuffActKind::Cure, args), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(201, "Cure"), &[EffectType::Cure as i32]));
     (202, "Dot") => Dot, stat_read: ByArguments,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
-        supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(202, "Dot"), &[EffectType::Dot as i32]));
+        supports: super::damage_over_time::supports_round_end_dot, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(202, "Dot"), &[EffectType::Dot as i32]));
     (203, "Dot") => Dot, stat_read: ByArguments,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
         supports: super::damage_over_time::supports_dot, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(203, "Dot"), &[EffectType::Dot as i32]));
@@ -902,6 +903,11 @@ buff_act_definitions! {
     (605, "ExPointDel") => ExPointDel,
         runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
         supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(605, "ExPointDel"), &[]));
+    (823, "ExPointAdd") => ExPointAdd, event: EventKind::RoundStartCard, source: Owner,
+        runtime_marker: BeforeChanges(Owner),
+        runtime: |context| super::round_start_ex_point::rule_ops(context.subscriber, context.event?),
+        supports: super::round_start_ex_point::supports,
+        wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(823, "ExPointAdd"), &[], &[EffectType::Expointadd as i32], &[]));
     (609, "ExPointDel") => ExPointDel,
         runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
         supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(609, "ExPointDel"), &[]));
@@ -1262,7 +1268,9 @@ buff_act_definitions! {
     (889, "BeAttackByEmitterDamage") => BeAttackByEmitterDamage,
         runtime: |context| super::be_attack_by_emitter_damage::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::be_attack_by_emitter_damage::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(889, "BeAttackByEmitterDamage"), &[EffectType::None as i32]));
-    (891, "AddSplitEmitterNum") => AddSplitEmitterNum, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(891, "AddSplitEmitterNum"), &[EffectType::Addsplitemitternum as i32]));
+    (891, "AddSplitEmitterNum") => AddSplitEmitterNum,
+        supports: super::emitter_num_change::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(891, "AddSplitEmitterNum"), &[EffectType::Addsplitemitternum as i32]));
     (892, "AttackNumSplitEmitterNum") => AttackNumSplitEmitterNum, effect_time_subscription: false,
         supports: super::emitter_num_change::supports_split, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(892, "AttackNumSplitEmitterNum"), &[EffectType::Conditionsplitemitternum as i32]));
@@ -1669,7 +1677,11 @@ fn references_for_feature(
             );
         }
         Some(BuffActKind::BeatBack) => {
-            add_skill(&mut references, super::riposte::holder_skill(&feature.args))
+            add_skill(&mut references, super::riposte::holder_skill(&feature.args));
+            add_buff(
+                &mut references,
+                super::riposte::holder_consumed_buff(&feature.args),
+            );
         }
         Some(BuffActKind::BeatBackByCounter) => add_skill(
             &mut references,

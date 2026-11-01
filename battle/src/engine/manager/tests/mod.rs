@@ -9,7 +9,7 @@ use crate::engine::{
         conduit::ConduitCommand,
         ex_point::{
             ExPointChange, ExPointChanges, ExPointCommand, ExPointConfigureSynchronization,
-            ExPointRecordSynchronizationAction, SynchronizationDefinition,
+            ExPointRecordSynchronizationAction, ExPointTransfer, SynchronizationDefinition,
         },
         gauge::{GaugeCommand, GaugeOperation},
         hp::{DamageEffectKind, HpCommand, HpDamage, HpLoss, HurtDamageFromType, HurtInfoData},

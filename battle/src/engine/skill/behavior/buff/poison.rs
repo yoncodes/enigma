@@ -1,5 +1,14 @@
 use super::*;
 
+pub(in crate::engine::skill::behavior) fn supports_add_target_buff_by_poison(
+    behavior: &ParsedBehavior,
+) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [2, 2, buff_id, 2] if *buff_id > 0
+    ) && behavior.raw_args.len() <= 4
+}
+
 pub(super) fn add_target_buff_by_poison_ops(
     context: &BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,

@@ -617,6 +617,11 @@ fn project_change(
         {
             vec![EffectPacket::ex_point(*change)]
         }
+        BattleChange::ExPoint(ExPointChanges::Transfer { loss, gain, .. }) => [loss, gain]
+            .into_iter()
+            .filter(|change| change.applied_delta != 0)
+            .map(|change| EffectPacket::ex_point(*change))
+            .collect(),
         BattleChange::ExPoint(ExPointChanges::Resisted {
             target_uid,
             resistance_id,

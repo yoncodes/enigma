@@ -112,6 +112,17 @@ pub fn power_compare(_: i32, _: &str, args: &[String]) -> Option<ParsedCondition
     })
 }
 
+pub fn positive_power_compare(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [compare_code, power_id, threshold] = parse_fixed(args)?;
+    (matches!(compare_code, 1..=3) && power_id > 0 && threshold >= 0).then_some(
+        ParsedConditionKind::PowerCompare {
+            compare_code,
+            power_id,
+            threshold,
+        },
+    )
+}
+
 pub fn power_ratio(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [power_id, compare_code, threshold_permille] = parse_fixed(args)?;
     Some(ParsedConditionKind::PowerRatio {
@@ -127,6 +138,30 @@ pub fn fight_progress_value(_: i32, _: &str, args: &[String]) -> Option<ParsedCo
         return None;
     }
     Some(ParsedConditionKind::FightProgressValue {
+        progress_id,
+        compare_code,
+        threshold,
+    })
+}
+
+pub fn progress_complete(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [progress_id, compare_code, threshold] = parse_fixed(args)?;
+    (progress_id == 8 && compare_code == 3 && threshold == 100).then_some(
+        ParsedConditionKind::FightProgressValue {
+            progress_id,
+            compare_code,
+            threshold,
+        },
+    )
+}
+
+pub fn progress_band(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [progress_id, compare_code, threshold] = parse_fixed(args)?;
+    matches!(
+        (progress_id, compare_code, threshold),
+        (8, 1, 0 | 30 | 60) | (8, 2, 29 | 59 | 99)
+    )
+    .then_some(ParsedConditionKind::FightProgressValue {
         progress_id,
         compare_code,
         threshold,

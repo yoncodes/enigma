@@ -16,6 +16,7 @@ pub mod lifecycle;
 pub mod magic_circle;
 pub mod none;
 pub mod parse;
+pub mod player;
 pub mod query;
 pub mod registry;
 pub(crate) mod resource;

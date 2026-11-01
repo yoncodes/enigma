@@ -11,6 +11,11 @@ use battle::tooling::scan::buff_act::{
 use config::configs::GameDB;
 use serde_json::Value;
 
+mod identity;
+#[cfg(test)]
+use identity::FightIdentity;
+use identity::IdentityIndex;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct MarkerKey {
     opcode: i32,
@@ -62,16 +67,16 @@ impl Evidence {
                 for path in paths {
                     let identity = identities
                         .as_ref()
-                        .map_err(|_| ())
+                        .map_err(Clone::clone)
                         .and_then(|index| index.response(&path));
                     let (episode_id, battle_id) = match identity {
                         Ok(Some((7, episode_id, battle_id))) => (episode_id, battle_id),
                         Ok(_) => continue,
-                        Err(()) => {
-                            if warned_ambiguous.insert(battle_dir.clone()) {
+                        Err(error) => {
+                            if warned_ambiguous.insert((battle_dir.clone(), error.clone())) {
                                 eprintln!(
-                                    "WARN skipping capture directory with ambiguous or unreadable fight boundaries: {}",
-                                    battle_dir.display()
+                                    "WARN skipping capture replies: {error}; first affected reply: {}",
+                                    path.display()
                                 );
                             }
                             continue;
@@ -307,95 +312,13 @@ fn fight_identity(battle_dir: &Path) -> Result<Option<(i32, i64, i64)>, ()> {
     }
 }
 
-type FightIdentity = (i32, i64, i64);
-type IdentityBoundary = (String, Result<FightIdentity, ()>);
-
-struct IdentityIndex {
-    boundaries: Vec<IdentityBoundary>,
-}
-
-impl IdentityIndex {
-    fn collect(directory: &Path) -> Result<Self, ()> {
-        let mut boundaries = Vec::new();
-        for entry in fs::read_dir(directory).map_err(|_| ())?.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if !is_setup_name(&name) {
-                continue;
-            }
-            let Ok(metadata) = fs::symlink_metadata(entry.path()) else {
-                boundaries.push((name, Err(())));
-                continue;
-            };
-            if !metadata.is_file() || is_link_or_reparse(&metadata) {
-                continue;
-            }
-            let identity = fs::read_to_string(entry.path())
-                .ok()
-                .and_then(|contents| serde_json::from_str::<Value>(&contents).ok())
-                .and_then(|value| {
-                    let fight = find_fight(&value)?;
-                    Some((
-                        i32::try_from(fight.get("version")?.as_i64()?).ok()?,
-                        fight.get("episodeId")?.as_i64()?,
-                        fight.get("battleId")?.as_i64()?,
-                    ))
-                })
-                .ok_or(());
-            boundaries.push((name, identity));
-        }
-        boundaries.sort_by(|left, right| left.0.cmp(&right.0));
-        Ok(Self { boundaries })
-    }
-
-    fn response(&self, response: &Path) -> Result<Option<FightIdentity>, ()> {
-        let response_name = response
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("");
-        if timestamped(response_name) {
-            return self
-                .boundaries
-                .iter()
-                .rev()
-                .find(|(name, _)| timestamped(name) && name.as_str() <= response_name)
-                .map_or(Ok(None), |(_, identity)| (*identity).map(Some));
-        }
-        if self
-            .boundaries
-            .iter()
-            .any(|(_, identity)| identity.is_err())
-        {
-            return Err(());
-        }
-        let identities = self
-            .boundaries
-            .iter()
-            .filter_map(|(_, identity)| identity.as_ref().ok().copied())
-            .collect::<BTreeSet<_>>();
-        match identities.len() {
-            0 => Ok(None),
-            1 => Ok(identities.into_iter().next()),
-            _ => Err(()),
-        }
-    }
-}
-
 #[cfg(test)]
 fn response_identity(response: &Path) -> Result<Option<FightIdentity>, ()> {
     let directory = response.parent().ok_or(())?;
-    IdentityIndex::collect(directory)?.response(response)
-}
-
-fn timestamped(name: &str) -> bool {
-    let mut parts = name.split('_');
-    matches!(
-        (parts.next(), parts.next()),
-        (Some(date), Some(time))
-            if date.len() == 8
-                && time.len() >= 6
-                && date.bytes().all(|value| value.is_ascii_digit())
-                && time.bytes().all(|value| value.is_ascii_digit())
-    )
+    IdentityIndex::collect(directory)
+        .map_err(|_| ())?
+        .response(response)
+        .map_err(|_| ())
 }
 
 fn is_setup_name(name: &str) -> bool {

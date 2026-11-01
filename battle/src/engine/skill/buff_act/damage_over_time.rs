@@ -64,6 +64,14 @@ pub fn supports_dot(args: &[i32]) -> bool {
     )
 }
 
+pub fn supports_round_end_dot(args: &[i32]) -> bool {
+    supports_dot(args)
+        || matches!(
+            args,
+            [0, attr_id, permille] if *attr_id == AttrId::Hp.id() && *permille > 0
+        )
+}
+
 pub fn matches(subscriber: &BuffActSubscriber) -> bool {
     DamageOverTimeKind::from_subscriber(subscriber).is_some()
 }
@@ -319,7 +327,7 @@ pub fn settlement_rule_op(
         .buff
         .snapshot(subscriber.owner_uid, subscriber.buff_uid)?;
     let current = buff.layer.unwrap_or_default();
-    let next = settled_layer(kind, current)?;
+    let next = settled_layer(kind, &subscriber.args, current)?;
     if next == 0 {
         Some(RuleOp::Command(BattleCommand::Buff(
             BuffCommand::Deactivate(BuffRemove {
@@ -355,9 +363,12 @@ pub fn settlement_rule_ops(
     .collect()
 }
 
-fn settled_layer(kind: DamageOverTimeKind, current: i32) -> Option<i32> {
+fn settled_layer(kind: DamageOverTimeKind, args: &[i32], current: i32) -> Option<i32> {
     match kind {
         DamageOverTimeKind::Burn | DamageOverTimeKind::Radiance => Some(current / 2),
+        DamageOverTimeKind::Dot if matches!(args, [0, attr_id, _] if AttrId::from_raw(*attr_id) == Some(AttrId::Hp)) => {
+            Some(current / 2)
+        }
         DamageOverTimeKind::Dot => None,
         DamageOverTimeKind::Poison => None,
     }
@@ -381,10 +392,18 @@ mod tests {
 
     #[test]
     fn radiance_halves_its_stacks() {
-        assert_eq!(settled_layer(DamageOverTimeKind::Radiance, 4), Some(2));
-        assert_eq!(settled_layer(DamageOverTimeKind::Radiance, 1), Some(0));
-        assert_eq!(settled_layer(DamageOverTimeKind::Burn, 4), Some(2));
-        assert_eq!(settled_layer(DamageOverTimeKind::Burn, 1), Some(0));
+        assert_eq!(settled_layer(DamageOverTimeKind::Radiance, &[], 4), Some(2));
+        assert_eq!(settled_layer(DamageOverTimeKind::Radiance, &[], 1), Some(0));
+        assert_eq!(settled_layer(DamageOverTimeKind::Burn, &[], 4), Some(2));
+        assert_eq!(settled_layer(DamageOverTimeKind::Burn, &[], 1), Some(0));
+        assert_eq!(
+            settled_layer(DamageOverTimeKind::Dot, &[0, AttrId::Hp.id(), 50], 18),
+            Some(9)
+        );
+        assert_eq!(
+            settled_layer(DamageOverTimeKind::Dot, &[0, AttrId::Attack.id(), 50], 18),
+            None
+        );
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -9,7 +9,7 @@ use serde_json::Value;
 #[derive(Default)]
 pub(crate) struct Evidence {
     skills: BTreeSet<i32>,
-    buffs: BTreeSet<i32>,
+    buffs: BTreeMap<i32, BTreeSet<String>>,
     episodes: BTreeSet<i32>,
 }
 
@@ -25,14 +25,14 @@ impl Evidence {
         };
         for root in roots {
             for path in crate::wire_evidence::capture_json_files(root) {
-                let Ok(contents) = fs::read_to_string(path) else {
+                let Ok(contents) = fs::read_to_string(&path) else {
                     continue;
                 };
                 let Ok(mut value) = serde_json::from_str(&contents) else {
                     continue;
                 };
                 let _ = battle_preview::expand_compressed_fight_steps(&mut value);
-                evidence.inspect(&value);
+                evidence.inspect(&value, &path.display().to_string());
             }
         }
         evidence
@@ -43,14 +43,20 @@ impl Evidence {
     }
 
     pub(crate) fn buff(&self, id: i32) -> bool {
-        self.buffs.contains(&id)
+        self.buffs.contains_key(&id)
+    }
+
+    pub(crate) fn buff_sources(&self, id: i32) -> Vec<String> {
+        self.buffs
+            .get(&id)
+            .map_or_else(Vec::new, |sources| sources.iter().cloned().collect())
     }
 
     pub(crate) fn episode(&self, id: i32) -> bool {
         self.episodes.contains(&id)
     }
 
-    fn inspect(&mut self, value: &Value) {
+    fn inspect(&mut self, value: &Value, source: &str) {
         match value {
             Value::Object(object) => {
                 for (key, child) in object {
@@ -59,16 +65,24 @@ impl Evidence {
                         "skillGroup1" | "skillGroup2" | "passiveSkill" | "exSkill" => {
                             insert_numbers(child, &mut self.skills)
                         }
-                        "buffId" => insert_number(child, &mut self.buffs),
+                        "buffId" => {
+                            if let Some(id) = child
+                                .as_i64()
+                                .and_then(|id| i32::try_from(id).ok())
+                                .filter(|id| *id > 0)
+                            {
+                                self.buffs.entry(id).or_default().insert(source.to_owned());
+                            }
+                        }
                         "episodeId" => insert_number(child, &mut self.episodes),
                         _ => {}
                     }
-                    self.inspect(child);
+                    self.inspect(child, source);
                 }
             }
             Value::Array(values) => {
                 for child in values {
-                    self.inspect(child);
+                    self.inspect(child, source);
                 }
             }
             _ => {}

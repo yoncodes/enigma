@@ -1,5 +1,10 @@
 use super::parse::{ParsedConditionKind, TargetIdentityMode, first_i32, parse_i32, parse_i32_list};
 
+pub fn active_skill_source(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty()
+        .then_some(ParsedConditionKind::ActiveSkillSourceIsTarget)
+}
+
 pub fn ex_skill_level(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [level] = args else {
         return None;

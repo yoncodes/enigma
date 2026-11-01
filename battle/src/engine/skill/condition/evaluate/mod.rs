@@ -930,6 +930,12 @@ fn condition_kind_matches(
         } => managers
             .and_then(|managers| managers.fight_progress.get(*progress_id))
             .is_some_and(|progress| compare_resource(progress.value, *compare_code, *threshold)),
+        ParsedConditionKind::PlayerLevel { compare, threshold } => {
+            managers.is_some_and(|managers| {
+                managers.player.level() > 0
+                    && compare_value(managers.player.level(), *compare, *threshold)
+            })
+        }
         ParsedConditionKind::IndicatorAtLeast {
             indicator_id,
             threshold,
@@ -970,6 +976,16 @@ fn condition_kind_matches(
         ParsedConditionKind::TargetAttacked => {
             context.hit_target_uid != 0 && condition_targets.contains(&context.hit_target_uid)
         }
+        ParsedConditionKind::HitDamagePercentMoreThan { threshold_permille } => managers
+            .is_some_and(|managers| {
+                context.hit_resolved_damage > 0
+                    && context.hit_target_uid != 0
+                    && condition_targets.contains(&context.hit_target_uid)
+                    && managers.hp.max(context.hit_target_uid) > 0
+                    && i64::from(context.hit_resolved_damage) * 1000
+                        > i64::from(managers.hp.max(context.hit_target_uid))
+                            * i64::from(*threshold_permille)
+            }),
         ParsedConditionKind::AllyAttacked => {
             context.hit_target_uid != 0
                 && pool.entity(source_uid).is_some()
@@ -1153,22 +1169,6 @@ fn condition_kind_matches(
                         })
                     })
         }
-        ParsedConditionKind::TargetUseExSkill => {
-            context.active_skill_source_uid != 0
-                && condition_targets.contains(&context.active_skill_source_uid)
-                && pool
-                    .entity(context.active_skill_source_uid)
-                    .is_some_and(|actor| {
-                        actor.ex_skill != 0
-                            && managers.is_some_and(|managers| {
-                                crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
-                                    managers,
-                                    context.active_skill_id,
-                                    actor,
-                                )
-                            })
-                    })
-        }
         ParsedConditionKind::TeammateUseExSkill => pool.allies(source_uid).iter().any(|ally| {
             ally.uid != source_uid
                 && ally.uid == context.active_skill_source_uid
@@ -1181,6 +1181,10 @@ fn condition_kind_matches(
                     )
                 })
         }),
+        ParsedConditionKind::ActiveSkillSourceIsTarget => {
+            context.active_skill_source_uid != 0
+                && condition_targets.contains(&context.active_skill_source_uid)
+        }
         ParsedConditionKind::ActiveSkillRank { compare, ranks } => {
             context.active_skill_rank != 0
                 && ranks

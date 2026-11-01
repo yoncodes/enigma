@@ -54,6 +54,15 @@ impl SkillEffectSlot {
     }
 
     pub fn subscriptions(&self) -> Vec<SubscriptionKey> {
+        if crate::engine::skill::behavior::registry::find(&self.behavior).is_some_and(
+            |definition| {
+                definition
+                    .attack_context
+                    .is_some_and(|matches| matches(&self.conditions))
+            },
+        ) {
+            return Vec::new();
+        }
         self.conditions
             .iter()
             .map(ParsedCondition::subscriptions)
@@ -67,7 +76,10 @@ impl SkillEffectSlot {
         };
         if crate::engine::skill::behavior::registry::find(&self.behavior).is_some_and(
             |definition| {
-                definition.round_modifier_only
+                definition
+                    .attack_context
+                    .is_some_and(|matches| matches(&self.conditions))
+                    || definition.round_modifier_only
                     || definition.card_play_role
                         == crate::engine::skill::behavior::registry::CardPlayRole::QueuePreparation
             },
@@ -190,9 +202,14 @@ impl SkillEffectSlot {
         let Some(route) = self.usable_route()? else {
             return Ok(Vec::new());
         };
-        if crate::engine::skill::behavior::registry::find(&self.behavior)
-            .is_some_and(|definition| definition.round_modifier_only)
-        {
+        if crate::engine::skill::behavior::registry::find(&self.behavior).is_some_and(
+            |definition| {
+                definition
+                    .attack_context
+                    .is_some_and(|matches| matches(&self.conditions))
+                    || definition.round_modifier_only
+            },
+        ) {
             return Ok(Vec::new());
         }
         let mut keys = route

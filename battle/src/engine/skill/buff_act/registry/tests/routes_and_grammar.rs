@@ -167,6 +167,7 @@ fn dot_uses_its_exact_after_hit_route_and_known_argument_shapes() {
 fn holder_scaled_dot_keeps_its_exact_round_end_route() {
     assert_eq!(runtime_event(202, "Dot", 302), Some(EventKind::RoundEnd));
     assert!(has_destination(202, "Dot", &[1, 100, 30]));
+    assert!(has_destination(202, "Dot", &[0, 101, 50]));
     assert!(find(202, "Dot").is_some());
     assert!(find(202, "DotNoLimit").is_none());
 }

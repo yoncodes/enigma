@@ -88,6 +88,22 @@ pub fn teammates_equal(_: i32, _: &str, args: &[String]) -> Option<ParsedConditi
     )
 }
 
+pub fn teammates_up_to_three(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [_count] = args else {
+        return None;
+    };
+    let condition = entity_count(
+        EntityCountScope::AliveOtherTeammates,
+        ConditionCompare::Equal,
+        args,
+    )?;
+    matches!(
+        &condition,
+        ParsedConditionKind::EntityCount { count: 0..=3, .. }
+    )
+    .then_some(condition)
+}
+
 pub fn other_ally_damage_type(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [raw_damage_type, raw_max_count] = args else {
         return None;
@@ -122,6 +138,20 @@ pub fn alive_allied_model_at_least(
 
 pub fn summoned_equal(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     summoned_count(args, ConditionCompare::Equal)
+}
+
+pub fn mature_summoned_equal(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let condition = summoned_count(args, ConditionCompare::Equal)?;
+    matches!(
+        &condition,
+        ParsedConditionKind::SummonedCount {
+            summoned_id,
+            required_level: 4,
+            count: 1 | 2,
+            ..
+        } if *summoned_id > 0
+    )
+    .then_some(condition)
 }
 
 pub fn summoned_at_least(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {

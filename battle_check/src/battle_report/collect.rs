@@ -542,6 +542,13 @@ fn buff(
         .split('|')
         .filter(|raw| !raw.trim().is_empty())
         .filter_map(|raw| buff_act(db, id, raw, wire_evidence))
+        .map(|mut act| {
+            if act.node.observation == "Unexercised" && evidence.buff(id) {
+                act.node.observation = "Carrier buff referenced";
+                act.node.capture_sources = evidence.buff_sources(id);
+            }
+            act
+        })
         .collect();
     Some(Buff {
         id,
@@ -774,131 +781,4 @@ fn slug(value: &str) -> String {
 }
 
 #[cfg(test)]
-mod text_tests {
-    use super::*;
-
-    #[test]
-    fn removes_client_rich_text_without_joining_words() {
-        assert_eq!(
-            clean_rich_text("<i>Lady by the Lake</i>"),
-            "Lady by the Lake"
-        );
-        assert_eq!(
-            clean_rich_text("In [Silence<id:3136>],<br>gains <nobr>2 stacks</nobr>."),
-            "In [Silence], gains 2 stacks."
-        );
-        assert_eq!(clean_rich_text("HP < 50%"), "HP < 50%");
-    }
-
-    #[test]
-    fn route_names_hide_config_placeholders() {
-        assert_eq!(route_name("?".to_owned()), None);
-        assert_eq!(route_name(String::new()), None);
-        assert_eq!(
-            route_name("Focused Flashback".to_owned()).as_deref(),
-            Some("Focused Flashback")
-        );
-    }
-
-    #[test]
-    fn condition_nodes_preserve_expression_and_exact_arguments() {
-        let child = ParsedCondition {
-            opcode: 999_999,
-            type_name: "MissingExactCondition".to_owned(),
-            kind: ParsedConditionKind::Unsupported("test".to_owned()),
-            raw_args: vec!["1".to_owned()],
-        };
-        let wrapper = ParsedCondition {
-            opcode: 0,
-            type_name: "Any".to_owned(),
-            kind: ParsedConditionKind::Any(vec![vec![child.clone()]]),
-            raw_args: Vec::new(),
-        };
-
-        let conditions = [wrapper];
-        let flattened = flatten_conditions(&conditions);
-        assert_eq!(flattened, vec![&child]);
-        let node = condition_node(flattened[0], "999999#1!|5", false);
-        assert_eq!(node.raw, "999999#1!|5");
-        assert_eq!(node.exact_raw, "999999#1");
-    }
-
-    #[test]
-    fn narrowed_reports_reject_unknown_subjects() {
-        crate::init_config().unwrap();
-        let db = config::configs::get();
-        let evidence = Evidence::default();
-        let wire_evidence = crate::wire_evidence::Evidence::default();
-
-        assert!(
-            heroes(
-                db,
-                battle::catalog::BattleCatalog::new(db),
-                &[-1],
-                &evidence,
-                &wire_evidence,
-            )
-            .is_err()
-        );
-        assert!(
-            psychubes(
-                db,
-                battle::catalog::BattleCatalog::new(db),
-                Some(-1),
-                &evidence,
-                &wire_evidence,
-            )
-            .is_err()
-        );
-        assert!(
-            stages(
-                db,
-                battle::catalog::BattleCatalog::new(db),
-                Some(-1),
-                &evidence,
-                &wire_evidence,
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn grouped_skill_replacement_reports_raw_aware_semantic_support() {
-        crate::init_config().unwrap();
-        let db = config::get();
-        let wire_evidence = crate::wire_evidence::Evidence::default();
-
-        let supported = buff_act(
-            db,
-            0,
-            "1138#1:31460211,31460212,31460213#2:31460221,31460222,31460223",
-            &wire_evidence,
-        )
-        .unwrap();
-        assert_eq!(supported.node.semantic, "supported");
-
-        for raw in [
-            "1138#1:31460211#2:31460221",
-            "1138#1:30120111,30120112,30120113#2:30120121,30120122,30120123",
-        ] {
-            assert_eq!(
-                buff_act(db, 0, raw, &wire_evidence).unwrap().node.semantic,
-                "unsupported arguments",
-                "{raw}"
-            );
-        }
-    }
-
-    #[test]
-    fn charge_report_preserves_state_owner_and_reports_support() {
-        crate::init_config().unwrap();
-        let db = config::get();
-        let wire_evidence = crate::wire_evidence::Evidence::default();
-
-        let charge = buff_act(db, 0, "1139#100000#150000#31460183", &wire_evidence).unwrap();
-
-        assert_eq!(charge.node.registry, "exact");
-        assert_eq!(charge.node.semantic, "supported");
-        assert_eq!(charge.destination, "StateConsumer");
-    }
-}
+mod tests;

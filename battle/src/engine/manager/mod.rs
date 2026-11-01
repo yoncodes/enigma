@@ -17,6 +17,7 @@ pub mod gauge;
 pub mod hp;
 pub mod indicator;
 pub mod injury;
+pub mod player;
 pub mod revive;
 pub mod shield;
 pub mod summon;
@@ -70,6 +71,7 @@ pub struct BattleManagers {
     pub hp: HpManager,
     pub indicator: indicator::IndicatorManager,
     pub injury: injury::InjuryManager,
+    pub player: player::BattlePlayerManager,
     pub ex_point: ExPointManager,
     pub eureka: EurekaManager,
     pub gauge: gauge::GaugeManager,
@@ -370,11 +372,14 @@ impl BattleManagers {
             _ => None,
         };
         let source_attack = source_uid.map(|uid| self.attack(uid));
+        let source_max_hp = source_uid
+            .map(|uid| self.origin_attribute(uid, crate::engine::entity::attr::AttrId::Hp));
         let mut plan = self.buff.plan_with_source_attack(
             &self.hp,
             command,
             buff::GrantInputs {
                 source_attack,
+                source_max_hp,
                 resist_roll,
             },
         )?;
@@ -1040,29 +1045,46 @@ impl BattleManagers {
                 }
                 ex_point::ExPointCommand::Change(change)
             }
+            ex_point::ExPointCommand::Transfer(mut transfer) => {
+                if let Some(target_uid) = self.buff.buff_act_source_uid(
+                    transfer.to_uid,
+                    crate::engine::skill::buff_act::registry::BuffActKind::TransferAddExPoint,
+                ) {
+                    transfer.to_uid = target_uid;
+                }
+                ex_point::ExPointCommand::Transfer(transfer)
+            }
             ex_point::ExPointCommand::Reduce(change) => ex_point::ExPointCommand::Change(change),
             command => command,
         };
-        let target_uid = match command {
-            ex_point::ExPointCommand::Change(change) => Some(change.target_uid),
-            ex_point::ExPointCommand::Reduce(change) => Some(change.target_uid),
-            ex_point::ExPointCommand::Spend(change) => Some(change.target_uid),
-            ex_point::ExPointCommand::Set(change) => Some(change.target_uid),
+        let (gain_target_uid, reduction_target_uid) = match command {
+            ex_point::ExPointCommand::Change(change) if change.delta > 0 => {
+                (Some(change.target_uid), None)
+            }
+            ex_point::ExPointCommand::Change(change) => (None, Some(change.target_uid)),
+            ex_point::ExPointCommand::Reduce(change) => (None, Some(change.target_uid)),
+            ex_point::ExPointCommand::Spend(_) => (None, None),
+            ex_point::ExPointCommand::Set(change) => {
+                (Some(change.target_uid), Some(change.target_uid))
+            }
+            ex_point::ExPointCommand::Transfer(transfer) => {
+                (Some(transfer.to_uid), Some(transfer.from_uid))
+            }
             ex_point::ExPointCommand::ChangeMax(_)
             | ex_point::ExPointCommand::ConfigureSynchronization(_)
             | ex_point::ExPointCommand::RestartSynchronization(_)
             | ex_point::ExPointCommand::CompleteSynchronization(_)
             | ex_point::ExPointCommand::RecordSynchronizationAction(_)
             | ex_point::ExPointCommand::RecordSynchronizationDamage(_)
-            | ex_point::ExPointCommand::PublishSynchronizationHit(_) => None,
+            | ex_point::ExPointCommand::PublishSynchronizationHit(_) => (None, None),
         };
-        let gain_allowed = target_uid.is_none_or(|target_uid| {
+        let gain_allowed = gain_target_uid.is_none_or(|target_uid| {
             !self.buff.has_buff_act_kind(
                 target_uid,
                 crate::engine::skill::buff_act::registry::BuffActKind::ExPointCantAdd,
             )
         });
-        let reduction_allowed = target_uid.is_none_or(|target_uid| {
+        let reduction_allowed = reduction_target_uid.is_none_or(|target_uid| {
             !self.buff.has_buff_act_kind(
                 target_uid,
                 crate::engine::skill::buff_act::registry::BuffActKind::MoxieReductionImmunity,

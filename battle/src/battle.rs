@@ -21,12 +21,18 @@ impl Battle {
     pub fn start(catalog: BattleCatalog, built: BuiltFight, seed: u64) -> Result<Self, String> {
         let BuiltFight {
             fight,
+            player_level,
             ex_attributes,
             sp_attributes,
             battle_rule_skills,
         } = built;
-        let mut runtime =
-            BattleRuntime::new_with_attributes(catalog, fight, ex_attributes, sp_attributes)?;
+        let mut runtime = BattleRuntime::new_with_player_level(
+            catalog,
+            fight,
+            ex_attributes,
+            sp_attributes,
+            player_level,
+        )?;
         runtime.extend_battle_rule_skills(battle_rule_skills);
         runtime.start_round_with_determinism(RoundDeterminism::with_seed(seed))?;
         Ok(Self { runtime })
@@ -153,6 +159,7 @@ mod tests {
             catalog,
             BuiltFight {
                 fight,
+                player_level: 0,
                 ex_attributes: Vec::new(),
                 sp_attributes: Vec::new(),
                 battle_rule_skills: vec![rule_skill],

@@ -219,6 +219,55 @@ fn projects_a_semantic_skill_frame_without_reading_runtime_state() {
 }
 
 #[test]
+fn moxie_transfer_projects_loss_before_gain() {
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(30011, "AbsorbExPoint"),
+    };
+    let change = |target_uid, before, applied_delta| ExPointApplyResult {
+        source_uid: 10,
+        target_uid,
+        kind: ExPointKind::Common,
+        before,
+        requested_delta: applied_delta,
+        applied_delta,
+        after: before + applied_delta,
+        overflow: 0,
+        cap: 5,
+        effect_type: 0,
+        config_effect: 30011,
+    };
+    let frame = SemanticFrame {
+        owner: FrameOwner::Skill {
+            source_uid: 10,
+            skill_id: 20,
+            card_index: 0,
+            target_uid: Some(-1),
+        },
+        trigger: crate::engine::runtime::record::FrameTrigger::Active,
+        items: vec![FrameItem::Change(Box::new(BattleChange::ExPoint(
+            ExPointChanges::Transfer {
+                origin,
+                loss: change(-1, 2, -1),
+                gain: change(10, 0, 1),
+            },
+        )))],
+    };
+
+    let steps = project(&[frame]).unwrap();
+    let effects = &steps[0].act_effect;
+    assert_eq!(effects.len(), 2);
+    assert_eq!(
+        (effects[0].target_id, effects[0].effect_num),
+        (Some(-1), Some(-1))
+    );
+    assert_eq!(
+        (effects[1].target_id, effects[1].effect_num),
+        (Some(10), Some(1))
+    );
+}
+
+#[test]
 fn lifecycle_mechanic_projects_as_nested_fake_timeline() {
     let frame = SemanticFrame {
         owner: FrameOwner::Skill {

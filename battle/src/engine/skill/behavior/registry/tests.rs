@@ -36,6 +36,34 @@ fn lookup_requires_the_exact_opcode_type_pair() {
 }
 
 #[test]
+fn moxie_absorption_accepts_exact_aliases() {
+    for opcode in [30002, 30011] {
+        let definition = find_key(opcode, "AbsorbExPoint").unwrap();
+        let supports = definition.supports.unwrap();
+
+        assert_eq!(definition.kind, BehaviorKind::AbsorbExPoint);
+        assert!(definition.destination);
+        assert!(supports(&ParsedBehavior::new(
+            opcode,
+            "AbsorbExPoint",
+            vec![1, 0]
+        )));
+        assert!(!supports(&ParsedBehavior::new(
+            opcode,
+            "AbsorbExPoint",
+            vec![1]
+        )));
+        assert!(!supports(&ParsedBehavior::new(
+            opcode,
+            "AbsorbExPoint",
+            vec![0, 0]
+        )));
+    }
+
+    assert!(find_key(30002, "DelExPoint").is_none());
+}
+
+#[test]
 fn consume_buff_reset_device_listens_to_allies_and_targets_its_owner() {
     let definition = find_key(60308, "ConsumeBuffResetDevice").unwrap();
 
@@ -304,6 +332,51 @@ fn per_consume_ex_point_direct_use_skill_keeps_its_exact_five_argument_shape() {
 }
 
 #[test]
+fn consumed_buff_rate_keeps_its_exact_nonnegative_count_grammar() {
+    let definition = find_key(60034, "ConsumeBuffUpSkillDamageRate").unwrap();
+    let supports = definition.supports.unwrap();
+
+    for args in [vec![90071, 0, 600], vec![90071, 5, 1500]] {
+        assert!(supports(&ParsedBehavior::new(
+            60034,
+            "ConsumeBuffUpSkillDamageRate",
+            args,
+        )));
+    }
+    for args in [
+        vec![],
+        vec![0, 5, 600],
+        vec![90071, -1, 600],
+        vec![90071, 5, 0],
+        vec![90071, 5, 600, 1],
+    ] {
+        assert!(!supports(&ParsedBehavior::new(
+            60034,
+            "ConsumeBuffUpSkillDamageRate",
+            args,
+        )));
+    }
+    assert!(find_key(60034, "ConsumeBuffChangeTargets").is_none());
+}
+
+#[test]
+fn direct_use_big_skill_is_argumentless() {
+    let definition = find_key(60175, "DirectUseBigSkill").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert!(supports(&ParsedBehavior::new(
+        60175,
+        "DirectUseBigSkill",
+        Vec::new()
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60175,
+        "DirectUseBigSkill",
+        vec![1]
+    )));
+}
+
+#[test]
 fn consume_buff_use_skill_two_keeps_group_and_rank_shape() {
     let valid = ParsedBehavior::new(60128, "ConsumeBuffUseSkill2", vec![30470171, 1, 2, 1]);
     let definition = find(&valid).expect("exact consume-and-cast behavior must be registered");
@@ -543,6 +616,32 @@ fn remove_buff_use_skill_keeps_its_exact_identity_and_phase() {
     assert_eq!(definition.kind, BehaviorKind::RemoveBuffUseSkill);
     assert_eq!(definition.phase, BehaviorPhase::AfterDamage);
     assert!(find_key(50018, "ConsumeBuffUseSkill").is_none());
+}
+
+#[test]
+fn remove_buff_to_enchant_keeps_its_exact_configured_shape() {
+    let definition = find_key(60285, "RemoveBuffToEnchant").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::RemoveBuffToEnchant);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert!(supports(&ParsedBehavior::new(
+        60285,
+        "RemoveBuffToEnchant",
+        vec![31420001, 10011, 1],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60285,
+        "RemoveBuffToEnchant",
+        vec![31420001, 10002, 1],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60285,
+        "RemoveBuffToEnchant",
+        vec![31420001, 10011, 3],
+    )));
+    assert!(find_key(60285, "Enchant").is_none());
 }
 
 #[test]

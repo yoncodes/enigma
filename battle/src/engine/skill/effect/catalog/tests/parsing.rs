@@ -313,6 +313,86 @@ fn slot_parser_applies_registry_contract_to_numeric_behaviors() {
 
     assert_eq!(parse("10001"), Err(SlotParseError::Behavior));
     assert!(parse("10001#100").is_ok());
+    assert!(parse("60175").is_ok());
+    assert_eq!(parse("60175#bad"), Err(SlotParseError::Behavior));
+    assert_eq!(parse("60175#1,2"), Err(SlotParseError::Behavior));
+    assert!(parse("60037#308606").is_ok());
+    assert_eq!(parse("60037#0"), Err(SlotParseError::Behavior));
+    assert_eq!(parse("60037#308606#bad"), Err(SlotParseError::Behavior));
+    assert!(parse("50038#11450021").is_ok());
+    assert!(parse("60019#0#102").is_ok());
+    assert!(parse("60019#0#103").is_ok());
+    assert!(parse("60056#151415").is_ok());
+    assert!(parse("60056#151416").is_ok());
+    for raw in [
+        "60056",
+        "60056#0",
+        "60056#-1",
+        "60056#151416#1",
+        "60056#151416#bad",
+    ] {
+        assert_eq!(parse(raw), Err(SlotParseError::Behavior));
+    }
+    for raw in [
+        "60019#0",
+        "60019#0#999",
+        "60019#1#151415",
+        "60019#0#102#bad",
+    ] {
+        assert_eq!(parse(raw), Err(SlotParseError::Behavior));
+    }
+    for raw in ["50038", "50038#0", "50038#11450021#1", "50038#11450021#bad"] {
+        assert_eq!(parse(raw), Err(SlotParseError::Behavior));
+    }
+    assert!(parse("60053#30860143#0#0#5").is_ok());
+    assert_eq!(
+        parse("60053#102011481#0#1#5"),
+        Err(SlotParseError::Behavior)
+    );
+    assert_eq!(
+        parse("60053#30860143#0#0#5#bad"),
+        Err(SlotParseError::Behavior)
+    );
+    assert!(parse("60285#31420001#10011#1").is_ok());
+    assert!(parse("60285#301#10011#2").is_ok());
+    assert_eq!(
+        parse("60285#31420001#10011#1#bad"),
+        Err(SlotParseError::Behavior)
+    );
+    assert_eq!(
+        parse("60285#31420001#10002#1"),
+        Err(SlotParseError::Behavior)
+    );
+    assert_eq!(
+        parse("60285#31420001#10011#3"),
+        Err(SlotParseError::Behavior)
+    );
+    assert!(parse("60112#2#2#31040005#2").is_ok());
+    assert_eq!(parse("60112#2#0#31040005#2"), Err(SlotParseError::Behavior));
+    assert_eq!(parse("60112#3#2#31040005#2"), Err(SlotParseError::Behavior));
+    assert_eq!(
+        parse("60112#2#2#31040005#2#bad"),
+        Err(SlotParseError::Behavior)
+    );
+    assert!(parse("60083#1#1#1000").is_ok());
+    assert!(parse("60083#2#1#4000").is_ok());
+    assert_eq!(parse("60083#3#1#1000"), Err(SlotParseError::Behavior));
+    assert_eq!(parse("60083#1#0#1000"), Err(SlotParseError::Behavior));
+    assert_eq!(parse("60083#1#1#1000#bad"), Err(SlotParseError::Behavior));
+    assert!(parse("60034#90071#0#600").is_ok());
+    assert_eq!(
+        parse("60034#90071#0#600#bad"),
+        Err(SlotParseError::Behavior)
+    );
+    assert!(parse("60261#30920101#80#30920102").is_ok());
+    assert_eq!(
+        parse("60261#30920101#0#30920102"),
+        Err(SlotParseError::Behavior)
+    );
+    assert_eq!(
+        parse("60261#30920101#80#30920102#bad"),
+        Err(SlotParseError::Behavior)
+    );
 }
 
 #[test]

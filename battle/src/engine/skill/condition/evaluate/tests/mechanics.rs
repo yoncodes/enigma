@@ -1,6 +1,81 @@
 use super::*;
 
 #[test]
+fn hit_damage_percent_uses_one_resolved_hit_and_a_strict_boundary() {
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(66_810),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(66_810),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let condition = ParsedCondition {
+        opcode: 41,
+        type_name: "DamagePercentMoreThan".into(),
+        kind: ParsedConditionKind::HitDamagePercentMoreThan {
+            threshold_permille: 300,
+        },
+        raw_args: vec!["300".into()],
+    };
+    let matches = |damage, targets: &[i64]| {
+        condition_matches(
+            &condition,
+            -1,
+            targets,
+            Some(&managers),
+            &pool,
+            TargetContext {
+                hit_target_uid: -1,
+                hit_resolved_damage: damage,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(28_186, &[-1]));
+    assert!(!matches(20_043, &[-1]));
+    assert!(!matches(28_186, &[10]));
+}
+
+#[test]
+fn player_level_reads_the_battle_player_owner() {
+    let matches = |level, compare, threshold| {
+        let mut managers = BattleManagers::default();
+        managers.player = crate::engine::manager::player::BattlePlayerManager::new(level);
+        condition_matches(
+            &ParsedCondition {
+                opcode: 793002,
+                type_name: "Level".into(),
+                kind: ParsedConditionKind::PlayerLevel { compare, threshold },
+                raw_args: Vec::new(),
+            },
+            1,
+            &[1],
+            Some(&managers),
+            &TargetPool::default(),
+            TargetContext::default(),
+        )
+    };
+
+    assert!(matches(54, ConditionCompare::GreaterThan, 40));
+    assert!(matches(54, ConditionCompare::LessThan, 55));
+    assert!(matches(55, ConditionCompare::GreaterThan, 40));
+    assert!(!matches(55, ConditionCompare::LessThan, 55));
+    assert!(matches(56, ConditionCompare::GreaterThan, 40));
+    assert!(!matches(56, ConditionCompare::LessThan, 55));
+}
+
+#[test]
 fn blood_pool_max_uses_runtime_state() {
     init_config();
     let condition = ParsedCondition {

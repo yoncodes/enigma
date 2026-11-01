@@ -125,11 +125,10 @@ impl BuffManager {
         definition: &BuffDefinition,
         source_uid: i64,
         source_attack: Option<i32>,
+        source_max_hp: Option<i32>,
         args: BuffAddArgs,
+        new_instance: bool,
     ) -> Vec<DotSnapshotPlan> {
-        let Some(source_attack) = source_attack else {
-            return Vec::new();
-        };
         let stacks = definition
             .layer(args.layer, args.layer_specified, args.count)
             .max(1);
@@ -146,12 +145,20 @@ impl BuffManager {
                 let [act_id, args @ ..] = feature.values.as_slice() else {
                     return None;
                 };
-                let permille = match (feature.kind, args) {
-                    (Some(BuffActKind::Poison), [permille, ..]) => *permille,
-                    (Some(BuffActKind::Dot), [0, attr_id, permille])
-                        if *attr_id == crate::engine::entity::attr::AttrId::Attack.id() =>
-                    {
-                        *permille
+                let (source_attribute, permille, stacks) = match (feature.kind, args) {
+                    (Some(BuffActKind::Poison), [permille, ..]) => {
+                        (source_attack?, *permille, stacks)
+                    }
+                    (Some(BuffActKind::Dot), [0, attr_id, permille]) => {
+                        match crate::engine::entity::attr::AttrId::from_raw(*attr_id) {
+                            Some(crate::engine::entity::attr::AttrId::Attack) => {
+                                (source_attack?, *permille, stacks)
+                            }
+                            Some(crate::engine::entity::attr::AttrId::Hp) if new_instance => {
+                                (source_max_hp?, *permille, 1)
+                            }
+                            _ => return None,
+                        }
                     }
                     _ => return None,
                 };
@@ -160,7 +167,7 @@ impl BuffManager {
                     contribution: DotContribution {
                         source_uid,
                         damage_per_stack: crate::engine::damage::attribute_scaled_damage(
-                            source_attack,
+                            source_attribute,
                             permille,
                             1,
                         ),
@@ -437,6 +444,67 @@ mod tests {
                 .buff
                 .dot_damage_for_owner(-1, 803, added.buff.uid.expect("poison has a uid")),
             Some(360)
+        );
+    }
+
+    #[test]
+    fn source_max_hp_dot_keeps_one_snapshot_when_layers_refresh() {
+        crate::test_support::init_config();
+        let source = |uid, hp| FightEntityInfo {
+            uid: Some(uid),
+            team_type: Some(1),
+            current_hp: Some(hp),
+            attr: Some(HeroAttribute {
+                hp: Some(hp),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![source(10, 11_400), source(20, 10_280)],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    team_type: Some(2),
+                    current_hp: Some(100_000),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+        let grant = |source_uid, layer| {
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid,
+                target_uid: -1,
+                buff_id: 105300115,
+                amount: Some(layer),
+                occurrences: 1,
+                child_uid_reservations: 0,
+            })
+        };
+        let buff_uid = managers
+            .execute_buff(grant(10, 18))
+            .unwrap()
+            .change
+            .added
+            .unwrap()
+            .buff
+            .uid
+            .unwrap();
+        managers.execute_buff(grant(20, 14)).unwrap();
+
+        assert_eq!(
+            managers.buff.dot_damage_for_owner(-1, 202, buff_uid),
+            Some(570)
         );
     }
 }

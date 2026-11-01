@@ -214,6 +214,10 @@ pub enum ParsedConditionKind {
         compare_code: i32,
         threshold: i32,
     },
+    PlayerLevel {
+        compare: ConditionCompare,
+        threshold: i32,
+    },
     IndicatorAtLeast {
         indicator_id: i32,
         threshold: i32,
@@ -256,6 +260,9 @@ pub enum ParsedConditionKind {
         threshold: i32,
     },
     TargetAttacked,
+    HitDamagePercentMoreThan {
+        threshold_permille: i32,
+    },
     AllyAttacked,
     ShareDamage,
     Assassinate,
@@ -324,8 +331,8 @@ pub enum ParsedConditionKind {
     UseExSkill {
         slot: i32,
     },
-    TargetUseExSkill,
     TeammateUseExSkill,
+    ActiveSkillSourceIsTarget,
     ActiveSkillRank {
         compare: ConditionCompare,
         ranks: Vec<i32>,
@@ -528,6 +535,21 @@ pub(super) fn hp_less(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCond
     Some(ParsedConditionKind::HpPermille {
         compare: ConditionCompare::LessThan,
         threshold: first_i32(raw_args)?,
+    })
+}
+
+pub(super) fn hp_less_permille(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [raw_threshold] = raw_args else {
+        return None;
+    };
+    let threshold = parse_i32(raw_threshold)?;
+    (0 < threshold && threshold < 1000).then_some(ParsedConditionKind::HpPermille {
+        compare: ConditionCompare::LessThan,
+        threshold,
     })
 }
 

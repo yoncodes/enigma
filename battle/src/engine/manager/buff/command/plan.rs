@@ -1174,8 +1174,14 @@ impl BuffManager {
             );
             post_add_uids.extend(child_uids);
         }
-        let dot_snapshots =
-            Self::plan_grant_snapshots(&definition, route.source_uid, inputs.source_attack, args);
+        let dot_snapshots = Self::plan_grant_snapshots(
+            &definition,
+            route.source_uid,
+            inputs.source_attack,
+            inputs.source_max_hp,
+            args,
+            matches!(action, GrantAction::Add | GrantAction::ReplaceExisting),
+        );
         let grant_values = self.plan_grant_values(&definition, route.source_uid);
         let initial_act_info =
             definition.initial_planned_act_info(inputs.source_attack, &grant_values);

@@ -40,6 +40,15 @@ pub(super) fn supports_per_consume_ex_point_direct_use_skill(behavior: &ParsedBe
     )
 }
 
+pub(super) fn supports_direct_use_skill_two(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [skill_id, 0, 0, extra_kind]
+            if *skill_id > 0
+                && skill_kind_from_is_extra(*extra_kind) == Some(ExtraSkillKind::Reinforced)
+    ) && behavior.raw_args.len() <= 4
+}
+
 pub(super) fn supports_random_skill(behavior: &ParsedBehavior) -> bool {
     matches!(
         behavior.raw_args.as_slice(),
@@ -83,6 +92,11 @@ pub(super) fn supports_remove_buff_use_skill(behavior: &ParsedBehavior) -> bool 
 
 pub(super) fn supports_direct_no_action_skill(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [skill_id] | [skill_id, _] if *skill_id > 0)
+}
+
+pub(super) fn supports_nested_skill(behavior: &ParsedBehavior) -> bool {
+    (behavior.raw_args.is_empty() || behavior.raw_args.len() == 1)
+        && matches!(behavior.args.as_slice(), [skill_id] if *skill_id > 0)
 }
 
 pub(super) fn supports_direct_skill_card(behavior: &ParsedBehavior) -> bool {

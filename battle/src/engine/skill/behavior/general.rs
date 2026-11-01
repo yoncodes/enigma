@@ -31,6 +31,11 @@ pub fn rule_op(target_uid: i64, behavior: &ParsedBehavior) -> Option<RuleOp> {
     })))
 }
 
+pub(super) fn supports_notify_upgrade(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [upgrade_id] if *upgrade_id > 0)
+        && behavior.raw_args.len() <= 1
+}
+
 pub(super) struct Handler;
 
 impl BehaviorHandler for Handler {

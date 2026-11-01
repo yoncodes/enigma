@@ -52,11 +52,6 @@ pub fn parse_use_ex_skill_slot(_: i32, _: &str, args: &[String]) -> Option<Parse
     Some(ParsedConditionKind::UseExSkill { slot })
 }
 
-pub fn parse_target_use_ex_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
-    args.is_empty()
-        .then_some(ParsedConditionKind::TargetUseExSkill)
-}
-
 pub fn parse_teammate_use_ex_skill(
     _: i32,
     _: &str,
@@ -83,10 +78,6 @@ mod tests {
         assert_eq!(
             parse_use_ex_skill(25210, "UseExSkill", &["1".to_owned()]),
             None
-        );
-        assert_eq!(
-            parse_target_use_ex_skill(25212, "UseExSkill", &[]),
-            Some(ParsedConditionKind::TargetUseExSkill)
         );
         assert_eq!(
             parse_teammate_use_ex_skill(720212, "TeammateUseExSkill", &[]),

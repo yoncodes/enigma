@@ -120,6 +120,7 @@ pub mod registry;
 pub mod revive;
 pub mod riposte;
 pub mod rouge2_attr_to_role;
+pub mod round_start_ex_point;
 pub mod share_hurt;
 pub mod shell;
 pub mod shield;
