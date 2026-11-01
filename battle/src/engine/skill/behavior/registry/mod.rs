@@ -247,7 +247,7 @@ pub mod arguments {
     use crate::engine::skill::effect::ParsedBehavior;
 
     pub fn none(behavior: &ParsedBehavior) -> bool {
-        behavior.args.is_empty()
+        behavior.args.is_empty() && behavior.raw_args.is_empty()
     }
 
     pub fn at_least_one(behavior: &ParsedBehavior) -> bool {
@@ -681,7 +681,7 @@ behavior_definitions! {
     [60223] "DirectUseSkillNotExtra" => super::use_skill::Handler, DirectUseSkillNotExtra, Immediate, plain;
     [60225] "RandomUseSkill" => super::use_skill::Handler, RandomUseSkill, Immediate, destination, super::use_skill::supports_random_skill;
     [60172] "Drive" => super::use_skill::Handler, Drive, Immediate, destination, super::use_skill::supports_drive;
-    [60175] "DirectUseBigSkill" => super::use_skill::Handler, DirectUseBigSkill, Immediate, parent_destination;
+    [60175] "DirectUseBigSkill" => super::use_skill::Handler, DirectUseBigSkill, Immediate, parent_destination, arguments::none;
     [50010] "DirectUseGroupAndStarSkill" => super::use_skill::Handler, DirectUseGroupAndStarSkill, Immediate, destination, super::use_skill::supports_group_and_star_skill;
     [50015] "UseExtraSkill" => super::use_skill::Handler, UseExtraSkill, Immediate, plain;
     [60242] "CrystalReuse" => super::use_skill::Handler, CrystalReuse, Immediate, destination, super::use_skill::supports_crystal_reuse;

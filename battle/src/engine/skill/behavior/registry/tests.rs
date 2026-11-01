@@ -332,6 +332,23 @@ fn per_consume_ex_point_direct_use_skill_keeps_its_exact_five_argument_shape() {
 }
 
 #[test]
+fn direct_use_big_skill_is_argumentless() {
+    let definition = find_key(60175, "DirectUseBigSkill").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert!(supports(&ParsedBehavior::new(
+        60175,
+        "DirectUseBigSkill",
+        Vec::new()
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60175,
+        "DirectUseBigSkill",
+        vec![1]
+    )));
+}
+
+#[test]
 fn consume_buff_use_skill_two_keeps_group_and_rank_shape() {
     let valid = ParsedBehavior::new(60128, "ConsumeBuffUseSkill2", vec![30470171, 1, 2, 1]);
     let definition = find(&valid).expect("exact consume-and-cast behavior must be registered");

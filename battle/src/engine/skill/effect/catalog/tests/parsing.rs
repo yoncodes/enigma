@@ -313,6 +313,9 @@ fn slot_parser_applies_registry_contract_to_numeric_behaviors() {
 
     assert_eq!(parse("10001"), Err(SlotParseError::Behavior));
     assert!(parse("10001#100").is_ok());
+    assert!(parse("60175").is_ok());
+    assert_eq!(parse("60175#bad"), Err(SlotParseError::Behavior));
+    assert_eq!(parse("60175#1,2"), Err(SlotParseError::Behavior));
 }
 
 #[test]
