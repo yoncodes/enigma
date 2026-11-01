@@ -135,3 +135,59 @@ fn another_eureka_condition_ignores_stale_lost_power_context() {
         10
     );
 }
+
+#[test]
+fn conduit_ultimate_compound_counts_only_device_ultimates() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3144),
+                current_hp: Some(1),
+                ex_skill: Some(31440131),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let emit = |skill_id| {
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 116370013,
+        }
+        .into();
+        invocation.condition_key = Some(DefinitionKey::new(792208, "UseDeviceSkill"));
+        emit_all_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Event(BattleEvent::ConduitActivated(
+                crate::engine::event::payload::ConduitActivatedEvent {
+                    source_uid: 10,
+                    team: 1,
+                    skill_id,
+                    power_id: 1,
+                    activation_cost: 1,
+                    spent: 1,
+                },
+            )),
+        )
+        .unwrap()
+    };
+
+    let ultimate = emit(31440131);
+    assert!(matches!(
+        ultimate.as_slice(),
+        [RuleOp::Command(BattleCommand::Indicator(change))]
+            if change.indicator_id == 3712 && change.amount == 1
+    ));
+    assert!(emit(31440111).is_empty());
+}
