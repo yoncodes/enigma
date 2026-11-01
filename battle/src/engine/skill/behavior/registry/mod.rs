@@ -748,7 +748,7 @@ behavior_definitions! {
     [40009] "AddSummoned" => super::summon::Handler, AddSummoned, Immediate, destination, super::summon::supports_add_summoned;
     [40010] "ChangeSummonedLevel" => super::summon::Handler, ChangeSummonedLevel, Immediate, destination, super::summon::supports_change_summoned_level;
     [40011] "AddSummonedLevel" => super::summon::Handler, AddSummonedLevel, Immediate, destination, super::summon::supports_add_summoned_level;
-    [40012] "RemoveSummoned" => super::summon::Handler, RemoveSummoned, Immediate, destination;
+    [40012] "RemoveSummoned" => super::summon::Handler, RemoveSummoned, Immediate, destination, super::summon::supports_remove_summoned;
     [60008] "Summon" => super::summon::Handler, Summon, Immediate, destination, super::summon::supports_combatant;
     [60056] "SummonSp2" => super::summon::Handler, SummonSp2, AfterDamage, destination;
     [60015] "Kill" => super::kill::Handler, Kill, Immediate, destination, super::kill::supports;

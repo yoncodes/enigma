@@ -24,7 +24,9 @@ pub fn rule_op(source_uid: i64, target_uid: i64, behavior: &ParsedBehavior) -> O
         BehaviorKind::AddSummonedLevel => SummonOperation::AddLevel {
             delta: behavior.arg(1)?,
         },
-        BehaviorKind::RemoveSummoned => SummonOperation::Remove { count: 0 },
+        BehaviorKind::RemoveSummoned => SummonOperation::Remove {
+            count: behavior.arg(2)?,
+        },
         _ => return None,
     };
     Some(RuleOp::Command(BattleCommand::Summon(SummonCommand {
@@ -65,6 +67,15 @@ pub(super) fn supports_add_summoned_level(behavior: &ParsedBehavior) -> bool {
     exact_shape
         && behavior.arg(0).is_some_and(|summoned_id| summoned_id > 0)
         && behavior.arg(1) == Some(1)
+}
+
+pub(super) fn supports_remove_summoned(behavior: &ParsedBehavior) -> bool {
+    let exact_shape =
+        behavior.raw_args.is_empty() && behavior.args.len() == 3 || behavior.raw_args.len() == 3;
+    exact_shape
+        && behavior.arg(0).is_some_and(|summoned_id| summoned_id > 0)
+        && behavior.arg(1) == Some(4)
+        && matches!(behavior.arg(2), Some(1 | 2))
 }
 
 impl BehaviorHandler for Handler {
@@ -255,6 +266,55 @@ mod tests {
                 owner_uid: 7,
                 summoned_id: 150011,
                 operation: SummonOperation::AddLevel { delta: 1 },
+                ..
+            })))
+        ));
+    }
+
+    #[test]
+    fn remove_summoned_requires_the_observed_level_and_count() {
+        for count in [1, 2] {
+            assert!(supports_remove_summoned(&ParsedBehavior::new(
+                40012,
+                "RemoveSummoned",
+                vec![150011, 4, count],
+            )));
+        }
+        for args in [
+            vec![150011, 4],
+            vec![0, 4, 1],
+            vec![150011, 3, 1],
+            vec![150011, 4, 0],
+            vec![150011, 4, 3],
+        ] {
+            assert!(!supports_remove_summoned(&ParsedBehavior::new(
+                40012,
+                "RemoveSummoned",
+                args,
+            )));
+        }
+        for raw_args in [
+            vec!["150011".into(), "4".into(), "bad".into()],
+            vec!["150011".into(), "4".into(), "1".into(), "extra".into()],
+        ] {
+            assert!(!supports_remove_summoned(&ParsedBehavior::from_spec(
+                BehaviorSpec::new(40012, "RemoveSummoned"),
+                vec![150011, 4, 1],
+                raw_args,
+            )));
+        }
+    }
+
+    #[test]
+    fn remove_summoned_emits_the_configured_count() {
+        let behavior = ParsedBehavior::new(40012, "RemoveSummoned", vec![150011, 4, 2]);
+
+        assert!(matches!(
+            rule_op(7, 7, &behavior),
+            Some(RuleOp::Command(BattleCommand::Summon(SummonCommand {
+                owner_uid: 7,
+                summoned_id: 150011,
+                operation: SummonOperation::Remove { count: 2 },
                 ..
             })))
         ));
