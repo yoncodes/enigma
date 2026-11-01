@@ -90,12 +90,14 @@ const HAND_LIMIT_CLEANUP_ORIGIN: CommandOrigin = CommandOrigin {
 const ROUND_START_VERSION6_SYNC_SETUP: &[(SetupStage, i32)] =
     &[(SetupStage::RoundStart, 4), (SetupStage::BuffSync, 0)];
 
+mod ai;
 mod player;
 mod refill;
 mod resolution;
 mod settlement;
 mod start;
 
+use ai::run_ai_preparation;
 pub(crate) use player::card_skill_is_blocked;
 pub use player::*;
 use player::{

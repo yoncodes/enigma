@@ -372,3 +372,39 @@ fn breakthrough_repeat_clear_grants_configured_normal_rewards() {
     assert!(completion.normal_bonus.contains(&(2, 3, 240)));
     assert!(completion.normal_bonus.contains(&(3, 0, 240)));
 }
+
+#[test]
+fn configured_normal_reward_tables_pay_on_every_clear() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    for (episode_id, currency, amount, exp) in [
+        (3810113, 3801, 120, 120),
+        (3830113, 3801, 170, 150),
+        (3840113, 3801, 250, 200),
+    ] {
+        let episode = config::configs::get().episode.get(episode_id).unwrap();
+        let first = completion_rewards(episode, true, 0, 2, 1);
+        let repeated = completion_rewards(episode, false, 2, 2, 1);
+        assert!(repeated.normal_bonus.contains(&(2, currency, amount)));
+        assert!(repeated.normal_bonus.contains(&(2, 3, exp)));
+        assert!(repeated.normal_bonus.contains(&(3, 0, exp)));
+        assert_eq!(first.normal_bonus, repeated.normal_bonus);
+        assert!(repeated.first_bonus.is_empty());
+        assert!(repeated.advanced_bonus.is_empty());
+        let multiplied = completion_rewards(episode, false, 2, 2, 2);
+        assert!(multiplied.normal_bonus.contains(&(2, currency, amount * 2)));
+    }
+}
+
+#[test]
+fn permanent_clears_use_their_guaranteed_reward_source() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    for episode_id in [2110101, 1310106] {
+        let episode = config::configs::get().episode.get(episode_id).unwrap();
+        let completion = completion_rewards(episode, false, 2, 2, 1);
+        assert_eq!(completion.rewards.player_exp, 120);
+        assert_eq!(completion.rewards.currencies, vec![(3, 120)]);
+    }
+    assert!(reward::parse_fixed_reward(2130202, 25).is_empty());
+}

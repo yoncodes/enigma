@@ -1276,6 +1276,10 @@ pub fn run_start(
             )?,
         );
     }
+    append(
+        &mut result,
+        run_ai_preparation(managers, pool, catalog, determinism, context)?,
+    );
     Ok((
         result,
         dealt_cards.expect("start schedule has one CardSetup stage"),

@@ -28,6 +28,7 @@ pub mod periodic;
 pub mod poison;
 pub mod power_queue_rank;
 pub mod precast;
+pub mod prepare_skill;
 pub mod rate;
 pub mod registry;
 pub mod resource;
