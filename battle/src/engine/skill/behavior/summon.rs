@@ -51,6 +51,14 @@ pub(super) fn supports_add_summoned(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [summoned_id, count, level] if *summoned_id > 0 && *count > 0 && *level > 0)
 }
 
+pub(super) fn supports_change_summoned_level(behavior: &ParsedBehavior) -> bool {
+    let exact_shape =
+        behavior.raw_args.is_empty() && behavior.args.len() == 2 || behavior.raw_args.len() == 2;
+    exact_shape
+        && behavior.arg(0).is_some_and(|summoned_id| summoned_id > 0)
+        && matches!(behavior.arg(1), Some(3 | 4))
+}
+
 impl BehaviorHandler for Handler {
     fn references(behavior: &ParsedBehavior) -> crate::engine::skill::rule::RuleReferences {
         crate::engine::skill::rule::RuleReferences {
@@ -154,6 +162,53 @@ mod tests {
                 args,
             )));
         }
+    }
+
+    #[test]
+    fn change_summoned_level_requires_a_positive_id_and_level() {
+        assert!(supports_change_summoned_level(&ParsedBehavior::new(
+            40010,
+            "ChangeSummonedLevel",
+            vec![150011, 4],
+        )));
+        for args in [
+            vec![150011],
+            vec![0, 4],
+            vec![150011, 0],
+            vec![150011, 2],
+            vec![150011, 5],
+        ] {
+            assert!(!supports_change_summoned_level(&ParsedBehavior::new(
+                40010,
+                "ChangeSummonedLevel",
+                args,
+            )));
+        }
+        for raw_args in [
+            vec!["150011".into(), "bad".into()],
+            vec!["150011".into(), "4".into(), "extra".into()],
+        ] {
+            assert!(!supports_change_summoned_level(&ParsedBehavior::from_spec(
+                BehaviorSpec::new(40010, "ChangeSummonedLevel"),
+                vec![150011, 4],
+                raw_args,
+            )));
+        }
+    }
+
+    #[test]
+    fn change_summoned_level_emits_the_configured_absolute_level() {
+        let behavior = ParsedBehavior::new(40010, "ChangeSummonedLevel", vec![150011, 4]);
+
+        assert!(matches!(
+            rule_op(7, 7, &behavior),
+            Some(RuleOp::Command(BattleCommand::Summon(SummonCommand {
+                owner_uid: 7,
+                summoned_id: 150011,
+                operation: SummonOperation::ChangeLevel { level: 4 },
+                ..
+            })))
+        ));
     }
     use crate::engine::{
         manager::BattleManagers,

@@ -746,7 +746,7 @@ behavior_definitions! {
     [100022] "EzioBigSkillCheckTimes" => super::synchronization::Handler, EzioBigSkillCheckTimes, HitPassives, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(214, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::HitPassives) }), arguments::none;
     [100012] "EzioBigSkillWeapon2" => super::ultimate_kind::Handler, UltimateExtraAction, Immediate, destination;
     [40009] "AddSummoned" => super::summon::Handler, AddSummoned, Immediate, destination, super::summon::supports_add_summoned;
-    [40010] "ChangeSummonedLevel" => super::summon::Handler, ChangeSummonedLevel, Immediate, destination;
+    [40010] "ChangeSummonedLevel" => super::summon::Handler, ChangeSummonedLevel, Immediate, destination, super::summon::supports_change_summoned_level;
     [40011] "AddSummonedLevel" => super::summon::Handler, AddSummonedLevel, Immediate, destination;
     [40012] "RemoveSummoned" => super::summon::Handler, RemoveSummoned, Immediate, destination;
     [60008] "Summon" => super::summon::Handler, Summon, Immediate, destination, super::summon::supports_combatant;
