@@ -1671,7 +1671,11 @@ fn references_for_feature(
             );
         }
         Some(BuffActKind::BeatBack) => {
-            add_skill(&mut references, super::riposte::holder_skill(&feature.args))
+            add_skill(&mut references, super::riposte::holder_skill(&feature.args));
+            add_buff(
+                &mut references,
+                super::riposte::holder_consumed_buff(&feature.args),
+            );
         }
         Some(BuffActKind::BeatBackByCounter) => add_skill(
             &mut references,
