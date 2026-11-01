@@ -445,7 +445,7 @@ fn use_device_skill_uses_its_exact_activation_subscription() {
 }
 
 #[test]
-fn conduit_counter_uses_its_exact_predicate_route() {
+fn conduit_counter_uses_its_exact_routes() {
     assert_eq!(
         parse(
             786203,
@@ -482,7 +482,15 @@ fn conduit_counter_uses_its_exact_predicate_route() {
     let definition = find_key(786203, "PerDeviceCounter").unwrap();
     assert_eq!(definition.role, ConditionRole::Predicate);
     assert_eq!(definition.dependencies, &[EventKind::ConduitActivated]);
-    assert!(find_key(786303, "PerDeviceCounter").is_none());
+    let definition = find_key(786303, "PerDeviceCounter").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        }
+    );
+    assert!(definition.dependencies.is_empty());
     assert!(find_key(786203, "PerDeviceCurrCost").is_none());
 }
 

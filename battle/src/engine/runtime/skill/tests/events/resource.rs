@@ -193,6 +193,69 @@ fn conduit_ultimate_compound_counts_only_device_ultimates() {
 }
 
 #[test]
+fn round_end_conduit_counter_repeats_for_each_activation() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3144),
+                position: Some(1),
+                current_hp: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .conduit
+        .execute(
+            crate::engine::manager::conduit::ConduitCommand::ChangeCounter(
+                crate::engine::manager::conduit::ConduitCounterChange {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Behavior,
+                        key: DefinitionKey::new(60297, "AddDeviceCounter"),
+                    },
+                    source_uid: 10,
+                    team: 1,
+                    skill_id: 0,
+                    kind: crate::engine::manager::conduit::ConduitCounterKind::Activation,
+                    delta: 7,
+                },
+            ),
+        )
+        .unwrap();
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 116370023,
+    }
+    .into();
+    invocation.condition_key = Some(DefinitionKey::new(786303, "PerDeviceCounter"));
+
+    let ops = emit_all_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &SkillOpTrigger::Event(BattleEvent::Kind(EventKind::RoundEnd)),
+    )
+    .unwrap();
+
+    assert_eq!(ops.len(), 7);
+    assert!(ops.iter().all(|op| matches!(
+        op,
+        RuleOp::Command(BattleCommand::Indicator(change))
+            if change.indicator_id == 3713 && change.amount == 1
+    )));
+}
+
+#[test]
 fn round_end_indicator_delete_emits_a_clear_command() {
     let fight = Fight {
         attacker: Some(FightTeam {
