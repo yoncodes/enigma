@@ -112,6 +112,17 @@ pub fn power_compare(_: i32, _: &str, args: &[String]) -> Option<ParsedCondition
     })
 }
 
+pub fn positive_power_compare(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [compare_code, power_id, threshold] = parse_fixed(args)?;
+    (matches!(compare_code, 1..=3) && power_id > 0 && threshold >= 0).then_some(
+        ParsedConditionKind::PowerCompare {
+            compare_code,
+            power_id,
+            threshold,
+        },
+    )
+}
+
 pub fn power_ratio(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [power_id, compare_code, threshold_permille] = parse_fixed(args)?;
     Some(ParsedConditionKind::PowerRatio {

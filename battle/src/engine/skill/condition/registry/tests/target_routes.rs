@@ -113,6 +113,41 @@ fn eureka_threshold_keeps_same_and_opposing_action_routes_distinct() {
 }
 
 #[test]
+fn enemy_action_power_check_keeps_its_exact_grammar() {
+    for args in [
+        ["1".into(), "1".into(), "3".into()],
+        ["2".into(), "3".into(), "99".into()],
+        ["3".into(), "3".into(), "100".into()],
+    ] {
+        assert!(matches!(
+            parse(180213, "PowerCompare", &args),
+            Some(ParsedConditionKind::PowerCompare { .. })
+        ));
+    }
+    for args in [
+        vec!["1".into(), "1".into()],
+        vec!["0".into(), "1".into(), "3".into()],
+        vec!["1".into(), "0".into(), "3".into()],
+        vec!["1".into(), "1".into(), "-1".into()],
+        vec!["1".into(), "1".into(), "3".into(), "extra".into()],
+    ] {
+        assert_eq!(parse(180213, "PowerCompare", &args), None);
+    }
+    let definition = find_key(180213, "PowerCompare").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        }
+    );
+    assert_eq!(
+        definition.skill_action_observer,
+        SkillActionObserver::OpposingTeam
+    );
+}
+
+#[test]
 fn enter_fight_team_career_threshold_keeps_its_exact_key() {
     assert_eq!(
         parse(562002, "CareerGroupHeroCountGE", &["3".into(), "3".into()]),
