@@ -94,6 +94,11 @@ pub(super) fn supports_direct_no_action_skill(behavior: &ParsedBehavior) -> bool
     matches!(behavior.args.as_slice(), [skill_id] | [skill_id, _] if *skill_id > 0)
 }
 
+pub(super) fn supports_nested_skill(behavior: &ParsedBehavior) -> bool {
+    (behavior.raw_args.is_empty() || behavior.raw_args.len() == 1)
+        && matches!(behavior.args.as_slice(), [skill_id] if *skill_id > 0)
+}
+
 pub(super) fn supports_direct_skill_card(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [skill_id, 0] if *skill_id > 0)
 }

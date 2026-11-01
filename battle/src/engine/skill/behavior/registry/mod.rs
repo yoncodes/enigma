@@ -678,7 +678,7 @@ behavior_definitions! {
     [60014] "DirectUseSkillPrev" => super::use_skill::Handler, DirectUseSkillPrev, Immediate, destination, arguments::none;
     [50039] "DirectUseSkillCard" => super::use_skill::Handler, DirectUseSkillCard, Immediate, plain, super::use_skill::supports_direct_skill_card;
     [50012] "DirectUseSkillNoAct" => super::use_skill::Handler, DirectUseSkillNoAct, Immediate, once_destination, super::use_skill::supports_direct_no_action_skill;
-    [50038] "DirectUseSkillNoAct2" => super::use_skill::Handler, DirectUseSkillNoAct2, Immediate, destination;
+    [50038] "DirectUseSkillNoAct2" => super::use_skill::Handler, DirectUseSkillNoAct2, Immediate, destination, super::use_skill::supports_nested_skill;
     [60223] "DirectUseSkillNotExtra" => super::use_skill::Handler, DirectUseSkillNotExtra, Immediate, plain;
     [60225] "RandomUseSkill" => super::use_skill::Handler, RandomUseSkill, Immediate, destination, super::use_skill::supports_random_skill;
     [60172] "Drive" => super::use_skill::Handler, Drive, Immediate, destination, super::use_skill::supports_drive;

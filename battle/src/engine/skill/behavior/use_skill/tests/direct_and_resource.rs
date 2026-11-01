@@ -8,7 +8,7 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     let mut target = crate::engine::skill::target::TargetContext::default();
     let mut emit = |behavior: &ParsedBehavior| {
-        Handler::emit_ops(
+        crate::engine::skill::behavior::rule_ops(
             BehaviorOpContext {
                 source_uid: 10,
                 source_team: 1,
@@ -29,6 +29,11 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
 
     let direct = emit(&ParsedBehavior::new(50008, "DirectUseSkill", vec![20]));
     let no_act = emit(&ParsedBehavior::new(50012, "DirectUseSkillNoAct", vec![20]));
+    let no_act2 = emit(&ParsedBehavior::new(
+        50038,
+        "DirectUseSkillNoAct2",
+        vec![22],
+    ));
     let card = emit(&ParsedBehavior::new(
         50039,
         "DirectUseSkillCard",
@@ -48,6 +53,16 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
         [RuleOp::Skill(invocation)]
             if invocation.mode
                 == crate::engine::skill::action::SkillExecutionMode::Nested
+    ));
+    assert!(matches!(
+        no_act2.as_slice(),
+        [RuleOp::Skill(invocation)]
+            if invocation.plan.skill_id == 22
+                && invocation.plan.source_uid == 10
+                && invocation.target
+                    == crate::engine::skill::action::SkillTarget::Explicit(-1)
+                && invocation.mode
+                    == crate::engine::skill::action::SkillExecutionMode::Nested
     ));
     assert!(matches!(
         card.as_slice(),
