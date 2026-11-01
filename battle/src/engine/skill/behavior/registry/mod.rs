@@ -625,7 +625,8 @@ behavior_definitions! {
     [30001] "DelExPoint" => super::resource::Handler, DelExPoint, AfterDamage, destination, super::resource::supports_ex_point_loss;
     [30007] "DelExPoint" => super::resource::Handler, DelExPoint, AfterDamage, destination;
     [30013] "DelExPointNotImmunity" => super::resource::Handler, DelExPointNotImmunity, AfterDamage, destination;
-    [30011] "AbsorbExPoint" => super::resource::Handler, AbsorbExPoint, Immediate, destination;
+    [30002] "AbsorbExPoint" => super::resource::Handler, AbsorbExPoint, Immediate, destination, super::resource::supports_ex_point_absorption;
+    [30011] "AbsorbExPoint" => super::resource::Handler, AbsorbExPoint, Immediate, destination, super::resource::supports_ex_point_absorption;
     [20011] "AverageLife" => super::resource::Handler, AverageLife, Immediate, destination, super::resource::supports_average_life;
     [50017] "ChangePower" => super::resource::Handler, ChangePower, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(19201, "HasBuffId"), event: EventKind::SkillEffectStarted, phase: Some(SkillPhase::Immediate) }), super::resource::supports_power_change;
     [50037] "ChangePower" => super::resource::Handler, ChangePower, Immediate, destination;

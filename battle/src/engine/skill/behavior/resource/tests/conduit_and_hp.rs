@@ -498,7 +498,7 @@ fn team_action_restarts_a_device_only_after_its_skill_stops() {
 }
 
 #[test]
-fn absorb_ex_point_emits_loss_then_actual_gain() {
+fn absorb_ex_point_emits_transfer() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![
@@ -525,7 +525,7 @@ fn absorb_ex_point_emits_loss_then_actual_gain() {
     let mut target = crate::engine::skill::target::TargetContext::default();
     let behavior = ParsedBehavior::from_spec(
         crate::engine::skill::behavior::classify::BehaviorSpec::new(30011, "AbsorbExPoint"),
-        vec![5],
+        vec![5, 0],
         Vec::new(),
     );
 
@@ -549,22 +549,15 @@ fn absorb_ex_point_emits_loss_then_actual_gain() {
 
     assert!(matches!(
         ops.as_slice(),
-        [
-            RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(
-                ExPointChange {
-                    target_uid: 11,
-                    delta: -2,
-                    ..
-                }
-            ))),
-            RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(
-                ExPointChange {
-                    target_uid: 10,
-                    delta: 2,
-                    ..
-                }
-            )))
-        ]
+        [RuleOp::Command(BattleCommand::ExPoint(
+            ExPointCommand::Transfer(ExPointTransfer {
+                source_uid: 10,
+                from_uid: 11,
+                to_uid: 10,
+                amount: 5,
+                ..
+            })
+        ))]
     ));
 }
 

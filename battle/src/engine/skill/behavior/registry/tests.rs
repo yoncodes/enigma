@@ -36,6 +36,34 @@ fn lookup_requires_the_exact_opcode_type_pair() {
 }
 
 #[test]
+fn moxie_absorption_accepts_exact_aliases() {
+    for opcode in [30002, 30011] {
+        let definition = find_key(opcode, "AbsorbExPoint").unwrap();
+        let supports = definition.supports.unwrap();
+
+        assert_eq!(definition.kind, BehaviorKind::AbsorbExPoint);
+        assert!(definition.destination);
+        assert!(supports(&ParsedBehavior::new(
+            opcode,
+            "AbsorbExPoint",
+            vec![1, 0]
+        )));
+        assert!(!supports(&ParsedBehavior::new(
+            opcode,
+            "AbsorbExPoint",
+            vec![1]
+        )));
+        assert!(!supports(&ParsedBehavior::new(
+            opcode,
+            "AbsorbExPoint",
+            vec![0, 0]
+        )));
+    }
+
+    assert!(find_key(30002, "DelExPoint").is_none());
+}
+
+#[test]
 fn consume_buff_reset_device_listens_to_allies_and_targets_its_owner() {
     let definition = find_key(60308, "ConsumeBuffResetDevice").unwrap();
 

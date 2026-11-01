@@ -8,7 +8,7 @@ use crate::engine::{
             ConduitPowerChangeKind,
         },
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand, EurekaProgress},
-        ex_point::{ExPointChange, ExPointCommand, ExPointKind},
+        ex_point::{ExPointChange, ExPointCommand, ExPointKind, ExPointTransfer},
         gauge::{GaugeCommand, GaugeOperation},
         hp::{CurrentHpSet, HpCommand},
     },
@@ -340,17 +340,17 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
             .map(|amount| vec![ex_point(context.target_uid, -amount.max(0))]),
         BehaviorKind::AbsorbExPoint => {
             let amount = behavior.arg(0)?;
-            let removed = amount
-                .max(0)
-                .min(context.managers.ex_point.get(context.target_uid));
-            Some(if removed > 0 {
-                vec![
-                    ex_point(context.target_uid, -removed),
-                    ex_point(context.source_uid, removed),
-                ]
-            } else {
-                Vec::new()
-            })
+            Some(vec![RuleOp::Command(BattleCommand::ExPoint(
+                ExPointCommand::Transfer(ExPointTransfer {
+                    origin,
+                    source_uid: context.source_uid,
+                    from_uid: context.target_uid,
+                    to_uid: context.source_uid,
+                    amount,
+                    config_effect: behavior.config_effect,
+                    effect_type: 0,
+                }),
+            ))])
         }
         BehaviorKind::AverageLife => {
             let [0] = behavior.args.as_slice() else {
@@ -810,6 +810,10 @@ pub(super) fn supports_emitter_energy(behavior: &ParsedBehavior) -> bool {
 
 pub(super) fn supports_ex_point_loss(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [amount] if *amount > 0)
+}
+
+pub(super) fn supports_ex_point_absorption(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [amount, 0] if *amount > 0)
 }
 
 pub(super) fn supports_raspberry_add_count(behavior: &ParsedBehavior) -> bool {
