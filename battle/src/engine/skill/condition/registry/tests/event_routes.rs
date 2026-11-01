@@ -1064,3 +1064,24 @@ fn emitter_skill_condition_keeps_its_filtered_action_trigger() {
         }
     );
 }
+
+#[test]
+fn teammate_count_keeps_its_after_hit_route() {
+    for count in 0..=3 {
+        assert!(matches!(
+            parse(73210, "TeammateAliveNum", &[count.to_string()]),
+            Some(ParsedConditionKind::EntityCount {
+                scope: super::super::super::parse::EntityCountScope::AliveOtherTeammates,
+                compare: ConditionCompare::Equal,
+                count: parsed,
+            }) if parsed == count
+        ));
+    }
+    assert_eq!(
+        find_key(73210, "TeammateAliveNum").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterHit),
+        })
+    );
+}

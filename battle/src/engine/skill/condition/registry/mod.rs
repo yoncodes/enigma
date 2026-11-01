@@ -804,6 +804,7 @@ condition_definitions! {
     [73104] "TeammateAliveNum" => entity_count::teammates_up_to_three, setup_route(SetupStage::RoundStartLate, 0, &[EventKind::EntityDied]);
     [73301] "TeammateAliveNum" => entity_count::teammates_equal, event_trigger(EventKind::RoundEnd, None);
     [73203] "TeammateAliveNum" => entity_count::teammates_equal, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [73210] "TeammateAliveNum" => entity_count::teammates_up_to_three, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [583004] "AccTeamAddBuffCountByBuffId" => buff::team_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [581] "AccAddBuffCountByBuffId" => buff::owner_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [730212] "AccAddBuffCountByBuffTypeIdAllEffect" => buff::owner_added_type_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
