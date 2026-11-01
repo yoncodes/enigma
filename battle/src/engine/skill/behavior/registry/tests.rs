@@ -332,6 +332,34 @@ fn per_consume_ex_point_direct_use_skill_keeps_its_exact_five_argument_shape() {
 }
 
 #[test]
+fn consumed_buff_rate_keeps_its_exact_nonnegative_count_grammar() {
+    let definition = find_key(60034, "ConsumeBuffUpSkillDamageRate").unwrap();
+    let supports = definition.supports.unwrap();
+
+    for args in [vec![90071, 0, 600], vec![90071, 5, 1500]] {
+        assert!(supports(&ParsedBehavior::new(
+            60034,
+            "ConsumeBuffUpSkillDamageRate",
+            args,
+        )));
+    }
+    for args in [
+        vec![],
+        vec![0, 5, 600],
+        vec![90071, -1, 600],
+        vec![90071, 5, 0],
+        vec![90071, 5, 600, 1],
+    ] {
+        assert!(!supports(&ParsedBehavior::new(
+            60034,
+            "ConsumeBuffUpSkillDamageRate",
+            args,
+        )));
+    }
+    assert!(find_key(60034, "ConsumeBuffChangeTargets").is_none());
+}
+
+#[test]
 fn direct_use_big_skill_is_argumentless() {
     let definition = find_key(60175, "DirectUseBigSkill").unwrap();
     let supports = definition.supports.unwrap();
