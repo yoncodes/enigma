@@ -23,6 +23,12 @@ pub struct IndicatorCommand {
     pub config_effect: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndicatorClearCommand {
+    pub indicator_id: i32,
+    pub config_effect: i32,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct IndicatorManager {
     damage_targets: HashMap<i64, i32>,
@@ -57,6 +63,21 @@ impl IndicatorManager {
             config_effect: command.config_effect,
             reserve_id: None,
             reserve_str: None,
+        })
+    }
+
+    pub fn clear(&mut self, command: IndicatorClearCommand) -> Option<EffectMarker> {
+        (command.indicator_id > 0).then(|| {
+            self.totals.remove(&command.indicator_id);
+            EffectMarker {
+                target_uid: i64::from(command.indicator_id),
+                effect_type: sonettobuf::effect_type_enum::EffectType::Indicatorchange as i32,
+                effect_num: 0,
+                effect_num1: None,
+                config_effect: command.config_effect,
+                reserve_id: None,
+                reserve_str: None,
+            }
         })
     }
 

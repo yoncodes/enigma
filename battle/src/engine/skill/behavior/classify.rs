@@ -168,6 +168,7 @@ pub enum BehaviorKind {
     ClientEffect,
     AddMaxRound,
     AddIndicator,
+    DelIndicator,
     ProgressInitNew,
     ProgressChangeNew,
     ChangeScene,

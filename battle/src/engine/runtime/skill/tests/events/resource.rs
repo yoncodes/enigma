@@ -191,3 +191,85 @@ fn conduit_ultimate_compound_counts_only_device_ultimates() {
     ));
     assert!(emit(31440111).is_empty());
 }
+
+#[test]
+fn round_end_indicator_delete_emits_a_clear_command() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                position: Some(1),
+                current_hp: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .indicator
+        .add(crate::engine::manager::indicator::IndicatorCommand {
+            indicator_id: 42,
+            amount: 7,
+            config_effect: 60016,
+        });
+    let pool = TargetPool::from_fight(&fight);
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::new(60017, "DelIndicator", vec![42]),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = vec![ParsedCondition {
+        opcode: 98306,
+        type_name: "IndicatorNum".to_owned(),
+        kind: crate::engine::skill::condition::ParsedConditionKind::Not(Box::new(
+            crate::engine::skill::condition::ParsedConditionKind::IndicatorAtLeast {
+                indicator_id: 42,
+                threshold: 10,
+            },
+        )),
+        raw_args: vec!["42".to_owned(), "10".to_owned()],
+    }];
+    slot.compiled_route =
+        crate::engine::skill::rule::route::ConditionRoute::compile(&slot.conditions);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![slot],
+    });
+    let emit = |managers: &BattleManagers| {
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 100,
+        }
+        .into();
+        invocation.condition_key = Some(DefinitionKey::new(98306, "IndicatorNum"));
+        emit_all_ops(
+            invocation,
+            managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Event(BattleEvent::Kind(EventKind::RoundEnd)),
+        )
+        .unwrap()
+    };
+
+    let ops = emit(&managers);
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Command(BattleCommand::IndicatorClear(command))]
+            if command.indicator_id == 42 && command.config_effect == 60017
+    ));
+
+    managers
+        .indicator
+        .add(crate::engine::manager::indicator::IndicatorCommand {
+            indicator_id: 42,
+            amount: 3,
+            config_effect: 60016,
+        });
+    assert!(emit(&managers).is_empty());
+}
