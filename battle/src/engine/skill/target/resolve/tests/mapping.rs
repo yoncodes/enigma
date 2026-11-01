@@ -131,7 +131,7 @@ fn target_131_selects_a_random_other_ally() {
 }
 
 #[test]
-fn ally_slot_targets_select_positions_one_through_four() {
+fn captured_ally_slot_targets_select_exact_positions() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -147,12 +147,13 @@ fn ally_slot_targets_select_positions_one_through_four() {
     };
     let pool = TargetPool::from_fight(&fight);
 
-    for (code, uid) in [(124, 10), (125, 11), (126, 12), (127, 13)] {
+    for (code, uid) in [(124, 10), (125, 11), (127, 13)] {
         assert_eq!(
             resolve_code(code, 0, &pool, &mut RoundDeterminism::default()),
             vec![uid]
         );
     }
+    assert!(target_rule(126).is_none());
 }
 
 #[test]
