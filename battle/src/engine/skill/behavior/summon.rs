@@ -59,6 +59,14 @@ pub(super) fn supports_change_summoned_level(behavior: &ParsedBehavior) -> bool 
         && matches!(behavior.arg(1), Some(3 | 4))
 }
 
+pub(super) fn supports_add_summoned_level(behavior: &ParsedBehavior) -> bool {
+    let exact_shape =
+        behavior.raw_args.is_empty() && behavior.args.len() == 2 || behavior.raw_args.len() == 2;
+    exact_shape
+        && behavior.arg(0).is_some_and(|summoned_id| summoned_id > 0)
+        && behavior.arg(1) == Some(1)
+}
+
 impl BehaviorHandler for Handler {
     fn references(behavior: &ParsedBehavior) -> crate::engine::skill::rule::RuleReferences {
         crate::engine::skill::rule::RuleReferences {
@@ -206,6 +214,47 @@ mod tests {
                 owner_uid: 7,
                 summoned_id: 150011,
                 operation: SummonOperation::ChangeLevel { level: 4 },
+                ..
+            })))
+        ));
+    }
+
+    #[test]
+    fn add_summoned_level_requires_the_observed_single_growth() {
+        assert!(supports_add_summoned_level(&ParsedBehavior::new(
+            40011,
+            "AddSummonedLevel",
+            vec![150011, 1],
+        )));
+        for args in [vec![150011], vec![0, 1], vec![150011, 0], vec![150011, 2]] {
+            assert!(!supports_add_summoned_level(&ParsedBehavior::new(
+                40011,
+                "AddSummonedLevel",
+                args,
+            )));
+        }
+        for raw_args in [
+            vec!["150011".into(), "bad".into()],
+            vec!["150011".into(), "1".into(), "extra".into()],
+        ] {
+            assert!(!supports_add_summoned_level(&ParsedBehavior::from_spec(
+                BehaviorSpec::new(40011, "AddSummonedLevel"),
+                vec![150011, 1],
+                raw_args,
+            )));
+        }
+    }
+
+    #[test]
+    fn add_summoned_level_emits_one_configured_growth() {
+        let behavior = ParsedBehavior::new(40011, "AddSummonedLevel", vec![150011, 1]);
+
+        assert!(matches!(
+            rule_op(7, 7, &behavior),
+            Some(RuleOp::Command(BattleCommand::Summon(SummonCommand {
+                owner_uid: 7,
+                summoned_id: 150011,
+                operation: SummonOperation::AddLevel { delta: 1 },
                 ..
             })))
         ));
