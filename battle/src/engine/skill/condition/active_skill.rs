@@ -20,6 +20,14 @@ pub fn use_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind
     )?))
 }
 
+pub fn incantation_rank(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [raw_rank] = args else {
+        return None;
+    };
+    let rank = raw_rank.parse().ok()?;
+    matches!(rank, 2 | 3).then_some(ParsedConditionKind::UseSkillRank(vec![rank]))
+}
+
 pub fn hurt_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     args.is_empty().then_some(ParsedConditionKind::UseHurtSkill)
 }

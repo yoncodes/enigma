@@ -616,6 +616,42 @@ fn actor_post_hit_filter_runs_after_the_source_skill() {
 }
 
 #[test]
+fn incantation_rank_keeps_the_actor_post_hit_lane() {
+    for rank in [2, 3] {
+        assert_eq!(
+            parse(6210, "UseSkillStar", &[rank.to_string()]),
+            Some(ParsedConditionKind::UseSkillRank(vec![rank]))
+        );
+    }
+    for args in [
+        vec![],
+        vec!["1".into()],
+        vec!["4".into()],
+        vec!["2,3".into()],
+        vec!["2".into(), "3".into()],
+    ] {
+        assert_eq!(parse(6210, "UseSkillStar", &args), None);
+    }
+    let definition = find_key(6210, "UseSkillStar").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::HitPassives),
+        }
+    );
+    assert_eq!(definition.publication, PublicationPhase::BeforePublish);
+    assert_eq!(
+        definition.reaction_timing.resolve(Default::default()),
+        ReactionTiming::AfterSkill
+    );
+    assert_eq!(
+        definition.reaction_frame_target,
+        ReactionFrameTarget::CausingFrame
+    );
+}
+
+#[test]
 fn post_hit_specific_skill_is_a_filter_with_an_event_dependency() {
     let definition = find_key(66210, "UseSpecificSkill").unwrap();
 

@@ -985,6 +985,7 @@ condition_definitions! {
     [552210] "Random" => parse::random, predicate(&[]);
     [34201] "UseSkillEffectTag" => active_skill::effect_tags, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [34210] "UseSkillEffectTag" => active_skill::effect_tag, reaction_targets_causing_frame(after_skill(before_publish(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)))));
+    [6210] "UseSkillStar" => active_skill::incantation_rank, reaction_targets_causing_frame(after_skill(before_publish(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)))));
     [500203] "SkillType" => active_skill::skill_type, predicate(&[EventKind::SkillAction]);
     [500210] "SkillType" => active_skill::skill_type, predicate(&[EventKind::SkillAction]);
     [34203] "UseSkillEffectTag" => active_skill::effect_tag, event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate));
