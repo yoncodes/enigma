@@ -59,6 +59,7 @@ use distribute::*;
 pub use grant::random_buff_pool;
 use grant::{grant_command, random_pool_grant_commands};
 use layer::*;
+pub(super) use poison::supports_add_target_buff_by_poison;
 use poison::*;
 use replace::*;
 

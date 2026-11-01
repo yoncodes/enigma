@@ -686,7 +686,7 @@ behavior_definitions! {
     [50015] "UseExtraSkill" => super::use_skill::Handler, UseExtraSkill, Immediate, plain;
     [60242] "CrystalReuse" => super::use_skill::Handler, CrystalReuse, Immediate, destination, super::use_skill::supports_crystal_reuse;
     [60222] "ConsumeCardAddBuff" => super::buff::Handler, ConsumeCardAddBuff, Immediate, destination, super::buff::supports_consume_card_add_buff;
-    [60112] "AddTargetBuffByPoison" => super::buff::Handler, AddTargetBuffByPoison, AfterDamage, destination;
+    [60112] "AddTargetBuffByPoison" => super::buff::Handler, AddTargetBuffByPoison, AfterDamage, destination, super::buff::supports_add_target_buff_by_poison;
     [60142] "ConsumePowerAddBuff" => super::buff::Handler, ConsumePowerAddBuff, Immediate, destination, super::buff::supports_consume_power_add_buff;
     [60150] "ConsumePowerAddMultiBuff1" => super::buff::Handler, ConsumePowerAddMultiBuff1, Immediate, destination, super::buff::supports_consume_power_add_multi_buff;
     [1] "AddBuff" => super::buff::Handler, AddBuff, Immediate, aggregated_modifier, arguments::at_least_one;
