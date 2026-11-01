@@ -366,6 +366,43 @@ fn active_skill_status_thresholds_preserve_strictness() {
 }
 
 #[test]
+fn psychube_status_threshold_keeps_its_pre_attack_lane() {
+    for (args, threshold, status_ids) in [
+        (vec!["2".into(), "6".into()], 2, vec![6]),
+        (vec!["3".into(), "1,5".into()], 3, vec![1, 5]),
+    ] {
+        assert_eq!(
+            parse(42201, "HasTypeBuffMoreThan", &args),
+            Some(ParsedConditionKind::VisibleStackedStatusTypeCount {
+                status_ids,
+                compare: ConditionCompare::GreaterThanOrEqual,
+                threshold,
+            })
+        );
+    }
+    for args in [
+        vec!["0".into(), "6".into()],
+        vec!["4".into(), "6".into()],
+        vec!["2".into(), "0".into()],
+        vec!["2".into(), "6".into(), "extra".into()],
+    ] {
+        assert_eq!(parse(42201, "HasTypeBuffMoreThan", &args), None);
+    }
+    let definition = find_key(42201, "HasTypeBuffMoreThan").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillEffectStarted,
+            phase: Some(SkillPhase::Immediate),
+        }
+    );
+    assert_eq!(
+        definition.skill_action_trigger,
+        SkillActionTriggerPolicy::AttackOnly
+    );
+}
+
+#[test]
 fn post_hit_status_ceiling_is_inclusive() {
     assert_eq!(
         parse(

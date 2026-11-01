@@ -376,6 +376,25 @@ pub fn visible_stacked_status_types_at_least(
     })
 }
 
+pub fn visible_status_threshold(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [raw_threshold, raw_status_ids] = raw_args else {
+        return None;
+    };
+    let threshold = raw_threshold.parse().ok()?;
+    let status_ids = parse_buff_ids(std::slice::from_ref(raw_status_ids))?;
+    ((1..=3).contains(&threshold) && status_ids.iter().all(|status_id| *status_id > 0)).then_some(
+        ParsedConditionKind::VisibleStackedStatusTypeCount {
+            status_ids,
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold,
+        },
+    )
+}
+
 pub fn visible_buff_status_types_less_than(
     _: i32,
     _: &str,
