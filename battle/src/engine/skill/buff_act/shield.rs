@@ -48,10 +48,9 @@ pub fn configured_attr_rate(
                 } else {
                     layers
                 };
-                let multiplier = 1000_i32.saturating_add(per_layer.saturating_mul(layers));
                 Some((
                     AttrId::from_raw(*raw_attr)?,
-                    base_rate.saturating_mul(multiplier) / 1000,
+                    base_rate.saturating_add(per_layer.saturating_mul(layers.max(0))),
                 ))
             }
             _ => None,
@@ -127,6 +126,11 @@ mod tests {
         assert_eq!(
             configured_attr_rate(30940121, 10, &buffs),
             Some((AttrId::Attack, 1180))
+        );
+        assert_eq!(
+            configured_attr_rate(30941121, 10, &buffs),
+            Some((AttrId::Attack, 1800)),
+            "each burn adds five percentage points to the shield coefficient"
         );
         buffs.set_catalog(crate::catalog::BattleCatalog::new(
             crate::test_support::game_data(),

@@ -166,7 +166,7 @@ impl BehaviorHandler for Handler {
             BehaviorKind::AddBuffByHeroId => hero_grant_command(&context, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::DisperseForce2 => damage_window_remove_ops(&context, behavior),
-            BehaviorKind::DisperseForce3 | BehaviorKind::DisperseTypeId => {
+            BehaviorKind::DisperseForce3 | BehaviorKind::DisperseTypeId | BehaviorKind::Purify2 => {
                 remove_each_buff_family_ops(context.target_uid, behavior)
             }
             BehaviorKind::DisperseExclude => excluded_dispel_command(context.target_uid, behavior)
@@ -227,6 +227,7 @@ impl BehaviorHandler for Handler {
                     .or_else(|| heat_scale_snapshot_grant_ops(&context, behavior))
                     .or_else(|| team_energy_snapshot_grant_ops(&context, behavior))
                     .or_else(|| source_relative_attribute_snapshot_grant_ops(&context, behavior))
+                    .or_else(|| grant::fifth_chapter_last_actor_mark_ops(&context, behavior))
                     .or_else(|| {
                         grant_command(
                             context.source_uid,

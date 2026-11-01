@@ -35,6 +35,10 @@ pub fn synchronization(_: i32, _: &str, args: &[String]) -> Option<ParsedConditi
     })
 }
 
+pub fn per_eureka(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty().then_some(ParsedConditionKind::PerEureka)
+}
+
 pub fn per_ex_point(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::PerExPoint {
         threshold: first_i32(args)?,
@@ -151,6 +155,13 @@ pub fn power_consumed(_: i32, _: &str, args: &[String]) -> Option<ParsedConditio
     Some(ParsedConditionKind::PowerConsumed {
         power_id,
         max_count,
+    })
+}
+
+pub fn assist_boss_lost_power_difference(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [step, threshold] = parse_fixed(args)?;
+    (step > 0 && threshold >= 0).then_some(ParsedConditionKind::AssistBossLostPowerDifference {
+        step, threshold,
     })
 }
 

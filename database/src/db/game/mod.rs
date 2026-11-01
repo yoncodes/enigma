@@ -26,6 +26,7 @@ pub mod dice_hero;
 pub mod dungeons;
 pub mod equipment;
 pub mod explore;
+pub mod explore_runtime;
 pub mod friends;
 pub mod guides;
 pub mod handbook;

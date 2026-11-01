@@ -167,7 +167,9 @@ impl BuffManager {
                     definition
                         .features()
                         .iter()
-                        .any(|feature| feature.kind == Some(kind) && feature.arguments_supported)
+                        .any(|feature| (feature.kind == Some(kind)
+                            || (kind == BuffActKind::Poison && feature.kind == Some(BuffActKind::PowerfulPoison)))
+                            && feature.arguments_supported)
                 })
         })
     }
@@ -297,7 +299,8 @@ impl BuffManager {
                     definition
                         .features()
                         .iter()
-                        .any(|feature| feature.kind == Some(kind))
+                        .any(|feature| feature.kind == Some(kind)
+                            || (kind == BuffActKind::Poison && feature.kind == Some(BuffActKind::PowerfulPoison)))
                 })
             })
             .map(|active| count_or_layer_from(&active.buff, active.definition.as_ref()).max(1))
@@ -932,9 +935,18 @@ impl BuffManager {
     }
 
     pub fn active_features(&self, hp: &HpManager) -> Vec<ActiveBuffFeature> {
+        self.active_features_matching(hp, |_| true)
+    }
+
+    pub(crate) fn active_features_for_owner(&self, hp: &HpManager, uid: i64) -> Vec<ActiveBuffFeature> {
+        self.active_features_matching(hp, |owner| owner == uid)
+    }
+
+    fn active_features_matching(&self, hp: &HpManager, include_owner: impl Fn(i64) -> bool) -> Vec<ActiveBuffFeature> {
         let materialized = self
             .buffs
             .iter()
+            .filter(|active| include_owner(active.owner_uid))
             .filter(|active| active.effective)
             .filter_map(|active| {
                 Some((
@@ -946,6 +958,7 @@ impl BuffManager {
             .collect::<std::collections::HashSet<_>>();
         self.buffs
             .iter()
+            .filter(|active| include_owner(active.owner_uid))
             .filter(|active| active.effective)
             .flat_map(|active| {
                 let owner_alive = hp.current(active.owner_uid) > 0;

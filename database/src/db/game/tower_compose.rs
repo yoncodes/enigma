@@ -1,6 +1,7 @@
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use sonettobuf::TowerComposePlaneMods;
 use sqlx::{FromRow, Sqlite, SqlitePool, Transaction};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, FromRow)]
 pub struct TowerComposeThemeState {
@@ -103,24 +104,23 @@ pub async fn save_plane_mods(
 ) -> Result<()> {
     let now = common::time::ServerTime::now_ms();
     let mut tx = pool.begin().await?;
-
-    sqlx::query("DELETE FROM user_tower_compose_plane_mods WHERE user_id = ? AND theme_id = ?")
-        .bind(user_id)
-        .bind(theme_id)
-        .execute(&mut *tx)
-        .await?;
-
+    let mut seen = HashSet::new();
     for plane in plane_mods {
+        let plane_id = plane.plane_id.unwrap_or_default();
+        ensure!((1..=2).contains(&plane_id) && seen.insert(plane_id), "invalid or duplicate compose plane");
         sqlx::query(
             r#"
             INSERT INTO user_tower_compose_plane_mods
                 (user_id, theme_id, plane_id, mods_json, updated_at)
             VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, theme_id, plane_id) DO UPDATE SET
+                mods_json = excluded.mods_json,
+                updated_at = excluded.updated_at
             "#,
         )
         .bind(user_id)
         .bind(theme_id)
-        .bind(plane.plane_id.unwrap_or_default())
+        .bind(plane_id)
         .bind(serde_json::to_string(&plane.mods)?)
         .bind(now)
         .execute(&mut *tx)

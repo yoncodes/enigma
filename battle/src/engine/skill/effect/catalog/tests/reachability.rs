@@ -1,6 +1,122 @@
 use super::*;
 
 #[test]
+fn audit_reported_team_reachable_effects() {
+    init_config();
+    let game = config::configs::get();
+    let mut failures = Vec::new();
+    fn unsupported(kind: &ParsedConditionKind) -> bool {
+        match kind {
+            ParsedConditionKind::Unsupported(_) => true,
+            ParsedConditionKind::Any(groups) => groups.iter().flatten().any(|condition| unsupported(&condition.kind)),
+            ParsedConditionKind::Not(inner) => unsupported(inner),
+            _ => false,
+        }
+    }
+    for hero_id in [3120, 3088, 3126, 3125] {
+        let roots = game.skill.iter().filter(|row| row.hero_id == hero_id)
+            .map(|row| row.skill_effect)
+            .chain(game.skill_passive_level.iter().filter(|row| row.hero_id == hero_id)
+                .map(|row| row.skill_passive))
+            .filter(|id| *id > 0).collect::<Vec<_>>();
+        assert!(!roots.is_empty(), "missing skill roots for hero {hero_id}");
+        let catalog = SkillEffectCatalog::from_roots(game, roots, []);
+        let mut ids = catalog.effects.keys().copied().collect::<Vec<_>>();
+        ids.sort_unstable();
+        println!("hero {hero_id}: {} reachable effects", ids.len());
+        for id in ids {
+            let issues = catalog.issues(id);
+            if !issues.is_empty() {
+                failures.push(format!("hero {hero_id}, effect {id}: {issues:?}"));
+            }
+            let effect = catalog.get(id).unwrap();
+            for (index, slot) in effect.slots.iter().enumerate() {
+                if crate::engine::skill::behavior::registry::find(&slot.behavior).is_none()
+                    || !crate::engine::skill::behavior::is_supported(&slot.behavior)
+                    || !crate::engine::skill::behavior::is_slot_supported(slot)
+                    || !crate::engine::skill::behavior::has_destination(&slot.behavior)
+                    || slot.compiled_route.is_err()
+                    || slot.conditions.iter().any(|condition| unsupported(&condition.kind))
+                {
+                    failures.push(format!("hero {hero_id}, effect {id}, slot {}: behavior {:?}, route {:?}",
+                        index + 1, slot.behavior, slot.compiled_route));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn audit_reported_team_reachable_buff_acts() {
+    init_config();
+    let game = config::configs::get();
+    let mut failures = Vec::new();
+    for hero_id in [3120, 3088, 3126, 3125] {
+        let roots = game.skill.iter().filter(|row| row.hero_id == hero_id)
+            .map(|row| row.skill_effect)
+            .chain(game.skill_passive_level.iter().filter(|row| row.hero_id == hero_id)
+                .map(|row| row.skill_passive))
+            .filter(|id| *id > 0).collect::<Vec<_>>();
+        let catalog = SkillEffectCatalog::from_roots(game, roots, []);
+        println!("hero {hero_id}: {} reachable buffs", catalog.reachable_buffs.len());
+        for &buff_id in &catalog.reachable_buffs {
+            let Some(buff) = game.skill_buff.get(buff_id) else { continue; };
+            for raw in buff.features.split('|').map(str::trim).filter(|raw| !raw.is_empty()) {
+                let Some(feature) = crate::engine::skill::buff_act::registry::resolve_feature(Some(game), raw) else {
+                    failures.push(format!("hero {hero_id}, buff {buff_id}: malformed feature {raw}"));
+                    continue;
+                };
+                let Some(act_id) = feature.act_id else {
+                    failures.push(format!("hero {hero_id}, buff {buff_id}: missing feature ID {raw}"));
+                    continue;
+                };
+                let Some(act) = game.buff_act.get(act_id) else {
+                    if game.skill_buff.get(act_id).is_none() {
+                        failures.push(format!("hero {hero_id}, buff {buff_id}: missing feature {act_id}"));
+                    }
+                    continue;
+                };
+                if crate::engine::skill::buff_act::registry::find(act.id, &act.r#type).is_none()
+                    || feature.is_malformed()
+                    || crate::engine::skill::buff_act::registry::destination_for_feature(Some(game), &feature).is_none()
+                {
+                    failures.push(format!("hero {hero_id}, buff {buff_id}: feature {} {} ({raw})",
+                        act.id, act.r#type));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn audit_configured_effects_for_selected_heroes() {
+    init_config();
+    let game = config::configs::get();
+    let mut failures = Vec::new();
+    for hero_id in [3086, 3143, 3128, 3142, 3104, 3098, 3127] {
+        let roots = game.skill.iter().filter(|row| row.hero_id == hero_id)
+            .map(|row| row.skill_effect)
+            .chain(game.skill_passive_level.iter().filter(|row| row.hero_id == hero_id)
+                .map(|row| row.skill_passive))
+            .filter(|id| *id > 0).collect::<Vec<_>>();
+        assert!(!roots.is_empty());
+        let catalog = SkillEffectCatalog::from_roots(game, roots, []);
+        let mut ids = catalog.effects.keys().copied().collect::<Vec<_>>();
+        ids.sort_unstable();
+        println!("hero {hero_id}: {} reachable effects", ids.len());
+        for id in ids {
+            let issues = catalog.issues(id);
+            if !issues.is_empty() {
+                failures.push(format!("hero {hero_id}, effect {id}: {issues:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
 fn configured_behaviors_keep_their_effect_and_slot_identity() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
@@ -339,6 +455,16 @@ fn scoped_catalog_follows_buff_owned_charge_linked_skill() {
 }
 
 #[test]
+fn scoped_catalog_follows_paper_heron_emitter_replacements() {
+    init_config();
+    for (buff_id, skill_id) in [(31410402, 31410001), (31411402, 31411001)] {
+        let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [buff_id]);
+        assert!(catalog.get(skill_id).is_some());
+        assert!(catalog.issues(skill_id).is_empty(), "replacement skill has unresolved behaviors");
+    }
+}
+
+#[test]
 fn scoped_catalog_follows_configured_hero_upgrade_outcomes() {
     init_config();
     let fight = Fight {
@@ -361,4 +487,22 @@ fn scoped_catalog_follows_configured_hero_upgrade_outcomes() {
     assert!(catalog.issues(30861171).is_empty());
     assert!(catalog.compiled_subscription_lanes(30861171).is_ok());
     assert!(catalog.reachable_buffs.contains(&30860173));
+}
+
+
+#[test]
+fn audit_an_an_lee_reachable_effects() {
+    init_config();
+    let game = config::configs::get();
+    let roots = game.skill.iter().filter(|row| row.hero_id == 3039)
+        .map(|row| row.skill_effect)
+        .chain(game.skill_passive_level.iter().filter(|row| row.hero_id == 3039)
+            .map(|row| row.skill_passive))
+        .filter(|id| *id > 0).collect::<Vec<_>>();
+    let catalog = SkillEffectCatalog::from_roots(game, roots, []);
+    let mut ids = catalog.effects.keys().copied().collect::<Vec<_>>();
+    ids.sort_unstable();
+    let issues = ids.iter().flat_map(|id| catalog.issues(*id).iter().cloned()).collect::<Vec<_>>();
+    println!("An-an Lee reachable effects: {}", ids.len());
+    assert!(issues.is_empty(), "An-an Lee unsupported effects: {issues:#?}");
 }

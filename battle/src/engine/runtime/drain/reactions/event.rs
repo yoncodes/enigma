@@ -61,11 +61,20 @@ fn queued_invalid_ultimate_removal(
     if mechanic.ultimate_ready(managers, entity) {
         return None;
     }
+    let current = current?;
+    if entity.model_id == 3088 {
+        tracing::info!(moxie_before = change.before, moxie_after = change.after,
+            moxie_now = managers.ex_point.get(entity.uid),
+            required = mechanic.required_ultimate_cost(managers, entity),
+            blocked = managers.buff.has_buff_act_kind(entity.uid,
+                crate::engine::skill::buff_act::registry::BuffActKind::CantGetExskill),
+            "Semmelweis ultimate card removal queued");
+    }
     Some(QueuedOp {
         op: RuleOp::Command(BattleCommand::Card(CardCommand::SetUltimateAvailability(
             CardSetUltimateAvailability {
                 origin: ULTIMATE_AVAILABILITY_ORIGIN,
-                card: current?,
+                card: current,
                 available: false,
             },
         ))),

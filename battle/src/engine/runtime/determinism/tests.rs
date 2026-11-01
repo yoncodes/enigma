@@ -156,7 +156,7 @@ fn captured_card_energy_only_applies_to_the_matching_hand() {
 
     assert_eq!(
         determinism
-            .take_card_energy_snapshot(&hand, 4)
+            .take_card_energy_snapshot(&hand, 4, 5)
             .unwrap()
             .iter()
             .map(|card| card.energy)
@@ -177,7 +177,19 @@ fn captured_card_energy_validates_the_added_energy_not_the_total() {
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_card_energy_snapshot(vec![card(1, 10, 5), card(2, 20, 3)]);
 
-    assert!(determinism.take_card_energy_snapshot(&hand, 4).is_some());
+    assert!(determinism.take_card_energy_snapshot(&hand, 4, 5).is_some());
+}
+
+#[test]
+fn captured_card_energy_accepts_eight_only_with_an_extended_cap() {
+    let card = |energy| CardInfo { uid: Some(1), skill_id: Some(10), energy: Some(energy), ..Default::default() };
+    let hand = vec![card(0)];
+    let mut normal = RoundDeterminism::default();
+    normal.enqueue_card_energy_snapshot(vec![card(8)]);
+    assert!(normal.take_card_energy_snapshot(&hand, 8, 5).is_none());
+    let mut extended = RoundDeterminism::default();
+    extended.enqueue_card_energy_snapshot(vec![card(8)]);
+    assert!(extended.take_card_energy_snapshot(&hand, 8, 8).is_some());
 }
 
 #[test]

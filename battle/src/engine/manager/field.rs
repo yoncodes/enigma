@@ -48,6 +48,10 @@ pub enum FieldOperation {
     ResolveLevel {
         thresholds: Vec<FieldThreshold>,
     },
+    SetDefinition {
+        definition: FieldDefinition,
+        level: i32,
+    },
     Remove,
 }
 
@@ -116,6 +120,7 @@ pub enum FieldCommandError {
 pub struct FieldManager {
     states: HashMap<i32, FieldState>,
     round_transfers: HashMap<i32, i32>,
+    removed_states: HashMap<i32, FieldState>,
 }
 
 pub(crate) struct FieldPlan {
@@ -126,6 +131,10 @@ pub(crate) struct FieldPlan {
 impl FieldManager {
     pub fn get(&self, team: i32) -> Option<FieldState> {
         self.states.get(&team).copied()
+    }
+
+    pub(crate) fn removed_state(&self, team: i32) -> Option<FieldState> {
+        self.removed_states.get(&team).copied()
     }
 
     pub(crate) fn states(&self) -> impl Iterator<Item = FieldState> + '_ {
@@ -156,7 +165,7 @@ impl FieldManager {
         let Some(entity_team) = pool.team_type(uid) else {
             return 0;
         };
-        self.states()
+        let shared = self.states()
             .filter_map(|state| {
                 let definition = catalog.magic_circle(state.definition.field_id)?;
                 Some(if state.team == entity_team {
@@ -169,7 +178,32 @@ impl FieldManager {
             .filter_map(|(configured_attr, delta)| {
                 (configured_attr == attr_id as i32).then_some(delta)
             })
-            .sum()
+            .sum::<i32>();
+        let emitter = if uid == crate::engine::manager::emitter::UID {
+            self.emitter_features(catalog, entity_team)
+                .into_iter()
+                .filter_map(|feature| match feature.values.as_slice() {
+                    [100, attr, delta] if *attr == attr_id as i32 => Some(*delta),
+                    _ => None,
+                })
+                .sum()
+        } else {
+            0
+        };
+        shared + emitter
+    }
+
+    pub(crate) fn emitter_features(
+        &self,
+        catalog: crate::catalog::BattleCatalog,
+        team: i32,
+    ) -> Vec<crate::catalog::ConfiguredBuffFeature> {
+        self.get(team)
+            .and_then(|state| catalog.magic_circle(state.definition.field_id))
+            .into_iter()
+            .flat_map(|definition| definition.emitter_buffs)
+            .flat_map(|buff_id| catalog.buff_features(buff_id))
+            .collect()
     }
 
     pub(crate) fn plan_command(
@@ -208,7 +242,7 @@ impl FieldManager {
                 initial_level,
                 mut thresholds,
             } => {
-                if definition.field_id <= 0 || create_uid == 0 || definition.duration < 0 {
+                if definition.field_id <= 0 || create_uid == 0 || definition.duration < -1 {
                     return Err(FieldCommandError::InvalidCommand);
                 }
                 validate_thresholds(&thresholds)?;
@@ -248,7 +282,9 @@ impl FieldManager {
                     .states
                     .get_mut(&command.team)
                     .ok_or(FieldCommandError::MissingField(command.team))?;
-                state.definition.duration = state.definition.duration.saturating_add(delta).max(0);
+                if state.definition.duration >= 0 {
+                    state.definition.duration = state.definition.duration.saturating_add(delta).max(0);
+                }
                 (FieldChangeKind::Duration, delta, 0)
             }
             FieldOperation::ResolveLevel { mut thresholds } => {
@@ -274,10 +310,21 @@ impl FieldManager {
                 state.terminal_progress = terminal_progress(&thresholds);
                 (FieldChangeKind::Level, 0, 0)
             }
+            FieldOperation::SetDefinition { definition, level } => {
+                if definition.field_id <= 0 || definition.duration < -1 || level < 0 {
+                    return Err(FieldCommandError::InvalidCommand);
+                }
+                let state = self.states.get_mut(&command.team)
+                    .ok_or(FieldCommandError::MissingField(command.team))?;
+                state.definition = definition;
+                state.level = level;
+                (FieldChangeKind::Level, 0, 0)
+            }
             FieldOperation::Remove => {
-                self.states
+                let removed = self.states
                     .remove(&command.team)
                     .ok_or(FieldCommandError::MissingField(command.team))?;
+                self.removed_states.insert(command.team, removed);
                 (FieldChangeKind::Removed, 0, 0)
             }
         };
@@ -315,7 +362,7 @@ fn validate_thresholds(thresholds: &[FieldThreshold]) -> Result<(), FieldCommand
         threshold.level <= 0
             || threshold.progress < 0
             || threshold.definition.field_id <= 0
-            || threshold.definition.duration < 0
+            || threshold.definition.duration < -1
     }) {
         return Err(FieldCommandError::InvalidCommand);
     }

@@ -168,6 +168,7 @@ mod tests {
 
     fn event(mode: SkillExecutionMode) -> BattleEvent {
         BattleEvent::SkillAction(SkillActionEvent {
+            card_index: 0,
             source_uid: 10,
             skill_id: 1,
             target_uid: -1,

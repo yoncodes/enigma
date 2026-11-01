@@ -121,6 +121,10 @@ impl BattleState {
             .unwrap_or_default()
     }
 
+    pub fn reconnect_cards(&self) -> Option<CardInfoPush> {
+        self.active.as_ref().map(ActiveBattle::card_info_push)
+    }
+
     pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> Result<AutoRoundReply, AppError> {
         Ok(self
             .active
@@ -158,6 +162,8 @@ struct BattleCheckpoint {
     seed: u64,
     tower_context: Option<crate::logic::battle_setup::tower::BattleContext>,
     act229_context: Option<Act229BattleContext>,
+    #[serde(default)]
+    compose_data: Option<::battle::dungeon::compose::ComposeFightData>,
     #[serde(default)]
     rounds: Vec<CommittedRound>,
     #[serde(default)]
@@ -197,6 +203,7 @@ pub struct ActiveBattle {
     pub(crate) start_request: Option<StartDungeonRequest>,
     pub(crate) tower_context: Option<crate::logic::battle_setup::tower::BattleContext>,
     pub(crate) act229_context: Option<Act229BattleContext>,
+    pub(crate) compose_data: Option<::battle::dungeon::compose::ComposeFightData>,
     pub(crate) rounds: Vec<CommittedRound>,
     pub(crate) pending_cloth_skill_opers: Vec<UseClothSkillRequest>,
 }
@@ -227,6 +234,7 @@ impl Default for ActiveBattle {
             start_request: None,
             tower_context: None,
             act229_context: None,
+            compose_data: None,
             rounds: Vec::new(),
             pending_cloth_skill_opers: Vec::new(),
         }
@@ -277,7 +285,10 @@ impl ActiveBattle {
             .fight_group
             .as_ref()
             .ok_or(AppError::InvalidRequest)?;
-        let built = crate::logic::battle_setup::dungeon::build_fight(
+        let compose_data = crate::tower_compose::battle_data(
+            pool, player_id, episode_id, request.params.as_deref(),
+        ).await?;
+        let mut built = crate::logic::battle_setup::dungeon::build_fight(
             pool,
             player_id,
             episode_id,
@@ -290,6 +301,11 @@ impl ActiveBattle {
             request.params.as_deref(),
         )
         .await?;
+        if let Some(data) = &compose_data {
+            ::battle::dungeon::compose::apply_to_built(
+                ::battle::catalog::BattleCatalog::new(config::configs::get()), &mut built, data,
+            )?;
+        }
         let seed = initial_battle_seed(pool, player_id, episode_id, use_record).await?;
         Self::prepare_from_built(request, built, None, None, Some(seed))
     }
@@ -418,6 +434,43 @@ impl ActiveBattle {
         Ok(consumed)
     }
 
+    /// Exploration encounters have their own persisted context and no normal
+    /// episode entry cost. Bind both records in a single transaction.
+    pub async fn activate_explore(
+        &mut self,
+        pool: &SqlitePool,
+        player_id: i64,
+        pending: &crate::logic::explore_battle::PendingBattle,
+    ) -> Result<(), AppError> {
+        let layout = config::explore_layout::layout(pending.map_id)?
+            .ok_or(AppError::InvalidRequest)?;
+        if self.fight_id.is_some() || pending.fight_id.is_some()
+            || self.battle_id != pending.battle_id || self.episode_id != layout.episode_id
+            || self.chapter_id != layout.chapter_id
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        let checkpoint = self.checkpoint_json()?;
+        let entry_cost = serde_json::to_string(&RewardSet::default())?;
+        let mut tx = pool.begin().await?;
+        let fight_id = battle::create_fight_instance_in_transaction(
+            &mut tx,
+            battle::NewFightInstance {
+                user_id: player_id,
+                episode_id: self.episode_id,
+                battle_id: self.battle_id,
+                multiplication: 1,
+                entry_cost: &entry_cost,
+                checkpoint: &checkpoint,
+                created_at: ServerTime::now_ms(),
+            },
+        ).await?;
+        crate::logic::explore_battle::bind_fight(&mut tx, player_id, pending, fight_id).await?;
+        tx.commit().await?;
+        self.fight_id = Some(fight_id);
+        Ok(())
+    }
+
     fn from_built_with_seed(
         episode_id: i32,
         battle_id: i32,
@@ -444,6 +497,7 @@ impl ActiveBattle {
         let assist_boss_level = attacker
             .and_then(|team| team.assist_boss.as_ref())
             .and_then(|boss| boss.level);
+        let compose_data = ::battle::dungeon::compose::ComposeFightData::from_fight(&built.fight);
         let runtime = ::battle::Battle::start(
             ::battle::catalog::BattleCatalog::new(config::configs::get()),
             built,
@@ -474,6 +528,7 @@ impl ActiveBattle {
             start_request: Some(request),
             tower_context,
             act229_context,
+            compose_data,
             rounds: Vec::new(),
             pending_cloth_skill_opers: Vec::new(),
         })
@@ -502,7 +557,7 @@ impl ActiveBattle {
                 AppError::InvalidBattleCheckpoint("start request has no fight group".into())
             })?;
         let use_record = checkpoint.start_request.use_record.unwrap_or(false);
-        let built = if let Some(context) = checkpoint.tower_context {
+        let mut built = if let Some(context) = checkpoint.tower_context {
             crate::logic::battle_setup::tower::build_fight(
                 pool,
                 player_id,
@@ -531,6 +586,15 @@ impl ActiveBattle {
             )
             .await?
         };
+        if let Some(data) = &checkpoint.compose_data {
+            ::battle::dungeon::compose::apply_to_built(
+                ::battle::catalog::BattleCatalog::new(config::configs::get()), &mut built, data,
+            )?;
+        } else {
+            crate::tower_compose::prepare_fight_data(
+                &mut built.fight, episode_id, checkpoint.start_request.params.as_deref(),
+            )?;
+        }
         let mut active = Self::from_built_with_seed(
             episode_id,
             record.battle_id,
@@ -553,6 +617,7 @@ impl ActiveBattle {
             seed: self.seed,
             tower_context: self.tower_context,
             act229_context: self.act229_context,
+            compose_data: self.compose_data.clone(),
             rounds: self.rounds.clone(),
             pending_cloth_skill_opers: self.pending_cloth_skill_opers.clone(),
         })?)

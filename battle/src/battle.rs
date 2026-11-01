@@ -109,6 +109,56 @@ mod tests {
     use crate::engine::fight::rules::{ATTACKER_SIDE_UID, OwnedBattleSkill};
 
     #[test]
+    fn joe_euphoria_and_device_party_start_with_their_real_configured_skills() {
+        use crate::dungeon::{BattleFighter, BattleRoster, FightOptions, HeroBuildInput};
+        let catalog = BattleCatalog::new(crate::test_support::game_data());
+        let fighters = [(3094, 309401, 4, 309401), (3149, 314901, 0, 0)]
+            .into_iter().enumerate().map(|(index, (hero_id, skin, destiny_rank, destiny_stone))| BattleFighter {
+                hero: HeroBuildInput { uid: 30_000_001 + index as i64, user_id: 1, hero_id, skin,
+                    level: 180, rank: 4, ex_skill_level: 5, talent: 15, destiny_rank, destiny_stone,
+                    ..Default::default() }, equips: vec![],
+            }).collect::<Vec<_>>();
+        let group = sonettobuf::FightGroup {
+            hero_list: fighters.iter().map(|fighter| fighter.hero.uid).collect(), ..Default::default()
+        };
+        let roster = BattleRoster { user_id: 1, fighters, ..Default::default() };
+        let built = crate::dungeon::build_fight(catalog, &roster, 20411, 2411,
+            &group, FightOptions::default(), None).unwrap();
+        let joe = built.fight.attacker.as_ref().unwrap().entitys.iter()
+            .find(|hero| hero.model_id == Some(3094)).expect("J must be in the team");
+        assert!(joe.passive_skill.iter().any(|id| [30941141, 30941142, 30941143].contains(id)));
+        assert!(joe.skill_group2.contains(&30941124), "J must use the evolved shield card");
+        let battle = Battle::start(catalog, built, 42).expect("J and the device team must enter battle");
+        let joe = battle.entity_info(30_000_001).unwrap();
+        assert!(joe.buffs.iter().any(|buff| buff.buff_id == Some(30940001)),
+            "J's evolved burn protection must be applied by the real passive");
+    }
+
+    #[test]
+    fn fifth_chapter_ninth_stage_starts_with_its_configured_enemies() {
+        use crate::dungeon::{BattleFighter, BattleRoster, FightOptions, HeroBuildInput};
+        let catalog = BattleCatalog::new(crate::test_support::game_data());
+        let fighters = [(3079, 307901), (3053, 305301), (3039, 303901)]
+            .into_iter().enumerate().map(|(index, (hero_id, skin))| BattleFighter {
+                hero: HeroBuildInput { uid: 30_000_001 + index as i64, user_id: 1,
+                    hero_id, skin, level: 60, rank: 2, ex_skill_level: 1, ..Default::default() },
+                equips: vec![],
+            }).collect::<Vec<_>>();
+        let group = sonettobuf::FightGroup {
+            hero_list: fighters.iter().map(|fighter| fighter.hero.uid).collect(),
+            ..Default::default()
+        };
+        let roster = BattleRoster { user_id: 1, fighters, ..Default::default() };
+        let built = crate::dungeon::build_fight(catalog, &roster, 10509, 1508,
+            &group, FightOptions::default(), None).unwrap();
+        let enemies = built.fight.defender.as_ref().unwrap().entitys.iter()
+            .filter_map(|enemy| enemy.model_id).collect::<Vec<_>>();
+        assert_eq!(enemies, vec![150801, 150802, 150803]);
+        let battle = Battle::start(catalog, built, 42).expect("5TH-9 opening must not reject target 2001");
+        assert_eq!(battle.current_round(), 1);
+    }
+
+    #[test]
     fn start_preserves_runtime_setup_order() {
         let catalog = BattleCatalog::new(crate::test_support::game_data());
         let fight = Fight {
@@ -163,4 +213,58 @@ mod tests {
         assert_eq!(actual.reconnect_state(), expected.reconnect_state());
         assert_eq!(actual.outcome(), expected.outcome());
     }
+
+    #[test]
+    fn upgraded_an_an_party_can_start_on_a_server_sized_worker_stack() {
+        std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(|| {
+            use crate::dungeon::{BattleFighter, BattleRoster, FightOptions, HeroBuildInput};
+            let catalog = BattleCatalog::new(crate::test_support::game_data());
+            let specs = [(3141, 0, 0, 314102), (3146, 0, 0, 314602),
+                (3053, 4, 305301, 305304), (3039, 4, 303902, 303904)];
+            let fighters = specs.into_iter().enumerate().map(|(index, (hero_id, destiny_rank, destiny_stone, skin))| {
+                BattleFighter { hero: HeroBuildInput { uid: 20_000_001 + index as i64,
+                    user_id: 1, hero_id, skin, level: 180, rank: 4, ex_skill_level: 5,
+                    talent: 15, destiny_rank, destiny_stone, ..Default::default() }, equips: vec![] }
+            }).collect::<Vec<_>>();
+            let group = sonettobuf::FightGroup { hero_list: fighters.iter().map(|fighter| fighter.hero.uid).collect(),
+                ..Default::default() };
+            let roster = BattleRoster { user_id: 1, fighters, ..Default::default() };
+            let built = crate::dungeon::build_fight(catalog, &roster, 2290109, 116380000,
+                &group, FightOptions::default(), None).unwrap();
+            let battle = Battle::start(catalog, built, 42).unwrap();
+            assert_eq!(battle.current_round(), 1);
+        }).unwrap().join().unwrap();
+    }
+
+    #[test]
+    fn reported_four_hero_party_starts_a_configured_battle() {
+        std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(|| {
+            use crate::dungeon::{BattleFighter, BattleRoster, FightOptions, HeroBuildInput};
+            let catalog = BattleCatalog::new(crate::test_support::game_data());
+            let specs = [(3120, 312001), (3088, 308801), (3126, 312601), (3125, 312501)];
+            for (level, rank, ex_skill_level, talent) in [(1, 1, 1, 0), (180, 4, 5, 15)] {
+                let fighters = specs.into_iter().enumerate().map(|(index, (hero_id, skin))| {
+                    BattleFighter { hero: HeroBuildInput {
+                        uid: 30_000_001 + index as i64, user_id: 1, hero_id, skin,
+                        level, rank, ex_skill_level, talent, ..Default::default()
+                    }, equips: vec![] }
+                }).collect::<Vec<_>>();
+                let group = sonettobuf::FightGroup {
+                    hero_list: fighters.iter().map(|fighter| fighter.hero.uid).collect(),
+                    cloth_id: Some(7), ..Default::default()
+                };
+                let roster = BattleRoster { user_id: 1, fighters, ..Default::default() };
+                // This ordinary episode allows four player-controlled heroes.
+                let built = crate::dungeon::build_fight(catalog, &roster, 20411, 2411,
+                    &group, FightOptions::default(), None).unwrap();
+                let models = built.fight.attacker.as_ref().unwrap().entitys.iter()
+                    .filter_map(|entity| entity.model_id).collect::<Vec<_>>();
+                for (hero_id, _) in specs { assert!(models.contains(&hero_id), "hero {hero_id} was not included"); }
+                let battle = Battle::start(catalog, built, 42)
+                    .unwrap_or_else(|error| panic!("rank {rank} team could not start: {error}"));
+                assert_eq!(battle.current_round(), 1);
+            }
+        }).unwrap().join().unwrap();
+    }
+
 }

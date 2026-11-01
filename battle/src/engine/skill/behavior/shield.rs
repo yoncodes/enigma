@@ -14,7 +14,8 @@ use crate::engine::{
 pub(super) struct Handler;
 pub(super) struct ChildUidHandler;
 
-type ShieldFormula = (i32, AttrId, i32, AttrId, i32, Option<(AttrId, i32)>);
+type LayerBonus = (i32, i32, i32);
+type ShieldFormula = (i32, AttrId, i32, AttrId, i32, Option<(AttrId, i32)>, Option<LayerBonus>);
 
 fn formula(behavior: &ParsedBehavior) -> Option<ShieldFormula> {
     match behavior.args.as_slice() {
@@ -24,6 +25,7 @@ fn formula(behavior: &ParsedBehavior) -> Option<ShieldFormula> {
             *rate,
             AttrId::from_raw(*raw_max_attr)?,
             *max_rate,
+            None,
             None,
         )),
         [
@@ -42,6 +44,20 @@ fn formula(behavior: &ParsedBehavior) -> Option<ShieldFormula> {
             AttrId::from_raw(*raw_max_attr)?,
             *max_rate,
             Some((AttrId::from_raw(*raw_bonus_attr)?, *bonus_rate)),
+            None,
+        )),
+        [
+            buff_id, raw_attr, rate, _, raw_max_attr, max_rate, raw_bonus_attr,
+            bonus_rate, tracked_buff, per_layer, layer_cap,
+        ] if *buff_id > 0 && *rate > 0 && *max_rate > 0 && *bonus_rate == 0
+            && *tracked_buff > 0 && *per_layer > 0 && (*layer_cap == -1 || *layer_cap > 0) => Some((
+            *buff_id,
+            AttrId::from_raw(*raw_attr)?,
+            *rate,
+            AttrId::from_raw(*raw_max_attr)?,
+            *max_rate,
+            Some((AttrId::from_raw(*raw_bonus_attr)?, *bonus_rate)),
+            Some((*tracked_buff, *per_layer, *layer_cap)),
         )),
         _ => None,
     }
@@ -88,7 +104,14 @@ fn emit_ops(
     behavior: &ParsedBehavior,
     carrier_uid: ShieldCarrierUid,
 ) -> Option<Vec<RuleOp>> {
-    let (buff_id, amount_attr, rate, max_attr, max_rate, multiplier_bonus) = formula(behavior)?;
+    let (buff_id, amount_attr, rate, max_attr, max_rate, multiplier_bonus, layer_bonus) = formula(behavior)?;
+    let rate = if let Some((tracked_buff, per_layer, cap)) = layer_bonus {
+        let layers = context.managers.buff.buff_id_or_type_amount(context.source_uid, tracked_buff);
+        let layers = if cap < 0 { layers } else { layers.min(cap) }.max(0);
+        rate.saturating_add(per_layer.saturating_mul(layers))
+    } else {
+        rate
+    };
     Some(vec![RuleOp::Command(BattleCommand::Shield(
         ShieldCommand {
             origin: super::command_origin(behavior)?,
@@ -112,7 +135,9 @@ fn emit_ops(
 
 fn references(behavior: &ParsedBehavior) -> RuleReferences {
     RuleReferences {
-        buffs: behavior.arg(0).into_iter().collect(),
+        buffs: behavior.arg(0).into_iter().chain(
+            (behavior.args.len() == 11).then(|| behavior.arg(8)).flatten()
+        ).collect(),
         ..Default::default()
     }
 }

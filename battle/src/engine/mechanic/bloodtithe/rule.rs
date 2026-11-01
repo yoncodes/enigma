@@ -1,4 +1,3 @@
-use super::shared_blood_pool_tag_owner_count;
 use crate::engine::{
     event::payload::GaugeChangeEvent,
     manager::{
@@ -40,8 +39,10 @@ pub fn enable_rule_op(
     {
         return None;
     }
-    let enablers = shared_blood_pool_tag_owner_count(team, features);
-    if enablers <= 0 {
+    // Different bloodtithe heroes can grant different tag buff IDs. Any live
+    // team tag enables the shared gauge; the IDs need not be identical.
+    if !features.iter().any(|feature| feature.team_type == team && feature.owner_alive
+        && buff_act::is_kind(feature, BuffActKind::BloodPoolTag)) {
         return None;
     }
     let origin = buff_act::feature_command_origin(enabler)?;
@@ -259,5 +260,20 @@ mod tests {
             ))
             .unwrap();
         assert!(enable_rule_ops(&managers, &features).is_empty());
+    }
+
+    #[test]
+    fn different_blood_pool_tag_buffs_still_enable_the_team_gauge() {
+        let feature = |uid, buff_id| ActiveBuffFeature {
+            owner_uid: uid, source_uid: uid, buff_uid: uid, buff_id, amount: 1,
+            team_type: 1, owner_alive: true, act_type: "BloodPoolTag".to_owned(),
+            effect_time: 0, effect_condition: 0, raw: "953".to_owned(), values: vec![953],
+        };
+        let features = [feature(10, 6270501), feature(11, 31250131)];
+        let managers = BattleManagers::default();
+        let operations = enable_rule_ops(&managers, &features);
+        assert_eq!(operations.len(), 1);
+        assert!(matches!(&operations[0], RuleOp::Command(BattleCommand::Gauge(command))
+            if command.key == key(1) && matches!(command.operation, GaugeOperation::Enable { .. })));
     }
 }

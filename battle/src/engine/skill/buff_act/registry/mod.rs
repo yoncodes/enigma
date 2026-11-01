@@ -128,6 +128,7 @@ pub enum BuffActKind {
     AttrFromEntityNoLayer,
     AttrOnlyCalDamageAttack,
     AttrOnlyCalDamageAttackBigSkill,
+    UltimateAttr,
     AttrOnlyCalDamageBeAttacked,
     AttrOnlyCalDamageBeAttackedType,
     AttrOnlyCalDamageInExtra,
@@ -155,6 +156,8 @@ pub enum BuffActKind {
     Bullet,
     Burn,
     BurnRealHurtFix,
+    ImmunityBurn,
+    LockBurn,
     CardLimitAdd,
     CardLevelAdd,
     CardNotCalSize,
@@ -166,12 +169,16 @@ pub enum BuffActKind {
     ContractCastChannel,
     NoneCastChannel,
     ConsumeBuffAddBuffContinueChannel,
+    ConsumeCurBuffAndAuraAddBuff,
+    ChangeEmitterSkill,
+    EmitterChangeDmgType,
     ConsumeBuffContinueChannel,
     ControlTeamInjuryCountRound,
     CountContinueChannel,
     ConduitCardSelection,
     CreateAdditionalDamage,
     CreateHeroTempCards,
+    AddTempEnchantCard,
     CreateTempSkill3Card,
     CreateMaxHpAdditionalDamageAndRemove,
     CritRateAlter2,
@@ -198,6 +205,11 @@ pub enum BuffActKind {
     EmitterCardAllocateChange,
     EmitterCareerChange,
     EmitterDamageUp,
+    EmitterExtraDamage,
+    TeamPerPowerAddBuff,
+    ToothFairyFantasy,
+    EmitterAttackNumLimitFixDamage,
+    RecordReplaceWqMagicCircle,
     EmitterEnergyAddBuff,
     EmitterFixSubTargetsDamageReduceRate,
     EmitterNumChange,
@@ -208,9 +220,11 @@ pub enum BuffActKind {
     EachChangeAttr,
     EachChangeAttrOneWay,
     ExPointAddByHit,
+    ExPointFix,
     ExPointDel,
     ExPointCardMove,
     ExPointCantAdd,
+    PowerUnobtainable,
     ExSkillPointChange,
     ExPointMaxAdd,
     SpExPointMaxAdd,
@@ -265,6 +279,12 @@ pub enum BuffActKind {
     PowerMaxAdd,
     PaperCircleContinueChannel,
     Poison,
+    ExtraPoisonSettlement,
+    EnemyExitNumAddBuff,
+    PowerfulPoison,
+    PowerfulPoisonRemoveDamage,
+    ProbabilityAddBuff,
+    LockPoison,
     PoisonSettleCanCrit,
     Provoke,
     RaspberryBigSkill,
@@ -302,6 +322,7 @@ pub enum BuffActKind {
     TransferAddExPoint,
     TransferEnergyBuff,
     UseSkillTeamAddEmitterEnergy,
+    UseSkillConsumeFromAddEmitterEnergy,
     UseSkillAttrFix,
     UseSkillLoseHpNotFixed,
     UseCardFixExPoint,
@@ -734,6 +755,9 @@ buff_act_definitions! {
     (1001, "AttrOnlyCalDamageAttackBigSkill") => AttrOnlyCalDamageAttackBigSkill,
         effect_time_subscription: false,
         supports: |args| matches!(args, [_, _, consume, ..] if *consume != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1001, "AttrOnlyCalDamageAttackBigSkill"), &[EffectType::Attr as i32]));
+    (108, "Attr") => UltimateAttr, effect_time_subscription: false,
+        supports: super::attr_only_cal_damage_attack::supports_extra_action, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(108, "Attr"), &[EffectType::Attr as i32]));
     (112, "AttrOnlyCalDamageBeAttacked") => AttrOnlyCalDamageBeAttacked,
         effect_time_subscription: false,
         supports: super::attr_only_cal_damage_attack::supports_be_attacked, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(112, "AttrOnlyCalDamageBeAttacked"), &[EffectType::None as i32]));
@@ -754,6 +778,10 @@ buff_act_definitions! {
         scoped_runtime: |context| super::add_sp_temp_card::hero_skill_subscriber_rule_ops(context.pool, context.subscriber, context.event?),
         supports: super::add_sp_temp_card::supports_hero_skill,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(739, "CreateHeroTempCards"), &[EffectType::None as i32]));
+    (1106, "AddTempEnchantCard") => AddTempEnchantCard,
+        scoped_runtime: |context| super::add_sp_temp_card::enchanted_hero_skill_rule_ops(context.managers, context.pool, context.subscriber, context.event?),
+        supports: super::add_sp_temp_card::supports_enchanted_hero_skill,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1106, "AddTempEnchantCard"), &[EffectType::None as i32]));
     (10015, "CreateTempSkill3Card") => CreateTempSkill3Card,
         scoped_runtime: |context| super::add_sp_temp_card::configured_skill3_subscriber_rule_ops(
             context.subscriber,
@@ -851,6 +879,14 @@ buff_act_definitions! {
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(607, "ExPointCardMove"), &[EffectType::Expointcardmove as i32]));
     (603, "ExPointCantAdd") => ExPointCantAdd,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(603, "ExPointCantAdd"), &[EffectType::Expointcantadd as i32]));
+    (885, "PowerUnobtainable") => PowerUnobtainable,
+        effect_time_subscription: false, supports: |args| matches!(args, [id] if *id > 0), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(885, "PowerUnobtainable"), &[]));
+    (304, "ExPointFix") => ExPointFix, effect_time_subscription: false,
+        events: [EventKind::TargetAttacked],
+        runtime: |context| super::ex_point_fix::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::ex_point_fix::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(304, "ExPointFix"), &[]));
     (604, "BuffRoundAdd") => BuffRoundAdd, effect_time_subscription: false,
         supports: super::buff_round_add::supports, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(604, "BuffRoundAdd"), &[]));
@@ -947,6 +983,31 @@ buff_act_definitions! {
     (803, "Poison") => Poison, stat_read: OnGrant,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(803, "Poison"), &[EffectType::Poison as i32]));
+    (810, "LockPoison") => LockPoison,
+        effect_time_subscription: false, supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(810, "LockPoison"), &[EffectType::None as i32]));
+    (809, "ProbabilityAddBuff") => ProbabilityAddBuff,
+        runtime: |context| super::probability_add_buff::rule_ops(context.managers, context.determinism, context.subscriber, context.event?),
+        supports: super::probability_add_buff::supports, references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(809, "ProbabilityAddBuff"), &[EffectType::None as i32]));
+    (1110, "SettleDotAndCostDotDuration") => ExtraPoisonSettlement,
+        runtime: |context| super::extra_poison_settlement::rule_ops(context.managers, context.pool, context.determinism, context.subscriber),
+        supports: |args| matches!(args, [1, 1]),
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1110, "SettleDotAndCostDotDuration"), &[EffectType::None as i32]));
+    (1107, "EnemyExitNumAddBuff") => EnemyExitNumAddBuff,
+        events: [EventKind::EntityDied],
+        runtime: |context| super::enemy_exit_num_add_buff::rule_ops(context.managers, context.pool, context.subscriber, context.event?),
+        supports: |args| matches!(args, [buff_id] if *buff_id > 0), references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1107, "EnemyExitNumAddBuff"), &[EffectType::None as i32]));
+    (1105, "PowerfulPoison") => PowerfulPoison,
+        runtime: |context| super::powerful_poison::settlement_ops(context.managers, context.pool, context.determinism, context.subscriber, true),
+        supports: |args| matches!(args, [base, growth] if *base > 0 && *growth >= 0),
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1105, "PowerfulPoison"), &[EffectType::None as i32]));
+    (1108, "PowerfulPoisonRemoveDamage") => PowerfulPoisonRemoveDamage,
+        effect_time_subscription: false, events: [EventKind::BuffRemoved],
+        runtime: |context| super::powerful_poison::expiration_ops(context.managers, context.pool, context.determinism, context.subscriber, context.event?),
+        supports: |args| matches!(args, [rate] if *rate > 0),
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1108, "PowerfulPoisonRemoveDamage"), &[EffectType::None as i32]));
     (812, "PoisonSettleCanCrit") => PoisonSettleCanCrit,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(812, "PoisonSettleCanCrit"), &[EffectType::Poisonsettlecancrit as i32]));
     (846, "DuduBoneContinueChannel") => DuduBoneContinueChannel,
@@ -1017,6 +1078,12 @@ buff_act_definitions! {
     (791, "ShieldByBuffLayer") => ShieldByBuffLayer, effect_time_subscription: false,
         supports: super::shield::supports_by_buff_layer, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(791, "ShieldByBuffLayer"), &[EffectType::Shield as i32]));
+    (1151, "ImmunityBurn") => ImmunityBurn, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1151, "ImmunityBurn"), &[EffectType::None as i32]));
+    (858, "LockBurn") => LockBurn, effect_time_subscription: false,
+        supports: |args| matches!(args, [id] if *id > 0), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(858, "LockBurn"), &[EffectType::Lockburn as i32]));
     (793, "BurnRealHurtFix") => BurnRealHurtFix, effect_time_subscription: false,
         supports: |args| matches!(args, [modifier, floor]
             if (-1000..=1000).contains(modifier) && (0..=1000).contains(floor)),
@@ -1204,6 +1271,23 @@ buff_act_definitions! {
         publication: BeforePublish, frame: CausingFrame,
         runtime: |context| super::use_skill_team_add_emitter_energy::rule_ops(context.managers, context.subscriber, context.event?, context.catalog),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(881, "UseSkillTeamAddEmitterEnergy"), &[EffectType::Useskillteamaddemitterenergy as i32]));
+    (1082, "UseSkillConsumeFromAddEmitterEnergy") => UseSkillConsumeFromAddEmitterEnergy,
+        publication: BeforePublish, frame: CausingFrame,
+        runtime: |context| super::use_skill_consume_from_add_emitter_energy::rule_ops(context.managers, context.subscriber, context.event?, context.catalog),
+        supports: super::use_skill_consume_from_add_emitter_energy::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1082, "UseSkillConsumeFromAddEmitterEnergy"), &[EffectType::None as i32]));
+    (1077, "ConsumeCurBuffAndAuraAddBuff") => ConsumeCurBuffAndAuraAddBuff,
+        publication: BeforePublish, frame: CausingFrame,
+        runtime: |context| super::consume_current_buff_and_eureka::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: |args| matches!(args, [1, 2, 31410203, 2]), references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1077, "ConsumeCurBuffAndAuraAddBuff"), &[EffectType::None as i32]));
+    (1079, "ChangeEmitterSkill") => ChangeEmitterSkill, effect_time_subscription: false,
+        supports: |args| matches!(args, [skill] if *skill > 0), references: references_for_feature,
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1079, "ChangeEmitterSkill"), &[EffectType::None as i32]));
+    (1092, "EmitterChangeDmgType") => EmitterChangeDmgType, effect_time_subscription: false,
+        supports: |args| matches!(args, [1] | [2]), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1092, "EmitterChangeDmgType"), &[EffectType::None as i32]));
     (882, "FixAttrTeamEnergy") => FixAttrTeamEnergy, effect_time_subscription: false,
         stat_read: OnGrant,
         supports: |args| super::fix_attr_team_energy::supports(BuffActKind::FixAttrTeamEnergy, args), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(882, "FixAttrTeamEnergy"), &[EffectType::Fixattrteamenergy as i32]));
@@ -1443,7 +1527,26 @@ buff_act_definitions! {
         supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1070, "HeatScaleAddFix"), &[EffectType::None as i32]));
     (1075, "CardLimitAdd") => CardLimitAdd, effect_time_subscription: false,
         supports: |args| matches!(args, [delta] if *delta != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1075, "CardLimitAdd"), &[EffectType::None as i32]));
-    (1081, "EmitterFixSubTargetsDamageReduceRate") => EmitterFixSubTargetsDamageReduceRate;
+    (1080, "EmitterAttackNumLimitFixDamage") => EmitterAttackNumLimitFixDamage,
+        effect_time_subscription: false,
+        supports: |args| matches!(args, [count, rate, overflow] if *count > 0 && *rate >= 0 && *overflow >= 0), state_consumer: true;
+    (1081, "EmitterFixSubTargetsDamageReduceRate") => EmitterFixSubTargetsDamageReduceRate,
+        effect_time_subscription: false,
+        supports: |args| matches!(args, [correction] if *correction >= 0), state_consumer: true;
+    (1085, "TeamPerPowerAddBuff") => TeamPerPowerAddBuff,
+        runtime: |context| super::tooth_fairy_fantasy::power_ops(context.managers, context.pool, context.subscriber, context.event?),
+        supports: |args| matches!(args, [1, 1, 4, id] if *id > 0), references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1085, "TeamPerPowerAddBuff"), &[EffectType::None as i32]));
+    (1086, "ToothFairyFantasy") => ToothFairyFantasy,
+        runtime: |context| super::tooth_fairy_fantasy::round_ops(context.managers, context.pool, context.subscriber, context.event?),
+        supports: super::tooth_fairy_fantasy::supports, parser: super::tooth_fairy_fantasy::parse_feature,
+        references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1086, "ToothFairyFantasy"), &[EffectType::None as i32]));
+    (1087, "EmitterExtraDamage") => EmitterExtraDamage,
+        effect_time_subscription: false,
+        supports: |args| matches!(args, [rate] if *rate > 0), state_consumer: true;
+    (1084, "RecordReplaceWqMagicCircle") => RecordReplaceWqMagicCircle,
+        effect_time_subscription: false, supports: |args| args.is_empty(), state_consumer: true;
     (1114, "HeatScaleBurnAddFix") => HeatScaleBurnAddFix;
     (1125, "TeamShareShield") => TeamShareShield, effect_time_subscription: false,
         supports: super::team_share_shield::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1125, "TeamShareShield"), &[]));
@@ -1524,6 +1627,12 @@ fn references_for_feature(
         }
     };
     match feature.kind {
+        Some(BuffActKind::TeamPerPowerAddBuff) => add_buff(&mut references, feature.args.get(3).copied()),
+        Some(BuffActKind::ToothFairyFantasy) => {
+            for index in [0, 3, 5, 6, 7, 8, 9] { add_buff(&mut references, feature.args.get(index).copied()); }
+        }
+        Some(BuffActKind::ConsumeCurBuffAndAuraAddBuff) => add_buff(&mut references, feature.values.get(3).copied()),
+        Some(BuffActKind::ChangeEmitterSkill) => add_skill(&mut references, feature.values.get(1).copied()),
         Some(BuffActKind::SubBuff) => add_buff(&mut references, feature.values.get(1).copied()),
         Some(BuffActKind::MasterHalo) => add_buff(&mut references, feature.values.get(2).copied()),
         Some(BuffActKind::BuffReplace) => add_buff(&mut references, feature.values.get(2).copied()),
@@ -1570,6 +1679,8 @@ fn references_for_feature(
                     *skill_id > 0 && game.is_some_and(|game| game.skill.get(*skill_id).is_some())
                 }))
         }
+        Some(BuffActKind::ProbabilityAddBuff) => add_buff(&mut references, feature.values.get(2).copied()),
+        Some(BuffActKind::EnemyExitNumAddBuff) => add_buff(&mut references, feature.values.get(1).copied()),
         Some(BuffActKind::AdrenalineAddCard) => {
             if let Some(raw) = feature.raw_cells.get(2)
                 && let Ok(skills) = raw

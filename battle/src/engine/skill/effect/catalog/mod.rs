@@ -17,6 +17,7 @@ use crate::engine::{
 #[derive(Debug, Clone, Default)]
 pub struct SkillEffectCatalog {
     effects: HashMap<i32, ParsedSkillEffect>,
+    subscription_lanes: HashMap<i32, Result<Vec<(usize, SubscriptionKey)>, crate::engine::skill::rule::route::RouteError>>,
     aliases: HashMap<i32, i32>,
     effect_tags: HashMap<i32, i32>,
     logic_targets: HashMap<i32, i32>,
@@ -71,6 +72,7 @@ impl RuleIssueReason {
 
 impl SkillEffectCatalog {
     pub fn insert(&mut self, effect: ParsedSkillEffect) {
+        self.subscription_lanes.insert(effect.skill_id, Self::compile_subscription_lanes(&effect));
         self.effects.insert(effect.skill_id, effect);
     }
 
@@ -462,10 +464,16 @@ impl SkillEffectCatalog {
     pub fn compiled_subscription_lanes(
         &self,
         skill_id: i32,
-    ) -> Result<Vec<(usize, SubscriptionKey)>, crate::engine::skill::rule::route::RouteError> {
+    ) -> Result<&[(usize, SubscriptionKey)], crate::engine::skill::rule::route::RouteError> {
         let Some(effect) = self.get(skill_id) else {
-            return Ok(Vec::new());
+            return Ok(&[]);
         };
+        self.subscription_lanes[&effect.skill_id].as_deref().map_err(Clone::clone)
+    }
+
+    fn compile_subscription_lanes(
+        effect: &ParsedSkillEffect,
+    ) -> Result<Vec<(usize, SubscriptionKey)>, crate::engine::skill::rule::route::RouteError> {
         let mut lanes = Vec::new();
         for (slot_index, slot) in effect.slots.iter().enumerate() {
             for subscription in slot.compiled_subscriptions()? {

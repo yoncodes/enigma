@@ -86,6 +86,15 @@ mod tests {
     use crate::engine::skill::condition::{buff::BuffConditionMode, none::NoneMode};
 
     #[test]
+    fn tuesday_magic_circle_condition_triggers_at_round_end() {
+        let condition = ParsedCondition {
+            opcode: 542301, type_name: "InMagicCircleId".to_owned(),
+            kind: ParsedConditionKind::InMagicCircleId(vec![22100003]), raw_args: vec!["22100003".into()],
+        };
+        assert_eq!(condition.timing(), ConditionTiming::Event(EventKind::SmallRoundEnd));
+    }
+
+    #[test]
     fn subscriptions_keep_event_and_exact_opcode() {
         let conditions = [
             ParsedCondition {

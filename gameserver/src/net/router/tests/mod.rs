@@ -52,9 +52,13 @@ async fn complete_teaching(pool: &SqlitePool, player_id: i64, teaching_id: i32) 
 }
 
 mod activity_events;
+mod activity107;
 mod activity_pass;
 mod activity_rewards;
 mod arcade;
+mod battle_team;
+mod explore;
 mod progression;
 mod social;
 mod teaching;
+mod weekwalk;

@@ -34,6 +34,7 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
         "DirectUseSkillCard",
         vec![21, 0],
     ));
+    let extra = emit(&ParsedBehavior::new(50015, "UseExtraSkill", vec![23310111]));
 
     assert!(matches!(
         direct.as_slice(),
@@ -51,6 +52,16 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
         card.as_slice(),
         [RuleOp::Skill(invocation)]
             if invocation.plan.skill_id == 21
+                && invocation.target
+                    == crate::engine::skill::action::SkillTarget::Configured
+                && invocation.mode
+                    == crate::engine::skill::action::SkillExecutionMode::Active
+    ));
+    assert!(matches!(
+        extra.as_slice(),
+        [RuleOp::Skill(invocation)]
+            if invocation.plan.source_uid == -1
+                && invocation.plan.skill_id == 23310111
                 && invocation.target
                     == crate::engine::skill::action::SkillTarget::Configured
                 && invocation.mode

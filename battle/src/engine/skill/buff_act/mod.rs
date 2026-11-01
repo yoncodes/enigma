@@ -31,6 +31,8 @@ pub mod attr_only_cal_damage_attack;
 pub mod attr_only_cal_damage_hp_replace_attack;
 pub mod attr_only_cal_damage_replace_attr_ad_creator;
 pub mod be_attack_by_emitter_damage;
+pub mod tooth_fairy_fantasy;
+pub mod emitter_extra_damage;
 pub mod bendith;
 pub mod big_skill_no_use_action_point;
 pub mod blood_pool;
@@ -46,6 +48,7 @@ pub mod cast_channel;
 pub mod change_remove_buff_use_skill_param;
 pub mod conduit_select;
 pub mod consume_buff_add_buff_continue_channel;
+pub mod consume_current_buff_and_eureka;
 pub mod contract_cast_channel;
 pub mod control_team_injury_count_round;
 pub mod count_continue_channel;
@@ -65,6 +68,10 @@ pub mod disperse_by_tag;
 pub mod dodge_spec_skill;
 pub mod dot_no_limit;
 pub mod dudu_bone_continue_channel;
+pub mod probability_add_buff;
+pub mod extra_poison_settlement;
+pub mod enemy_exit_num_add_buff;
+pub mod powerful_poison;
 pub mod each_change_attr;
 pub mod each_change_attr_one_way;
 pub mod effect_time;
@@ -76,6 +83,7 @@ pub mod emitter_num_change;
 pub mod emitter_rend_target;
 pub mod emitter_tag;
 pub mod ex_point_add_by_hit;
+pub mod ex_point_fix;
 pub mod ex_point_del;
 pub mod ex_point_overflow_bank;
 pub mod fix_attr_by_sub_buff_layer;
@@ -123,6 +131,7 @@ pub mod use_damage_skill_add_to_target;
 pub mod use_skill;
 pub mod use_skill_modifier;
 pub mod use_skill_team_add_emitter_energy;
+pub mod use_skill_consume_from_add_emitter_energy;
 pub mod wire;
 
 use crate::engine::{
@@ -910,6 +919,9 @@ pub fn attack_attribute_delta_for_skill(
             attr_only_cal_damage_attack::attribute_delta(feature, attr_id)
         }
         Some(registry::BuffActKind::AttrOnlyCalDamageAttackBigSkill) if is_big_skill => {
+            attr_only_cal_damage_attack::attribute_delta(feature, attr_id)
+        }
+        Some(registry::BuffActKind::UltimateAttr) if is_big_skill => {
             attr_only_cal_damage_attack::attribute_delta(feature, attr_id)
         }
         Some(registry::BuffActKind::AttrOnlyCalDamageInExtra) if extra_action => {

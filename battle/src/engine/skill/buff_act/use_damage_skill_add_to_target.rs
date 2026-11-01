@@ -162,6 +162,7 @@ mod tests {
         let mut catalog = SkillEffectCatalog::default();
         catalog.insert_damage_rate(100, 1_000);
         let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+            card_index: 0,
             source_uid: 10,
             skill_id: 100,
             target_uid: -1,

@@ -522,6 +522,7 @@ mod tests {
             ..Default::default()
         });
         let event = BattleEvent::SkillAction(SkillActionEvent {
+            card_index: 0,
             source_uid: 99_998,
             skill_id: 2_240_001,
             target_uid: -1,

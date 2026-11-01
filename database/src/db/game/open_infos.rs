@@ -67,6 +67,16 @@ pub async fn reconcile_progression_in_transaction(
     .await?
     .into_iter()
     .collect::<HashSet<_>>();
+    // The client-facing episode and its progression-chain id may differ.
+    // Treat an alias as completed only when its corresponding episode was cleared.
+    let completed_episodes = completed_episodes_with_chain_aliases(
+        &completed_episodes,
+        config::configs::get()
+            .episode
+            .iter()
+            .filter(|episode| episode.chain_episode > 0)
+            .map(|episode| (episode.id, episode.chain_episode)),
+    );
     let finished_elements = sqlx::query_scalar::<_, i32>(
         "SELECT element_id FROM user_dungeon_elements WHERE user_id = ? AND is_finished = 1",
     )
@@ -157,4 +167,36 @@ pub async fn get_open_info(pool: &SqlitePool, user_id: i64, open_id: i32) -> Res
             id: open_id,
             is_open: false,
         }))
+}
+
+fn completed_episodes_with_chain_aliases(
+    completed: &HashSet<i32>,
+    aliases: impl IntoIterator<Item = (i32, i32)>,
+) -> HashSet<i32> {
+    let mut result = completed.clone();
+    for (episode_id, alias_id) in aliases {
+        if completed.contains(&episode_id) && alias_id > 0 {
+            result.insert(alias_id);
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::completed_episodes_with_chain_aliases;
+    use std::collections::HashSet;
+
+    #[test]
+    fn only_cleared_episodes_grant_their_chain_alias() {
+        let cleared = HashSet::from([10503]);
+        let result = completed_episodes_with_chain_aliases(
+            &cleared,
+            [(10503, 503), (10504, 504), (10503, 0)],
+        );
+        assert!(result.contains(&10503));
+        assert!(result.contains(&503));
+        assert!(!result.contains(&504));
+        assert!(!result.contains(&0));
+    }
 }

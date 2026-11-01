@@ -73,8 +73,56 @@ pub struct ConfiguredBattleRule {
 
 pub fn configured(fight: &Fight) -> Vec<ConfiguredBattleRule> {
     crate::catalog::BattleCatalog::try_global()
-        .map(|catalog| catalog.battle_rules(fight))
+        .map(|catalog| configured_with_catalog(catalog, fight))
         .unwrap_or_default()
+}
+
+pub(crate) fn configured_with_catalog(
+    catalog: crate::catalog::BattleCatalog, fight: &Fight,
+) -> Vec<ConfiguredBattleRule> {
+    let mut rules = catalog.battle_rules(fight);
+    let Some(data) = crate::dungeon::compose::ComposeFightData::from_fight(fight) else { return rules; };
+    let tables = catalog.game_data();
+    for component in data.mod_ids().filter_map(|id| tables.tower_compose_mod.get(id)) {
+        for change in component.rule_change.split('|').filter(|part| !part.is_empty()) {
+            let Some((old, replacement)) = change.split_once(':') else { continue; };
+            let Ok(old) = old.parse::<i32>() else { continue; };
+            let Some(position) = rules.iter().position(|rule| rule.rule_id == old) else { continue; };
+            rules.retain(|rule| rule.rule_id != old);
+            let replacements = expanded_rules(catalog, replacement);
+            rules.splice(position.min(rules.len())..position.min(rules.len()), replacements);
+        }
+        rules.extend(expanded_rules(catalog, &component.rule_add));
+    }
+    if let Some(research) = tables.tower_compose_research.get(data.research_id)
+        .filter(|research| research.theme_id == data.theme_id)
+    {
+        rules.extend(expanded_rules(catalog, &research.addition_rule));
+    }
+    rules.extend(crate::dungeon::compose::default_research_skills(tables, &data)
+        .into_iter().map(|skill_id| ConfiguredBattleRule {
+            rule_id: skill_id,
+            skill_id,
+            side: BattleRuleSide::Attacker,
+            rule_type: AdditionRuleType::Skill,
+        }));
+    rules
+}
+
+fn expanded_rules(catalog: crate::catalog::BattleCatalog, raw: &str) -> Vec<ConfiguredBattleRule> {
+    let tables = catalog.game_data();
+    raw.split('|').filter_map(|entry| {
+        let (side, id) = entry.split_once('#')?;
+        let side = BattleRuleSide::from_id(side.parse().ok()?)?;
+        let id = id.parse::<i32>().ok()?;
+        let row = tables.rule.get(id)?;
+        let rule_type = AdditionRuleType::from_id(row.r#type)?;
+        Some((side, id, row, rule_type))
+    }).flat_map(|(side, rule_id, row, rule_type)| {
+        row.effect.split(['#', '|']).filter_map(|value| value.parse::<i32>().ok())
+            .filter(|skill_id| tables.skill.get(*skill_id).is_some())
+            .map(move |skill_id| ConfiguredBattleRule { rule_id, skill_id, side, rule_type })
+    }).collect()
 }
 
 pub fn configured_fight_skills(fight: &Fight) -> impl Iterator<Item = ConfiguredBattleRule> {

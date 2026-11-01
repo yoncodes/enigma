@@ -113,10 +113,16 @@ pub fn for_skills(
 }
 
 pub fn for_active_buffs(managers: &BattleManagers, event: EventKind) -> Vec<BuffActSubscriber> {
-    let mut subscribers = managers
-        .buff
-        .active_features(&managers.hp)
-        .into_iter()
+    let features = managers.buff.active_features(&managers.hp);
+    for_active_buff_features(managers, &features, event)
+}
+
+fn for_active_buff_features(
+    managers: &BattleManagers,
+    features: &[crate::engine::manager::buff::ActiveBuffFeature],
+    event: EventKind,
+) -> Vec<BuffActSubscriber> {
+    let mut subscribers = features.iter()
         .filter_map(|feature| {
             let (&act_id, args) = feature.values.split_first()?;
             let definition = buff_act::registry::find(act_id, &feature.act_type)?;
@@ -150,11 +156,11 @@ pub fn for_active_buffs(managers: &BattleManagers, event: EventKind) -> Vec<Buff
                     buff_act::registry::runtime_publication(act_id, &feature.act_type, event),
                 )
                 .with_timing(definition.runtime.reaction_timing),
-                act_type: feature.act_type,
+                act_type: feature.act_type.clone(),
                 effect_time: feature.effect_time,
                 effect_condition: feature.effect_condition,
                 args: args.to_vec(),
-                raw: feature.raw,
+                raw: feature.raw.clone(),
             })
         })
         .collect::<Vec<_>>();
@@ -318,7 +324,7 @@ pub fn for_compiled_event(
         skills: collect_event_skills(pool, managers, catalog, &[event], |skill_id| {
             catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
                 lanes
-                    .into_iter()
+                    .iter().copied()
                     .map(|(slot, key)| (Some(slot), key))
                     .collect()
             })
@@ -333,26 +339,44 @@ pub fn for_compiled_events(
     catalog: &SkillEffectCatalog,
     events: impl IntoIterator<Item = EventKind>,
 ) -> Result<EventSubscribers, SubscriberError> {
+    for_compiled_selected_events(pool, managers, catalog, events, None, true, true)
+}
+
+pub(crate) fn for_compiled_selected_events(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    events: impl IntoIterator<Item = EventKind>,
+    owner_uids: Option<&[i64]>,
+    include_skills: bool,
+    include_buff_acts: bool,
+) -> Result<EventSubscribers, SubscriberError> {
     let events = events.into_iter().collect::<Vec<_>>();
     // One owner's skills answer an event in their own order, whichever kind each slot listens on.
     let mut merged = EventSubscribers {
-        skills: collect_event_skills(pool, managers, catalog, &events, |skill_id| {
+        skills: if include_skills { collect_event_skills(pool, managers, catalog, &events, |skill_id| {
             catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
                 lanes
-                    .into_iter()
+                    .iter().copied()
                     .map(|(slot, key)| (Some(slot), key))
                     .collect()
             })
-        })?,
+        })? } else { Vec::new() },
         buff_acts: Vec::new(),
     };
-    for event in events {
-        let subscribers = for_compiled_event(pool, managers, catalog, event)?;
-        for buff_act in subscribers.buff_acts {
+    let features = if include_buff_acts { managers.buff.active_features(&managers.hp) } else { Vec::new() };
+    for event in events.into_iter().filter(|_| include_buff_acts) {
+        let mut buff_acts = for_active_buff_features(managers, &features, event);
+        buff_acts.extend(for_configured_buff_acts(pool, managers, catalog, event));
+        for buff_act in buff_acts {
             if !merged.buff_acts.contains(&buff_act) {
                 merged.buff_acts.push(buff_act);
             }
         }
+    }
+    if let Some(owners) = owner_uids {
+        retain_in_owner_order(&mut merged.skills, owners, |subscriber| subscriber.owner_uid);
+        retain_in_owner_order(&mut merged.buff_acts, owners, |subscriber| subscriber.owner_uid);
     }
     Ok(merged)
 }
@@ -495,7 +519,7 @@ pub(crate) fn for_compiled_skill_event(
         &|skill_id| {
             catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
                 lanes
-                    .into_iter()
+                    .iter().copied()
                     .map(|(slot, key)| (Some(slot), key))
                     .collect()
             })

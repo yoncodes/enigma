@@ -270,17 +270,11 @@ pub(crate) fn dispatch_selected_event(
     selection: DispatchSelection<'_>,
     multiplicity: Option<&mut DispatchMultiplicity<'_>>,
 ) -> Result<DispatchBatch, SubscriberError> {
-    let mut subscribers = if let Some(owner_uids) = selection.owner_uids {
-        subscriber::for_compiled_owner_events(
-            pool,
-            managers,
-            catalog,
-            event.subscription_kinds(),
-            owner_uids,
-        )?
-    } else {
-        subscriber::for_compiled_events(pool, managers, catalog, event.subscription_kinds())?
-    };
+    let mut subscribers = subscriber::for_compiled_selected_events(
+        pool, managers, catalog, event.subscription_kinds(), selection.owner_uids,
+        !matches!(selection.lane, Some(ReactionLane::BuffActs | ReactionLane::BuffActsBeforeSettlement | ReactionLane::BuffActsAfterSettlement)),
+        !matches!(selection.lane, Some(ReactionLane::Skills)),
+    )?;
     if let Some(publication) = selection.publication {
         retain_publication(&mut subscribers, publication);
     }
@@ -624,7 +618,9 @@ fn retain_observing_subscribers(
         });
         subscribers
             .buff_acts
-            .retain(|subscriber| subscriber.owner_uid == death.target_uid);
+            .retain(|subscriber| subscriber.owner_uid == death.target_uid
+                || buff_act::subscriber_kind(subscriber)
+                    == Some(buff_act::registry::BuffActKind::EnemyExitNumAddBuff));
     }
 }
 

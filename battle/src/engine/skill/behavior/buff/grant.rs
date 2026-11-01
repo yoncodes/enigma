@@ -1,5 +1,32 @@
 use super::*;
 
+// This enemy's mark designates the last acting opponent. Move the mark from
+// its previous holder before granting it to the current actor.
+pub(super) fn fifth_chapter_last_actor_mark_ops(
+    context: &BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    if behavior.effect_id != 1141011 || behavior.arg(0) != Some(11410111) {
+        return None;
+    }
+    let origin = super::command_origin(behavior)?;
+    let mut ops = context.pool.enemies(context.source_uid, true).iter()
+        .filter(|enemy| enemy.uid != context.target_uid)
+        .flat_map(|enemy| context.managers.buff.active_for(enemy.uid).filter_map(move |buff| {
+            (buff.buff_id == Some(11410111) && buff.from_uid == Some(context.source_uid))
+                .then(|| buff.uid.map(|uid| (enemy.uid, uid))).flatten()
+        }))
+        .map(|(target_uid, uid)| RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(
+            BuffRemove { origin, target_uid, selector: BuffRemoveSelector::Uid(uid) },
+        ))))
+        .collect::<Vec<_>>();
+    ops.push(RuleOp::Command(BattleCommand::Buff(grant_command(
+        context.source_uid, context.target_uid, context.transfer_count.max(0) as u32,
+        context.event, behavior,
+    )?)));
+    Some(ops)
+}
+
 pub(super) fn grant_command(
     source_uid: i64,
     target_uid: i64,
@@ -68,15 +95,23 @@ pub(super) fn random_pool_grant_commands(
         .collect::<Vec<_>>();
     let mut ops = Vec::new();
     for _ in 0..((*count).max(0) as usize).min(candidates.len()) {
-        let index = context
+        // AddBuffRanTypeId prioritizes types the target does not already have,
+        // then refreshes existing types if the requested count is larger.
+        let missing = if definition.kind == BehaviorKind::AddBuffRanTypeId {
+            candidates.iter().copied().filter(|buff_id| {
+                let type_id = context.managers.catalog().buff_type_id(*buff_id);
+                let key = if type_id > 0 { type_id } else { *buff_id };
+                !context.managers.buff.has_active_buff_id_or_type(context.target_uid, key)
+            }).collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let available = if missing.is_empty() { &candidates } else { &missing };
+        let chosen = context
             .determinism
-            .take_random_buff(&candidates)
-            .and_then(|buff_id| {
-                candidates
-                    .iter()
-                    .position(|candidate| *candidate == buff_id)
-            })
-            .or_else(|| context.determinism.lua_random_index(candidates.len()))?;
+            .take_random_buff(available)
+            .or_else(|| context.determinism.lua_random_index(available.len()).map(|index| available[index]))?;
+        let index = candidates.iter().position(|buff_id| *buff_id == chosen)?;
         let buff_id = candidates.remove(index);
         ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
             BuffGrant {

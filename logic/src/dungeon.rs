@@ -564,6 +564,16 @@ pub fn completion_rewards(
     let tables = config::configs::get();
     let cost = episode_cost_value(episode);
     let mut normal_rewards = reward::parse_bonus_with_cost(episode.bonus, cost);
+    // The Temporary Scale battle stages store their fixed repeat-clear rewards
+    // in `reward` rather than the older `bonus` field. Its story, easy and
+    // hard groups have been checked against the shipped reward tables.
+    if matches!(episode.chapter_id, 38_101 | 38_301 | 38_401)
+        && episode.battle_id > 0
+        && episode.bonus == 0
+        && episode.reward > 0
+    {
+        normal_rewards.extend(reward::parse_reward_id_with_cost(episode.reward, cost));
+    }
     if tables.is_breakthrough_episode(episode) {
         normal_rewards.extend(reward::parse(&episode.reward_list));
     }

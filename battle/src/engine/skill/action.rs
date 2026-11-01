@@ -87,6 +87,8 @@ pub enum SkillLifecycle {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillActionEvent {
+    /// The action's card index; zero when no card was played.
+    pub card_index: i32,
     pub source_uid: i64,
     pub skill_id: i32,
     pub target_uid: i64,
@@ -139,6 +141,7 @@ pub struct ActionEvent {
     pub teammate_injury_count_not_reset: i32,
     pub team_injury_count_round: i32,
     pub card_enchants: Vec<i32>,
+    pub buff_addition_targets: Vec<(i64, i32, i32)>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

@@ -142,7 +142,7 @@ impl EntityBuilder {
             equip_uid: Some(primary_equip_uid),
             trial_equip: Some(EquipRecord::default()),
             ex_skill_level: Some(hero.ex_skill_level),
-            power_infos: Self::hero_power_infos(game, hero.hero_id),
+            power_infos: Self::hero_power_infos(game, hero.hero_id, hero.destiny_stone, hero.destiny_rank),
             ex_skill_point_change: Some(0),
             team_type: Some(self.team_type),
             enhance_info_box: Some(EnhanceInfoBox {
@@ -187,11 +187,23 @@ impl EntityBuilder {
         position: i32,
         team_type: i32,
     ) -> Result<(FightEntityInfo, Stats)> {
+        Self::configured_trial_with_ex_level(catalog, trial_id, uid, position, team_type, None)
+    }
+
+    pub(crate) fn configured_trial_with_ex_level(
+        catalog: crate::catalog::BattleCatalog,
+        trial_id: i32,
+        uid: i64,
+        position: i32,
+        team_type: i32,
+        ex_level: Option<i32>,
+    ) -> Result<(FightEntityInfo, Stats)> {
         let tables = catalog.game_data();
         let trial = tables
             .hero_trial
             .get(trial_id)
             .with_context(|| format!("unknown trial hero {trial_id}"))?;
+        let ex_level = ex_level.unwrap_or(trial.ex_skill_lv);
         let character = tables
             .character
             .get(trial.hero_id)
@@ -231,8 +243,14 @@ impl EntityBuilder {
                 );
         }
         let attr = stats.base();
+        let trial_hero = HeroBuildInput {
+            hero_id: trial.hero_id, rank, ex_skill_level: ex_level,
+            destiny_stone: trial.facets_id, destiny_rank: trial.facetslevel,
+            ..Default::default()
+        };
+        let destiny = Destiny::exchanges(tables, trial.facets_id, trial.facetslevel);
         let (skill_group1, skill_group2, configured_ex_skill) =
-            Skill::active_skills(tables, trial.hero_id, rank, trial.ex_skill_lv);
+            Skill::loadout(tables, &trial_hero, false, destiny.as_ref());
         let (ex_point_type, ex_point_max) = Self::ex_point_spec(
             tables,
             trial.hero_id,
@@ -243,7 +261,7 @@ impl EntityBuilder {
         let device_owned = crate::catalog::configured_conduit_device_id_for_rank(
             tables,
             trial.hero_id,
-            trial.ex_skill_lv,
+            ex_level,
             trial.facets_id,
             trial.facetslevel,
         )
@@ -259,7 +277,7 @@ impl EntityBuilder {
             tables,
             trial.hero_id,
             rank,
-            trial.ex_skill_lv,
+            ex_level,
             (trial.equip_id != 0).then_some((trial.equip_id, trial.equip_refine.max(1))),
             (trial.facets_id != 0).then_some((trial.facets_id, trial.facetslevel)),
         );
@@ -307,8 +325,8 @@ impl EntityBuilder {
                     refine_lv: Some(trial.equip_refine),
                     break_lv: None,
                 }),
-                ex_skill_level: Some(trial.ex_skill_lv),
-                power_infos: Self::hero_power_infos(tables, trial.hero_id),
+                ex_skill_level: Some(ex_level),
+                power_infos: Self::hero_power_infos(tables, trial.hero_id, trial.facets_id, trial.facetslevel),
                 ex_skill_point_change: Some(0),
                 team_type: Some(team_type),
                 enhance_info_box: Some(EnhanceInfoBox {
@@ -429,8 +447,8 @@ impl EntityBuilder {
         game.character.get(hero_id).map(|c| c.career).unwrap_or(0)
     }
 
-    fn hero_power_infos(game: &config::GameDB, hero_id: i32) -> Vec<PowerInfo> {
-        game.character
+    fn hero_power_infos(game: &config::GameDB, hero_id: i32, facets_id: i32, rank: i32) -> Vec<PowerInfo> {
+        let mut powers = game.character
             .get(hero_id)
             .into_iter()
             .flat_map(|c| parse_power_specs(&c.power_max))
@@ -440,7 +458,24 @@ impl EntityBuilder {
                 num: Some(0),
                 max: Some(max),
             })
-            .collect()
+            .collect::<Vec<_>>();
+        // Facet rows repeat the cumulative maximum at each level, so select the
+        // latest eligible row instead of adding every previously unlocked row.
+        if facets_id > 0 && rank > 0 && Destiny::stones(game, hero_id).contains(&facets_id) {
+            if let Some(row) = game.character_destiny_facets.iter()
+                .filter(|row| row.facets_id == facets_id && row.level > 0 && row.level <= rank && !row.power_add.trim().is_empty())
+                .max_by_key(|row| row.level) {
+                for (power_id, added_max) in parse_power_specs(&row.power_add) {
+                    if power_id <= 0 || added_max <= 0 { continue; }
+                    if let Some(power) = powers.iter_mut().find(|power| power.power_id == Some(power_id)) {
+                        power.max = Some(power.max.unwrap_or_default().saturating_add(added_max));
+                    } else {
+                        powers.push(PowerInfo { power_id: Some(power_id), num: Some(0), max: Some(added_max) });
+                    }
+                }
+            }
+        }
+        powers
     }
 }
 
@@ -460,6 +495,30 @@ mod tests {
         input::{EquipmentBuildInput, HeroBuildInput},
         stats::Stats,
     };
+
+    #[test]
+    fn euphoria_adds_its_configured_eureka_capacity_once_for_owned_and_trial_heroes() {
+        crate::test_support::init_config();
+        let game = crate::test_support::game_data();
+        for (hero, facet) in [(3048,304801), (3041,304101), (3025,302501), (3039,303902)] {
+            assert!(EntityBuilder::hero_power_infos(game, hero, facet, 0).is_empty());
+            for level in 1..=4 {
+                let powers = EntityBuilder::hero_power_infos(game, hero, facet, level);
+                assert_eq!(powers.len(), 1);
+                assert_eq!((powers[0].power_id, powers[0].num, powers[0].max), (Some(1), Some(0), Some(5)));
+            }
+        }
+        for (rank, max) in [(0,5), (1,10), (4,10)] {
+            let powers = EntityBuilder::hero_power_infos(game, 3053, 305301, rank);
+            assert_eq!((powers[0].power_id, powers[0].max), (Some(1), Some(max)));
+        }
+        assert_eq!(EntityBuilder::hero_power_infos(game, 3079, 307901, 4)[0].max, Some(5));
+        assert!(EntityBuilder::hero_power_infos(game, 3048, 305301, 4).is_empty());
+        let (trial, _) = EntityBuilder::trial(2241003, 123, 1, 1).unwrap();
+        assert!(trial.power_infos.iter().any(|power| power.power_id == Some(1) && power.max == Some(5)));
+        let (six, _) = EntityBuilder::trial(9341002, 124, 1, 1).unwrap();
+        assert_eq!(six.skill_group2, vec![307901213, 307901223, 307901233]);
+    }
 
     #[test]
     fn catalog_attached_builder_matches_the_legacy_entry_point() {

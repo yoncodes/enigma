@@ -199,6 +199,8 @@ fn normalizes_magic_circle_attributes_and_thresholds() {
             allied_buffs: Vec::new(),
             enemy_buffs: Vec::new(),
             self_skills: Vec::new(),
+            emitter_skills: Vec::new(),
+            emitter_buffs: Vec::new(),
         })
     );
     assert_eq!(
@@ -230,6 +232,19 @@ fn normalizes_magic_circle_attributes_and_thresholds() {
             },
         ]
     );
+}
+
+#[test]
+fn paper_heron_circle_keeps_emitter_rules_separate_from_team_rules() {
+    crate::test_support::init_config();
+    let catalog = BattleCatalog::new(crate::test_support::game_data());
+    let circle = catalog.magic_circle(45004).unwrap();
+    assert_eq!(circle.emitter_skills, vec![31414153]);
+    assert_eq!(circle.emitter_buffs, vec![31413601, 31415602, 31410603, 31413604]);
+    assert!(circle.allied_attributes.is_empty());
+    assert!(circle.allied_buffs.is_empty());
+    assert_eq!(parse_emitter_circle_effect("2:null,31414153,31413601"), (vec![], vec![]));
+    assert_eq!(parse_emitter_circle_effect("1:3141,31414153,31413601"), (vec![], vec![]));
 }
 
 #[test]
@@ -425,6 +440,9 @@ fn normalizes_cloth_power_and_skill_terms() {
         }),
         ..Default::default()
     };
+    assert_eq!(catalog.cloth_initial_power(Some(6)), Some(25));
+    assert_eq!(catalog.cloth_initial_power(Some(1)), Some(15));
+    assert_eq!(catalog.cloth_initial_power(Some(-1)), None);
     assert_eq!(
         catalog.cloth_power(&fight),
         ClothPower::for_fight(crate::test_support::game_data(), &fight)

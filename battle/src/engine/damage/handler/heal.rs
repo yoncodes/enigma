@@ -170,6 +170,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn noncritical_missing_hp_heal_uses_one_quarter_of_the_targets_missing_hp() {
+        crate::test_support::init_config();
+        let fight = sonettobuf::Fight { defender: Some(sonettobuf::FightTeam {
+            entitys: vec![sonettobuf::FightEntityInfo { uid: Some(-2), current_hp: Some(250),
+                attr: Some(sonettobuf::HeroAttribute { hp: Some(1000), ..Default::default() }),
+                ..Default::default() }], ..Default::default()
+        }), ..Default::default() };
+        let managers = BattleManagers::seeded(&fight);
+        let behavior = ParsedBehavior::new(20016, "HealCantCrit", vec![1, 99, 250]);
+        assert_eq!(attribute_amount(-1, -2, &managers, &behavior), Some(187));
+    }
+
+    #[test]
     fn healing_modifiers_settle_before_the_final_multiplier() {
         let mut managers = BattleManagers::default();
 

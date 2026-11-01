@@ -78,6 +78,10 @@ pub(super) fn supports_direct_skill_card(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [skill_id, 0] if *skill_id > 0)
 }
 
+pub(super) fn supports_use_extra_skill(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [skill_id] if *skill_id > 0)
+}
+
 pub(super) fn supports_group_and_star_skill(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [group, star, ..] if match group {
         1 | 2 => (1..=3).contains(star),
@@ -422,6 +426,24 @@ impl BehaviorHandler for Handler {
                 let mut invocation: crate::engine::skill::action::SkillInvocation =
                     crate::engine::skill::action::SkillRequest {
                         source_uid: context.source_uid,
+                        skill_id: *skill_id,
+                    }
+                    .into();
+                invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+                Some(vec![RuleOp::Skill(invocation)])
+            }
+            BehaviorKind::UseExtraSkill => {
+                let [skill_id] = behavior.args.as_slice() else {
+                    return None;
+                };
+                if *skill_id <= 0 {
+                    return None;
+                }
+                // The behavior targets its own caster; the invoked skill chooses
+                // its own targets according to its configuration.
+                let mut invocation: crate::engine::skill::action::SkillInvocation =
+                    crate::engine::skill::action::SkillRequest {
+                        source_uid: context.target_uid,
                         skill_id: *skill_id,
                     }
                     .into();

@@ -2,6 +2,60 @@ use super::*;
 use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
+async fn compose_research_tasks_require_one_plane_and_award_points_once() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query("INSERT INTO users (id, username, created_at, updated_at) VALUES (31, 'compose-task', 0, 0)")
+        .execute(&pool).await.unwrap();
+    let plane = |plane_id, ids: &[i32]| sonettobuf::TowerComposePlane {
+        plane_id: Some(plane_id), result: Some(1),
+        mods: vec![sonettobuf::TowerComposeMods {
+            r#type: Some(1), mods: ids.iter().enumerate().map(|(i, id)| sonettobuf::TowerComposeMod {
+                slot: Some(i as i32 + 1), mod_id: Some(*id),
+            }).collect(),
+        }],
+        ..Default::default()
+    };
+    let outcome = |planes| task_db::TowerComposeTaskOutcome {
+        theme_id: 1, layer_id: 6, plane_id: 2, won: true, completed: true,
+        boss_level: 11, score: 1000, planes,
+    };
+    let mut tx = pool.begin().await.unwrap();
+    task_db::sync_tower_compose_tasks_in_transaction(&mut tx, 31,
+        Some(&outcome(vec![plane(1, &[11204]), plane(2, &[11501])]))).await.unwrap();
+    tx.commit().await.unwrap();
+    let task = task_db::get_by_id(&pool, 31, 95001101).await.unwrap().unwrap();
+    assert!(!task.has_finished, "components on different planes must not count as simultaneous");
+
+    let mut tx = pool.begin().await.unwrap();
+    task_db::sync_tower_compose_tasks_in_transaction(&mut tx, 31,
+        Some(&outcome(vec![plane(1, &[11204, 11501])]))).await.unwrap();
+    tx.rollback().await.unwrap();
+    assert!(!task_db::get_by_id(&pool, 31, 95001101).await.unwrap().unwrap().has_finished);
+    let mut tx = pool.begin().await.unwrap();
+    task_db::sync_tower_compose_tasks_in_transaction(&mut tx, 31,
+        Some(&outcome(vec![plane(1, &[11204, 11501])]))).await.unwrap();
+    tx.commit().await.unwrap();
+    let mut manager = TaskManager::new(31);
+    let claim = manager.finish(&pool, 95001101).await.unwrap();
+    assert_eq!(claim.reply.finish_count, Some(1));
+    assert_eq!(database::db::game::tower_compose::get_theme_state(&pool, 31, 1).await.unwrap().unwrap().research_progress, 50);
+    assert!(manager.finish(&pool, 95001101).await.is_err());
+    assert_eq!(database::db::game::tower_compose::get_theme_state(&pool, 31, 1).await.unwrap().unwrap().research_progress, 50);
+
+    let mut tx = pool.begin().await.unwrap();
+    task_db::sync_tower_compose_tasks_in_transaction(&mut tx, 31,
+        Some(&outcome(vec![plane(1, &[11305, 11502])]))).await.unwrap();
+    tx.commit().await.unwrap();
+    let claim = manager.finish_all(&pool, task_db::TOWER_COMPOSE_TASK_TYPE,
+        Some(0), vec![95001102], Some(0)).await.unwrap();
+    assert_eq!(claim.task_info.len(), 1);
+    assert_eq!(database::db::game::tower_compose::get_theme_state(&pool, 31, 1).await.unwrap().unwrap().research_progress, 100);
+}
+
+#[tokio::test]
 async fn claimed_task_is_persisted_as_no_longer_claimable() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);

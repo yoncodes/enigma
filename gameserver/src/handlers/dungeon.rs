@@ -181,6 +181,11 @@ pub async fn on_map_element(
     }
     ctx.send_reply(CmdId::MapElementCmd, completion.reply, 0, req.up_tag)
         .await?;
+    let open_infos = ctx.player()?.profile.reconcile_open_infos(ctx.state.db).await?;
+    if !open_infos.is_empty() {
+        ctx.notify(CmdId::UpdateOpenPushCmd, UpdateOpenPush { open_infos })
+            .await?;
+    }
     push::send_dungeon_map_progression(ctx, player_id).await
 }
 
@@ -318,9 +323,47 @@ pub async fn on_start_dungeon(
         .get(episode_id)
         .ok_or(AppError::InvalidRequest)?;
     let chapter_id = request.chapter_id.unwrap_or(episode_cfg.chapter_id);
+    // Weekwalk episode 90101 has battle_id=0 in the episode table; its first
+    // encounter is selected by the unlocked map element instead.
+    if episode_id == 90101 {
+        if chapter_id != 901 || multiplier != 1 || request.use_record.unwrap_or(false)
+            || !database::db::game::weekwalk::opening_battle_available(ctx.state.db, player_id, 101, 10112)
+                .await.map_err(|error| AppError::Custom(error.to_string()))? {
+            return Err(AppError::InvalidRequest);
+        }
+        let mut active = ActiveBattle::prepare(ctx.state.db, player_id, episode_id, 800101, request).await?;
+        active.activate(ctx.state.db, player_id, &logic::reward::RewardSet::default()).await?;
+        ctx.player_mut()?.battle.start_active(active);
+        return send_active_battle_start(ctx, req.up_tag).await;
+    }
+    // The newer mode still requires its own selection and settlement rules.
+    if episode_id == 2600101 {
+        return Err(AppError::InvalidRequest);
+    }
+    if episode_cfg.r#type == 14 {
+        let pending = logic::explore_battle::pending(ctx.state.db, player_id).await?
+            .ok_or(AppError::InvalidRequest)?;
+        let layout = config::explore_layout::layout(pending.map_id)?.ok_or(AppError::InvalidRequest)?;
+        if pending.fight_id.is_some() || layout.episode_id != episode_id
+            || layout.chapter_id != chapter_id || chapter_id != episode_cfg.chapter_id
+            || multiplier != 1 || request.use_record.unwrap_or(false)
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        let mut active = ActiveBattle::prepare(
+            ctx.state.db, player_id, episode_id, pending.battle_id, request,
+        ).await?;
+        active.activate_explore(ctx.state.db, player_id, &pending).await?;
+        ctx.player_mut()?.battle.start_active(active);
+        return send_active_battle_start(ctx, req.up_tag).await;
+    }
     if !dungeon::can_start_episode(ctx.state.db, player_id, chapter_id, episode_id).await? {
         return Err(AppError::InvalidRequest);
     }
+
+    crate::tower_compose::ensure_unlocked(
+        ctx.state.db, player_id, episode_id, request.params.as_deref(),
+    ).await?;
 
     let battle_id = dungeon::episode_battle_id(ctx.state.db, player_id, episode_cfg).await?;
     if battle_id == 0 {
@@ -363,6 +406,7 @@ pub async fn on_start_dungeon(
 
     let mut active =
         ActiveBattle::prepare(ctx.state.db, player_id, episode_id, battle_id, request).await?;
+    crate::tower_compose::ensure_team_available(ctx.state.db, player_id, &active).await?;
     let cost = active
         .activate(
             ctx.state.db,
@@ -394,8 +438,12 @@ pub async fn on_reconnect_fight(
         }
     }
     let reply = ctx.player()?.battle.reconnect_reply();
-    ctx.send_reply(CmdId::ReconnectFightCmd, reply, 0, req.up_tag)
-        .await
+    let cards = ctx.player()?.battle.reconnect_cards();
+    ctx.send_reply(CmdId::ReconnectFightCmd, reply, 0, req.up_tag).await?;
+    if let Some(cards) = cards {
+        ctx.notify(CmdId::CardInfoPushCmd, cards).await?;
+    }
+    Ok(())
 }
 
 async fn send_active_battle_start(ctx: &mut ConnectionContext, up_tag: u8) -> Result<(), AppError> {
@@ -533,17 +581,33 @@ pub async fn on_fight_end_fight(
     let mut refund_settlement = None;
     let mut act128_score_updates = None;
     let mut act229_finish = None;
+    let mut permanent_settlement = None;
+    let mut permanent_failed_push = None;
     if let Some(active) = active.as_ref() {
         let is_abort = msg.is_abort.unwrap_or(false);
         let compose_handled = tower_compose::matches_battle(active);
         let won = active.is_victory();
+        let explore = is_exploration_fight(ctx.state.db, player_id, active).await?;
         let act229_star = if !is_abort && won && active.act229_context.is_some() {
             Some(active.star()?)
         } else {
             None
         };
 
-        if !is_abort
+        if active.episode_id == 90101 {
+            let star = if !is_abort && won { Some(active.star()?) } else { None };
+            let fight_id = active.fight_id.ok_or(AppError::InvalidRequest)?;
+            if !database::db::game::weekwalk::settle_opening_battle(ctx.state.db, player_id, fight_id, active.battle_id, star)
+                .await.map_err(|error| AppError::Custom(error.to_string()))? { return Err(AppError::InvalidRequest); }
+            crate::handlers::exploration::push_weekwalk_info(ctx, player_id).await?;
+        } else if explore {
+            let fight_id = active.fight_id.ok_or(AppError::InvalidRequest)?;
+            logic::explore_battle::settle(ctx.state.db, player_id, fight_id, active.battle_id, !is_abort && won).await?;
+        } else if !is_abort && won && tower::is_boss_battle(active) {
+            permanent_settlement = Some(tower::settle_boss_victory(ctx.state.db, player_id, active).await?);
+        } else if !is_abort && won && tower::is_permanent_battle(active) {
+            permanent_settlement = Some(tower::settle_permanent_victory(ctx.state.db, player_id, active).await?);
+        } else if !is_abort
             && won
             && (compose_handled || (active.tower_type.is_none() && active.act229_context.is_none()))
         {
@@ -577,6 +641,9 @@ pub async fn on_fight_end_fight(
             };
             compose_push = settlement.compose_push.take();
             refund_settlement = Some(settlement);
+            if tower::is_permanent_battle(active) || tower::is_boss_battle(active) {
+                permanent_failed_push = tower::abort_finish_push(ctx.state.db, player_id, active).await?;
+            }
         } else if let Some(fight_id) = active.fight_id {
             dungeon::finish_fight_instance(ctx.state.db, player_id, fight_id).await?;
         }
@@ -601,6 +668,13 @@ pub async fn on_fight_end_fight(
     if let Some(settle) = compose_push {
         ctx.notify(CmdId::TowerComposeFightSettlePushCmd, settle)
             .await?;
+        send_compose_task_updates(ctx, player_id).await?;
+    }
+    if let Some(settlement) = permanent_settlement {
+        send_permanent_settlement(ctx, player_id, settlement).await?;
+    }
+    if let Some(finish) = permanent_failed_push {
+        ctx.notify(CmdId::TowerBattleFinishPushCmd, finish).await?;
     }
     if let Some((settlement, chapter_id, episode_id)) = dungeon_settlement {
         send_completed_dungeon(ctx, player_id, chapter_id, episode_id, settlement).await?;
@@ -674,7 +748,26 @@ pub async fn on_dungeon_end_dungeon(
     let active = ctx.player()?.battle.active_snapshot();
 
     if let Some(active) = active.as_ref() {
-        if msg.is_abort.unwrap_or(false) {
+        if active.episode_id == 90101 {
+            let is_abort = msg.is_abort.unwrap_or(false);
+            let star = if !is_abort && active.is_victory() { Some(active.star()?) } else { None };
+            let fight_id = active.fight_id.ok_or(AppError::InvalidRequest)?;
+            if !database::db::game::weekwalk::settle_opening_battle(ctx.state.db, player_id, fight_id, active.battle_id, star)
+                .await.map_err(|error| AppError::Custom(error.to_string()))? { return Err(AppError::InvalidRequest); }
+            ctx.player_mut()?.battle.clear_active();
+            crate::handlers::exploration::push_weekwalk_info(ctx, player_id).await?;
+            let end = if is_abort { dungeon::abort_end_fight(active) } else { dungeon::completed_end_fight(active) };
+            push::send_end_fight_push(ctx, end).await?;
+        } else if is_exploration_fight(ctx.state.db, player_id, active).await? {
+            let is_abort = msg.is_abort.unwrap_or(false);
+            let fight_id = active.fight_id.ok_or(AppError::InvalidRequest)?;
+            logic::explore_battle::settle(
+                ctx.state.db, player_id, fight_id, active.battle_id, !is_abort && active.is_victory(),
+            ).await?;
+            ctx.player_mut()?.battle.clear_active();
+            let end = if is_abort { dungeon::abort_end_fight(active) } else { dungeon::completed_end_fight(active) };
+            push::send_end_fight_push(ctx, end).await?;
+        } else if msg.is_abort.unwrap_or(false) {
             let tower_push = tower::abort_finish_push(ctx.state.db, player_id, active).await?;
             let (dungeon_update, end_dungeon) =
                 match dungeon::act128_score_dungeon_updates(ctx.state.db, player_id, active).await?
@@ -695,6 +788,16 @@ pub async fn on_dungeon_end_dungeon(
             ctx.notify(CmdId::DungeonEndDungeonPushCmd, end_dungeon)
                 .await?;
             push::send_end_fight_push(ctx, dungeon::abort_end_fight(active)).await?;
+        } else if active.is_victory() && tower::is_boss_battle(active) {
+            let settlement = tower::settle_boss_victory(ctx.state.db, player_id, active).await?;
+            ctx.player_mut()?.battle.clear_active();
+            send_permanent_settlement(ctx, player_id, settlement).await?;
+            push::send_end_fight_push(ctx, dungeon::completed_end_fight(active)).await?;
+        } else if active.is_victory() && tower::is_permanent_battle(active) {
+            let settlement = tower::settle_permanent_victory(ctx.state.db, player_id, active).await?;
+            ctx.player_mut()?.battle.clear_active();
+            send_permanent_settlement(ctx, player_id, settlement).await?;
+            push::send_end_fight_push(ctx, dungeon::completed_end_fight(active)).await?;
         } else if active.is_victory() {
             let star = active.star()?;
             let round = active.current_round();
@@ -717,6 +820,7 @@ pub async fn on_dungeon_end_dungeon(
             if let Some(compose) = settlement.compose_push.take() {
                 ctx.notify(CmdId::TowerComposeFightSettlePushCmd, compose)
                     .await?;
+                send_compose_task_updates(ctx, player_id).await?;
             }
             send_completed_dungeon(
                 ctx,
@@ -734,6 +838,7 @@ pub async fn on_dungeon_end_dungeon(
             if let Some(compose) = refund.compose_push.take() {
                 ctx.notify(CmdId::TowerComposeFightSettlePushCmd, compose)
                     .await?;
+                send_compose_task_updates(ctx, player_id).await?;
             }
             send_refund(ctx, player_id, refund).await?;
             if let Some((dungeon_update, end_dungeon)) = score_updates {
@@ -753,6 +858,48 @@ pub async fn on_dungeon_end_dungeon(
         req.up_tag,
     )
     .await
+}
+
+async fn send_compose_task_updates(ctx: &mut ConnectionContext, player_id: i64) -> Result<(), AppError> {
+    let mut updated = database::db::game::tasks::list_by_types(
+        ctx.state.db, player_id, vec![database::db::game::tasks::TOWER_COMPOSE_TASK_TYPE],
+    ).await?;
+    updated.retain(|task| config::configs::get().tower_compose_task.get(task.task_id)
+        .is_some_and(|config| database::db::game::tasks::compose_task_available(
+            config, common::time::ServerTime::now_sec_i32(),
+        )));
+    ctx.player_mut()?.tasks.record_updates(&updated);
+    task_events::notify_tasks(ctx, updated).await
+}
+
+async fn send_permanent_settlement(
+    ctx: &mut ConnectionContext,
+    player_id: i64,
+    settlement: tower::PermanentSettlement,
+) -> Result<(), AppError> {
+    push::send_dungeon_completion_reward_pushes(ctx, player_id, settlement.rewards).await?;
+    ctx.notify(CmdId::TowerBattleFinishPushCmd, settlement.finish).await?;
+    ctx.notify(CmdId::DungeonEndDungeonPushCmd, settlement.end_dungeon).await
+}
+
+async fn is_exploration_fight(
+    db: &sqlx::SqlitePool, player_id: i64, active: &ActiveBattle,
+) -> Result<bool, AppError> {
+    let Some(episode) = configs::get().episode.get(active.episode_id) else {
+        return Ok(false);
+    };
+    if episode.r#type != 14 {
+        return Ok(false);
+    }
+    let pending = logic::explore_battle::pending(db, player_id).await?
+        .ok_or(AppError::InvalidRequest)?;
+    let layout = config::explore_layout::layout(pending.map_id)?.ok_or(AppError::InvalidRequest)?;
+    if pending.fight_id != active.fight_id || pending.battle_id != active.battle_id
+        || layout.episode_id != active.episode_id || layout.chapter_id != active.chapter_id
+    {
+        return Err(AppError::InvalidRequest);
+    }
+    Ok(true)
 }
 
 pub async fn on_cover_dungeon_record(

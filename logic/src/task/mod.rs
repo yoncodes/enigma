@@ -15,7 +15,7 @@ mod rewards;
 mod tests;
 
 use rewards::{
-    add_claim_activity_in_transaction, parse_task_reward, task_activity_bonus, task_rewards,
+    add_claim_activity_in_transaction, add_compose_research_in_transaction, parse_task_reward, task_activity_bonus, task_rewards,
 };
 
 #[derive(Clone, Debug)]
@@ -74,7 +74,16 @@ impl TaskManager {
                 .sync_room_tasks(db, config::configs::get())
                 .await?;
         }
-        let tasks = task_db::list_by_types(db, self.player_id, db_type_ids.clone()).await?;
+        if db_type_ids.is_empty() || db_type_ids.contains(&task_db::EXPLORE_TASK_TYPE) {
+            task_db::sync_explore_tasks(db, self.player_id).await?;
+        }
+        if db_type_ids.is_empty() || db_type_ids.contains(&task_db::TOWER_COMPOSE_TASK_TYPE) {
+            task_db::sync_tower_compose_tasks(db, self.player_id).await?;
+        }
+        let mut tasks = task_db::list_by_types(db, self.player_id, db_type_ids.clone()).await?;
+        tasks.retain(|task| task.type_id != task_db::TOWER_COMPOSE_TASK_TYPE ||
+            config::configs::get().tower_compose_task.get(task.task_id)
+                .is_some_and(|config| task_db::compose_task_available(config, common::time::ServerTime::now_sec_i32())));
         self.cache_tasks(&tasks);
         let activity = task_db::list_activity(db, self.player_id, db_type_ids)
             .await?
@@ -99,6 +108,9 @@ impl TaskManager {
                 .sync_room_tasks(db, config::configs::get())
                 .await?;
         }
+        if config::configs::get().tower_compose_task.get(task_id).is_some() {
+            task_db::sync_tower_compose_tasks(db, self.player_id).await?;
+        }
         let task = task_db::get_by_id(db, self.player_id, task_id)
             .await?
             .ok_or(AppError::InvalidRequest)?;
@@ -106,6 +118,7 @@ impl TaskManager {
         let task = task_db::finish_task_in_transaction(&mut tx, &task)
             .await?
             .ok_or(AppError::InvalidRequest)?;
+        add_compose_research_in_transaction(&mut tx, self.player_id, &task).await?;
         let act233_bp_scores = if task.type_id == task_db::TaskType::ActBp.id() {
             vec![settle_act233_score(&mut tx, self.player_id, &task).await?]
         } else {
@@ -113,7 +126,7 @@ impl TaskManager {
         };
         let (activity, mut reward_set) =
             add_claim_activity_in_transaction(&mut tx, self.player_id, &task).await?;
-        reward_set.extend(task_rewards(task.type_id, task.task_id));
+        reward_set.extend(task_rewards(task.type_id, task.task_id)?);
         add_battle_pass_score(&mut reward_set, std::slice::from_ref(&task));
         let material_changes = reward_set.material_changes();
         let rewards = reward::apply_in_transaction(&mut tx, db, self.player_id, reward_set).await?;
@@ -146,7 +159,10 @@ impl TaskManager {
                 .sync_room_tasks(db, config::configs::get())
                 .await?;
         }
-        let claimable = task_db::claimable_tasks(
+        if type_id == task_db::TOWER_COMPOSE_TASK_TYPE {
+            task_db::sync_tower_compose_tasks(db, self.player_id).await?;
+        }
+        let mut claimable = task_db::claimable_tasks(
             db,
             self.player_id,
             type_id,
@@ -155,6 +171,9 @@ impl TaskManager {
             task_ids.clone(),
         )
         .await?;
+        claimable.retain(|task| task.type_id != task_db::TOWER_COMPOSE_TASK_TYPE ||
+            config::configs::get().tower_compose_task.get(task.task_id)
+                .is_some_and(|config| task_db::compose_task_available(config, common::time::ServerTime::now_sec_i32())));
         let mut tx = db.begin().await?;
         let tasks = task_db::finish_tasks_in_transaction(&mut tx, &claimable)
             .await?
@@ -164,6 +183,7 @@ impl TaskManager {
         let mut act233_bp_scores = Vec::new();
         let mut reward_set = reward::RewardSet::default();
         for task in &tasks {
+            add_compose_research_in_transaction(&mut tx, self.player_id, task).await?;
             if task.type_id == task_db::TaskType::ActBp.id() {
                 act233_bp_scores.push(settle_act233_score(&mut tx, self.player_id, task).await?);
             }
@@ -171,7 +191,7 @@ impl TaskManager {
                 add_claim_activity_in_transaction(&mut tx, self.player_id, task).await?;
             activity.extend(updated_activity);
             reward_set.extend(activity_rewards);
-            reward_set.extend(task_rewards(task.type_id, task.task_id));
+            reward_set.extend(task_rewards(task.type_id, task.task_id)?);
         }
         add_battle_pass_score(&mut reward_set, &tasks);
 

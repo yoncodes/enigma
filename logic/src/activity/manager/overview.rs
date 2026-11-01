@@ -150,6 +150,18 @@ impl ActivityManager {
         act128_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn gallery_infos(
+        &self, db: &SqlitePool, activity_id: Option<i32>,
+    ) -> Result<sonettobuf::GetGalleryInfosReply, AppError> {
+        act128::get_gallery_infos(db, self.player_id, activity_id).await
+    }
+
+    pub async fn get_act128_exp(
+        &self, db: &SqlitePool, activity_id: Option<i32>, boss_type: Option<i32>,
+    ) -> Result<act128::Act128ExpClaim, AppError> {
+        act128::get_act128_exp(db, self.player_id, activity_id, boss_type).await
+    }
+
     pub async fn act116_info(
         &self,
         db: &SqlitePool,

@@ -5,7 +5,24 @@ use crate::{
     util::push,
 };
 use prost::Message;
-use sonettobuf::{Act128GetMilestoneBonusRequest, Act128GetTotalRewardsRequest, CmdId};
+use sonettobuf::{Act128GetExpRequest, Act128GetMilestoneBonusRequest,
+    Act128GetTotalRewardsRequest, GetGalleryInfosRequest, CmdId};
+
+pub async fn on_get_gallery_infos(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let msg = GetGalleryInfosRequest::decode(&req.data[..])?;
+    let reply = ctx.player()?.activity.gallery_infos(ctx.state.db, msg.activity_id).await?;
+    ctx.send_reply(CmdId::GetGalleryInfosCmd, reply, 0, req.up_tag).await
+}
+
+pub async fn on_act128_get_exp(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
+    let msg = Act128GetExpRequest::decode(&req.data[..])?;
+    let claim = ctx.player()?.activity.get_act128_exp(ctx.state.db, msg.activity_id, msg.r#type).await?;
+    if let Some(change) = claim.currency_change {
+        push::send_currency_change_push(ctx, player_id, vec![change]).await?;
+    }
+    ctx.send_reply(CmdId::Act128GetExpCmd, claim.reply, 0, req.up_tag).await
+}
 
 pub async fn on_act128_get_total_rewards(
     ctx: &mut ConnectionContext,

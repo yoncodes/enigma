@@ -508,6 +508,7 @@ fn card_setup_rules_commit_enchants_and_temporary_lifecycle_through_the_manager(
         .execute_command(CardCommand::AllocateEnergy(CardEnergyAllocation {
             origin: ORIGIN,
             energies: vec![1, 2, 3],
+            max_energy: 5,
         }))
         .unwrap();
     manager

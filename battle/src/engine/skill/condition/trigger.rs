@@ -38,8 +38,10 @@ pub fn parse_entity_broken(_: i32, _: &str, args: &[String]) -> Option<ParsedCon
     args.is_empty().then_some(ParsedConditionKind::EntityBroken)
 }
 
-pub fn parse_use_ex_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
-    args.is_empty().then_some(ParsedConditionKind::UseExSkill)
+pub fn parse_use_ex_skill(opcode: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    // This immediate-action form also identifies the ultimate card slot (3).
+    (args.is_empty() || (opcode == 25203 && matches!(args, [slot] if slot == "3")))
+        .then_some(ParsedConditionKind::UseExSkill)
 }
 
 pub fn parse_target_use_ex_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
@@ -74,6 +76,9 @@ mod tests {
             parse_use_ex_skill(25210, "UseExSkill", &["1".to_owned()]),
             None
         );
+        assert_eq!(parse_use_ex_skill(25203, "UseExSkill", &["3".to_owned()]),
+            Some(ParsedConditionKind::UseExSkill));
+        assert_eq!(parse_use_ex_skill(25210, "UseExSkill", &["3".to_owned()]), None);
         assert_eq!(
             parse_target_use_ex_skill(25212, "UseExSkill", &[]),
             Some(ParsedConditionKind::TargetUseExSkill)

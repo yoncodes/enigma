@@ -142,6 +142,7 @@ mod tests {
             raw: "850#300901412#101#30091111".to_owned(),
         };
         let event = BattleEvent::SkillAction(SkillActionEvent {
+            card_index: 0,
             source_uid: 10,
             skill_id: 1,
             target_uid: -1,

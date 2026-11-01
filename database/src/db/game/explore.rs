@@ -73,14 +73,16 @@ async fn get_explore_chapters(
 
         let mut bonus_scenes = Vec::new();
         for bonus_scene_id in bonus_scene_ids {
-            let options = sqlx::query_scalar(
-                "SELECT option_id FROM user_explore_bonus_scene_options WHERE user_id = ? AND chapter_id = ? AND bonus_scene_id = ? ORDER BY option_id"
-            )
-            .bind(user_id)
-            .bind(chapter.chapter_id)
-            .bind(bonus_scene_id)
-            .fetch_all(pool)
-            .await?;
+            let ordered: Option<String> = sqlx::query_scalar(
+                "SELECT options_json FROM user_explore_runtime_bonus_options WHERE user_id = ? AND chapter_id = ? AND bonus_scene_id = ?"
+            ).bind(user_id).bind(chapter.chapter_id).bind(bonus_scene_id).fetch_optional(pool).await?;
+            let options = if let Some(json) = ordered {
+                serde_json::from_str::<Vec<i32>>(&json)?
+            } else {
+                sqlx::query_scalar(
+                    "SELECT option_id FROM user_explore_bonus_scene_options WHERE user_id = ? AND chapter_id = ? AND bonus_scene_id = ? ORDER BY option_id"
+                ).bind(user_id).bind(chapter.chapter_id).bind(bonus_scene_id).fetch_all(pool).await?
+            };
 
             bonus_scenes.push(BonusSceneInfo {
                 bonus_scene_id,

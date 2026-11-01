@@ -6,6 +6,8 @@ use super::battle_pass;
 
 mod activity;
 mod event;
+mod explore;
+mod tower_compose;
 
 pub use activity::{
     add_activity, add_activity_in_transaction, claim_activity_bonus,
@@ -14,6 +16,11 @@ pub use activity::{
 pub use event::{
     ProductionLineAction, TaskEvent, sync_event_tasks, sync_event_tasks_in_transaction,
     sync_hero_invitation_claims_in_transaction,
+};
+pub use explore::{EXPLORE_TASK_TYPE, sync_explore_tasks, sync_explore_tasks_in_transaction};
+pub use tower_compose::{
+    TOWER_COMPOSE_TASK_TYPE, TowerComposeTaskOutcome, compose_task_available,
+    sync_tower_compose_tasks, sync_tower_compose_tasks_in_transaction,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

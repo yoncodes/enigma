@@ -110,6 +110,8 @@ pub struct TargetContext {
     pub additional_moxie: i32,
     pub lost_power_id: i32,
     pub lost_power_amount: i32,
+    pub assist_power_action_owner: i64,
+    pub assist_power_consumed_before_action: i32,
     pub hit_source_uid: i64,
     pub hit_target_uid: i64,
     pub hit_career_restraint: Option<bool>,
@@ -290,10 +292,16 @@ impl TargetPool {
     ) -> Self {
         let mut pool = self.clone();
         let catalog = pool.catalog();
+        let emitter_damage_type = managers.buff.active_features_for_owner(&managers.hp, crate::engine::manager::emitter::UID).iter()
+            .filter(|feature| feature.owner_uid == crate::engine::manager::emitter::UID
+                && feature.owner_alive
+                && crate::engine::skill::buff_act::is_kind(feature,
+                    crate::engine::skill::buff_act::registry::BuffActKind::EmitterChangeDmgType))
+            .filter_map(|feature| feature.values.get(1).copied())
+            .map(EntityDamageType::from_wire)
+            .last();
         for entities in [
-            &mut pool.attacker_main,
             &mut pool.attacker_all,
-            &mut pool.defender_main,
             &mut pool.defender_all,
         ] {
             entities.retain_mut(|entity| {
@@ -309,6 +317,9 @@ impl TargetPool {
                     *entity = identity;
                 }
                 entity.current_hp = managers.hp.current(entity.uid);
+                if entity.uid == crate::engine::manager::emitter::UID {
+                    if let Some(damage_type) = emitter_damage_type { entity.damage_type = damage_type; }
+                }
                 entity.max_hp = managers.hp.max(entity.uid);
                 entity.ex_point = managers.ex_point.get(entity.uid);
                 entity.buffs = managers
@@ -327,6 +338,11 @@ impl TargetPool {
                 .and_then(|entity| TargetEntity::from_fight_entity_with_catalog(catalog, entity))
             {
                 *entity = identity;
+            }
+            // The virtual emitter deliberately has no ordinary HP pool.
+            // Its configured damage type still applies before HP-backed refreshes.
+            if entity.uid == crate::engine::manager::emitter::UID {
+                if let Some(damage_type) = emitter_damage_type { entity.damage_type = damage_type; }
             }
             if managers.hp.max(entity.uid) <= 0 {
                 continue;
@@ -347,13 +363,14 @@ impl TargetPool {
             .filter_map(|uid| {
                 let lane = managers.entity.roster_lane(uid)?;
                 let team = managers.entity.team_type(uid)?;
+                let current_hp = managers.hp.current(uid);
+                if current_hp <= 0 && included_uid != Some(uid) {
+                    return None;
+                }
                 let mut entity = managers.entity.snapshot(uid).as_ref().and_then(|entity| {
                     TargetEntity::from_fight_entity_with_catalog(catalog, entity)
                 })?;
-                entity.current_hp = managers.hp.current(uid);
-                if entity.current_hp <= 0 && included_uid != Some(uid) {
-                    return None;
-                }
+                entity.current_hp = current_hp;
                 entity.max_hp = managers.hp.max(uid);
                 entity.ex_point = managers.ex_point.get(uid);
                 entity.buffs = managers
@@ -742,12 +759,21 @@ impl TargetEntity {
 impl TargetBuff {
     fn from_buff_info(catalog: crate::catalog::BattleCatalog, buff: &BuffInfo) -> Self {
         let id = buff.buff_id.unwrap_or_default();
+        type Key = (usize, i32);
+        static CACHE: std::sync::OnceLock<std::sync::RwLock<HashMap<Key, TargetBuff>>> =
+            std::sync::OnceLock::new();
+        let cache = CACHE.get_or_init(|| std::sync::RwLock::new(HashMap::new()));
+        let key = (catalog.game_data() as *const config::GameDB as usize, id);
+        let cached = cache.read().unwrap().get(&key).cloned();
+        let mut template = if let Some(template) = cached {
+            template
+        } else {
         let features = catalog.buff_feature_tokens(id);
-        Self {
+        let template = Self {
             id,
-            type_id: buff.r#type.unwrap_or_else(|| catalog.buff_type_id(id)),
+            type_id: catalog.buff_type_id(id),
             status: catalog.buff_status(id),
-            source_uid: buff.from_uid.unwrap_or_default(),
+            source_uid: 0,
             features: features.clone(),
             act_kinds: features
                 .iter()
@@ -768,7 +794,13 @@ impl TargetBuff {
                         .then(|| values.next())?
                 })
                 .collect(),
-        }
+        };
+        cache.write().unwrap().entry(key).or_insert_with(|| template.clone());
+        template
+        };
+        template.type_id = buff.r#type.unwrap_or(template.type_id);
+        template.source_uid = buff.from_uid.unwrap_or_default();
+        template
     }
 
     fn has_buff_act_kind(

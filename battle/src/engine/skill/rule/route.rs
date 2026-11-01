@@ -150,6 +150,13 @@ fn compile_branch(
 ) -> Result<ConditionBranchRoute, RouteError> {
     let mut driver = None;
     let mut descriptors = Vec::with_capacity(conditions.len());
+    // The configured post-hit effect-tag trigger can be qualified by
+    // "not an ultimate". The latter is a predicate on the same action,
+    // rather than a second post-hit subscription with a different phase.
+    let has_post_hit_tag = conditions.iter().any(|condition| {
+        condition.opcode == 34210 && condition.type_name == "UseSkillEffectTag"
+            && !matches!(condition.kind, ParsedConditionKind::Not(_))
+    });
 
     for condition in conditions {
         let definition =
@@ -162,6 +169,18 @@ fn compile_branch(
         descriptors.push(RuleDescriptor::new(RuleDomain::Condition, definition.key));
 
         if predicate_only {
+            continue;
+        }
+
+        if has_post_hit_tag && condition.opcode == 25210
+            && condition.type_name == "UseExSkill"
+            && matches!(condition.kind, ParsedConditionKind::Not(_))
+        {
+            continue;
+        }
+        if has_post_hit_tag && condition.opcode == 502210
+            && condition.type_name == "ActiveUseSkill"
+        {
             continue;
         }
 
@@ -349,6 +368,20 @@ mod tests {
             ConditionRoute::compile(&conditions),
             Err(RouteError::ConflictingConditionDrivers { .. })
         ));
+    }
+
+    #[test]
+    fn post_hit_tag_with_negated_ultimate_keeps_one_driver() {
+        init_config();
+        for raw in ["34210#9&25210!&502210#0", "25210!&34210#9&502210#0"] {
+            let route = ConditionRoute::compile(&parse_conditions(config::configs::get(), raw)).unwrap();
+            assert_eq!(route.branches[0].driver, Some(ConditionDriver::Trigger(ConditionTrigger {
+                key: crate::engine::skill::rule::DefinitionKey::new(34210, "UseSkillEffectTag"),
+                event: EventKind::SkillAction,
+                phase: Some(SkillPhase::HitPassives),
+            })));
+            assert_eq!(route.branches[0].conditions.len(), 3);
+        }
     }
 
     #[test]

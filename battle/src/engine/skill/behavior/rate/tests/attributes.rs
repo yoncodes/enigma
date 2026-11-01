@@ -1,6 +1,56 @@
 use super::*;
 
 #[test]
+fn compose_research_uses_current_card_rank_and_target_burn_layers() {
+    crate::test_support::init_config();
+    let effects = SkillEffectCatalog::from_roots(config::configs::get(), [113330004, 113330006], []);
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10), current_hp: Some(100),
+                passive_skill: vec![113330004, 113330006], ..Default::default()
+            }], ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1), current_hp: Some(100),
+                    buffs: vec![BuffInfo { uid: Some(1), buff_id: Some(4150001),
+                        layer: Some(3), from_uid: Some(10), ..Default::default() }],
+                    ..Default::default()
+                },
+                FightEntityInfo { uid: Some(-2), current_hp: Some(100), ..Default::default() },
+            ], ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let collect = |rank, target| {
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        emit_passive_attack_attributes(&mut modifiers, 10, 30880111, &[113330004, 113330006],
+            RateRuntime { effects: &effects, managers: &managers, pool: &pool,
+                context: TargetContext { active_skill_rank: rank, active_skill_is_attack: true,
+                    active_skill_source_uid: 10, hit_source_uid: 10, hit_target_uid: target,
+                    runtime_target_uid: target, ..Default::default() } },
+            &mut RoundDeterminism::default());
+        modifiers.attack_attributes
+    };
+    let total = |items: &[(AttrId, i32)], wanted| items.iter()
+        .filter(|(id, _)| *id == wanted).map(|(_, value)| *value).sum::<i32>();
+    let rank_two = collect(2, -1);
+    assert_eq!(total(&rank_two, AttrId::CriticalDmg), 120);
+    assert_eq!(total(&rank_two, AttrId::UltimateMight), 150);
+    assert_eq!(total(&rank_two, AttrId::IncantationMight), 150);
+    let rank_three = collect(3, -2);
+    assert_eq!(total(&rank_three, AttrId::CriticalDmg), 0);
+    assert_eq!(total(&rank_three, AttrId::UltimateMight), 200);
+    assert_eq!(total(&rank_three, AttrId::IncantationMight), 200);
+    let rank_one = collect(1, -2);
+    assert!(rank_one.is_empty());
+}
+
+#[test]
 fn attr_fix_emits_a_typed_attack_attribute() {
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
 

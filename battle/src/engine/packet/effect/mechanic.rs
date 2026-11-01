@@ -11,39 +11,7 @@ impl EffectPacket {
             reserve_id: Some(0),
             team_type: Some(area.team),
             effect_num1: Some(0),
-            device_area_info: Some(sonettobuf::FightDeviceAreaInfo {
-                devices: area
-                    .devices
-                    .iter()
-                    .map(|device| sonettobuf::FightDeviceInfo {
-                        skills: device
-                            .skill_groups
-                            .iter()
-                            .map(|group| sonettobuf::FightDeviceSkillGroupInfo {
-                                skills: group
-                                    .iter()
-                                    .map(|skill| sonettobuf::FightDeviceSkillInfo {
-                                        skill_id: Some(skill.skill_id),
-                                        cost_type: Some(skill.cost_type),
-                                        cost_value: Some(skill.cost_value),
-                                        is_stop: Some(skill.is_stopped),
-                                    })
-                                    .collect(),
-                            })
-                            .collect(),
-                        index: Some(device.selected_group),
-                        uid: Some(device.uid),
-                    })
-                    .collect(),
-                powers: area
-                    .powers
-                    .iter()
-                    .map(|power| sonettobuf::FightDevicePower {
-                        id: Some(power.id),
-                        power: Some(power.value),
-                    })
-                    .collect(),
-            }),
+            device_area_info: Some(area.to_protocol()),
             ..Default::default()
         }
     }

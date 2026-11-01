@@ -5,12 +5,120 @@ use database::db::game::{
     currencies,
 };
 use sonettobuf::{
-    Act128BossDetail, Act128GetMilestoneBonusReply, Act128GetTotalRewardsReply, Get128InfosReply,
+    Act128BossDetail, Act128GalleryDetail, Act128GetExpReply, Act128GetMilestoneBonusReply,
+    Act128GetTotalRewardsReply, Get128InfosReply, GetGalleryInfosReply,
 };
-use sqlx::{Sqlite, SqlitePool, Transaction};
+use sqlx::{Sqlite, SqliteConnection, SqlitePool, Transaction};
 
 pub type Act128MilestoneClaim = reward::RewardedReply<Act128GetMilestoneBonusReply>;
 pub type Act128TotalRewardsClaim = reward::RewardedReply<Act128GetTotalRewardsReply>;
+
+pub struct Act128ExpClaim {
+    pub reply: Act128GetExpReply,
+    pub currency_change: Option<(i32, i32)>,
+}
+
+// Gallery progress is shared by seasons. Old versions only stored season/stage
+// scores; recover those best scores without modifying the player's old records.
+async fn gallery_details(
+    conn: &mut SqliteConnection,
+    player_id: i64,
+) -> Result<Vec<Act128GalleryDetail>, AppError> {
+    let config = config::activity128_gallery::data()?;
+    let rows = sqlx::query_as::<_, (i32, i32, i32, i32, i32, String)>(
+        "SELECT activity_id, kind, entry_id, state, progress, ext FROM user_activity_state
+         WHERE user_id = ? AND (kind = ? OR (kind = ? AND activity_id = 0))",
+    ).bind(player_id)
+        .bind(ActivityStateKind::Act128BossScore.id())
+        .bind(ActivityStateKind::Act128Gallery.id())
+        .fetch_all(conn).await?;
+    let mut details = config.gallery.iter().map(|row| Act128GalleryDetail {
+        r#type: Some(row.boss_type), have_fight: Some(false),
+        accept_exp_point: Some(0), highest_point: Some(0),
+    }).collect::<Vec<_>>();
+    for (activity_id, kind, entry_id, state, progress, ext) in rows {
+        let boss_type = if kind == ActivityStateKind::Act128Gallery.id() {
+            Some(entry_id)
+        } else {
+            config.boss_type(activity_id, entry_id)
+        };
+        if let Some(detail) = details.iter_mut().find(|d| d.r#type == boss_type) {
+            detail.highest_point = Some(detail.highest_point.unwrap_or(0).max(progress.max(0)));
+            if kind == ActivityStateKind::Act128Gallery.id() {
+                detail.accept_exp_point = Some(state.max(0));
+                detail.have_fight = Some(detail.have_fight.unwrap_or(false) || ext == "1" || progress > 0);
+            } else if progress > 0 {
+                detail.have_fight = Some(true);
+            }
+        }
+    }
+    Ok(details)
+}
+
+pub async fn get_gallery_infos(
+    db: &SqlitePool, player_id: i64, activity_id: Option<i32>,
+) -> Result<GetGalleryInfosReply, AppError> {
+    let activity_id = activity_id.ok_or(AppError::InvalidRequest)?;
+    ensure_act128_activity(activity_id)?;
+    let mut conn = db.acquire().await?;
+    Ok(GetGalleryInfosReply {
+        activity_id: Some(activity_id),
+        gallery_detail: gallery_details(&mut conn, player_id).await?,
+    })
+}
+
+pub async fn get_act128_exp(
+    db: &SqlitePool, player_id: i64, activity_id: Option<i32>, boss_type: Option<i32>,
+) -> Result<Act128ExpClaim, AppError> {
+    let activity_id = activity_id.ok_or(AppError::InvalidRequest)?;
+    let boss_type = boss_type.ok_or(AppError::InvalidRequest)?;
+    ensure_act128_activity(activity_id)?;
+    let config = config::activity128_gallery::data()?;
+    let gallery = config.gallery(boss_type).ok_or(AppError::InvalidRequest)?;
+    let tables = config::configs::get();
+    let currency_id = tables.activity128_rank_currency_id().ok_or(AppError::InvalidRequest)?;
+    let now = ServerTime::now_ms();
+    let mut tx = db.begin().await?;
+    // Acquire the SQLite write lock before reading the claim cursor, so two
+    // simultaneous requests cannot both grant the same threshold.
+    sqlx::query("INSERT OR IGNORE INTO user_activity_state
+        (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+        VALUES (?, 0, ?, ?, 0, 0, '', ?)")
+        .bind(player_id).bind(ActivityStateKind::Act128Gallery.id()).bind(boss_type).bind(now)
+        .execute(&mut *tx).await?;
+    let detail = gallery_details(&mut tx, player_id).await?.into_iter()
+        .find(|d| d.r#type == Some(boss_type)).ok_or(AppError::InvalidRequest)?;
+    let accepted = detail.accept_exp_point.unwrap_or(0);
+    let highest = detail.highest_point.unwrap_or(0);
+    let mut gained: i32 = 0;
+    for (&point, &exp) in gallery.point.iter().zip(&gallery.point_exp) {
+        if point > accepted && point <= highest {
+            gained = gained.checked_add(exp).ok_or(AppError::InvalidRequest)?;
+        }
+    }
+    let previous_exp = sqlx::query_scalar::<_, i32>(
+        "SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = ?")
+        .bind(player_id).bind(currency_id).fetch_optional(&mut *tx).await?.unwrap_or(0);
+    let exp = previous_exp.checked_add(gained).filter(|v| *v >= 0)
+        .ok_or(AppError::InvalidRequest)?;
+    let level = tables.activity128_rank(exp).ok_or(AppError::InvalidRequest)?;
+    let new_accepted = if gained > 0 { highest.max(accepted) } else { accepted };
+    sqlx::query("UPDATE user_activity_state SET state = ?, progress = MAX(progress, ?),
+        ext = CASE WHEN ? THEN '1' ELSE ext END, updated_at = ?
+        WHERE user_id = ? AND activity_id = 0 AND kind = ? AND entry_id = ?")
+        .bind(new_accepted).bind(highest).bind(detail.have_fight.unwrap_or(false)).bind(now)
+        .bind(player_id).bind(ActivityStateKind::Act128Gallery.id()).bind(boss_type)
+        .execute(&mut *tx).await?;
+    if gained > 0 {
+        currencies::add_currency_in_transaction(&mut tx, player_id, currency_id, gained, now).await?;
+    }
+    tx.commit().await?;
+    Ok(Act128ExpClaim {
+        reply: Act128GetExpReply { activity_id: Some(activity_id), r#type: Some(boss_type),
+            accept_exp_point: Some(new_accepted), player_level: Some(level), player_exp: Some(exp) },
+        currency_change: (gained > 0).then_some((currency_id, gained)),
+    })
+}
 
 pub async fn act128_info(
     db: &SqlitePool,
@@ -278,7 +386,23 @@ pub async fn settle_act128_score_in_transaction(
     let Some(route) = config::configs::get().activity128_battle(episode_id, battle_id) else {
         return Ok(());
     };
-    if score <= 0 {
+    if score < 0 {
+        return Ok(());
+    }
+
+    let boss_config = config::activity128_gallery::data()?;
+    if let Some(boss_type) = boss_config.boss_type(route.activity_id, route.boss_id)
+        .filter(|boss_type| boss_config.gallery(*boss_type).is_some()) {
+        sqlx::query("INSERT INTO user_activity_state
+            (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+            VALUES (?, 0, ?, ?, 0, ?, '1', ?)
+            ON CONFLICT(user_id, activity_id, kind, entry_id) DO UPDATE SET
+              progress = MAX(user_activity_state.progress, excluded.progress),
+              ext = '1', updated_at = excluded.updated_at")
+            .bind(player_id).bind(ActivityStateKind::Act128Gallery.id()).bind(boss_type)
+            .bind(score).bind(ServerTime::now_ms()).execute(&mut **tx).await?;
+    }
+    if score == 0 {
         return Ok(());
     }
 
@@ -307,6 +431,93 @@ pub async fn settle_act128_score_in_transaction(
 mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn gallery_restores_historical_scores_and_claims_each_threshold_once() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let activity_id = seed_rank_player(&db, 80, 0, 0).await;
+        // Boss type 106 appeared as stage 2 in both of these seasons.
+        for (activity, stage, total, best) in [(13609, 2, 12_000_000, 5_100_000),
+                                                (138520, 2, 7_000_000, 4_000_000)] {
+            activity_state::set(&db, 80, activity, ActivityStateSet {
+                kind: ActivityStateKind::Act128BossScore, entry_id: stage, state: total,
+                progress: best, ext: "",
+            }).await.unwrap();
+        }
+        let get = || get_gallery_infos(&db, 80, Some(activity_id));
+        let before = get().await.unwrap();
+        let item = before.gallery_detail.iter().find(|d| d.r#type == Some(106)).unwrap();
+        assert_eq!((item.have_fight, item.highest_point, item.accept_exp_point),
+                   (Some(true), Some(5_100_000), Some(0)));
+        let untouched = before.gallery_detail.iter().find(|d| d.r#type == Some(101)).unwrap();
+        assert_eq!((untouched.have_fight, untouched.highest_point), (Some(false), Some(0)));
+
+        let first = get_act128_exp(&db, 80, Some(activity_id), Some(106)).await.unwrap();
+        assert_eq!((first.reply.player_exp, first.reply.accept_exp_point), (Some(400), Some(5_100_000)));
+        assert_eq!(first.currency_change, Some((3206, 400)));
+        let duplicate = get_act128_exp(&db, 80, Some(activity_id), Some(106)).await.unwrap();
+        assert_eq!(duplicate.reply.player_exp, Some(400));
+        assert_eq!(duplicate.currency_change, None);
+
+        let mut tx = db.begin().await.unwrap();
+        settle_act128_score_in_transaction(&mut tx, 80, 13500420, 118353100, 7_500_000)
+            .await.unwrap();
+        tx.commit().await.unwrap();
+        let next = get_act128_exp(&db, 80, Some(activity_id), Some(106)).await.unwrap();
+        assert_eq!((next.reply.player_exp, next.reply.accept_exp_point), (Some(450), Some(7_500_000)));
+        assert_eq!(next.currency_change, Some((3206, 50)));
+        assert!(get_act128_exp(&db, 80, Some(activity_id), Some(9999)).await.is_err());
+        let item = get().await.unwrap().gallery_detail.into_iter().find(|d| d.r#type == Some(106)).unwrap();
+        assert_eq!((item.have_fight, item.highest_point, item.accept_exp_point),
+                   (Some(true), Some(7_500_000), Some(7_500_000)));
+    }
+
+    #[tokio::test]
+    async fn gallery_records_zero_score_fight_and_transaction_rollback() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let activity_id = seed_rank_player(&db, 81, 0, 0).await;
+        let mut tx = db.begin().await.unwrap();
+        settle_act128_score_in_transaction(&mut tx, 81, 13500420, 118353100, 0).await.unwrap();
+        tx.rollback().await.unwrap();
+        let before = get_gallery_infos(&db, 81, Some(activity_id)).await.unwrap();
+        assert_eq!(before.gallery_detail.iter().find(|d| d.r#type == Some(106)).unwrap().have_fight, Some(false));
+        let mut tx = db.begin().await.unwrap();
+        settle_act128_score_in_transaction(&mut tx, 81, 13500420, 118353100, 0).await.unwrap();
+        tx.commit().await.unwrap();
+        let after = get_gallery_infos(&db, 81, Some(activity_id)).await.unwrap();
+        let detail = after.gallery_detail.iter().find(|d| d.r#type == Some(106)).unwrap();
+        assert_eq!((detail.have_fight, detail.highest_point), (Some(true), Some(0)));
+        let claim = get_act128_exp(&db, 81, Some(activity_id), Some(106)).await.unwrap();
+        assert_eq!(claim.currency_change, None);
+    }
+
+    #[tokio::test]
+    async fn gallery_concurrent_claims_never_double_pay() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let url = format!("sqlite:file:act128-gallery-{}?mode=memory&cache=shared", ServerTime::now_ms());
+        let db = SqlitePoolOptions::new().max_connections(4).connect(&url).await.unwrap();
+        let activity_id = seed_rank_player(&db, 82, 0, 0).await;
+        activity_state::set(&db, 82, 138520, ActivityStateSet {
+            kind: ActivityStateKind::Act128BossScore, entry_id: 2, state: 5_100_000,
+            progress: 5_100_000, ext: "",
+        }).await.unwrap();
+        let (left, right) = tokio::join!(
+            get_act128_exp(&db, 82, Some(activity_id), Some(106)),
+            get_act128_exp(&db, 82, Some(activity_id), Some(106))
+        );
+        assert!(left.is_ok() || right.is_ok());
+        let exp: i32 = sqlx::query_scalar("SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = ?")
+            .bind(82).bind(3206).fetch_one(&db).await.unwrap();
+        assert_eq!(exp, 400);
+        let retry = get_act128_exp(&db, 82, Some(activity_id), Some(106)).await.unwrap();
+        assert_eq!(retry.currency_change, None);
+        assert_eq!(retry.reply.player_exp, Some(400));
+    }
 
     async fn seed_rank_player(
         db: &SqlitePool,

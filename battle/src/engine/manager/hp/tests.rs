@@ -674,6 +674,21 @@ fn kill_bypasses_shield_and_publishes_only_the_death_transition() {
 }
 
 #[test]
+fn normal_healing_does_not_revive_a_defeated_entity() {
+    let mut hp = HpManager::default();
+    hp.states.insert(10, HpState { current: 0, max: 100, base_max: 100 });
+    let origin = CommandOrigin { domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(20016, "HealCantCrit") };
+    let heal = |kind| HpCommand::Heal(HpHeal { origin, source_uid: 1, target_uid: 10,
+        amount: 25, config_effect: 20016, kind });
+    let normal = hp.execute_command(heal(HpHealKind::Normal)).unwrap();
+    assert_eq!(hp.current(10), 0);
+    assert!(normal.hp.is_none());
+    hp.execute_command(heal(HpHealKind::Revive)).unwrap();
+    assert_eq!(hp.current(10), 25);
+}
+
+#[test]
 fn revive_and_rekill_invalidates_the_prior_death_transition() {
     let mut hp = HpManager::default();
     hp.states.insert(

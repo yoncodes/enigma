@@ -16,6 +16,20 @@ pub mod critter;
 pub mod dungeon;
 pub mod error;
 pub mod exploration;
+pub mod explore_engine;
+pub mod explore_chest;
+pub mod explore_entry;
+pub mod explore_move;
+pub mod explore_rune;
+pub mod explore_battle;
+pub mod explore_exit;
+pub mod explore_teleport;
+pub mod explore_rock;
+pub mod explore_spike;
+pub mod explore_reset;
+pub mod explore_light;
+pub mod explore_pipe;
+pub mod explore_bonus;
 pub mod fairyland;
 pub mod guide;
 pub mod hero;
@@ -45,6 +59,9 @@ pub mod types;
 pub mod udimo;
 
 pub use error::LogicError;
+
+#[cfg(test)]
+mod explore_route_tests;
 
 #[cfg(test)]
 pub(crate) fn init_test_server_config() {

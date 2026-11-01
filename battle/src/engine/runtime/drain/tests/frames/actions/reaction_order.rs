@@ -96,6 +96,7 @@ fn queued_reactions_preserve_dispatch_pass_order() {
     };
     let started = BattleEvent::SkillEffectStarted(
         crate::engine::skill::action::SkillActionEvent {
+            card_index: 0,
             source_uid: 10,
             skill_id: 31050151,
             target_uid: -1,

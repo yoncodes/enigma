@@ -32,7 +32,10 @@ async fn incomplete_act128_settlement_persists_score_without_dungeon_completion(
     .await
     .unwrap();
 
-    let runtime = act128_runtime_with_score(13500420, 118353100, 118353111, 19, 1_000_000);
+    // The configured limit counts playable rounds; execute the last round before
+    // expecting an out-of-rounds result.
+    let final_round = configs::get().battle.get(118353100).unwrap().max_round;
+    let runtime = act128_runtime_with_score(13500420, 118353100, 118353111, final_round, 1_000_000);
     assert_eq!(runtime.outcome(), ::battle::BattleOutcome::OutOfRounds);
     let expected_score = runtime.activity_score();
     let active = ActiveBattle {
@@ -169,7 +172,7 @@ async fn act128_end_routes_emit_the_current_run_score() {
             13500416,
             109380001,
             109380001,
-            if is_abort { 1 } else { 19 },
+            if is_abort { 1 } else { configs::get().battle.get(109380001).unwrap().max_round },
             1_000_000,
         );
         assert_eq!(

@@ -29,6 +29,7 @@ impl ProfileManager {
             .await?
             .ok_or_else(|| AppError::Custom("Player info not found".to_string()))?;
 
+        open_infos::reconcile_progression(db, self.player_id).await?;
         let openinfos = open_infos::list_open_infos(db, self.player_id).await?;
 
         Ok(GetPlayerInfoReply {

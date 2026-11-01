@@ -126,6 +126,14 @@ pub fn run_attacker_round_end(
         &mut result,
         run_card_enchant_round_end(managers, pool, catalog, determinism, context)?,
     );
+    let circle_ops = crate::engine::skill::behavior::magic_circle::emitter_circle_round_end_rule_ops(managers, 1);
+    if !circle_ops.is_empty() {
+        append(&mut result, drain::run(managers, pool, catalog, determinism, context, circle_ops)?);
+    }
+    let circle_ops = crate::engine::skill::behavior::magic_circle::primitive_urge_circle_round_end_rule_ops(managers, 1);
+    if !circle_ops.is_empty() {
+        append(&mut result, drain::run(managers, pool, catalog, determinism, context, circle_ops)?);
+    }
     Ok(result)
 }
 

@@ -659,3 +659,21 @@ fn poison_group_presence_is_evaluated_per_target() {
         TargetContext::default(),
     ));
 }
+
+
+#[test]
+fn per_aura_765203_repeats_once_per_current_eureka() {
+    init_config();
+    let fight = Fight { attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+        uid: Some(10), current_hp: Some(100), power_infos: vec![PowerInfo {
+            power_id: Some(1), num: Some(4), max: Some(10),
+        }], ..Default::default() }], ..Default::default() }), ..Default::default() };
+    let mut managers = BattleManagers::seeded(&fight);
+    let condition = exact_condition(765203, "PerAura", &[]);
+    let pool = TargetPool::from_fight(&fight);
+    for count in [0, 1, 4, 10] {
+        managers.eureka.set(10, 1, count);
+        assert_eq!(conditions_fire_count(&[condition.clone()], 10, &[10], Some(&managers),
+            &pool, TargetContext::default()), count);
+    }
+}

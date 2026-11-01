@@ -161,6 +161,12 @@ fn run_action_with_cost_and_cleanup_owner(
     invocation: crate::engine::skill::action::SkillInvocation,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
+    let mut context = context;
+    context.assist_power_action_owner = invocation.plan.source_uid;
+    context.assist_power_consumed_before_action = managers.eureka.round_change(
+        invocation.plan.source_uid,
+        crate::engine::manager::eureka::PowerType::AssistBoss.id(),
+    ).consumed;
     let current_pool = pool.runtime_view(managers);
     if attack_has_no_target(
         &invocation,

@@ -37,6 +37,15 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
     };
 
     tracing::info!("Received Cmd: {:?}", cmd_id);
+    // Opt-in diagnostic for identifying the client's artificial-somnambulism flow.
+    // Record metadata only: request payloads may contain account or team data.
+    if std::env::var_os("ENIGMA_TRACE_WEEKWALK").is_some() {
+        let name = format!("{cmd_id:?}");
+        if name.contains("Weekwalk") || matches!(cmd_id, CmdId::StartDungeonCmd | CmdId::FightEndFightCmd) {
+            tracing::info!(target: "weekwalk_trace", command = %name, command_id = req.cmd_id,
+                body_bytes = req.data.len(), sequence = req.sequence, "weekwalk request metadata");
+        }
+    }
     let up_tag = req.up_tag;
 
     if cmd_id == CmdId::GetAct233BpInfoCmd {
@@ -54,6 +63,20 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
 
     let result = Box::pin(dispatch_registered_command(ctx, cmd_id, req)).await;
 
+    if std::env::var_os("ENIGMA_TRACE_WEEKWALK").is_some()
+        && (format!("{cmd_id:?}").contains("Weekwalk")
+            || matches!(cmd_id, CmdId::MarkPopShallowSettleCmd | CmdId::MarkPopDeepSettleCmd))
+    {
+        match &result {
+            Ok(()) => tracing::info!(target: "weekwalk_trace", command = ?cmd_id,
+                status = "handler_completed", "weekwalk request result"),
+            Err(error) => tracing::warn!(target: "weekwalk_trace", command = ?cmd_id,
+                status = "handler_error", unhandled = matches!(error, AppError::Cmd(CmdError::UnhandledCmd(_))),
+                result_code = match error.client_action() {
+                    ClientErrorAction::Reply(code) | ClientErrorAction::Reconnect(code) => code.id(),
+                }, "weekwalk request result"),
+        }
+    }
     match result {
         Ok(()) => Ok(()),
         Err(error) => handle_command_error(ctx, cmd_id, up_tag, error).await,
@@ -258,6 +281,8 @@ async fn dispatch_registered_command(
         CmdId::GetAct124InfosCmd => activity::on_get_act124_infos,
         CmdId::Get126InfosCmd => activity::on_get_126_infos,
         CmdId::Get128InfosCmd => activity::on_get_128_infos,
+        CmdId::GetGalleryInfosCmd => activity::on_get_gallery_infos,
+        CmdId::Act128GetExpCmd => activity::on_act128_get_exp,
         CmdId::Act128GetTotalRewardsCmd => activity::on_act128_get_total_rewards,
         CmdId::Act128GetMilestoneBonusCmd => activity::on_act128_get_milestone_bonus,
         CmdId::Get129InfosCmd => activity::on_get_129_infos,
@@ -407,6 +432,8 @@ async fn dispatch_registered_command(
         CmdId::GetChargePushInfoCmd => charge::on_get_charge_push_info,
         CmdId::ReadChargeNewCmd => charge::on_read_charge_new,
         CmdId::GetStoreInfosCmd => store::on_get_store_infos,
+        CmdId::Get107GoodsInfoCmd => store::on_get_107_goods_info,
+        CmdId::Buy107GoodsCmd => store::on_buy_107_goods,
         CmdId::BuyGoodsCmd => store::on_buy_goods,
         CmdId::NewOrderCmd => store::on_new_order,
         CmdId::ReadStoreNewCmd => store::on_read_store_new,
@@ -436,6 +463,13 @@ async fn dispatch_registered_command(
         CmdId::UpdateNecrologistStoryCmd => story::on_update_necrologist_story,
         CmdId::FinishNecrologistStoryModeCmd => story::on_finish_necrologist_story_mode,
         CmdId::GetExploreSimpleInfoCmd => exploration::on_get_explore_simple_info,
+        CmdId::ChangeMapCmd => exploration::on_change_map,
+        CmdId::GetExploreInfoCmd => exploration::on_get_explore_info,
+        CmdId::ExploreMoveCmd => exploration::on_explore_move,
+        CmdId::ExploreInteractCmd => exploration::on_explore_interact,
+        CmdId::ExploreUseItemCmd => exploration::on_explore_use_item,
+        CmdId::ExploreItemInteractCmd => exploration::on_explore_item_interact,
+        CmdId::ResetExploreCmd => exploration::on_reset_explore,
         CmdId::GetTowerInfoCmd => tower::on_get_info,
         CmdId::TowerMopUpCmd => tower::on_mop_up,
         CmdId::TowerResetSubEpisodeCmd => tower::on_reset_sub_episode,
@@ -446,10 +480,26 @@ async fn dispatch_registered_command(
         CmdId::TowerRenameTalentPlanCmd => tower::on_rename_talent_plan,
         CmdId::TowerComposeGetInfoCmd => tower_compose::on_tower_compose_get_info,
         CmdId::TowerComposeSetModsCmd => tower_compose::on_tower_compose_set_mods,
+        CmdId::TowerComposeUpdateRecordCmd => tower_compose::on_update_record,
+        CmdId::TowerComposeLoadRecordCmd => tower_compose::on_load_record,
+        CmdId::TowerComposeReChallengeCmd => tower_compose::on_re_challenge,
+        CmdId::TowerComposeCancelReChallengeCmd => tower_compose::on_cancel_re_challenge,
         CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
+        CmdId::WeekwalkDialogCmd => exploration::on_weekwalk_dialog,
+        CmdId::BeforeStartWeekwalkBattleCmd => exploration::on_before_weekwalk_battle,
+        CmdId::WeekwalkDialogHistoryCmd => exploration::on_weekwalk_dialog_history,
+        CmdId::ChangeWeekwalkHeroGroupSelectCmd => exploration::on_change_weekwalk_team,
+        CmdId::MarkShowBuffCmd => exploration::on_mark_weekwalk_show_buff,
+        CmdId::MarkShowFinishedCmd => exploration::on_mark_weekwalk_show_finished,
+        CmdId::MarkPopDeepRuleCmd => exploration::on_mark_weekwalk_deep_rule,
         CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
         CmdId::MarkPopDeepSettleCmd => exploration::on_mark_pop_deep_settle,
         CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,
+        CmdId::WeekwalkVer2ChangeHeroGroupSelectCmd => exploration::on_change_weekwalk_v2_team,
+        CmdId::WeekwalkVer2ChooseSkillCmd => exploration::on_choose_weekwalk_v2_skill,
+        CmdId::WeekwalkVer2MarkShowFinishedCmd => exploration::on_mark_weekwalk_v2_show_finished,
+        CmdId::WeekwalkVer2MarkPopRuleCmd => exploration::on_mark_weekwalk_v2_rule,
+        CmdId::WeekwalkVer2MarkPreSettleCmd => exploration::on_mark_weekwalk_v2_previous_settlement,
         CmdId::GetBlockPackageInfoRequsetCmd => room::on_get_block_package_info,
         CmdId::HideBlockPackageReddotCmd => room::on_hide_block_package_reddot,
         CmdId::HideBuildingReddotRequsetCmd => room::on_hide_building_reddot,

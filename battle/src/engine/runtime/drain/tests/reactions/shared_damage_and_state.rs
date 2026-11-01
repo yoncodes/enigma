@@ -302,6 +302,75 @@ fn allied_action_observer_keeps_the_triggering_action_target() {
 }
 
 #[test]
+fn ramona_follows_up_only_after_an_ally_uses_her_marked_card() {
+    crate::test_support::init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid), model_id: Some(model_id), current_hp: Some(100_000),
+        attr: Some(HeroAttribute { hp: Some(100_000), attack: Some(1_000), ..Default::default() }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![entity(10, 3023), FightEntityInfo {
+            passive_skill: vec![31420151], ..entity(30, 3142)
+        }], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![entity(-1, 1001)], ..Default::default() }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    for (enchants, expected) in [(vec![10011], true), (vec![], false), (vec![10010], false)] {
+        let mut managers = BattleManagers::seeded(&fight);
+        let result = run_event(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+            TargetContext::default(), BattleEvent::AllyAction(ActionEvent {
+                source_uid: 10, skill_id: 30230111, target_uid: -1, target_uids: vec![-1],
+                skill_slot: 1, card_index: 1, is_attack: true, rank: 1,
+                mode: SkillExecutionMode::Active, card_enchants: enchants,
+                ..Default::default()
+            })).unwrap();
+        fn contains(step: &sonettobuf::FightStep) -> bool {
+            step.act_id == Some(31420141) || step.act_effect.iter()
+                .filter_map(|effect| effect.fight_step.as_ref()).any(contains)
+        }
+        let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+        assert_eq!(steps.iter().any(contains), expected);
+    }
+}
+
+#[test]
+fn ramona_deaths_grant_debuff_to_living_enemies_on_next_round() {
+    crate::test_support::init_config();
+    let entity = |uid, model_id, team| FightEntityInfo {
+        uid: Some(uid), model_id: Some(model_id), team_type: Some(team), current_hp: Some(1000),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+            buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(31420007), from_uid: Some(10), ..Default::default() }],
+            ..entity(10, 3142, 1)
+        }], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![entity(-1, 1001, 2), entity(-2, 1001, 2)], ..Default::default() }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut random = RoundDeterminism::default();
+    // The real opening uses the dedicated RoundStart event, including before any deaths.
+    run_event(&mut managers, &pool, &catalog, &mut random, TargetContext::default(),
+        BattleEvent::RoundStart).unwrap();
+    for target_uid in [-1, -2] {
+        run_event(&mut managers, &pool, &catalog, &mut random, TargetContext::default(),
+            BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
+                source_uid: 10, target_uid,
+            })).unwrap();
+    }
+    run_event(&mut managers, &pool, &catalog, &mut random, TargetContext::default(),
+        BattleEvent::RoundStart).unwrap();
+    assert_eq!(managers.buff.buff_id_amount(-1, 31420002), 2);
+    assert_eq!(managers.buff.buff_id_amount(-2, 31420002), 2);
+}
+
+#[test]
 fn active_ally_reaction_without_parent_keeps_the_action_target() {
     crate::test_support::init_config();
     let entity = |uid, model_id| FightEntityInfo {
@@ -903,4 +972,27 @@ fn entity_defeat_passive_executes_each_configured_sibling_slot() {
     .unwrap();
 
     assert_eq!(managers.buff.snapshot(10, 20).unwrap().layer, Some(4));
+}
+
+#[test]
+fn poison_team_other_ally_action_does_not_abort_battle() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![
+            FightEntityInfo { uid: Some(10), team_type: Some(1), current_hp: Some(100),
+                buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(30980142), from_uid: Some(11),
+                    ..Default::default() }], ..Default::default() },
+            FightEntityInfo { uid: Some(11), team_type: Some(1), current_hp: Some(100),
+                ..Default::default() },
+        ], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![FightEntityInfo { uid: Some(-1), team_type: Some(2),
+            current_hp: Some(100), ..Default::default() }], ..Default::default() }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    run_event(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+        TargetContext::default(), BattleEvent::AllyAction(ActionEvent { source_uid: 11,
+            buff_addition_targets: vec![(-1, 31420000, 1)], ..Default::default() })).unwrap();
 }

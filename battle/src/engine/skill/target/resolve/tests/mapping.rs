@@ -12,6 +12,32 @@ fn unmapped_target_codes_are_detectable_before_capture_override() {
 }
 
 #[test]
+fn tides_component_targets_follow_monster_labels_not_runtime_target() {
+    init_config();
+    // The boss and its three configurable parts have labels 1 through 4;
+    // changed component models preserve the same labels.
+    let monster = |uid, model_id, position| FightEntityInfo {
+        model_id: Some(model_id), ..entity_at(uid, position)
+    };
+    let pool = TargetPool::from_fight(&Fight {
+        attacker: Some(FightTeam { entitys: vec![entity_at(10, 1)], ..Default::default() }),
+        defender: Some(FightTeam {
+            entitys: vec![monster(-1, 900100101, 1), monster(-2, 900100302, 2),
+                monster(-3, 900100202, 3), monster(-4, 900100403, 4)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    for (code, expected) in [(1001, -1), (1002, -3), (1003, -2), (1004, -4)] {
+        assert_eq!(resolve_code_with_context(code, -1, &pool, &mut RoundDeterminism::default(),
+            TargetContext { runtime_target_uid: 10, ..Default::default() }), vec![expected],
+            "component target {code}");
+    }
+    assert!(resolve_code(1004, 10, &pool, &mut RoundDeterminism::default()).is_empty(),
+        "the target must stay on the caster's side");
+}
+
+#[test]
 fn afflatus_target_codes_select_matching_allies() {
     let entity = |uid, position, career| FightEntityInfo {
         career: Some(career),

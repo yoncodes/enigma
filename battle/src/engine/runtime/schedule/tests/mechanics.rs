@@ -517,6 +517,116 @@ fn action_queue_commit_collects_played_card_energy_as_inspiration() {
 }
 
 #[test]
+fn paper_heron_guidance_spends_source_eureka_and_adds_current_inspiration() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![
+            FightEntityInfo { uid: Some(10), team_type: Some(1), current_hp: Some(100),
+                power_infos: vec![PowerInfo { power_id: Some(1), num: Some(10), max: Some(10) }],
+                buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(2240000), from_uid: Some(10), ..Default::default() }],
+                ..Default::default() },
+            FightEntityInfo { uid: Some(11), team_type: Some(1), current_hp: Some(100),
+                buffs: vec![BuffInfo { uid: Some(21), buff_id: Some(31410407), from_uid: Some(10), ..Default::default() }],
+                ..Default::default() },
+        ], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![FightEntityInfo { uid: Some(-1), team_type: Some(2), current_hp: Some(100), ..Default::default() }], ..Default::default() }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let enabled = enable_rule_ops(
+        crate::catalog::impromptu_definition(crate::test_support::game_data()),
+        &managers.gauge, &managers.buff.active_features(&managers.hp), 99998,
+    ).pop().unwrap();
+    if let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter { managers.execute_emitter(command); } else { unreachable!() }
+    for op in [enabled.team_energy, enabled.inspiration] {
+        if let RuleOp::Command(BattleCommand::Gauge(command)) = op { managers.execute_gauge(command).unwrap(); } else { unreachable!() }
+    }
+    managers.execute_card(CardCommand::Setup(CardSetup {
+        hand: vec![CardInfo { uid: Some(11), skill_id: Some(200), energy: Some(0), ..Default::default() }],
+        draw_pile: Vec::new(), deck_num: 1,
+    })).unwrap();
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect { skill_id: 200, slots: Vec::new() });
+    let mut automatic: crate::engine::skill::action::SkillInvocation =
+        crate::engine::skill::action::SkillRequest { source_uid: 11, skill_id: 200 }.into();
+    automatic.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+    drain::run(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+        TargetContext::default(), [RuleOp::Skill(automatic.clone())]).unwrap();
+    assert_eq!(managers.eureka.get(10, 1).current, 10);
+    assert_eq!(managers.gauge.get(team_energy_key(1)).unwrap().current, 0);
+    assert_eq!(managers.gauge.get(inspiration_key(99998)).unwrap().current, 0);
+    run_player_action_queue(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+        TargetContext::default(), [CardPlay { origin: CARD_PLAY_ORIGIN, hand_index: 0,
+            target_uid: Some(-1), chosen_skill_id: None, choice: None, recorded_skill: None }], 1, 99998).unwrap();
+    assert_eq!(managers.eureka.get(10, 1).current, 8);
+    assert_eq!(managers.gauge.get(team_energy_key(1)).unwrap().current, 2);
+    assert_eq!(managers.gauge.get(inspiration_key(99998)).unwrap().current, 2);
+    drain::run(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+        TargetContext::default(), [RuleOp::Skill(automatic)]).unwrap();
+    assert_eq!(managers.eureka.get(10, 1).current, 8);
+    assert_eq!(managers.gauge.get(team_energy_key(1)).unwrap().current, 2);
+    assert_eq!(managers.gauge.get(inspiration_key(99998)).unwrap().current, 2);
+}
+
+#[test]
+fn paper_heron_valley_wind_spends_resources_at_round_start_for_damage_bonus() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(10), model_id: Some(3141), team_type: Some(1), current_hp: Some(100),
+            power_infos: vec![PowerInfo { power_id: Some(1), num: Some(10), max: Some(10) }],
+            buffs: vec![
+                BuffInfo { uid: Some(20), buff_id: Some(2240000), from_uid: Some(10), ..Default::default() },
+                BuffInfo { uid: Some(21), buff_id: Some(31410202), from_uid: Some(10), layer: Some(2), ..Default::default() },
+            ], ..Default::default()
+        }], ..Default::default() }), ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let enabled = enable_rule_ops(crate::catalog::impromptu_definition(crate::test_support::game_data()),
+        &managers.gauge, &managers.buff.active_features(&managers.hp), 99998).pop().unwrap();
+    if let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter { managers.execute_emitter(command); } else { unreachable!() }
+    for op in [enabled.team_energy, enabled.inspiration] {
+        if let RuleOp::Command(BattleCommand::Gauge(command)) = op { managers.execute_gauge(command).unwrap(); } else { unreachable!() }
+    }
+    run_round_start_split(&mut managers, &pool, &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(), TargetContext::default(), 1).unwrap();
+    assert_eq!(managers.eureka.get(10, 1).current, 8);
+    assert_eq!(managers.buff.buff_id_amount(10, 31410202), 1);
+    assert_eq!(managers.buff.buff_id_amount(99998, 31410203), 1);
+    assert_eq!(managers.buff.attribute_delta(99998, crate::engine::entity::attr::AttrId::DmgBonus), 200);
+}
+
+#[test]
+fn paper_heron_replaces_impromptu_skill_and_switches_to_reality_damage() {
+    init_config();
+    let fight = Fight { attacker: Some(FightTeam { entitys: vec![
+        FightEntityInfo { uid: Some(10), current_hp: Some(100), team_type: Some(1),
+            buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(2240000), from_uid: Some(10), ..Default::default() }], ..Default::default() },
+        FightEntityInfo { uid: Some(99998), current_hp: Some(100), team_type: Some(1),
+            buffs: vec![
+                BuffInfo { uid: Some(21), buff_id: Some(31410402), from_uid: Some(10), ..Default::default() },
+                BuffInfo { uid: Some(22), buff_id: Some(31410410), from_uid: Some(10), ..Default::default() },
+            ], ..Default::default() },
+    ], ..Default::default() }), ..Default::default() };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let enabled = enable_rule_ops(crate::catalog::impromptu_definition(crate::test_support::game_data()),
+        &managers.gauge, &managers.buff.active_features(&managers.hp), 99998).pop().unwrap();
+    if let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter { managers.execute_emitter(command); } else { unreachable!() }
+    for op in [enabled.team_energy, enabled.inspiration] {
+        if let RuleOp::Command(BattleCommand::Gauge(command)) = op { managers.execute_gauge(command).unwrap(); } else { unreachable!() }
+    }
+    let origin = CommandOrigin { domain: RuleDomain::Lifecycle, key: DefinitionKey::new(0, "Test") };
+    managers.execute_gauge(crate::engine::manager::gauge::GaugeCommand::new(origin,
+        inspiration_key(99998), crate::engine::manager::gauge::GaugeOperation::ChangeValue { delta: 2 })).unwrap();
+    assert_eq!(build_plan(&managers, 1, 99998).unwrap().skill_id, 31410001);
+    assert_eq!(pool.runtime_view(&managers).entity(99998).unwrap().damage_type,
+        crate::engine::skill::target::EntityDamageType::Reality);
+}
+
+#[test]
 fn player_actions_resolved_activates_internal_inspiration_thresholds() {
     init_config();
     let fight = Fight {
@@ -839,4 +949,127 @@ fn impromptu_executes_the_transient_plan_then_resets_inspiration() {
                 == Some(sonettobuf::effect_type_enum::EffectType::Emitterfightnotify as i32)
         })
     }));
+}
+
+#[test]
+fn real_hand_cast_pays_both_guidance_and_own_eureka() {
+    init_config();
+    for (hero_id, skill_id, target_uid) in [(3053, 30530161, -1), (3053, 30530171, 11), (3117, 31170111, -1)] {
+        let attr = HeroAttribute { hp: Some(100_000), attack: Some(1_000), ..Default::default() };
+        let fight = Fight {
+            attacker: Some(FightTeam { entitys: vec![
+                FightEntityInfo { uid: Some(10), model_id: Some(3141), team_type: Some(1), current_hp: Some(100_000), attr: Some(attr),
+                    power_infos: vec![PowerInfo { power_id: Some(1), num: Some(10), max: Some(10) }],
+                    buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(2240000), from_uid: Some(10), ..Default::default() }], ..Default::default() },
+                FightEntityInfo { uid: Some(11), model_id: Some(hero_id), team_type: Some(1), current_hp: Some(100_000), attr: Some(attr),
+                    power_infos: vec![PowerInfo { power_id: Some(1), num: Some(5), max: Some(5) }],
+                    buffs: vec![BuffInfo { uid: Some(21), buff_id: Some(31410407), from_uid: Some(10), ..Default::default() }], ..Default::default() },
+                crate::engine::manager::emitter::activation_entity(),
+            ], ..Default::default() }),
+            defender: Some(FightTeam { entitys: vec![FightEntityInfo { uid: Some(-1), team_type: Some(2), current_hp: Some(100_000), attr: Some(attr), ..Default::default() }], ..Default::default() }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let enabled = enable_rule_ops(crate::catalog::impromptu_definition(crate::test_support::game_data()),
+            &managers.gauge, &managers.buff.active_features(&managers.hp), 99998).pop().unwrap();
+        if let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter { managers.execute_emitter(command); } else { unreachable!() }
+        for op in [enabled.team_energy, enabled.inspiration] {
+            if let RuleOp::Command(BattleCommand::Gauge(command)) = op { managers.execute_gauge(command).unwrap(); } else { unreachable!() }
+        }
+        managers.execute_card(CardCommand::Setup(CardSetup { hand: vec![CardInfo { uid: Some(11), skill_id: Some(skill_id), energy: Some(0), ..Default::default() }], draw_pile: Vec::new(), deck_num: 1 })).unwrap();
+        let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [skill_id], [2240000, 31410407]);
+        let result = run_player_action_queue(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(), TargetContext::default(),
+            [CardPlay { origin: CARD_PLAY_ORIGIN, hand_index: 0, target_uid: Some(target_uid), chosen_skill_id: None, choice: None, recorded_skill: None }], 1, 99998).unwrap();
+        assert_eq!(managers.eureka.get(11, 1).current, 3, "skill {skill_id}; events {:?}", result.events);
+        assert_eq!(managers.eureka.get(10, 1).current, 8, "skill {skill_id}");
+        assert_eq!(managers.gauge.get(team_energy_key(1)).unwrap().current, 4, "skill {skill_id}");
+        assert_eq!(managers.gauge.get(inspiration_key(99998)).unwrap().current, 4, "skill {skill_id}");
+        assert_eq!(build_plan(&managers, 1, 99998).unwrap().inspiration, 4, "skill {skill_id}");
+        fn has_power_change(step: &sonettobuf::FightStep, target: i64) -> bool {
+            step.act_effect.iter().any(|effect| {
+                (effect.target_id == Some(target)
+                    && effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Powerchange as i32)
+                    && effect.effect_num == Some(-2))
+                    || effect.fight_step.as_ref().is_some_and(|child| has_power_change(child, target))
+            })
+        }
+        let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+        assert!(steps.iter().any(|step| has_power_change(step, 11)), "skill {skill_id} missing own power change in client timeline");
+    }
+}
+
+#[test]
+fn paper_heron_own_card_spend_adds_current_inspiration_once() {
+    init_config();
+    for skill_id in [31410111, 31410121] {
+        let attr = HeroAttribute { hp: Some(100_000), attack: Some(1_000), ..Default::default() };
+        let fight = Fight {
+            attacker: Some(FightTeam { entitys: vec![
+                FightEntityInfo { uid: Some(10), model_id: Some(3141), team_type: Some(1), current_hp: Some(100_000), attr: Some(attr),
+                    power_infos: vec![PowerInfo { power_id: Some(1), num: Some(10), max: Some(10) }],
+                    buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(2240000), from_uid: Some(10), ..Default::default() }], ..Default::default() },
+                crate::engine::manager::emitter::activation_entity(),
+            ], ..Default::default() }),
+            defender: Some(FightTeam { entitys: vec![FightEntityInfo { uid: Some(-1), team_type: Some(2), current_hp: Some(100_000), attr: Some(attr), ..Default::default() }], ..Default::default() }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let enabled = enable_rule_ops(crate::catalog::impromptu_definition(crate::test_support::game_data()), &managers.gauge, &managers.buff.active_features(&managers.hp), 99998).pop().unwrap();
+        if let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter { managers.execute_emitter(command); } else { unreachable!() }
+        for op in [enabled.team_energy, enabled.inspiration] { if let RuleOp::Command(BattleCommand::Gauge(command)) = op { managers.execute_gauge(command).unwrap(); } else { unreachable!() } }
+        managers.execute_card(CardCommand::Setup(CardSetup { hand: vec![CardInfo { uid: Some(10), skill_id: Some(skill_id), energy: Some(0), ..Default::default() }], draw_pile: Vec::new(), deck_num: 1 })).unwrap();
+        let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [skill_id], [2240000]);
+        let target = if skill_id == 31410111 { -1 } else { 10 };
+        run_player_action_queue(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(), TargetContext::default(),
+            [CardPlay { origin: CARD_PLAY_ORIGIN, hand_index: 0, target_uid: Some(target), chosen_skill_id: None, choice: None, recorded_skill: None }], 1, 99998).unwrap();
+        assert_eq!(managers.eureka.get(10, 1).current, 8, "skill {skill_id}");
+        assert_eq!(managers.gauge.get(team_energy_key(1)).unwrap().current, 2, "skill {skill_id}");
+        assert_eq!(build_plan(&managers, 1, 99998).unwrap().inspiration, 2, "skill {skill_id}");
+    }
+}
+
+#[test]
+fn real_eureka_cards_preserve_existing_inspiration_and_require_sufficient_power() {
+    init_config();
+    for (hero_id, skill_id, target_uid) in [(3053, 30530161, -1), (3053, 30530171, 11), (3117, 31170111, -1)] {
+        for (initial_power, card_energy, expected_power, expected_inspiration, expected_pool) in
+            [(1, 0, 1, 2, 2), (5, 3, 3, 7, 4)] {
+            let attr = HeroAttribute { hp: Some(100_000), attack: Some(1_000), ..Default::default() };
+            let fight = Fight {
+                attacker: Some(FightTeam { entitys: vec![
+                    FightEntityInfo { uid: Some(10), model_id: Some(3141), team_type: Some(1), current_hp: Some(100_000), attr: Some(attr),
+                        power_infos: vec![PowerInfo { power_id: Some(1), num: Some(10), max: Some(10) }],
+                        buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(2240000), from_uid: Some(10), ..Default::default() }], ..Default::default() },
+                    FightEntityInfo { uid: Some(11), model_id: Some(hero_id), team_type: Some(1), current_hp: Some(100_000), attr: Some(attr),
+                        power_infos: vec![PowerInfo { power_id: Some(1), num: Some(initial_power), max: Some(5) }],
+                        buffs: vec![BuffInfo { uid: Some(21), buff_id: Some(31410407), from_uid: Some(10), ..Default::default() }], ..Default::default() },
+                    crate::engine::manager::emitter::activation_entity(),
+                ], ..Default::default() }),
+                defender: Some(FightTeam { entitys: vec![FightEntityInfo { uid: Some(-1), team_type: Some(2),
+                    current_hp: Some(100_000), attr: Some(attr), ..Default::default() }], ..Default::default() }),
+                ..Default::default()
+            };
+            let pool = TargetPool::from_fight(&fight);
+            let mut managers = BattleManagers::seeded(&fight);
+            let enabled = enable_rule_ops(crate::catalog::impromptu_definition(crate::test_support::game_data()),
+                &managers.gauge, &managers.buff.active_features(&managers.hp), 99998).pop().unwrap();
+            if let RuleOp::Command(BattleCommand::Emitter(command)) = enabled.emitter { managers.execute_emitter(command); } else { unreachable!() }
+            for op in [enabled.team_energy, enabled.inspiration] {
+                if let RuleOp::Command(BattleCommand::Gauge(command)) = op { managers.execute_gauge(command).unwrap(); } else { unreachable!() }
+            }
+            managers.execute_card(CardCommand::Setup(CardSetup { hand: vec![CardInfo { uid: Some(11),
+                skill_id: Some(skill_id), energy: Some(card_energy), ..Default::default() }],
+                draw_pile: Vec::new(), deck_num: 1 })).unwrap();
+            let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [skill_id], [2240000, 31410407]);
+            run_player_action_queue(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+                TargetContext::default(), [CardPlay { origin: CARD_PLAY_ORIGIN, hand_index: 0,
+                    target_uid: Some(target_uid), chosen_skill_id: None, choice: None, recorded_skill: None }], 1, 99998).unwrap();
+            assert_eq!(managers.eureka.get(11, 1).current, expected_power, "skill {skill_id}, initial {initial_power}");
+            assert_eq!(managers.eureka.get(10, 1).current, 8, "guidance for skill {skill_id}");
+            assert_eq!(managers.gauge.get(team_energy_key(1)).unwrap().current, expected_pool, "skill {skill_id}");
+            assert_eq!(build_plan(&managers, 1, 99998).unwrap().inspiration, expected_inspiration, "skill {skill_id}");
+        }
+    }
 }

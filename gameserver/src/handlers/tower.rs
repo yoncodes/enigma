@@ -122,7 +122,7 @@ pub async fn on_start_battle(
             tower_id: msg.tower_id,
             layer_id: msg.layer_id,
             difficulty: msg.difficulty,
-            talent_plan_id: msg.talent_plan_id,
+            talent_plan_id: Some(tower_context.talent_plan_id),
         },
         0,
         req.up_tag,

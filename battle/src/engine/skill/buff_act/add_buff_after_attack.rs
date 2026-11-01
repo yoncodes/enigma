@@ -78,6 +78,7 @@ mod tests {
 
     fn event(source_uid: i64, phase: SkillPhase) -> BattleEvent {
         BattleEvent::SkillAction(SkillActionEvent {
+            card_index: 0,
             source_uid,
             skill_id: 2_240_001,
             target_uid: -1,

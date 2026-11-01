@@ -345,7 +345,7 @@ fn missing_buff_act_definition_preserves_exact_runtime_identity() {
 }
 
 #[test]
-fn dead_passive_nonheal_then_heal_prevents_terminal() {
+fn dead_passive_nonheal_then_normal_heal_does_not_revive() {
     let (managers, result) = death_reaction_result(true);
 
     let resource = result
@@ -358,29 +358,10 @@ fn dead_passive_nonheal_then_heal_prevents_terminal() {
             )
         })
         .unwrap();
-    let heal = result
-        .events
-        .iter()
-        .position(|event| {
-            matches!(
-                event,
-                BattleEvent::HpHealed {
-                    source_uid: -1,
-                    target_uid: -1,
-                    amount: 1,
-                    ..
-                }
-            )
-        })
-        .unwrap();
-    assert!(resource < heal);
-    assert_eq!(managers.hp.current(-1), 1);
-    assert!(
-        !result
-            .events
-            .iter()
-            .any(|event| matches!(event, BattleEvent::BattleTerminalCommitted { .. }))
-    );
+    assert!(resource < result.events.len());
+    assert!(!result.events.iter().any(|event| matches!(event, BattleEvent::HpHealed { target_uid: -1, .. })));
+    assert_eq!(managers.hp.current(-1), 0);
+    assert_eq!(result.events.iter().filter(|event| matches!(event, BattleEvent::BattleTerminalCommitted { .. })).count(), 1);
 }
 
 #[test]

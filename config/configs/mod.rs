@@ -391,10 +391,16 @@ pub mod tower_boss;
 pub mod tower_boss_episode;
 pub mod tower_boss_teach;
 pub mod tower_boss_time;
+pub mod tower_compose_boss_lv;
+pub mod tower_compose_const;
+pub mod tower_compose_extra;
+pub mod tower_compose_point_level;
+pub mod tower_compose_point_round;
 pub mod tower_compose_episode;
 pub mod tower_compose_mod;
 pub mod tower_compose_research;
 pub mod tower_compose_support;
+pub mod tower_compose_task;
 pub mod tower_compose_theme;
 pub mod tower_const;
 pub mod tower_hero_trial;
@@ -816,10 +822,16 @@ pub struct GameDB {
     pub tower_boss_episode: tower_boss_episode::TowerBossEpisodeTable,
     pub tower_boss_teach: tower_boss_teach::TowerBossTeachTable,
     pub tower_boss_time: tower_boss_time::TowerBossTimeTable,
+    pub tower_compose_boss_lv: tower_compose_boss_lv::TowerComposeBossLvTable,
+    pub tower_compose_const: tower_compose_const::TowerComposeConstTable,
+    pub tower_compose_extra: tower_compose_extra::TowerComposeExtraTable,
+    pub tower_compose_point_level: tower_compose_point_level::TowerComposePointLevelTable,
+    pub tower_compose_point_round: tower_compose_point_round::TowerComposePointRoundTable,
     pub tower_compose_episode: tower_compose_episode::TowerComposeEpisodeTable,
     pub tower_compose_mod: tower_compose_mod::TowerComposeModTable,
     pub tower_compose_research: tower_compose_research::TowerComposeResearchTable,
     pub tower_compose_support: tower_compose_support::TowerComposeSupportTable,
+    pub tower_compose_task: tower_compose_task::TowerComposeTaskTable,
     pub tower_compose_theme: tower_compose_theme::TowerComposeThemeTable,
     pub tower_const: tower_const::TowerConstTable,
     pub tower_hero_trial: tower_hero_trial::TowerHeroTrialTable,
@@ -2023,6 +2035,21 @@ impl GameDB {
         let tower_boss_time = tower_boss_time::TowerBossTimeTable::load(
             &format!("{}/tower_boss_time.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load tower_boss_time.json: {}", e))?;
+        let tower_compose_boss_lv = tower_compose_boss_lv::TowerComposeBossLvTable::load(
+            &format!("{}/tower_compose_boss_lv.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load tower_compose_boss_lv.json: {}", e))?;
+        let tower_compose_const = tower_compose_const::TowerComposeConstTable::load(
+            &format!("{}/tower_compose_const.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load tower_compose_const.json: {}", e))?;
+        let tower_compose_extra = tower_compose_extra::TowerComposeExtraTable::load(
+            &format!("{}/tower_compose_extra.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load tower_compose_extra.json: {}", e))?;
+        let tower_compose_point_level = tower_compose_point_level::TowerComposePointLevelTable::load(
+            &format!("{}/tower_compose_point_level.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load tower_compose_point_level.json: {}", e))?;
+        let tower_compose_point_round = tower_compose_point_round::TowerComposePointRoundTable::load(
+            &format!("{}/tower_compose_point_round.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load tower_compose_point_round.json: {}", e))?;
         let tower_compose_episode = tower_compose_episode::TowerComposeEpisodeTable::load(
             &format!("{}/tower_compose_episode.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load tower_compose_episode.json: {}", e))?;
@@ -2035,6 +2062,9 @@ impl GameDB {
         let tower_compose_support = tower_compose_support::TowerComposeSupportTable::load(
             &format!("{}/tower_compose_support.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load tower_compose_support.json: {}", e))?;
+        let tower_compose_task = tower_compose_task::TowerComposeTaskTable::load(
+            &format!("{}/tower_compose_task.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load tower_compose_task.json: {}", e))?;
         let tower_compose_theme = tower_compose_theme::TowerComposeThemeTable::load(
             &format!("{}/tower_compose_theme.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load tower_compose_theme.json: {}", e))?;
@@ -2506,10 +2536,16 @@ impl GameDB {
             tower_boss_episode,
             tower_boss_teach,
             tower_boss_time,
+            tower_compose_boss_lv,
+            tower_compose_const,
+            tower_compose_extra,
+            tower_compose_point_level,
+            tower_compose_point_round,
             tower_compose_episode,
             tower_compose_mod,
             tower_compose_research,
             tower_compose_support,
+            tower_compose_task,
             tower_compose_theme,
             tower_const,
             tower_hero_trial,

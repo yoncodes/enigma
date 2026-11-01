@@ -607,6 +607,12 @@ impl BuffDefinition {
             .filter_map(|feature| {
                 use crate::engine::skill::buff_act::registry::BuffActInitialStateRule;
 
+                if self.id == 31410407 && feature.values.first() == Some(&834) {
+                    return crate::engine::skill::buff_act::each_change_attr::guidance_snapshot(
+                        source_attack?, &feature.values,
+                    );
+                }
+
                 let initial_state = feature.initial_state?;
                 let act_id = *feature.values.first()?;
                 match initial_state {

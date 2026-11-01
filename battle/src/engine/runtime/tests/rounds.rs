@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn instruction_coop_allows_two_complete_action_rounds() {
+    crate::test_support::init_config();
+    let entity = |uid, team_type| FightEntityInfo {
+        uid: Some(uid), team_type: Some(team_type), position: Some(1),
+        current_hp: Some(1_000_000),
+        attr: Some(sonettobuf::HeroAttribute { hp: Some(1_000_000), ..Default::default() }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        battle_id: Some(5126), episode_id: Some(110601), cur_wave: Some(1), cur_round: Some(1),
+        max_round: Some(2), version: Some(6),
+        attacker: Some(FightTeam { entitys: vec![entity(10, 1)], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![entity(-1, 2)], ..Default::default() }),
+        ..Default::default()
+    };
+    let mut battle = runtime(fight);
+    let first = battle.build_begin_round_from_schedule(&BeginRoundRequest::default()).unwrap();
+    assert_eq!(first.cur_round, Some(2));
+    assert_eq!(first.is_finish, Some(false));
+    let second = battle.build_begin_round_from_schedule(&BeginRoundRequest::default()).unwrap();
+    assert_eq!(second.cur_round, Some(3));
+    assert_eq!(second.is_finish, Some(true));
+    assert_eq!(battle.outcome(), crate::engine::round::outcome::BattleOutcome::OutOfRounds);
+}
+
+#[test]
 fn conduit_inherits_the_rounds_selected_enemy() {
     let fight = Fight {
         attacker: Some(FightTeam {

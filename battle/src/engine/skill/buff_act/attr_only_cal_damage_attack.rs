@@ -35,7 +35,13 @@ pub fn supports_be_attacked(args: &[i32]) -> bool {
 
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId) -> i32 {
     match feature.values.as_slice() {
-        [_, raw_attr_id, value, ..] if *raw_attr_id == attr_id as i32 => value * feature.amount,
+        [_, raw_attr_id, value, ..] if *raw_attr_id == attr_id as i32 => {
+            // Tooth Fairy's count is remaining attack charges, not damage stacks.
+            let charges = [30530601..=30530605, 30532601..=30532605,
+                30533601..=30533605, 30535601..=30535605]
+                .iter().any(|range| range.contains(&feature.buff_id));
+            value * if charges { i32::from(feature.amount > 0) } else { feature.amount }
+        },
         _ => 0,
     }
 }
@@ -168,6 +174,16 @@ mod tests {
         assert_eq!(attribute_delta(&morale, AttrId::DmgBonus), 500);
         assert_eq!(attribute_delta(&morale, AttrId::CriticalDmg), 0);
         assert!(consumes_after_attack(&morale));
+    }
+
+    #[test]
+    fn tooth_fairy_attack_charges_do_not_multiply_damage_bonus() {
+        let mut bonus = feature(vec![113, AttrId::DmgBonus as i32, 80, 1]);
+        bonus.buff_id = 30535601;
+        for remaining in 1..=5 {
+            bonus.amount = remaining;
+            assert_eq!(attribute_delta(&bonus, AttrId::DmgBonus), 80);
+        }
     }
 
     #[test]

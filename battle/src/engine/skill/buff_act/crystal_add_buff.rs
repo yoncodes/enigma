@@ -179,6 +179,7 @@ mod tests {
 
     fn action() -> SkillActionEvent {
         SkillActionEvent {
+            card_index: 0,
             source_uid: 11,
             skill_id: 100,
             target_uid: -1,

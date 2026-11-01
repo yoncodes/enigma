@@ -461,6 +461,7 @@ mod tests {
             raw: "10004#10#1#312401451,31240121".to_owned(),
         };
         let action = |skill_id, rank| crate::engine::skill::action::SkillActionEvent {
+            card_index: 0,
             source_uid: 11,
             skill_id,
             target_uid: -1,
@@ -617,6 +618,7 @@ mod tests {
         let catalog =
             SkillEffectCatalog::from_roots(config::configs::get(), [31240103, 312401453], []);
         let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+            card_index: 0,
             source_uid: 10,
             skill_id: 31240103,
             target_uid: -1,

@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn selected_event_discovery_preserves_each_lane_and_owner_order() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: [10, 11].into_iter().map(|uid| FightEntityInfo {
+                uid: Some(uid), team_type: Some(1), current_hp: Some(1),
+                passive_skill: vec![31100531],
+                buffs: vec![BuffInfo { uid: Some(uid + 100), buff_id: Some(8112651),
+                    from_uid: Some(uid), count: Some(3), layer: Some(3), ..Default::default() }],
+                ..Default::default()
+            }).collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let events = [EventKind::SkillAction, EventKind::SkillCast, EventKind::RoundStart];
+    let full = for_compiled_owner_events(&pool, &managers, &catalog, events, &[11, 10]).unwrap();
+    assert!(!full.skills.is_empty());
+    assert!(!full.buff_acts.is_empty());
+    let skills = for_compiled_selected_events(&pool, &managers, &catalog, events, Some(&[11, 10]), true, false).unwrap();
+    let buffs = for_compiled_selected_events(&pool, &managers, &catalog, events, Some(&[11, 10]), false, true).unwrap();
+    assert_eq!(skills.skills, full.skills);
+    assert!(skills.buff_acts.is_empty());
+    assert_eq!(buffs.buff_acts, full.buff_acts);
+    assert!(buffs.skills.is_empty());
+}
+
+#[test]
 fn finds_only_rules_subscribed_to_the_published_event() {
     let mut event_slot = SkillEffectSlot::new(
         ParsedBehavior::new(20002, "AddExPoint", vec![1]),

@@ -274,6 +274,7 @@ pub fn run_player_action_queue(
         emitter_uid,
         None,
         Vec::new(),
+        None,
     )
 }
 
@@ -347,6 +348,7 @@ pub fn run_player_commands(
         emitter_uid,
         None,
         Vec::new(),
+        None,
     )
 }
 
@@ -362,6 +364,23 @@ pub fn run_player_phase(
     before_actions: Vec<SemanticFrame>,
     team: i32,
     emitter_uid: i64,
+) -> Result<DrainResult, DrainError> {
+    run_player_phase_with_extra_skill(fight, managers, pool, catalog, determinism, context, commands, before_actions, team, emitter_uid, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_player_phase_with_extra_skill(
+    fight: &sonettobuf::Fight,
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    commands: impl IntoIterator<Item = RoundCommand>,
+    before_actions: Vec<SemanticFrame>,
+    team: i32,
+    emitter_uid: i64,
+    extra_skill: Option<crate::engine::skill::action::SkillRequest>,
 ) -> Result<DrainResult, DrainError> {
     let context = TargetContext {
         battle_id: fight.battle_id.unwrap_or_default(),
@@ -379,6 +398,7 @@ pub fn run_player_phase(
         emitter_uid,
         Some(fight),
         before_actions,
+        extra_skill,
     )?;
     append(
         &mut result,
@@ -490,6 +510,7 @@ fn run_player_card_ops(
     emitter_uid: i64,
     fight: Option<&sonettobuf::Fight>,
     before_actions: Vec<SemanticFrame>,
+    extra_skill: Option<crate::engine::skill::action::SkillRequest>,
 ) -> Result<DrainResult, DrainError> {
     let include_device_action = has_committed_client_conduit_selection(&before_actions);
     let mut result = DrainResult::default();
@@ -724,7 +745,7 @@ fn run_player_card_ops(
             pending_rewards.extend(composed_owners.into_iter().map(|owner_uid| (owner_uid, 1)));
         }
     }
-    if skills.is_empty() {
+    if skills.is_empty() && extra_skill.is_none() {
         append(
             &mut result,
             run_card_composition_rewards(
@@ -740,23 +761,22 @@ fn run_player_card_ops(
         result.frames.extend(before_actions);
         return Ok(result);
     }
-    if !pending_rewards.is_empty() {
+    if !pending_rewards.is_empty() && !skills.is_empty() {
         skills
             .last_mut()
             .expect("a non-empty action queue has a final skill")
             .composed_owners
             .extend(pending_rewards);
     }
-    let committed = run_action_queue_committed(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        team,
-        emitter_uid,
-        include_device_action,
-    )?;
+    // An assist-boss action is not a played hand card. In particular, a
+    // round containing only that action has no hand queue to commit.
+    let committed = if managers.card.played().is_empty() && !include_device_action {
+        DrainResult::default()
+    } else {
+        run_action_queue_committed(
+            managers, pool, catalog, determinism, context, team, emitter_uid, include_device_action,
+        )?
+    };
     skills.extend(committed.outcomes.iter().filter_map(|outcome| {
         let RuleOutcome::Card(changes) = outcome else {
             return None;
@@ -773,6 +793,31 @@ fn run_player_card_ops(
     }));
     append(&mut result, committed);
     result.frames.extend(before_actions);
+    if let Some(plan) = extra_skill.filter(|plan| managers.hp.current(plan.source_uid) > 0) {
+        let index = i32::try_from(managers.card.played().len() + managers.card.queued_use_cards().len() + 1)
+            .map_err(|_| DrainError::MissingAssistBoss)?;
+        let mut invocation: crate::engine::skill::action::SkillInvocation = plan.into();
+        invocation.card_index = index;
+        invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+        let queued = drain::run(managers, pool, catalog, determinism, context, [
+            RuleOp::Command(BattleCommand::Card(CardCommand::QueueUseCard(
+                crate::engine::manager::card::CardQueueUse {
+                    origin: CARD_PLAY_ORIGIN,
+                    card_index: index,
+                    card: crate::engine::manager::card::precast_card(plan.source_uid, plan.skill_id),
+                    team_type: team,
+                    source_skill_id: 0,
+                    action: Some(invocation.clone()),
+                }
+            )))
+        ])?;
+        append(&mut result, queued);
+        skills.push(QueuedPlayerAction {
+            skill: invocation, source: PlayerActionSource::Queued,
+            grants_ex_point: false, grant_after_action: false,
+            composed_owners: Vec::new(), prelude: Vec::new(),
+        });
+    }
     let queue_preparation = queue_preparation_ops(managers, pool, catalog, context, &skills);
     if !queue_preparation.is_empty() {
         append(

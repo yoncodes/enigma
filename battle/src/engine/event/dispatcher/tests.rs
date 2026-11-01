@@ -309,6 +309,7 @@ fn derived_skill_cast_does_not_require_a_skill_action_phase() {
     let managers = BattleManagers::seeded(&fight);
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+        card_index: 0,
         source_uid: -1,
         skill_id: 370_001_002,
         target_uid: -2,
@@ -381,6 +382,7 @@ fn ally_attacked_observer_uses_primary_hit_targets_once_per_action() {
         ),
     };
     let mut action = crate::engine::skill::action::SkillActionEvent {
+        card_index: 0,
         source_uid: -1,
         skill_id: 2,
         target_uid: 10,
@@ -463,6 +465,7 @@ fn team_skill_observer_sees_allied_nested_actions() {
         ),
     };
     let action = |source_uid| crate::engine::skill::action::SkillActionEvent {
+        card_index: 0,
         source_uid,
         skill_id: 2,
         target_uid: -1,
@@ -532,6 +535,7 @@ fn team_actor_buff_act_observes_an_allied_skill_action() {
     let managers = BattleManagers::seeded(&fight);
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
     let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+        card_index: 0,
         source_uid: 11,
         skill_id: 100,
         target_uid: -1,

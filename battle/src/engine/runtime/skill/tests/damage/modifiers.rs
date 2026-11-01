@@ -2,6 +2,89 @@ use super::*;
 use crate::engine::skill::condition::extra::ExtraSkillKind;
 
 #[test]
+fn melania_ultimate_critical_attributes_apply_per_layer_only_to_her_ultimate() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(10), model_id: Some(3062), career: Some(4), team_type: Some(1),
+            current_hp: Some(100_000), attr: Some(HeroAttribute {
+                hp: Some(100_000), attack: Some(1_000), ..Default::default()
+            }), buffs: vec![BuffInfo { uid: Some(11), buff_id: Some(30620121), from_uid: Some(10),
+                layer: Some(2), count: Some(1), ..Default::default() }], ..Default::default()
+        }, FightEntityInfo { uid: Some(20), model_id: Some(3079), team_type: Some(1),
+            current_hp: Some(100_000), ..Default::default() }], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(-1), career: Some(4), team_type: Some(2), current_hp: Some(100_000),
+            attr: Some(HeroAttribute { hp: Some(100_000), ..Default::default() }), ..Default::default()
+        }], ..Default::default() }), ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let features = managers.buff.active_features(&managers.hp);
+    let entries = features.iter().filter(|feature| feature.owner_uid == 10
+        && feature.buff_id == 30620121
+        && matches!(crate::engine::skill::buff_act::feature_kind(feature),
+            Some(crate::engine::skill::buff_act::registry::BuffActKind::UltimateAttr)))
+        .collect::<Vec<_>>();
+    assert_eq!(entries.len(), 2, "both ultimate critical attributes must be registered");
+    let delta = |attr, ultimate| entries.iter().map(|feature|
+        crate::engine::skill::buff_act::attack_attribute_delta_for_skill(feature, attr,
+            &managers.buff, &managers.hp, ultimate, false)).sum::<i32>();
+    assert_eq!(delta(AttrId::CriticalRate, true), 120);
+    assert_eq!(delta(AttrId::CriticalDmg, true), 120);
+    assert_eq!(delta(AttrId::CriticalRate, false), 0);
+    assert_eq!(delta(AttrId::CriticalDmg, false), 0);
+
+    let execution = SkillExecution::new(TargetContext::default());
+    let ultimate = plan::planned_crit_chance(30620131, 10, -1, &managers, &pool, &execution, false);
+    let normal = plan::planned_crit_chance(30620111, 10, -1, &managers, &pool, &execution, false);
+    assert_eq!(ultimate - normal, 120);
+    let other = plan::planned_crit_chance(30620131, 20, -1, &managers, &pool, &execution, false);
+    assert_eq!(other, crate::engine::damage::handler::crit_chance(20, -1, &pool, &managers));
+
+    // Compare forced critical and noncritical hits to isolate the critical-damage
+    // portion from the same buff's separately configured ultimate-might bonus.
+    let hit = |skill_id: i32, buff_id: i32, critical: bool| {
+        let mut scenario = fight.clone();
+        if buff_id == 0 {
+            scenario.attacker.as_mut().unwrap().entitys[0].buffs.clear();
+        } else {
+            let buff = &mut scenario.attacker.as_mut().unwrap().entitys[0].buffs[0];
+            buff.buff_id = Some(buff_id);
+            buff.layer = Some(if buff_id == 30620121 { 2 } else { 1 });
+        }
+        let mut managers = BattleManagers::seeded(&scenario);
+        managers.attribute.override_ex(10, &HeroExAttribute { cri_dmg: Some(1_500), ..Default::default() });
+        let pool = TargetPool::from_fight(&scenario);
+        let mut catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+        catalog.insert_damage_rate(skill_id, 1000);
+        let mut invocation: SkillInvocation = SkillRequest { source_uid: 10, skill_id }.into();
+        invocation.target = SkillTarget::Explicit(-1);
+        let mut execution = SkillExecution::new(TargetContext::default());
+        execution.configured_targets = Some(vec![-1]);
+        let mut determinism = RoundDeterminism::default();
+        determinism.enqueue_hidden_crits(skill_id, 10, [critical]);
+        let damage = plan::damage_ops(&invocation, &managers, &pool, &catalog, skill_id,
+            &mut determinism, &mut execution);
+        let [HpCommand::Damage(hit)] = damage.damage.as_slice() else { panic!("missing hit"); };
+        hit.amount
+    };
+    let (u0, u1) = (hit(30620131, 0, false), hit(30620131, 30620121, false));
+    let (c0, c1) = (hit(30620131, 0, true), hit(30620131, 30620121, true));
+    let expected = i64::from(u0) * i64::from(u1) * 120 / 1000;
+    let actual = i64::from(c1) * i64::from(u0) - i64::from(c0) * i64::from(u1);
+    assert!((actual - expected).abs() <= i64::from(u0 + u1) * 2,
+        "ultimate critical damage: noncritical={u0}/{u1}, critical={c0}/{c1}");
+    assert_eq!(hit(30620111, 0, true), hit(30620111, 30620121, true),
+        "ultimate-only attributes must not affect normal incantations");
+    let final_bonus = hit(30620131, 12841051, false);
+    assert!((final_bonus * 10 - u0 * 11).abs() <= 10,
+        "ultimate final-damage bonus: {u0} -> {final_bonus}");
+    assert_eq!(hit(30620111, 0, true), hit(30620111, 12841051, true),
+        "ultimate-only final damage must not affect normal incantations");
+}
+
+#[test]
 fn target_passive_and_attack_local_attribute_are_applied_to_damage() {
     crate::test_support::init_config();
     let fight = Fight {

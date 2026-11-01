@@ -100,7 +100,7 @@ pub fn parse_reward_id(reward_id: i32) -> RewardSet {
     parse_reward_id_with_cost(reward_id, 0)
 }
 
-fn parse_reward_id_with_cost(reward_id: i32, cost: i32) -> RewardSet {
+pub fn parse_reward_id_with_cost(reward_id: i32, cost: i32) -> RewardSet {
     let Some(row) = config::configs::get().reward(reward_id) else {
         return RewardSet::default();
     };

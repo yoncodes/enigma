@@ -30,6 +30,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) attacked_targets: Vec<i64>,
     triggered_buff_features: Vec<BuffFeatureTriggeredEvent>,
     pub(super) buff_additions: Vec<(i32, i32)>,
+    pub(super) buff_addition_targets: Vec<(i64, i32, i32)>,
     pub(super) team_injury_count_round: i32,
     team_injury_count_consumed: Option<DefinitionKey>,
     pub(super) resolved_hit_additional_damage: Vec<LinkedDamagePlan>,
@@ -52,6 +53,17 @@ pub(in crate::engine::runtime) struct SkillExecution {
 }
 
 impl SkillExecution {
+    pub(in crate::engine::runtime) fn initialize_assist_power_baseline(
+        &mut self, managers: &BattleManagers, source_uid: i64,
+    ) {
+        if self.context.assist_power_action_owner == 0 {
+            self.context.assist_power_action_owner = source_uid;
+            self.context.assist_power_consumed_before_action = managers.eureka.round_change(
+                source_uid, crate::engine::manager::eureka::PowerType::AssistBoss.id(),
+            ).consumed;
+        }
+    }
+
     pub(in crate::engine::runtime) fn inherit_assassination_marks(&mut self, parent: &Self) {
         self.assassination_marks_at_action_start
             .clone_from(&parent.assassination_marks_at_action_start);
@@ -117,6 +129,7 @@ impl SkillExecution {
             attacked_targets: Vec::new(),
             triggered_buff_features: Vec::new(),
             buff_additions: Vec::new(),
+            buff_addition_targets: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
             resolved_hit_additional_damage: Vec::new(),
@@ -152,6 +165,7 @@ impl SkillExecution {
             attacked_targets: Vec::new(),
             triggered_buff_features: Vec::new(),
             buff_additions: Vec::new(),
+            buff_addition_targets: Vec::new(),
             team_injury_count_round: 0,
             team_injury_count_consumed: None,
             resolved_hit_additional_damage: Vec::new(),
@@ -267,12 +281,13 @@ impl SkillExecution {
 
     pub(in crate::engine::runtime) fn record_buff_additions(
         &mut self,
-        additions: impl IntoIterator<Item = (i32, i32)>,
+        additions: impl IntoIterator<Item = (i64, i32, i32)>,
     ) {
-        for (buff_id, amount) in additions {
+        for (target_uid, buff_id, amount) in additions {
             if amount <= 0 {
                 continue;
             }
+            self.buff_addition_targets.push((target_uid, buff_id, amount));
             if let Some((_, total)) = self
                 .buff_additions
                 .iter_mut()
@@ -778,6 +793,12 @@ pub(super) fn damage_ops(
                 &managers.hp,
             );
         let mut attack_attributes = target_modifiers.attack_attributes.clone();
+        // Ultimate-only critical rate must participate in both the roll and excess-crit
+        // conversion; the other ultimate attributes are read by damage resolution.
+        let ultimate_crit = ultimate_critical_rate(source_uid, skill_id, managers, pool);
+        if ultimate_crit != 0 {
+            attack_attributes.push((crate::engine::entity::attr::AttrId::CriticalRate, ultimate_crit));
+        }
         if target_count_damage_bonus != 0 {
             attack_attributes.push((
                 crate::engine::entity::attr::AttrId::DmgBonus,
@@ -915,6 +936,7 @@ pub(super) fn damage_ops(
                     source_uid,
                     target_uid,
                     planned_crit_chance(
+                        skill_id,
                         source_uid,
                         target_uid,
                         managers,
@@ -1278,6 +1300,7 @@ pub(super) fn plan_crits(
                 source_uid,
                 target_uid,
                 planned_crit_chance(
+                    skill_id,
                     source_uid,
                     target_uid,
                     managers,
@@ -1305,7 +1328,8 @@ pub(super) fn forces_critical(
     )
 }
 
-fn planned_crit_chance(
+pub(super) fn planned_crit_chance(
+    skill_id: i32,
     source_uid: i64,
     target_uid: i64,
     managers: &BattleManagers,
@@ -1323,6 +1347,7 @@ fn planned_crit_chance(
         return 1000;
     }
     damage::crit_chance(source_uid, target_uid, pool, managers)
+        + ultimate_critical_rate(source_uid, skill_id, managers, pool)
         + execution
             .modifiers
             .attack_attributes
@@ -1330,4 +1355,26 @@ fn planned_crit_chance(
             .filter(|(attr, _)| *attr == crate::engine::entity::attr::AttrId::CriticalRate)
             .map(|(_, delta)| *delta)
             .sum::<i32>()
+}
+
+fn ultimate_critical_rate(
+    source_uid: i64,
+    skill_id: i32,
+    managers: &BattleManagers,
+    pool: &TargetPool,
+) -> i32 {
+    if !pool.catalog().skill_is_big(skill_id) {
+        return 0;
+    }
+    managers.buff.active_features(&managers.hp).iter()
+        .filter(|feature| feature.owner_uid == source_uid)
+        .filter(|feature| matches!(
+            crate::engine::skill::buff_act::feature_kind(feature),
+            Some(crate::engine::skill::buff_act::registry::BuffActKind::UltimateAttr)
+        ))
+        .map(|feature| crate::engine::skill::buff_act::attack_attribute_delta_for_skill(
+            feature, crate::engine::entity::attr::AttrId::CriticalRate,
+            &managers.buff, &managers.hp, true, false,
+        ))
+        .sum()
 }
