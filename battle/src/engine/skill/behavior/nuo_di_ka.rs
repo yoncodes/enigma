@@ -305,6 +305,7 @@ fn emit_ops(
         context.source_uid,
         context.source_uid,
         context.managers,
+        &context.modifiers.attack_attributes,
     );
     if heal > 0 {
         ops.push(RuleOp::Command(BattleCommand::Hp(HpCommand::Heal(

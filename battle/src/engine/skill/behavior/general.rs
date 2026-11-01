@@ -120,6 +120,27 @@ impl BehaviorHandler for AddIndicatorHandler {
     }
 }
 
+pub(super) struct DelIndicatorHandler;
+
+impl BehaviorHandler for DelIndicatorHandler {
+    const VALIDATES_ARGUMENTS: bool = true;
+
+    fn supports(behavior: &ParsedBehavior) -> bool {
+        matches!(behavior.args.as_slice(), [indicator_id] if *indicator_id > 0)
+    }
+
+    fn emit_ops(_: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+        Self::supports(behavior).then(|| {
+            vec![RuleOp::Command(BattleCommand::IndicatorClear(
+                crate::engine::manager::indicator::IndicatorClearCommand {
+                    indicator_id: behavior.args[0],
+                    config_effect: behavior.spec.key.opcode,
+                },
+            ))]
+        })
+    }
+}
+
 impl BehaviorHandler for AssassinateHandler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         if behavior.args.is_empty() {

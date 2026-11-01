@@ -671,6 +671,10 @@ pub(crate) fn execute_rule_op_with(
             .execute_indicator(command)
             .map(RuleOutcome::EffectMarker)
             .map_or(Ok(RuleOutcome::StateChanged), Ok),
+        RuleOp::Command(BattleCommand::IndicatorClear(command)) => managers
+            .execute_indicator_clear(command)
+            .map(RuleOutcome::EffectMarker)
+            .map_or(Ok(RuleOutcome::StateChanged), Ok),
         RuleOp::NuoDiKaHit(hit) => Ok(RuleOutcome::NuoDiKaHit(hit)),
         RuleOp::Command(BattleCommand::Injury(command)) => {
             Ok(RuleOutcome::Injury(managers.injury.execute(command)))

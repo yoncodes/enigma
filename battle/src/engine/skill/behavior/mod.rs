@@ -18,6 +18,7 @@ pub mod focus_all_entity_buff;
 pub mod foundation_counter;
 pub mod gauge;
 pub mod general;
+pub mod heal_or_buff;
 pub mod injury_bank;
 pub mod kill;
 pub mod magic_circle;

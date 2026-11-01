@@ -564,6 +564,16 @@ impl BattleManagers {
         Some(marker)
     }
 
+    pub(crate) fn execute_indicator_clear(
+        &mut self,
+        command: indicator::IndicatorClearCommand,
+    ) -> Option<crate::engine::skill::rule::output::EffectMarker> {
+        let indicator_id = command.indicator_id;
+        let marker = self.indicator.clear(command)?;
+        self.fight_task.record_indicator(indicator_id, 0);
+        Some(marker)
+    }
+
     fn record_damage_indicator(
         &mut self,
         target_uid: i64,

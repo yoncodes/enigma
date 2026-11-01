@@ -234,6 +234,7 @@ pub fn rule_ops(context: &mut RuntimeContext<'_>) -> Option<Vec<BuffActRuleOp>> 
             subscriber.owner_uid,
             target_uid,
             context.managers,
+            &[],
         );
         (amount > 0).then(|| {
             BuffActRuleOp::causing(RuleOp::Command(BattleCommand::Hp(HpCommand::Heal(

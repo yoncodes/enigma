@@ -1004,7 +1004,7 @@ impl BuffDefinition {
             })
     }
 
-    pub(super) fn keeps_permanent_instance(&self) -> bool {
+    pub(super) fn preserves_action_lifetime(&self) -> bool {
         self.duration == 0
             && ((self.is_no_show && !self.has_features)
                 || self.features.iter().any(|feature| {
@@ -1018,6 +1018,14 @@ impl BuffDefinition {
                         )
                     )
                 }))
+    }
+
+    pub(super) fn preserves_regrant(&self) -> bool {
+        self.preserves_action_lifetime()
+            && !(self.is_no_show
+                && !self.has_features
+                && self.cannot_remove
+                && self.has_include_type(BuffIncludeType::ReplaceExisting))
     }
 
     pub(super) fn retains_existing_permanent_status(&self) -> bool {

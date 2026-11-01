@@ -69,6 +69,7 @@ fn emit_all_ops(
 mod card_level_change;
 mod damage;
 mod events;
+mod healing;
 mod lifecycle;
 mod planning;
 mod routing;

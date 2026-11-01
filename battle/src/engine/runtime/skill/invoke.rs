@@ -219,6 +219,9 @@ pub(super) fn apply_event_context(
         }
         BattleEvent::ConduitActivated(change) => {
             context.runtime_target_uid = change.source_uid;
+            context.active_skill_source_uid = change.source_uid;
+            context.active_skill_id = change.skill_id;
+            context.active_skill_mode = crate::engine::skill::action::SkillExecutionMode::Device;
         }
         BattleEvent::GaugeChanged(change) => match change.key.kind {
             crate::engine::manager::gauge::GaugeKind::Bloodtithe => {

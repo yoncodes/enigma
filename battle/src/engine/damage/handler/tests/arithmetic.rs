@@ -110,26 +110,26 @@ fn burn_reduces_ordinary_healing_but_not_full_restores() {
     );
 
     assert!(managers.buff.has_active_buff_id_or_type(-1, burn_type));
-    assert_eq!(super::heal::modified(1_000, 10, -1, &managers), 1_275);
+    assert_eq!(super::heal::modified(1_000, 10, -1, &managers, &[]), 1_275);
 
     let full_from_source = ParsedBehavior::new(20001, "Heal", vec![0, AttrId::Hp.id(), 1000]);
     let full_from_target = ParsedBehavior::new(20001, "Heal", vec![1, AttrId::Hp.id(), 1000]);
     let partial = ParsedBehavior::new(20001, "Heal", vec![1, AttrId::Hp.id(), 500]);
 
     assert_eq!(
-        super::heal::amount(10, -1, &pool, &managers, false, &full_from_source),
+        super::heal::amount(10, -1, &pool, &managers, &[], false, &full_from_source),
         Some(1_000)
     );
     assert_eq!(
-        super::heal::amount(10, -1, &pool, &managers, false, &full_from_target),
+        super::heal::amount(10, -1, &pool, &managers, &[], false, &full_from_target),
         Some(1_000)
     );
     assert_eq!(
-        super::heal::amount(10, -1, &pool, &managers, true, &full_from_target),
+        super::heal::amount(10, -1, &pool, &managers, &[], true, &full_from_target),
         Some(1_000)
     );
     assert_eq!(
-        super::heal::amount(10, -1, &pool, &managers, false, &partial),
+        super::heal::amount(10, -1, &pool, &managers, &[], false, &partial),
         Some(637)
     );
 }
@@ -172,7 +172,7 @@ fn injury_rate_does_not_scale_with_the_owning_buffs_layer() {
     };
     let managers = BattleManagers::seeded(&fight);
 
-    assert_eq!(super::heal::modified(1_000, 10, -1, &managers), 700);
+    assert_eq!(super::heal::modified(1_000, 10, -1, &managers, &[]), 700);
 }
 
 #[test]
@@ -211,7 +211,7 @@ fn nasty_wound_reduces_healing_taken_by_its_configured_value() {
     };
     let managers = crate::engine::manager::BattleManagers::seeded(&fight);
 
-    assert_eq!(super::heal::modified(1_000, 10, -1, &managers), 500);
+    assert_eq!(super::heal::modified(1_000, 10, -1, &managers, &[]), 500);
 }
 
 #[test]
@@ -275,8 +275,8 @@ fn missing_hp_healing_uses_the_configured_base_bucket_and_cap() {
     };
     let managers = crate::engine::manager::BattleManagers::seeded(&fight);
 
-    assert_eq!(super::heal::modified(1_000, 10, 11, &managers), 1_575);
-    assert_eq!(super::heal::modified(1_000, 10, 12, &managers), 1_800);
+    assert_eq!(super::heal::modified(1_000, 10, 11, &managers, &[]), 1_575);
+    assert_eq!(super::heal::modified(1_000, 10, 12, &managers, &[]), 1_800);
     // Lower tier: +10% base and +5% per 10% missing HP.
-    assert_eq!(super::heal::modified(1_000, 10, 13, &managers), 1_350);
+    assert_eq!(super::heal::modified(1_000, 10, 13, &managers, &[]), 1_350);
 }

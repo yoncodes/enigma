@@ -688,6 +688,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
             include_source: false,
         },
         124 => TargetRule::AllyPosition(1),
+        125 => TargetRule::AllyPosition(2),
         127 => TargetRule::AllyPosition(4),
         132 => TargetRule::AlliesWithBattleTag,
         1007 => TargetRule::AlliesWithMonsterLabel(7),

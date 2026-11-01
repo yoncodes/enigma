@@ -667,6 +667,7 @@ behavior_definitions! {
     [60262] "PerConsumeExPointDirectUseSkill" => super::use_skill::Handler, PerConsumeExPointDirectUseSkill, Immediate, destination, super::use_skill::supports_per_consume_ex_point_direct_use_skill;
     [60188] "ConsumePowerUseSkill" => super::use_skill::Handler, ConsumePowerUseSkill, Immediate, destination, super::use_skill::supports_consume_power_skill;
     [60121] "ConsumeBuffUseSkill" => super::use_skill::Handler, ConsumeBuffUseSkill, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill;
+    [60128] "ConsumeBuffUseSkill2" => super::use_skill::Handler, ConsumeBuffUseSkill2, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill2;
     [60311] "ConsumeBuffUseSkill3" => super::use_skill::Handler, ConsumeBuffUseSkill3, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill3;
     [100007] "EzioReuse" => super::use_skill::Handler, ConsumeTargetBuffUseSkill, Immediate, destination, super::use_skill::supports_consume_target_buff_use_skill;
     [50018] "RemoveBuffUseSkill" => super::use_skill::Handler, RemoveBuffUseSkill, AfterDamage, destination, super::use_skill::supports_remove_buff_use_skill;
@@ -764,6 +765,7 @@ behavior_definitions! {
     [60198] "ClientEffect" => super::general::Handler, ClientEffect, Immediate, destination, arguments::at_least_one;
     [60249] "AddMaxRound" => super::general::AddMaxRoundHandler, AddMaxRound, Immediate, destination;
     [60016] "AddIndicator" => super::general::AddIndicatorHandler, AddIndicator, Immediate, destination;
+    [60017] "DelIndicator" => super::general::DelIndicatorHandler, DelIndicator, Immediate, destination;
     [100015] "ProgressInitNew" => super::fight_progress::InitializeHandler, ProgressInitNew, Immediate, destination;
     [100016] "ProgressChangeNew" => super::fight_progress::ChangeHandler, ProgressChangeNew, Immediate, destination;
     [60268] "ChangeScene" => super::scene::Handler, ChangeScene, Immediate, destination;
@@ -815,6 +817,7 @@ behavior_definitions! {
     [90001] "Heal" => crate::engine::damage::handler::Handler, Heal, AfterDamage, destination, crate::engine::damage::handler::supports_heal;
     [20016] "HealCantCrit" => crate::engine::damage::handler::Handler, HealCantCrit, AfterDamage, destination, crate::engine::damage::handler::supports_attr_heal;
     [60232] "HealByTwoAttr" => crate::engine::damage::handler::Handler, HealByTwoAttr, AfterDamage, destination, crate::engine::damage::handler::supports_two_attr_heal;
+    [60179] "HealOrAddBuffByHp" => super::heal_or_buff::Handler, HealOrAddBuffByHp, AfterDamage, destination, super::heal_or_buff::supports;
     [60309] "FakeHpToHeal" => super::fake_hp::Handler, FakeHpToHeal, AfterDamage, once_destination;
     [20010] "Bloodlust" => crate::engine::damage::handler::Handler, Bloodlust, AfterDamage, destination, crate::engine::damage::handler::supports_bloodlust;
     [30005] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
