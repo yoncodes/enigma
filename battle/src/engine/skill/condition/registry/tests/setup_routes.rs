@@ -115,6 +115,37 @@ fn summoned_count_keeps_its_round_start_condition_lane() {
 }
 
 #[test]
+fn teammate_count_keeps_its_late_round_start_lane() {
+    for count in 0..=3 {
+        assert_eq!(
+            parse(73104, "TeammateAliveNum", &[count.to_string()]),
+            Some(ParsedConditionKind::EntityCount {
+                scope: super::super::super::parse::EntityCountScope::AliveOtherTeammates,
+                compare: ConditionCompare::Equal,
+                count,
+            })
+        );
+    }
+    for args in [
+        vec![],
+        vec!["-1".into()],
+        vec!["4".into()],
+        vec!["3".into(), "junk".into()],
+    ] {
+        assert_eq!(parse(73104, "TeammateAliveNum", &args), None);
+    }
+    let definition = find_key(73104, "TeammateAliveNum").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Setup {
+            stage: SetupStage::RoundStartLate,
+            priority: 0,
+        }
+    );
+    assert_eq!(definition.dependencies, &[EventKind::EntityDied]);
+}
+
+#[test]
 fn none_round_start_opcodes_keep_their_exact_lanes() {
     assert_eq!(
         find_key(100, "None").map(|definition| definition.role),

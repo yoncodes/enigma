@@ -88,6 +88,22 @@ pub fn teammates_equal(_: i32, _: &str, args: &[String]) -> Option<ParsedConditi
     )
 }
 
+pub fn teammates_up_to_three(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [_count] = args else {
+        return None;
+    };
+    let condition = entity_count(
+        EntityCountScope::AliveOtherTeammates,
+        ConditionCompare::Equal,
+        args,
+    )?;
+    matches!(
+        &condition,
+        ParsedConditionKind::EntityCount { count: 0..=3, .. }
+    )
+    .then_some(condition)
+}
+
 pub fn other_ally_damage_type(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [raw_damage_type, raw_max_count] = args else {
         return None;
