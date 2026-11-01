@@ -137,6 +137,7 @@ pub enum BehaviorKind {
     AddBuffBySkillBuffAdditions,
     AddBuffByBuffLayer,
     AddBuffByBuffLayerRange,
+    PerBuffTypeIdAddRateBuffId,
     AbsorbExPoint,
     BloodPoolMaxChange,
     BloodPoolValueChange,

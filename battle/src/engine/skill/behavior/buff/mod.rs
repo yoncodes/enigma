@@ -58,7 +58,11 @@ pub(super) use dispel::{
 use distribute::*;
 pub use grant::random_buff_pool;
 use grant::{grant_command, random_pool_grant_commands};
-use layer::*;
+pub(super) use layer::supports_team_layer;
+use layer::{
+    add_buff_by_layer_ops, add_buff_by_layer_range_ops, add_buff_by_team_layer_ops,
+    add_buff_from_enemy_burn_ops, consume_buff_layer_and_team_grant_ops, multiply_buff_count_ops,
+};
 pub(super) use poison::supports_add_target_buff_by_poison;
 use poison::*;
 use replace::*;
@@ -197,6 +201,9 @@ impl BehaviorHandler for Handler {
                 add_buff_from_skill_additions_ops(&context, behavior)
             }
             BehaviorKind::AddBuffByBuffLayer => add_buff_by_layer_ops(&mut context, behavior),
+            BehaviorKind::PerBuffTypeIdAddRateBuffId => {
+                add_buff_by_team_layer_ops(&context, behavior)
+            }
             BehaviorKind::BuffSpread => spread_buff_ops(&context, behavior),
             BehaviorKind::BuffCountMulti => multiply_buff_count_ops(&context, behavior),
             BehaviorKind::BuffSortByHp => sort_buff_by_hp_ops(&context, behavior),

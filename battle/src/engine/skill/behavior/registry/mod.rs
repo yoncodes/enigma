@@ -727,6 +727,7 @@ behavior_definitions! {
     [60059] "AddBurnBySkillAddBurnCount" => super::buff::Handler, AddBuffBySkillBuffAdditions, Immediate, destination, arguments::at_least_one;
     [60068] "AddBuffByBuffLayer" => super::buff::Handler, AddBuffByBuffLayer, Immediate, destination, arguments::exactly_three;
     [60124] "AddBuffByBuffLayerRange" => super::buff::Handler, AddBuffByBuffLayerRange, Immediate, destination, super::buff::supports_layer_range;
+    [60261] "PerBuffTypeIdAddRateBuffId" => super::buff::Handler, PerBuffTypeIdAddRateBuffId, Immediate, destination, super::buff::supports_team_layer;
     [60205] "AddBuffAndAddSpecialCount" => super::special_count::Handler, AddBuffAndAddSpecialCount, Immediate, transfer, super::special_count::supports_add_buff_and_count;
     [60204] "AddBuffSpecialCount" => super::special_count::Handler, AddBuffSpecialCount, Immediate, transfer, super::special_count::supports_add_count;
     [60202] "AddSkillRateBySpecialCount" => super::special_count::Handler, AddSkillRateBySpecialCount, Immediate, modifier, super::special_count::supports_rate;
