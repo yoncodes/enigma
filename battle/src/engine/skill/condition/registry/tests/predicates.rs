@@ -522,6 +522,39 @@ fn hp_loss_progress_completion_keeps_its_exact_predicate() {
 }
 
 #[test]
+fn hp_loss_progress_bands_keep_their_exact_predicate() {
+    for (compare_code, threshold) in [(1, 0), (1, 30), (1, 60), (2, 29), (2, 59), (2, 99)] {
+        assert_eq!(
+            parse(
+                1010004,
+                "ProgressValue",
+                &["8".into(), compare_code.to_string(), threshold.to_string()]
+            ),
+            Some(ParsedConditionKind::FightProgressValue {
+                progress_id: 8,
+                compare_code,
+                threshold,
+            })
+        );
+    }
+    assert_eq!(
+        find_key(1010004, "ProgressValue").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    for invalid in [
+        vec![],
+        vec!["8".into(), "1".into()],
+        vec!["7".into(), "1".into(), "30".into()],
+        vec!["8".into(), "3".into(), "30".into()],
+        vec!["8".into(), "1".into(), "29".into()],
+        vec!["8".into(), "2".into(), "30".into()],
+        vec!["8".into(), "1".into(), "30".into(), "0".into()],
+    ] {
+        assert_eq!(parse(1010004, "ProgressValue", &invalid), None);
+    }
+}
+
+#[test]
 fn synchronization_runs_in_its_captured_round_start_stage() {
     let definition = find_key(1008101, "Synchronization").unwrap();
 
