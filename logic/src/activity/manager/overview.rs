@@ -142,6 +142,23 @@ impl ActivityManager {
         act239_bonus(db, self.player_id, activity_id, id).await
     }
 
+    pub async fn get_gallery_infos(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<sonettobuf::GetGalleryInfosReply, AppError> {
+        get_gallery_infos(db, self.player_id, activity_id).await
+    }
+
+    pub async fn get_act128_exp(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        boss_type: Option<i32>,
+    ) -> Result<act128::Act128ExpClaim, AppError> {
+        get_act128_exp(db, self.player_id, activity_id, boss_type).await
+    }
+
     pub async fn act128_info(
         &self,
         db: &SqlitePool,
