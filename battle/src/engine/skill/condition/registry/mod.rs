@@ -712,6 +712,7 @@ condition_definitions! {
     [550102] "AllInBuffByTypeId" => buff::all_targets_buff_type_at_least, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [513101] "SelfTeamHasBuffTypeLayerMoreThan" => buff::team_buff_type_layer_at_least, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [513102] "SelfTeamHasBuffTypeLayerMoreThan" => buff::team_buff_type_layer_at_least, setup_route(SetupStage::RoundStartCondition, 102, &[]);
+    [513012] "SelfTeamHasBuffTypeLayerMoreThan" => buff::death_team_buff_type_layer, predicate(&[EventKind::EntityDied]);
     [57208] "NoBuffId" => buff::buff_absent, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
     [57209] "NoBuffId" => buff::buff_absent, attacked_skills(filters_behavior_targets(predicate(&[EventKind::TargetAttacked])));
     [57204] "NoBuffId" => buff::buff_absent, incoming_attack_modifier(filters_behavior_targets(predicate(&[EventKind::BuffChanged])));
