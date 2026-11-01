@@ -196,6 +196,13 @@ pub(in crate::engine::skill::behavior) fn supports_disperse_force3(
 pub(in crate::engine::skill::behavior) fn supports_exact_buff_dispel(
     behavior: &ParsedBehavior,
 ) -> bool {
+    if !behavior.raw_args.is_empty() {
+        return behavior
+            .raw_args
+            .iter()
+            .all(|raw| raw.parse::<i32>().is_ok_and(|buff_id| buff_id > 0));
+    }
+
     !behavior.args.is_empty() && behavior.args.iter().all(|buff_id| *buff_id > 0)
 }
 

@@ -169,6 +169,7 @@ impl BehaviorHandler for Handler {
             BehaviorKind::DisperseForce3 | BehaviorKind::DisperseTypeId => {
                 remove_each_buff_family_ops(context.target_uid, behavior)
             }
+            BehaviorKind::Purify2 => remove_each_buff_family_ops(context.target_uid, behavior),
             BehaviorKind::DisperseExclude => excluded_dispel_command(context.target_uid, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::Disperse1

@@ -124,6 +124,7 @@ pub enum BehaviorKind {
     DisperseForce2,
     DisperseForce3,
     Purify1,
+    Purify2,
     PurifyX,
     DistributeBuff,
     SelfRandomCopyBuffs,
