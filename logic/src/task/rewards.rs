@@ -48,10 +48,43 @@ pub(super) async fn add_claim_activity_in_transaction(
     Ok((vec![activity], rewards))
 }
 
-pub(super) fn task_rewards(type_id: i32, task_id: i32) -> reward::RewardSet {
-    task_bonus(type_id, task_id)
+pub(super) fn task_rewards(type_id: i32, task_id: i32) -> Result<reward::RewardSet, AppError> {
+    if type_id == task_db::EXPLORE_TASK_TYPE {
+        let task = config::explore_tasks::task(task_id)?.ok_or(AppError::InvalidRequest)?;
+        return reward::parse_strict(&task.bonus);
+    }
+    if type_id == task_db::TOWER_COMPOSE_TASK_TYPE {
+        let task = config::configs::get().tower_compose_task.get(task_id).ok_or(AppError::InvalidRequest)?;
+        if !task_db::compose_task_available(task, common::time::ServerTime::now_sec_i32()) {
+            return Err(AppError::InvalidRequest);
+        }
+        return reward::parse_strict(&task.bonus);
+    }
+    Ok(task_bonus(type_id, task_id)
         .map(|bonus| parse_task_reward(&bonus))
-        .unwrap_or_default()
+        .unwrap_or_default())
+}
+
+pub(super) async fn add_compose_research_in_transaction(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, player_id: i64,
+    task: &database::models::game::tasks::UserTask,
+) -> Result<(), AppError> {
+    if task.type_id != task_db::TOWER_COMPOSE_TASK_TYPE { return Ok(()); }
+    let config = config::configs::get().tower_compose_task.get(task.task_id).ok_or(AppError::InvalidRequest)?;
+    if !task_db::compose_task_available(config, common::time::ServerTime::now_sec_i32()) {
+        return Err(AppError::InvalidRequest);
+    }
+    if config.point_bonus.trim().is_empty() { return Ok(()); }
+    let (theme, amount) = config.point_bonus.split_once('#').ok_or(AppError::InvalidRequest)?;
+    let theme = theme.parse::<i32>().map_err(|_| AppError::InvalidRequest)?;
+    let amount = amount.parse::<i32>().map_err(|_| AppError::InvalidRequest)?;
+    if amount <= 0 || config::configs::get().tower_compose_theme.get(theme).is_none() {
+        return Err(AppError::InvalidRequest);
+    }
+    sqlx::query("INSERT INTO user_tower_compose_theme_state (user_id, theme_id, research_progress, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, theme_id) DO UPDATE SET research_progress = research_progress + excluded.research_progress, updated_at = excluded.updated_at")
+        .bind(player_id).bind(theme).bind(amount).bind(common::time::ServerTime::now_ms())
+        .execute(&mut **tx).await?;
+    Ok(())
 }
 
 fn task_bonus(type_id: i32, task_id: i32) -> Option<String> {

@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn stage_101_temporary_six_marker_expires_at_the_next_round_start() {
+    init_config();
+    let attr = Some(HeroAttribute { hp: Some(100), ..Default::default() });
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![FightEntityInfo { uid: Some(10), team_type: Some(1),
+            current_hp: Some(100), attr, buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(30790402),
+                from_uid: Some(10), duration: Some(1), ..Default::default() }], ..Default::default() }], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![FightEntityInfo { uid: Some(-1), team_type: Some(2),
+            current_hp: Some(100), attr, ..Default::default() }], ..Default::default() }), ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    run_round_start_split(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+        TargetContext { current_round: 2, ..Default::default() }, 1).unwrap();
+    assert!(!managers.buff.has_buff_id(10, 30790402));
+}
+
+#[test]
 fn stage_102_duration_expires_before_condition_102_actions() {
     init_config();
     let fight = Fight {

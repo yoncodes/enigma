@@ -1,6 +1,6 @@
 use crate::engine::{
     manager::{
-        buff::{BuffCommand, BuffSetState},
+        buff::{BuffCommand, BuffConsume, BuffSelector, BuffSetState, DepletedBuff},
         card::{
             CardAddTemporary, CardAddUniversal, CardCommand, CardEnchantHand, CardEnergyChange,
             CardMarkTemporary, CardQueueUse, EnchantedType, HandCardRankUp, QueuedCardRankUp,
@@ -19,17 +19,23 @@ use crate::engine::{
 };
 
 pub fn rule_op(behavior: &ParsedBehavior) -> Option<RuleOp> {
-    let [1, delta, count] = behavior.args.as_slice() else {
+    let [1, selector, amount] = behavior.args.as_slice() else {
         return None;
     };
-    if *delta == 0 || *count <= 0 {
+    // In the configured form -1 selects all basic cards; it is not a delta.
+    let (delta, count) = if *selector == -1 {
+        (*amount, 1)
+    } else {
+        (*selector, *amount)
+    };
+    if delta == 0 || count <= 0 {
         return None;
     }
     Some(RuleOp::Command(BattleCommand::Card(
         CardCommand::ChangeBasicEnergy(CardEnergyChange {
             origin: super::command_origin(behavior)?,
-            delta: *delta,
-            count: *count,
+            delta,
+            count,
         }),
     )))
 }
@@ -42,6 +48,9 @@ pub(super) struct Handler;
 
 impl BehaviorHandler for Handler {
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
+        if behavior.spec.kind == BehaviorKind::RemoveBuffToEnchant {
+            return RuleReferences { buffs: behavior.arg(0).into_iter().collect(), ..Default::default() };
+        }
         if matches!(
             behavior.spec.kind,
             BehaviorKind::AddQueuedSkillCard
@@ -66,6 +75,9 @@ impl BehaviorHandler for Handler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         if behavior.spec.kind == BehaviorKind::EnchantHand {
             return enchant_hand_ops(context, behavior);
+        }
+        if behavior.spec.kind == BehaviorKind::RemoveBuffToEnchant {
+            return remove_buff_to_enchant_ops(context, behavior);
         }
         if behavior.spec.kind == BehaviorKind::ChangeHandToTemporary {
             return mark_hand_temporary_ops(context, behavior);
@@ -327,7 +339,7 @@ fn enchant_hand_ops(
     context: BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
 ) -> Option<Vec<RuleOp>> {
-    let [enchant_id, duration, 3, count] = behavior.args.as_slice() else {
+    let [enchant_id, duration, mode, count] = behavior.args.as_slice() else {
         return None;
     };
     let enchant = EnchantedType::try_from(*enchant_id).ok()?;
@@ -341,7 +353,12 @@ fn enchant_hand_ops(
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
     let mut indices = Vec::new();
-    for _ in 0..usize::try_from(*count).ok()?.min(candidates.len()) {
+    if *mode == 1 && *count == -1 {
+        indices.append(&mut candidates);
+    } else if *mode != 3 || *count <= 0 {
+        return None;
+    }
+    for _ in 0..if *mode == 3 { usize::try_from(*count).ok()?.min(candidates.len()) } else { 0 } {
         let hand_index = context
             .determinism
             .take_hand_card_choice(
@@ -361,8 +378,8 @@ fn enchant_hand_ops(
         candidates.swap_remove(selected);
         indices.push(hand_index);
     }
-    (!indices.is_empty()).then(|| {
-        vec![RuleOp::Command(BattleCommand::Card(
+    if indices.is_empty() { return Some(Vec::new()); }
+    Some(vec![RuleOp::Command(BattleCommand::Card(
             CardCommand::EnchantHand(CardEnchantHand {
                 origin: super::command_origin(behavior)
                     .expect("registered card enchant has an origin"),
@@ -371,8 +388,58 @@ fn enchant_hand_ops(
                 duration: *duration,
                 team_type: 1,
             }),
-        ))]
-    })
+        ))])
+}
+
+fn remove_buff_to_enchant_ops(
+    context: BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    let [buff_id, enchant_id, 1] = behavior.args.as_slice() else { return None; };
+    let enchant = EnchantedType::try_from(*enchant_id).ok()?;
+    let amount = context.managers.buff.buff_id_amount(context.source_uid, *buff_id);
+    if amount <= 0 { return Some(Vec::new()); }
+    let origin = super::command_origin(behavior)?;
+    let rejected = context.managers.catalog().card_enchant_rejected_ids(*enchant_id);
+    let mut preferred = Vec::new();
+    let mut other = Vec::new();
+    for (index, card) in context.managers.card.hand().iter().enumerate() {
+        let Some(uid) = card.uid else { continue; };
+        let Some(entity) = context.pool.entity(uid) else { continue; };
+        if context.managers.entity.team_type(uid) != Some(context.source_team)
+            || card.temp_card.unwrap_or_default()
+            || crate::engine::mechanic::card::CardMechanic.is_ultimate(context.managers, card, entity)
+            || card.enchants.iter().filter_map(|item| item.enchant_id)
+                .any(|id| id == *enchant_id || rejected.contains(&id))
+        { continue; }
+        if uid == context.source_uid { preferred.push(index); } else { other.push(index); }
+    }
+    let mut indices = Vec::new();
+    for _ in 0..amount {
+        let candidates = if !preferred.is_empty() { &mut preferred } else { &mut other };
+        if candidates.is_empty() { break; }
+        let index = context.determinism.take_hand_card_choice(
+            context.active_skill_id, behavior.spec.key.opcode, candidates,
+        ).or_else(|| context.determinism.lua_random_index(candidates.len()).map(|i| candidates[i]))?;
+        let position = candidates.iter().position(|candidate| *candidate == index)?;
+        candidates.swap_remove(position);
+        indices.push(index);
+    }
+    let mut ops = vec![RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+        origin, target_uid: context.source_uid, selector: BuffSelector::ExactId(*buff_id),
+        amount, depleted: DepletedBuff::Remove,
+    })))];
+    if !indices.is_empty() {
+        ops.push(RuleOp::Command(BattleCommand::Card(CardCommand::EnchantHand(CardEnchantHand {
+            origin, indices, enchant, duration: 1, team_type: context.source_team,
+        }))));
+    }
+    Some(ops)
+}
+
+pub(super) fn supports_remove_buff_to_enchant(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [buff_id, enchant_id, 1]
+        if *buff_id > 0 && EnchantedType::try_from(*enchant_id).is_ok())
 }
 
 fn mark_hand_temporary_ops(
@@ -402,7 +469,7 @@ fn card_level_change_ops(
 ) -> Option<Vec<RuleOp>> {
     let (mode, count) = match behavior.args.as_slice() {
         [1, count, 1] if *count > 0 => (1, *count),
-        [3, 1, 1] => (3, 1),
+        [3, 0 | 1, 1] => (3, 1),
         _ => return None,
     };
     let owner = context.pool.entity(context.target_uid)?;
@@ -418,6 +485,9 @@ fn card_level_change_ops(
         .filter_map(|(hand_index, card)| next_skill(owner, card.skill_id?).map(|_| hand_index))
         .collect::<Vec<_>>();
     let origin = super::command_origin(behavior)?;
+    if candidates.is_empty() {
+        return Some(Vec::new());
+    }
     if mode == 3 {
         let hand_index = candidates.pop()?;
         return Some(vec![RuleOp::Command(BattleCommand::Card(
@@ -582,7 +652,8 @@ pub(super) fn supports_enchant_hand(behavior: &ParsedBehavior) -> bool {
         behavior.args.as_slice(),
         [enchant_id, _, 3, count]
             if EnchantedType::try_from(*enchant_id).is_ok() && *count > 0
-    )
+    ) || matches!(behavior.args.as_slice(), [enchant_id, _, 1, -1]
+        if EnchantedType::try_from(*enchant_id).is_ok())
 }
 
 pub(super) fn supports_mark_hand_temporary(behavior: &ParsedBehavior) -> bool {
@@ -592,7 +663,7 @@ pub(super) fn supports_mark_hand_temporary(behavior: &ParsedBehavior) -> bool {
 pub(super) fn supports_card_level_change(behavior: &ParsedBehavior) -> bool {
     match behavior.args.as_slice() {
         [1, count, 1] => *count > 0,
-        [3, 1, 1] => true,
+        [3, 0 | 1, 1] => true,
         _ => false,
     }
 }
@@ -635,6 +706,28 @@ pub(super) fn supports_rank_by_effect_tag(behavior: &ParsedBehavior) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kiperina_bonus_increases_each_basic_card() {
+        use crate::engine::manager::card::CardManager;
+        use sonettobuf::CardInfo;
+
+        let make_card = |energy, temporary| CardInfo {
+            uid: Some(10),
+            skill_id: Some(100),
+            card_effect: Some(1),
+            energy: Some(energy),
+            temp_card: Some(temporary),
+            ..Default::default()
+        };
+        let mut cards = CardManager::new(vec![make_card(2, false), make_card(4, false), make_card(0, true)]);
+        let behavior = ParsedBehavior::new(60189, "AddEnergyToCard", vec![1, -1, 1]);
+        let Some(RuleOp::Command(BattleCommand::Card(command))) = rule_op(&behavior) else {
+            panic!("configured effect must produce a card command");
+        };
+        cards.execute_command(command).unwrap();
+        assert_eq!(cards.hand().iter().map(|card| card.energy).collect::<Vec<_>>(), vec![Some(3), Some(5), Some(0)]);
+    }
 
     #[test]
     fn special_temporary_card_uses_the_source_model_as_reserve_id() {
@@ -1122,9 +1215,31 @@ mod tests {
     }
 
     #[test]
+    fn an_an_rank_up_is_a_noop_when_the_selected_ally_has_no_eligible_card() {
+        use sonettobuf::{Fight, FightEntityInfo, FightTeam};
+        use crate::engine::{manager::BattleManagers, runtime::determinism::RoundDeterminism,
+            skill::{action::SkillModifiers, target::{TargetContext, TargetPool}}};
+        crate::test_support::init_config();
+        let fight = Fight { attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(10), team_type: Some(1), current_hp: Some(100),
+            skill_group1: vec![30390111, 30390112], ..Default::default()
+        }], ..Default::default() }), ..Default::default() };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        for args in [vec![3, 0, 1], vec![3, 1, 1], vec![1, 1, 1]] {
+            let behavior = ParsedBehavior::new(50011, "CardLevelChange", args);
+            assert!(supports_card_level_change(&behavior));
+            let result = Handler::emit_ops(BehaviorOpContext { source_uid: 10, source_team: 1,
+                target_uid: 10, active_skill_id: 303901431, transfer_count: 1, event: None,
+                managers: &managers, pool: &pool, determinism: &mut RoundDeterminism::default(),
+                modifiers: &mut SkillModifiers::default(), target: &mut TargetContext::default() }, &behavior).unwrap();
+            assert!(result.is_empty());
+        }
+    }
+
+    #[test]
     fn card_level_change_rejects_unsupported_mode_three_variants() {
         for args in [
-            vec![3, 0, 1],
             vec![3, 2, 1],
             vec![3, 1, 0],
             vec![3, 1, 2],

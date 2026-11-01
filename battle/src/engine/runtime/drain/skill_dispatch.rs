@@ -152,6 +152,7 @@ pub(super) fn drain_skill(
         }
     }
     let mut execution = skill_execution.unwrap_or_else(|| SkillExecution::new(context));
+    execution.initialize_assist_power_baseline(managers, invocation.plan.source_uid);
     if matches!(trigger, SkillOpTrigger::Event(_)) {
         execution.set_causing_skill_target(
             active_skill_target_uid(&result.frames, &frame_path).unwrap_or_default(),
@@ -264,7 +265,9 @@ pub(super) fn drain_skill(
         match op {
             RuleOp::Skill(child) => {
                 let after_current_action = child.start.waits_for_current_action();
-                let mut child_execution = SkillExecution::new(context);
+                let mut child_context = context;
+                child_context.assist_power_action_owner = 0;
+                let mut child_execution = SkillExecution::new(child_context);
                 if !after_current_action {
                     child_execution.inherit_assassination_marks(&execution);
                 }

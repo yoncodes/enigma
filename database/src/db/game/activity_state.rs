@@ -54,6 +54,8 @@ pub enum ActivityStateKind {
     Act128Milestone,
     Act101LoginProgress,
     Act239Bonus,
+    Act107Goods,
+    Act128Gallery,
 }
 
 impl ActivityStateKind {
@@ -99,6 +101,8 @@ impl ActivityStateKind {
             Self::Act128Milestone => 38,
             Self::Act101LoginProgress => 39,
             Self::Act239Bonus => 40,
+            Self::Act107Goods => 41,
+            Self::Act128Gallery => 42,
         }
     }
 }

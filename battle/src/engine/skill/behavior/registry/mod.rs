@@ -633,6 +633,7 @@ behavior_definitions! {
     [60125] "RecoverPowerAndDelCardsUseSkill" => super::resource::Handler, RecoverPowerAndDelCardsUseSkill, Immediate, destination, super::resource::supports_recover_power_and_cast_cards;
     [60187] "AddPowerByCritCount" => super::resource::Handler, AddPowerByCritCount, Immediate, destination, super::resource::supports_power_by_critical_count;
     [60115] "TotalSkillRankToPower" => super::resource::Handler, TotalSkillRankToPower, Immediate, destination, super::resource::supports_total_skill_rank_power;
+    [60166] "RandomAddBuffByTargetBuffType" => super::random_buff_by_target::Handler, RandomAddBuffByTargetBuffType, Immediate, destination, super::random_buff_by_target::supports;
     [60152] "AddEmitterEnergy" => super::resource::Handler, AddEmitterEnergy, Immediate, destination, super::resource::supports_emitter_energy;
     [60153] "AddTeamEnergy" => super::resource::Handler, AddTeamEnergy, Immediate, setup_parent_destination, super::resource::supports_team_energy;
     [60264] "PerTypeBuffAddEnergyToTeam" => super::resource::Handler, PerTypeBuffAddEnergyToTeam, Immediate, setup_parent_destination, super::resource::supports_per_type_buff_energy;
@@ -651,6 +652,7 @@ behavior_definitions! {
     [60233] "RaspberryBigSkill" => super::resource::Handler, RaspberryBigSkill, Immediate, destination, super::resource::supports_raspberry_big_skill;
     [60189] "AddEnergyToCard" => super::card::Handler, AddEnergyToCard, Immediate, destination, super::card::supports_basic_card_energy;
     [60041] "Enchant" => super::card::Handler, EnchantHand, Immediate, once_destination, super::card::supports_enchant_hand;
+    [60285] "RemoveBuffToEnchant" => super::card::Handler, RemoveBuffToEnchant, Immediate, once_destination, super::card::supports_remove_buff_to_enchant;
     [50023] "ChangeToTempCards" => super::card::Handler, ChangeHandToTemporary, Immediate, once_destination, super::card::supports_mark_hand_temporary;
     [60075] "AroundChangeRank" => super::card::Handler, AroundChangeRank, Immediate, queue_preparation, super::card::supports_around_change_rank;
     [50011] "CardLevelChange" => super::card::Handler, CardLevelChange, Immediate, destination, super::card::supports_card_level_change;
@@ -672,7 +674,7 @@ behavior_definitions! {
     [50008] "DirectUseSkill" => super::use_skill::Handler, DirectUseSkill, Immediate, destination, arguments::at_least_one;
     [60053] "DirectUseSkill2" => super::use_skill::Handler, DirectUseSkill2, Immediate, destination;
     [60014] "DirectUseSkillPrev" => super::use_skill::Handler, DirectUseSkillPrev, Immediate, destination, arguments::none;
-    [50039] "DirectUseSkillCard" => super::use_skill::Handler, DirectUseSkillCard, Immediate, plain, super::use_skill::supports_direct_skill_card;
+    [50039] "DirectUseSkillCard" => super::use_skill::Handler, DirectUseSkillCard, Immediate, destination, super::use_skill::supports_direct_skill_card;
     [50012] "DirectUseSkillNoAct" => super::use_skill::Handler, DirectUseSkillNoAct, Immediate, once_destination, super::use_skill::supports_direct_no_action_skill;
     [50038] "DirectUseSkillNoAct2" => super::use_skill::Handler, DirectUseSkillNoAct2, Immediate, destination;
     [60223] "DirectUseSkillNotExtra" => super::use_skill::Handler, DirectUseSkillNotExtra, Immediate, plain;
@@ -680,7 +682,7 @@ behavior_definitions! {
     [60172] "Drive" => super::use_skill::Handler, Drive, Immediate, destination, super::use_skill::supports_drive;
     [60175] "DirectUseBigSkill" => super::use_skill::Handler, DirectUseBigSkill, Immediate, parent_destination;
     [50010] "DirectUseGroupAndStarSkill" => super::use_skill::Handler, DirectUseGroupAndStarSkill, Immediate, destination, super::use_skill::supports_group_and_star_skill;
-    [50015] "UseExtraSkill" => super::use_skill::Handler, UseExtraSkill, Immediate, plain;
+    [50015] "UseExtraSkill" => super::use_skill::Handler, UseExtraSkill, Immediate, destination, super::use_skill::supports_use_extra_skill;
     [60242] "CrystalReuse" => super::use_skill::Handler, CrystalReuse, Immediate, destination, super::use_skill::supports_crystal_reuse;
     [60222] "ConsumeCardAddBuff" => super::buff::Handler, ConsumeCardAddBuff, Immediate, destination, super::buff::supports_consume_card_add_buff;
     [60112] "AddTargetBuffByPoison" => super::buff::Handler, AddTargetBuffByPoison, AfterDamage, destination;
@@ -710,6 +712,7 @@ behavior_definitions! {
     [60010] "DisperseForce2" => super::buff::Handler, DisperseForce2, Immediate, destination, super::buff::supports_disperse_force;
     [60252] "DisperseForce3" => super::buff::Handler, DisperseForce3, Immediate, destination, super::buff::supports_disperse_force3;
     [20003] "Purify1" => super::buff::Handler, Purify1, Immediate, destination, super::buff::supports_dispel;
+    [20004] "Purify2" => super::buff::Handler, Purify2, Immediate, destination, super::buff::supports_exact_buff_dispel;
     [20020] "PurifyX" => super::buff::Handler, PurifyX, Immediate, destination, super::buff::supports_dispel;
     [60064] "PurifyX" => super::buff::Handler, PurifyX, Immediate, destination, super::buff::supports_dispel;
     [60085] "DistributeBuff" => super::buff::Handler, DistributeBuff, Immediate, destination, super::buff::supports_distribute;
@@ -731,8 +734,10 @@ behavior_definitions! {
     [60210] "ConsumeBloodAddBuff" => super::gauge::Handler, ConsumeBloodAddBuff, Immediate, destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(57104, "NoBuffId"), stage: SetupStage::RoundStart, priority: 3 }), super::gauge::supports_consume_blood_add_buff;
     [60211] "ConsumeBloodAddBuff2" => super::gauge::Handler, ConsumeBloodAddBuff2, Immediate, destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(57104, "NoBuffId"), stage: SetupStage::RoundStart, priority: 3 }), super::gauge::supports_consume_blood_add_buff;
     [50019] "AddMagicCircle" => super::magic_circle::Handler, AddMagicCircle, Immediate, destination;
+    [60163] "MagicCircleAddRound" => super::magic_circle::Handler, MagicCircleAddRound, Immediate, destination;
     [50021] "RemoveMagicCircleById" => super::magic_circle::Handler, RemoveMagicCircleById, Immediate, destination;
     [60076] "MagicCircleAttr" => super::magic_circle::Handler, MagicCircleAttr, Immediate, destination;
+    [60270] "UpdateWangQiMagicCircle" => super::magic_circle::Handler, UpdateWangQiMagicCircle, Immediate, destination;
     [60195] "ElectricTransform" => super::electric::Handler, ElectricTransform, Immediate, destination, super::electric::supports;
     [100000] "EzioProps" => super::synchronization::Handler, EzioProps, Immediate, owner_destination, @route(ConditionRouteOverride::Setup { key: DefinitionKey::new(0, "None"), stage: SetupStage::Unconditional, priority: 0 }), super::synchronization::supports_props;
     [100001] "EzioBigSkillTyp1" => super::synchronization::Handler, EzioBigSkillType1, AfterHit, destination, super::synchronization::supports_big_skill_rate;
@@ -754,6 +759,8 @@ behavior_definitions! {
     [60074] "CatapultBuff" => super::poison::Handler, CatapultBuff, AfterDamage, destination;
     [60110] "PoisonConvertToTargetBuff" => super::poison::Handler, PoisonConvertToTargetBuff, AfterDamage, destination;
     [60284] "PoisonConvertToPowerfulPoisonBuff" => super::poison::Handler, PoisonConvertToPowerfulPoisonBuff, AfterDamage, destination, super::poison::supports_conversion;
+    [60083] "SettleDotAndCostDotDuration" => super::poison::Handler, SettlePoisonWithoutDurationCost, AfterDamage, destination, super::poison::supports_poison_settlement_without_duration_cost;
+    [60073] "SettleDotAndCostDotDuration" => super::poison::Handler, SettlePoisonWithoutDurationCost, Immediate, destination, super::poison::supports_poison_settlement_with_duration_cost;
     [60111] "ConsumePoisonSettleDeadlyPoison" => super::poison::Handler, ConsumePoisonSettleDeadlyPoison, AfterDamage, destination;
     [100005] "Assassinate" => super::general::AssassinateHandler, Assassinate, Immediate, destination, arguments::none;
     [60037] "NotifyUpgradeHero" => super::general::Handler, NotifyUpgradeHero, Immediate, destination;
@@ -785,6 +792,7 @@ behavior_definitions! {
     [10001] "SkillRateUp" => super::rate::Handler, SkillRateUp, Immediate, modifier, arguments::at_least_one;
     [10002] "SkillRateUp1" => super::rate::Handler, SkillRateUp1, Immediate, modifier, super::rate::supports_status_skill_rate;
     [10003] "SkillRateUp2" => super::rate::Handler, SkillRateUp2, Immediate, modifier, super::rate::supports_status_skill_rate;
+    [10012] "SkillRateUpBuffType" => super::rate::Handler, SkillRateUpBuffType, Immediate, modifier, super::rate::supports_target_status_type_rate;
     [60067] "SkillRateUpCardLevel" => super::rate::Handler, SkillRateUpCardLevel, Immediate, modifier, super::rate::supports_card_rank_skill_rate;
     [60234] "AddSkillRateByTargetCount" => super::rate::Handler, AddSkillRateByTargetCount, Immediate, modifier, super::rate::supports_target_count_rate;
     [60182] "SkillRateUpBySelfBuffType" => super::rate::Handler, SkillRateUpBySelfBuffType, Immediate, modifier, super::rate::supports_self_buff_type_rate;

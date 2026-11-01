@@ -301,7 +301,17 @@ impl Passive {
         destiny_stone: i32,
     ) {
         let ex_map = Self::build_ex_map(game, hero_id, ex_level);
+        let facet_portrayal = game.character_destiny_facets.iter()
+            .filter(|row| row.facets_id == destiny_stone && row.level > 0 && row.level <= destiny_rank)
+            .max_by_key(|row| row.level).is_some_and(|row| row.ex_level_exchange);
+        let mut facet_upgrades = game.destiny_facets_ex_level.iter()
+            .filter(|row| facet_portrayal && row.hero_id == destiny_stone && row.skill_level <= ex_level)
+            .collect::<Vec<_>>();
+        facet_upgrades.sort_by_key(|row| row.skill_level);
         for passive in passives {
+            if facet_portrayal {
+                if let Some(&upgraded) = ex_map.get(&passive.skill_id) { passive.skill_id = upgraded; }
+            }
             if let Some(&overridden) = destiny.and_then(|map| map.get(&passive.skill_id)) {
                 passive.skill_id = overridden;
                 passive.source = PassiveSource {
@@ -309,8 +319,17 @@ impl Passive {
                     rank: destiny_rank,
                     source_id: destiny_stone,
                 };
-            } else if let Some(&upgraded) = ex_map.get(&passive.skill_id) {
-                passive.skill_id = upgraded;
+            } else if !facet_portrayal {
+                if let Some(&upgraded) = ex_map.get(&passive.skill_id) { passive.skill_id = upgraded; }
+            }
+            for row in &facet_upgrades {
+                for pair in row.exchange_skill.split('|') {
+                    if let Some((from, to)) = pair.split_once('#') {
+                        if from.parse::<i32>().ok() == Some(passive.skill_id) {
+                            if let Ok(next) = to.parse::<i32>() { passive.skill_id = next; }
+                        }
+                    }
+                }
             }
         }
     }

@@ -3,6 +3,89 @@ use anyhow::Result;
 use sonettobuf;
 use sqlx::SqlitePool;
 
+/// Persist a team's optional skill against the actual current period. The
+/// allowed lists were extracted from this client's weekwalk_ver2_time.json.
+pub async fn choose_team_skill(pool: &SqlitePool, user_id: i64, no: i32, skills: &[i32]) -> Result<bool> {
+    if no <= 0 || skills.len() > 1 { return Ok(false); }
+    let periods: std::collections::HashMap<String, Vec<i32>> = serde_json::from_str(
+        include_str!("../../../data/weekwalk_v2_period_skills.json"),
+    )?;
+    let mut tx = pool.begin().await?;
+    let time_id: Option<i32> = sqlx::query_scalar("SELECT time_id FROM user_weekwalk_v2_info WHERE user_id = ?")
+        .bind(user_id).fetch_optional(&mut *tx).await?;
+    let Some(allowed) = time_id.and_then(|id| periods.get(&id.to_string())) else { return Ok(false) };
+    if skills.iter().any(|skill| !allowed.contains(skill)) { return Ok(false); }
+    sqlx::query("INSERT INTO user_weekwalk_v2_snapshots (user_id, snapshot_no) VALUES (?, ?) ON CONFLICT DO NOTHING")
+        .bind(user_id).bind(no).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM user_weekwalk_v2_snapshot_skills WHERE user_id = ? AND snapshot_no = ?")
+        .bind(user_id).bind(no).execute(&mut *tx).await?;
+    for skill in skills {
+        sqlx::query("INSERT INTO user_weekwalk_v2_snapshot_skills (user_id, snapshot_no, skill_id) VALUES (?, ?, ?)")
+            .bind(user_id).bind(no).bind(skill).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
+    Ok(true)
+}
+
+pub async fn set_battle_team(
+    pool: &SqlitePool, user_id: i64, layer_id: i32, battle_id: i32, select: i32,
+) -> Result<bool> {
+    if select < 0 { return Ok(false); }
+    let result = sqlx::query("UPDATE user_weekwalk_v2_battles SET hero_group_select = ? WHERE user_id = ? AND layer_id = ? AND battle_id = ? \
+        AND 1 = (SELECT COUNT(*) FROM user_weekwalk_v2_battles WHERE user_id = ? AND layer_id = ? AND battle_id = ?)")
+        .bind(select).bind(user_id).bind(layer_id).bind(battle_id)
+        .bind(user_id).bind(layer_id).bind(battle_id).execute(pool).await?;
+    Ok(result.rows_affected() == 1)
+}
+
+pub async fn clear_layer_finished_notice(pool: &SqlitePool, user_id: i64, layer_id: i32) -> Result<bool> {
+    let result = sqlx::query("UPDATE user_weekwalk_v2_layers SET show_finished = FALSE WHERE user_id = ? AND layer_id = ?")
+        .bind(user_id).bind(layer_id).execute(pool).await?;
+    Ok(result.rows_affected() == 1)
+}
+
+pub async fn clear_rule_notice(pool: &SqlitePool, user_id: i64) -> Result<()> {
+    sqlx::query("UPDATE user_weekwalk_v2_info SET pop_rule = FALSE WHERE user_id = ?")
+        .bind(user_id).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn clear_previous_settlement_notice(pool: &SqlitePool, user_id: i64) -> Result<()> {
+    sqlx::query("UPDATE user_weekwalk_v2_prev_settle SET show = FALSE WHERE user_id = ?")
+        .bind(user_id).execute(pool).await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn weekwalk_team_skill_uses_period_options_and_is_scoped_and_reversible() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1)
+            .connect("sqlite::memory:").await.unwrap();
+        crate::run_migrations(&pool).await.unwrap();
+        for id in [1, 2, 3] {
+            sqlx::query("INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, 0, 0)")
+                .bind(id).bind(format!("weekwalk-v2-test-{id}")).execute(&pool).await.unwrap();
+        }
+        for (id, time_id) in [(1, 1), (2, 2)] {
+            sqlx::query("INSERT INTO user_weekwalk_v2_info (user_id, time_id) VALUES (?, ?)")
+                .bind(id).bind(time_id).execute(&pool).await.unwrap();
+        }
+        assert!(choose_team_skill(&pool, 1, 1, &[2004]).await.unwrap());
+        assert!(!choose_team_skill(&pool, 2, 1, &[2004]).await.unwrap());
+        assert!(!choose_team_skill(&pool, 1, 1, &[2004, 2002]).await.unwrap());
+        assert!(!choose_team_skill(&pool, 3, 1, &[]).await.unwrap());
+        assert!(!choose_team_skill(&pool, 1, 0, &[2004]).await.unwrap());
+        let first = get_weekwalk_v2_info(&pool, 1).await.unwrap();
+        assert_eq!(first.snapshot_infos[0].skill_ids, [2004]);
+        assert!(get_weekwalk_v2_info(&pool, 2).await.unwrap().snapshot_infos.is_empty());
+        assert!(choose_team_skill(&pool, 1, 1, &[]).await.unwrap());
+        assert!(get_weekwalk_v2_info(&pool, 1).await.unwrap().snapshot_infos[0].skill_ids.is_empty());
+    }
+}
+
 pub async fn get_weekwalk_v2_info(
     pool: &SqlitePool,
     user_id: i64,

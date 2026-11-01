@@ -1,6 +1,57 @@
 use super::*;
 
 #[test]
+fn ramona_round_start_converts_stacks_into_own_then_allied_basic_cards() {
+    crate::test_support::init_config();
+    let entity = |uid, model_id, skills: Vec<i32>| FightEntityInfo {
+        uid: Some(uid), model_id: Some(model_id), team_type: Some(1), current_hp: Some(100),
+        passive_skill: skills, ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![
+            FightEntityInfo { buffs: vec![BuffInfo { uid: Some(100), buff_id: Some(31420001),
+                from_uid: Some(10), layer: Some(3), ..Default::default() }],
+                ex_skill: Some(31420131), ..entity(10, 3142, vec![31420151]) },
+            FightEntityInfo { ex_skill: Some(30230131), ..entity(11, 3023, vec![]) },
+        ], ..Default::default() }), ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let card = |uid, id| CardInfo { uid: Some(uid), skill_id: Some(id), ..Default::default() };
+    managers.card = crate::engine::manager::card::CardManager::new(vec![
+        card(11, 30230111), card(10, 31420111), card(10, 31420121), card(10, 31420131),
+    ]);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    run_setup_stage(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+        TargetContext::default(), SetupStage::CardSetup, 0).unwrap();
+    assert_eq!(managers.buff.buff_id_amount(10, 31420001), 0);
+    let marked = managers.card.hand().iter().filter_map(|c| {
+        c.enchants.iter().any(|e| e.enchant_id == Some(10011)).then_some(c.skill_id.unwrap())
+    }).collect::<Vec<_>>();
+    assert_eq!(marked, vec![30230111, 31420111, 31420121]);
+}
+
+#[test]
+fn ramona_ultimate_generates_an_enchanted_rank_three_precast_each_round() {
+    crate::test_support::init_config();
+    let fight = Fight { attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+        uid: Some(10), model_id: Some(3142), team_type: Some(1), current_hp: Some(100),
+        skill_group2: vec![31420121, 31420122, 31420123],
+        buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(31420004), from_uid: Some(10),
+            duration: Some(2), ..Default::default() }], ..Default::default()
+    }], ..Default::default() }), ..Default::default() };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    run_round_start_card_event(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+        TargetContext::default(), &[10]).unwrap();
+    let card = managers.card.hand().iter().find(|card| card.skill_id == Some(31420123)).unwrap();
+    assert_eq!(card.uid, Some(10));
+    assert_eq!(card.temp_card, Some(true));
+    assert!(card.enchants.iter().any(|enchant| enchant.enchant_id == Some(10011)));
+}
+
+#[test]
 fn compiled_setup_schedule_owns_stage_order() {
     crate::test_support::init_config();
     let fight = Fight {

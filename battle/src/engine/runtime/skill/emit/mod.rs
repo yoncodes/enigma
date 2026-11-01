@@ -85,6 +85,7 @@ fn action_event(
     phase: SkillPhase,
 ) -> SkillActionEvent {
     SkillActionEvent {
+        card_index: invocation.card_index,
         source_uid: invocation.plan.source_uid,
         skill_id: invocation.plan.skill_id,
         target_uid: execution

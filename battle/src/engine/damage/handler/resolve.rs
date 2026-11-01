@@ -280,15 +280,22 @@ fn resolve_row_damage_result(
             attack_replacement,
         },
     );
+    let active_features = buffs.active_features(hp);
+    let source_career = request.attack_career.unwrap_or_else(|| {
+        if source_uid == crate::engine::manager::emitter::UID {
+            crate::engine::skill::buff_act::emitter_career::career(&active_features)
+                .unwrap_or(source.career)
+        } else {
+            source.career
+        }
+    });
     let career_restraint = request.force_career_restraint
-        || buffs
-            .active_features(hp)
-            .iter()
+        || active_features.iter()
             .filter(|feature| feature.owner_uid == source_uid)
             .any(crate::engine::skill::buff_act::forces_career_restraint)
         || restrains_target_either(
             runtime.pool.catalog(),
-            request.attack_career.unwrap_or(source.career),
+            source_career,
             request.additional_attack_career,
             target,
         );
@@ -1000,6 +1007,7 @@ fn direct_damage_trace(
         + attack_attribute_delta(AttrId::PlaymodeDmgImmunity);
     let final_delta = attribute_delta(source, AttrId::FinalDmgBonus)
         + attack_attribute_delta(AttrId::FinalDmgBonus)
+        + attack_local_attribute(AttrId::FinalDmgBonus)
         - attribute_delta(target, AttrId::FinalDmgReduction)
         + playmode_increase;
     let final_delta = (((1_000_i64 + i64::from(final_delta))

@@ -1,6 +1,99 @@
 use super::*;
 
 #[test]
+fn ramona_powerful_poison_settles_twice_and_explodes_on_expiry() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(10), model_id: Some(3142), team_type: Some(1), current_hp: Some(1000),
+            attr: Some(HeroAttribute { hp: Some(1000), attack: Some(1000), ..Default::default() }),
+            buffs: vec![BuffInfo { uid: Some(21), buff_id: Some(31420009), from_uid: Some(10), ..Default::default() }],
+            ..Default::default()
+        }], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(-1), team_type: Some(2), current_hp: Some(100000),
+            attr: Some(HeroAttribute { hp: Some(100000), ..Default::default() }),
+            buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(31420003), from_uid: Some(10),
+                duration: Some(2), layer: Some(2), ..Default::default() }], ..Default::default()
+        }], ..Default::default() }), ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut random = RoundDeterminism::default();
+    for _ in 0..2 {
+        drain::run_event(&mut managers, &pool, &catalog, &mut random, TargetContext::default(),
+            BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundEnd)).unwrap();
+        run_round_end_settlement(&mut managers, &pool, &catalog, &mut random,
+            TargetContext::default(), &[-1]).unwrap();
+    }
+    assert_eq!(managers.hp.current(-1), 100000 - 1000 - 1250 - 7000);
+    assert!(managers.buff.snapshot(-1, 20).is_none());
+}
+
+#[test]
+fn ramona_repellent_triggers_extra_poison_without_expiring_it() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(10), team_type: Some(1), current_hp: Some(1000),
+            attr: Some(HeroAttribute { hp: Some(1000), attack: Some(1000), ..Default::default() }),
+            ..Default::default()
+        }], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(-1), team_type: Some(2), current_hp: Some(100000),
+            attr: Some(HeroAttribute { hp: Some(100000), ..Default::default() }),
+            buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(31420002), from_uid: Some(10),
+                duration: Some(2), layer: Some(2), ..Default::default() }], ..Default::default()
+        }], ..Default::default() }), ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let origin = CommandOrigin { domain: RuleDomain::Behavior, key: DefinitionKey::new(1, "AddBuff") };
+    let mut bus = crate::engine::event::bus::EventBus::default();
+    crate::engine::runtime::executor::execute_rule_op(&mut managers, &mut bus,
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(crate::engine::manager::buff::BuffGrant {
+            origin, source_uid: 10, target_uid: -1, buff_id: 31420000, amount: Some(1),
+            occurrences: 1, child_uid_reservations: 0,
+        })))).unwrap();
+    let uid = managers.buff.buff_id_uid(-1, 31420000).unwrap();
+    let duration = managers.buff.snapshot(-1, uid).unwrap().duration;
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    drain::run_event(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+        TargetContext::default(), BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundEnd)).unwrap();
+    assert_eq!(managers.hp.current(-1), 100000 - 400 - 400 - 400);
+    assert_eq!(managers.buff.snapshot(-1, uid).unwrap().duration, duration);
+}
+
+#[test]
+fn ramona_extra_settlement_uses_same_powerful_poison_rate_in_a_round() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(10), team_type: Some(1), current_hp: Some(1000),
+            attr: Some(HeroAttribute { hp: Some(1000), attack: Some(1000), ..Default::default() }),
+            ..Default::default()
+        }], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(-1), team_type: Some(2), current_hp: Some(100000),
+            attr: Some(HeroAttribute { hp: Some(100000), ..Default::default() }),
+            buffs: vec![
+                BuffInfo { uid: Some(20), buff_id: Some(31420003), from_uid: Some(10),
+                    duration: Some(2), layer: Some(2), ..Default::default() },
+                BuffInfo { uid: Some(21), buff_id: Some(31420002), from_uid: Some(10),
+                    duration: Some(2), layer: Some(1), ..Default::default() },
+            ], ..Default::default()
+        }], ..Default::default() }), ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    drain::run_event(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+        TargetContext::default(), BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundEnd)).unwrap();
+    assert_eq!(managers.hp.current(-1), 100000 - 1000 - 1000);
+}
+
+#[test]
 fn round_end_settlement_drains_dot_layers_then_durations() {
     init_config();
     let fight = Fight {

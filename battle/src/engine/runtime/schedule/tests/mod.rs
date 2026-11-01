@@ -117,6 +117,10 @@ fn assert_buff_gated_generic_temp_card(managers: &BattleManagers, result: &Drain
 mod actions;
 mod entry;
 mod mechanics;
+mod six_euphoria;
+mod joe_device;
+mod balance_psychube;
+mod impromptu_damage;
 mod refill;
 mod round_start;
 mod settlement;

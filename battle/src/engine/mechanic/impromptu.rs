@@ -191,6 +191,16 @@ pub fn spend_team_energy_rule_op(
     )
 }
 
+fn card_energy_cap(managers: &BattleManagers, team: i32) -> i32 {
+    use crate::engine::manager::card::energy::{DEFAULT_MAX_CARD_ENERGY, PAPER_HERON_MAX_CARD_ENERGY};
+    if managers.entity.alive_combatants(team, &managers.hp).into_iter()
+        .any(|uid| managers.entity.model_id(uid) == Some(3141)) {
+        PAPER_HERON_MAX_CARD_ENERGY
+    } else {
+        DEFAULT_MAX_CARD_ENERGY
+    }
+}
+
 pub fn allocate_team_energy_rule_ops(
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
@@ -209,8 +219,9 @@ pub fn allocate_team_energy_rule_ops(
         .get(team_energy_key(team))
         .ok_or(ImpromptuError::MissingTeamEnergy(team))?
         .current;
+    let max_energy = card_energy_cap(managers, team);
     let Some(cards) = determinism
-        .take_card_energy_snapshot(managers.card.hand(), available)
+        .take_card_energy_snapshot(managers.card.hand(), available, max_energy)
         .or_else(|| {
             crate::engine::manager::card::energy::allocate(
                 &managers.buff,
@@ -218,6 +229,7 @@ pub fn allocate_team_energy_rule_ops(
                 catalog,
                 managers.card.hand(),
                 available,
+                max_energy,
                 available > 4,
                 determinism,
             )
@@ -238,6 +250,7 @@ pub fn allocate_team_energy_rule_ops(
         RuleOp::Command(BattleCommand::Card(CardCommand::AllocateEnergy(
             CardEnergyAllocation {
                 origin,
+                max_energy,
                 energies: cards
                     .into_iter()
                     .map(|card| card.energy.unwrap_or_default())
@@ -314,11 +327,13 @@ pub fn action_queue_committed_rule_ops(
         && let Some(definition) = managers.catalog().impromptu_definition()
         && let Some(origin) = buff_act::feature_command_origin(tag)
     {
+        let mut card = definition.card(emitter_uid);
+        card.skill_id = Some(emitter_skill(&features, emitter_uid, definition.skill_id()));
         ops.push(RuleOp::Command(BattleCommand::Card(
             CardCommand::QueueUseCard(CardQueueUse {
                 origin,
                 card_index: cards.len() as i32 + 1,
-                card: definition.card(emitter_uid),
+                card,
                 team_type: team,
                 source_skill_id: 0,
                 action: None,
@@ -369,18 +384,31 @@ pub fn build_plan(managers: &BattleManagers, team: i32, emitter_uid: i64) -> Opt
         return None;
     }
     let definition = managers.catalog().impromptu_definition()?;
+    let raw_attacks = crate::engine::skill::buff_act::emitter_num_change::attack_count_for_inspiration(
+        managers, emitter_uid, inspiration,
+    );
+    let circle_features = managers.field.emitter_features(managers.catalog(), team);
+    let (attack_count, overflow_rate) = crate::engine::skill::buff_act::emitter_num_change::limit_attacks(
+        raw_attacks,
+        circle_features.into_iter().map(|feature| feature.values)
+            .chain(features.iter().filter(|feature| feature.owner_uid == emitter_uid)
+                .map(|feature| feature.values.clone())),
+    );
     Some(ImpromptuPlan {
         source_uid: emitter_uid,
-        skill_id: definition.skill_id(),
+        skill_id: emitter_skill(&features, emitter_uid, definition.skill_id()),
         inspiration,
-        attack_count: crate::engine::skill::buff_act::emitter_num_change::attack_count_for(
-            &managers.buff,
-            &managers.hp,
-            emitter_uid,
-        ),
+        attack_count,
         damage_rate_opcode: definition.damage_up_act_id(),
-        damage_rate: definition.damage_rate(inspiration),
+        damage_rate: definition.damage_rate(inspiration).saturating_add(overflow_rate),
     })
+}
+
+fn emitter_skill(features: &[ActiveBuffFeature], emitter_uid: i64, fallback: i32) -> i32 {
+    features.iter().filter(|feature| feature.owner_uid == emitter_uid && feature.owner_alive
+        && buff_act::is_kind(feature, BuffActKind::ChangeEmitterSkill))
+        .filter_map(|feature| feature.values.get(1).copied().filter(|skill| *skill > 0))
+        .last().unwrap_or(fallback)
 }
 
 pub fn resolved_rule_ops(managers: &BattleManagers, team: i32, emitter_uid: i64) -> Vec<RuleOp> {
@@ -436,6 +464,28 @@ fn change(
 mod tests {
     use super::*;
     use crate::engine::manager::BattleManagers;
+
+    #[test]
+    fn paper_heron_extends_only_her_living_active_team_cap() {
+        use sonettobuf::{Fight, FightEntityInfo, FightTeam};
+        crate::test_support::init_config();
+        let hero = |uid, model_id, position, hp| FightEntityInfo {
+            uid: Some(uid), model_id: Some(model_id), position: Some(position), current_hp: Some(hp), ..Default::default()
+        };
+        let fight = Fight {
+            attacker: Some(FightTeam { entitys: vec![hero(10, 3141, 1, 100)], ..Default::default() }),
+            defender: Some(FightTeam { entitys: vec![hero(-10, 3003, 1, 100)], ..Default::default() }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        assert_eq!(card_energy_cap(&managers, 1), 8);
+        assert_eq!(card_energy_cap(&managers, 2), 5);
+        let dead_fight = Fight {
+            attacker: Some(FightTeam { entitys: vec![hero(10, 3141, 1, 0)], ..Default::default() }),
+            ..Default::default()
+        };
+        assert_eq!(card_energy_cap(&BattleManagers::seeded(&dead_fight), 1), 5);
+    }
 
     #[test]
     fn active_impromptu_without_team_energy_is_an_error() {

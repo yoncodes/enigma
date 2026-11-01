@@ -25,6 +25,8 @@ struct ComposeParams {
     plane_id: i32,
     support_id: i32,
     #[serde(default)]
+    research_id: i32,
+    #[serde(default)]
     support_assist_uid: i64,
     #[serde(default)]
     support_assist_type: i32,
@@ -35,7 +37,7 @@ struct ComposeParams {
 struct ComposeGroupParams {
     buff_params_str: String,
     #[serde(default)]
-    assist_data_map: Vec<Option<HashMap<String, ComposeAssist>>>,
+    assist_data_map: serde_json::Value,
 }
 
 #[derive(Clone, Deserialize)]
@@ -124,6 +126,8 @@ struct AttackerSetup {
     selected_trials: Vec<(i32, i32)>,
     use_configured_aids: bool,
     compose_support: Option<ComposeSupportPlan>,
+    compose_portrait_increments: HashMap<i32, i32>,
+    compose_portrait_marker: Option<i32>,
 }
 
 struct ComposeSupportPlan {
@@ -187,6 +191,12 @@ impl Attacker {
         let aid_ids = setup.aid_ids;
         let selected_trials = setup.selected_trials;
         let use_configured_aids = setup.use_configured_aids;
+        // Assist bosses and compose supports occupy uid -1. Trial heroes have
+        // server-assigned uids, so reserve that slot before assigning them.
+        let has_fixed_support = setup.compose_support.is_some()
+            || fight_group.assist_boss_id.unwrap_or_default() != 0;
+        let portrait_increments = setup.compose_portrait_increments;
+        let portrait_marker = setup.compose_portrait_marker;
         let game = catalog.game_data();
 
         let mut entitys = Vec::new();
@@ -207,9 +217,15 @@ impl Attacker {
         }
 
         for (index, (trial_id, position)) in selected_trials.iter().copied().enumerate() {
-            let uid = -i64::try_from(aid_ids.len() + index + 1)?;
-            let (entity, stats) =
-                EntityBuilder::configured_trial(catalog, trial_id, uid, position, 1)?;
+            let uid = -i64::try_from(aid_ids.len() + index + 1 + usize::from(has_fixed_support))?;
+            let original_level = game.hero_trial.get(trial_id)
+                .with_context(|| format!("unknown trial hero {trial_id}"))?.ex_skill_lv;
+            let adjusted_level = research_portrait_level(original_level, position, &portrait_increments);
+            let (mut entity, stats) = EntityBuilder::configured_trial_with_ex_level(
+                catalog, trial_id, uid, position, 1, Some(adjusted_level))?;
+            if adjusted_level > original_level {
+                if let Some(marker) = portrait_marker { entity.passive_skill.push(marker); }
+            }
             ex_attributes.push((uid, stats.ex()));
             sp_attributes.push((uid, stats.sp()));
             if position > 0 {
@@ -238,7 +254,9 @@ impl Attacker {
             }
 
             let fighter = roster.fighter(*hero_uid)?;
-            let hero_input = fighter.hero.clone();
+            let mut hero_input = fighter.hero.clone();
+            let original_level = hero_input.ex_skill_level;
+            hero_input.ex_skill_level = research_portrait_level(original_level, position, &portrait_increments);
             let equip_inputs = fighter.equips.clone();
             let stats = balance
                 .map(|balance| balance.stats(game, &hero_input, &equip_inputs))
@@ -253,7 +271,11 @@ impl Attacker {
             if let Some(balance) = balance {
                 builder = builder.with_balance(balance, stats);
             }
-            entitys.push(builder.build()?);
+            let mut entity = builder.build()?;
+            if entity.ex_skill_level.unwrap_or_default() > original_level {
+                if let Some(marker) = portrait_marker { entity.passive_skill.push(marker); }
+            }
+            entitys.push(entity);
         }
 
         for hero_uid in fight_group.sub_hero_list.iter() {
@@ -291,7 +313,7 @@ impl Attacker {
             entitys,
             sub_entitys,
             player_entity,
-            Some(15),
+            Some(catalog.cloth_initial_power(fight_group.cloth_id).unwrap_or(15)),
             fight_group.cloth_id,
             skill_infos,
         );
@@ -305,13 +327,11 @@ impl Attacker {
         }
         let reserved_uid_offset = reserved_uid_offset(
             fight_group,
-            if use_configured_aids {
-                aid_ids.len() + selected_trials.len()
-            } else {
-                selected_trials.len()
-            },
-            team.assist_boss.is_some() || fight_group.assist_boss_id.unwrap_or_default() != 0,
-        )?;
+            if use_configured_aids { aid_ids.len() } else { 0 },
+            has_fixed_support,
+        )?.max(if selected_trials.is_empty() { 0 } else {
+            aid_ids.len() + selected_trials.len() + usize::from(has_fixed_support)
+        });
 
         Ok(BuiltAttacker {
             team,
@@ -466,6 +486,8 @@ fn attacker_setup(
             .chain(&fight_group.sub_hero_list)
             .all(|uid| *uid == 0);
 
+    let (compose_portrait_increments, compose_portrait_marker) =
+        compose_portrait_research(catalog, episode_id, params)?;
     Ok(AttackerSetup {
         role_num: battle.role_num,
         balance,
@@ -473,7 +495,43 @@ fn attacker_setup(
         selected_trials,
         use_configured_aids,
         compose_support: compose_support_plan(catalog, episode_id, fight_group, params)?,
+        compose_portrait_increments,
+        compose_portrait_marker,
     })
+}
+
+fn research_portrait_level(original: i32, position: i32, increments: &HashMap<i32, i32>) -> i32 {
+    increments.get(&position).map_or(original, |amount| {
+        original.saturating_add(*amount).min(5).max(original)
+    })
+}
+
+fn compose_portrait_research(
+    catalog: crate::catalog::BattleCatalog, episode_id: i32, params: Option<&str>,
+) -> Result<(HashMap<i32, i32>, Option<i32>)> {
+    let db = catalog.game_data();
+    if !db.tower_compose_episode.iter().any(|row| row.episode_id == episode_id) {
+        return Ok((HashMap::new(), None));
+    }
+    let params: ComposeParams = serde_json::from_str(
+        params.context("missing Tower Compose battle params")?)?;
+    if params.research_id == 0 { return Ok((HashMap::new(), None)); }
+    let research = db.tower_compose_research.get(params.research_id)
+        .filter(|row| row.theme_id == params.theme_id)
+        .context("unknown Tower Compose research")?;
+    if research.ex_level.trim().is_empty() { return Ok((HashMap::new(), None)); }
+    let mut increments = HashMap::new();
+    for entry in research.ex_level.split('|') {
+        let (position, amount) = entry.split_once('#').context("invalid research portrait entry")?;
+        let position = position.trim().parse::<i32>()?;
+        let amount = amount.trim().parse::<i32>()?;
+        ensure!(position > 0 && amount > 0 && increments.insert(position, amount).is_none(),
+            "invalid research portrait adjustment");
+    }
+    let marker = db.tower_compose_const.get(10).context("missing portrait research marker")?
+        .value.trim().parse::<i32>()?;
+    ensure!(db.skill.get(marker).is_some(), "unknown portrait research marker");
+    Ok((increments, Some(marker)))
 }
 
 fn compose_support_plan(
@@ -497,7 +555,7 @@ fn compose_support_plan(
         row.episode_id == episode_id
             && row.theme_id == params.theme_id
             && row.layer_id == params.layer_id
-            && row.plane == params.plane_id
+            && compose_plane_matches(row.plane, params.plane_id)
     }));
     if params.support_id == 0 {
         return Ok(None);
@@ -519,16 +577,14 @@ fn compose_support_plan(
     let assist = if params.support_assist_uid == 0 {
         None
     } else {
-        let assist = group
-            .assist_data_map
-            .get(params.theme_id.saturating_sub(1) as usize)
-            .and_then(Option::as_ref)
-            .and_then(|planes| planes.get(&params.plane_id.to_string()))
+        let assist = compose_assist_data(&group.assist_data_map, params.theme_id, params.plane_id)
             .ok_or_else(|| anyhow::anyhow!("missing selected Tower Compose assist"))?;
+        let assist: ComposeAssist = serde_json::from_value(assist.clone())
+            .context("invalid selected Tower Compose assist")?;
         ensure!(assist.hero_uid == params.support_assist_uid);
         ensure!(assist.hero_id == support.hero_id);
         ensure!(assist.assist_type == params.support_assist_type);
-        Some(assist.clone())
+        Some(assist)
     };
 
     Ok(Some(ComposeSupportPlan {
@@ -536,6 +592,34 @@ fn compose_support_plan(
         hero_id: support.hero_id,
         assist,
     }))
+}
+
+fn compose_plane_matches(configured: i32, selected: i32) -> bool {
+    match configured {
+        0 => selected == 0,
+        1 => selected == 1,
+        2 => selected == 1 || selected == 2,
+        _ => false,
+    }
+}
+
+// Lua tables may encode as arrays or objects, and empty, unselected slots
+// contain no hero fields. Parse only the slot the request actually selects.
+fn compose_assist_data(
+    map: &serde_json::Value,
+    theme_id: i32,
+    plane_id: i32,
+) -> Option<&serde_json::Value> {
+    let theme = match map {
+        serde_json::Value::Array(themes) => themes.get(usize::try_from(theme_id).ok()?.checked_sub(1)?)?,
+        serde_json::Value::Object(themes) if theme_id > 0 => themes.get(&theme_id.to_string())?,
+        _ => return None,
+    };
+    match theme {
+        serde_json::Value::Array(planes) => planes.get(usize::try_from(plane_id).ok()?.checked_sub(1)?),
+        serde_json::Value::Object(planes) if plane_id >= 0 => planes.get(&plane_id.to_string()),
+        _ => None,
+    }
 }
 
 fn validate_composition(
@@ -724,15 +808,113 @@ fn active_skills(raw: &str) -> Vec<AssistBossSkillInfo> {
 mod tests {
     use super::{
         BattleFighter, BattleRoster, BattleRosterPlan, configured_aid_ids, plan_roster,
-        reserved_uid_offset, selected_support, validate_composition,
+        compose_plane_matches, compose_support_plan, reserved_uid_offset, selected_support,
+        validate_composition,
     };
     use crate::dungeon::FightOptions;
     use crate::engine::entity::input::{EquipmentBuildInput, HeroBuildInput};
 
     #[test]
+    fn compose_portrait_research_rebuilds_only_configured_positions() {
+        crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+        let specs = [(3088, 308801, 2), (3125, 312501, 5), (3126, 312601, 1), (3120, 312001, 0)];
+        let fighters = specs.into_iter().enumerate().map(|(index, (hero_id, skin, ex_skill_level))| {
+            BattleFighter { hero: HeroBuildInput {
+                uid: 20_000_001 + index as i64, user_id: 1, hero_id, skin,
+                level: 180, rank: 4, talent: 15, ex_skill_level, ..Default::default()
+            }, equips: vec![] }
+        }).collect::<Vec<_>>();
+        let group = sonettobuf::FightGroup {
+            hero_list: fighters.iter().map(|fighter| fighter.hero.uid).collect(), ..Default::default()
+        };
+        let roster = BattleRoster { user_id: 1, fighters, ..Default::default() };
+        let base = r#"{"themeId":1,"layerId":6,"planeId":1,"supportId":0,"researchId":0}"#;
+        let research = r#"{"themeId":1,"layerId":6,"planeId":1,"supportId":0,"researchId":1403}"#;
+        let build = |params| super::super::build_fight(catalog, &roster, 90400199, 9001001,
+            &group, FightOptions::default(), Some(params)).unwrap();
+        let baseline = build(base);
+        let changed = build(research);
+        let before = &baseline.fight.attacker.as_ref().unwrap().entitys;
+        let after = &changed.fight.attacker.as_ref().unwrap().entitys;
+        assert_eq!(after.iter().map(|hero| hero.ex_skill_level.unwrap()).collect::<Vec<_>>(), vec![3, 5, 1, 0]);
+        assert_ne!(after[0].ex_skill, before[0].ex_skill);
+        assert!(after[0].passive_skill.contains(&113330011), "newly upgraded hero needs the marker");
+        assert!(!after[1].passive_skill.contains(&113330011), "already-maxed hero gets the separate bonus");
+        assert!(!after[2].passive_skill.contains(&113330011));
+        assert_eq!(after[2].ex_skill, before[2].ex_skill);
+        assert_eq!(roster.fighters[0].hero.ex_skill_level, 2, "research must not change the saved roster");
+    }
+
+    #[test]
     fn selects_support_from_the_active_compose_plane() {
         assert_eq!(selected_support("30#40#50", 0), Some(30));
         assert_eq!(selected_support("31#41#51|32#42#52", 2), Some(32));
+    }
+
+    #[test]
+    fn compose_two_plane_layer_accepts_either_plane() {
+        assert!(compose_plane_matches(2, 1));
+        assert!(compose_plane_matches(2, 2));
+        assert!(!compose_plane_matches(2, 0));
+        assert!(!compose_plane_matches(1, 2));
+        crate::test_support::init_config();
+        let first_plane = r#"{"themeId":1,"layerId":6,"planeId":1,"supportId":0}"#;
+        assert!(compose_support_plan(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            90400199, &sonettobuf::FightGroup::default(), Some(first_plane),
+        ).unwrap().is_none());
+    }
+
+    #[test]
+    fn compose_support_allows_empty_client_assist_slots_for_owned_heroes() {
+        crate::test_support::init_config();
+        let group = sonettobuf::FightGroup {
+            params: Some(r#"{"heroList":["0","0","0","0"],"assistDataMap":[{"0":{}}],"buffParamsStr":"306600#0#0"}"#.into()),
+            ..Default::default()
+        };
+        let params = r#"{"supportAssistUid":0,"layerId":1,"supportId":306600,"supportAssistType":0,"themeId":1,"planeId":0}"#;
+        let plan = compose_support_plan(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            90400101, &group, Some(params),
+        ).unwrap().unwrap();
+        assert_eq!(plan.hero_id, 3066);
+        assert!(plan.assist.is_none());
+    }
+
+    #[test]
+    fn compose_support_reads_selected_borrowed_hero_from_lua_plane_arrays() {
+        crate::test_support::init_config();
+        let group = sonettobuf::FightGroup {
+            params: Some(r#"{"assistDataMap":[[{}, {"heroUid":20000001,"heroId":3066,"level":1,"skin":306601,"exSkillLevel":0,"assistType":6}]],"buffParamsStr":"0#0#0|306600#0#0"}"#.into()),
+            ..Default::default()
+        };
+        let params = r#"{"supportAssistUid":20000001,"layerId":6,"supportId":306600,"supportAssistType":6,"themeId":1,"planeId":2}"#;
+        let plan = compose_support_plan(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            90400199, &group, Some(params),
+        ).unwrap().unwrap();
+        assert_eq!(plan.assist.unwrap().hero_uid, 20_000_001);
+    }
+
+    #[test]
+    fn compose_support_reads_selected_object_slot_and_rejects_invalid_borrowed_heroes() {
+        crate::test_support::init_config();
+        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+        let params = r#"{"supportAssistUid":20000001,"layerId":1,"supportId":306600,"supportAssistType":6,"themeId":1,"planeId":0}"#;
+        let mut group = sonettobuf::FightGroup {
+            params: Some(r#"{"assistDataMap":{"1":{"0":{"heroUid":20000001,"heroId":3066,"level":1,"skin":306601,"exSkillLevel":0,"assistType":6},"1":{}}},"buffParamsStr":"306600#0#0"}"#.into()),
+            ..Default::default()
+        };
+        let plan = compose_support_plan(catalog, 90400101, &group, Some(params)).unwrap().unwrap();
+        assert_eq!(plan.assist.unwrap().hero_uid, 20_000_001);
+
+        group.params = Some(r#"{"assistDataMap":[{"0":{}}],"buffParamsStr":"306600#0#0"}"#.into());
+        let error = compose_support_plan(catalog, 90400101, &group, Some(params)).err().unwrap();
+        assert!(error.to_string().contains("invalid selected Tower Compose assist"));
+
+        group.params = Some(r#"{"assistDataMap":[{"0":{"heroUid":20000002,"heroId":3066,"level":1,"skin":306601,"exSkillLevel":0,"assistType":6}}],"buffParamsStr":"306600#0#0"}"#.into());
+        assert!(compose_support_plan(catalog, 90400101, &group, Some(params)).is_err());
     }
 
     #[test]

@@ -225,6 +225,15 @@ pub fn buff_type_at_least(_: i32, _: &str, raw_args: &[String]) -> Option<Parsed
     buff_type_count(raw_args, ConditionCompare::GreaterThanOrEqual)
 }
 
+pub fn buff_type_equal(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let [type_id, count] = parse_fixed(raw_args)?;
+    (type_id > 0 && count >= 0).then_some(ParsedConditionKind::BuffTypeCount {
+        type_ids: vec![type_id],
+        compare: ConditionCompare::Equal,
+        threshold: count,
+    })
+}
+
 pub fn any_target_buff_type_at_least(
     _: i32,
     _: &str,

@@ -178,6 +178,7 @@ pub enum ParsedConditionKind {
     PerExPoint {
         threshold: i32,
     },
+    PerEureka,
     ExPointDecrease {
         threshold: i32,
     },
@@ -217,6 +218,10 @@ pub enum ParsedConditionKind {
     PowerConsumed {
         power_id: i32,
         max_count: i32,
+    },
+    AssistBossLostPowerDifference {
+        step: i32,
+        threshold: i32,
     },
     PerConduitCurrentCost {
         threshold: i32,

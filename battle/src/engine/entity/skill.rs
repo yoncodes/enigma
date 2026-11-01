@@ -57,6 +57,16 @@ impl Skill {
             Self::apply_exchange(&mut sg1, map);
             Self::apply_exchange(&mut sg2, map);
         }
+        let facet = game.character_destiny_facets.iter()
+            .filter(|row| row.facets_id == hero.destiny_stone && row.level > 0 && row.level <= hero.destiny_rank)
+            .max_by_key(|row| row.level);
+        if facet.is_some_and(|row| row.ex_level_exchange) {
+            if let Some(row) = game.destiny_facets_ex_level.iter().find(|row|
+                row.hero_id == hero.destiny_stone && row.skill_level == hero.ex_skill_level) {
+                if !row.skill_group1.trim().is_empty() { sg1 = configured_skill_ids(game, &row.skill_group1); }
+                if !row.skill_group2.trim().is_empty() { sg2 = configured_skill_ids(game, &row.skill_group2); }
+            }
+        }
         let talents = game.talent_exchanges(hero.hero_id, &hero.extra_str, hero.ex_skill_level);
         for id in sg1.iter_mut().chain(sg2.iter_mut()) {
             *id = talent_exchange(*id, &talents);
@@ -85,6 +95,14 @@ impl Skill {
                 Self::active_skills(game, hero.hero_id, hero.rank, hero.ex_skill_level).2
             });
         let ex = destiny.and_then(|map| map.get(&ex).copied()).unwrap_or(ex);
+        let ex = game.character_destiny_facets.iter()
+            .filter(|row| row.facets_id == hero.destiny_stone && row.level > 0
+                && row.level <= hero.destiny_rank)
+            .max_by_key(|row| row.level)
+            .filter(|row| row.ex_level_exchange)
+            .and_then(|_| game.destiny_facets_ex_level.iter().find(|row|
+                row.hero_id == hero.destiny_stone && row.skill_level == hero.ex_skill_level))
+            .map(|row| row.skill_ex).filter(|skill| *skill > 0).unwrap_or(ex);
         talent_exchange(
             ex,
             &game.talent_exchanges(hero.hero_id, &hero.extra_str, hero.ex_skill_level),
@@ -231,6 +249,40 @@ pub fn card_skill_rank(card: &CardInfo) -> i32 {
 mod tests {
     use super::{Skill, parse_skill_group};
     use crate::test_support::init_config;
+
+    #[test]
+    fn six_euphoria_loadout_resolves_all_duty_ranks_for_each_portrayal() {
+        init_config();
+        let game = crate::test_support::game_data();
+        let destiny = crate::engine::entity::destiny::Destiny::exchanges(game, 307901, 2);
+        for (portrayal, expected) in [(0, [307901213, 307901223, 307901233]),
+            (3, [307901243, 307901253, 307901263]), (5, [307901243, 307901253, 307901263])] {
+            let hero = crate::engine::entity::input::HeroBuildInput { hero_id: 3079, rank: 4,
+                destiny_stone: 307901, destiny_rank: 2, ex_skill_level: portrayal, ..Default::default() };
+            assert_eq!(Skill::groups(game, &hero, false, destiny.as_ref()).1, expected);
+        }
+    }
+
+    #[test]
+    fn tooth_fairy_fully_evolved_uses_portrayal_specific_ultimate() {
+        init_config();
+        let game = crate::test_support::game_data();
+        let destiny = crate::engine::entity::destiny::Destiny::exchanges(game, 305301, 4);
+        for (level, expected) in [(1, 30530182), (2, 30530183), (3, 30530183),
+            (4, 30530183), (5, 30530184)] {
+            let hero = crate::engine::entity::input::HeroBuildInput { hero_id: 3053, rank: 4,
+                destiny_stone: 305301, destiny_rank: 4, ex_skill_level: level, ..Default::default() };
+            assert_eq!(Skill::ex(game, &hero, destiny.as_ref()), expected);
+            if level == 5 {
+                let (group1, group2) = Skill::groups(game, &hero, false, destiny.as_ref());
+                assert_eq!(group1, [30530167, 30530168, 30530169]);
+                assert_eq!(group2, [30530174, 30530175, 30530176]);
+                let passives = crate::engine::entity::passive::Passive::for_build(game, &hero, &[], destiny.as_ref());
+                assert!(passives.iter().any(|p| p.skill_id == 30530158));
+                assert!(passives.iter().any(|p| p.skill_id == 30530157));
+            }
+        }
+    }
 
     #[test]
     fn parses_requested_skill_group() {

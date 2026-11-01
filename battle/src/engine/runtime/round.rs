@@ -146,6 +146,12 @@ impl BattleRuntime {
             .catalog_data
             .expect("battle runtime was not constructed with a catalog");
         let active_round = self.round_state.cur_round;
+        let is_extra_round = self.round_state.extra_rounds > 0;
+        let extra_round_skill = if is_extra_round {
+            self.round_state.extra_round_skills.pop_front()
+        } else {
+            None
+        };
         self.round_state.begin_round();
         self.fight.cur_round = Some(self.round_state.cur_round);
         if let Some(attacker) = self.fight.attacker.as_mut() {
@@ -230,7 +236,7 @@ impl BattleRuntime {
         )
         .map_err(|error| format!("{error:?}"))?;
         ai_turn.observe(&conduit_selection);
-        let player = schedule::run_player_phase(
+        let player = schedule::run_player_phase_with_extra_skill(
             &self.fight,
             &mut self.managers,
             &pool,
@@ -241,6 +247,7 @@ impl BattleRuntime {
             append_client_conduit_selection_confirmations(conduit_selection.frames),
             1,
             crate::engine::manager::emitter::UID,
+            extra_round_skill,
         )
         .map_err(|error| format!("{error:?}"))?;
         let ended_by_player = battle_ended(&self.fight, &pool, &self.managers);
@@ -483,17 +490,21 @@ impl BattleRuntime {
                 absorb_hurt_map_layout,
             )?);
             let choices = ai_turn.into_choices();
-            let ai = schedule::run_ai_actions(
-                &self.fight,
-                &mut self.managers,
-                &pool,
-                catalog,
-                &mut self.determinism,
-                context,
-                choices,
-                &promotions,
-            )
-            .map_err(|error| format!("{error:?}"))?;
+            let ai = if is_extra_round {
+                Default::default()
+            } else {
+                schedule::run_ai_actions(
+                    &self.fight,
+                    &mut self.managers,
+                    &pool,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                    choices,
+                    &promotions,
+                )
+                .map_err(|error| format!("{error:?}"))?
+            };
             fight_steps.extend(project_result(ai, fight_version, absorb_hurt_map_layout)?);
             let after_ai_round_end = schedule::run_after_ai_round_end(
                 &mut self.managers,
@@ -758,6 +769,10 @@ impl BattleRuntime {
         round.fight_step = fight_steps;
         round.next_round_begin_step = next_round_begin_step;
         round.ex_point_info = self.managers.ex_point_info(&self.fight);
+        let cards_push = round.next_round_begin_step.iter().flat_map(|step| &step.act_effect)
+            .filter(|effect| effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Cardspush as i32))
+            .last().map(|effect| effect.card_info_list.as_slice());
+        self.trace_semmelweis_cards("round_cards_push", cards_push);
         Ok(round)
     }
 
@@ -815,7 +830,8 @@ pub(super) fn apply_cloth_power(
                 if changes.kind == crate::engine::manager::card::CardChangeKind::Played
                     && let Some(played) = &changes.played
                 {
-                    pending_cards.push(played.card_index);
+                    pending_cards.push((played.card_index,
+                        crate::engine::mechanic::card::CardMechanic.is_device_card(managers, &played.card)));
                 }
                 state.power = cloth_power_after_card_change(
                     &power,
@@ -829,10 +845,13 @@ pub(super) fn apply_cloth_power(
             ) if action.card_index > 0 => {
                 if let Some(index) = pending_cards
                     .iter()
-                    .position(|card_index| *card_index == action.card_index)
+                    .position(|(card_index, _)| *card_index == action.card_index)
                 {
-                    pending_cards.remove(index);
+                    let (_, is_device_card) = pending_cards.remove(index);
                     state.power = power.card_used(state.power);
+                    if is_device_card {
+                        state.power = power.device_card_used(state.power);
+                    }
                 }
             }
             _ => {}

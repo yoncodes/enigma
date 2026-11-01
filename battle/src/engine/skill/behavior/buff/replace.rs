@@ -1,5 +1,48 @@
 use super::*;
 
+// These paid, one-round emitter bonuses represent separate contributions.
+// Refreshing the same hidden buff would discard a previous card's contribution.
+fn paid_emitter_bonus_ops(
+    context: &BehaviorOpContext<'_>,
+    origin: CommandOrigin,
+    buff_id: i32,
+    amount: i32,
+) -> Option<Vec<RuleOp>> {
+    if context.target_uid != crate::engine::manager::emitter::UID || amount <= 0 {
+        return None;
+    }
+    let catalog = context.managers.catalog();
+    let buff = catalog.game_data().skill_buff.get(buff_id)?;
+    if buff.during_time != 1
+        || !catalog.buff_features(buff_id).iter().any(|feature| match feature.values.as_slice() {
+            [878, value] => *value > 0,
+            [100, attr, value] => {
+                *attr == crate::engine::entity::attr::AttrId::DmgBonus as i32 && *value > 0
+            }
+            _ => false,
+        })
+    {
+        return None;
+    }
+    Some(
+        (0..amount)
+            .map(|_| {
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantChild(
+                    BuffGrantChild {
+                        origin,
+                        source_uid: context.source_uid,
+                        target_uid: context.target_uid,
+                        buff_id,
+                        amount: None,
+                        params: None,
+                        act_info: None,
+                    },
+                )))
+            })
+            .collect(),
+    )
+}
+
 pub(super) fn consume_buff_command(
     target_uid: i64,
     behavior: &ParsedBehavior,
@@ -121,22 +164,53 @@ pub(super) fn consume_power_add_buff_ops(
             effect_type: sonettobuf::effect_type_enum::EffectType::Powerchange as i32,
         }),
     )));
+    // Only a genuinely played card's own cost is added to the current
+    // Impromptu. The Eureka transaction separately fills next round's pool.
+    // Automatic effects using the same behavior must not count as played cards.
+    if context.target.active_skill_mode == crate::engine::skill::action::SkillExecutionMode::Active
+        && context.target.direct_skill_body
+        && context.target.active_card_index > 0
+        && context.managers.card.played().iter().any(|played| {
+            played.card_index == context.target.active_card_index
+                && played.caster_uid == context.source_uid
+                && played.skill_id == context.active_skill_id
+        })
+    {
+        let key = crate::engine::mechanic::impromptu::inspiration_key(crate::engine::manager::emitter::UID);
+        if context.managers.gauge.get(key).is_some()
+            && let Some(feature) = context.managers.buff.active_features(&context.managers.hp)
+                .into_iter()
+                .filter(|feature| feature.owner_alive && feature.team_type == context.source_team
+                    && crate::engine::skill::buff_act::is_kind(feature, crate::engine::skill::buff_act::registry::BuffActKind::EmitterTag))
+                .min_by_key(|feature| (feature.owner_uid, feature.buff_uid))
+            && let Some(emitter_origin) = crate::engine::skill::buff_act::feature_command_origin(&feature)
+        {
+            ops.push(RuleOp::Command(BattleCommand::Gauge(
+                crate::engine::manager::gauge::GaugeCommand::new(
+                    emitter_origin, key,
+                    crate::engine::manager::gauge::GaugeOperation::ChangeValue { delta: cost },
+                ),
+            )));
+        }
+    }
     ops.extend(
         buff_ids
             .into_iter()
             .filter(|buff_id| *buff_id > 0)
-            .map(|buff_id| {
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantUsingChildUid(
-                    BuffGrant {
-                        origin,
-                        source_uid: context.source_uid,
-                        target_uid: context.target_uid,
-                        buff_id,
-                        amount: None,
-                        occurrences: 1,
-                        child_uid_reservations: 0,
-                    },
-                )))
+            .flat_map(|buff_id| {
+                paid_emitter_bonus_ops(context, origin, buff_id, 1).unwrap_or_else(|| {
+                    vec![RuleOp::Command(BattleCommand::Buff(
+                        BuffCommand::GrantUsingChildUid(BuffGrant {
+                            origin,
+                            source_uid: context.source_uid,
+                            target_uid: context.target_uid,
+                            buff_id,
+                            amount: None,
+                            occurrences: 1,
+                            child_uid_reservations: 0,
+                        }),
+                    ))]
+                })
             }),
     );
     Some(ops)
@@ -235,29 +309,31 @@ pub(super) fn consume_power_add_multi_buff_ops(
     }
     let origin = super::command_origin(behavior)?;
     let grant = |buff_id, amount| {
-        RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantUsingChildUid(
-            BuffGrant {
-                origin,
-                source_uid: context.source_uid,
-                target_uid: context.target_uid,
-                buff_id,
-                amount: Some(amount),
-                occurrences: 1,
-                child_uid_reservations: 0,
-            },
-        )))
+        paid_emitter_bonus_ops(context, origin, buff_id, amount).unwrap_or_else(|| {
+            vec![RuleOp::Command(BattleCommand::Buff(
+                BuffCommand::GrantUsingChildUid(BuffGrant {
+                    origin,
+                    source_uid: context.source_uid,
+                    target_uid: context.target_uid,
+                    buff_id,
+                    amount: Some(amount),
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                }),
+            ))]
+        })
     };
-    let mut ops = vec![
-        RuleOp::Command(BattleCommand::Eureka(EurekaCommand::Change(EurekaChange {
+    let mut ops = vec![RuleOp::Command(BattleCommand::Eureka(
+        EurekaCommand::Change(EurekaChange {
             origin,
             source_uid: context.source_uid,
             target_uid: context.source_uid,
             power_id: EUREKA_RESOURCE_ID,
             delta: -*cost,
             effect_type: sonettobuf::effect_type_enum::EffectType::Powerchange as i32,
-        }))),
-        grant(*base_buff, *base_layer),
-    ];
+        }),
+    ))];
+    ops.extend(grant(*base_buff, *base_layer));
     let qualifies = context
         .managers
         .buff
@@ -272,7 +348,7 @@ pub(super) fn consume_power_add_multi_buff_ops(
         .count()
         >= (*required_allies).max(0) as usize;
     if qualifies && *bonus_buff > 0 {
-        ops.push(grant(*bonus_buff, *bonus_layer));
+        ops.extend(grant(*bonus_buff, *bonus_layer));
     }
     Some(ops)
 }

@@ -3,6 +3,7 @@ use sonettobuf::{BeginRoundReply, BeginRoundRequest, StartDungeonReply};
 use crate::Battle;
 
 mod attacker;
+pub mod compose;
 mod start;
 
 pub use crate::engine::entity::input::{EquipmentBuildInput, HeroBuildInput};

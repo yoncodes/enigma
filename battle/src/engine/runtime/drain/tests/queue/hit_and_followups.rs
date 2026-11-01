@@ -301,6 +301,7 @@ fn active_skill_rates_freeze_after_immediate_reactions_and_before_later_gauge_ch
             RuleOp::SkillLifecycle(
                 crate::engine::skill::action::SkillLifecycle::PhaseCompleted(
                     crate::engine::skill::action::SkillActionEvent {
+                        card_index: 0,
                         source_uid: 10,
                         skill_id: 100,
                         target_uid: -1,

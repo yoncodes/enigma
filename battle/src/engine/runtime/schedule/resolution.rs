@@ -98,6 +98,32 @@ pub fn run_impromptu(
     )?;
     let mut critical_action_count = 0;
     if let Some(plan) = impromptu::build_plan(managers, team, emitter_uid) {
+        let queued_index = managers.card.queued_use_cards().iter()
+            .find(|queued| queued.card.uid == Some(emitter_uid) && queued.card.skill_id == Some(plan.skill_id))
+            .map(|queued| queued.card_index);
+        let card_index = if let Some(index) = queued_index {
+            index
+        } else {
+            // Inspiration can be gained during the action phase, after the
+            // original action queue was committed with no Impromptu card.
+            let index = managers.card.played().iter().map(|played| played.card_index)
+                .chain(managers.card.queued_use_cards().iter().map(|queued| queued.card_index))
+                .max().unwrap_or_default().saturating_add(1);
+            let definition = managers.catalog().impromptu_definition()
+                .expect("an Impromptu plan requires its catalog definition");
+            let mut card = definition.card(emitter_uid);
+            card.skill_id = Some(plan.skill_id);
+            let origin = CommandOrigin { domain: RuleDomain::Lifecycle,
+                key: DefinitionKey::new(0, "LateImpromptuCard") };
+            append(&mut result, drain::run(managers, pool, catalog, determinism, context,
+                [RuleOp::Command(BattleCommand::Card(CardCommand::QueueUseCard(
+                    crate::engine::manager::card::CardQueueUse {
+                        origin, card_index: index, card,
+                        team_type: team, source_skill_id: 0, action: None,
+                    }
+                )))])?);
+            index
+        };
         for attack_index in 1..=plan.attack_count {
             if pool
                 .enemies(emitter_uid, false)
@@ -134,9 +160,9 @@ pub fn run_impromptu(
             }
             cast_context.extra_damage_target_count = split_count;
             cast_context.extra_damage_target_final_damage_delta =
-                crate::engine::skill::buff_act::emitter_num_change::split_final_damage_delta_for(
-                    &managers.buff,
-                    &managers.hp,
+                crate::engine::skill::buff_act::emitter_num_change::split_final_damage_delta_with_circle(
+                    managers,
+                    team,
                     emitter_uid,
                     split_count,
                 );
@@ -148,14 +174,7 @@ pub fn run_impromptu(
                 }
                 .into();
             if attack_index == 1 {
-                invocation.card_index = managers
-                    .card
-                    .played()
-                    .iter()
-                    .map(|played| played.card_index)
-                    .max()
-                    .unwrap_or_default()
-                    .saturating_add(1);
+                invocation.card_index = card_index;
             }
             invocation.rate_modifier =
                 Some(crate::engine::skill::action::SkillRateModifier::fixed(
@@ -191,7 +210,15 @@ pub fn run_impromptu(
                     ) if action.crit_count > 0
                 )
             }));
+            let extra_damage = crate::engine::skill::buff_act::emitter_extra_damage::rule_ops(
+                managers, team, emitter_uid, plan.skill_id, &attack.events,
+            );
             append(&mut result, attack);
+            if !extra_damage.is_empty() {
+                append(&mut result, drain::run_command_group(
+                    managers, pool, catalog, determinism, cast_context, extra_damage,
+                )?);
+            }
         }
         append(
             &mut result,

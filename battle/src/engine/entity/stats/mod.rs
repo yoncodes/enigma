@@ -435,6 +435,14 @@ pub(crate) fn configured_monster_stats(
     } else {
         model_id
     };
+    configured_template_stats(game, template_id, level)
+}
+
+pub(crate) fn configured_template_stats(
+    game: &config::GameDB,
+    template_id: i32,
+    level: i32,
+) -> Option<Stats> {
     let template = game
         .monster_template
         .iter()

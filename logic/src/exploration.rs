@@ -54,6 +54,32 @@ async fn explore_simple_info(
 ) -> Result<GetExploreSimpleInfoReply, AppError> {
     let (info, chapters, maps, unlock_map_ids) = explore::get_explore_info(db, player_id).await?;
 
+    // Present the first map before its detailed state is created. Existing
+    // exploration summaries are never replaced by these initial values.
+    if info.last_map_id == 0 && chapters.is_empty() && maps.is_empty() && unlock_map_ids.is_empty() {
+        let opened: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM user_open_infos WHERE user_id = ? AND open_id = 47 AND is_open = 1)",
+        ).bind(player_id).fetch_one(db).await?;
+        if opened {
+            let layout = config::explore_layout::layout(101)?
+                .ok_or_else(|| AppError::Custom("initial exploration map is missing".into()))?;
+            let (bonus, gold, purple) = crate::explore_entry::map_totals(layout)?;
+            return Ok(GetExploreSimpleInfoReply {
+                last_map_id: Some(0),
+                chapter_simple: vec![sonettobuf::ExploreChapterSimpleNo {
+                    chapter_id: Some(layout.chapter_id), archive_ids: vec![], bonus_scene: vec![], is_finish: Some(false),
+                }],
+                map_simple: vec![sonettobuf::ExploreMapSimpleNo {
+                    map_id: Some(layout.map_id), bonus_num: Some(0), gold_coin: Some(0), purple_coin: Some(0),
+                    bonus_num_total: Some(bonus), gold_coin_total: Some(gold), purple_coin_total: Some(purple),
+                    bonus_ids: vec![],
+                }],
+                unlock_map_ids: vec![layout.map_id],
+                is_show_bag: Some(info.is_show_bag),
+            });
+        }
+    }
+
     Ok(GetExploreSimpleInfoReply {
         last_map_id: Some(info.last_map_id),
         chapter_simple: chapters.into_iter().map(Into::into).collect(),
@@ -64,6 +90,7 @@ async fn explore_simple_info(
 }
 
 async fn weekwalk_info(db: &SqlitePool, player_id: i64) -> Result<GetWeekwalkInfoReply, AppError> {
+    weekwalk::ensure_initial_shallow_map(db, player_id).await?;
     let (info, map_info) = weekwalk::get_weekwalk_info(db, player_id).await?;
 
     Ok(GetWeekwalkInfoReply {

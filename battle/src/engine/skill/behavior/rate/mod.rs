@@ -196,6 +196,22 @@ impl BehaviorHandler for Handler {
             }
             return Some(Vec::new());
         }
+        if behavior.spec.kind == BehaviorKind::SkillRateUpBuffType {
+            let target_uid = context.target.runtime_target_uid;
+            let [rate, limit, statuses @ ..] = behavior.args.as_slice() else {
+                return None;
+            };
+            let count = context.managers.buff
+                .visible_buff_status_type_count(target_uid, statuses)
+                .min(*limit);
+            let delta = count.saturating_mul(*rate);
+            if context.active_skill_id != 0 && target_uid != 0 && delta != 0 {
+                context.modifiers.rates.push(SkillRateModifier::fixed(
+                    target_uid, behavior.spec.key.opcode, delta, true,
+                ));
+            }
+            return Some(Vec::new());
+        }
         let additional_moxie = context.target.additional_moxie;
         emit(
             context.modifiers,
@@ -939,6 +955,12 @@ pub(super) fn supports_status_skill_rate(behavior: &ParsedBehavior) -> bool {
         && behavior
             .arg_list(2)
             .is_some_and(|statuses| statuses.iter().all(|status| *status > 0))
+}
+
+pub(super) fn supports_target_status_type_rate(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [rate, limit, statuses @ ..]
+        if *rate > 0 && *limit > 0 && !statuses.is_empty()
+            && statuses.iter().all(|status| *status > 0))
 }
 
 pub(super) fn supports_card_rank_skill_rate(behavior: &ParsedBehavior) -> bool {

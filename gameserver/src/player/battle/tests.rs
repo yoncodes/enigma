@@ -357,3 +357,84 @@ async fn activation_rolls_back_cost_when_an_active_fight_already_exists() {
     let entry_cost: RewardSet = serde_json::from_str(&record.entry_cost).unwrap();
     assert_eq!(entry_cost.currencies, vec![(4, 3)]);
 }
+
+
+#[test]
+#[ignore = "requires an isolated user-provided battle database"]
+fn diagnostic_replay_saved_unfinished_tune_and_action() {
+    std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(|| {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+            use std::{str::FromStr, time::Instant};
+            use sqlx::sqlite::SqliteConnectOptions;
+            let data = std::env::var("ENIGMA_BATTLE_DATA_DIR").unwrap();
+            let _ = config::init(&data);
+            let path = std::env::var("ENIGMA_DIAGNOSTIC_DB").unwrap();
+            let options = SqliteConnectOptions::from_str(&format!("sqlite:{path}"))
+                .unwrap().read_only(true).create_if_missing(false);
+            let pool = SqlitePool::connect_with(options).await.unwrap();
+            let player_id: i64 = sqlx::query_scalar("SELECT user_id FROM fight_instances WHERE active = 1 ORDER BY id DESC LIMIT 1")
+                .fetch_one(&pool).await.unwrap();
+            let mut record = battle::load_active_fight(&pool, player_id).await.unwrap().unwrap();
+            let mut checkpoint: BattleCheckpoint = serde_json::from_str(&record.checkpoint).unwrap();
+            let round = checkpoint.rounds[0].clone();
+            checkpoint.rounds.clear(); checkpoint.pending_cloth_skill_opers.clear();
+            record.checkpoint = serde_json::to_string(&checkpoint).unwrap();
+            let start = Instant::now();
+            let mut active = ActiveBattle::restore(&pool, player_id, record).await.unwrap();
+            println!("restore_opening_ms={}", start.elapsed().as_millis());
+            let show = |label: &str, active: &ActiveBattle| {
+                let cards = active.card_info_push().card_group;
+                println!("{label}: {:?}", cards.iter().map(|c| (c.uid, c.skill_id, c.energy)).collect::<Vec<_>>());
+            };
+            show("opening", &active);
+            for request in &round.cloth_skill_opers {
+                let start = Instant::now();
+                let (reply, _) = active.use_cloth_skill(*request).unwrap();
+                println!("cloth_ms={} steps={:?}", start.elapsed().as_millis(), reply.round.unwrap().fight_step.iter()
+                    .flat_map(|step| &step.act_effect).map(|effect| (effect.effect_type,effect.reserve_str.clone())).collect::<Vec<_>>());
+                show("after_cloth", &active);
+            }
+            let start = Instant::now();
+            let result = active.begin_round(round.request.clone());
+            println!("begin_round_ms={} result={:?}", start.elapsed().as_millis(), result.as_ref().map(|reply| {
+                reply.round.as_ref().map(|round| (round.total_step, round.fight_step_bytes.as_ref().map(Vec::len)))
+            }));
+            result.unwrap();
+            show("after_round", &active);
+        });
+    }).unwrap().join().unwrap();
+}
+
+#[test]
+#[ignore = "requires an isolated read-only copy of the player's database"]
+fn diagnostic_saved_party_battle_start() {
+    std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(|| {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+            use std::{str::FromStr, time::Instant};
+            use sqlx::sqlite::SqliteConnectOptions;
+            let _ = config::init(&std::env::var("ENIGMA_BATTLE_DATA_DIR").unwrap());
+            let path = std::env::var("ENIGMA_DIAGNOSTIC_DB").unwrap();
+            let options = SqliteConnectOptions::from_str(&format!("sqlite:{path}"))
+                .unwrap().read_only(true).create_if_missing(false);
+            let pool = SqlitePool::connect_with(options).await.unwrap();
+            let heroes = [20000077_i64, 20000080, 20000081, 20000067];
+            let equips = [30000026_i64, 30000035, 30000036, 30000016];
+            let group = sonettobuf::FightGroup { hero_list: heroes.to_vec(), cloth_id: Some(6),
+                equips: heroes.iter().zip(equips).map(|(&uid,equip)| sonettobuf::FightEquip {
+                    hero_uid: Some(uid), equip_uid: vec![equip], ..Default::default()
+                }).collect(), ..Default::default() };
+            for (episode,battle) in [(3810103,119381010), (13500416,109380001)] {
+                let request = StartDungeonRequest { episode_id: Some(episode),
+                    fight_group: Some(group.clone()), ..Default::default() };
+                let t=Instant::now();
+                let result = ActiveBattle::prepare(&pool, 4313302, episode, battle, request).await;
+                println!("party_start episode={episode} battle={battle} elapsed_ms={} result={:?}",
+                    t.elapsed().as_millis(), result.as_ref().map(|active| {
+                        (active.start_reply().fight.as_ref().and_then(|f| f.attacker.as_ref())
+                            .map(|team| team.entitys.len()), active.card_info_push().card_group.len())
+                    }));
+                assert!(result.is_ok(), "party startup failed");
+            }
+        });
+    }).unwrap().join().unwrap();
+}

@@ -2,7 +2,7 @@ use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
     manager::{
         buff::{ActiveBuffFeature, BuffCommand, BuffRemove, BuffRemoveSelector},
-        card::{CardAddTemporary, CardCommand, TemporaryCardKind},
+        card::{CardAddTemporary, CardCommand, CardEnchantHand, EnchantedType, TemporaryCardKind},
     },
     skill::{
         rule::output::{BattleCommand, RuleOp},
@@ -64,6 +64,40 @@ pub fn subscriber_rule_ops(
 
 pub fn supports_hero_skill(args: &[i32]) -> bool {
     matches!(args, [group, rank, 1] if matches!(group, 1 | 2) && (1..=3).contains(rank))
+}
+
+pub fn supports_enchanted_hero_skill(args: &[i32]) -> bool {
+    matches!(args, [group, rank, 1, enchant, 1] if matches!(group, 1 | 2)
+        && (1..=3).contains(rank) && EnchantedType::try_from(*enchant).is_ok())
+}
+
+pub fn enchanted_hero_skill_rule_ops(
+    managers: &crate::engine::manager::BattleManagers,
+    pool: &TargetPool,
+    subscriber: &BuffActSubscriber,
+    event: &BattleEvent,
+) -> Option<Vec<super::BuffActRuleOp>> {
+    if !super::subscriber_is_kind(subscriber, BuffActKind::AddTempEnchantCard)
+        || !matches!(event, BattleEvent::Kind(EventKind::RoundStartCard))
+        || !supports_enchanted_hero_skill(&subscriber.args) { return None; }
+    let [group, rank, _, enchant, duration] = subscriber.args.as_slice() else { return None; };
+    let owner = pool.entity(subscriber.owner_uid)?;
+    let skills = if *group == 1 { &owner.skill_group1 } else { &owner.skill_group2 };
+    let skill_id = skills.iter().copied().find(|id| pool.catalog().skill_rank(*id) == *rank)?;
+    let origin = super::command_origin(subscriber)?;
+    let index = managers.card.hand().len();
+    Some(vec![
+        super::BuffActRuleOp::subscriber_from_owner(RuleOp::Command(BattleCommand::Card(
+            CardCommand::AddTemporary(CardAddTemporary { origin, target_uid: subscriber.owner_uid,
+                skill_id, hero_id: None, reserve_id: i64::from(owner.model_id),
+                team_type: subscriber.team_type, kind: TemporaryCardKind::HeroSkill }),
+        ))),
+        super::BuffActRuleOp::subscriber_from_owner(RuleOp::Command(BattleCommand::Card(
+            CardCommand::EnchantHand(CardEnchantHand { origin, indices: vec![index],
+                enchant: EnchantedType::try_from(*enchant).ok()?, duration: *duration,
+                team_type: subscriber.team_type }),
+        ))),
+    ])
 }
 
 pub fn supports_configured_skill3(args: &[i32]) -> bool {

@@ -76,6 +76,22 @@ impl SkillEffectCatalog {
                 }
             }
         }
+        if let Some(compose) = crate::dungeon::compose::ComposeFightData::from_fight(fight) {
+            skills.extend(crate::dungeon::compose::default_research_skills(db, &compose));
+            let mut extra_rules = Vec::new();
+            for component in compose.mod_ids().filter_map(|id| db.tower_compose_mod.get(id)) {
+                extra_rules.extend(component.rule_add.split('|').filter_map(|entry| entry.rsplit_once('#')?.1.parse::<i32>().ok()));
+                extra_rules.extend(component.rule_change.split('|').filter_map(|entry| entry.rsplit_once('#')?.1.parse::<i32>().ok()));
+            }
+            if let Some(research) = db.tower_compose_research.get(compose.research_id) {
+                extra_rules.extend(research.addition_rule.split('|').filter_map(|entry| entry.rsplit_once('#')?.1.parse::<i32>().ok()));
+            }
+            for rule_id in extra_rules {
+                if let Some(rule) = db.rule.get(rule_id) {
+                    skills.extend(numeric_ids(&rule.effect).filter(|id| db.skill.get(*id).is_some()));
+                }
+            }
+        }
         skills.extend(
             crate::engine::manager::conduit::ConduitManager::seed_with_game_data(db, fight)
                 .skill_ids(),
@@ -303,6 +319,29 @@ impl SkillEffectCatalog {
                 Ok(mut slot) => {
                     slot.behavior.effect_id = row.id;
                     slot.behavior.slot = index as u8 + 1;
+                    // A collection-completion check following a post-hit random pool
+                    // must see the statuses that pool just applied on that hit.
+                    // The data encodes the check as pure predicates, with no trigger.
+                    let post_hit_collection = slot.behavior.spec.kind == BehaviorKind::AddBuff
+                        && slot.conditions.len() > 1
+                        && slot.conditions.iter().all(|condition| condition.opcode == 19210 && condition.type_name == "HasBuffId")
+                        && slots.iter().any(|previous: &SkillEffectSlot|
+                            previous.behavior.spec.kind == BehaviorKind::AddBuffRanTypeId
+                                && previous.conditions.iter().any(|condition| condition.opcode == 210 && condition.type_name == "None"));
+                    if post_hit_collection {
+                        use crate::engine::{event::kind::EventKind, skill::{action::SkillPhase,
+                            rule::{DefinitionKey, route::{ConditionDriver, ConditionTrigger}}}};
+                        if let Ok(route) = &mut slot.compiled_route {
+                            for branch in &mut route.branches {
+                                if branch.driver.is_none() {
+                                    branch.driver = Some(ConditionDriver::Trigger(ConditionTrigger {
+                                        key: DefinitionKey::new(210, "None"), event: EventKind::SkillAction,
+                                        phase: Some(SkillPhase::AfterHit),
+                                    }));
+                                }
+                            }
+                        }
+                    }
                     if let Some(definition) =
                         crate::engine::skill::behavior::registry::find(&slot.behavior)
                     {

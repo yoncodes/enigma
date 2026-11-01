@@ -273,6 +273,7 @@ pub(super) fn drain_command(
                 return None;
             };
             (change.source_uid == source_uid).then_some((
+                change.target_uid,
                 change.buff_id,
                 change.after_amount.saturating_sub(change.before_amount),
             ))

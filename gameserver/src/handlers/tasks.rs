@@ -55,6 +55,7 @@ pub async fn on_finish_task(
     .await?;
     send_bp_task_red_dot_update(ctx, &finished_tasks).await?;
     notify_task_finish_events(ctx, player_id, &finished_task_ids).await?;
+    send_compose_research_updates(ctx, player_id, &finished_tasks).await?;
     send_task_update(ctx, claim.task_info, claim.activity_info).await?;
     send_act233_bp_score_updates(ctx, &act233_bp_scores).await?;
 
@@ -95,11 +96,33 @@ pub async fn on_finish_all_task(
     .await?;
     send_bp_task_red_dot_update(ctx, &finished_tasks).await?;
     notify_task_finish_events(ctx, player_id, &finished_task_ids).await?;
+    send_compose_research_updates(ctx, player_id, &finished_tasks).await?;
     send_task_update(ctx, claim.task_info, claim.activity_info).await?;
     send_act233_bp_score_updates(ctx, &act233_bp_scores).await?;
 
     ctx.send_reply(CmdId::FinishAllTaskCmd, claim.reply, 0, req.up_tag)
         .await
+}
+
+async fn send_compose_research_updates(
+    ctx: &mut ConnectionContext, player_id: i64, tasks: &[sonettobuf::Task],
+) -> Result<(), AppError> {
+    let mut themes = std::collections::BTreeSet::new();
+    for task in tasks {
+        if task.r#type != Some(database::db::game::tasks::TOWER_COMPOSE_TASK_TYPE) { continue; }
+        let Some(config) = config::configs::get().tower_compose_task.get(task.id) else { continue; };
+        if let Some((theme, _)) = config.point_bonus.split_once('#') {
+            if let Ok(theme) = theme.parse::<i32>() { themes.insert(theme); }
+        }
+    }
+    for theme_id in themes {
+        let state = database::db::game::tower_compose::get_theme_state(ctx.state.db, player_id, theme_id).await?;
+        ctx.notify(CmdId::TowerComposeResearchProgressUpdatePushCmd,
+            sonettobuf::TowerComposeResearchProgressUpdatePush {
+                theme_id: Some(theme_id), progress: Some(state.map_or(0, |state| state.research_progress)),
+            }).await?;
+    }
+    Ok(())
 }
 
 pub async fn on_get_task_activity_bonus(

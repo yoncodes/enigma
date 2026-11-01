@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn fifth_chapter_mark_target_only_selects_the_marked_enemy() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![
+            enemy_with_buff(10, 1, 100, buff(11410111, 0)),
+            entity_at(11, 2),
+        ], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![entity_at(-1, 1)], ..Default::default() }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut random = RoundDeterminism::default();
+    assert_eq!(resolve_code(2001, -1, &pool, &mut random), vec![10]);
+    assert!(resolve_code(2001, 10, &pool, &mut random).is_empty());
+    assert_eq!(targets_enemy(2001), Some(true));
+}
+
+#[test]
 fn resolves_buff_type_feature_and_monster_label_targets() {
     init_config();
 

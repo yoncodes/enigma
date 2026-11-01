@@ -114,7 +114,7 @@ impl EntityManager {
             catalog.defender_reservation_count(fight),
         );
         let mut rule_sources = Vec::new();
-        for rule in catalog.battle_rules(fight).into_iter().filter(|rule| {
+        for rule in crate::engine::fight::rules::configured_with_catalog(catalog, fight).into_iter().filter(|rule| {
             rule.rule_type != crate::engine::fight::rules::AdditionRuleType::FightSkill
         }) {
             for (&uid, entity) in &manager.identities {
@@ -517,28 +517,41 @@ impl EntityManager {
     }
 
     pub(crate) fn has_pending_reserve_promotion(&self, uid: i64, hp: &HpManager) -> bool {
-        self.pending_reserve_promotions(hp)
-            .iter()
-            .any(|(defeated_uid, _, _)| *defeated_uid == uid)
+        if hp.current(uid) > 0 || self.roster_lanes.get(&uid) != Some(&RosterLane::Main) {
+            return false;
+        }
+        let Some(&team) = self.teams.get(&uid) else { return false; };
+        if !matches!(team, 1 | 2) { return false; }
+        let Some(index) = self.order.iter().copied()
+            .filter(|candidate| self.teams.get(candidate) == Some(&team)
+                && self.roster_lanes.get(candidate) == Some(&RosterLane::Main)
+                && hp.current(*candidate) <= 0)
+            .position(|candidate| candidate == uid)
+        else { return false; };
+        self.reserve_order.get(&team).into_iter().flatten().copied()
+            .filter(|candidate| self.roster_lanes.get(candidate) == Some(&RosterLane::Reserve)
+                && hp.current(*candidate) > 0)
+            .nth(index).is_some()
     }
 
     fn pending_reserve_promotions(&self, hp: &HpManager) -> Vec<(i64, i64, i32)> {
-        [1, 2]
-            .into_iter()
-            .flat_map(|team_type| {
-                self.roster_uids(team_type, RosterLane::Main)
-                    .into_iter()
-                    .filter(|uid| hp.current(*uid) <= 0)
-                    .zip(
-                        self.roster_uids(team_type, RosterLane::Reserve)
-                            .into_iter()
-                            .filter(|uid| hp.current(*uid) > 0),
-                    )
-                    .map(move |(defeated_uid, entering_uid)| {
-                        (defeated_uid, entering_uid, team_type)
-                    })
-            })
-            .collect()
+        let mut promotions = Vec::new();
+        for team in [1, 2] {
+            let mut reserves = self.reserve_order.get(&team).into_iter().flatten().copied()
+                .filter(|uid| self.roster_lanes.get(uid) == Some(&RosterLane::Reserve)
+                    && hp.current(*uid) > 0);
+            let Some(mut entering_uid) = reserves.next() else { continue; };
+            for defeated_uid in self.order.iter().copied()
+                .filter(|uid| self.teams.get(uid) == Some(&team)
+                    && self.roster_lanes.get(uid) == Some(&RosterLane::Main)
+                    && hp.current(*uid) <= 0)
+            {
+                promotions.push((defeated_uid, entering_uid, team));
+                let Some(next) = reserves.next() else { break; };
+                entering_uid = next;
+            }
+        }
+        promotions
     }
 
     pub(crate) fn replace_team_roster(

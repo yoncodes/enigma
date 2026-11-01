@@ -288,6 +288,9 @@ fn condition_repeat_count(
                 pool,
             )
         }),
+        ParsedConditionKind::PerEureka => Some(managers.map(|managers| {
+            managers.eureka.get(source_uid, crate::engine::manager::eureka::EUREKA_RESOURCE_ID).current.max(0)
+        }).unwrap_or_default()),
         ParsedConditionKind::PerExPoint { threshold } => Some(
             managers
                 .and_then(|managers| {
@@ -311,6 +314,10 @@ fn condition_repeat_count(
                         .min((*max_count).max(0))
                 })
                 .unwrap_or_default(),
+        ),
+        ParsedConditionKind::AssistBossLostPowerDifference { step, threshold } => Some(
+            assist_power_consumed_in_action(managers, condition_targets, context)
+                .saturating_sub(*threshold).max(0) / (*step).max(1),
         ),
         ParsedConditionKind::PowerOverflow {
             power_id,
@@ -654,6 +661,11 @@ fn condition_kind_matches(
             compare,
             threshold,
         } => managers.is_some_and(|managers| {
+            if condition.opcode == 511301 {
+                return condition_targets.iter().any(|uid| {
+                    compare_value(managers.buff.buff_status_count(*uid, status_ids), *compare, *threshold)
+                });
+            }
             let amount = condition_targets
                 .iter()
                 .map(|uid| managers.buff.buff_status_count(*uid, status_ids))
@@ -840,6 +852,11 @@ fn condition_kind_matches(
                     && managers.ex_point.get(*uid) >= *threshold
             })
         }
+        ParsedConditionKind::PerEureka => managers.is_some_and(|managers| {
+            condition_targets.iter().any(|uid| {
+                managers.eureka.get(*uid, crate::engine::manager::eureka::EUREKA_RESOURCE_ID).current > 0
+            })
+        }),
         ParsedConditionKind::PerExPoint { threshold } => managers.is_some_and(|managers| {
             condition_targets
                 .iter()
@@ -923,6 +940,8 @@ fn condition_kind_matches(
         } => managers.is_some_and(|managers| {
             managers.eureka.round_change(source_uid, *power_id).consumed > 0 && *max_count > 0
         }),
+        ParsedConditionKind::AssistBossLostPowerDifference { threshold, .. } =>
+            assist_power_consumed_in_action(managers, condition_targets, context) > *threshold,
         ParsedConditionKind::LostPower {
             power_id,
             threshold,
@@ -1066,6 +1085,8 @@ fn condition_kind_matches(
                 )
                 && context.extra_skill_kind == 0
                 && active_skill_has_real_source(pool, context)
+                && (condition.opcode != 502213
+                    || condition_targets.contains(&context.active_skill_source_uid))
                 && (*slot == 0 || context.active_skill_slot == *slot)
         }
         ParsedConditionKind::UseSkillRank(ranks) => {
@@ -1302,11 +1323,11 @@ fn condition_kind_matches(
         }
         ParsedConditionKind::InMagicCircleId(ids) => {
             let field_id = current_magic_circle_id(source_uid, managers, pool, context);
-            field_id != 0 && ids.contains(&field_id)
+            field_id != 0 && ids.iter().any(|id| pool.catalog().magic_circle_matches(field_id, *id))
         }
         ParsedConditionKind::NotInMagicCircleId(ids) => {
             let field_id = current_magic_circle_id(source_uid, managers, pool, context);
-            field_id == 0 || !ids.contains(&field_id)
+            field_id == 0 || !ids.iter().any(|id| pool.catalog().magic_circle_matches(field_id, *id))
         }
         ParsedConditionKind::AddedMagicCircle(ids) => {
             context.added_magic_circle_id != 0
@@ -1401,6 +1422,23 @@ fn has_master_halo(uid: i64, managers: Option<&BattleManagers>) -> bool {
 
 fn extra_action_kind_matches(actual: i32, expected: &[i32]) -> bool {
     expected.contains(&actual) || (matches!(actual, 2 | 3) && expected.contains(&1))
+}
+
+fn assist_power_consumed_in_action(
+    managers: Option<&BattleManagers>,
+    targets: &[i64],
+    context: TargetContext,
+) -> i32 {
+    let Some(managers) = managers else { return 0 };
+    if context.assist_power_action_owner == 0
+        || !targets.contains(&context.assist_power_action_owner)
+    {
+        return 0;
+    }
+    managers.eureka.round_change(
+        context.assist_power_action_owner,
+        crate::engine::manager::eureka::PowerType::AssistBoss.id(),
+    ).consumed.saturating_sub(context.assist_power_consumed_before_action).max(0)
 }
 
 fn compare_value(value: i32, compare: ConditionCompare, expected: i32) -> bool {

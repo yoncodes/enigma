@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn tuesday_field_locks_poison_duration_but_not_other_statuses() {
+    init_config();
+    let fight = Fight { defender: Some(FightTeam { entitys: vec![FightEntityInfo {
+        uid: Some(-1), current_hp: Some(100), ..Default::default()
+    }], ..Default::default() }), ..Default::default() };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+    let hp = HpManager::default();
+    let poison = manager.add(&hp, -1, -1, 31420000, 1).unwrap().buff;
+    let other = manager.add(&hp, -1, -1, 530000414, 0).unwrap().buff;
+    manager.add(&hp, -1, -1, 30980131, 1).unwrap();
+    manager.advance_durations(crate::engine::skill::buff_act::effect_time::ROUND_END_ENTITY_SETTLEMENT);
+    assert_eq!(manager.snapshot(-1, poison.uid.unwrap()).unwrap().duration, poison.duration);
+    assert_eq!(manager.snapshot(-1, other.uid.unwrap()).unwrap().duration, Some(1));
+    manager.remove_by_id(-1, 30980131);
+    manager.advance_durations(crate::engine::skill::buff_act::effect_time::ROUND_END_ENTITY_SETTLEMENT);
+    assert_eq!(manager.snapshot(-1, poison.uid.unwrap()).unwrap().duration, Some(1));
+}
+
+#[test]
 fn defender_type_998_self_buffs_use_enter_fight_uid_lane() {
     init_config();
     let fight = Fight {

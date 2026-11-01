@@ -162,9 +162,12 @@ pub(crate) fn snapshotted_attribute_delta(
         .iter()
         .filter(|feature| feature.owner_uid == uid)
         .map(|feature| {
-            crate::engine::skill::buff_act::injury_bank::snapshotted_attribute_delta(
+            let existing = crate::engine::skill::buff_act::injury_bank::snapshotted_attribute_delta(
                 feature, attr_id, buffs,
-            )
+            );
+            if attr_id == crate::engine::entity::attr::AttrId::Attack {
+                existing + crate::engine::skill::buff_act::each_change_attr::guidance_attack_delta(feature, buffs)
+            } else { existing }
         })
         .sum()
 }
@@ -970,6 +973,11 @@ impl BattleManagers {
         &mut self,
         command: EurekaCommand,
     ) -> Result<eureka::EurekaChanges, eureka::EurekaCommandError> {
+        if let EurekaCommand::Change(change) = &command
+            && self.power_gain_is_blocked(change)
+        {
+            return Ok(eureka::EurekaChanges::Unchanged { origin: change.origin });
+        }
         let EurekaCommand::ChangeByProgress {
             mut change,
             progress,
@@ -990,7 +998,20 @@ impl BattleManagers {
             });
         }
         change.delta = change.delta.saturating_mul(repeats);
-        self.eureka.execute_command(EurekaCommand::Change(change))
+        if self.power_gain_is_blocked(&change) {
+            Ok(eureka::EurekaChanges::Unchanged { origin: change.origin })
+        } else {
+            self.eureka.execute_command(EurekaCommand::Change(change))
+        }
+    }
+
+    fn power_gain_is_blocked(&self, change: &eureka::EurekaChange) -> bool {
+        change.delta > 0 && self.buff.active_features_for_owner(&self.hp, change.target_uid)
+            .iter().any(|feature| {
+                crate::engine::skill::buff_act::is_kind(feature,
+                    crate::engine::skill::buff_act::registry::BuffActKind::PowerUnobtainable)
+                    && feature.values.get(1) == Some(&change.power_id)
+            })
     }
 
     pub(crate) fn execute_entity(
@@ -1371,14 +1392,34 @@ impl BattleManagers {
     ) -> anyhow::Result<Option<wave::WaveAdvanced>> {
         self.sync_entities(fight);
         let catalog = self.catalog();
-        let Some(roster) = self.wave.advance(catalog)? else {
+        let Some(mut roster) = self.wave.advance(catalog)? else {
             return Ok(None);
         };
+        let mut compose_ex = Vec::new();
+        if let Some(data) = crate::dungeon::compose::ComposeFightData::from_fight(fight) {
+            for entity in roster.entitys.iter_mut().chain(&mut roster.sub_entitys) {
+                if let Some(ex) = crate::dungeon::compose::apply_entity(
+                    catalog, &data, fight.episode_id.unwrap_or_default(), entity,
+                )? {
+                    compose_ex.push((entity.uid.unwrap_or_default(), ex));
+                }
+            }
+            let mut team = sonettobuf::FightTeam {
+                entitys: std::mem::take(&mut roster.entitys),
+                sub_entitys: std::mem::take(&mut roster.sub_entitys),
+                ..Default::default()
+            };
+            let rules = crate::engine::fight::rules::configured_with_catalog(catalog, fight);
+            crate::dungeon::compose::add_rules(&mut team, 2, &rules);
+            roster.entitys = team.entitys;
+            roster.sub_entitys = team.sub_entitys;
+        }
         self.entity
             .replace_team_roster(catalog, 2, &roster.entitys, &roster.sub_entitys);
         for entity in roster.entitys.iter().chain(&roster.sub_entitys) {
             self.register_entity_state(entity);
         }
+        for (uid, ex) in compose_ex { self.attribute.override_ex(uid, &ex); }
         fight.cur_wave = Some(roster.wave);
         fight.is_record = Some(false);
         self.sync_entities(fight);
@@ -1568,9 +1609,15 @@ impl BattleManagers {
         let features = self.buff.active_features(&self.hp);
         if let Some(attacker) = fight.attacker.as_mut() {
             attacker.heat_scale = self.heat_scale_snapshot(1, &features);
+            if let Some(area) = self.conduit.area_snapshot(1) {
+                attacker.device_area = Some(area);
+            }
         }
         if let Some(defender) = fight.defender.as_mut() {
             defender.heat_scale = self.heat_scale_snapshot(2, &features);
+            if let Some(area) = self.conduit.area_snapshot(2) {
+                defender.device_area = Some(area);
+            }
         }
     }
 

@@ -155,9 +155,14 @@ async fn settle_completion_in_transaction(
     };
     let completion_rewards =
         logic::dungeon::completion_rewards(episode, first_pass, previous_star, star, multiplier);
-    let rewards = reward::RewardManager::new(player_id)
+    let mut rewards = reward::RewardManager::new(player_id)
         .apply_dungeon_in_transaction(tx, completion_rewards.rewards)
         .await?;
+    if episode_id == 11321 {
+        if let Some(cloth) = database::db::game::cloths::reconcile_atonal_sequence_in_transaction(tx, player_id).await? {
+            rewards.cloth_updates.push(cloth);
+        }
+    }
     let open_infos = open_infos::reconcile_progression_in_transaction(tx, player_id).await?;
 
     Ok(DungeonSettlement {
@@ -280,6 +285,9 @@ async fn settle_refund_rewards(
         .await?;
     }
     battle_db::finish_fight_instance_in_transaction(&mut tx, player_id, fight_id).await?;
+    // Invalid-checkpoint refunds must not leave a dead exploration encounter bound.
+    sqlx::query("DELETE FROM user_explore_pending_battles WHERE user_id = ? AND fight_id = ?")
+        .bind(player_id).bind(fight_id).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(RefundSettlement {
         rewards,

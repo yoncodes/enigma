@@ -56,6 +56,24 @@ pub struct BattleRuntime {
 }
 
 impl BattleRuntime {
+    // Temporary, account-free diagnostics for the reported Semmelweis card loss.
+    fn trace_semmelweis_cards(&self, phase: &'static str, sent: Option<&[CardInfo]>) {
+        let Some(hero) = self.fight.attacker.as_ref().and_then(|team| team.entitys.iter()
+            .find(|hero| hero.model_id == Some(3088))) else { return; };
+        let Some(uid) = hero.uid else { return; };
+        let ultimate = hero.ex_skill.unwrap_or_default();
+        let is_ultimate = |card: &&CardInfo| card.uid == Some(uid) && card.skill_id.is_some_and(|skill| {
+            skill == ultimate || self.managers.catalog().skill_is_ultimate_for_model(skill, 3088)
+        });
+        let hand_count = self.managers.card.hand().iter().chain(self.managers.card.team_cards())
+            .filter(is_ultimate).count();
+        let sent_count = sent.map(|cards| cards.iter().filter(is_ultimate).count() as i32).unwrap_or(-1);
+        tracing::info!(phase, battle_id = self.fight.battle_id.unwrap_or_default(),
+            episode_id = self.fight.episode_id.unwrap_or_default(), round = self.round_state.cur_round,
+            ultimate, moxie = self.managers.ex_point.get(uid), hand_count, sent_count,
+            "Semmelweis ultimate card state");
+    }
+
     /// Plans client auto-battle operations without mutating authoritative state.
     pub fn plan_auto_round(
         &self,
@@ -100,7 +118,48 @@ impl BattleRuntime {
 
     /// Returns the synchronized fight state and most recently committed round for reconnect.
     pub fn reconnect_state(&self) -> (Fight, Option<FightRound>) {
-        (self.fight.clone(), self.round.clone())
+        let mut fight = self.fight.clone();
+        // Device changes are normally delivered as timeline events. Reconnect
+        // needs the current area even before the first round has been completed.
+        for (side, team) in [(1, fight.attacker.as_mut()), (2, fight.defender.as_mut())] {
+            if let (Some(team), Some(area)) = (team, self.managers.conduit.area_snapshot(side)) {
+                team.device_area = Some(area);
+            }
+        }
+        // Emitter activation, buffs, and gauges are normally delivered as timeline
+        // events. A reconnect starts from a fresh Fight snapshot instead.
+        if let Some(gauge) = self.managers.gauge.get(
+            crate::engine::mechanic::impromptu::inspiration_key(
+                crate::engine::manager::emitter::UID,
+            ),
+        ) {
+            if let Some(attacker) = fight.attacker.as_mut() {
+                let mut emitter = attacker.emitter.take()
+                    .unwrap_or_else(crate::engine::manager::emitter::activation_entity);
+                self.managers.buff.sync_entity(&mut emitter);
+                attacker.emitter = Some(emitter);
+                attacker.emitter_info = Some(sonettobuf::EmitterInfo {
+                    energy: Some(gauge.current),
+                });
+                if let Some(team_energy) = self.managers.gauge.get(
+                    crate::engine::mechanic::impromptu::team_energy_key(1),
+                ) {
+                    attacker.energy = Some(team_energy.current);
+                }
+            }
+        }
+        // Field changes are normally sent as timeline effects; reconnect needs
+        // the current authoritative state in the full Fight snapshot as well.
+        fight.magic_circle = self.managers.field.get(1).or_else(|| self.managers.field.get(2))
+            .map(|state| sonettobuf::MagicCircleInfo {
+                magic_circle_id: Some(state.definition.field_id),
+                round: Some(state.definition.duration),
+                create_uid: Some(state.create_uid),
+                electric_level: Some(state.level),
+                electric_progress: Some(state.progress),
+                max_electric_progress: Some(state.next_upgrade_progress),
+            });
+        (fight, self.round.clone())
     }
 
     pub fn dead_attacker_count(&self) -> usize {

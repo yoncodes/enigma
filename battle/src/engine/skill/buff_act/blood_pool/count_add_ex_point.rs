@@ -296,6 +296,7 @@ mod tests {
             ))
             .unwrap();
         let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+            card_index: 0,
             source_uid: 20,
             skill_id: 1,
             target_uid: -1,

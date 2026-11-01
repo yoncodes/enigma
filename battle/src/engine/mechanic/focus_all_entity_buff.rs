@@ -2,8 +2,8 @@ use crate::engine::{
     manager::{
         BattleManagers,
         buff::{
-            BuffChanges, BuffChildUidReservation, BuffCommand, BuffCommandError, BuffGrant,
-            BuffRemove, BuffRemoveSelector,
+            BuffChanges, BuffChildUidReservation, BuffCommand, BuffCommandError, BuffConsume,
+            BuffGrant, BuffRemove, BuffRemoveSelector, BuffSelector, DepletedBuff,
         },
     },
     skill::rule::{CommandOrigin, output::EffectMarker},
@@ -57,23 +57,21 @@ pub(crate) fn execute(
     }
 
     let mut candidates = Vec::new();
-    for owner_uid in command
-        .candidate_uids
-        .iter()
-        .copied()
+    let mut remaining = capacity - current;
+    for owner_uid in command.candidate_uids.iter().copied()
         .filter(|uid| *uid != command.source_uid)
     {
-        let Some(buff_uid) = managers.buff.buff_id_uid(owner_uid, command.buff_id) else {
-            continue;
-        };
-        let amount = managers.buff.buff_id_amount(owner_uid, command.buff_id);
-        if amount != 1 {
-            return Err(FocusAllEntityBuffError::UnsupportedDonorAmount { owner_uid, amount });
+        for buff in managers.buff.active_for(owner_uid)
+            .filter(|buff| buff.buff_id == Some(command.buff_id))
+        {
+            let Some(buff_uid) = buff.uid else { continue };
+            let amount = buff.layer.unwrap_or_default().max(buff.count.unwrap_or_default()).max(1);
+            let transfer = amount.min(remaining);
+            candidates.push((owner_uid, buff_uid, amount, transfer));
+            remaining -= transfer;
+            if remaining == 0 { break; }
         }
-        candidates.push((owner_uid, buff_uid));
-        if candidates.len() == (capacity - current) as usize {
-            break;
-        }
+        if remaining == 0 { break; }
     }
     if candidates.is_empty() {
         return Ok(None);
@@ -84,12 +82,20 @@ pub(crate) fn execute(
     let transaction = (|| {
         let mut changes = Vec::with_capacity(candidates.len() * 2);
         let mut reservation_uids = Vec::with_capacity(candidates.len());
-        for (owner_uid, buff_uid) in &candidates {
-            changes.push(next.execute_buff(BuffCommand::Remove(BuffRemove {
-                origin: command.origin,
-                target_uid: *owner_uid,
-                selector: BuffRemoveSelector::Uid(*buff_uid),
-            }))?);
+        for (owner_uid, buff_uid, amount, transfer) in &candidates {
+            if transfer == amount {
+                changes.push(next.execute_buff(BuffCommand::Remove(BuffRemove {
+                    origin: command.origin, target_uid: *owner_uid,
+                    selector: BuffRemoveSelector::Uid(*buff_uid),
+                }))?);
+            } else {
+                changes.push(next.execute_buff(BuffCommand::Consume(BuffConsume {
+                    origin: command.origin, target_uid: *owner_uid,
+                    selector: BuffSelector::Uid(*buff_uid), amount: *transfer,
+                    depleted: DepletedBuff::Remove,
+                }))?);
+            }
+            for _ in 0..*transfer {
             let reservation =
                 next.plan_buff(BuffCommand::ReserveChildUids(BuffChildUidReservation {
                     origin: command.origin,
@@ -114,6 +120,7 @@ pub(crate) fn execute(
                 child_uid_reservations: 0,
             }))?;
             changes.push(next.commit_buff(plan));
+            }
         }
         Ok::<_, FocusAllEntityBuffError>((changes, reservation_uids))
     })();
@@ -128,7 +135,10 @@ pub(crate) fn execute(
         .join("#");
     let donors = candidates
         .iter()
-        .map(|(owner_uid, buff_uid)| format!("{owner_uid}:{buff_uid}"))
+        // The client animation deletes the donor's visual buff by UID. Do not
+        // send partially consumed donors there; their remaining layers stay visible.
+        .filter(|(_, _, amount, transfer)| amount == transfer)
+        .map(|(owner_uid, buff_uid, _, _)| format!("{owner_uid}:{buff_uid}"))
         .collect::<Vec<_>>()
         .join("|");
     Ok(Some(FocusAllEntityBuffChanges {
@@ -331,42 +341,30 @@ mod tests {
     }
 
     #[test]
-    fn multi_layer_donor_fails_before_any_focus_mutation() {
+    fn multi_layer_donor_transfers_layers_and_preserves_partial_remainder_at_capacity() {
         let mut managers = managers();
-        managers
-            .execute_buff(BuffCommand::Accumulate(BuffGrant {
-                origin: ORIGIN,
-                source_uid: -3,
-                target_uid: -1,
-                buff_id: 303901411,
-                amount: None,
-                occurrences: 1,
-                child_uid_reservations: 0,
-            }))
-            .unwrap();
-        assert_eq!(managers.buff.buff_id_amount(-1, 303901411), 2);
-
-        let error = execute(
-            &mut managers,
-            FocusAllEntityBuffCommand {
-                origin: ORIGIN,
-                source_uid: -3,
-                target_uid: -3,
-                buff_id: 303901411,
-                candidate_uids: vec![-1, -2],
-            },
-        )
-        .unwrap_err();
-
-        assert_eq!(
-            error,
-            FocusAllEntityBuffError::UnsupportedDonorAmount {
-                owner_uid: -1,
-                amount: 2,
-            }
-        );
-        assert_eq!(managers.buff.buff_id_amount(-1, 303901411), 2);
+        for _ in 0..2 {
+            managers.execute_buff(BuffCommand::Accumulate(BuffGrant {
+                origin: ORIGIN, source_uid: -3, target_uid: -1, buff_id: 303901411,
+                amount: None, occurrences: 1, child_uid_reservations: 0,
+            })).unwrap();
+        }
+        for _ in 0..9 {
+            managers.execute_buff(BuffCommand::Accumulate(BuffGrant {
+                origin: ORIGIN, source_uid: -3, target_uid: -3, buff_id: 303901411,
+                amount: None, occurrences: 1, child_uid_reservations: 0,
+            })).unwrap();
+        }
+        assert_eq!(managers.buff.buff_id_amount(-1, 303901411), 3);
+        assert_eq!(managers.buff.buff_id_amount(-3, 303901411), 10);
+        let changes = execute(&mut managers, FocusAllEntityBuffCommand {
+            origin: ORIGIN, source_uid: -3, target_uid: -3, buff_id: 303901411,
+            candidate_uids: vec![-1, -2],
+        }).unwrap().unwrap();
+        assert_eq!(managers.buff.buff_id_amount(-1, 303901411), 1);
         assert_eq!(managers.buff.buff_id_amount(-2, 303901411), 1);
-        assert_eq!(managers.buff.buff_id_amount(-3, 303901411), 1);
+        assert_eq!(managers.buff.buff_id_amount(-3, 303901411), 12);
+        assert!(!changes.marker.reserve_str.unwrap().contains("-1:1039"));
     }
+
 }

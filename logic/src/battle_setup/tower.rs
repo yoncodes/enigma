@@ -20,14 +20,14 @@ pub fn validate_battle_start(
     tables: &config::GameDB,
     request: &StartTowerBattleRequest,
 ) -> anyhow::Result<(StartDungeonRequest, BattleContext)> {
-    let dungeon = request
+    let mut dungeon = request
         .start_dungeon_request
         .clone()
         .ok_or_else(|| anyhow::anyhow!("tower battle has no dungeon request"))?;
     let episode_id = dungeon
         .episode_id
         .ok_or_else(|| anyhow::anyhow!("tower battle has no episode"))?;
-    let context = BattleContext {
+    let mut context = BattleContext {
         tower_type: request
             .r#type
             .ok_or_else(|| anyhow::anyhow!("tower battle has no tower type"))?,
@@ -36,6 +36,27 @@ pub fn validate_battle_start(
         difficulty: request.difficulty.unwrap_or_default(),
         talent_plan_id: request.talent_plan_id.unwrap_or_default(),
     };
+    // Tutorial encounters use a fixed trial boss and talent plan, even if the
+    // player has never unlocked that boss or has another plan selected.
+    let teach = (context.tower_type == TowerType::Boss.id() && context.layer_id == 0)
+        .then(|| tables.tower_boss_teach.iter().find(|row| {
+            row.tower_id == context.tower_id && row.teach_id == context.difficulty
+                && row.episode_id == episode_id
+        })).flatten();
+    if let Some(teach) = teach {
+        let boss = tables.tower_boss.iter().find(|row| row.tower_id == context.tower_id)
+            .ok_or_else(|| anyhow::anyhow!("tutorial has no configured boss"))?;
+        anyhow::ensure!(tables.tower_talent_plan.iter().any(|plan|
+            plan.boss_id == boss.boss_id && plan.plan_id == teach.plan_id),
+            "tutorial has no configured talent plan");
+        if let Some(group) = dungeon.fight_group.as_mut() {
+            let selected = group.assist_boss_id.unwrap_or_default();
+            anyhow::ensure!(selected == 0 || selected == boss.boss_id,
+                "tutorial selected a different assist boss");
+            group.assist_boss_id = Some(boss.boss_id);
+        }
+        context.talent_plan_id = teach.plan_id;
+    }
     let boss_id = dungeon
         .fight_group
         .as_ref()
@@ -120,10 +141,23 @@ pub async fn build_fight(
     }
 
     let tables = config::configs::get();
-    let owned_level = tower_db::assist_boss_level(db, player_id, boss_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("assist boss {boss_id} is not owned"))?;
-    let boss_level = effective_level(tables, context, owned_level);
+    let teaching = context.tower_type == TowerType::Boss.id() && context.layer_id == 0;
+    let boss_level = if teaching {
+        let teach = tables.tower_boss_teach.iter().find(|row| row.tower_id == context.tower_id
+            && row.teach_id == context.difficulty && row.episode_id == episode_id)
+            .ok_or_else(|| anyhow::anyhow!("unknown boss tutorial"))?;
+        let boss = tables.tower_boss.iter().find(|row| row.tower_id == context.tower_id)
+            .ok_or_else(|| anyhow::anyhow!("tutorial has no configured boss"))?;
+        anyhow::ensure!(boss.boss_id == boss_id && teach.plan_id == context.talent_plan_id,
+            "invalid boss tutorial setup");
+        tower_const(tables, TowerConstId::TeachBossLevel)
+            .filter(|level| *level > 0).ok_or_else(|| anyhow::anyhow!("missing tutorial boss level"))?
+    } else {
+        let owned_level = tower_db::assist_boss_level(db, player_id, boss_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("assist boss {boss_id} is not owned"))?;
+        effective_level(tables, context, owned_level)
+    };
     let talent_ids = if let Some(plan) = tables
         .tower_talent_plan
         .iter()

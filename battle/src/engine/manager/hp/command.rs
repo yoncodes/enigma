@@ -106,7 +106,12 @@ impl HpManager {
                 changes.kill = Some(value.config_effect);
             }
             HpCommand::Heal(value) => {
-                changes.hp = self.heal(target_uid, value.amount, value.config_effect);
+                // A dead source remains in the target pool while its death
+                // effects run. Ordinary healing must not resurrect it; only
+                // the explicit revive effect may restore a defeated entity.
+                if before > 0 || value.kind == HpHealKind::Revive {
+                    changes.hp = self.heal(target_uid, value.amount, value.config_effect);
+                }
                 if let Some(change) = &mut changes.hp {
                     change.effect_type = match value.kind {
                         HpHealKind::Normal => 0,

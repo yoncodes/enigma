@@ -19,6 +19,13 @@ pub(super) fn supports_conversion(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [limit, output_buff_id] if *limit > 0 && *output_buff_id > 0)
 }
 
+pub(super) fn supports_poison_settlement_without_duration_cost(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [1, 1, rate] if *rate > 0)
+}
+pub(super) fn supports_poison_settlement_with_duration_cost(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [1, 0, rate] if *rate > 0)
+}
+
 impl BehaviorHandler for Handler {
     fn emit_ops(
         mut context: BehaviorOpContext<'_>,
@@ -31,6 +38,7 @@ impl BehaviorHandler for Handler {
                 convert_poison_ops(&context, behavior)
             }
             BehaviorKind::ConsumePoisonSettleDeadlyPoison => consume_poison_ops(&context, behavior),
+            BehaviorKind::SettlePoisonWithoutDurationCost => settle_poison_ops(context, behavior),
             _ => None,
         }
     }
@@ -52,6 +60,53 @@ impl BehaviorHandler for Handler {
     }
 }
 
+fn settle_poison_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+    let [1, mode, rate] = behavior.args.as_slice() else { return None; };
+    if !matches!(*mode, 0 | 1) { return None; }
+    let origin = super::command_origin(behavior)?;
+    let features = context.managers.buff.active_features_for_owner(&context.managers.hp, context.target_uid);
+    let mut ops = Vec::new();
+    let advance_duration = *mode == 0 && !context.managers.buff.has_buff_act_kind(
+        context.target_uid, crate::engine::skill::buff_act::registry::BuffActKind::LockPoison,
+    );
+    for feature in features.into_iter().filter(|feature| {
+        crate::engine::skill::buff_act::is_kind(feature, crate::engine::skill::buff_act::registry::BuffActKind::Poison)
+            || crate::engine::skill::buff_act::is_kind(feature, crate::engine::skill::buff_act::registry::BuffActKind::PowerfulPoison)
+    }) {
+        let Some(subscriber) = crate::engine::skill::buff_act::subscriber_from_feature(
+            feature, crate::engine::event::kind::EventKind::RoundEnd,
+        ) else { continue; };
+        let damage = if crate::engine::skill::buff_act::subscriber_is_kind(&subscriber,
+            crate::engine::skill::buff_act::registry::BuffActKind::PowerfulPoison) {
+            crate::engine::skill::buff_act::powerful_poison::settlement_ops(
+                context.managers, context.pool, context.determinism, &subscriber, false,
+            ).and_then(|ops| ops.into_iter().next())
+        } else {
+            crate::engine::skill::buff_act::damage_over_time::detonation_rule_op(
+                context.managers, context.pool, context.determinism, &subscriber, false,
+            )
+        };
+        let Some(RuleOp::Command(BattleCommand::Hp(crate::engine::manager::hp::HpCommand::Lose(mut loss)))) = damage else { continue; };
+        loss.amount = loss.amount.saturating_mul(*rate) / 1000;
+        loss.origin = origin;
+        loss.config_effect = behavior.spec.key.opcode;
+        if let Some(hurt) = &mut loss.hurt { hurt.display_amount = Some(loss.amount); }
+        if loss.amount > 0 { ops.push(RuleOp::Command(BattleCommand::Hp(crate::engine::manager::hp::HpCommand::Lose(loss)))); }
+        if advance_duration {
+            let duration = context.managers.buff.snapshot(context.target_uid, subscriber.buff_uid)
+                .and_then(|buff| buff.duration).unwrap_or(0);
+            if duration > 0 {
+                let advance = crate::engine::manager::buff::BuffDurationAdvance::new(
+                    crate::engine::skill::buff_act::effect_time::ROUND_END_ENTITY_SETTLEMENT,
+                    vec![context.target_uid], Some(vec![subscriber.buff_uid]),
+                )?;
+                ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::AdvanceDuration(advance))));
+            }
+        }
+    }
+    Some(ops)
+}
+
 fn convert_poison_ops(
     context: &BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
@@ -65,14 +120,13 @@ fn convert_poison_ops(
     let mut poison = context
         .managers
         .buff
-        .active_features(&context.managers.hp)
+        .active_features_for_owner(&context.managers.hp, context.target_uid)
         .into_iter()
         .filter(|feature| {
-            feature.owner_uid == context.target_uid
-                && crate::engine::skill::buff_act::is_kind(
-                    feature,
-                    crate::engine::skill::buff_act::registry::BuffActKind::Poison,
-                )
+            crate::engine::skill::buff_act::is_kind(
+                feature,
+                crate::engine::skill::buff_act::registry::BuffActKind::Poison,
+            )
         })
         .collect::<Vec<_>>();
     poison.sort_by_key(|feature| feature.buff_uid);
@@ -122,10 +176,9 @@ fn consume_poison_ops(
     if *limit <= 0 {
         return None;
     }
-    let features = context.managers.buff.active_features(&context.managers.hp);
+    let features = context.managers.buff.active_features_for_owner(&context.managers.hp, context.target_uid);
     let deadly = features.iter().find(|feature| {
-        feature.owner_uid == context.target_uid
-            && crate::engine::skill::buff_act::is_kind(
+        crate::engine::skill::buff_act::is_kind(
                 feature,
                 crate::engine::skill::buff_act::registry::BuffActKind::DeadlyPoison,
             )
@@ -275,6 +328,99 @@ mod tests {
         runtime::determinism::RoundDeterminism,
         skill::{action::SkillModifiers, target::TargetContext},
     };
+
+    #[test]
+    fn ramona_settles_poison_at_configured_rate_without_shortening_duration() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+                uid: Some(10), model_id: Some(3142), team_type: Some(1), current_hp: Some(1000),
+                attr: Some(sonettobuf::HeroAttribute { hp: Some(1000), attack: Some(1000), ..Default::default() }),
+                ..Default::default()
+            }], ..Default::default() }),
+            defender: Some(FightTeam { entitys: vec![FightEntityInfo {
+                uid: Some(-1), team_type: Some(2), current_hp: Some(10000),
+                attr: Some(sonettobuf::HeroAttribute { hp: Some(10000), ..Default::default() }),
+                ..Default::default()
+            }], ..Default::default() }), ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+        let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+        let mut events = crate::engine::event::bus::EventBus::default();
+        let origin = crate::engine::skill::rule::CommandOrigin {
+            domain: crate::engine::skill::rule::RuleDomain::Behavior,
+            key: crate::engine::skill::rule::DefinitionKey::new(1, "AddBuff"),
+        };
+        crate::engine::runtime::executor::execute_rule_op(&mut managers, &mut events,
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
+                origin, source_uid: 10, target_uid: -1, buff_id: 31420000,
+                amount: Some(1), occurrences: 1, child_uid_reservations: 0,
+            })))).unwrap();
+        let buff_uid = managers.buff.buff_id_uid(-1, 31420000).unwrap();
+        let before = managers.buff.snapshot(-1, buff_uid).unwrap().duration;
+        let mut determinism = RoundDeterminism::default();
+        let mut modifiers = SkillModifiers::default();
+        let mut target = TargetContext::default();
+        let behavior = ParsedBehavior::new(60083, "SettleDotAndCostDotDuration", vec![1, 1, 1250]);
+        let ops = settle_poison_ops(BehaviorOpContext {
+            source_uid: 10, source_team: 1, target_uid: -1, active_skill_id: 31420122,
+            transfer_count: 1, event: None, managers: &managers, pool: &pool,
+            determinism: &mut determinism, modifiers: &mut modifiers, target: &mut target,
+        }, &behavior).unwrap();
+        assert!(matches!(ops.as_slice(), [RuleOp::Command(BattleCommand::Hp(
+            crate::engine::manager::hp::HpCommand::Lose(loss)))] if loss.amount == 500));
+        for op in ops { crate::engine::runtime::executor::execute_rule_op(&mut managers, &mut events, op).unwrap(); }
+        assert_eq!(managers.hp.current(-1), 9500);
+        assert_eq!(managers.buff.snapshot(-1, buff_uid).unwrap().duration, before);
+    }
+
+    #[test]
+    fn tuesday_poison_settlement_respects_duration_lock() {
+        crate::test_support::init_config();
+        for locked in [false, true] {
+            let fight = Fight {
+                attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+                    uid: Some(10), team_type: Some(1), current_hp: Some(1000),
+                    attr: Some(sonettobuf::HeroAttribute { hp: Some(1000), attack: Some(1000), ..Default::default() }),
+                    ..Default::default()
+                }], ..Default::default() }),
+                defender: Some(FightTeam { entitys: vec![FightEntityInfo {
+                    uid: Some(-1), team_type: Some(2), current_hp: Some(10000),
+                    attr: Some(sonettobuf::HeroAttribute { hp: Some(10000), ..Default::default() }),
+                    ..Default::default()
+                }], ..Default::default() }), ..Default::default()
+            };
+            let mut managers = BattleManagers::seeded(&fight);
+            let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+            let mut events = crate::engine::event::bus::EventBus::default();
+            let origin = crate::engine::skill::rule::CommandOrigin {
+                domain: crate::engine::skill::rule::RuleDomain::Behavior,
+                key: crate::engine::skill::rule::DefinitionKey::new(1, "AddBuff"),
+            };
+            for id in if locked { vec![31420000, 30980131] } else { vec![31420000] } {
+                crate::engine::runtime::executor::execute_rule_op(&mut managers, &mut events,
+                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(BuffGrant {
+                        origin, source_uid: 10, target_uid: -1, buff_id: id,
+                        amount: Some(1), occurrences: 1, child_uid_reservations: 0,
+                    })))).unwrap();
+            }
+            let buff_uid = managers.buff.buff_id_uid(-1, 31420000).unwrap();
+            let before = managers.buff.snapshot(-1, buff_uid).unwrap().duration.unwrap();
+            let mut determinism = RoundDeterminism::default();
+            let mut modifiers = SkillModifiers::default();
+            let mut target = TargetContext::default();
+            let behavior = ParsedBehavior::new(60073, "SettleDotAndCostDotDuration", vec![1, 0, 1000]);
+            let ops = settle_poison_ops(BehaviorOpContext {
+                source_uid: 10, source_team: 1, target_uid: -1, active_skill_id: 30980151,
+                transfer_count: 1, event: None, managers: &managers, pool: &pool,
+                determinism: &mut determinism, modifiers: &mut modifiers, target: &mut target,
+            }, &behavior).unwrap();
+            for op in ops { crate::engine::runtime::executor::execute_rule_op(&mut managers, &mut events, op).unwrap(); }
+            assert_eq!(managers.hp.current(-1), 9600);
+            assert_eq!(managers.buff.snapshot(-1, buff_uid).unwrap().duration,
+                Some(if locked { before } else { before - 1 }));
+        }
+    }
 
     #[test]
     fn catapult_uses_configured_instances_and_stops_without_an_alternate_target() {

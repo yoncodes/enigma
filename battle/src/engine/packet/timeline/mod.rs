@@ -904,12 +904,24 @@ fn project_change(
                 .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Moved => Vec::new(),
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::Dissolved => changes
-            .operation
-            .clone()
-            .map(CardPacket::from_change)
-            .into_iter()
-            .collect(),
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::Dissolved => {
+            if changes.origin.is_some_and(|origin| origin.key.opcode == 30010701) {
+                let mut effect = EffectPacket::card_remove(&changes.consumed_indices);
+                effect.effect_num = Some(30010701);
+                let mut effects = vec![effect];
+                effects.extend(changes.operation.clone().map(CardPacket::from_change));
+                effects
+            } else if changes.origin.is_some_and(|origin| origin.key.opcode == 60031) {
+                let mut effect = EffectPacket::card_remove(&changes.consumed_indices);
+                effect.effect_type = Some(sonettobuf::effect_type_enum::EffectType::Mastercardremove as i32);
+                effect.config_effect = Some(60031);
+                let mut effects = vec![effect];
+                effects.extend(changes.operation.clone().map(CardPacket::from_change));
+                effects
+            } else {
+                changes.operation.clone().map(CardPacket::from_change).into_iter().collect()
+            }
+        },
         BattleChange::Card(changes)
             if changes.kind == CardChangeKind::Composed
                 && changes.origin == Some(CARD_PLAY_ORIGIN) =>
@@ -1074,6 +1086,13 @@ fn project_change(
                 .operation
                 .clone()
                 .map(CardPacket::from_change)
+                .map(|mut effect| {
+                    if changes.origin.is_some_and(|origin| origin.key.opcode == 60032) {
+                        effect.effect_type = Some(sonettobuf::effect_type_enum::EffectType::Masteraddhandcard as i32);
+                        effect.team_type = Some(1);
+                    }
+                    effect
+                })
                 .into_iter()
                 .collect()
         }

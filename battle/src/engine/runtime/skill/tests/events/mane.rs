@@ -261,6 +261,7 @@ fn twins_visible_status_threshold_runs_before_attacks_and_device_actions() {
         invocation.phase = Some(SkillPhase::Immediate);
         let event = BattleEvent::SkillEffectStarted(
             crate::engine::skill::action::SkillActionEvent {
+                card_index: 0,
                 source_uid: 10,
                 skill_id: 200,
                 target_uid: 10,

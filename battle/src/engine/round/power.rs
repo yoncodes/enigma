@@ -6,6 +6,7 @@ use crate::catalog::BattleCatalog;
 pub struct ClothPower {
     max: i32,
     use_card: i32,
+    use_device_card: i32,
     move_card: i32,
     compose: i32,
     recovery: Vec<(i32, i32)>,
@@ -15,6 +16,7 @@ impl ClothPower {
     pub(crate) fn configured(
         max: i32,
         use_card: i32,
+        use_device_card: i32,
         move_card: i32,
         compose: i32,
         recovery: &str,
@@ -22,6 +24,7 @@ impl ClothPower {
         Self {
             max,
             use_card,
+            use_device_card,
             move_card,
             compose,
             recovery: parse_recovery(recovery),
@@ -38,6 +41,7 @@ impl ClothPower {
         Some(Self::configured(
             config.max_power,
             config.r#use,
+            config.use_device_card,
             config.r#move,
             config.compose,
             &config.recover,
@@ -72,6 +76,10 @@ impl ClothPower {
         self.add(current, self.use_card)
     }
 
+    pub fn device_card_used(&self, current: i32) -> i32 {
+        self.add(current, self.use_device_card)
+    }
+
     pub fn card_moved(&self, current: i32) -> i32 {
         self.add(current, self.move_card)
     }
@@ -84,7 +92,7 @@ impl ClothPower {
         self.add(current, self.recovery_for(round))
     }
 
-    fn add(&self, current: i32, delta: i32) -> i32 {
+    pub(crate) fn add(&self, current: i32, delta: i32) -> i32 {
         (current + delta).clamp(0, self.max)
     }
 

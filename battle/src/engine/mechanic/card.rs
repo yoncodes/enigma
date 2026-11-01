@@ -214,7 +214,7 @@ impl CardMechanic {
     ) -> bool {
         managers
             .buff
-            .active_features(&managers.hp)
+            .active_features_for_owner(&managers.hp, owner_uid)
             .iter()
             .any(|feature| {
                 feature.owner_uid == owner_uid
@@ -337,6 +337,34 @@ mod tests {
 
         assert!(mechanic.ultimate_ignores_limit(&managers, 10, 31390131));
         assert!(!mechanic.ultimate_ignores_limit(&managers, 11, 31340131));
+    }
+
+    #[test]
+    fn enigma_ultimate_does_not_use_a_normal_hand_slot() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10), model_id: Some(3143), current_hp: Some(100),
+                    ex_point: Some(5), ex_skill: Some(31430135),
+                    buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(31430170),
+                        from_uid: Some(10), ..Default::default() }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let mechanic = CardMechanic;
+        let normal_hand = (0..8).map(|skill_id| CardInfo {
+            uid: Some(10), skill_id: Some(skill_id + 1), ..Default::default()
+        }).collect::<Vec<_>>();
+        let special = mechanic.special_team_cards(&pool, &managers, &normal_hand);
+        assert_eq!(special.len(), 1);
+        assert_eq!(special[0].skill_id, Some(31430135));
+        assert!(!mechanic.counts_toward_hand_limit(&special[0], &managers, &pool));
     }
 
     #[test]

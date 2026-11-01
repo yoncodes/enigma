@@ -173,8 +173,10 @@ fn route_shared_pool_change(
 ) -> Vec<RuleOp> {
     match command.key.kind {
         GaugeKind::Bloodtithe
-            if matches!(command.operation, GaugeOperation::ChangeValue { .. })
-                && managers.gauge.get(command.key).is_none() =>
+            if managers.gauge.get(command.key).is_none()
+                && (matches!(command.operation, GaugeOperation::ChangeValue { .. })
+                    || matches!(command.key.owner, crate::engine::manager::gauge::GaugeOwner::Team(team)
+                        if managers.gauge.get(crate::engine::mechanic::lingering_glow::key(team)).is_some())) =>
         {
             Vec::new()
         }
@@ -397,6 +399,21 @@ mod tests {
         let managers = BattleManagers::default();
 
         assert!(blood_pool_value_change_ops(&managers).is_empty());
+    }
+
+    #[test]
+    fn incompatible_glow_suppresses_blood_pool_max_change() {
+        let mut managers = BattleManagers::default();
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60190, "BloodPoolMaxChange"), vec![16], Vec::new(),
+        );
+        let origin = super::super::command_origin(&behavior).unwrap();
+        managers.execute_gauge(GaugeCommand::new(origin,
+            crate::engine::mechanic::lingering_glow::key(1),
+            GaugeOperation::Enable { max: Some(100) })).unwrap();
+        let command = GaugeCommand::new(origin, crate::engine::mechanic::bloodtithe::rule::key(1),
+            GaugeOperation::ChangeMax { delta: 16 });
+        assert!(super::route_shared_pool_change(&managers, command).is_empty());
     }
 
     #[test]

@@ -242,6 +242,7 @@ mod tests {
 
     fn attack(attacked_target_uids: Vec<i64>, damage_amount: i32) -> BattleEvent {
         BattleEvent::SkillAction(SkillActionEvent {
+            card_index: 0,
             source_uid: -1,
             skill_id: 100,
             target_uid: attacked_target_uids.first().copied().unwrap_or_default(),

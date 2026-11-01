@@ -2,6 +2,68 @@ use super::nested_casts::attack_with_passives;
 use super::*;
 
 #[test]
+fn fifth_chapter_mark_tracks_the_enemy_who_actively_casts() {
+    crate::test_support::init_config();
+    let entity = |uid, team| FightEntityInfo { uid: Some(uid), team_type: Some(team),
+        current_hp: Some(100_000), attr: Some(HeroAttribute { hp: Some(100_000),
+            attack: Some(1_000), ..Default::default() }), ..Default::default() };
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![entity(10, 1), entity(11, 1)], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![FightEntityInfo {
+            passive_skill: vec![1141011], ..entity(-1, 2)
+        }], ..Default::default() }), ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31090111, 1141011], []);
+    for actor in [10, 11] {
+        let mut invocation: SkillInvocation = SkillRequest { source_uid: actor, skill_id: 31090111 }.into();
+        invocation.target = SkillTarget::Explicit(-1);
+        invocation.mode = SkillExecutionMode::Active;
+        run_action(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+            TargetContext::default(), [], invocation).unwrap();
+        assert!(managers.buff.has_buff_id(actor, 11410111), "actor {actor} must be marked");
+    }
+    assert!(!managers.buff.has_buff_id(10, 11410111), "the previous actor's mark must be replaced");
+    let current_pool = pool.runtime_view(&managers);
+    let marked = TargetResolver::resolve(
+        &crate::engine::skill::target::TargetRequest { code: 2001, raw: vec![] },
+        1141011, -1, &current_pool, &mut RoundDeterminism::default(),
+    );
+    assert_eq!(marked, vec![11], "the next round's attack must select the latest actor");
+}
+
+#[test]
+fn fifth_chapter_poison_enemy_purifies_poison_from_its_attacker() {
+    crate::test_support::init_config();
+    let attr = HeroAttribute { hp: Some(100_000), attack: Some(1_000), ..Default::default() };
+    let fight = Fight {
+        attacker: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(10), team_type: Some(1), current_hp: Some(100_000), attr: Some(attr),
+            buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(11410012), from_uid: Some(-1),
+                duration: Some(1), ..Default::default() },
+                BuffInfo { uid: Some(21), buff_id: Some(11410022), from_uid: Some(-1),
+                duration: Some(1), ..Default::default() }], ..Default::default()
+        }], ..Default::default() }),
+        defender: Some(FightTeam { entitys: vec![FightEntityInfo {
+            uid: Some(-1), team_type: Some(2), current_hp: Some(100_000), attr: Some(attr),
+            passive_skill: vec![1141001], ..Default::default()
+        }], ..Default::default() }), ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    // A plain attack has no cleanse effect of its own.
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [30610111, 1141001], []);
+    let mut invocation: SkillInvocation = SkillRequest { source_uid: 10, skill_id: 30610111 }.into();
+    invocation.target = SkillTarget::Explicit(-1);
+    invocation.mode = SkillExecutionMode::Active;
+    run_action(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(),
+        TargetContext::default(), [], invocation).unwrap();
+    assert!(!managers.buff.has_buff_id(10, 11410012));
+    assert!(managers.buff.has_buff_id(10, 11410022));
+}
+
+#[test]
 fn a_follow_up_cast_from_a_nested_skill_still_runs() {
     crate::test_support::init_config();
     let entity = |uid| FightEntityInfo {
@@ -955,4 +1017,50 @@ fn hit_damage_reactions_follow_semantic_settlement_phases() {
             434111, 109320108, 31090112,
         ]
     );
+}
+
+#[test]
+fn own_eureka_spend_from_real_cards_feeds_team_inspiration() {
+    crate::test_support::init_config();
+    for (hero_id, skill_id, target_uid) in [
+        (3141, 31410111, -1),
+        (3141, 31410121, 10),
+        (3053, 30530161, -1),
+        (3053, 30530171, 10),
+        (3117, 31170111, -1),
+    ] {
+        let attr = HeroAttribute { hp: Some(100_000), attack: Some(1_000), ..Default::default() };
+        let actor = FightEntityInfo {
+            uid: Some(10), model_id: Some(hero_id), team_type: Some(1),
+            current_hp: Some(100_000), attr: Some(attr),
+            power_infos: vec![PowerInfo { power_id: Some(EUREKA_RESOURCE_ID), num: Some(5), max: Some(10) }],
+            buffs: vec![BuffInfo { uid: Some(20), buff_id: Some(2_240_000), from_uid: Some(10), ..Default::default() }],
+            ..Default::default()
+        };
+        let enemy = FightEntityInfo { uid: Some(-1), team_type: Some(2), current_hp: Some(100_000), attr: Some(attr), ..Default::default() };
+        let fight = Fight {
+            attacker: Some(FightTeam { entitys: vec![actor, crate::engine::manager::emitter::activation_entity()], ..Default::default() }),
+            defender: Some(FightTeam { entitys: vec![enemy], ..Default::default() }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let origin = crate::engine::skill::buff_act::configured_command_origin(875, crate::engine::skill::buff_act::registry::BuffActKind::EmitterTag).unwrap();
+        managers.execute_gauge(crate::engine::manager::gauge::GaugeCommand::new(
+            origin, crate::engine::mechanic::impromptu::team_energy_key(1),
+            crate::engine::manager::gauge::GaugeOperation::Enable { max: None },
+        )).unwrap();
+        managers.execute_gauge(crate::engine::manager::gauge::GaugeCommand::new(
+            origin, crate::engine::mechanic::impromptu::inspiration_key(99998),
+            crate::engine::manager::gauge::GaugeOperation::Enable { max: None },
+        )).unwrap();
+        let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [skill_id], [2_240_000]);
+        let mut invocation: SkillInvocation = SkillRequest { source_uid: 10, skill_id }.into();
+        invocation.target = SkillTarget::Explicit(target_uid);
+        invocation.mode = SkillExecutionMode::Active;
+        let result = run_action(&mut managers, &pool, &catalog, &mut RoundDeterminism::default(), TargetContext::default(), [], invocation).unwrap();
+        assert_eq!(managers.eureka.get(10, EUREKA_RESOURCE_ID).current, 3, "skill {skill_id}, events: {:?}", result.events);
+        assert_eq!(managers.gauge.get(crate::engine::mechanic::impromptu::team_energy_key(1)).unwrap().current, 2, "skill {skill_id}");
+        assert_eq!(managers.gauge.get(crate::engine::mechanic::impromptu::inspiration_key(99998)).unwrap().current, 0, "non-card action {skill_id} must not add current-round inspiration");
+    }
 }

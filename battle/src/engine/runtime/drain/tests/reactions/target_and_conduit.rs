@@ -222,6 +222,7 @@ fn be_attacked_reaction_commits_before_same_hit_threshold() {
         &mut RoundDeterminism::default(),
         TargetContext::default(),
         BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+            card_index: 0,
             source_uid: 10,
             skill_id: 1163855063,
             target_uid: -1,
@@ -505,6 +506,7 @@ fn contract_psychube_buffs_the_owner_then_the_selected_bound_ally() {
         &mut RoundDeterminism::default(),
         TargetContext::default(),
         BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+            card_index: 0,
             source_uid: 10,
             skill_id: 31000451,
             target_uid: -1,

@@ -84,7 +84,18 @@ impl BattleRuntime {
                 )
                 .runtime_view(&self.managers);
                 self.managers.begin_cloth_sequence();
-                let result = drain::run_skill(
+                let special_steps = match skill_id {
+                    30010501 | 30010502 => Some(self.unfinished_tune_steps(
+                        skill_id, request.to_id.unwrap_or_default(), &pool,
+                        fight_version, absorb_hurt_map_layout,
+                    )?),
+                    30010701 | 30010702 => Some(self.atonal_sequence_steps(
+                        skill_id, request.to_id.unwrap_or_default(),
+                        fight_version, absorb_hurt_map_layout,
+                    )?),
+                    _ => None,
+                };
+                let result = if special_steps.is_none() { Some(drain::run_skill(
                     &mut self.managers,
                     &pool,
                     &self.catalog,
@@ -103,8 +114,12 @@ impl BattleRuntime {
                     crate::engine::skill::action::SkillModifiers::default(),
                 )
                 .inspect_err(|error| tracing::warn!(?error, "cloth skill execution failed"))
-                .ok()?;
+                .ok()?) } else { None };
                 self.round_state.power -= cost;
+                if skill_id == 30010502 {
+                    let rule = self.catalog_data?.cloth_power(&self.fight)?;
+                    self.round_state.power = rule.add(self.round_state.power, 10);
+                }
                 *self.cloth_skill_uses.entry(skill_id).or_default() += 1;
                 self.objectives.record_tuning_use();
                 if let Some(attacker) = self.fight.attacker.as_mut() {
@@ -118,7 +133,7 @@ impl BattleRuntime {
                         skill.cd = Some(cooldown);
                     }
                 }
-                let redeal = result.outcomes.iter().find_map(|outcome| {
+                let redeal = result.as_ref().and_then(|result| result.outcomes.iter().find_map(|outcome| {
                     let executor::RuleOutcome::Card(changes) = outcome else {
                         return None;
                     };
@@ -127,15 +142,19 @@ impl BattleRuntime {
                             card_group: changes.after.clone(),
                             deal_card_group: Vec::new(),
                         })
-                });
+                }));
                 self.pending_redeal =
                     match crate::engine::fight::versions::redeal_wire_layout(fight_version)? {
                         crate::engine::fight::versions::RedealWireLayout::Version6 => redeal,
                         crate::engine::fight::versions::RedealWireLayout::Version7 => None,
                     };
-                project_result(result, fight_version, absorb_hurt_map_layout)
-                    .inspect_err(|error| tracing::warn!(%error, "cloth skill projection failed"))
-                    .ok()?
+                if let Some(steps) = special_steps {
+                    steps
+                } else {
+                    project_result(result?, fight_version, absorb_hurt_map_layout)
+                        .inspect_err(|error| tracing::warn!(%error, "cloth skill projection failed"))
+                        .ok()?
+                }
             }
             ClothSkillType::HeroUpgrade => {
                 let owner_uid = request.from_id?;
@@ -369,7 +388,10 @@ impl BattleRuntime {
                 let owner_uid = request.from_id?;
                 let granted =
                     crate::engine::mechanic::extra_round::grant(&mut self.managers, owner_uid)?;
-                self.round_state.grant_extra_round();
+                self.round_state.grant_extra_round(crate::engine::skill::action::SkillRequest {
+                    source_uid: owner_uid,
+                    skill_id: granted.linked_skill,
+                });
                 let team_type = granted.marker.team_type;
                 let frames = [
                     record::SemanticFrame {
@@ -484,6 +506,124 @@ impl BattleRuntime {
         round.fight_step = steps;
         self.round = Some(round.clone());
         Some(UseClothSkillReply { round: Some(round) })
+    }
+
+    fn atonal_sequence_steps(
+        &mut self,
+        skill_id: i32,
+        selection: i64,
+        version: i32,
+        layout: crate::engine::fight::versions::AbsorbHurtMapLayout,
+    ) -> Option<Vec<FightStep>> {
+        use crate::engine::manager::card::{CardAddGenerated, CardAddTemporary, CardCommand, TemporaryCardKind};
+        use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
+        let origin = |opcode, name| CommandOrigin { domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(opcode, name) };
+        let catalog = self.catalog_data?;
+        let team = self.fight.attacker.as_ref()?;
+        if skill_id == 30010701 {
+            let index = usize::try_from(selection.checked_sub(1)?).ok()?;
+            let selected = self.managers.card.hand().get(index)?;
+            if !crate::engine::mechanic::card::CardMechanic.is_device_card(&self.managers, selected) {
+                return None;
+            }
+            let owner_uid = selected.uid?;
+            let owner = team.entitys.iter().find(|hero| hero.uid == Some(owner_uid)
+                && self.managers.hp.current(owner_uid) > 0)?;
+            let candidates = catalog.device_card_weights(owner).into_iter().flat_map(|(id, count)| {
+                std::iter::repeat_n(crate::engine::manager::card::pool::card_for(owner, Some(id)), count).flatten()
+            }).collect::<Vec<_>>();
+            let replacement = self.determinism.draw_cards(&candidates, 1).into_iter().next()?;
+            let removed = self.managers.execute_card(CardCommand::Dissolve {
+                origin: origin(30010701, "AtonalDiscardDeviceCard"), card_index: index,
+            }).ok()?;
+            let added = self.managers.execute_card(CardCommand::AddGenerated(CardAddGenerated {
+                origin: origin(30010701, "AtonalDrawDeviceCard"), target_uid: owner_uid,
+                skill_id: replacement.skill_id?, hero_id: owner.model_id, team_type: 1,
+            })).ok()?;
+            return project_changes([
+                change::BattleChange::Card(Box::new(removed)),
+                change::BattleChange::Card(Box::new(added)),
+            ], version, layout).ok();
+        }
+        if skill_id != 30010702 { return None; }
+        let owner = team.entitys.iter().find(|hero| hero.uid.is_some_and(|uid|
+            self.managers.hp.current(uid) > 0) && !catalog.device_card_weights(hero).is_empty())?;
+        let owner_uid = owner.uid?;
+        let generated_skill = self.catalog.get(skill_id)?.slots.iter()
+            .find(|slot| slot.behavior.spec.kind == crate::engine::skill::behavior::classify::BehaviorKind::AddSpTempCard2)?
+            .behavior.arg(0)?;
+        let added = self.managers.execute_card(CardCommand::AddTemporary(CardAddTemporary {
+            origin: origin(60300, "AddSpTempCard2"), target_uid: owner_uid,
+            skill_id: generated_skill, hero_id: owner.model_id, reserve_id: i64::from(owner.model_id?),
+            team_type: 1, kind: TemporaryCardKind::ConfiguredSkill,
+        })).ok()?;
+        let card = added.added.clone()?;
+        let mut steps = project_changes([change::BattleChange::Card(Box::new(added))], version, layout).ok()?;
+        let step = steps.first_mut()?;
+        let mut effect = crate::engine::packet::card::CardPacket::add_hand_card(owner_uid, card);
+        effect.effect_type = Some(sonettobuf::effect_type_enum::EffectType::Addsphandcard as i32);
+        effect.effect_num1 = Some(skill_id);
+        effect.team_type = Some(1);
+        step.act_effect.clear();
+        step.act_effect.push(effect);
+        Some(steps)
+    }
+
+    fn unfinished_tune_steps(
+        &mut self,
+        skill_id: i32,
+        target_uid: i64,
+        pool: &crate::engine::skill::target::TargetPool,
+        version: i32,
+        layout: crate::engine::fight::versions::AbsorbHurtMapLayout,
+    ) -> Option<Vec<FightStep>> {
+        use crate::engine::manager::card::{CardAddPrecast, CardCommand, selected_precast_card};
+        use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
+        let origin = |id, name| CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(id, name),
+        };
+        let mut changes = Vec::new();
+        match skill_id {
+            30010501 => {
+                let target = pool.attacker_main.iter()
+                    .find(|target| target.uid == target_uid && target.current_hp > 0)?;
+                let catalog = self.catalog_data?;
+                let first_rank = |group: &[i32]| group.iter().copied()
+                    .find(|id| catalog.skill_rank(*id) == 1);
+                let ids = [first_rank(&target.skill_group1)?, first_rank(&target.skill_group2)?];
+                for id in ids {
+                    let added = self.managers.execute_card(CardCommand::AddSelectedPrecast(
+                        CardAddPrecast {
+                            origin: origin(60032, "AddSkillCard"),
+                            card: selected_precast_card(target_uid, target.model_id, id),
+                        },
+                    )).ok()?;
+                    changes.push(change::BattleChange::Card(Box::new(added)));
+                }
+            }
+            30010502 => {
+                let catalog = self.catalog_data?;
+                // The client renders the first internal card at the right edge.
+                let index = self.managers.card.hand().iter().position(|card| {
+                    let skill = card.skill_id.unwrap_or_default();
+                    let model = card.hero_id.unwrap_or_default();
+                    let owner = pool.entity(card.uid.unwrap_or_default());
+                    skill > 0 && !self.catalog.is_big_skill(skill)
+                        && !catalog.skill_is_ultimate_for_model(skill, model)
+                        && !owner.is_some_and(|owner| owner.ex_skill == skill)
+                });
+                if let Some(card_index) = index {
+                    let removed = self.managers.execute_card(CardCommand::Dissolve {
+                        origin: origin(60031, "RemoveRightCard"), card_index,
+                    }).ok()?;
+                    changes.push(change::BattleChange::Card(Box::new(removed)));
+                }
+            }
+            _ => return None,
+        }
+        project_changes(changes, version, layout).ok()
     }
 
     pub fn take_redeal_card_push(&mut self) -> Option<RedealCardInfoPush> {

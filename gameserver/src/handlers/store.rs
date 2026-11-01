@@ -8,9 +8,30 @@ use common::time::ServerTime;
 use logic::task::TaskEvent;
 use prost::Message;
 use sonettobuf::{
-    Act236UpdateInfoPush, BuyGoodsRequest, CmdId, GetStoreInfosRequest, NewOrderRequest,
+    Act236UpdateInfoPush, Buy107GoodsRequest, BuyGoodsRequest, CmdId, Get107GoodsInfoRequest, GetStoreInfosRequest, NewOrderRequest,
     ReadStoreNewReply, ReadStoreNewRequest, RedDotGroup, RedDotInfo,
 };
+
+pub async fn on_get_107_goods_info(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let msg = Get107GoodsInfoRequest::decode(&req.data[..])?;
+    let reply = ctx.player()?.store.activity107_infos(ctx.state.db, msg.activity_id.ok_or(AppError::InvalidRequest)?).await?;
+    ctx.send_reply(CmdId::Get107GoodsInfoCmd, reply, 0, req.up_tag).await
+}
+
+pub async fn on_buy_107_goods(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let msg = Buy107GoodsRequest::decode(&req.data[..])?;
+    let player_id = ctx.player()?.id;
+    let result = ctx.player()?.store.buy_activity107_goods(
+        ctx.state.db,
+        msg.activity_id.ok_or(AppError::InvalidRequest)?,
+        msg.id.ok_or(AppError::InvalidRequest)?,
+        msg.num.ok_or(AppError::InvalidRequest)?,
+        ServerTime::now_ms(),
+    ).await?;
+    push::send_applied_reward_pushes(ctx, player_id, result.rewards, result.material_changes,
+        Some(MaterialGetApproach::StorePurchase)).await?;
+    ctx.send_reply(CmdId::Buy107GoodsCmd, result.reply, 0, req.up_tag).await
+}
 
 pub async fn on_get_store_infos(
     ctx: &mut ConnectionContext,

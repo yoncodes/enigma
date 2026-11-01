@@ -329,3 +329,60 @@ fn breakthrough_repeat_clear_grants_configured_normal_rewards() {
     assert!(completion.normal_bonus.contains(&(2, 3, 240)));
     assert!(completion.normal_bonus.contains(&(3, 0, 240)));
 }
+
+#[test]
+fn tts13_configured_rewards_follow_first_clear_and_multiplier() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let episode = config::configs::get().episode.get(3_810_113).unwrap();
+    let first = completion_rewards(episode, true, 0, 2, 1);
+    assert!(first.normal_bonus.contains(&(2, 3801, 120)));
+    assert!(first.normal_bonus.contains(&(2, 3, 120)));
+    assert!(first.normal_bonus.contains(&(3, 0, 120)));
+    assert!(first.advanced_bonus.contains(&(2, 2, 60)));
+    let repeated = completion_rewards(episode, false, 2, 2, 1);
+    assert!(repeated.normal_bonus.contains(&(2, 3801, 120)));
+    assert!(repeated.advanced_bonus.is_empty());
+    let doubled = completion_rewards(episode, false, 2, 2, 2);
+    assert!(doubled.normal_bonus.contains(&(2, 3801, 240)));
+    assert!(doubled.normal_bonus.contains(&(3, 0, 240)));
+    assert!(doubled.advanced_bonus.is_empty());
+}
+
+#[test]
+fn temporary_scale_battles_pay_configured_currency_on_each_clear() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let cases = [
+        (3_810_103, 120, 0), (3_810_104, 120, 0), (3_810_107, 120, 0),
+        (3_810_108, 120, 0), (3_810_109, 120, 0), (3_810_110, 120, 0),
+        (3_810_113, 120, 0), (3_810_115, 120, 0), (3_810_116, 120, 0),
+        (3_810_117, 120, 0), (3_810_120, 120, 0),
+        (3_830_113, 170, 340), (3_830_116, 180, 340), (3_830_120, 200, 340),
+        (3_840_113, 250, 340), (3_840_116, 270, 340), (3_840_120, 300, 340),
+    ];
+    let currency = |materials: &[(u32, u32, i32)]| {
+        materials.iter().filter(|(kind, id, _)| (*kind, *id) == (2, 3801))
+            .map(|(_, _, quantity)| *quantity).sum::<i32>()
+    };
+    for (id, normal, first_only) in cases {
+        let episode = config::configs::get().episode.get(id).unwrap();
+        let first = completion_rewards(episode, true, 0, 2, 1);
+        let repeat = completion_rewards(episode, false, 2, 2, 1);
+        let doubled_first = completion_rewards(episode, true, 0, 2, 2);
+        let doubled_repeat = completion_rewards(episode, false, 2, 2, 2);
+        assert_eq!(currency(&first.normal_bonus), normal, "first clear {id}");
+        assert_eq!(currency(&repeat.normal_bonus), normal, "repeat clear {id}");
+        assert_eq!(currency(&first.first_bonus), first_only, "first bonus {id}");
+        assert_eq!(currency(&repeat.first_bonus), 0, "repeat first bonus {id}");
+        assert_eq!(currency(&doubled_first.normal_bonus), normal * 2, "multiplier {id}");
+        assert_eq!(currency(&doubled_first.first_bonus), first_only, "unscaled first bonus {id}");
+        assert_eq!(currency(&doubled_repeat.normal_bonus), normal * 2, "repeat multiplier {id}");
+        assert_eq!(currency(&doubled_repeat.first_bonus), 0, "repeat first bonus {id}");
+    }
+    for id in [3_810_112, 3_820_113] {
+        let episode = config::configs::get().episode.get(id).unwrap();
+        let result = completion_rewards(episode, true, 0, 2, 1);
+        assert_eq!(currency(&result.normal_bonus), 0, "no invented battle reward for {id}");
+    }
+}

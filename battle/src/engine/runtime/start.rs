@@ -218,6 +218,7 @@ impl BattleRuntime {
                 .map_err(|error| format!("{error:?}"))?;
         }
         visible_cards.extend_from_slice(self.managers.card.team_cards());
+        self.trace_semmelweis_cards("opening_deal", Some(&visible_cards));
         self.round_state.act_point = crate::engine::round::state::next_action_points(
             &self.fight,
             &pool,
@@ -263,6 +264,7 @@ impl BattleRuntime {
             .chain(self.managers.card.team_cards())
             .cloned()
             .collect::<Vec<_>>();
+        self.trace_semmelweis_cards("card_info_push", Some(&cards));
         let deal_cards = self
             .round
             .as_ref()

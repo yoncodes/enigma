@@ -28,9 +28,36 @@ pub fn deploy_rule_ops(
     if behavior.spec.kind != BehaviorKind::AddMagicCircle {
         return None;
     }
-    let circle_id = behavior.arg(0)?;
-    let definition = managers.catalog().magic_circle(circle_id)?;
+    let mut circle_id = behavior.arg(0)?;
+    let family = managers.catalog().emitter_circle_family(circle_id);
+    let mut level = family.iter().position(|id| *id == circle_id).unwrap_or_default() as i32;
     let origin = super::command_origin(behavior)?;
+    if !family.is_empty() {
+        if let Some(current) = managers.field.get(team) {
+            if let Some(current_level) = family.iter().position(|id| *id == current.definition.field_id) {
+                if level < current_level as i32 { return Some(Vec::new()); }
+                let definition = managers.catalog().magic_circle(circle_id)?;
+                return Some(vec![RuleOp::Command(BattleCommand::Field(FieldCommand {
+                    origin, team, operation: FieldOperation::SetDefinition {
+                        definition: FieldDefinition { field_id: circle_id, duration: definition.duration },
+                        level,
+                    },
+                }))]);
+            }
+        } else if managers.buff.active_features_for_owner(&managers.hp, source_uid).iter()
+            .any(|feature| crate::engine::skill::buff_act::is_kind(feature,
+                crate::engine::skill::buff_act::registry::BuffActKind::RecordReplaceWqMagicCircle)) {
+            if let Some(previous) = managers.field.removed_state(team) {
+                if let Some(previous_level) = family.iter().position(|id| *id == previous.definition.field_id) {
+                    if previous_level as i32 > level {
+                        level = previous_level as i32;
+                        circle_id = family[previous_level];
+                    }
+                }
+            }
+        }
+    }
+    let definition = managers.catalog().magic_circle(circle_id)?;
     let field = RuleOp::Command(BattleCommand::Field(FieldCommand {
         origin,
         team,
@@ -40,7 +67,7 @@ pub fn deploy_rule_ops(
                 duration: definition.duration,
             },
             create_uid: source_uid,
-            initial_level: behavior.arg(1).unwrap_or_default(),
+            initial_level: behavior.arg(1).unwrap_or(level),
             thresholds: field_thresholds(circle_id, team, managers),
         },
     }));
@@ -79,6 +106,67 @@ pub fn deploy_rule_ops(
         .collect::<Vec<_>>();
     ops.push(field);
     Some(ops)
+}
+
+pub(crate) fn upgrade_emitter_circle_rule_ops(
+    behavior: &ParsedBehavior,
+    team: i32,
+    managers: &BattleManagers,
+) -> Option<Vec<RuleOp>> {
+    let Some(field) = managers.field.get(team) else { return Some(Vec::new()) };
+    let family = managers.catalog().emitter_circle_family(field.definition.field_id);
+    let Some(level) = family.iter().position(|id| *id == field.definition.field_id) else {
+        return Some(Vec::new());
+    };
+    let upgraded = level.saturating_add(behavior.arg(0)?.max(0) as usize).min(family.len() - 1);
+    let circle_id = family[upgraded];
+    let definition = managers.catalog().magic_circle(circle_id)?;
+    Some(vec![RuleOp::Command(BattleCommand::Field(FieldCommand {
+        origin: super::command_origin(behavior)?, team,
+        operation: FieldOperation::SetDefinition {
+            definition: FieldDefinition { field_id: circle_id, duration: definition.duration },
+            level: upgraded as i32,
+        },
+    }))])
+}
+
+pub(crate) fn emitter_circle_round_end_rule_ops(managers: &BattleManagers, team: i32) -> Vec<RuleOp> {
+    let Some(field) = managers.field.get(team) else { return Vec::new() };
+    let family = managers.catalog().emitter_circle_family(field.definition.field_id);
+    if family.is_empty() || field.definition.duration <= 0 { return Vec::new(); }
+    let operation = if field.definition.duration == 1 {
+        let Some(level) = family.iter().position(|id| *id == field.definition.field_id) else {
+            return Vec::new();
+        };
+        let fallback = level.saturating_sub(1);
+        let Some(definition) = managers.catalog().magic_circle(family[fallback]) else {
+            return Vec::new();
+        };
+        FieldOperation::SetDefinition {
+            definition: FieldDefinition { field_id: family[fallback], duration: definition.duration },
+            level: fallback as i32,
+        }
+    } else {
+        FieldOperation::ChangeDuration { delta: -1 }
+    };
+    vec![RuleOp::Command(BattleCommand::Field(FieldCommand { origin: field.origin, team, operation }))]
+}
+
+pub(crate) fn primitive_urge_circle_round_end_rule_ops(managers: &BattleManagers, team: i32) -> Vec<RuleOp> {
+    let Some(field) = managers.field.get(team) else { return Vec::new() };
+    // Crimson Dreamscape has no attached entity buffs to clean up. Its
+    // owner's configured removal reaction casts the follow-up ultimate.
+    if field.definition.field_id != 1_251_001 || field.definition.duration < 0 {
+        return Vec::new();
+    }
+    let operation = if field.definition.duration <= 1 {
+        FieldOperation::Remove
+    } else {
+        FieldOperation::ChangeDuration { delta: -1 }
+    };
+    vec![RuleOp::Command(BattleCommand::Field(FieldCommand {
+        origin: field.origin, team, operation,
+    }))]
 }
 
 fn remove_rule_ops(
@@ -152,7 +240,9 @@ impl BehaviorHandler for Handler {
                     && configured(*circle_id)
             }
             (BehaviorKind::RemoveMagicCircleById, [circle_id]) => configured(*circle_id),
+            (BehaviorKind::MagicCircleAddRound, [rounds]) => *rounds != 0,
             (BehaviorKind::MagicCircleAttr, _) => supports_magic_circle_attr(behavior),
+            (BehaviorKind::UpdateWangQiMagicCircle, [levels]) => *levels > 0,
             _ => false,
         }
     }
@@ -169,7 +259,22 @@ impl BehaviorHandler for Handler {
             BehaviorKind::RemoveMagicCircleById => {
                 remove_rule_ops(behavior, context.source_team, context.managers)
             }
+            BehaviorKind::MagicCircleAddRound => {
+                let [rounds] = behavior.args.as_slice() else { return None };
+                if *rounds == 0 { return None; }
+                if context.managers.field.get(context.source_team).is_none() {
+                    return Some(Vec::new());
+                }
+                Some(vec![RuleOp::Command(BattleCommand::Field(FieldCommand {
+                    origin: super::command_origin(behavior)?,
+                    team: context.source_team,
+                    operation: FieldOperation::ChangeDuration { delta: *rounds },
+                }))])
+            }
             BehaviorKind::MagicCircleAttr => supports_magic_circle_attr(behavior).then(Vec::new),
+            BehaviorKind::UpdateWangQiMagicCircle => upgrade_emitter_circle_rule_ops(
+                behavior, context.source_team, context.managers,
+            ),
             _ => None,
         }
     }
@@ -180,17 +285,22 @@ impl BehaviorHandler for Handler {
 }
 
 fn references(behavior: &ParsedBehavior) -> RuleReferences {
-    RuleReferences {
-        skills: (behavior.spec.kind == BehaviorKind::AddMagicCircle)
-            .then(|| behavior.arg(0))
-            .flatten()
-            .into_iter()
-            .flat_map(self_skills)
-            .collect(),
-        buffs: Vec::new(),
-        models: Vec::new(),
-        summons: Vec::new(),
+    let mut references = RuleReferences::default();
+    if behavior.spec.kind == BehaviorKind::AddMagicCircle {
+        if let Some(circle_id) = behavior.arg(0) {
+            references.skills.extend(self_skills(circle_id));
+            if let Some(catalog) = crate::catalog::BattleCatalog::try_global() {
+                if catalog.magic_circle(circle_id).is_some_and(|circle| {
+                    !circle.emitter_skills.is_empty() || !circle.emitter_buffs.is_empty()
+                }) {
+                    let (skills, buffs) = catalog.emitter_circle_references();
+                    references.skills.extend(skills);
+                    references.buffs.extend(buffs);
+                }
+            }
+        }
     }
+    references
 }
 
 pub fn self_skills(circle_id: i32) -> Vec<i32> {
@@ -208,7 +318,12 @@ pub fn active_self_skills(
     pool.team_type(source_uid)
         .and_then(|team| managers.field.get(team))
         .and_then(|field| managers.catalog().magic_circle(field.definition.field_id))
-        .map(|definition| definition.self_skills)
+        .map(|mut definition| {
+            if source_uid == crate::engine::manager::emitter::UID {
+                definition.self_skills.extend(definition.emitter_skills);
+            }
+            definition.self_skills
+        })
         .unwrap_or_default()
 }
 
@@ -292,6 +407,18 @@ mod tests {
         crate::test_support::init_config();
 
         assert_eq!(self_skills(100051), vec![308801821]);
+    }
+
+    #[test]
+    fn deploying_an_emitter_circle_compiles_its_later_level_rules() {
+        crate::test_support::init_config();
+        let links = references(&ParsedBehavior::new(50019, "AddMagicCircle", vec![45001]));
+        assert!(links.skills.contains(&31414153));
+        assert!(links.buffs.contains(&31413604));
+        let effects = SkillEffectCatalog::from_roots(
+            crate::test_support::game_data(), links.skills, links.buffs,
+        );
+        assert!(effects.get(31414153).is_some());
     }
 
     #[test]

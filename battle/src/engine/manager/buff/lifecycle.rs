@@ -433,7 +433,12 @@ impl BuffManager {
                 let active = &self.buffs[index];
                 let buff_uid = active.buff.uid?;
                 let duration = active.buff.duration.unwrap_or_default();
+                let poison_locked = self.has_buff_act_kind(active.owner_uid, crate::engine::skill::buff_act::registry::BuffActKind::LockPoison)
+                    && active.definition.as_ref().is_some_and(|definition| definition.features().iter().any(|feature|
+                        matches!(feature.kind, Some(crate::engine::skill::buff_act::registry::BuffActKind::Poison
+                            | crate::engine::skill::buff_act::registry::BuffActKind::PowerfulPoison)) && feature.arguments_supported));
                 (duration > 0
+                    && !poison_locked
                     && active
                         .definition
                         .as_ref()

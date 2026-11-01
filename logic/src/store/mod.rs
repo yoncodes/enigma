@@ -1,6 +1,7 @@
 mod catalog;
 mod charge;
 mod purchase;
+mod activity107;
 mod time;
 
 use crate::error::AppError;
@@ -34,6 +35,25 @@ impl StoreManager {
         store_ids: &[i32],
     ) -> Result<GetStoreInfosReply, AppError> {
         catalog::store_infos(db, self.player_id, store_ids).await
+    }
+
+    pub async fn activity107_infos(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+    ) -> Result<sonettobuf::Get107GoodsInfoReply, AppError> {
+        activity107::infos(db, self.player_id, activity_id).await
+    }
+
+    pub async fn buy_activity107_goods(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        goods_id: i32,
+        num: i32,
+        now: i64,
+    ) -> Result<crate::reward::RewardedReply<sonettobuf::Buy107GoodsReply>, AppError> {
+        activity107::buy(db, self.player_id, activity_id, goods_id, num, now).await
     }
 
     pub async fn charge_infos(&self, db: &SqlitePool) -> Result<Vec<ChargeInfo>, AppError> {

@@ -2,6 +2,8 @@ use crate::engine::manager::field::{FieldDefinition, FieldThreshold};
 use crate::engine::mechanic::impromptu::ImpromptuDefinition;
 use crate::engine::round::power::ClothPower;
 use crate::engine::skill::rule::{CommandOrigin, RuleDomain};
+use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
 
 const BURN_BUFF_FIGHT_CONST: i32 = 29;
 const CONTRACT_OWNER_BUFF_MAP: i32 = 30;
@@ -15,6 +17,8 @@ pub(crate) struct MagicCircleDefinition {
     pub allied_buffs: Vec<i32>,
     pub enemy_buffs: Vec<i32>,
     pub self_skills: Vec<i32>,
+    pub emitter_skills: Vec<i32>,
+    pub emitter_buffs: Vec<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +138,25 @@ impl PartialEq for BattleCatalog {
 impl Eq for BattleCatalog {}
 
 impl BattleCatalog {
+    fn cached_character_level(
+        self,
+        hero_id: i32,
+        level: i32,
+    ) -> Option<&'static config::character_level::CharacterLevel> {
+        type Row = config::character_level::CharacterLevel;
+        type Key = (usize, i32, i32);
+        static CACHE: OnceLock<RwLock<HashMap<Key, Option<&'static Row>>>> = OnceLock::new();
+        let cache = CACHE.get_or_init(|| RwLock::new(HashMap::new()));
+        let key = (self.game_data as *const config::GameDB as usize, hero_id, level);
+        if let Some(row) = cache.read().unwrap().get(&key).copied() {
+            return row;
+        }
+        let row = self.game_data.character_level.iter()
+            .find(|row| row.hero_id == hero_id && row.level == level);
+        cache.write().unwrap().entry(key).or_insert(row);
+        row
+    }
+
     pub fn new(game_data: &'static config::GameDB) -> Self {
         Self {
             game_data,
@@ -171,6 +194,48 @@ impl BattleCatalog {
 
     pub(crate) fn magic_circle(self, circle_id: i32) -> Option<MagicCircleDefinition> {
         magic_circle_definition(self.game_data, circle_id)
+    }
+
+    pub(crate) fn emitter_circle_references(self) -> (Vec<i32>, Vec<i32>) {
+        // A deployed circle can change level without another AddMagicCircle.
+        // Compile every configured emitter-circle level before combat starts.
+        let mut skills = Vec::new();
+        let mut buffs = Vec::new();
+        for circle in self.game_data.magic_circle.iter() {
+            let (circle_skills, circle_buffs) = parse_emitter_circle_effect(&circle.complex_effect);
+            skills.extend(circle_skills);
+            buffs.extend(circle_buffs);
+        }
+        skills.sort_unstable();
+        skills.dedup();
+        buffs.sort_unstable();
+        buffs.dedup();
+        (skills, buffs)
+    }
+
+    pub(crate) fn emitter_circle_family(self, circle_id: i32) -> Vec<i32> {
+        let Some(row) = self.game_data.magic_circle.get(circle_id) else { return Vec::new() };
+        if parse_emitter_circle_effect(&row.complex_effect).0.is_empty() {
+            return Vec::new();
+        }
+        let mut ids = self.game_data.magic_circle.iter()
+            .filter(|candidate| candidate.name == row.name && candidate.id / 1000 == row.id / 1000)
+            .filter(|candidate| !parse_emitter_circle_effect(&candidate.complex_effect).0.is_empty())
+            .map(|candidate| candidate.id).collect::<Vec<_>>();
+        ids.sort_unstable();
+        ids
+    }
+
+    pub(crate) fn magic_circle_matches(self, actual: i32, expected: i32) -> bool {
+        if actual == expected { return true; }
+        let Some(a) = self.game_data.magic_circle.get(actual) else { return false };
+        let Some(b) = self.game_data.magic_circle.get(expected) else { return false };
+        if a.name != b.name { return false; }
+        let actual_family = self.emitter_circle_family(actual);
+        let expected_family = self.emitter_circle_family(expected);
+        !actual_family.is_empty() && !expected_family.is_empty()
+            && actual_family.iter().position(|id| *id == actual)
+                == expected_family.iter().position(|id| *id == expected)
     }
 
     pub(crate) fn magic_circle_thresholds(self) -> Vec<FieldThreshold> {
@@ -490,11 +555,16 @@ impl BattleCatalog {
         .collect()
     }
 
+    pub(crate) fn cloth_initial_power(self, cloth_id: Option<i32>) -> Option<i32> {
+        self.cloth(cloth_id).map(|cloth| cloth.initial)
+    }
+
     pub(crate) fn cloth_power(self, fight: &sonettobuf::Fight) -> Option<ClothPower> {
         let cloth = self.cloth(fight.attacker.as_ref()?.cloth_id)?;
         Some(ClothPower::configured(
             cloth.max_power,
             cloth.r#use,
+            cloth.use_device_card,
             cloth.r#move,
             cloth.compose,
             &cloth.recover,
@@ -855,10 +925,7 @@ impl BattleCatalog {
         if entity_type != Some(1) {
             return fallback;
         }
-        self.game_data
-            .character_level
-            .iter()
-            .find(|row| row.hero_id == model_id && row.level == level)
+        self.cached_character_level(model_id, level)
             .map(|row| row.technic)
             .unwrap_or(fallback)
     }
@@ -909,12 +976,27 @@ impl BattleCatalog {
         level: Option<i32>,
         entity_type: Option<i32>,
     ) -> EntityExAttributes {
+        type Key = (usize, i32, Option<i32>, Option<i32>);
+        static CACHE: OnceLock<RwLock<HashMap<Key, EntityExAttributes>>> = OnceLock::new();
+        let cache = CACHE.get_or_init(|| RwLock::new(HashMap::new()));
+        let key = (self.game_data as *const config::GameDB as usize, model_id, level, entity_type);
+        if let Some(value) = cache.read().unwrap().get(&key).copied() {
+            return value;
+        }
+        let value = self.calculate_entity_ex_attributes(model_id, level, entity_type);
+        cache.write().unwrap().entry(key).or_insert(value);
+        value
+    }
+
+    fn calculate_entity_ex_attributes(
+        self,
+        model_id: i32,
+        level: Option<i32>,
+        entity_type: Option<i32>,
+    ) -> EntityExAttributes {
         if entity_type == Some(1) {
             return self
-                .game_data
-                .character_level
-                .iter()
-                .find(|row| row.hero_id == model_id && row.level == level.unwrap_or_default())
+                .cached_character_level(model_id, level.unwrap_or_default())
                 .map(|row| EntityExAttributes {
                     crit_rate: row.cri,
                     crit_resist: row.recri,
@@ -1051,6 +1133,7 @@ fn magic_circle_definition(
     circle_id: i32,
 ) -> Option<MagicCircleDefinition> {
     let row = game_data.magic_circle.get(circle_id)?;
+    let (emitter_skills, emitter_buffs) = parse_emitter_circle_effect(&row.complex_effect);
     Some(MagicCircleDefinition {
         duration: row.round,
         allied_attributes: parse_attribute_pairs(&row.self_attrs),
@@ -1058,7 +1141,20 @@ fn magic_circle_definition(
         allied_buffs: parse_positive_ids(&row.self_buff),
         enemy_buffs: parse_positive_ids(&row.enemy_buff),
         self_skills: parse_positive_ids(&row.self_skills),
+        emitter_skills,
+        emitter_buffs,
     })
+}
+
+fn parse_emitter_circle_effect(raw: &str) -> (Vec<i32>, Vec<i32>) {
+    let Some(effect) = raw.strip_prefix("1:") else {
+        return (Vec::new(), Vec::new());
+    };
+    let parts = effect.split(',').collect::<Vec<_>>();
+    let ["null", skills, buffs] = parts.as_slice() else {
+        return (Vec::new(), Vec::new());
+    };
+    (parse_positive_ids(skills), parse_positive_ids(buffs))
 }
 
 fn parse_attribute_pairs(raw: &str) -> Vec<(i32, i32)> {

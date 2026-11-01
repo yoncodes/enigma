@@ -25,6 +25,7 @@ pub mod nuo_di_ka;
 pub mod poison;
 pub mod precast;
 pub mod rate;
+pub mod random_buff_by_target;
 pub mod registry;
 pub mod resource;
 pub mod scene;
@@ -160,8 +161,8 @@ mod op_tests {
             ),
             Some(ops) if matches!(ops.as_slice(), [RuleOp::Command(BattleCommand::Card(
                 CardCommand::ChangeBasicEnergy(CardEnergyChange {
-                    delta: -1,
-                    count: 3,
+                    delta: 3,
+                    count: 1,
                     ..
                 })
             ))])

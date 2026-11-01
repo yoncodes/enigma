@@ -2,6 +2,33 @@ use super::*;
 use sonettobuf::{BuffInfo, FightTeam, HeroAttribute};
 
 #[test]
+fn paper_heron_damage_type_applies_to_the_zero_max_hp_virtual_emitter() {
+    crate::test_support::init_config();
+    let mut emitter = crate::engine::manager::emitter::activation_entity();
+    emitter.buffs.push(BuffInfo { uid: Some(21), buff_id: Some(31410410),
+        from_uid: Some(10), ..Default::default() });
+    let fight = Fight { attacker: Some(FightTeam {
+        entitys: vec![FightEntityInfo { uid: Some(10), team_type: Some(1), current_hp: Some(100),
+            attr: Some(HeroAttribute { hp: Some(100), attack: Some(1000), ..Default::default() }),
+            ..Default::default() }],
+        emitter: Some(emitter), ..Default::default()
+    }), ..Default::default() };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.hp.register(&crate::engine::manager::emitter::activation_entity());
+    managers.execute_buff(crate::engine::manager::buff::BuffCommand::GrantInternalChild(
+        crate::engine::manager::buff::BuffGrantChild {
+            origin: crate::engine::skill::rule::CommandOrigin {
+                domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                key: crate::engine::skill::rule::DefinitionKey::new(0, "VirtualEmitterTest"),
+            }, source_uid: 10, target_uid: crate::engine::manager::emitter::UID,
+            buff_id: 31410410, amount: None, params: None, act_info: None,
+        })).unwrap();
+    assert_eq!(managers.hp.max(crate::engine::manager::emitter::UID), 0);
+    let pool = TargetPool::from_fight(&fight).runtime_view(&managers);
+    assert_eq!(pool.entity(crate::engine::manager::emitter::UID).unwrap().damage_type, EntityDamageType::Reality);
+}
+
+#[test]
 fn target_buff_metadata_uses_configured_type_and_exact_feature_identities() {
     crate::test_support::init_config();
     let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());

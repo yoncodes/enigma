@@ -177,6 +177,7 @@ mod tests {
         assert_eq!(modifiers.attack_attributes, vec![(AttrId::Attack, 30)]);
 
         let event = BattleEvent::SkillAction(SkillActionEvent {
+            card_index: 0,
             source_uid: 10,
             skill_id: 30940111,
             target_uid: -1,

@@ -125,6 +125,7 @@ pub struct CardPersistTemporary {
 pub struct CardEnergyAllocation {
     pub origin: CommandOrigin,
     pub energies: Vec<i32>,
+    pub max_energy: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -674,6 +675,7 @@ pub(super) fn execute(
             manager
                 .dissolve(card_index, None)
                 .ok_or(CardCommandError::InvalidCommand)?;
+            consumed_indices.push(card_index);
             operation = Some(CardChange::CardsPush {
                 cards: manager.hand().to_vec(),
                 team_type: 1,
@@ -1211,10 +1213,10 @@ pub(super) fn execute(
         }
         CardCommand::AllocateEnergy(allocation) => {
             if allocation.energies.len() != manager.hand().len()
-                || allocation
-                    .energies
-                    .iter()
-                    .any(|value| !(0..=5).contains(value))
+                || allocation.max_energy <= 0
+                || allocation.energies.iter().zip(manager.hand()).any(|(value, card)| {
+                    *value < 0 || *value > allocation.max_energy.max(card.energy.unwrap_or_default())
+                })
             {
                 return Err(CardCommandError::InvalidCommand);
             }

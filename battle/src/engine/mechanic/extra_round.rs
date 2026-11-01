@@ -12,6 +12,7 @@ pub struct ExtraRoundGranted {
     pub marker: BuffActInfoMarkerResult,
     pub cards: Vec<sonettobuf::CardInfo>,
     pub deck_count: i32,
+    pub linked_skill: i32,
 }
 
 pub fn grant(managers: &mut BattleManagers, owner_uid: i64) -> Option<ExtraRoundGranted> {
@@ -23,7 +24,7 @@ pub fn grant(managers: &mut BattleManagers, owner_uid: i64) -> Option<ExtraRound
             feature.owner_uid == owner_uid
                 && buff_act::is_kind(feature, BuffActKind::BuffOwnedCharge)
         })?;
-    let [trigger, limit, _linked_skill] = feature.values.get(1..)? else {
+    let [trigger, limit, linked_skill] = feature.values.get(1..)? else {
         return None;
     };
     let act_id = feature.act_id()?;
@@ -62,5 +63,6 @@ pub fn grant(managers: &mut BattleManagers, owner_uid: i64) -> Option<ExtraRound
         },
         cards: managers.card.hand().to_vec(),
         deck_count: managers.card.deck_num(),
+        linked_skill: *linked_skill,
     })
 }

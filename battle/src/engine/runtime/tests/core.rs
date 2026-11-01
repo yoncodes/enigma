@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn reconnect_snapshot_includes_current_field_and_clears_removed_field() {
+    use crate::engine::manager::field::{FieldCommand, FieldDefinition, FieldOperation, FieldThreshold};
+    use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
+    crate::test_support::init_config();
+    let mut runtime = runtime(Fight::default());
+    let origin = CommandOrigin { domain: RuleDomain::Behavior, key: DefinitionKey::new(50019, "AddMagicCircle") };
+    let thresholds = vec![
+        FieldThreshold { level: 1, progress: 0, definition: FieldDefinition { field_id: 30001, duration: 3 } },
+        FieldThreshold { level: 2, progress: 50, definition: FieldDefinition { field_id: 30002, duration: 3 } },
+        FieldThreshold { level: 3, progress: 120, definition: FieldDefinition { field_id: 30003, duration: 2 } },
+    ];
+    runtime.managers.execute_field(FieldCommand { origin, team: 1,
+        operation: FieldOperation::DeployIfAbsent { definition: thresholds[0].definition,
+            create_uid: 10, initial_level: 1, thresholds: thresholds.clone() } }).unwrap();
+    runtime.managers.execute_field(FieldCommand { origin, team: 1,
+        operation: FieldOperation::ChangeProgress { delta: 60 } }).unwrap();
+    runtime.managers.execute_field(FieldCommand { origin, team: 1,
+        operation: FieldOperation::ResolveLevel { thresholds } }).unwrap();
+    let snapshot = runtime.reconnect_state().0.magic_circle.unwrap();
+    assert_eq!(snapshot.magic_circle_id, Some(30002));
+    assert_eq!(snapshot.create_uid, Some(10));
+    assert_eq!(snapshot.round, Some(3));
+    assert_eq!(snapshot.electric_level, Some(2));
+    assert_eq!(snapshot.electric_progress, Some(60));
+    assert_eq!(snapshot.max_electric_progress, Some(120));
+    runtime.managers.execute_field(FieldCommand { origin, team: 1,
+        operation: FieldOperation::Remove }).unwrap();
+    assert!(runtime.reconnect_state().0.magic_circle.is_none());
+}
+
+#[test]
 fn entity_info_projects_manager_owned_state() {
     use crate::engine::{
         manager::hp::{CurrentHpSet, HpCommand},
@@ -281,6 +312,20 @@ fn played_cards_grant_cloth_power_only_after_action_completion() {
         },
     );
     assert_eq!(state.power, 15);
+
+    // Atonal Sequence gains its configured device-card reward, only on completion.
+    let energy_fight = Fight { attacker: Some(FightTeam { cloth_id: Some(7), ..Default::default() }), ..Default::default() };
+    let mut energy_play = played(2);
+    if let RuleOutcome::Card(changes) = &mut energy_play {
+        changes.played.as_mut().unwrap().card.skill_id = Some(31446011);
+    }
+    state.power = 20;
+    round::apply_cloth_power(&energy_fight, &managers, &mut state, &DrainResult {
+        outcomes: vec![energy_play, RuleOutcome::SkillLifecycle(SkillLifecycle::ActionCompleted(ActionEvent {
+            card_index: 2, ..Default::default()
+        }))], ..Default::default()
+    });
+    assert_eq!(state.power, 25);
 }
 
 #[test]
@@ -406,4 +451,30 @@ fn end_fight_statistics_project_owned_runtime_history() {
     assert_eq!(stats[0].cards[0].skill_id, Some(101));
     assert_eq!(stats[0].cards[0].use_count, Some(1));
     assert_eq!(stats[0].get_buffs, vec![70015]);
+}
+
+
+#[test]
+fn reconnect_snapshot_restores_emitter_buffs_and_both_inspiration_gauges() {
+    use crate::engine::manager::gauge::{GaugeCommand, GaugeOperation};
+    use crate::engine::manager::buff::{BuffCommand, BuffGrantChild};
+    use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
+    use crate::engine::mechanic::impromptu::{inspiration_key, team_energy_key};
+    crate::test_support::init_config();
+    let mut runtime = runtime(Fight { attacker: Some(FightTeam::default()), ..Default::default() });
+    let uid = crate::engine::manager::emitter::UID;
+    let origin = CommandOrigin { domain: RuleDomain::Lifecycle, key: DefinitionKey::new(0, "ReconnectEmitterTest") };
+    runtime.managers.hp.register(&crate::engine::manager::emitter::activation_entity());
+    runtime.managers.execute_buff(BuffCommand::GrantInternalChild(BuffGrantChild {
+        origin, source_uid: 10, target_uid: uid, buff_id: 31410410, amount: None,
+        params: None, act_info: None,
+    })).unwrap();
+    for (key, amount) in [(inspiration_key(uid), 7), (team_energy_key(1), 8)] {
+        runtime.managers.execute_gauge(GaugeCommand::new(origin, key, GaugeOperation::Enable { max: None })).unwrap();
+        runtime.managers.execute_gauge(GaugeCommand::new(origin, key, GaugeOperation::ChangeValue { delta: amount })).unwrap();
+    }
+    let team = runtime.reconnect_state().0.attacker.unwrap();
+    assert_eq!(team.emitter_info.unwrap().energy, Some(7));
+    assert_eq!(team.energy, Some(8));
+    assert!(team.emitter.unwrap().buffs.iter().any(|buff| buff.buff_id == Some(31410410)));
 }

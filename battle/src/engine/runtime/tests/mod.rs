@@ -9,9 +9,12 @@ mod auto_battle;
 mod cards;
 mod cloth;
 mod core;
+mod myth_assist;
+mod myth_poison;
 mod qte;
 mod rounds;
 mod terminal;
+mod tower_compose;
 
 fn runtime(fight: Fight) -> BattleRuntime {
     BattleRuntime::new(

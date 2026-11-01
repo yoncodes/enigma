@@ -31,6 +31,7 @@ pub struct RoundState {
     pub hero_sp_attributes: Vec<FightHeroSpAttributeInfo>,
     pub last_change_hero_uid: Option<i64>,
     pub(crate) extra_rounds: usize,
+    pub(crate) extra_round_skills: std::collections::VecDeque<crate::engine::skill::action::SkillRequest>,
 }
 
 impl RoundState {
@@ -54,8 +55,9 @@ impl RoundState {
         }
     }
 
-    pub fn grant_extra_round(&mut self) {
+    pub fn grant_extra_round(&mut self, skill: crate::engine::skill::action::SkillRequest) {
         self.extra_rounds += 1;
+        self.extra_round_skills.push_back(skill);
     }
 
     pub fn begin_round(&mut self) {

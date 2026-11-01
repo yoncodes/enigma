@@ -31,7 +31,7 @@ impl BattleRuleManager {
     }
 
     pub(crate) fn seed_with_catalog(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
-        let rules = catalog.battle_rules(fight);
+        let rules = crate::engine::fight::rules::configured_with_catalog(catalog, fight);
         let owned_skills = rules
             .iter()
             .filter(|rule| rule.rule_type == AdditionRuleType::FightSkill)

@@ -19,8 +19,19 @@ use tracing::info;
 
 use crate::net::{app::AppState, session::handle_client};
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+// Battle resolution can nest many rule frames. Keep the worker stack consistent
+// with the isolated battle replay and regression-test workers.
+const BATTLE_WORKER_STACK_SIZE: usize = 32 * 1024 * 1024;
+
+fn main() -> anyhow::Result<()> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(BATTLE_WORKER_STACK_SIZE)
+        .build()?
+        .block_on(run())
+}
+
+async fn run() -> anyhow::Result<()> {
     init_tracing();
 
     let cfg = load_config()?;

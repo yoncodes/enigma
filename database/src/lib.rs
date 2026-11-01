@@ -1,3 +1,4 @@
+// Keep embedded migration line endings compatible with the existing server database.
 use sqlx::{Connection, Row, SqliteConnection, migrate, migrate::MigrateError};
 
 use std::{collections::HashMap, path::Path};

@@ -4,6 +4,67 @@ use super::settlement_and_rounds::{
 use super::*;
 
 #[test]
+fn wave_snapshot_preserves_device_roster_selected_skills_and_energy() {
+    use crate::engine::manager::conduit::{ConduitCommand, ConduitPowerChange, ConduitPowerChangeKind};
+    use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
+    crate::test_support::init_config();
+    let (entitys, sub_entitys) =
+        crate::engine::fight::defender::Defender::build_wave_entities(9001001, 4, 2, 0).unwrap();
+    let device = |uid, model_id| FightEntityInfo { uid: Some(uid), model_id: Some(model_id),
+        team_type: Some(1), current_hp: Some(100_000), attr: Some(sonettobuf::HeroAttribute {
+            hp: Some(100_000), attack: Some(1_000), ..Default::default()
+        }), ..Default::default() };
+    let mut runtime = runtime(Fight { episode_id: Some(90400199), battle_id: Some(9001001), version: Some(7), cur_round: Some(1),
+        cur_wave: Some(1), attacker: Some(FightTeam { entitys: vec![device(10, 3149), device(11, 3144)],
+            device_area: Some(sonettobuf::FightDeviceAreaInfo::default()), ..Default::default() }),
+        defender: Some(FightTeam { entitys, sub_entitys, ..Default::default() }), ..Default::default() });
+    let origin = CommandOrigin { domain: RuleDomain::Behavior, key: DefinitionKey::new(60291, "AddDevicePower") };
+    for (power_id, delta) in [(1, 4), (2, 5)] {
+        runtime.managers.conduit.execute(ConduitCommand::ChangePower(ConduitPowerChange {
+            origin, source_uid: 10, team: 1, power_id, delta, kind: ConduitPowerChangeKind::Standard,
+        })).unwrap();
+    }
+    runtime.managers.conduit.execute(ConduitCommand::SelectGroup { source_uid: 10, group: 2 }).unwrap();
+    runtime.managers.conduit.execute(ConduitCommand::StopSkill {
+        origin, source_uid: 10, team: 1, skill_id: 31490141,
+    }).unwrap();
+
+    let reconnect = runtime.reconnect_state().0.attacker.unwrap().device_area.unwrap();
+    assert_eq!(reconnect.devices.len(), 2);
+    assert_eq!(reconnect.devices.iter().find(|device| device.uid == Some(10)).unwrap().index, Some(2));
+    assert_eq!(reconnect.powers.iter().map(|p| (p.id.unwrap(), p.power.unwrap())).collect::<Vec<_>>(), vec![(1,4), (2,5)]);
+
+    let wave = runtime.managers.advance_wave(&mut runtime.fight).unwrap().unwrap();
+    assert_eq!(wave.wave, 2);
+    let area = wave.fight.attacker.as_ref().unwrap().device_area.as_ref().expect("wave snapshot must contain device area");
+    assert_eq!(area.devices.len(), 2);
+    let first = area.devices.iter().find(|device| device.uid == Some(10)).unwrap();
+    assert_eq!(first.index, Some(2));
+    assert!(first.skills[1].skills.iter().any(|skill| skill.skill_id == Some(31490141)
+        && skill.is_stop == Some(true)));
+    assert_eq!(area.powers.iter().map(|p| (p.id.unwrap(), p.power.unwrap())).collect::<Vec<_>>(), vec![(1,4), (2,5)]);
+
+    runtime.managers.conduit.execute(ConduitCommand::SelectGroup { source_uid: 10, group: 1 }).unwrap();
+    let mut phase_managers = runtime.managers.clone();
+    let pool = crate::engine::skill::target::TargetPool::from_fight(&wave.fight);
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &wave.fight);
+    let result = crate::engine::runtime::schedule::run_conduit_phase(
+        phase_managers.catalog(), &wave.fight, &mut phase_managers, &pool, &mut catalog,
+        &mut RoundDeterminism::default(), crate::engine::skill::target::TargetContext::default(),
+        &[sonettobuf::FightDeviceOper { uid: Some(10), index: Some(1) }],
+    ).expect("selected device skills should execute after the wave change");
+    assert!(result.outcomes.iter().any(|outcome| matches!(outcome,
+        crate::engine::runtime::executor::RuleOutcome::Conduit(
+            crate::engine::manager::conduit::ConduitChange::SkillBegan { source_uid: 10,
+                skill_id: 31490121, spent, .. }) if *spent > 0)),
+        "the configured paid device spell must consume energy after the wave change");
+    runtime.managers.conduit.execute(ConduitCommand::BeginSkill { source_uid: 10,
+        skill_id: 31490121, cost_reduction: 0 }).unwrap();
+    assert_eq!(runtime.managers.conduit.power(1, 1), 1);
+    assert_eq!(runtime.managers.conduit.power(1, 2), 5);
+}
+
+#[test]
 fn wave_entry_round_start_condition_is_not_repeated_on_the_next_request() {
     crate::test_support::init_config();
     let (entitys, sub_entitys) =
@@ -196,12 +257,24 @@ fn twins_full_harmonization_proc_survives_a_wave_transition() {
                 || effect.fight_step.as_ref().is_some_and(has_switch)
         })
     }
+    fn has_device_in_wave(step: &sonettobuf::FightStep) -> bool {
+        step.act_effect.iter().any(|effect| {
+            (effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Newchangewave as i32)
+                && effect.fight.as_ref().and_then(|fight| fight.attacker.as_ref())
+                    .and_then(|team| team.device_area.as_ref())
+                    .is_some_and(|area| area.devices.iter().any(|device| device.uid == Some(10))))
+                || effect.fight_step.as_ref().is_some_and(has_device_in_wave)
+        })
+    }
     assert_eq!(runtime.fight.cur_wave, Some(2));
     assert_eq!(runtime.managers.conduit.selected_group(10), Some(3));
     assert!(
         round.fight_step.iter().any(has_switch)
             || round.next_round_begin_step.iter().any(has_switch)
     );
+    assert!(round.fight_step.iter().any(has_device_in_wave)
+        || round.next_round_begin_step.iter().any(has_device_in_wave),
+        "the client-facing wave message must retain the device area");
 }
 
 fn wave_clear_runtime(

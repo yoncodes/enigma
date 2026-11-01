@@ -41,6 +41,26 @@ pub struct ConduitArea {
     pub powers: Vec<ConduitPower>,
 }
 
+impl ConduitArea {
+    pub(crate) fn to_protocol(&self) -> sonettobuf::FightDeviceAreaInfo {
+        sonettobuf::FightDeviceAreaInfo {
+            devices: self.devices.iter().map(|device| sonettobuf::FightDeviceInfo {
+                uid: Some(device.uid),
+                index: Some(device.selected_group),
+                skills: device.skill_groups.iter().map(|group| sonettobuf::FightDeviceSkillGroupInfo {
+                    skills: group.iter().map(|skill| sonettobuf::FightDeviceSkillInfo {
+                        skill_id: Some(skill.skill_id), cost_type: Some(skill.cost_type),
+                        cost_value: Some(skill.cost_value), is_stop: Some(skill.is_stopped),
+                    }).collect(),
+                }).collect(),
+            }).collect(),
+            powers: self.powers.iter().map(|power| sonettobuf::FightDevicePower {
+                id: Some(power.id), power: Some(power.value),
+            }).collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConduitCommand {
     Initialize {
@@ -294,6 +314,10 @@ pub struct ConduitManager {
 }
 
 impl ConduitManager {
+    pub(crate) fn area_snapshot(&self, team: i32) -> Option<sonettobuf::FightDeviceAreaInfo> {
+        self.areas.get(&team).map(ConduitArea::to_protocol)
+    }
+
     pub fn initialization_commands(&self) -> Vec<ConduitCommand> {
         self.areas
             .iter()

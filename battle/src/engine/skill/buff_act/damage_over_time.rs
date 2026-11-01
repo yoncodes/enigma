@@ -139,6 +139,12 @@ fn damage_rule_op_with_duration(
     remaining_duration: bool,
 ) -> Option<RuleOp> {
     let kind = DamageOverTimeKind::from_subscriber(subscriber)?;
+    if matches!(kind, DamageOverTimeKind::Burn)
+        && managers.buff.active_features_for_owner(&managers.hp, subscriber.owner_uid)
+            .iter().any(|feature| feature.owner_alive && buff_act::is_kind(feature, BuffActKind::ImmunityBurn))
+    {
+        return None;
+    }
     let origin = super::command_origin(subscriber)?;
     let source_uid = if subscriber.source_uid != 0 {
         subscriber.source_uid
@@ -271,7 +277,7 @@ fn damage_rule_op_with_duration(
     ))))
 }
 
-fn poison_damage_multiplier(managers: &BattleManagers, source_uid: i64, target_uid: i64) -> i32 {
+pub(crate) fn poison_damage_multiplier(managers: &BattleManagers, source_uid: i64, target_uid: i64) -> i32 {
     let value = |uid, attr_id| {
         managers.attribute.get(uid, attr_id)
             + managers.buff.attribute_delta(uid, attr_id)
@@ -282,7 +288,7 @@ fn poison_damage_multiplier(managers: &BattleManagers, source_uid: i64, target_u
     .max(0)
 }
 
-fn poison_can_crit(managers: &BattleManagers, pool: &TargetPool, source_uid: i64) -> bool {
+pub(crate) fn poison_can_crit(managers: &BattleManagers, pool: &TargetPool, source_uid: i64) -> bool {
     let source_is_attacker = pool.source_is_attacker(source_uid);
     managers
         .buff
@@ -315,6 +321,17 @@ pub fn settlement_rule_op(
     subscriber: &BuffActSubscriber,
 ) -> Option<RuleOp> {
     let kind = DamageOverTimeKind::from_subscriber(subscriber)?;
+    if matches!(kind, DamageOverTimeKind::Burn)
+        && managers.buff.active_features_for_owner(&managers.hp, subscriber.owner_uid)
+            .iter().any(|feature| {
+                feature.owner_alive && buff_act::is_kind(feature, BuffActKind::LockBurn)
+                    && feature.values.get(1).is_some_and(|id| {
+                        *id == subscriber.buff_id || *id == managers.catalog().buff_type_id(subscriber.buff_id)
+                    })
+            })
+    {
+        return None;
+    }
     let buff = managers
         .buff
         .snapshot(subscriber.owner_uid, subscriber.buff_uid)?;

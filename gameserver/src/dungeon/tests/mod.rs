@@ -92,4 +92,9 @@ fn act128_runtime_with_score(
 mod act128;
 mod act229;
 mod lifecycle;
+mod permanent_tower;
 mod settlement;
+
+mod tts13;
+mod tower_boss;
+mod atonal_unlock;

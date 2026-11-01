@@ -1,4 +1,55 @@
 use super::*;
+
+#[tokio::test]
+async fn act128_gallery_routes_return_scores_and_push_claimed_experience() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 537;
+    let activity_id = 138520;
+    sqlx::query("INSERT INTO users (id, username, created_at, updated_at) VALUES (?, 'act128-gallery-route', 0, 0)")
+        .bind(player_id).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO user_activity_state
+        (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+        VALUES (?, 138520, ?, 2, 5100000, 5100000, '', 0)")
+        .bind(player_id).bind(database::db::game::activity_state::ActivityStateKind::Act128BossScore.id())
+        .execute(&pool).await.unwrap();
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(8);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    let mut data = Vec::new();
+    sonettobuf::GetGalleryInfosRequest { activity_id: Some(activity_id) }.encode(&mut data).unwrap();
+    dispatch_command(&mut ctx, ClientPacket { sequence: 1, cmd_id: CmdId::GetGalleryInfosCmd as i16,
+        up_tag: 21, data }.encode()).await.unwrap();
+    let CommandPacket::Reply { cmd_id: CmdId::GetGalleryInfosCmd, body, result_code: 0, .. }
+        = packets.try_recv().unwrap() else { panic!("gallery reply missing"); };
+    let info = sonettobuf::GetGalleryInfosReply::decode(&*body).unwrap();
+    let boss = info.gallery_detail.iter().find(|d| d.r#type == Some(106)).unwrap();
+    assert_eq!((boss.have_fight, boss.highest_point), (Some(true), Some(5_100_000)));
+
+    let mut data = Vec::new();
+    sonettobuf::Act128GetExpRequest { activity_id: Some(activity_id), r#type: Some(106) }
+        .encode(&mut data).unwrap();
+    let request = ClientPacket { sequence: 2, cmd_id: CmdId::Act128GetExpCmd as i16,
+        up_tag: 22, data }.encode();
+    dispatch_command(&mut ctx, request.clone()).await.unwrap();
+    let CommandPacket::Push { cmd_id: CmdId::CurrencyChangePushCmd, body, .. }
+        = packets.try_recv().unwrap() else { panic!("currency push missing"); };
+    let currency = CurrencyChangePush::decode(&*body).unwrap();
+    assert_eq!((currency.change_currency[0].currency_id, currency.change_currency[0].quantity),
+        (Some(3206), Some(400)));
+    let CommandPacket::Reply { cmd_id: CmdId::Act128GetExpCmd, body, result_code: 0, .. }
+        = packets.try_recv().unwrap() else { panic!("experience reply missing"); };
+    let reply = sonettobuf::Act128GetExpReply::decode(&*body).unwrap();
+    assert_eq!((reply.player_exp, reply.accept_exp_point), (Some(400), Some(5_100_000)));
+    dispatch_command(&mut ctx, request).await.unwrap();
+    let CommandPacket::Reply { cmd_id: CmdId::Act128GetExpCmd, body, result_code: 0, .. }
+        = packets.try_recv().unwrap() else { panic!("repeat claim reply missing"); };
+    assert_eq!(sonettobuf::Act128GetExpReply::decode(&*body).unwrap().player_exp, Some(400));
+    assert!(packets.try_recv().is_err());
+}
 use sonettobuf::{Act128GetTotalRewardsReply, Act128GetTotalRewardsRequest};
 
 #[tokio::test]
