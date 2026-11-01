@@ -49,6 +49,11 @@ pub(super) fn supports_combatant(behavior: &ParsedBehavior) -> bool {
     )
 }
 
+pub(super) fn supports_special(behavior: &ParsedBehavior) -> bool {
+    (behavior.raw_args.is_empty() || behavior.raw_args.len() == 1)
+        && matches!(behavior.args.as_slice(), [model_id] if *model_id > 0)
+}
+
 pub(super) fn supports_add_summoned(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [summoned_id, count, level] if *summoned_id > 0 && *count > 0 && *level > 0)
 }
@@ -354,7 +359,7 @@ mod tests {
             vec!["151416".into()],
         );
 
-        let ops = Handler::emit_ops(
+        let ops = super::super::rule_ops(
             BehaviorOpContext {
                 source_uid: -2,
                 source_team: 2,
