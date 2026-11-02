@@ -199,6 +199,34 @@ mod tests {
         assert_eq!((state.x, state.y), (18, 18));
     }
 
+    #[test]
+    fn ice_slide_stops_before_a_player_placed_rock() {
+        use database::db::game::explore_runtime::ObjectState;
+
+        let layout = config::explore_layout::layout(102).unwrap().unwrap();
+        let mut state = MapState::new(layout);
+        state.x = 18;
+        state.y = 18;
+        state.objects.insert(1_000_002, ObjectState {
+            kind: 209, status: 3, status2: String::new(), x: 18, y: 14, direction: 0,
+        });
+        let original = state.clone();
+        assert!(explore_engine::move_client(&mut state, layout, 18, 16).is_err());
+        assert_eq!(state, original, "a slide cannot stop before the square next to the rock");
+        explore_engine::move_client(&mut state, layout, 18, 15).unwrap();
+        assert_eq!((state.x, state.y), (18, 15));
+        assert_eq!((state.objects[&1_000_002].x, state.objects[&1_000_002].y), (18, 14));
+        let stopped = state.clone();
+        assert!(explore_engine::move_client(&mut state, layout, 18, 14).is_err());
+        assert_eq!(state, stopped, "the rock must remain an obstacle");
+
+        let mut unsupported = original;
+        unsupported.objects.get_mut(&1_000_002).unwrap().kind = 216;
+        let before = unsupported.clone();
+        assert!(explore_engine::move_client(&mut unsupported, layout, 18, 15).is_err());
+        assert_eq!(unsupported, before, "other dynamic objects must not be treated as rocks");
+    }
+
     #[tokio::test]
     async fn elevator_height_survives_reload_and_allows_both_directions() {
         let layout = config::explore_layout::layout(101).unwrap().unwrap();

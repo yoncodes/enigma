@@ -11,6 +11,76 @@ fn request<M: Message>(cmd: CmdId, message: M, tag: u8) -> Vec<u8> {
 }
 
 #[tokio::test]
+async fn map_102_rune_and_return_slide_follow_client_requests() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("data/excel2json");
+    config::init(data_dir.to_str().unwrap()).unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let user_id = 950011_i64;
+    sqlx::query("INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, 0, 0)")
+        .bind(user_id).bind("isolated-rune-slide").execute(&pool).await.unwrap();
+    let layout = config::explore_layout::layout(102).unwrap().unwrap();
+    let mut map = database::db::game::explore_runtime::MapState::new(layout);
+    map.x = 17; map.y = 22;
+    let mut tx = pool.begin().await.unwrap();
+    database::db::game::explore_runtime::ensure_profile(&mut tx, user_id).await.unwrap();
+    database::db::game::explore_runtime::insert_map(&mut tx, user_id, &map).await.unwrap();
+    database::db::game::explore_runtime::set_current_map(&mut tx, user_id, 102).await.unwrap();
+    let item = database::db::game::explore_runtime::grant_item(&mut tx, user_id, 150002, 1).await.unwrap()[0];
+    database::db::game::explore_runtime::select_item(&mut tx, user_id, item.uid.unwrap()).await.unwrap();
+    tx.commit().await.unwrap();
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(64);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(user_id, PlayerState::new(user_id, 0)));
+    dispatch_command(&mut ctx, request(CmdId::ExploreInteractCmd,
+        ExploreInteractRequest { id: Some(35), params: None }, 1)).await.unwrap();
+    let mut interacted = false;
+    while let Ok(packet) = packets.try_recv() {
+        if let CommandPacket::Reply { cmd_id: CmdId::ExploreInteractCmd, result_code, .. } = packet {
+            assert_eq!(result_code, 0); interacted = true;
+        }
+    }
+    assert!(interacted);
+    for (tag, (x, y)) in [(18,22),(18,21),(18,20),(18,19),(18,18),(18,13)].into_iter().enumerate() {
+        dispatch_command(&mut ctx, request(CmdId::ExploreMoveCmd,
+            ExploreMoveRequest { posx: Some(x), posy: Some(y), interact_id: None }, tag as u8 + 2)).await.unwrap();
+        let mut replied = false;
+        while let Ok(packet) = packets.try_recv() {
+            if let CommandPacket::Reply { cmd_id: CmdId::ExploreMoveCmd, result_code, .. } = packet {
+                assert_eq!(result_code, 0, "movement to ({x}, {y}) rejected"); replied = true;
+            }
+        }
+        assert!(replied);
+    }
+    let mut tx = state.db.begin().await.unwrap();
+    let mut saved = database::db::game::explore_runtime::load_map(&mut tx, user_id, 102).await.unwrap().unwrap();
+    assert_eq!((saved.state.x, saved.state.y), (18, 13));
+    // Simulate a persisted player-placed stone on the return slide.
+    saved.state.x = 18;
+    saved.state.y = 18;
+    saved.state.objects.insert(1_000_002, database::db::game::explore_runtime::ObjectState {
+        kind: 209, status: 3, status2: String::new(), x: 18, y: 14, direction: 0,
+    });
+    database::db::game::explore_runtime::save_map(&mut tx, user_id, &mut saved).await.unwrap();
+    tx.commit().await.unwrap();
+    dispatch_command(&mut ctx, request(CmdId::ExploreMoveCmd,
+        ExploreMoveRequest { posx: Some(18), posy: Some(15), interact_id: None }, 9)).await.unwrap();
+    let mut replied = false;
+    while let Ok(packet) = packets.try_recv() {
+        if let CommandPacket::Reply { cmd_id: CmdId::ExploreMoveCmd, result_code, .. } = packet {
+            assert_eq!(result_code, 0, "slide should stop before the placed stone"); replied = true;
+        }
+    }
+    assert!(replied);
+    let mut tx = state.db.begin().await.unwrap();
+    let saved = database::db::game::explore_runtime::load_map(&mut tx, user_id, 102).await.unwrap().unwrap();
+    assert_eq!((saved.state.x, saved.state.y), (18, 15));
+    assert_eq!((saved.state.objects[&1_000_002].x, saved.state.objects[&1_000_002].y), (18, 14));
+    tx.commit().await.unwrap();
+}
+
+#[tokio::test]
 async fn first_map_southern_chest_can_be_reached_and_claimed_after_area_reveal() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("data/excel2json");
     config::init(data_dir.to_str().unwrap()).unwrap();

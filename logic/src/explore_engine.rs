@@ -483,12 +483,14 @@ pub(crate) fn move_client_with_ignored_unit(state: &mut MapState, layout: &Layou
         match move_basic_with_ignored_unit(&mut probe, layout, px, py, ignored) {
             Err(MoveError::InvalidStep | MoveError::UnavailableNode) => {}
             Err(MoveError::UnsupportedObject(id)) => {
-                let unit = layout.unit(id).ok_or(MoveError::UnsupportedObject(id))?;
                 let object = next.objects.get(&id).ok_or(MoveError::InvalidObjectState)?;
-                let blocked = if matches!(unit.kind, 202 | 227) {
-                    object.status & 4 == 0
-                } else {
-                    !unit.default_walkable
+                let blocked = match layout.unit(id) {
+                    Some(unit) if matches!(unit.kind, 202 | 227) => object.status & 4 == 0,
+                    Some(unit) => !unit.default_walkable,
+                    // A placed rock is a dynamic map object, so it has no
+                    // static layout entry. It still stops an ice slide.
+                    None => object.kind == 209 && object.status & 1 != 0
+                        && (object.x, object.y) == (px, py),
                 };
                 if !blocked { return Err(MoveError::UnsupportedObject(id)); }
             }
