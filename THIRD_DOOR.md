@@ -8,4 +8,6 @@ The normal server setup and matching game-data requirements in the main README s
 
 A legacy profile containing only the initial map unlock can be initialized; older summary-only progress without detailed map state is preserved but cannot be resumed automatically.
 
-Tests include map routes, router interactions and per-player persistence. They do not replace a complete in-client playthrough of all maps.
+**1-1 (map 101, The Gambit): verified by automated tests.** The tests exercise a route to the exit and successor-map unlocks, using simulated battle victories. A separate router test covers crossing the revealed southern-area marker, opening its chest, preserving collection totals, and rejecting duplicate rewards. These checks do not establish full in-client playthrough parity.
+
+Tests also cover other map mechanics, router interactions and per-player persistence. They do not replace a complete in-client playthrough of all maps.
