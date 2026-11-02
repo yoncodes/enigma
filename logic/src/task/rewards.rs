@@ -48,10 +48,14 @@ pub(super) async fn add_claim_activity_in_transaction(
     Ok((vec![activity], rewards))
 }
 
-pub(super) fn task_rewards(type_id: i32, task_id: i32) -> reward::RewardSet {
-    task_bonus(type_id, task_id)
+pub(super) fn task_rewards(type_id: i32, task_id: i32) -> Result<reward::RewardSet, AppError> {
+    if type_id == task_db::EXPLORE_TASK_TYPE {
+        let task = config::explore_tasks::task(task_id)?.ok_or(AppError::InvalidRequest)?;
+        return reward::parse_strict(&task.bonus);
+    }
+    Ok(task_bonus(type_id, task_id)
         .map(|bonus| parse_task_reward(&bonus))
-        .unwrap_or_default()
+        .unwrap_or_default())
 }
 
 fn task_bonus(type_id: i32, task_id: i32) -> Option<String> {

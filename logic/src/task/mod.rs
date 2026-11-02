@@ -74,6 +74,9 @@ impl TaskManager {
                 .sync_room_tasks(db, config::configs::get())
                 .await?;
         }
+        if db_type_ids.is_empty() || db_type_ids.contains(&task_db::EXPLORE_TASK_TYPE) {
+            task_db::sync_explore_tasks(db, self.player_id).await?;
+        }
         let tasks = task_db::list_by_types(db, self.player_id, db_type_ids.clone()).await?;
         self.cache_tasks(&tasks);
         let activity = task_db::list_activity(db, self.player_id, db_type_ids)
@@ -113,7 +116,7 @@ impl TaskManager {
         };
         let (activity, mut reward_set) =
             add_claim_activity_in_transaction(&mut tx, self.player_id, &task).await?;
-        reward_set.extend(task_rewards(task.type_id, task.task_id));
+        reward_set.extend(task_rewards(task.type_id, task.task_id)?);
         add_battle_pass_score(&mut reward_set, std::slice::from_ref(&task));
         let material_changes = reward_set.material_changes();
         let rewards = reward::apply_in_transaction(&mut tx, db, self.player_id, reward_set).await?;
@@ -171,7 +174,7 @@ impl TaskManager {
                 add_claim_activity_in_transaction(&mut tx, self.player_id, task).await?;
             activity.extend(updated_activity);
             reward_set.extend(activity_rewards);
-            reward_set.extend(task_rewards(task.type_id, task.task_id));
+            reward_set.extend(task_rewards(task.type_id, task.task_id)?);
         }
         add_battle_pass_score(&mut reward_set, &tasks);
 

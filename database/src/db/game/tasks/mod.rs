@@ -6,6 +6,8 @@ use super::battle_pass;
 
 mod activity;
 mod event;
+mod explore;
+pub use explore::{EXPLORE_TASK_TYPE, sync_explore_tasks, sync_explore_tasks_in_transaction};
 
 pub use activity::{
     add_activity, add_activity_in_transaction, claim_activity_bonus,

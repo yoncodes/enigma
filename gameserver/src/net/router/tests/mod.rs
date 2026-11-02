@@ -55,6 +55,7 @@ mod activity_events;
 mod activity_pass;
 mod activity_rewards;
 mod arcade;
+mod explore;
 mod progression;
 mod social;
 mod teaching;

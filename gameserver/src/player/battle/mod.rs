@@ -418,6 +418,43 @@ impl ActiveBattle {
         Ok(consumed)
     }
 
+    /// Exploration encounters have their own persisted context and no normal
+    /// episode entry cost. Bind both records in a single transaction.
+    pub async fn activate_explore(
+        &mut self,
+        pool: &SqlitePool,
+        player_id: i64,
+        pending: &crate::logic::explore_battle::PendingBattle,
+    ) -> Result<(), AppError> {
+        let layout = config::explore_layout::layout(pending.map_id)?
+            .ok_or(AppError::InvalidRequest)?;
+        if self.fight_id.is_some() || pending.fight_id.is_some()
+            || self.battle_id != pending.battle_id || self.episode_id != layout.episode_id
+            || self.chapter_id != layout.chapter_id
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        let checkpoint = self.checkpoint_json()?;
+        let entry_cost = serde_json::to_string(&RewardSet::default())?;
+        let mut tx = pool.begin().await?;
+        let fight_id = battle::create_fight_instance_in_transaction(
+            &mut tx,
+            battle::NewFightInstance {
+                user_id: player_id,
+                episode_id: self.episode_id,
+                battle_id: self.battle_id,
+                multiplication: 1,
+                entry_cost: &entry_cost,
+                checkpoint: &checkpoint,
+                created_at: ServerTime::now_ms(),
+            },
+        ).await?;
+        crate::logic::explore_battle::bind_fight(&mut tx, player_id, pending, fight_id).await?;
+        tx.commit().await?;
+        self.fight_id = Some(fight_id);
+        Ok(())
+    }
+
     fn from_built_with_seed(
         episode_id: i32,
         battle_id: i32,

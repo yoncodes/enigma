@@ -181,6 +181,10 @@ pub async fn on_map_element(
     }
     ctx.send_reply(CmdId::MapElementCmd, completion.reply, 0, req.up_tag)
         .await?;
+    let open_infos = ctx.player()?.profile.reconcile_open_infos(ctx.state.db).await?;
+    if !open_infos.is_empty() {
+        ctx.notify(CmdId::UpdateOpenPushCmd, UpdateOpenPush { open_infos }).await?;
+    }
     push::send_dungeon_map_progression(ctx, player_id).await
 }
 
@@ -318,6 +322,23 @@ pub async fn on_start_dungeon(
         .get(episode_id)
         .ok_or(AppError::InvalidRequest)?;
     let chapter_id = request.chapter_id.unwrap_or(episode_cfg.chapter_id);
+    if episode_cfg.r#type == 14 {
+        let pending = logic::explore_battle::pending(ctx.state.db, player_id).await?
+            .ok_or(AppError::InvalidRequest)?;
+        let layout = config::explore_layout::layout(pending.map_id)?.ok_or(AppError::InvalidRequest)?;
+        if pending.fight_id.is_some() || layout.episode_id != episode_id
+            || layout.chapter_id != chapter_id || chapter_id != episode_cfg.chapter_id
+            || multiplier != 1 || request.use_record.unwrap_or(false)
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        let mut active = ActiveBattle::prepare(
+            ctx.state.db, player_id, episode_id, pending.battle_id, request,
+        ).await?;
+        active.activate_explore(ctx.state.db, player_id, &pending).await?;
+        ctx.player_mut()?.battle.start_active(active);
+        return send_active_battle_start(ctx, req.up_tag).await;
+    }
     if !dungeon::can_start_episode(ctx.state.db, player_id, chapter_id, episode_id).await? {
         return Err(AppError::InvalidRequest);
     }
@@ -543,7 +564,10 @@ pub async fn on_fight_end_fight(
             None
         };
 
-        if !is_abort
+        if is_exploration_fight(ctx.state.db, player_id, active).await? {
+            let fight_id = active.fight_id.ok_or(AppError::InvalidRequest)?;
+            logic::explore_battle::settle(ctx.state.db, player_id, fight_id, active.battle_id, !is_abort && won).await?;
+        } else if !is_abort
             && won
             && (compose_handled || (active.tower_type.is_none() && active.act229_context.is_none()))
         {
@@ -674,7 +698,14 @@ pub async fn on_dungeon_end_dungeon(
     let active = ctx.player()?.battle.active_snapshot();
 
     if let Some(active) = active.as_ref() {
-        if msg.is_abort.unwrap_or(false) {
+        if is_exploration_fight(ctx.state.db, player_id, active).await? {
+            let is_abort = msg.is_abort.unwrap_or(false);
+            let fight_id = active.fight_id.ok_or(AppError::InvalidRequest)?;
+            logic::explore_battle::settle(ctx.state.db, player_id, fight_id, active.battle_id, !is_abort && active.is_victory()).await?;
+            ctx.player_mut()?.battle.clear_active();
+            let end = if is_abort { dungeon::abort_end_fight(active) } else { dungeon::completed_end_fight(active) };
+            push::send_end_fight_push(ctx, end).await?;
+        } else if msg.is_abort.unwrap_or(false) {
             let tower_push = tower::abort_finish_push(ctx.state.db, player_id, active).await?;
             let (dungeon_update, end_dungeon) =
                 match dungeon::act128_score_dungeon_updates(ctx.state.db, player_id, active).await?
@@ -753,6 +784,26 @@ pub async fn on_dungeon_end_dungeon(
         req.up_tag,
     )
     .await
+}
+
+async fn is_exploration_fight(
+    db: &sqlx::SqlitePool, player_id: i64, active: &ActiveBattle,
+) -> Result<bool, AppError> {
+    let Some(episode) = configs::get().episode.get(active.episode_id) else {
+        return Ok(false);
+    };
+    if episode.r#type != 14 {
+        return Ok(false);
+    }
+    let pending = logic::explore_battle::pending(db, player_id).await?
+        .ok_or(AppError::InvalidRequest)?;
+    let layout = config::explore_layout::layout(pending.map_id)?.ok_or(AppError::InvalidRequest)?;
+    if pending.fight_id != active.fight_id || pending.battle_id != active.battle_id
+        || layout.episode_id != active.episode_id || layout.chapter_id != active.chapter_id
+    {
+        return Err(AppError::InvalidRequest);
+    }
+    Ok(true)
 }
 
 pub async fn on_cover_dungeon_record(
