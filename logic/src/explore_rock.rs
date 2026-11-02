@@ -1,6 +1,6 @@
 //! The first chapter's portable rock, stored atomically with map progress.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use anyhow::{Context, Result, ensure};
 use config::explore_layout::{Layout, Unit};
@@ -53,11 +53,6 @@ async fn allocate_rock_uid(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, user_id
     anyhow::bail!("stone table identifier slots exhausted")
 }
 
-fn legacy_table_rock_uid(object: &ObjectState) -> Option<i64> {
-    serde_json::from_str::<serde_json::Value>(&object.status2).ok()?
-        .get("rockUid")?.as_i64().filter(|uid| *uid > 0)
-}
-
 fn set_table_rock(object: &mut ObjectState, placed: bool) {
     // status is client-visible gameplay state, not an ownership association.
     object.status2 = serde_json::json!({"status": i32::from(placed)}).to_string();
@@ -81,86 +76,6 @@ async fn update_bound_table(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, user_i
         explore_runtime::save_map(tx, user_id, &mut origin).await?;
     }
     Ok(())
-}
-
-/// Migrate previously stored associations to engine-derived identifiers.
-/// If an older save has no association at all, infer only a unique global pair.
-pub(crate) async fn recover_legacy_binding(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, user_id: i64,
-    stored: &mut explore_runtime::StoredMap,
-) -> Result<bool> {
-    let saved: Vec<(i32, String)> = sqlx::query_as(
-        "SELECT map_id, state_json FROM user_explore_runtime_maps WHERE user_id = ?"
-    ).bind(user_id).fetch_all(&mut **tx).await?;
-    let rocks: Vec<(i64, i32)> = sqlx::query_as(
-        "SELECT uid, status FROM user_explore_runtime_items WHERE user_id = ? AND item_id = ? AND quantity = 1"
-    ).bind(user_id).bind(ROCK_ITEM).fetch_all(&mut **tx).await?;
-    let mut unbound_tables = Vec::new();
-    let mut bound_uids = BTreeSet::new();
-    let mut legacy_pairs = Vec::new();
-    let mut legacy_counts = BTreeMap::<i64, usize>::new();
-    let mut maps = Vec::new();
-    for (map_id, json) in saved {
-        // An unrelated incompatible map must not prevent entering this map.
-        let Ok(state) = serde_json::from_str::<MapState>(&json) else { return Ok(false) };
-        if state.map_id != map_id { return Ok(false); }
-        for (&id, object) in &state.objects {
-            if object.kind != 217 || object.status & 4 == 0 { continue; }
-            if let Some(uid) = legacy_table_rock_uid(object) {
-                bound_uids.insert(uid);
-                *legacy_counts.entry(uid).or_default() += 1;
-                if map_id == stored.state.map_id { legacy_pairs.push((id, uid)); }
-            } else if let Some(&(uid, _)) = rocks.iter().find(|(uid, _)| rock_source(*uid) == Some((map_id, id))) {
-                bound_uids.insert(uid);
-            } else { unbound_tables.push((map_id, id)); }
-        }
-        maps.push(state);
-    }
-    let unbound_rocks: Vec<_> = rocks.iter().copied().filter(|(uid, _)|
-        !bound_uids.contains(uid) && rock_source(*uid).is_none()).collect();
-    if unbound_tables.len() == 1 && unbound_tables[0].0 == stored.state.map_id && unbound_rocks.len() == 1 {
-        legacy_pairs.push((unbound_tables[0].1, unbound_rocks[0].0));
-    }
-    let mut changed = false;
-    for (table_id, old_uid) in legacy_pairs.iter().copied() {
-        // Never migrate a duplicate or ambiguous old association.
-        if legacy_counts.get(&old_uid).copied().unwrap_or(1) != 1 { continue; }
-        let Some((_, item_status)) = rocks.iter().find(|(uid, _)| *uid == old_uid) else { continue };
-        let Ok(old_id) = i32::try_from(old_uid) else { continue };
-        let placements: Vec<_> = maps.iter().filter(|map| map.objects.get(&old_id)
-            .is_some_and(|object| object.kind == ROCK_KIND && object.status & 1 != 0)).collect();
-        let placement_map = match *item_status {
-            PLACED_STATUS if placements.len() == 1 => Some(placements[0].map_id),
-            0 if placements.is_empty() => None,
-            _ => continue,
-        };
-        let placed = placement_map.is_some();
-        let new_uid = if rock_source(old_uid) == Some((stored.state.map_id, table_id)) { old_uid }
-            else { allocate_rock_uid(tx, user_id, &stored.state, table_id).await? };
-        if new_uid != old_uid {
-            let updated = sqlx::query("UPDATE user_explore_runtime_items SET uid = ? WHERE user_id = ? AND uid = ? AND item_id = ?")
-                .bind(new_uid).bind(user_id).bind(old_uid).bind(ROCK_ITEM).execute(&mut **tx).await?;
-            ensure!(updated.rows_affected() == 1, "legacy rock changed during migration");
-            sqlx::query("UPDATE user_explore_runtime_profiles SET use_item_uid = ? WHERE user_id = ? AND use_item_uid = ?")
-                .bind(new_uid).bind(user_id).bind(old_uid).execute(&mut **tx).await?;
-            if let Some(other_id) = placement_map.filter(|id| *id != stored.state.map_id) {
-                let mut other = explore_runtime::load_map(tx, user_id, other_id).await?.context("legacy rock map is missing")?;
-                let rock = other.state.objects.remove(&old_id).context("legacy placed rock is missing")?;
-                ensure!(rock.kind == ROCK_KIND && rock.status & 1 != 0, "legacy placed rock changed");
-                ensure!(other.state.objects.insert(new_uid as i32, rock).is_none(), "new rock identifier is occupied");
-                explore_runtime::save_map(tx, user_id, &mut other).await?;
-            }
-            if let Some(rock) = stored.state.objects.remove(&old_id) {
-                ensure!(rock.kind == ROCK_KIND, "legacy rock identifier conflicts with a map object");
-                ensure!(stored.state.objects.insert(new_uid as i32, rock).is_none(), "new rock identifier is occupied");
-            }
-        }
-        let table = stored.state.objects.get_mut(&table_id).context("legacy stone table is missing")?;
-        set_table_rock(table, placed);
-        changed = true;
-    }
-    if changed { explore_runtime::save_map(tx, user_id, stored).await?; }
-    Ok(changed)
 }
 
 pub struct RockChange {
@@ -451,44 +366,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn legacy_binding_is_recovered_only_when_unambiguous() {
-        let user = 992005;
-        let pool = setup(user, 5, 12).await;
-        let uid = take(&pool, user, 29).await.unwrap().item.uid.unwrap();
-        set_position(&pool, user, 5, 5).await;
-        place(&pool, user, uid, 6, 5).await.unwrap();
-        let mut tx = pool.begin().await.unwrap();
-        let mut map = explore_runtime::load_map(&mut tx, user, 102).await.unwrap().unwrap();
-        // Recreate a pre-fix item identifier that carried no origin information.
-        let old_uid = 1_000_001_i64;
-        sqlx::query("UPDATE user_explore_runtime_items SET uid = ? WHERE uid = ?")
-            .bind(old_uid).bind(uid).execute(&mut *tx).await.unwrap();
-        let rock = map.state.objects.remove(&(uid as i32)).unwrap();
-        map.state.objects.insert(old_uid as i32, rock);
-        map.state.objects.get_mut(&29).unwrap().status2.clear();
-        explore_runtime::save_map(&mut tx, user, &mut map).await.unwrap();
-        let second = config::explore_layout::layout(102).unwrap().unwrap().areas.iter()
-            .flat_map(|area| &area.units).find(|unit| unit.kind == 217 && unit.id != 29).unwrap().id;
-        map.state.objects.get_mut(&second).unwrap().status |= 4;
-        explore_runtime::save_map(&mut tx, user, &mut map).await.unwrap();
-        assert!(!recover_legacy_binding(&mut tx, user, &mut map).await.unwrap());
-        assert!(map.state.objects[&29].status2.is_empty());
-        map.state.objects.get_mut(&second).unwrap().status &= !4;
-        explore_runtime::save_map(&mut tx, user, &mut map).await.unwrap();
-        assert!(recover_legacy_binding(&mut tx, user, &mut map).await.unwrap());
-        let value: serde_json::Value = serde_json::from_str(&map.state.objects[&29].status2).unwrap();
-        assert_eq!(value["status"], 1);
-        assert!(value.get("rockUid").is_none());
-        let migrated: i64 = sqlx::query_scalar("SELECT uid FROM user_explore_runtime_items WHERE user_id = ? AND item_id = ?")
-            .bind(user).bind(ROCK_ITEM).fetch_one(&mut *tx).await.unwrap();
-        assert_eq!(rock_source(migrated), Some((102, 29)));
-        assert_eq!((map.state.objects[&(migrated as i32)].x, map.state.objects[&(migrated as i32)].y), (6, 5));
-        tx.commit().await.unwrap();
-        set_position(&pool, user, 5, 12).await;
-        assert!(take(&pool, user, 29).await.is_ok());
-    }
-
-    #[tokio::test]
     async fn recall_does_not_remove_another_tables_rock() {
         let user = 992006;
         let pool = setup(user, 5, 12).await;
@@ -517,7 +394,7 @@ mod tests {
         assert_eq!(state.objects[&(first as i32)].status & 1, 0);
         assert_eq!(state.objects[&(second as i32)].status & 1, 1);
         assert_eq!(rock_source(second), Some((102, second_table)));
-        assert!(legacy_table_rock_uid(&state.objects[&second_table]).is_none());
+        assert_eq!(state.objects[&second_table].status2, r#"{"status":1}"#);
         let second_owned: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_explore_runtime_items WHERE user_id = ? AND uid = ?")
             .bind(user).bind(second).fetch_one(&mut *tx).await.unwrap();
         assert_eq!(second_owned, 1);
@@ -551,42 +428,6 @@ mod tests {
         assert_eq!(other.state.objects[&(uid as i32)].status & 1, 0);
         assert!(explore_runtime::list_items(&mut tx, user).await.unwrap().is_empty());
         tx.commit().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn legacy_binding_migrates_when_the_rock_was_placed_on_another_map() {
-        let user = 992010;
-        let pool = setup(user, 5, 12).await;
-        let uid = take(&pool, user, 29).await.unwrap().item.uid.unwrap();
-        let mut other = MapState::new(config::explore_layout::layout(101).unwrap().unwrap());
-        other.x = 1; other.y = 6;
-        let mut tx = pool.begin().await.unwrap();
-        explore_runtime::insert_map(&mut tx, user, &other).await.unwrap();
-        explore_runtime::set_current_map(&mut tx, user, 101).await.unwrap();
-        tx.commit().await.unwrap();
-        place(&pool, user, uid, 1, 5).await.unwrap();
-        let old_uid = 1_000_001_i64;
-        let mut tx = pool.begin().await.unwrap();
-        sqlx::query("UPDATE user_explore_runtime_items SET uid = ? WHERE user_id = ? AND uid = ?")
-            .bind(old_uid).bind(user).bind(uid).execute(&mut *tx).await.unwrap();
-        let mut origin = explore_runtime::load_map(&mut tx, user, 102).await.unwrap().unwrap();
-        origin.state.objects.get_mut(&29).unwrap().status2 = serde_json::json!({"status":1,"rockUid":old_uid}).to_string();
-        explore_runtime::save_map(&mut tx, user, &mut origin).await.unwrap();
-        let mut other = explore_runtime::load_map(&mut tx, user, 101).await.unwrap().unwrap();
-        let rock = other.state.objects.remove(&(uid as i32)).unwrap();
-        other.state.objects.insert(old_uid as i32, rock);
-        explore_runtime::save_map(&mut tx, user, &mut other).await.unwrap();
-        explore_runtime::set_current_map(&mut tx, user, 102).await.unwrap();
-        assert!(recover_legacy_binding(&mut tx, user, &mut origin).await.unwrap());
-        let new_uid: i64 = sqlx::query_scalar("SELECT uid FROM user_explore_runtime_items WHERE user_id = ? AND item_id = ?")
-            .bind(user).bind(ROCK_ITEM).fetch_one(&mut *tx).await.unwrap();
-        assert_eq!(rock_source(new_uid), Some((102, 29)));
-        assert!(legacy_table_rock_uid(&origin.state.objects[&29]).is_none());
-        let other = explore_runtime::load_map(&mut tx, user, 101).await.unwrap().unwrap();
-        assert!(!other.state.objects.contains_key(&(old_uid as i32)));
-        assert_eq!((other.state.objects[&(new_uid as i32)].x, other.state.objects[&(new_uid as i32)].y), (1, 5));
-        tx.commit().await.unwrap();
-        assert_eq!(take(&pool, user, 29).await.unwrap().item.uid, Some(new_uid));
     }
 
     #[tokio::test]

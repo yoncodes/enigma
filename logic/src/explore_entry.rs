@@ -104,9 +104,8 @@ pub async fn change_map(pool: &SqlitePool, user_id: i64, map_id: i32) -> Result<
     sqlx::query("INSERT INTO user_explore_info (user_id, last_map_id) VALUES (?, ?) \
         ON CONFLICT(user_id) DO UPDATE SET last_map_id = excluded.last_map_id")
         .bind(user_id).bind(map_id).execute(&mut *tx).await?;
-    let mut stored = explore_runtime::load_map(&mut tx, user_id, map_id).await?
+    let stored = explore_runtime::load_map(&mut tx, user_id, map_id).await?
         .context("exploration map state is missing")?;
-    crate::explore_rock::recover_legacy_binding(&mut tx, user_id, &mut stored).await?;
     let items = explore_runtime::list_items(&mut tx, user_id).await?;
     let use_item_uid = explore_runtime::use_item_uid(&mut tx, user_id).await?
         .context("exploration profile is missing")?;
@@ -127,9 +126,8 @@ pub async fn current_info(pool: &SqlitePool, user_id: i64) -> Result<GetExploreI
     }
     let map_id = explore_runtime::current_map(&mut tx, user_id).await?
         .context("no current exploration map")?;
-    let mut stored = explore_runtime::load_map(&mut tx, user_id, map_id).await?
+    let stored = explore_runtime::load_map(&mut tx, user_id, map_id).await?
         .context("exploration map state is missing")?;
-    crate::explore_rock::recover_legacy_binding(&mut tx, user_id, &mut stored).await?;
     let items = explore_runtime::list_items(&mut tx, user_id).await?;
     let use_item_uid = explore_runtime::use_item_uid(&mut tx, user_id).await?
         .context("exploration profile is missing")?;
