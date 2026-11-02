@@ -1,4 +1,4 @@
-//! Exploration battle context and settlement, awaiting network integration.
+//! Exploration battle context and settlement.
 
 use anyhow::{Context, Result, ensure};
 use database::db::game::{battle as battle_db, explore_runtime};
