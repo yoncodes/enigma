@@ -6,4 +6,6 @@ The server stores map state, items and encounter state per player. It handles ma
 
 The normal server setup and matching game-data requirements in the main README still apply. Migrations 097–099 add exploration state; use a database compatible with the official migration history, and back it up before changing server versions. The existing expanded `stokes1235/enigma` main branch includes additional migrations and functionality and is not interchangeable with this branch merely because both use the same game client.
 
+A legacy profile containing only the initial map unlock can be initialized; older summary-only progress without detailed map state is preserved but cannot be resumed automatically.
+
 Tests include map routes, router interactions and per-player persistence. They do not replace a complete in-client playthrough of all maps.

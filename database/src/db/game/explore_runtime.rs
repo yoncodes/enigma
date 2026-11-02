@@ -116,6 +116,7 @@ pub async fn ensure_profile(tx: &mut Transaction<'_, Sqlite>, user_id: i64) -> R
         return Ok(());
     }
 
+    // A lone first-map unlock carries no detailed progress and is safe to initialize.
     let legacy: bool = sqlx::query_scalar(
         "SELECT EXISTS(
             SELECT 1 FROM user_explore_info WHERE user_id = ?1
@@ -125,7 +126,7 @@ pub async fn ensure_profile(tx: &mut Transaction<'_, Sqlite>, user_id: i64) -> R
             UNION ALL SELECT 1 FROM user_explore_bonus_scene_options WHERE user_id = ?1
             UNION ALL SELECT 1 FROM user_explore_maps WHERE user_id = ?1
             UNION ALL SELECT 1 FROM user_explore_map_bonuses WHERE user_id = ?1
-            UNION ALL SELECT 1 FROM user_explore_unlocked_maps WHERE user_id = ?1
+            UNION ALL SELECT 1 FROM user_explore_unlocked_maps WHERE user_id = ?1 AND map_id != 101
         )",
     ).bind(user_id).fetch_one(&mut **tx).await?;
     ensure!(!legacy, "existing exploration progress has no compatible detailed state");
