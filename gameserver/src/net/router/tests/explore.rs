@@ -244,6 +244,7 @@ async fn portable_rock_and_pressure_plate_use_the_actual_router() {
     }).next().expect("missing table interaction update");
     let status: serde_json::Value = serde_json::from_str(table_status["status2"].as_str().unwrap()).unwrap();
     assert_eq!(status["status"], 1);
+    assert!(status.get("rockUid").is_none());
     let CommandPacket::Reply { cmd_id: CmdId::ExploreUseItemCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing placement reply") };
 
     dispatch_command(&mut ctx, request(CmdId::ExploreItemInteractCmd,
