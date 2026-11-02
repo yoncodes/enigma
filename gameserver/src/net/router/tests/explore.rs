@@ -11,6 +11,97 @@ fn request<M: Message>(cmd: CmdId, message: M, tag: u8) -> Vec<u8> {
 }
 
 #[tokio::test]
+async fn first_map_southern_chest_can_be_reached_and_claimed_after_area_reveal() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("data/excel2json");
+    config::init(data_dir.to_str().unwrap()).unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let user_id = 950009_i64;
+    sqlx::query("INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, 0, 0)")
+        .bind(user_id).bind("isolated-southern-chest").execute(&pool).await.unwrap();
+    let layout = config::explore_layout::layout(101).unwrap().unwrap();
+    let mut map = database::db::game::explore_runtime::MapState::new(layout);
+    map.areas.insert(1001);
+    map.x = 20;
+    map.y = -6;
+    let mut tx = pool.begin().await.unwrap();
+    database::db::game::explore_runtime::ensure_profile(&mut tx, user_id).await.unwrap();
+    database::db::game::explore_runtime::insert_map(&mut tx, user_id, &map).await.unwrap();
+    database::db::game::explore_runtime::set_current_map(&mut tx, user_id, 101).await.unwrap();
+    sqlx::query("INSERT INTO user_explore_maps (user_id, map_id, bonus_num, gold_coin, purple_coin, bonus_num_total, gold_coin_total, purple_coin_total) VALUES (?, 101, 1, 2, 25, 2, 2, 25)")
+        .bind(user_id).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO user_explore_map_bonuses (user_id, map_id, bonus_id) VALUES (?, 101, 2)")
+        .bind(user_id).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(32);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(user_id, PlayerState::new(user_id, 0)));
+
+    for (tag, y) in [(1, -7), (2, -8)] {
+        dispatch_command(&mut ctx, request(CmdId::ExploreMoveCmd,
+            ExploreMoveRequest { posx: Some(20), posy: Some(y), interact_id: None }, tag)).await.unwrap();
+        let mut success = false;
+        while let Ok(packet) = packets.try_recv() {
+            if let CommandPacket::Reply { cmd_id: CmdId::ExploreMoveCmd, result_code, .. } = packet {
+                assert_eq!(result_code, 0, "movement to (20, {y}) was rejected");
+                success = true;
+            }
+        }
+        assert!(success);
+    }
+    dispatch_command(&mut ctx, request(CmdId::ExploreInteractCmd,
+        ExploreInteractRequest { id: Some(386), params: None }, 3)).await.unwrap();
+    let mut success = false;
+    while let Ok(packet) = packets.try_recv() {
+        if let CommandPacket::Reply { cmd_id: CmdId::ExploreInteractCmd, result_code, .. } = packet {
+            assert_eq!(result_code, 0);
+            success = true;
+        }
+    }
+    assert!(success);
+    let claimed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_explore_map_bonuses WHERE user_id = ? AND map_id = 101 AND bonus_id = 1")
+        .bind(user_id).fetch_one(state.db).await.unwrap();
+    assert_eq!(claimed, 1);
+    let summary: (i32, i32, i32) = sqlx::query_as("SELECT bonus_num, gold_coin, purple_coin FROM user_explore_maps WHERE user_id = ? AND map_id = 101")
+        .bind(user_id).fetch_one(state.db).await.unwrap();
+    assert_eq!(summary, (2, 2, 25));
+    let currency: i32 = sqlx::query_scalar("SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = 2")
+        .bind(user_id).fetch_one(state.db).await.unwrap();
+    assert_eq!(currency, 20);
+    let mut tx = state.db.begin().await.unwrap();
+    let saved = database::db::game::explore_runtime::load_map(&mut tx, user_id, 101).await.unwrap().unwrap();
+    assert_eq!((saved.state.x, saved.state.y), (20, -8));
+    assert_eq!(saved.state.objects[&386].status & 4, 4);
+    tx.commit().await.unwrap();
+
+    dispatch_command(&mut ctx, request(CmdId::ExploreInteractCmd,
+        ExploreInteractRequest { id: Some(386), params: None }, 5)).await.unwrap();
+    let mut rejected = false;
+    while let Ok(packet) = packets.try_recv() {
+        if let CommandPacket::Reply { cmd_id: CmdId::ExploreInteractCmd, result_code, .. } = packet {
+            assert_ne!(result_code, 0);
+            rejected = true;
+        }
+    }
+    assert!(rejected);
+    let currency_after: i32 = sqlx::query_scalar("SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = 2")
+        .bind(user_id).fetch_one(state.db).await.unwrap();
+    assert_eq!(currency_after, currency);
+
+    dispatch_command(&mut ctx, request(CmdId::ExploreMoveCmd,
+        ExploreMoveRequest { posx: Some(20), posy: Some(-7), interact_id: None }, 4)).await.unwrap();
+    let mut returned = false;
+    while let Ok(packet) = packets.try_recv() {
+        if let CommandPacket::Reply { cmd_id: CmdId::ExploreMoveCmd, result_code, .. } = packet {
+            assert_eq!(result_code, 0);
+            returned = true;
+        }
+    }
+    assert!(returned);
+}
+
+#[tokio::test]
 async fn portable_rock_and_pressure_plate_use_the_actual_router() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("data/excel2json");
     config::init(data_dir.to_str().unwrap()).unwrap();
