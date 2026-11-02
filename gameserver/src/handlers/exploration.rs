@@ -145,9 +145,13 @@ pub async fn on_explore_use_item(ctx: &mut ConnectionContext, req: ClientPacket)
     let effect = logic::explore_rock::item_effect(ctx.state.db, player_id, uid).await.map_err(explore_error)?;
     let steps = match effect.as_str() {
         "2" if request.posx.unwrap_or(0) == 0 && request.posy.unwrap_or(0) == 0
-            && request.interact_id.unwrap_or(0) == 0 => vec![
-                logic::explore_rune::select(ctx.state.db, player_id, uid).await.map_err(explore_error)?
-            ],
+            && request.interact_id.unwrap_or(0) == 0 => {
+                let selection = logic::explore_rune::select(ctx.state.db, player_id, uid).await.map_err(explore_error)?;
+                if let Some(item) = selection.item {
+                    ctx.notify(CmdId::ExploreItemChangePushCmd, ExploreItemChangePush { explore_items: vec![item] }).await?;
+                }
+                vec![selection.step]
+            },
         "1#209" if request.interact_id.unwrap_or(0) == 0 => {
             let change = logic::explore_rock::place(ctx.state.db, player_id, uid,
                 request.posx.ok_or(AppError::InvalidRequest)?, request.posy.ok_or(AppError::InvalidRequest)?)

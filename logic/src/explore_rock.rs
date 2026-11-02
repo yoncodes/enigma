@@ -14,6 +14,73 @@ const ROCK_ITEM: i32 = 150001;
 const ROCK_KIND: i32 = 209;
 const PLACED_STATUS: i32 = -1;
 
+// The client reads status2.status to decide whether an emptied table can be
+// interacted with. Keep the server's owner UID alongside that client field.
+fn table_rock_uid(object: &ObjectState) -> Option<i64> {
+    serde_json::from_str::<serde_json::Value>(&object.status2).ok()?
+        .get("rockUid")?.as_i64().filter(|uid| *uid > 0)
+}
+
+fn set_table_rock(object: &mut ObjectState, uid: i64, placed: bool) {
+    object.status2 = serde_json::json!({"status": i32::from(placed), "rockUid": uid}).to_string();
+}
+
+fn update_bound_table(state: &mut MapState, uid: i64, placed: bool, changed: &mut BTreeSet<i32>) -> Result<()> {
+    let tables: Vec<_> = state.objects.iter().filter_map(|(&id, object)|
+        (object.kind == 217 && table_rock_uid(object) == Some(uid)).then_some(id)).collect();
+    ensure!(tables.len() <= 1, "rock is bound to multiple stone tables");
+    if let Some(id) = tables.first() {
+        let table = state.objects.get_mut(id).context("bound stone table is missing")?;
+        set_table_rock(table, uid, placed);
+        changed.insert(*id);
+    }
+    Ok(())
+}
+
+/// Recover old saves only when there is exactly one possible table/rock pair
+/// across all saved maps. Never guess which of several rocks belongs to a table.
+pub(crate) async fn recover_legacy_binding(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, user_id: i64,
+    stored: &mut explore_runtime::StoredMap,
+) -> Result<bool> {
+    let saved: Vec<(i32, String)> = sqlx::query_as(
+        "SELECT map_id, state_json FROM user_explore_runtime_maps WHERE user_id = ?"
+    ).bind(user_id).fetch_all(&mut **tx).await?;
+    let mut unbound_tables = Vec::new();
+    let mut bound_uids = BTreeSet::new();
+    let mut maps = Vec::new();
+    for (map_id, json) in saved {
+        // An unrelated incompatible map must not prevent entering this map.
+        let Ok(state) = serde_json::from_str::<MapState>(&json) else { return Ok(false) };
+        if state.map_id != map_id { return Ok(false); }
+        for (&id, object) in &state.objects {
+            if object.kind != 217 || object.status & 4 == 0 { continue; }
+            if let Some(uid) = table_rock_uid(object) { bound_uids.insert(uid); }
+            else { unbound_tables.push((map_id, id)); }
+        }
+        maps.push(state);
+    }
+    if unbound_tables.len() != 1 || unbound_tables[0].0 != stored.state.map_id { return Ok(false); }
+    let rocks: Vec<(i64, i32)> = sqlx::query_as(
+        "SELECT uid, status FROM user_explore_runtime_items WHERE user_id = ? AND item_id = ? AND quantity = 1"
+    ).bind(user_id).bind(ROCK_ITEM).fetch_all(&mut **tx).await?;
+    let rocks: Vec<_> = rocks.into_iter().filter(|(uid, _)| !bound_uids.contains(uid)).collect();
+    if rocks.len() != 1 { return Ok(false); }
+    let (uid, item_status) = rocks[0];
+    let Ok(id) = i32::try_from(uid) else { return Ok(false) };
+    let placements: Vec<_> = maps.iter().filter(|map| map.objects.get(&id)
+        .is_some_and(|object| object.kind == ROCK_KIND && object.status & 1 != 0)).collect();
+    let placed = match item_status {
+        PLACED_STATUS if placements.len() == 1 && placements[0].map_id == stored.state.map_id => true,
+        0 if placements.is_empty() => false,
+        _ => return Ok(false),
+    };
+    let table = stored.state.objects.get_mut(&unbound_tables[0].1).context("legacy stone table is missing")?;
+    set_table_rock(table, uid, placed);
+    explore_runtime::save_map(tx, user_id, stored).await?;
+    Ok(true)
+}
+
 pub struct RockChange {
     pub item: ExploreItemNo,
     pub steps: Vec<ExploreStep>,
@@ -62,7 +129,7 @@ fn can_place(state: &MapState, layout: &Layout, x: i32, y: i32) -> Result<()> {
     Ok(())
 }
 
-/// Take a rock from one configured stone table; the table cannot grant twice.
+/// Take a rock, or recall its placed rock to its original table.
 pub async fn take(pool: &SqlitePool, user_id: i64, object_id: i32) -> Result<RockChange> {
     let mut tx = pool.begin().await?;
     let map_id = explore_runtime::current_map(&mut tx, user_id).await?.context("no current exploration map")?;
@@ -78,7 +145,7 @@ pub async fn take(pool: &SqlitePool, user_id: i64, object_id: i32) -> Result<Roc
     let mut stored = explore_runtime::load_map(&mut tx, user_id, map_id).await?.context("missing map state")?;
     ensure!(area.id == 0 || stored.state.areas.contains(&area.id), "stone table is in a closed area");
     let object = stored.state.objects.get(&object_id).context("missing stone table state")?;
-    ensure!(object.kind == 217 && object.status & 3 == 3 && object.status & 12 == 0,
+    ensure!(object.kind == 217 && object.status & 3 == 3 && object.status & 8 == 0,
         "stone table is unavailable");
     let dx = i64::from(stored.state.x) - i64::from(object.x);
     let dy = i64::from(stored.state.y) - i64::from(object.y);
@@ -87,9 +154,31 @@ pub async fn take(pool: &SqlitePool, user_id: i64, object_id: i32) -> Result<Roc
         0 => true, 1 => (dx, dy) == (-1, 0), 2 => (dx, dy) == (1, 0),
         3 => (dx, dy) == (0, 1), 4 => (dx, dy) == (0, -1), _ => false,
     }, "stone table cannot be used from this direction");
-    stored.state.objects.get_mut(&object_id).context("missing stone table state")?.status |= 4;
+    if object.status & 4 != 0 {
+        let uid = table_rock_uid(object).context("stone table rock association is missing")?;
+        let rock_id = i32::try_from(uid).context("invalid bound rock UID")?;
+        let rock = stored.state.objects.get(&rock_id).context("bound rock is not on this map")?;
+        ensure!(rock.kind == ROCK_KIND && rock.status & 1 != 0, "bound rock is not placed");
+        stored.state.objects.get_mut(&rock_id).context("bound rock is missing")?.status &= !1;
+        let deleted = sqlx::query("DELETE FROM user_explore_runtime_items WHERE user_id = ? AND uid = ? AND item_id = ? AND quantity = 1 AND status = ?")
+            .bind(user_id).bind(uid).bind(ROCK_ITEM).bind(PLACED_STATUS).execute(&mut *tx).await?;
+        ensure!(deleted.rows_affected() == 1, "bound rock is no longer owned or placed");
+        let table = stored.state.objects.get_mut(&object_id).context("stone table is missing")?;
+        table.status &= !4;
+        table.status2.clear();
+        let mut changed = BTreeSet::from([object_id, rock_id]);
+        sync_gravity_plates(&mut stored.state, layout, &mut changed)?;
+        if map_id == 301 { crate::explore_light::sync_light(&mut stored.state, layout, &mut changed)?; }
+        explore_runtime::save_map(&mut tx, user_id, &mut stored).await?;
+        let steps = changed_object_steps(&stored.state, &changed.into_iter().collect::<Vec<_>>())?;
+        tx.commit().await?;
+        return Ok(RockChange { item: ExploreItemNo { uid: Some(uid), item_id: Some(ROCK_ITEM), quantity: Some(0), status: Some(0) }, steps });
+    }
     let item = explore_runtime::grant_item(&mut tx, user_id, ROCK_ITEM, 1).await?
         .into_iter().next().context("failed to grant rock")?;
+    let table = stored.state.objects.get_mut(&object_id).context("stone table is missing")?;
+    table.status |= 4;
+    set_table_rock(table, item.uid.context("new rock has no UID")?, false);
     explore_runtime::save_map(&mut tx, user_id, &mut stored).await?;
     let mut steps = changed_object_steps(&stored.state, &[object_id])?;
     steps.push(ExploreStep { param: Some(serde_json::json!({"stepType":4,"materialData":[
@@ -115,6 +204,7 @@ pub async fn place(pool: &SqlitePool, user_id: i64, uid: i64, x: i32, y: i32) ->
     ensure!(item.item_id == Some(ROCK_ITEM) && item.quantity == Some(1), "item is not an available rock");
     stored.state.objects.insert(id, ObjectState { kind: ROCK_KIND, status: 3, status2: String::new(), x, y, direction: 0 });
     let mut changed = BTreeSet::from([id]);
+    update_bound_table(&mut stored.state, uid, true, &mut changed)?;
     sync_gravity_plates(&mut stored.state, layout, &mut changed)?;
     if map_id == 301 { crate::explore_light::sync_light(&mut stored.state, layout, &mut changed)?; }
     explore_runtime::save_map(&mut tx, user_id, &mut stored).await?;
@@ -141,6 +231,7 @@ pub async fn pick_up(pool: &SqlitePool, user_id: i64, object_id: i32) -> Result<
     let item = explore_runtime::update_item_status(&mut tx, user_id, i64::from(object_id), PLACED_STATUS, 0).await?;
     ensure!(item.item_id == Some(ROCK_ITEM) && item.quantity == Some(1), "rock ownership is invalid");
     let mut changed = BTreeSet::from([object_id]);
+    update_bound_table(&mut stored.state, i64::from(object_id), false, &mut changed)?;
     sync_gravity_plates(&mut stored.state, layout, &mut changed)?;
     if map_id == 301 { crate::explore_light::sync_light(&mut stored.state, layout, &mut changed)?; }
     explore_runtime::save_map(&mut tx, user_id, &mut stored).await?;
@@ -218,6 +309,97 @@ mod tests {
         let map = explore_runtime::load_map(&mut tx, user, 102).await.unwrap().unwrap();
         assert_eq!((map.state.objects[&14].status & 4, map.state.objects[&2].status & 4), (0, 0));
         assert_eq!(map.state.objects[&(uid as i32)].status & 1, 0);
+        tx.commit().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn stone_table_recalls_its_placed_rock_and_can_grant_it_again() {
+        let user = 992004;
+        let pool = setup(user, 5, 12).await;
+        let rock = take(&pool, user, 29).await.unwrap().item;
+        let uid = rock.uid.unwrap();
+        set_position(&pool, user, 5, 5).await;
+        place(&pool, user, uid, 6, 5).await.unwrap();
+        let mut tx = pool.begin().await.unwrap();
+        let state = explore_runtime::load_map(&mut tx, user, 102).await.unwrap().unwrap().state;
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&state.objects[&29].status2).unwrap()["status"], 1);
+        assert_eq!(state.objects[&14].status & 4, 4);
+        tx.commit().await.unwrap();
+        set_position(&pool, user, 5, 12).await;
+        let recalled = take(&pool, user, 29).await.unwrap();
+        assert_eq!(recalled.item.uid, Some(uid));
+        assert_eq!(recalled.item.quantity, Some(0));
+        let mut tx = pool.begin().await.unwrap();
+        let state = explore_runtime::load_map(&mut tx, user, 102).await.unwrap().unwrap().state;
+        assert_eq!(state.objects[&29].status & 4, 0);
+        assert!(state.objects[&29].status2.is_empty());
+        assert_eq!(state.objects[&(uid as i32)].status & 1, 0);
+        assert_eq!(state.objects[&14].status & 4, 0);
+        tx.commit().await.unwrap();
+        let next = take(&pool, user, 29).await.unwrap().item;
+        assert_ne!(next.uid, Some(uid));
+        assert_eq!(next.quantity, Some(1));
+    }
+
+    #[tokio::test]
+    async fn legacy_binding_is_recovered_only_when_unambiguous() {
+        let user = 992005;
+        let pool = setup(user, 5, 12).await;
+        let uid = take(&pool, user, 29).await.unwrap().item.uid.unwrap();
+        set_position(&pool, user, 5, 5).await;
+        place(&pool, user, uid, 6, 5).await.unwrap();
+        let mut tx = pool.begin().await.unwrap();
+        let mut map = explore_runtime::load_map(&mut tx, user, 102).await.unwrap().unwrap();
+        map.state.objects.get_mut(&29).unwrap().status2.clear();
+        explore_runtime::save_map(&mut tx, user, &mut map).await.unwrap();
+        let second = config::explore_layout::layout(102).unwrap().unwrap().areas.iter()
+            .flat_map(|area| &area.units).find(|unit| unit.kind == 217 && unit.id != 29).unwrap().id;
+        map.state.objects.get_mut(&second).unwrap().status |= 4;
+        explore_runtime::save_map(&mut tx, user, &mut map).await.unwrap();
+        assert!(!recover_legacy_binding(&mut tx, user, &mut map).await.unwrap());
+        assert!(map.state.objects[&29].status2.is_empty());
+        map.state.objects.get_mut(&second).unwrap().status &= !4;
+        explore_runtime::save_map(&mut tx, user, &mut map).await.unwrap();
+        assert!(recover_legacy_binding(&mut tx, user, &mut map).await.unwrap());
+        let value: serde_json::Value = serde_json::from_str(&map.state.objects[&29].status2).unwrap();
+        assert_eq!(value["rockUid"], uid);
+        assert_eq!(value["status"], 1);
+        tx.commit().await.unwrap();
+        set_position(&pool, user, 5, 12).await;
+        assert!(take(&pool, user, 29).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn recall_does_not_remove_another_tables_rock() {
+        let user = 992006;
+        let pool = setup(user, 5, 12).await;
+        let first = take(&pool, user, 29).await.unwrap().item.uid.unwrap();
+        set_position(&pool, user, 5, 5).await;
+        place(&pool, user, first, 6, 5).await.unwrap();
+        let second_table = config::explore_layout::layout(102).unwrap().unwrap().areas.iter()
+            .flat_map(|area| &area.units).find(|unit| unit.kind == 217 && unit.id != 29).unwrap().id;
+        let mut tx = pool.begin().await.unwrap();
+        let second = explore_runtime::grant_item(&mut tx, user, ROCK_ITEM, 1).await.unwrap()[0].uid.unwrap();
+        explore_runtime::update_item_status(&mut tx, user, second, 0, PLACED_STATUS).await.unwrap();
+        let mut map = explore_runtime::load_map(&mut tx, user, 102).await.unwrap().unwrap();
+        let table = map.state.objects.get_mut(&second_table).unwrap();
+        table.status |= 4;
+        set_table_rock(table, second, true);
+        map.state.objects.insert(second as i32, ObjectState {
+            kind: ROCK_KIND, status: 3, status2: String::new(), x: 1, y: 1, direction: 0,
+        });
+        explore_runtime::save_map(&mut tx, user, &mut map).await.unwrap();
+        tx.commit().await.unwrap();
+        set_position(&pool, user, 5, 12).await;
+        take(&pool, user, 29).await.unwrap();
+        let mut tx = pool.begin().await.unwrap();
+        let state = explore_runtime::load_map(&mut tx, user, 102).await.unwrap().unwrap().state;
+        assert_eq!(state.objects[&(first as i32)].status & 1, 0);
+        assert_eq!(state.objects[&(second as i32)].status & 1, 1);
+        assert_eq!(table_rock_uid(&state.objects[&second_table]), Some(second));
+        let second_owned: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_explore_runtime_items WHERE user_id = ? AND uid = ?")
+            .bind(user).bind(second).fetch_one(&mut *tx).await.unwrap();
+        assert_eq!(second_owned, 1);
         tx.commit().await.unwrap();
     }
 

@@ -42,6 +42,30 @@ async fn map_102_rune_and_return_slide_follow_client_requests() {
         }
     }
     assert!(interacted);
+    let uid = item.uid.unwrap();
+    let use_rune = || ExploreUseItemRequest { uid: Some(uid), posx: Some(0), posy: Some(0), interact_id: None };
+    dispatch_command(&mut ctx, request(CmdId::ExploreUseItemCmd, use_rune(), 20)).await.unwrap();
+    let CommandPacket::Push { cmd_id: CmdId::ExploreStepPushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing deselection step") };
+    let step = ExploreStepPush::decode(&*body).unwrap();
+    let step: serde_json::Value = serde_json::from_str(step.steps[0].param.as_deref().unwrap()).unwrap();
+    assert_eq!(step["itemUid"], 0);
+    let CommandPacket::Reply { cmd_id: CmdId::ExploreUseItemCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing deselection reply") };
+
+    dispatch_command(&mut ctx, request(CmdId::ExploreUseItemCmd, use_rune(), 21)).await.unwrap();
+    let CommandPacket::Push { cmd_id: CmdId::ExploreItemChangePushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing uncharged rune update") };
+    let changed = ExploreItemChangePush::decode(&*body).unwrap().explore_items[0];
+    assert_eq!((changed.uid, changed.status), (Some(uid), Some(0)));
+    let CommandPacket::Push { cmd_id: CmdId::ExploreStepPushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing selection step") };
+    let step = ExploreStepPush::decode(&*body).unwrap();
+    let step: serde_json::Value = serde_json::from_str(step.steps[0].param.as_deref().unwrap()).unwrap();
+    assert_eq!(step["itemUid"], uid);
+    let CommandPacket::Reply { cmd_id: CmdId::ExploreUseItemCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing selection reply") };
+    dispatch_command(&mut ctx, request(CmdId::ExploreInteractCmd,
+        ExploreInteractRequest { id: Some(35), params: None }, 22)).await.unwrap();
+    let CommandPacket::Push { cmd_id: CmdId::ExploreItemChangePushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing recharge") };
+    assert_eq!(ExploreItemChangePush::decode(&*body).unwrap().explore_items[0].status, Some(1));
+    let CommandPacket::Reply { cmd_id: CmdId::ExploreInteractCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing recharge reply") };
+
     for (tag, (x, y)) in [(18,22),(18,21),(18,20),(18,19),(18,18),(18,13)].into_iter().enumerate() {
         dispatch_command(&mut ctx, request(CmdId::ExploreMoveCmd,
             ExploreMoveRequest { posx: Some(x), posy: Some(y), interact_id: None }, tag as u8 + 2)).await.unwrap();
@@ -212,7 +236,14 @@ async fn portable_rock_and_pressure_plate_use_the_actual_router() {
     assert_eq!(ExploreItemChangePush::decode(&*body).unwrap().explore_items[0].quantity, Some(0));
     let CommandPacket::Push { cmd_id: CmdId::ExploreStepPushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing placement updates") };
     let steps = ExploreStepPush::decode(&*body).unwrap();
-    assert_eq!(steps.steps.len(), 3); // rock, plate, and door
+    assert_eq!(steps.steps.len(), 4); // rock, plate, door, and table recall state
+    let table_status = steps.steps.iter().filter_map(|s| {
+        let step: serde_json::Value = serde_json::from_str(s.param.as_deref()?).ok()?;
+        let unit: serde_json::Value = serde_json::from_str(step["interact"].as_str()?).ok()?;
+        (unit["id"] == 29).then_some(unit)
+    }).next().expect("missing table interaction update");
+    let status: serde_json::Value = serde_json::from_str(table_status["status2"].as_str().unwrap()).unwrap();
+    assert_eq!(status["status"], 1);
     let CommandPacket::Reply { cmd_id: CmdId::ExploreUseItemCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing placement reply") };
 
     dispatch_command(&mut ctx, request(CmdId::ExploreItemInteractCmd,
@@ -220,11 +251,32 @@ async fn portable_rock_and_pressure_plate_use_the_actual_router() {
     let CommandPacket::Push { cmd_id: CmdId::ExploreItemChangePushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing retrieved rock") };
     assert_eq!(ExploreItemChangePush::decode(&*body).unwrap().explore_items[0].quantity, Some(1));
     let CommandPacket::Push { cmd_id: CmdId::ExploreStepPushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing pickup updates") };
-    assert_eq!(ExploreStepPush::decode(&*body).unwrap().steps.len(), 3);
+    assert_eq!(ExploreStepPush::decode(&*body).unwrap().steps.len(), 4);
     let CommandPacket::Reply { cmd_id: CmdId::ExploreItemInteractCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing pickup reply") };
     let mut tx = state.db.begin().await.unwrap();
     let stored = database::db::game::explore_runtime::load_map(&mut tx, user_id, 102).await.unwrap().unwrap();
     assert_eq!((stored.state.objects[&14].status & 4, stored.state.objects[&2].status & 4), (0, 0));
+    tx.commit().await.unwrap();
+
+    dispatch_command(&mut ctx, request(CmdId::ExploreUseItemCmd,
+        ExploreUseItemRequest { uid: Some(uid), posx: Some(6), posy: Some(5), interact_id: None }, 4)).await.unwrap();
+    while packets.try_recv().is_ok() {}
+    let mut tx = state.db.begin().await.unwrap();
+    let mut stored = database::db::game::explore_runtime::load_map(&mut tx, user_id, 102).await.unwrap().unwrap();
+    stored.state.x = 5; stored.state.y = 12;
+    database::db::game::explore_runtime::save_map(&mut tx, user_id, &mut stored).await.unwrap();
+    tx.commit().await.unwrap();
+    dispatch_command(&mut ctx, request(CmdId::ExploreInteractCmd,
+        ExploreInteractRequest { id: Some(29), params: None }, 5)).await.unwrap();
+    let CommandPacket::Push { cmd_id: CmdId::ExploreItemChangePushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing recalled rock update") };
+    assert_eq!(ExploreItemChangePush::decode(&*body).unwrap().explore_items[0].quantity, Some(0));
+    let CommandPacket::Push { cmd_id: CmdId::ExploreStepPushCmd, .. } = packets.try_recv().unwrap() else { panic!("missing recall updates") };
+    let CommandPacket::Reply { cmd_id: CmdId::ExploreInteractCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing recall reply") };
+    let mut tx = state.db.begin().await.unwrap();
+    let stored = database::db::game::explore_runtime::load_map(&mut tx, user_id, 102).await.unwrap().unwrap();
+    assert_eq!(stored.state.objects[&29].status & 4, 0);
+    assert_eq!(stored.state.objects[&(uid as i32)].status & 1, 0);
+    assert_eq!(stored.state.objects[&14].status & 4, 0);
     tx.commit().await.unwrap();
 }
 

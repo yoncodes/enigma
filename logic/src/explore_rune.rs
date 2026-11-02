@@ -1,4 +1,4 @@
-//! Rune selection and energy transfer primitives; not yet network-wired.
+//! Rune selection and energy transfer primitives.
 
 use std::collections::BTreeSet;
 
@@ -64,8 +64,14 @@ pub fn initialize_counter_doors(state: &mut MapState, layout: &Layout) -> Result
     Ok(())
 }
 
-/// Select or deselect an owned rune; the client consumes the use-item step.
-pub async fn select(pool: &SqlitePool, user_id: i64, uid: i64) -> Result<ExploreStep> {
+pub struct RuneSelection {
+    pub item: Option<ExploreItemNo>,
+    pub step: ExploreStep,
+}
+
+/// Taking a rune out of the backpack starts it uncharged. Putting it away
+/// does not change its state; the reset happens only when selecting it again.
+pub async fn select(pool: &SqlitePool, user_id: i64, uid: i64) -> Result<RuneSelection> {
     let mut tx = pool.begin().await?;
     let map_id = explore_runtime::current_map(&mut tx, user_id).await?.context("no current exploration map")?;
     let layout = config::explore_layout::layout(map_id)?.context("unknown exploration map")?;
@@ -77,11 +83,16 @@ pub async fn select(pool: &SqlitePool, user_id: i64, uid: i64) -> Result<Explore
     let config = config::explore_rewards::item(item.item_id.context("missing item id")?)?
         .context("unknown exploration item")?;
     ensure!(config.effect == "2", "item is not a rune");
+    let old_status = item.status.context("missing rune status")?;
+    ensure!(matches!(old_status, 0 | 1), "invalid rune status");
     let current = explore_runtime::use_item_uid(&mut tx, user_id).await?.context("profile is missing")?;
     let selected = if current == uid { 0 } else { uid };
+    let item = if selected != 0 && old_status == 1 {
+        Some(explore_runtime::update_item_status(&mut tx, user_id, uid, 1, 0).await?)
+    } else { None };
     explore_runtime::select_item(&mut tx, user_id, selected).await?;
     tx.commit().await?;
-    Ok(ExploreStep { param: Some(serde_json::json!({"stepType": 10, "itemUid": selected}).to_string()) })
+    Ok(RuneSelection { item, step: ExploreStep { param: Some(serde_json::json!({"stepType": 10, "itemUid": selected}).to_string()) } })
 }
 
 pub struct RuneSwap {
@@ -228,5 +239,21 @@ mod tests {
         let items = explore_runtime::list_items(&mut tx, user_id).await.unwrap();
         assert_eq!(items[0].status, Some(1));
         tx.commit().await.unwrap();
+
+        // Putting the rune away preserves its state; taking it out again
+        // clears it so a lit pillar can be used for charging again.
+        let put_away = select(&pool, user_id, uid).await.unwrap();
+        assert!(put_away.item.is_none());
+        let step: serde_json::Value = serde_json::from_str(put_away.step.param.as_deref().unwrap()).unwrap();
+        assert_eq!(step["itemUid"], 0);
+        let mut tx = pool.begin().await.unwrap();
+        assert_eq!(explore_runtime::list_items(&mut tx, user_id).await.unwrap()[0].status, Some(1));
+        tx.commit().await.unwrap();
+        let selected = select(&pool, user_id, uid).await.unwrap();
+        assert_eq!(selected.item.unwrap().status, Some(0));
+        let step: serde_json::Value = serde_json::from_str(selected.step.param.as_deref().unwrap()).unwrap();
+        assert_eq!(step["itemUid"], uid);
+        relocate(&pool, user_id, 32, 19).await;
+        assert_eq!(swap(&pool, user_id, 208).await.unwrap().item.status, Some(1));
     }
 }
