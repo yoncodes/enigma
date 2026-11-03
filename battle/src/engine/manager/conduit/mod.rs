@@ -289,7 +289,6 @@ pub struct ConduitManager {
     consumed_this_round: BTreeMap<(i32, i32), i32>,
     uses_this_round: BTreeMap<i64, i32>,
     counters_this_round: BTreeMap<(i32, ConduitCounterKind), i32>,
-    current_costs: BTreeMap<i32, i32>,
     pending_activations: BTreeMap<(i64, i32), PendingActivation>,
     running: HashSet<i64>,
 }
@@ -365,7 +364,6 @@ impl ConduitManager {
         self.consumed_this_round.clear();
         self.uses_this_round.clear();
         self.counters_this_round.clear();
-        self.current_costs.clear();
         self.pending_activations.clear();
         for skill in self
             .areas

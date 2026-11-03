@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DrainError {
+    AiPreparation(String),
     Command(RuleExecutionError),
     Skill(SkillOpError),
     MissingBuffActOp(i32),

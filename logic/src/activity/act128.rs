@@ -13,6 +13,9 @@ use sqlx::{Sqlite, SqlitePool, Transaction};
 pub type Act128MilestoneClaim = reward::RewardedReply<Act128GetMilestoneBonusReply>;
 pub type Act128TotalRewardsClaim = reward::RewardedReply<Act128GetTotalRewardsReply>;
 
+mod gallery;
+pub use gallery::{Act128ExpClaim, get_act128_exp, get_gallery_infos};
+
 pub async fn act128_info(
     db: &SqlitePool,
     player_id: i64,
@@ -318,7 +321,7 @@ mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
 
-    async fn seed_rank_player(
+    pub(super) async fn seed_rank_player(
         db: &SqlitePool,
         player_id: i64,
         exp: i32,

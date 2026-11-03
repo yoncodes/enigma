@@ -116,10 +116,11 @@ pub(crate) fn finish_if_battle_ended(
 }
 
 pub(crate) fn round_limit_reached(fight: &Fight, managers: &BattleManagers) -> bool {
+    // Setup starts at 1, and each played round has already advanced the counter.
     managers
         .battle_rule
         .max_round()
-        .is_some_and(|max_round| max_round > 0 && fight.cur_round.unwrap_or_default() >= max_round)
+        .is_some_and(|max_round| max_round > 0 && fight.cur_round.unwrap_or_default() > max_round)
 }
 
 fn configured_win_target_defeated(battle_id: i32, managers: &BattleManagers) -> Option<bool> {
@@ -130,147 +131,4 @@ fn configured_win_target_defeated(battle_id: i32, managers: &BattleManagers) -> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_support::init_config;
-    use sonettobuf::{FightEntityInfo, FightTeam, HeroAttribute};
-
-    fn depleted_wave(cur_wave: i32) -> (Fight, TargetPool, BattleManagers) {
-        init_config();
-        let fight = Fight {
-            battle_id: Some(2514),
-            cur_wave: Some(cur_wave),
-            defender: Some(FightTeam {
-                entitys: vec![FightEntityInfo {
-                    uid: Some(-1),
-                    current_hp: Some(1),
-                    attr: Some(HeroAttribute {
-                        hp: Some(1),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let pool = TargetPool::from_fight(&fight);
-        let mut managers = BattleManagers::seeded(&fight);
-        managers.hp.lose(-1, 1, 0);
-        (fight, pool, managers)
-    }
-
-    #[test]
-    fn depleted_intermediate_wave_is_not_terminal() {
-        let (fight, pool, managers) = depleted_wave(1);
-
-        assert!(defenders_defeated(&pool, &managers));
-        assert!(managers.wave.has_next_wave());
-        assert!(!battle_ended(&fight, &pool, &managers));
-    }
-
-    #[test]
-    fn depleted_final_wave_is_terminal() {
-        let (fight, pool, managers) = depleted_wave(4);
-
-        assert!(!managers.wave.has_next_wave());
-        assert!(battle_ended(&fight, &pool, &managers));
-    }
-
-    #[test]
-    fn committing_the_outcome_preserves_scheduler_owned_action_points() {
-        let (fight, pool, managers) = depleted_wave(4);
-        let mut state = RoundState {
-            act_point: 3,
-            ..Default::default()
-        };
-
-        assert!(finish_if_battle_ended(&mut state, &fight, &pool, &managers));
-        assert!(state.is_finish);
-        assert_eq!(state.act_point, 3);
-    }
-
-    #[test]
-    fn summoned_replacement_keeps_the_battle_unfinished() {
-        init_config();
-        let fight = Fight {
-            defender: Some(FightTeam {
-                entitys: vec![FightEntityInfo {
-                    uid: Some(-1),
-                    team_type: Some(2),
-                    position: Some(1),
-                    current_hp: Some(1),
-                    attr: Some(HeroAttribute {
-                        hp: Some(1),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let pool = TargetPool::from_fight(&fight);
-        let mut managers = BattleManagers::seeded(&fight);
-        managers.hp.lose(-1, 1, 0);
-        let summoned = managers
-            .execute_entity(crate::engine::manager::entity::EntityCommand {
-                origin: crate::engine::skill::rule::CommandOrigin {
-                    domain: crate::engine::skill::rule::RuleDomain::Behavior,
-                    key: crate::engine::skill::rule::DefinitionKey::new(60008, "Summon"),
-                },
-                source_uid: -1,
-                target_uid: -1,
-                operation: crate::engine::manager::entity::EntityOperation::SummonCombatant {
-                    model_id: 30111003,
-                    position: 2,
-                },
-            })
-            .unwrap()
-            .entity
-            .uid
-            .unwrap();
-
-        assert!(!defenders_defeated(&pool, &managers));
-        assert!(!battle_ended(&fight, &pool, &managers));
-        assert_eq!(
-            battle_outcome(&fight, &pool, &managers),
-            BattleOutcome::Unfinished
-        );
-
-        managers.hp.lose(summoned, managers.hp.current(summoned), 0);
-        assert!(defenders_defeated(&pool, &managers));
-        assert!(battle_ended(&fight, &pool, &managers));
-    }
-
-    #[test]
-    fn restored_depleted_roster_is_terminal() {
-        init_config();
-        let fight = Fight {
-            defender: Some(FightTeam {
-                entitys: vec![FightEntityInfo {
-                    uid: Some(-1),
-                    team_type: Some(2),
-                    position: Some(1),
-                    current_hp: Some(0),
-                    attr: Some(HeroAttribute {
-                        hp: Some(1),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let pool = TargetPool::from_fight(&fight);
-        let managers = BattleManagers::seeded(&fight);
-
-        assert!(pool.defender_all.is_empty());
-        assert!(defenders_defeated(&pool, &managers));
-        assert_eq!(
-            battle_outcome(&fight, &pool, &managers),
-            BattleOutcome::Victory
-        );
-    }
-}
+mod tests;

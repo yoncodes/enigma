@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn unique_activation_without_energy_mutation_uses_the_current_team_cost() {
+fn unique_activation_does_not_inherit_previous_energy_cost() {
     crate::test_support::init_config();
     let entity = |uid, model_id| FightEntityInfo {
         uid: Some(uid),
@@ -30,7 +30,6 @@ fn unique_activation_without_energy_mutation_uses_the_current_team_cost() {
         }),
         ..Default::default()
     };
-    let mut manager = ConduitManager::seed(&fight);
     let complete = |manager: &mut ConduitManager, source_uid, skill_id| {
         manager
             .execute(ConduitCommand::BeginSkill {
@@ -52,97 +51,38 @@ fn unique_activation_without_energy_mutation_uses_the_current_team_cost() {
             })
             .unwrap()
     };
-    manager
-        .execute(ConduitCommand::ChangePower(ConduitPowerChange {
-            origin: ORIGIN,
-            source_uid: 10,
-            team: 1,
-            power_id: 1,
-            delta: 2,
-            kind: ConduitPowerChangeKind::Standard,
-        }))
-        .unwrap();
-    complete(&mut manager, 10, 31441111);
-    manager
-        .execute(ConduitCommand::SetSkillGroup {
-            origin: ORIGIN,
-            source_uid: 11,
-            group: 3,
-        })
-        .unwrap();
-    let completed = complete(&mut manager, 11, 31450131);
-
-    assert!(matches!(
-        completed.events().as_slice(),
-        [crate::engine::event::payload::BattleEvent::ConduitActivated(event)]
-            if event.activation_cost == 2 && event.spent == 0 && event.power_id == 999
-    ));
-
-    manager
-        .execute(ConduitCommand::SetSkillGroup {
-            origin: ORIGIN,
-            source_uid: 12,
-            group: 3,
-        })
-        .unwrap();
-    let repeated = complete(&mut manager, 12, 302504312);
-    assert!(matches!(
-        repeated.events().as_slice(),
-        [crate::engine::event::payload::BattleEvent::ConduitActivated(event)]
-            if event.activation_cost == 2
-    ));
-
-    manager
-        .execute(ConduitCommand::ChangeCounter(ConduitCounterChange {
-            origin: ORIGIN,
-            source_uid: 10,
-            team: 1,
-            skill_id: 0,
-            kind: ConduitCounterKind::EnergyAccumulation,
-            delta: -2,
-        }))
-        .unwrap();
-    manager
-        .execute(ConduitCommand::SetSkillGroup {
-            origin: ORIGIN,
-            source_uid: 10,
-            group: 3,
-        })
-        .unwrap();
-    manager
-        .execute(ConduitCommand::BeginSkill {
-            source_uid: 10,
-            skill_id: 31441131,
-            cost_reduction: 0,
-        })
-        .unwrap();
-    manager
-        .execute(ConduitCommand::CommitSkillCost {
-            source_uid: 10,
-            skill_id: 31441131,
-        })
-        .unwrap();
-    manager
-        .execute(ConduitCommand::ChangeCounter(ConduitCounterChange {
-            origin: ORIGIN,
-            source_uid: 10,
-            team: 1,
-            skill_id: 31441131,
-            kind: ConduitCounterKind::EnergyAccumulation,
-            delta: 4,
-        }))
-        .unwrap();
-    let measured_zero = manager
-        .execute(ConduitCommand::CompleteActivation {
-            source_uid: 10,
-            skill_id: 31441131,
-        })
-        .unwrap();
-    assert!(measured_zero.events().is_empty());
-
-    manager.begin_round();
-    let next_round = complete(&mut manager, 11, 31450131);
-    assert!(next_round.events().is_empty());
+    for (source_uid, skill_id) in [(11, 31450131), (12, 302504312)] {
+        let mut manager = ConduitManager::seed(&fight);
+        manager
+            .execute(ConduitCommand::ChangePower(ConduitPowerChange {
+                origin: ORIGIN,
+                source_uid: 10,
+                team: 1,
+                power_id: 1,
+                delta: 2,
+                kind: ConduitPowerChangeKind::Standard,
+            }))
+            .unwrap();
+        complete(&mut manager, 10, 31441111);
+        manager
+            .execute(ConduitCommand::SetSkillGroup {
+                origin: ORIGIN,
+                source_uid,
+                group: 3,
+            })
+            .unwrap();
+        let completed = complete(&mut manager, source_uid, skill_id);
+        assert!(
+            matches!(
+                &completed,
+                ConduitChange::ActivationCompleted(event)
+                    if event.activation_cost == 0 && event.spent == 0 && event.power_id == 999
+            ),
+            "{completed:?}"
+        );
+        assert!(completed.events().is_empty());
+        assert_eq!(manager.consumed(1, 1), 2);
+    }
 }
 
 #[test]

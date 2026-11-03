@@ -1,3 +1,5 @@
+mod gallery;
+
 use crate::{
     GameDB, activity104_episode::Activity104Episode, activity104_retail::Activity104Retail,
     activity104_special::Activity104Special, activity104_trial::Activity104Trial,

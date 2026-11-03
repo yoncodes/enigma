@@ -63,7 +63,7 @@ impl Passive {
         equips: &[EquipmentBuildInput],
         destiny: Option<&HashMap<i32, i32>>,
     ) -> Vec<PassiveSkill> {
-        let mut passives = Self::base(game, hero.hero_id);
+        let mut passives = Self::at_rank(game, hero.hero_id, hero.rank);
         Self::apply_upgrades(
             game,
             &mut passives,
@@ -208,24 +208,7 @@ impl Passive {
         psychube: Option<(i32, i32)>,
         destiny: Option<(i32, i32)>,
     ) -> Vec<PassiveSkill> {
-        let insight_level = game
-            .character_rank
-            .iter()
-            .find(|row| row.hero_id == hero_id && row.rank == rank)
-            .and_then(|row| {
-                row.effect
-                    .split('|')
-                    .filter_map(|effect| effect.split_once('#'))
-                    .find_map(|(kind, value)| (kind == "2").then(|| value.parse().ok()).flatten())
-            })
-            .unwrap_or_default();
-        let mut passives = Self::base(game, hero_id)
-            .into_iter()
-            .filter(|passive| {
-                passive.source.kind != PassiveSourceKind::Insight
-                    || passive.source.rank <= insight_level
-            })
-            .collect::<Vec<_>>();
+        let mut passives = Self::at_rank(game, hero_id, rank);
         passives.extend(
             game.character_rank
                 .iter()
@@ -256,6 +239,19 @@ impl Passive {
             passives.extend(Self::psychube_from(game, psychube_id, Some(psychube_level)));
         }
         passives
+    }
+
+    fn at_rank(game: &config::GameDB, hero_id: i32, rank: i32) -> Vec<PassiveSkill> {
+        let insight_level = game
+            .character_rank_passive_level(hero_id, rank)
+            .unwrap_or_default();
+        Self::base(game, hero_id)
+            .into_iter()
+            .filter(|passive| {
+                passive.source.kind != PassiveSourceKind::Insight
+                    || passive.source.rank <= insight_level
+            })
+            .collect()
     }
 
     fn base(game: &config::GameDB, hero_id: i32) -> Vec<PassiveSkill> {
@@ -389,28 +385,4 @@ impl Passive {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_support::init_config;
-
-    #[test]
-    fn selected_build_uses_requested_psychube_and_destiny_levels() {
-        init_config();
-        let passives = Passive::for_config(3086, Some((1527, 4)), Some((308601, 3)));
-        assert_eq!(
-            passives,
-            Passive::configured(
-                crate::test_support::game_data(),
-                3086,
-                Some((1527, 4)),
-                Some((308601, 3)),
-            )
-        );
-
-        assert!(passives.iter().any(|passive| {
-            passive.skill_id == 432714
-                && passive.source.kind == PassiveSourceKind::Psychube
-                && passive.source.rank == 4
-        }));
-    }
-}
+mod tests;

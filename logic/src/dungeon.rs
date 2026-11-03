@@ -558,18 +558,20 @@ pub fn completion_rewards(
 ) -> CompletionRewards {
     let tables = config::configs::get();
     let cost = episode_cost_value(episode);
-    let mut normal_rewards = reward::parse_bonus_with_cost(episode.bonus, cost);
+    let sources = tables.episode_rewards(episode);
+    let mut normal_rewards = reward::parse_bonus_with_cost(sources.bonus, cost);
+    normal_rewards.extend(reward::parse_fixed_reward(sources.reward, cost));
     if tables.is_breakthrough_episode(episode) {
         normal_rewards.extend(reward::parse(&episode.reward_list));
     }
     normal_rewards.scale(multiplier);
     let first_rewards = if first_pass {
-        reward::parse_bonus_with_cost(episode.first_bonus, cost)
+        reward::parse_bonus_with_cost(sources.first_bonus, cost)
     } else {
         Default::default()
     };
     let advanced_rewards = if previous_star < 2 && star >= 2 {
-        reward::parse_bonus_with_cost(episode.advanced_bonus, cost)
+        reward::parse_bonus_with_cost(sources.advanced_bonus, cost)
     } else {
         Default::default()
     };

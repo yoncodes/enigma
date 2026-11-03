@@ -718,8 +718,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         | BehaviorKind::DirectUseSkillCard
         | BehaviorKind::DirectUseSkillNoAct
         | BehaviorKind::DirectUseSkillNoAct2
-        | BehaviorKind::DirectUseSkillNotExtra
-        | BehaviorKind::UseExtraSkill => behavior.arg(0).into_iter().collect(),
+        | BehaviorKind::DirectUseSkillNotExtra => behavior.arg(0).into_iter().collect(),
         BehaviorKind::RandomUseSkill => behavior
             .raw_args
             .first()
@@ -844,7 +843,6 @@ pub fn direct_skill_id_for_power_event(behavior: &ParsedBehavior) -> Option<i32>
         BehaviorKind::DirectUseSkill
             | BehaviorKind::DirectUseSkillNoAct
             | BehaviorKind::DirectUseSkillNotExtra
-            | BehaviorKind::UseExtraSkill
     )
     .then(|| behavior.arg(0))
     .flatten()

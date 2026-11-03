@@ -1,5 +1,12 @@
 use crate::{GameDB, episode::Episode};
 
+pub struct EpisodeRewards {
+    pub reward: i32,
+    pub bonus: i32,
+    pub first_bonus: i32,
+    pub advanced_bonus: i32,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
 enum ChapterKind {
@@ -30,6 +37,33 @@ impl ChapterKind {
 }
 
 impl GameDB {
+    pub fn episode_rewards(&self, episode: &Episode) -> EpisodeRewards {
+        let activity = self
+            .chapter
+            .get(episode.chapter_id)
+            .and_then(|chapter| self.activity.get(chapter.act_id));
+        match activity.map(|activity| activity.is_retro_acitivity) {
+            Some(2) => EpisodeRewards {
+                reward: episode.permanent_reward,
+                bonus: episode.permanent_bonus,
+                first_bonus: episode.permanent_first_bonus,
+                advanced_bonus: episode.permanent_advanced_bonus,
+            },
+            Some(1) => EpisodeRewards {
+                reward: episode.retro_reward,
+                bonus: episode.retro_bonus,
+                first_bonus: episode.retro_first_bonus,
+                advanced_bonus: episode.retro_advanced_bonus,
+            },
+            _ => EpisodeRewards {
+                reward: episode.reward,
+                bonus: episode.bonus,
+                first_bonus: episode.first_bonus,
+                advanced_bonus: episode.advanced_bonus,
+            },
+        }
+    }
+
     pub fn initial_tutorial_final_episode(&self) -> Option<i32> {
         let guide_id = self
             .guide

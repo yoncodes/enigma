@@ -1044,6 +1044,7 @@ condition_definitions! {
     [30210] "AttackCrit" => parse::attack_crit, predicate(&[]);
     [7203] "BeforeCrit" => parse::before_crit, event_trigger(EventKind::SkillAction, Some(SkillPhase::Damage));
     [740203] "BloodPoolMax" => resource::blood_pool_max, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
+    [751101] "ExSkillLevel" => target_identity::ex_skill_level, predicate(&[]);
     [751104] "ExSkillLevel" => target_identity::ex_skill_level, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [751210] "ExSkillLevel" => target_identity::ex_skill_levels, predicate(&[]);
     [718212] "ActOrderRange" => act_order::range, event_trigger(EventKind::AllyAction, None);

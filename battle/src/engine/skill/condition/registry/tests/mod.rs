@@ -7,6 +7,7 @@ use crate::engine::skill::condition::{
 mod mane;
 
 mod event_routes;
+mod portrait;
 mod predicates;
 mod setup_routes;
 mod target_routes;

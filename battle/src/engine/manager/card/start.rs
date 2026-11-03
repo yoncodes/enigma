@@ -248,6 +248,7 @@ pub fn start_decks_from_fight(
         eureka,
         extra_ai_actions,
         seed_value,
+        &[],
         captured.map(|(ai, player)| CapturedDeckSeed::Opening {
             ai,
             player,
@@ -291,12 +292,18 @@ pub(crate) fn configured_start_decks(
     let mut current_fight = fight.clone();
     managers.sync_entities(&mut current_fight);
     let fight = &current_fight;
+    let pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+        managers.catalog(),
+        fight,
+    );
+    let prepared = super::prepared::cards(&pool, managers.card.prepared_ai_skills())?;
     let mut decks = start_decks_from(
         fight,
         &managers.ex_point,
         &managers.eureka,
         extra_ai_actions,
         seed_value,
+        &prepared,
         captured,
         |allow_ex_skill| {
             crate::engine::manager::card::pool::player_candidate_pool_from(
@@ -319,6 +326,7 @@ fn start_decks_from(
     eureka: &crate::engine::manager::eureka::EurekaManager,
     extra_ai_actions: i32,
     seed_value: i32,
+    prepared: &[CardInfo],
     captured: Option<CapturedDeckSeed>,
     mut player_candidates: impl FnMut(bool) -> Vec<CardInfo>,
 ) -> ConfiguredStartDecks {
@@ -344,8 +352,8 @@ fn start_decks_from(
         let mut captured_candidates = player_candidates(false);
         captured_candidates.extend(player_candidates(true));
         let expected_ai_count =
-            generated_ai_action_count(fight, ex_point, eureka, extra_ai_actions);
-        let ai_candidates = active_enemy_entities(fight)
+            generated_ai_action_count(fight, ex_point, eureka, extra_ai_actions) + prepared.len();
+        let mut ai_candidates = active_enemy_entities(fight)
             .into_iter()
             .flat_map(|entity| {
                 entity
@@ -357,7 +365,26 @@ fn start_decks_from(
                     .filter_map(|skill_id| card_for(entity, Some(skill_id)))
             })
             .collect::<Vec<_>>();
+        let mut ordinary_ai = captured_ai.iter().collect::<Vec<_>>();
+        let prepared_present = prepared.iter().all(|prepared| {
+            let Some(index) = ordinary_ai
+                .iter()
+                .position(|card| same_card(card, prepared))
+            else {
+                return false;
+            };
+            ordinary_ai.remove(index);
+            true
+        });
+        let ordinary_valid = ordinary_ai.iter().all(|card| {
+            ai_candidates
+                .iter()
+                .any(|candidate| same_card(card, candidate))
+        });
+        ai_candidates.extend_from_slice(prepared);
         if captured_ai.len() == expected_ai_count
+            && prepared_present
+            && ordinary_valid
             && captured_player.as_ref().is_none_or(|player| {
                 player.len().checked_add(reserved_ultimate_slots) == Some(hand_size)
             })
@@ -408,8 +435,9 @@ fn start_decks_from(
 
     let candidates = player_candidates(false);
     let player = draw_guaranteed_by_uid(&candidates, &required_uids, hand_size, &mut rng);
-    let ai =
+    let mut ai =
         generate_ai_deck_with_extra_actions(fight, ex_point, eureka, extra_ai_actions, &mut rng);
+    ai.extend_from_slice(prepared);
     ConfiguredStartDecks {
         ai,
         player,

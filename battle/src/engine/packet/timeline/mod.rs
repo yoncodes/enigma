@@ -865,7 +865,14 @@ fn project_change(
         BattleChange::Conduit(
             crate::engine::manager::conduit::ConduitChange::DeviceRestarted { source_uid, team },
         ) => vec![EffectPacket::conduit_device_restarted(*source_uid, *team)],
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::Setup => Vec::new(),
+        BattleChange::Card(changes)
+            if matches!(
+                changes.kind,
+                CardChangeKind::Setup | CardChangeKind::AiSkillPrepared
+            ) =>
+        {
+            Vec::new()
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::AiQueueRefreshed => {
             Vec::new()
         }

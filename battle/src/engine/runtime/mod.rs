@@ -18,6 +18,7 @@ use crate::{
 use self::determinism::RoundDeterminism;
 
 pub use crate::engine::round::outcome::BattleOutcome;
+pub(crate) use round::selected_enemy_target;
 
 pub(crate) mod change;
 pub mod cloth_skill;

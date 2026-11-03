@@ -1,34 +1,39 @@
 use std::collections::HashSet;
 
+use sonettobuf::{BeginRoundOper, FightDeviceOper};
+
 use crate::engine::{
+    auto_battle::simulation::Simulation,
     manager::{
         BattleManagers,
         card::{CARD_PLAY_ORIGIN, CardManager, CardPlay},
     },
     runtime::determinism::RoundDeterminism,
-    skill::{effect::SkillEffectCatalog, target::TargetPool},
 };
 
-use super::super::{best_candidate, play_card, random_card_choice, simulate_play};
+use super::super::{best_candidate, play_card, play_operation, random_card_choice};
 
 #[allow(clippy::too_many_arguments)]
-pub(in crate::engine::auto_battle) fn state(
+pub(in crate::engine::auto_battle) fn operations(
     cards: &CardManager,
-    managers: &BattleManagers,
+    simulation: &Simulation<'_>,
     sim: &BattleManagers,
     played_owners: &HashSet<i64>,
     normal_ap: i32,
     preferred_target: Option<i64>,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
-) -> (BattleManagers, RoundDeterminism) {
+    choice_determinism: &RoundDeterminism,
+    prefix: &[BeginRoundOper],
+    devices: &[FightDeviceOper],
+) -> Vec<BeginRoundOper> {
     let mut cards = cards.clone();
     let mut sim = sim.clone();
     let mut sim_determinism = determinism.clone();
+    let mut choice_determinism = choice_determinism.clone();
     let mut normal_ap = normal_ap;
     let mut played_owners = played_owners.clone();
-    let live_pool = pool.runtime_view(managers);
+    let mut opers = prefix.to_vec();
+    let live_pool = simulation.pool.runtime_view(&simulation.managers);
     let selected_power_types = HashSet::new();
     let mut reported_unsupported = HashSet::new();
 
@@ -37,7 +42,7 @@ pub(in crate::engine::auto_battle) fn state(
             .hand()
             .iter()
             .chain(cards.team_cards())
-            .map(|card| random_card_choice(card, managers, &mut sim_determinism))
+            .map(|card| random_card_choice(card, &simulation.managers, &mut choice_determinism))
             .collect::<Vec<_>>();
         let Some(candidate) = best_candidate(
             &cards,
@@ -45,15 +50,18 @@ pub(in crate::engine::auto_battle) fn state(
             &played_owners,
             normal_ap,
             preferred_target,
-            managers,
+            &simulation.managers,
             &sim,
             &live_pool,
-            &pool.runtime_view(&sim),
-            catalog,
+            &simulation.pool.runtime_view(&sim),
+            simulation.catalog,
             &sim_determinism,
             &selected_power_types,
             &[],
             &mut reported_unsupported,
+            simulation,
+            &opers,
+            devices,
         ) else {
             break;
         };
@@ -65,21 +73,25 @@ pub(in crate::engine::auto_battle) fn state(
             choice: None,
             recorded_skill: None,
         };
-        if !simulate_play(
-            &cards,
-            &mut sim,
-            pool,
-            catalog,
-            &mut sim_determinism,
-            play.clone(),
-        ) || !play_card(&mut cards, play)
-        {
+        opers.push(play_operation(
+            candidate.card_index,
+            candidate.target_uid,
+            candidate.chosen_skill_id,
+        ));
+        let Some((after, after_determinism)) = simulation.player(&opers, devices) else {
+            opers.pop();
+            break;
+        };
+        if !play_card(&mut cards, play) {
+            opers.pop();
             break;
         }
+        sim = after;
+        sim_determinism = after_determinism;
         normal_ap = normal_ap.saturating_sub(candidate.normal_ap);
         if candidate.normal_ap > 0 {
             played_owners.insert(candidate.source_uid);
         }
     }
-    (sim, sim_determinism)
+    opers
 }

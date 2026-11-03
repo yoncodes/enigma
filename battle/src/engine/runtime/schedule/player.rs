@@ -151,6 +151,11 @@ pub fn run_conduit_phase(
                 let current_pool = pool.runtime_view(managers);
                 let unavailable = (skill.cost_value <= 0
                     && used_free_skills.contains(&(source_uid, skill.skill_id)))
+                    || (catalog.is_big_skill(skill.skill_id)
+                        && crate::engine::manager::ex_point::ExPointKind::from_wire(
+                            managers.ex_point.kind(source_uid),
+                        ) == crate::engine::manager::ex_point::ExPointKind::DevicePower
+                        && !managers.ex_point.is_full(source_uid))
                     || !managers.conduit.can_begin_skill(
                         source_uid,
                         skill.skill_id,
@@ -235,9 +240,22 @@ pub fn run_conduit_phase(
                 let can_repeat = skill.cost_value <= 0
                     && free_skill_consumed_remaining_buff(&action, source_uid);
                 used_free_skills.retain(|(uid, _)| !restarted_devices.contains(uid));
+                let activated = action.outcomes.iter().any(|outcome| {
+                    matches!(
+                        outcome,
+                        RuleOutcome::Conduit(
+                            crate::engine::manager::conduit::ConduitChange::SkillBegan {
+                                source_uid: owner_uid, skill_id, ..
+                            }
+                        ) if *owner_uid == source_uid && *skill_id == skill.skill_id
+                    )
+                });
                 append(&mut result, action);
-                ran = true;
-                if skill.cost_value <= 0 && !can_repeat && !restarted_devices.contains(&source_uid)
+                ran |= activated;
+                if activated
+                    && skill.cost_value <= 0
+                    && !can_repeat
+                    && !restarted_devices.contains(&source_uid)
                 {
                     used_free_skills.insert((source_uid, skill.skill_id));
                 }
@@ -744,11 +762,13 @@ fn run_player_card_ops(
                 determinism,
                 context,
                 CARD_PLAY_ORIGIN,
-                pending_rewards,
+                std::mem::take(&mut pending_rewards),
             )?,
         );
-        result.frames.extend(before_actions);
-        return Ok(result);
+        if !include_device_action {
+            result.frames.extend(before_actions);
+            return Ok(result);
+        }
     }
     if !pending_rewards.is_empty() {
         skills

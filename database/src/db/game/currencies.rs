@@ -269,6 +269,21 @@ pub async fn get_currencies(
         .collect())
 }
 
+pub async fn quantity_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    currency_id: i32,
+) -> sqlx::Result<i32> {
+    Ok(
+        sqlx::query_scalar("SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = ?")
+            .bind(user_id)
+            .bind(currency_id)
+            .fetch_optional(&mut **tx)
+            .await?
+            .unwrap_or_default(),
+    )
+}
+
 pub async fn get_currency(
     pool: &SqlitePool,
     user_id: i64,

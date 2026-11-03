@@ -121,6 +121,7 @@ fn action_event(
 }
 
 mod dispatch;
+mod trace;
 
 #[cfg(test)]
 pub(super) use dispatch::action_mode;

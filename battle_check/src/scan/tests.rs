@@ -1,5 +1,7 @@
 use super::*;
 
+mod slots;
+
 #[test]
 fn capability_gaps_are_not_ready() {
     let mut report = Report::default();

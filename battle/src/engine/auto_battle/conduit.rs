@@ -3,12 +3,12 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-use sonettobuf::{Fight, FightDeviceOper};
+use sonettobuf::{BeginRoundOper, FightDeviceOper};
 
 use crate::engine::{
     manager::{
         BattleManagers,
-        conduit::{ConduitChange, ConduitCommand, ConduitDevice, ConduitSkill},
+        conduit::{ConduitChange, ConduitSkill},
     },
     mechanic::card::CardMechanic,
     runtime::{determinism::RoundDeterminism, executor::RuleOutcome, schedule::run_conduit_phase},
@@ -16,10 +16,11 @@ use crate::engine::{
         behavior::classify::BehaviorKind,
         condition::parse::ParsedConditionKind,
         effect::{SkillEffectCatalog, catalog::SkillEffectTag},
-        target::{TargetContext, TargetPool},
+        target::TargetPool,
     },
 };
 
+use super::simulation::Simulation;
 use super::{Support, certain_buffs, is_shield_buff, support_need, target_options};
 
 pub(super) mod lookahead;
@@ -91,7 +92,7 @@ impl SelectionPlan {
         }
     }
 
-    fn rendered_group(&self, uid: i64, after_cards_group: i32, desired_group: i32) -> i32 {
+    fn requested_group(&self, uid: i64, after_cards_group: i32, desired_group: i32) -> i32 {
         let Some(state) = self.devices.get(&uid) else {
             return desired_group;
         };
@@ -108,81 +109,73 @@ impl SelectionPlan {
     }
 }
 
-pub(super) fn operations(
-    fight: &Fight,
-    managers: &BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &RoundDeterminism,
-) -> Vec<FightDeviceOper> {
-    planned_operations(fight, managers, pool, catalog, determinism, None)
+pub(super) struct Selection {
+    pub requested: Vec<FightDeviceOper>,
+    pub effective: Vec<FightDeviceOper>,
 }
 
-fn planned_operations(
-    fight: &Fight,
-    managers: &BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &RoundDeterminism,
+pub(super) fn operations(
+    simulation: &Simulation<'_>,
+    opers: &[BeginRoundOper],
     selection_plan: Option<&SelectionPlan>,
-) -> Vec<FightDeviceOper> {
-    let devices = managers.conduit.devices().cloned().collect::<Vec<_>>();
-    let mut operations = Vec::with_capacity(devices.len());
+) -> Option<Selection> {
+    let devices = simulation
+        .managers
+        .conduit
+        .devices()
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut operations = devices
+        .iter()
+        .map(|device| FightDeviceOper {
+            uid: Some(device.uid),
+            index: Some(device.selected_group),
+        })
+        .collect::<Vec<_>>();
+    let (after_cards, _) = simulation.player(opers, &operations)?;
 
-    for device in devices {
+    for (device_index, device) in devices.iter().enumerate() {
         let mut best = None;
-        for (index, skills) in device.skill_groups.iter().enumerate() {
+        for (index, desired_skills) in device.skill_groups.iter().enumerate() {
             let group = index as i32 + 1;
-            let Some(candidate) = simulate_group(
-                fight,
-                managers,
-                pool,
-                catalog,
-                determinism,
-                &device,
-                group,
-                skills,
-            ) else {
+            let requested_group = selection_plan.map_or(group, |plan| {
+                plan.requested_group(
+                    device.uid,
+                    after_cards
+                        .conduit
+                        .selected_group(device.uid)
+                        .unwrap_or(device.selected_group),
+                    group,
+                )
+            });
+            operations[device_index].index = Some(requested_group);
+            let Some(candidate) =
+                simulate_group(simulation, opers, &operations, device.uid, desired_skills)
+            else {
                 continue;
             };
             let key = (candidate, Reverse(index));
-            if best.is_none_or(|best_key| key > best_key) {
-                best = Some(key);
+            if best.as_ref().is_none_or(|(best_key, _)| key > *best_key) {
+                best = Some((key, requested_group));
             }
         }
-
-        let desired_group = best
-            .map(|(.., Reverse(index))| index as i32 + 1)
-            .unwrap_or(device.selected_group);
-        let index = selection_plan.map_or(desired_group, |plan| {
-            plan.rendered_group(device.uid, device.selected_group, desired_group)
-        });
-        operations.push(FightDeviceOper {
-            uid: Some(device.uid),
-            index: Some(index),
-        });
+        operations[device_index].index =
+            Some(best.map_or(device.selected_group, |(_, group)| group));
     }
 
-    operations
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn selection_operations(
-    fight: &Fight,
-    after_cards: &BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &RoundDeterminism,
-    selection_plan: &SelectionPlan,
-) -> Vec<FightDeviceOper> {
-    planned_operations(
-        fight,
-        after_cards,
-        pool,
-        catalog,
-        determinism,
-        Some(selection_plan),
-    )
+    let (after_cards, _) = simulation.player(opers, &operations)?;
+    Some(Selection {
+        requested: operations,
+        effective: after_cards
+            .conduit
+            .selections()
+            .into_iter()
+            .map(|(uid, group)| FightDeviceOper {
+                uid: Some(uid),
+                index: Some(group),
+            })
+            .collect(),
+    })
 }
 
 pub(super) fn selected_power_types(
@@ -206,46 +199,40 @@ pub(super) fn selected_power_types(
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn simulate_group(
-    fight: &Fight,
-    managers: &BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &RoundDeterminism,
-    device: &ConduitDevice,
-    group: i32,
-    skills: &[ConduitSkill],
+    simulation: &Simulation<'_>,
+    opers: &[BeginRoundOper],
+    operations: &[FightDeviceOper],
+    source_uid: i64,
+    desired_skills: &[ConduitSkill],
 ) -> Option<GroupScore> {
-    if skills.is_empty() {
-        return None;
-    }
-    let mut sim = managers.clone();
-    let mut sim_catalog = catalog.clone();
-    let mut sim_determinism = determinism.clone();
-    if let Err(error) = sim.conduit.execute(ConduitCommand::SelectGroup {
-        source_uid: device.uid,
-        group,
-    }) {
-        tracing::warn!(
-            source_uid = device.uid,
-            group,
-            ?error,
-            "auto-battle rejected conduit group"
-        );
-        return None;
-    }
+    let (before, mut sim_determinism) = simulation.player(opers, operations)?;
+    let mut sim = before.clone();
+    let mut sim_catalog = simulation.catalog.clone();
+    let skills = before
+        .conduit
+        .devices()
+        .map(|device| before.conduit.selected_skills(device.uid))
+        .collect::<Result<Vec<_>, _>>()
+        .inspect_err(|error| tracing::warn!(?error, "auto-battle rejected conduit selection"))
+        .ok()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
     sim.catalog().extend_skill_roots(
         &mut sim_catalog,
         skills.iter().map(|skill| skill.skill_id),
         std::iter::empty(),
     );
-    let current_pool = pool.runtime_view(managers);
-    let source = current_pool.entity(device.uid)?;
-    if skills
+    let current_pool = simulation.pool.runtime_view(&before);
+    let source = current_pool.entity(source_uid)?;
+    if before
+        .conduit
+        .selected_skills(source_uid)
+        .ok()?
         .iter()
         .any(|skill| sim_catalog.is_big_skill(skill.skill_id))
-        && !CardMechanic.ultimate_resource_ready(managers, source)
+        && !CardMechanic.ultimate_resource_ready(&before, source)
     {
         return None;
     }
@@ -253,49 +240,49 @@ fn simulate_group(
         sim_catalog.get(skill.skill_id).is_none() || !sim_catalog.issues(skill.skill_id).is_empty()
     }) {
         tracing::warn!(
-            source_uid = device.uid,
-            group,
+            source_uid,
             skill_id = skill.skill_id,
             issues = ?sim_catalog.issues(skill.skill_id),
             "auto-battle rejected unsupported conduit group"
         );
         return None;
     }
-    let operation = FightDeviceOper {
-        uid: Some(device.uid),
-        index: Some(group),
-    };
+    let context = crate::engine::runtime::selected_enemy_target(
+        &crate::engine::round::command::commands_from_opers(opers),
+        &simulation.pool,
+    )
+    .map(
+        |runtime_target_uid| crate::engine::skill::target::TargetContext {
+            runtime_target_uid,
+            ..simulation.context
+        },
+    )
+    .unwrap_or(simulation.context);
+    let before_determinism = sim_determinism.clone();
     let result = run_conduit_phase(
         sim.catalog(),
-        fight,
+        &simulation.fight,
         &mut sim,
-        pool,
+        &simulation.pool,
         &mut sim_catalog,
         &mut sim_determinism,
-        TargetContext::default(),
-        std::slice::from_ref(&operation),
+        context,
+        operations,
     )
-    .inspect_err(|error| {
-        tracing::warn!(
-            source_uid = device.uid,
-            group,
-            ?error,
-            "auto-battle rejected conduit group"
-        )
-    })
+    .inspect_err(|error| tracing::warn!(source_uid, ?error, "auto-battle rejected conduit group"))
     .ok()?;
-    let pre_pool = pool.runtime_view(managers);
-    let score = executed_skills(&result.outcomes, device.uid, skills)
+    let pre_pool = simulation.pool.runtime_view(&before);
+    let score = executed_skills(&result.outcomes, source_uid, desired_skills)
         .into_iter()
         .map(|(skill, spent)| {
             skill_score(
-                device.uid,
+                source_uid,
                 skill,
                 spent,
-                managers,
+                &before,
                 &pre_pool,
                 &sim_catalog,
-                determinism,
+                &before_determinism,
             )
         })
         .fold((0, 0, 0), |total, score| {
