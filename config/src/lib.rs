@@ -31,6 +31,7 @@ mod activity_query;
 mod battle_pass;
 mod dungeon;
 mod equipment;
+pub mod exploration;
 mod hero;
 mod player;
 mod reward_query;

@@ -872,6 +872,7 @@ pub struct GameDB {
     pub weekwalk_element: weekwalk_element::WeekwalkElementTable,
     pub weekwalk_scene: weekwalk_scene::WeekwalkSceneTable,
     pub weekwalk_type: weekwalk_type::WeekwalkTypeTable,
+    pub explore_map: crate::exploration::MapTable,
 }
 
 impl GameDB {
@@ -2179,6 +2180,7 @@ impl GameDB {
             &format!("{}/weekwalk_type.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_type.json: {}", e))?;
 
+        let explore_map = crate::exploration::MapTable::load(data_dir, &explore_scene)?;
         Ok(Self {
             achievement,
             achievement_task,
@@ -2614,6 +2616,7 @@ impl GameDB {
             weekwalk_element,
             weekwalk_scene,
             weekwalk_type,
+            explore_map,
         })
     }
 
