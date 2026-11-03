@@ -44,3 +44,6 @@ mod tower;
 pub mod configs {
     pub use crate::{GameDB, get, init, try_get};
 }
+
+#[cfg(test)]
+mod tests;

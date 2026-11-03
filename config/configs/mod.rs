@@ -244,6 +244,9 @@ pub mod equip_const;
 pub mod equip_skill;
 pub mod equip_strengthen;
 pub mod equip_strengthen_cost;
+pub mod explore_chest;
+pub mod explore_item;
+pub mod explore_scene;
 pub mod fairy_land_element;
 pub mod fairyland_puzzle;
 pub mod fairyland_puzzle_talk;
@@ -374,6 +377,7 @@ pub mod task_achievement;
 pub mod task_activity_bonus;
 pub mod task_activity_show;
 pub mod task_daily;
+pub mod task_explore;
 pub mod task_guide;
 pub mod task_room;
 pub mod task_season;
@@ -678,6 +682,9 @@ pub struct GameDB {
     pub equip_skill: equip_skill::EquipSkillTable,
     pub equip_strengthen: equip_strengthen::EquipStrengthenTable,
     pub equip_strengthen_cost: equip_strengthen_cost::EquipStrengthenCostTable,
+    pub explore_chest: explore_chest::ExploreChestTable,
+    pub explore_item: explore_item::ExploreItemTable,
+    pub explore_scene: explore_scene::ExploreSceneTable,
     pub fairy_land_element: fairy_land_element::FairyLandElementTable,
     pub fairyland_puzzle: fairyland_puzzle::FairylandPuzzleTable,
     pub fairyland_puzzle_talk: fairyland_puzzle_talk::FairylandPuzzleTalkTable,
@@ -808,6 +815,7 @@ pub struct GameDB {
     pub task_activity_bonus: task_activity_bonus::TaskActivityBonusTable,
     pub task_activity_show: task_activity_show::TaskActivityShowTable,
     pub task_daily: task_daily::TaskDailyTable,
+    pub task_explore: task_explore::TaskExploreTable,
     pub task_guide: task_guide::TaskGuideTable,
     pub task_room: task_room::TaskRoomTable,
     pub task_season: task_season::TaskSeasonTable,
@@ -1600,6 +1608,15 @@ impl GameDB {
         let equip_strengthen_cost = equip_strengthen_cost::EquipStrengthenCostTable::load(
             &format!("{}/equip_strengthen_cost.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load equip_strengthen_cost.json: {}", e))?;
+        let explore_chest = explore_chest::ExploreChestTable::load(
+            &format!("{}/explore_chest.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load explore_chest.json: {}", e))?;
+        let explore_item = explore_item::ExploreItemTable::load(
+            &format!("{}/explore_item.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load explore_item.json: {}", e))?;
+        let explore_scene = explore_scene::ExploreSceneTable::load(
+            &format!("{}/explore_scene.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load explore_scene.json: {}", e))?;
         let fairy_land_element = fairy_land_element::FairyLandElementTable::load(
             &format!("{}/fairy_land_element.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load fairy_land_element.json: {}", e))?;
@@ -1990,6 +2007,9 @@ impl GameDB {
         let task_daily = task_daily::TaskDailyTable::load(
             &format!("{}/task_daily.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load task_daily.json: {}", e))?;
+        let task_explore = task_explore::TaskExploreTable::load(
+            &format!("{}/task_explore.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load task_explore.json: {}", e))?;
         let task_guide = task_guide::TaskGuideTable::load(
             &format!("{}/task_guide.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load task_guide.json: {}", e))?;
@@ -2404,6 +2424,9 @@ impl GameDB {
             equip_skill,
             equip_strengthen,
             equip_strengthen_cost,
+            explore_chest,
+            explore_item,
+            explore_scene,
             fairy_land_element,
             fairyland_puzzle,
             fairyland_puzzle_talk,
@@ -2534,6 +2557,7 @@ impl GameDB {
             task_activity_bonus,
             task_activity_show,
             task_daily,
+            task_explore,
             task_guide,
             task_room,
             task_season,
