@@ -24,15 +24,13 @@ The project is still under active development. Added support for certain game me
 
 2. Extract the archives into the same folder.
 
-3. Download [sonetto-data](https://gitlab.com/yoncodes/sonetto-data). Copy its `excel2json` folder and the exploration Lua data below into `data` beside `gameserver`:
+3. Download [sonetto-data](https://gitlab.com/yoncodes/sonetto-data). Copy its `excel2json` folder into `data` beside `gameserver`:
 
 ```text
 data/excel2json
-data/lua/modules/configs/explore/lua_explore_map_*.lua
-data/lua/modules/logic/explore/controller/ExploreUnitMoFieldEnum.lua
 ```
 
-Keep these files from the same data snapshot. The server reads the exploration tables as data; it does not execute Lua.
+Use a matching data snapshot that includes the exported `explore_map.json` table.
 
 4. Download [sonetto-patch](https://github.com/yoncodes/sonetto-patch), then place `launcher.exe` and `sonetto.dll` in the game folder.
 
@@ -58,7 +56,7 @@ muipserver
 
 4. git clone https://gitlab.com/yoncodes/sonetto-data.git
 
-5. Copy the game data into the layout shown in Quick start, including the exploration Lua data.
+5. Copy `sonetto-data/excel2json` to `data/excel2json`, including the exported `explore_map.json` table.
 
 6. cargo build --release -p gameserver -p sdkserver -p muipserver
 

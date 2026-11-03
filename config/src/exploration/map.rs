@@ -1,31 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::fields::Fields;
-
 #[derive(Debug, Deserialize)]
-#[serde(from = "[i32; 5]")]
+#[serde(rename_all = "camelCase")]
 pub struct Node {
     pub x: i32,
     pub y: i32,
     pub height: i32,
     pub area_id: i32,
     pub camera_id: i32,
-}
-
-impl From<[i32; 5]> for Node {
-    fn from([x, y, height, area_id, camera_id]: [i32; 5]) -> Self {
-        Self {
-            x,
-            y,
-            height,
-            area_id,
-            camera_id,
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,11 +35,19 @@ pub struct Unit {
     pub special_datas: Vec<Value>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Area {
     pub id: i32,
     pub can_reset: bool,
     pub units: Vec<Unit>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct MapData {
+    pub id: i32,
+    pub nodes: Vec<Node>,
+    pub areas: Vec<Area>,
 }
 
 #[derive(Debug)]
@@ -64,35 +58,24 @@ pub struct Map {
 }
 
 impl Map {
-    pub(super) fn read(id: i32, source: &str, fields: &Fields) -> Result<Self> {
-        let mut rows = super::source::read(source)?.into_iter();
-        let nodes: Vec<Node> =
-            serde_json::from_value(rows.next().context("map nodes are missing")?)?;
+    pub(super) fn read(data: MapData) -> Result<Self> {
         let mut map = Self {
-            id,
+            id: data.id,
             nodes: BTreeMap::new(),
             areas: BTreeMap::new(),
         };
-        for node in nodes {
+        for node in data.nodes {
             ensure!(
                 map.nodes.insert((node.x, node.y), node).is_none(),
                 "duplicate exploration node"
             );
         }
         let mut unit_ids = BTreeSet::new();
-        for row in rows {
-            let (area_id, units, can_reset): (i32, Vec<Vec<Value>>, bool) =
-                serde_json::from_value(row)?;
-            let mut area = Area {
-                id: area_id,
-                can_reset,
-                units: Vec::new(),
-            };
-            for row in units {
-                let unit = fields.unit(row)?;
+        for area in data.areas {
+            for unit in &area.units {
                 ensure!(unit_ids.insert(unit.id), "duplicate exploration unit");
                 ensure!(
-                    unit.area_id == area_id,
+                    unit.area_id == area.id,
                     "exploration unit belongs to another area"
                 );
                 ensure!(
@@ -100,10 +83,9 @@ impl Map {
                         .contains_key(&(unit.node_pos[0], unit.node_pos[1])),
                     "exploration unit is outside the map"
                 );
-                area.units.push(unit);
             }
             ensure!(
-                map.areas.insert(area_id, area).is_none(),
+                map.areas.insert(area.id, area).is_none(),
                 "duplicate exploration area"
             );
         }

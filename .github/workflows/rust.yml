@@ -46,9 +46,6 @@ jobs:
         run: |
           mkdir -p data
           cp -r sonetto-data/excel2json data/
-          mkdir -p data/lua/modules/configs/explore data/lua/modules/logic/explore/controller
-          cp sonetto-data/lua/modules/configs/explore/lua_explore_map_*.lua data/lua/modules/configs/explore/
-          cp sonetto-data/lua/modules/logic/explore/controller/ExploreUnitMoFieldEnum.lua data/lua/modules/logic/explore/controller/
         shell: bash
 
       - name: Set JSON_DATA_DIR for build (Linux/macOS)
@@ -119,7 +116,6 @@ jobs:
           cp target/${{ matrix.target }}/release/muipserver artifacts/
           cp common/Config.toml artifacts/config.toml
           cp -r data/excel2json artifacts/data/
-          cp -r data/lua artifacts/data/
           cd artifacts
           tar -czf ../${{ matrix.artifact_name }}.tar.gz gameserver sdkserver muipserver config.toml data
 
@@ -132,7 +128,6 @@ jobs:
           copy target\${{ matrix.target }}\release\muipserver.exe artifacts\
           copy common\Config.toml artifacts\config.toml
           xcopy /E /I data\excel2json artifacts\data\excel2json
-          xcopy /E /I data\lua artifacts\data\lua
           cd artifacts
           tar -czf ..\${{ matrix.artifact_name }}.tar.gz gameserver.exe sdkserver.exe muipserver.exe config.toml data
 
