@@ -1,3 +1,5 @@
+pub mod state;
+
 use crate::models::game::explore::*;
 use anyhow::Result;
 use sqlx::SqlitePool;
