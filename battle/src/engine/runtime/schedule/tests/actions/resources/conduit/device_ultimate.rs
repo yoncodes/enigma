@@ -199,34 +199,65 @@ fn device_overflow_is_banked_before_applied_harmonization_is_recorded() {
 }
 
 #[test]
-fn conduit_unique_requires_full_personal_device_power() {
+fn conduit_unique_waits_for_full_personal_device_power() {
     init_config();
-    let fight = fight(99);
-    let (pool, mut managers, mut catalog) = selected_unique_device(&fight);
+    for current in [10, 24, 99] {
+        let fight = fight(current);
+        let (pool, mut managers, mut catalog) = selected_unique_device(&fight);
+        let result = run_conduit_phase(
+            managers.catalog(),
+            &fight,
+            &mut managers,
+            &pool,
+            &mut catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &operation(),
+        )
+        .unwrap();
 
-    let error = match run_conduit_phase(
-        managers.catalog(),
-        &fight,
-        &mut managers,
-        &pool,
-        &mut catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
-        &operation(),
-    ) {
-        Ok(_) => panic!("an underfilled personal device gauge authorized its unique skill"),
-        Err(error) => error,
-    };
+        assert_eq!(managers.ex_point.get(10), current);
+        assert!(result.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            RuleOutcome::Conduit(
+                crate::engine::manager::conduit::ConduitChange::RunningChanged {
+                    source_uid: 10,
+                    running: false,
+                }
+            )
+        )));
+        assert!(!result.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            RuleOutcome::Conduit(crate::engine::manager::conduit::ConduitChange::SkillBegan { .. })
+        )));
 
-    assert_eq!(
-        error,
-        DrainError::InsufficientUltimateResource {
-            owner_uid: 10,
-            skill_id: 31495151,
-            required: 100,
-            current: 99,
-        }
-    );
+        let error = match crate::engine::runtime::drain::run_conduit_action(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            10,
+            3,
+            1,
+            1,
+            31495151,
+            None,
+            None,
+        ) {
+            Ok(_) => panic!("an underfilled personal device gauge authorized its unique skill"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            DrainError::InsufficientUltimateResource {
+                owner_uid: 10,
+                skill_id: 31495151,
+                required: 100,
+                current,
+            }
+        );
+    }
 }
 
 #[test]

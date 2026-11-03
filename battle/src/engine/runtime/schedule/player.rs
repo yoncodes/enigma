@@ -151,6 +151,11 @@ pub fn run_conduit_phase(
                 let current_pool = pool.runtime_view(managers);
                 let unavailable = (skill.cost_value <= 0
                     && used_free_skills.contains(&(source_uid, skill.skill_id)))
+                    || (catalog.is_big_skill(skill.skill_id)
+                        && crate::engine::manager::ex_point::ExPointKind::from_wire(
+                            managers.ex_point.kind(source_uid),
+                        ) == crate::engine::manager::ex_point::ExPointKind::DevicePower
+                        && !managers.ex_point.is_full(source_uid))
                     || !managers.conduit.can_begin_skill(
                         source_uid,
                         skill.skill_id,
