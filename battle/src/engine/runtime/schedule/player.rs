@@ -240,9 +240,22 @@ pub fn run_conduit_phase(
                 let can_repeat = skill.cost_value <= 0
                     && free_skill_consumed_remaining_buff(&action, source_uid);
                 used_free_skills.retain(|(uid, _)| !restarted_devices.contains(uid));
+                let activated = action.outcomes.iter().any(|outcome| {
+                    matches!(
+                        outcome,
+                        RuleOutcome::Conduit(
+                            crate::engine::manager::conduit::ConduitChange::SkillBegan {
+                                source_uid: owner_uid, skill_id, ..
+                            }
+                        ) if *owner_uid == source_uid && *skill_id == skill.skill_id
+                    )
+                });
                 append(&mut result, action);
-                ran = true;
-                if skill.cost_value <= 0 && !can_repeat && !restarted_devices.contains(&source_uid)
+                ran |= activated;
+                if activated
+                    && skill.cost_value <= 0
+                    && !can_repeat
+                    && !restarted_devices.contains(&source_uid)
                 {
                     used_free_skills.insert((source_uid, skill.skill_id));
                 }

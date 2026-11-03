@@ -243,6 +243,18 @@ pub fn run_conduit_action(
     frame_target_uid: Option<i64>,
     cost_modifier: Option<(i32, RuleOp)>,
 ) -> Result<DrainResult, DrainError> {
+    if managers.hp.current(source_uid) <= 0 {
+        return run_conduit_stop(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            source_uid,
+            device_index,
+            skill_position,
+        );
+    }
     let personal_resource_cost = if catalog.is_big_skill(skill_id)
         && crate::engine::manager::ex_point::ExPointKind::from_wire(
             managers.ex_point.kind(source_uid),
