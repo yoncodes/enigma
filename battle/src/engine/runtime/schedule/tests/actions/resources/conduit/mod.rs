@@ -16,3 +16,4 @@ fn find_step(step: &sonettobuf::FightStep, act_id: i32) -> Option<&sonettobuf::F
 mod action_setup;
 mod loop_lifecycle;
 mod team_pass;
+mod terminal;

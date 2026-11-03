@@ -243,6 +243,9 @@ pub fn run_conduit_action(
     frame_target_uid: Option<i64>,
     cost_modifier: Option<(i32, RuleOp)>,
 ) -> Result<DrainResult, DrainError> {
+    if managers.terminal_outcome().is_some() {
+        return Ok(DrainResult::default());
+    }
     if managers.hp.current(source_uid) <= 0 {
         return run_conduit_stop(
             managers,
