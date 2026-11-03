@@ -793,7 +793,7 @@ impl BattleRuntime {
     }
 }
 
-pub(super) fn selected_enemy_target(
+pub(crate) fn selected_enemy_target(
     commands: &[RoundCommand],
     pool: &crate::engine::skill::target::TargetPool,
 ) -> Option<i64> {
