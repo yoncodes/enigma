@@ -256,6 +256,7 @@ pub mod fight_eziozhuangbei;
 pub mod fight_eziozhuangbei_icon;
 pub mod fight_jgz_const;
 pub mod fight_prompt;
+pub mod fight_task;
 pub mod formula;
 pub mod friendless;
 pub mod guide;
@@ -278,6 +279,7 @@ pub mod investigate_clue;
 pub mod item;
 pub mod language_en;
 pub mod magic_circle;
+pub mod magic_wqsz;
 pub mod manufacture_building;
 pub mod manufacture_building_level;
 pub mod manufacture_building_trade_level;
@@ -421,6 +423,11 @@ pub mod turnback_task_bonus;
 pub mod udimo;
 pub mod udimo_background;
 pub mod udimo_decoration;
+pub mod weekwalk;
+pub mod weekwalk_dialog;
+pub mod weekwalk_element;
+pub mod weekwalk_scene;
+pub mod weekwalk_type;
 
 use std::sync::{Mutex, OnceLock};
 
@@ -681,6 +688,7 @@ pub struct GameDB {
     pub fight_eziozhuangbei_icon: fight_eziozhuangbei_icon::FightEziozhuangbeiIconTable,
     pub fight_jgz_const: fight_jgz_const::FightJgzConstTable,
     pub fight_prompt: fight_prompt::FightPromptTable,
+    pub fight_task: fight_task::FightTaskTable,
     pub formula: formula::FormulaTable,
     pub friendless: friendless::FriendlessTable,
     pub guide: guide::GuideTable,
@@ -703,6 +711,7 @@ pub struct GameDB {
     pub item: item::ItemTable,
     pub language_en: language_en::LanguageEnTable,
     pub magic_circle: magic_circle::MagicCircleTable,
+    pub magic_wqsz: magic_wqsz::MagicWqszTable,
     pub manufacture_building: manufacture_building::ManufactureBuildingTable,
     pub manufacture_building_level: manufacture_building_level::ManufactureBuildingLevelTable,
     pub manufacture_building_trade_level: manufacture_building_trade_level::ManufactureBuildingTradeLevelTable,
@@ -846,6 +855,11 @@ pub struct GameDB {
     pub udimo: udimo::UdimoTable,
     pub udimo_background: udimo_background::UdimoBackgroundTable,
     pub udimo_decoration: udimo_decoration::UdimoDecorationTable,
+    pub weekwalk: weekwalk::WeekwalkTable,
+    pub weekwalk_dialog: weekwalk_dialog::WeekwalkDialogTable,
+    pub weekwalk_element: weekwalk_element::WeekwalkElementTable,
+    pub weekwalk_scene: weekwalk_scene::WeekwalkSceneTable,
+    pub weekwalk_type: weekwalk_type::WeekwalkTypeTable,
 }
 
 impl GameDB {
@@ -1618,6 +1632,9 @@ impl GameDB {
         let fight_prompt = fight_prompt::FightPromptTable::load(
             &format!("{}/fight_prompt.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load fight_prompt.json: {}", e))?;
+        let fight_task = fight_task::FightTaskTable::load(
+            &format!("{}/fight_task.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load fight_task.json: {}", e))?;
         let formula = formula::FormulaTable::load(
             &format!("{}/formula.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load formula.json: {}", e))?;
@@ -1684,6 +1701,9 @@ impl GameDB {
         let magic_circle = magic_circle::MagicCircleTable::load(
             &format!("{}/magic_circle.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load magic_circle.json: {}", e))?;
+        let magic_wqsz = magic_wqsz::MagicWqszTable::load(
+            &format!("{}/magic_wqsz.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load magic_wqsz.json: {}", e))?;
         let manufacture_building = manufacture_building::ManufactureBuildingTable::load(
             &format!("{}/manufacture_building.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load manufacture_building.json: {}", e))?;
@@ -2113,6 +2133,21 @@ impl GameDB {
         let udimo_decoration = udimo_decoration::UdimoDecorationTable::load(
             &format!("{}/udimo_decoration.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load udimo_decoration.json: {}", e))?;
+        let weekwalk = weekwalk::WeekwalkTable::load(
+            &format!("{}/weekwalk.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk.json: {}", e))?;
+        let weekwalk_dialog = weekwalk_dialog::WeekwalkDialogTable::load(
+            &format!("{}/weekwalk_dialog.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_dialog.json: {}", e))?;
+        let weekwalk_element = weekwalk_element::WeekwalkElementTable::load(
+            &format!("{}/weekwalk_element.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_element.json: {}", e))?;
+        let weekwalk_scene = weekwalk_scene::WeekwalkSceneTable::load(
+            &format!("{}/weekwalk_scene.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_scene.json: {}", e))?;
+        let weekwalk_type = weekwalk_type::WeekwalkTypeTable::load(
+            &format!("{}/weekwalk_type.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_type.json: {}", e))?;
 
         Ok(Self {
             achievement,
@@ -2371,6 +2406,7 @@ impl GameDB {
             fight_eziozhuangbei_icon,
             fight_jgz_const,
             fight_prompt,
+            fight_task,
             formula,
             friendless,
             guide,
@@ -2393,6 +2429,7 @@ impl GameDB {
             item,
             language_en,
             magic_circle,
+            magic_wqsz,
             manufacture_building,
             manufacture_building_level,
             manufacture_building_trade_level,
@@ -2536,6 +2573,11 @@ impl GameDB {
             udimo,
             udimo_background,
             udimo_decoration,
+            weekwalk,
+            weekwalk_dialog,
+            weekwalk_element,
+            weekwalk_scene,
+            weekwalk_type,
         })
     }
 

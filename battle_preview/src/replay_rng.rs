@@ -14,7 +14,7 @@ pub fn opening_determinism(
     game_data: &'static config::GameDB,
     fight: &Fight,
     round: &FightRound,
-) -> RoundDeterminism {
+) -> Result<RoundDeterminism, String> {
     let mut determinism =
         RoundDeterminism::with_seed(fight.battle_id.unwrap_or_default().max(0) as u64);
     determinism.enqueue_hand_rank_choices(opening_hand_rank_choices(game_data, fight, round));
@@ -37,15 +37,15 @@ pub fn opening_determinism(
                 .zip(card.skill_id)
                 .is_some_and(|identity| ultimate_identities.contains(&identity))
         })
-        .filter(|card| {
-            !ultimate_ignores_limit(
+        .try_fold(0, |count, card| {
+            let ignores_limit = ultimate_ignores_limit(
                 battle::catalog::BattleCatalog::new(game_data),
                 fight,
                 card.uid.unwrap_or_default(),
                 card.skill_id.unwrap_or_default(),
-            )
-        })
-        .count();
+            )?;
+            Ok::<_, String>(count + usize::from(!ignores_limit))
+        })?;
     let normal_draws = draws
         .into_iter()
         .filter(|card| {
@@ -65,7 +65,7 @@ pub fn opening_determinism(
             reserved_ultimate_slots,
         );
     }
-    determinism
+    Ok(determinism)
 }
 
 pub fn seed_round_determinism(
@@ -391,7 +391,7 @@ type IndirectHealCrit = ((i32, i64, i64), bool);
 
 // Each effect the engine rolls a crit for is rolled under its own step's skill (or buff) and
 // source, in step order. Config effects name the rolling source: skill row damage (-1), healing
-// behaviors 20001/90001, Spirit Shell heals (0), and crit-capable origin damage 30015/60127.
+// behaviors 20001/90001/60179, Spirit Shell heals (0), and crit-capable origin damage 30015/60127.
 fn crit_choices(
     game_data: &'static config::GameDB,
     round: &FightRound,
@@ -485,7 +485,7 @@ fn crit_choices(
                                 })
                             })
                             .or_else(|| {
-                                heal_crit.filter(|_| matches!(config_effect, 20001 | 90001))
+                                heal_crit.filter(|_| matches!(config_effect, 20001 | 60179 | 90001))
                             })
                             .or_else(|| {
                                 crit(EffectType::Origindamage, EffectType::Origincrit)
@@ -908,7 +908,8 @@ mod tests {
                 ai_use_cards: ai.clone(),
                 ..Default::default()
             },
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             determinism.take_start_decks(),
@@ -1019,7 +1020,8 @@ mod tests {
         let mut runtime = ReplayBattle::new(
             battle::catalog::BattleCatalog::new(config::configs::get()),
             fight,
-        );
+        )
+        .unwrap();
         runtime.start_round().unwrap();
         let stale = card(-1, 40340111, false);
         let expected = card(-1, 40340121, false);
@@ -1100,6 +1102,7 @@ mod tests {
                     effect(EffectType::Heal, 10, 20016),
                     effect(EffectType::Damage, -2, -1),
                     effect(EffectType::Heal, 10, 20001),
+                    effect(EffectType::Healcrit, 10, 60179),
                     effect(EffectType::Buffadd, -2, 0),
                     ActEffect {
                         effect_type: Some(EffectType::Eziobigskilldamage as i32),
@@ -1135,6 +1138,7 @@ mod tests {
                 ((31090111, 10), true),
                 ((31090111, 10), false),
                 ((31090111, 10), false),
+                ((31090111, 10), true),
                 ((31090111, 10), true),
                 ((31090111, 10), false)
             ]

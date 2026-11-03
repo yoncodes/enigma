@@ -198,6 +198,7 @@ fn normalizes_magic_circle_attributes_and_thresholds() {
             enemy_attributes: Vec::new(),
             allied_buffs: Vec::new(),
             enemy_buffs: Vec::new(),
+            linked_buffs: Vec::new(),
             self_skills: Vec::new(),
         })
     );
@@ -230,6 +231,89 @@ fn normalizes_magic_circle_attributes_and_thresholds() {
             },
         ]
     );
+}
+
+#[test]
+fn normalizes_wangqi_magic_circle_levels_and_linked_effects() {
+    crate::test_support::init_config();
+    let catalog = BattleCatalog::new(crate::test_support::game_data());
+
+    assert_eq!(
+        catalog.next_magic_circle_level(42001),
+        Some(MagicCircleLevel {
+            definition: FieldDefinition {
+                field_id: 42002,
+                duration: -1,
+            },
+            level: 2,
+            linked_buffs: vec![31410601, 31412602, 31410603],
+        })
+    );
+    assert_eq!(
+        catalog.next_magic_circle_level(42002),
+        Some(MagicCircleLevel {
+            definition: FieldDefinition {
+                field_id: 42003,
+                duration: -1,
+            },
+            level: 3,
+            linked_buffs: vec![31410601, 31412602, 31410603],
+        })
+    );
+    assert_eq!(
+        catalog.next_magic_circle_level(42003),
+        Some(MagicCircleLevel {
+            definition: FieldDefinition {
+                field_id: 42004,
+                duration: 4,
+            },
+            level: 4,
+            linked_buffs: vec![31410601, 31412602, 31410603, 31410604],
+        })
+    );
+    assert_eq!(
+        catalog.return_magic_circle_level(42004),
+        Some(MagicCircleLevel {
+            definition: FieldDefinition {
+                field_id: 42003,
+                duration: -1,
+            },
+            level: 3,
+            linked_buffs: vec![31410601, 31412602, 31410603],
+        })
+    );
+    assert_eq!(catalog.return_magic_circle_level(42003), None);
+    let circle = catalog.magic_circle(42004).unwrap();
+    assert_eq!(circle.self_skills, vec![31411153]);
+    assert_eq!(
+        circle.linked_buffs,
+        vec![31410601, 31412602, 31410603, 31410604]
+    );
+}
+
+#[test]
+fn validates_magic_circle_complex_effect_grammar() {
+    assert_eq!(
+        parse_magic_circle_complex_effect("1:null,31411151,31410601#31412602"),
+        Ok((Some(31411151), vec![31410601, 31412602]))
+    );
+    assert_eq!(
+        parse_magic_circle_complex_effect(""),
+        Ok((None, Vec::new()))
+    );
+    for invalid in [
+        "null,31411151,31410601",
+        "2:null,31411151,31410601",
+        "1:value,31411151,31410601",
+        "1:null,skill,31410601",
+        "1:null,31411151,",
+        "1:null,31411151,31410601,extra",
+    ] {
+        assert!(
+            parse_magic_circle_complex_effect(invalid).is_err(),
+            "{invalid}"
+        );
+    }
 }
 
 #[test]

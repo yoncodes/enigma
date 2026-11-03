@@ -61,10 +61,6 @@ pub(crate) fn wire_markers(
         .unwrap_or_default()
 }
 
-pub(crate) fn removal_max_hp_sync_act_id(buff_id: i32) -> Option<i32> {
-    BuffDefinition::get(buff_id)?.removal_max_hp_sync_act_id()
-}
-
 #[derive(Debug, Clone)]
 /// Owns active buff instances, storage policy, private act state, and buff UID allocation.
 /// Callers submit `BuffCommand`s rather than choosing stacking, exclusion, or UID policy.
@@ -79,6 +75,7 @@ pub struct BuffManager {
     act_states: HashMap<(i64, i32), state::DotState>,
     act_values: HashMap<(i64, i32), i32>,
     grant_values: HashMap<(i64, i32), i32>,
+    attr_snapshots: HashMap<(i64, i64, AttrId), i32>,
     mode_attributes: HashMap<i32, i32>,
     transition_progress: HashMap<(i64, i32), i32>,
     reserved_grant_uids: HashMap<(i64, i32), VecDeque<i64>>,
@@ -101,6 +98,7 @@ impl Default for BuffManager {
             act_states: HashMap::new(),
             act_values: HashMap::new(),
             grant_values: HashMap::new(),
+            attr_snapshots: HashMap::new(),
             mode_attributes: HashMap::new(),
             transition_progress: HashMap::new(),
             reserved_grant_uids: HashMap::new(),
@@ -235,6 +233,7 @@ struct TrackedEntity {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct GrantInputs {
     pub source_attack: Option<i32>,
+    pub source_max_hp: Option<i32>,
     pub resist_roll: Option<ResistRoll>,
 }
 
@@ -403,6 +402,16 @@ impl BuffManager {
                     .copied()
                     .unwrap_or(0)
             })
+            .sum()
+    }
+
+    pub fn added_type_count_for_owner(&self, owner_uid: i64, type_ids: &[i32]) -> i32 {
+        self.added_by_owner
+            .iter()
+            .filter(|((uid, buff_id), _)| {
+                *uid == owner_uid && type_ids.contains(&self.catalog().buff_type_id(*buff_id))
+            })
+            .map(|(_, amount)| *amount)
             .sum()
     }
 

@@ -41,6 +41,10 @@ pub fn per_ex_point(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionK
     })
 }
 
+pub fn per_eureka(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty().then_some(ParsedConditionKind::PerEureka)
+}
+
 pub fn ex_point_decrease(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::ExPointDecrease {
         threshold: first_i32(args)?,
@@ -108,6 +112,17 @@ pub fn power_compare(_: i32, _: &str, args: &[String]) -> Option<ParsedCondition
     })
 }
 
+pub fn positive_power_compare(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [compare_code, power_id, threshold] = parse_fixed(args)?;
+    (matches!(compare_code, 1..=3) && power_id > 0 && threshold >= 0).then_some(
+        ParsedConditionKind::PowerCompare {
+            compare_code,
+            power_id,
+            threshold,
+        },
+    )
+}
+
 pub fn power_ratio(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [power_id, compare_code, threshold_permille] = parse_fixed(args)?;
     Some(ParsedConditionKind::PowerRatio {
@@ -123,6 +138,30 @@ pub fn fight_progress_value(_: i32, _: &str, args: &[String]) -> Option<ParsedCo
         return None;
     }
     Some(ParsedConditionKind::FightProgressValue {
+        progress_id,
+        compare_code,
+        threshold,
+    })
+}
+
+pub fn progress_complete(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [progress_id, compare_code, threshold] = parse_fixed(args)?;
+    (progress_id == 8 && compare_code == 3 && threshold == 100).then_some(
+        ParsedConditionKind::FightProgressValue {
+            progress_id,
+            compare_code,
+            threshold,
+        },
+    )
+}
+
+pub fn progress_band(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [progress_id, compare_code, threshold] = parse_fixed(args)?;
+    matches!(
+        (progress_id, compare_code, threshold),
+        (8, 1, 0 | 30 | 60) | (8, 2, 29 | 59 | 99)
+    )
+    .then_some(ParsedConditionKind::FightProgressValue {
         progress_id,
         compare_code,
         threshold,
@@ -506,7 +545,8 @@ fn event_condition_count(
         ParsedConditionKind::Random { threshold } => {
             random_roll.map_or(1, |roll| i32::from(roll < *threshold))
         }
-        ParsedConditionKind::AccBuffAddedCount { .. } => 0,
+        ParsedConditionKind::AccBuffAddedCount { .. }
+        | ParsedConditionKind::AccBuffTypeAddedCount { .. } => 0,
         _ => i32::from(conditions_match(
             std::slice::from_ref(condition),
             source_uid,

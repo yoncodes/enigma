@@ -9,7 +9,7 @@ use crate::engine::{
         conduit::ConduitCommand,
         ex_point::{
             ExPointChange, ExPointChanges, ExPointCommand, ExPointConfigureSynchronization,
-            ExPointRecordSynchronizationAction, SynchronizationDefinition,
+            ExPointRecordSynchronizationAction, ExPointTransfer, SynchronizationDefinition,
         },
         gauge::{GaugeCommand, GaugeOperation},
         hp::{DamageEffectKind, HpCommand, HpDamage, HpLoss, HurtDamageFromType, HurtInfoData},
@@ -19,5 +19,8 @@ use crate::engine::{
 
 use super::{BattleManagers, base_hero_sp_attribute};
 
+mod each_change_attr;
+mod emitter;
+mod indicator;
 mod projection_and_upgrade;
 mod resources_and_limits;

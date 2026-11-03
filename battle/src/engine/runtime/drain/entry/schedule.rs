@@ -328,6 +328,7 @@ pub fn run_opening_sync_setup_in_owner_order(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     owner_uids: &[i64],
+    exclude_parent_late: bool,
 ) -> Result<DrainResult, DrainError> {
     run_sync_setup_in_owner_order(
         managers,
@@ -336,6 +337,37 @@ pub fn run_opening_sync_setup_in_owner_order(
         determinism,
         context,
         owner_uids,
+        &[(SetupStage::BuffSync, 0), (SetupStage::RoundStartLate, 0)],
+        if exclude_parent_late {
+            SetupSkillFilter::ExcludeParent
+        } else {
+            SetupSkillFilter::All
+        },
+        true,
+        SetupFrameContainer::Standalone,
+        DefenderCardCleanupOwner::DeathAction,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_opening_parent_late_setup(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    owner_uids: &[i64],
+) -> Result<DrainResult, DrainError> {
+    run_sync_setup_in_owner_order(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        owner_uids,
+        &[(SetupStage::RoundStartLate, 0)],
+        SetupSkillFilter::ParentOnly,
+        false,
         SetupFrameContainer::Standalone,
         DefenderCardCleanupOwner::DeathAction,
     )
@@ -357,6 +389,9 @@ pub fn run_round_sync_setup_in_owner_order(
         determinism,
         context,
         owner_uids,
+        &[(SetupStage::BuffSync, 0), (SetupStage::RoundStartLate, 0)],
+        SetupSkillFilter::All,
+        true,
         SetupFrameContainer::RoundPhase,
         DefenderCardCleanupOwner::ScheduledRoundPhase,
     )
@@ -370,15 +405,20 @@ fn run_sync_setup_in_owner_order(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     owner_uids: &[i64],
+    schedule: &[(SetupStage, i32)],
+    late_skill_filter: SetupSkillFilter,
+    include_late_buff_acts: bool,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
-    const SCHEDULE: &[(SetupStage, i32)] =
-        &[(SetupStage::BuffSync, 0), (SetupStage::RoundStartLate, 0)];
-
     let mut result = DrainResult::default();
     for owner_uid in owner_uids {
-        for &(stage, priority) in SCHEDULE {
+        for &(stage, priority) in schedule {
+            let skill_filter = if stage == SetupStage::RoundStartLate {
+                late_skill_filter
+            } else {
+                SetupSkillFilter::All
+            };
             let owner_result = run_skill_then_buff_act_setup_stage_filtered(
                 managers,
                 pool,
@@ -390,6 +430,8 @@ fn run_sync_setup_in_owner_order(
                 Some(std::slice::from_ref(owner_uid)),
                 &[],
                 false,
+                skill_filter,
+                stage != SetupStage::RoundStartLate || include_late_buff_acts,
                 frame_container,
                 cleanup_owner,
             )?;
@@ -399,7 +441,12 @@ fn run_sync_setup_in_owner_order(
         }
     }
 
-    for &(stage, priority) in SCHEDULE {
+    for &(stage, priority) in schedule {
+        let skill_filter = if stage == SetupStage::RoundStartLate {
+            late_skill_filter
+        } else {
+            SetupSkillFilter::All
+        };
         let remaining = run_skill_then_buff_act_setup_stage_filtered(
             managers,
             pool,
@@ -411,6 +458,8 @@ fn run_sync_setup_in_owner_order(
             (stage == SetupStage::RoundStartLate).then_some([].as_slice()),
             owner_uids,
             stage == SetupStage::RoundStartLate,
+            skill_filter,
+            stage != SetupStage::RoundStartLate || include_late_buff_acts,
             frame_container,
             cleanup_owner,
         )?;
@@ -537,6 +586,8 @@ fn run_setup_schedule_with_container(
             owner_uids,
             &[],
             false,
+            SetupSkillFilter::All,
+            true,
             frame_container,
             cleanup_owner,
         )?;

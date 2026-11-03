@@ -231,7 +231,7 @@ fn negated_boolean_predicate_keeps_its_exact_condition_identity() {
     assert_eq!(conditions[0].type_name, "UseExSkill");
     assert_eq!(
         conditions[0].kind,
-        ParsedConditionKind::Not(Box::new(ParsedConditionKind::UseExSkill))
+        ParsedConditionKind::Not(Box::new(ParsedConditionKind::UseExSkill { slot: 0 }))
     );
 }
 

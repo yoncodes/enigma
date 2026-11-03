@@ -125,6 +125,7 @@ pub struct CardPersistTemporary {
 pub struct CardEnergyAllocation {
     pub origin: CommandOrigin,
     pub energies: Vec<i32>,
+    pub limit: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,12 +167,6 @@ impl CardPlay {
 pub struct CardDraw {
     pub origin: CommandOrigin,
     pub count: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CardPublishState {
-    pub origin: CommandOrigin,
-    pub team_type: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -363,6 +358,7 @@ pub enum CardConsumptionKind {
 pub enum CardCommand {
     Setup(CardSetup),
     PreserveRefillFloor,
+    PreserveDeckCount,
     ConsumeForEffect(CardConsumeForEffect),
     Move {
         origin: CommandOrigin,
@@ -392,7 +388,6 @@ pub enum CardCommand {
         origin: CommandOrigin,
     },
     Play(CardPlay),
-    PublishState(CardPublishState),
     Draw(CardDraw),
     DealOpening(CardOpeningDraw),
     RecycleDrawPile {
@@ -431,7 +426,7 @@ pub enum CardCommand {
         upgrades: Vec<QueuedCardRankUp>,
         rewritten: bool,
     },
-    ChangeAroundQueuedRanks {
+    ChangeQueuedRanks {
         origin: CommandOrigin,
         changes: Vec<QueuedCardRankChange>,
     },
@@ -484,7 +479,6 @@ pub enum CardChangeKind {
     TemporaryPersisted,
     TemporaryExpired,
     Played,
-    StatePublished,
     Drawn,
     OpeningDrawn,
     DrawPileRecycled,
@@ -504,7 +498,7 @@ pub enum CardChangeKind {
     HandLimitChanged,
     HandLimitCleared,
     QueuedRankChanged,
-    AroundRanksChanged,
+    QueuedRanksChanged,
     HandRankChanged,
     DeckTopRanksChanged,
     ActionQueueCommitted,
@@ -615,6 +609,17 @@ pub(super) fn execute(
         }
         CardCommand::PreserveRefillFloor => {
             manager.preserve_refill_floor();
+            (
+                None,
+                CardChangeKind::Setup,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::PreserveDeckCount => {
+            manager.preserve_deck_count();
             (
                 None,
                 CardChangeKind::Setup,
@@ -971,23 +976,6 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
-        CardCommand::PublishState(publish) => {
-            if publish.team_type == 0 {
-                return Err(CardCommandError::InvalidCommand);
-            }
-            operation = Some(CardChange::DeckCount {
-                deck_num: manager.deck_num(),
-                team_type: publish.team_type,
-            });
-            (
-                Some(publish.origin),
-                CardChangeKind::StatePublished,
-                None,
-                None,
-                Vec::new(),
-                Vec::new(),
-            )
-        }
         CardCommand::Draw(draw) => {
             if draw.count == 0 {
                 return Err(CardCommandError::InvalidCommand);
@@ -1210,11 +1198,12 @@ pub(super) fn execute(
             )
         }
         CardCommand::AllocateEnergy(allocation) => {
-            if allocation.energies.len() != manager.hand().len()
+            if allocation.limit <= 0
+                || allocation.energies.len() != manager.hand().len()
                 || allocation
                     .energies
                     .iter()
-                    .any(|value| !(0..=5).contains(value))
+                    .any(|value| !(0..=allocation.limit).contains(value))
             {
                 return Err(CardCommandError::InvalidCommand);
             }
@@ -1324,7 +1313,7 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
-        CardCommand::ChangeAroundQueuedRanks { origin, changes } => {
+        CardCommand::ChangeQueuedRanks { origin, changes } => {
             if changes.is_empty()
                 || changes
                     .iter()
@@ -1340,7 +1329,7 @@ pub(super) fn execute(
             }
             (
                 Some(origin),
-                CardChangeKind::AroundRanksChanged,
+                CardChangeKind::QueuedRanksChanged,
                 None,
                 None,
                 Vec::new(),

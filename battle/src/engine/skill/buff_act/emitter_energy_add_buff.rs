@@ -30,29 +30,53 @@ pub fn rule_ops(
     if *team != subscriber.team_type || *emitter_uid != subscriber.owner_uid {
         return Some(Vec::new());
     }
-    let [required_energy, buff_id, ..] = subscriber.args.as_slice() else {
-        return None;
-    };
+    let thresholds = managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .filter(|feature| {
+            feature.owner_uid == subscriber.owner_uid
+                && feature.buff_uid == subscriber.buff_uid
+                && super::is_kind(feature, BuffActKind::EmitterEnergyAddBuff)
+        })
+        .filter_map(|feature| {
+            let [_, required_energy, buff_id, ..] = feature.values.as_slice() else {
+                return None;
+            };
+            Some((*required_energy, *buff_id))
+        })
+        .collect::<Vec<_>>();
+    let (first_required, first_buff) = thresholds.first()?;
+    if subscriber.args.as_slice() != [*first_required, *first_buff] {
+        return Some(Vec::new());
+    }
     let energy = managers
         .gauge
         .get(impromptu::inspiration_key(*emitter_uid))
         .map(|state| state.current)
         .unwrap_or_default();
-    if energy < *required_energy || managers.buff.has_buff_id(*emitter_uid, *buff_id) {
-        return Some(Vec::new());
-    }
-
-    Some(vec![BuffActRuleOp::independent_event(RuleOp::Command(
-        BattleCommand::Buff(BuffCommand::GrantInternalChild(BuffGrantChild {
-            origin: super::command_origin(subscriber)?,
-            source_uid: *emitter_uid,
-            target_uid: *emitter_uid,
-            buff_id: *buff_id,
-            amount: Some(0),
-            params: None,
-            act_info: None,
-        })),
-    ))])
+    let origin = super::command_origin(subscriber)?;
+    Some(
+        thresholds
+            .into_iter()
+            .filter(|(required_energy, buff_id)| {
+                energy >= *required_energy && !managers.buff.has_buff_id(*emitter_uid, *buff_id)
+            })
+            .map(|(_, buff_id)| {
+                BuffActRuleOp::independent_event(RuleOp::Command(BattleCommand::Buff(
+                    BuffCommand::GrantChild(BuffGrantChild {
+                        origin,
+                        source_uid: *emitter_uid,
+                        target_uid: *emitter_uid,
+                        buff_id,
+                        amount: Some(0),
+                        params: None,
+                        act_info: None,
+                    }),
+                )))
+            })
+            .collect(),
+    )
 }
 
 #[cfg(test)]
@@ -67,7 +91,7 @@ mod tests {
     };
 
     #[test]
-    fn inspiration_thresholds_activate_internal_attack_buffs() {
+    fn inspiration_thresholds_activate_visible_attack_buffs() {
         crate::test_support::init_config();
         let fight = Fight {
             attacker: Some(FightTeam {
@@ -106,7 +130,7 @@ mod tests {
             .execute_gauge(GaugeCommand::new(
                 buff_act::command_origin(&subscriber).unwrap(),
                 impromptu::inspiration_key(emitter::UID),
-                crate::engine::manager::gauge::GaugeOperation::ChangeValue { delta: 3 },
+                crate::engine::manager::gauge::GaugeOperation::ChangeValue { delta: 20 },
             ))
             .unwrap();
 
@@ -115,16 +139,17 @@ mod tests {
             emitter_uid: emitter::UID,
         };
         let ops = rule_ops(&managers, &subscriber, &event).unwrap();
-        let [op] = ops.as_slice() else {
-            panic!("expected one internal child grant")
-        };
-        let RuleOp::Command(BattleCommand::Buff(command)) = op.op.clone() else {
-            panic!("expected a buff command")
-        };
-        let changes = managers.execute_buff(command).unwrap();
-
-        assert!(managers.buff.has_buff_id(emitter::UID, 31080152));
-        assert!(!changes.is_wire_visible());
-        assert!(changes.events().is_empty());
+        assert_eq!(ops.len(), 4);
+        for op in ops {
+            let RuleOp::Command(BattleCommand::Buff(command)) = op.op else {
+                panic!("expected a buff command")
+            };
+            let changes = managers.execute_buff(command).unwrap();
+            assert!(changes.is_wire_visible());
+            assert!(!changes.events().is_empty());
+        }
+        for buff_id in 31080152..=31080155 {
+            assert!(managers.buff.has_buff_id(emitter::UID, buff_id));
+        }
     }
 }

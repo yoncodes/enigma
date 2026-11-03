@@ -4,6 +4,7 @@ use crate::{GameDB, episode::Episode};
 #[repr(i32)]
 enum ChapterKind {
     Story = 1,
+    Hard = 2,
     Tutorial = 3,
     Gold = 4,
     Experience = 5,
@@ -22,6 +23,10 @@ impl ChapterKind {
         Self::SpecialEquipment,
         Self::Buildings,
     ];
+
+    fn is_story_family(value: i32) -> bool {
+        value == Self::Story as i32 || value == Self::Hard as i32
+    }
 }
 
 impl GameDB {
@@ -51,6 +56,42 @@ impl GameDB {
 
     pub fn tutorial_episodes(&self) -> impl Iterator<Item = &Episode> {
         self.episodes_in_chapter_kind(ChapterKind::Tutorial)
+    }
+
+    pub fn chapter_family_ids(&self, chapter_id: i32) -> Option<Vec<i32>> {
+        let chapter = self.chapter.get(chapter_id)?;
+        Some(
+            self.chapter
+                .iter()
+                .filter(|candidate| {
+                    if ChapterKind::is_story_family(chapter.r#type) {
+                        ChapterKind::is_story_family(candidate.r#type)
+                            && candidate.name == chapter.name
+                    } else {
+                        candidate.id == chapter.id
+                    }
+                })
+                .map(|candidate| candidate.id)
+                .collect(),
+        )
+    }
+
+    pub fn episode_family_ids(&self, episode_id: i32) -> Option<Vec<i32>> {
+        let episode = self.episode.get(episode_id)?;
+        let chapter = self.chapter.get(episode.chapter_id)?;
+        if !ChapterKind::is_story_family(chapter.r#type) {
+            return Some(vec![episode.id]);
+        }
+        let chapter_ids = self.chapter_family_ids(episode.chapter_id)?;
+        Some(
+            self.episode
+                .iter()
+                .filter(|candidate| {
+                    chapter_ids.contains(&candidate.chapter_id) && candidate.name == episode.name
+                })
+                .map(|candidate| candidate.id)
+                .collect(),
+        )
     }
 
     pub fn resource_episodes(&self) -> impl Iterator<Item = &Episode> {
@@ -103,5 +144,13 @@ mod tests {
         assert!(tutorials.iter().all(|episode| !story.contains(episode)));
         assert!(resources.iter().all(|episode| !story.contains(episode)));
         assert_eq!(crate::get().initial_tutorial_final_episode(), Some(10003));
+        assert_eq!(crate::get().chapter_family_ids(103), Some(vec![103, 203]));
+        assert_eq!(
+            crate::get().episode_family_ids(10303),
+            Some(vec![10303, 20301])
+        );
+        assert_eq!(crate::get().chapter_family_ids(401), Some(vec![401]));
+        assert_eq!(crate::get().episode_family_ids(40106), Some(vec![40106]));
+        assert_eq!(crate::get().episode_family_ids(10002), Some(vec![10002]));
     }
 }

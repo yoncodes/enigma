@@ -45,6 +45,7 @@ impl BehaviorHandler for Handler {
                 context.source_uid,
                 target_uid,
                 context.managers,
+                &context.modifiers.attack_attributes,
             );
             if amount <= 0 {
                 continue;

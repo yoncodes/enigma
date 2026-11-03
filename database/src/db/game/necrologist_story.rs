@@ -1,18 +1,38 @@
 use crate::models::game::necrologist_story::{NecrologistStoryPlotState, NecrologistStoryState};
 use anyhow::Result;
 use sonettobuf::NecrologistStoryPlotInfo;
-use sqlx::SqlitePool;
+use sqlx::{SqliteConnection, SqlitePool};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy)]
-enum NecrologistStoryPlotStateValue {
+pub(crate) enum NecrologistStoryPlotStateValue {
     Lock = 1,
+    Finish = 4,
 }
 
 impl NecrologistStoryPlotStateValue {
-    const fn id(self) -> i32 {
+    pub(crate) const fn id(self) -> i32 {
         self as i32
     }
+}
+
+pub(crate) async fn finished_plots(
+    conn: &mut SqliteConnection,
+    user_id: i64,
+) -> sqlx::Result<BTreeSet<(i32, i32)>> {
+    Ok(sqlx::query_as::<_, (i32, i32)>(
+        "SELECT plot.story_id, plot.plot_id
+         FROM user_necrologist_story_plots plot
+         JOIN user_hero_story_state story
+           ON story.user_id = plot.user_id AND story.story_id = plot.story_id
+         WHERE plot.user_id = ? AND plot.state = ? AND story.unlock = 1",
+    )
+    .bind(user_id)
+    .bind(NecrologistStoryPlotStateValue::Finish.id())
+    .fetch_all(conn)
+    .await?
+    .into_iter()
+    .collect())
 }
 
 pub async fn get_stories(

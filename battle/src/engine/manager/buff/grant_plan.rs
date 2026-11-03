@@ -373,7 +373,7 @@ impl BuffManager {
         }
         if has_matching
             && policy.on_duplicate != DuplicateGrant::AddSeparateCopy
-            && definition.keeps_permanent_instance()
+            && definition.preserves_regrant()
         {
             if definition.features().iter().any(|feature| {
                 feature.kind

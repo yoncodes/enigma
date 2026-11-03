@@ -177,6 +177,7 @@ pub(super) fn apply_event_context(
             context.runtime_target_uid = hit.target_uid;
             context.hit_source_uid = hit.source_uid;
             context.hit_target_uid = hit.target_uid;
+            context.hit_resolved_damage = hit.resolved_damage;
             context.hit_career_restraint = Some(hit.career_restraint);
             context.hit_damage_from = Some(hit.damage_from);
             if hit.share_count > 0 {
@@ -219,6 +220,9 @@ pub(super) fn apply_event_context(
         }
         BattleEvent::ConduitActivated(change) => {
             context.runtime_target_uid = change.source_uid;
+            context.active_skill_source_uid = change.source_uid;
+            context.active_skill_id = change.skill_id;
+            context.active_skill_mode = crate::engine::skill::action::SkillExecutionMode::Device;
         }
         BattleEvent::GaugeChanged(change) => match change.key.kind {
             crate::engine::manager::gauge::GaugeKind::Bloodtithe => {

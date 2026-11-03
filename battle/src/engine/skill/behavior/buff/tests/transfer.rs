@@ -311,6 +311,7 @@ fn add_target_buff_by_poison_focuses_instances_on_the_most_poisoned_enemy() {
         vec![2, 2, 31040005, 2],
         Vec::new(),
     );
+    assert!(supports_add_target_buff_by_poison(&behavior));
     let mut determinism = RoundDeterminism::default();
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     let mut target = crate::engine::skill::target::TargetContext::default();

@@ -77,6 +77,13 @@ impl TaskManager {
         if db_type_ids.is_empty() || db_type_ids.contains(&task_db::EXPLORE_TASK_TYPE) {
             task_db::sync_explore_tasks(db, self.player_id).await?;
         }
+        if db_type_ids.is_empty() || db_type_ids.contains(&task_db::TaskType::NecrologistStory.id())
+        {
+            task_db::reconcile_necrologist_story_tasks(db, self.player_id).await?;
+        }
+        if db_type_ids.is_empty() || db_type_ids.contains(&task_db::TaskType::WeekWalk.id()) {
+            task_db::sync_weekwalk_tasks(db, self.player_id).await?;
+        }
         let tasks = task_db::list_by_types(db, self.player_id, db_type_ids.clone()).await?;
         self.cache_tasks(&tasks);
         let activity = task_db::list_activity(db, self.player_id, db_type_ids)

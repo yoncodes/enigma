@@ -222,11 +222,11 @@ fn damage_rule_ops(
     if target_count_damage_bonus != 0 {
         attack_attributes.push((AttrId::DmgBonus, target_count_damage_bonus));
     }
-    let source_damage_type = context
-        .pool
-        .entity(context.source_uid)
-        .map(|entity| entity.damage_type)
-        .unwrap_or_default();
+    let source_damage_type = crate::engine::skill::buff_act::emitter_damage_type::source_type(
+        context.source_uid,
+        context.pool,
+        context.managers,
+    );
     let incoming_reduction = crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
         context.managers,
         context.target_uid,
@@ -358,7 +358,7 @@ fn damage_rule_ops(
             target_buffs: &context.managers.buff,
             hp: &context.managers.hp,
             fields: Some((&context.managers.field, context.managers.catalog())),
-            emitter: None,
+            emitter: Some(&context.managers.emitter),
             team_inspiration: 0,
         },
         origin,

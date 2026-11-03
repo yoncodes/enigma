@@ -127,7 +127,7 @@ fn committed_event_runs_its_subscriber_before_the_queue_continues() {
     let mut slot = SkillEffectSlot::new(
         ParsedBehavior::from_spec(
             BehaviorSpec::new(60189, "AddEnergyToCard"),
-            vec![1, 2, 1],
+            vec![1, -1, 2],
             Vec::new(),
         ),
         TargetRequest::self_only(),

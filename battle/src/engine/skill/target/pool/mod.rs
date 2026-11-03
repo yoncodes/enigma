@@ -112,6 +112,7 @@ pub struct TargetContext {
     pub lost_power_amount: i32,
     pub hit_source_uid: i64,
     pub hit_target_uid: i64,
+    pub hit_resolved_damage: i32,
     pub hit_career_restraint: Option<bool>,
     pub hit_damage_from: Option<crate::engine::manager::hp::HurtDamageFromType>,
     pub damage_shared_uid: i64,
@@ -434,6 +435,10 @@ impl TargetPool {
         self.entities()
             .chain(self.virtual_entities.iter())
             .find(|entity| entity.uid == uid)
+    }
+
+    pub fn is_virtual_entity(&self, uid: i64) -> bool {
+        self.virtual_entities.iter().any(|entity| entity.uid == uid)
     }
 
     pub fn skill_slot(&self, managers: &BattleManagers, source_uid: i64, skill_id: i32) -> i32 {

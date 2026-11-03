@@ -13,6 +13,7 @@ pub fn rule_op(target_uid: i64, behavior: &ParsedBehavior) -> Option<RuleOp> {
             target_uid,
             effect_type: sonettobuf::effect_type_enum::EffectType::Clienteffect as i32,
             effect_num: behavior.arg(0)?,
+            effect_num1: None,
             config_effect: behavior.spec.key.opcode,
             reserve_id: None,
             reserve_str: None,
@@ -28,6 +29,11 @@ pub fn rule_op(target_uid: i64, behavior: &ParsedBehavior) -> Option<RuleOp> {
             upgrade_id: behavior.arg(0)?,
         },
     })))
+}
+
+pub(super) fn supports_notify_upgrade(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [upgrade_id] if *upgrade_id > 0)
+        && behavior.raw_args.len() <= 1
 }
 
 pub(super) struct Handler;
@@ -112,6 +118,27 @@ impl BehaviorHandler for AddIndicatorHandler {
                 crate::engine::manager::indicator::IndicatorCommand {
                     indicator_id: behavior.args[0],
                     amount: behavior.args[1],
+                    config_effect: behavior.spec.key.opcode,
+                },
+            ))]
+        })
+    }
+}
+
+pub(super) struct DelIndicatorHandler;
+
+impl BehaviorHandler for DelIndicatorHandler {
+    const VALIDATES_ARGUMENTS: bool = true;
+
+    fn supports(behavior: &ParsedBehavior) -> bool {
+        matches!(behavior.args.as_slice(), [indicator_id] if *indicator_id > 0)
+    }
+
+    fn emit_ops(_: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+        Self::supports(behavior).then(|| {
+            vec![RuleOp::Command(BattleCommand::IndicatorClear(
+                crate::engine::manager::indicator::IndicatorClearCommand {
+                    indicator_id: behavior.args[0],
                     config_effect: behavior.spec.key.opcode,
                 },
             ))]

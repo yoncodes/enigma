@@ -15,14 +15,18 @@ pub mod electric;
 pub mod fake_hp;
 pub mod fight_progress;
 pub mod focus_all_entity_buff;
+pub mod foundation_counter;
 pub mod gauge;
 pub mod general;
+pub mod heal_or_buff;
 pub mod injury_bank;
 pub mod kill;
 pub mod magic_circle;
 pub mod monster_change;
 pub mod nuo_di_ka;
+pub mod periodic;
 pub mod poison;
+pub mod power_queue_rank;
 pub mod precast;
 pub mod rate;
 pub mod registry;
@@ -160,8 +164,8 @@ mod op_tests {
             ),
             Some(ops) if matches!(ops.as_slice(), [RuleOp::Command(BattleCommand::Card(
                 CardCommand::ChangeBasicEnergy(CardEnergyChange {
-                    delta: -1,
-                    count: 3,
+                    delta: 3,
+                    count: 1,
                     ..
                 })
             ))])

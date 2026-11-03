@@ -40,6 +40,10 @@ pub enum ParsedConditionKind {
         start_round: i32,
         period: i32,
     },
+    CompletedRoundInterval {
+        start_round: i32,
+        period: i32,
+    },
     ActionOrder(i32),
     ActionOrderRange {
         start: i32,
@@ -133,6 +137,10 @@ pub enum ParsedConditionKind {
         threshold: i32,
         scope: BuffAddedScope,
     },
+    AccBuffTypeAddedCount {
+        type_ids: Vec<i32>,
+        threshold: i32,
+    },
     HpPermille {
         compare: ConditionCompare,
         threshold: i32,
@@ -178,6 +186,7 @@ pub enum ParsedConditionKind {
     PerExPoint {
         threshold: i32,
     },
+    PerEureka,
     ExPointDecrease {
         threshold: i32,
     },
@@ -203,6 +212,14 @@ pub enum ParsedConditionKind {
     FightProgressValue {
         progress_id: i32,
         compare_code: i32,
+        threshold: i32,
+    },
+    PlayerLevel {
+        compare: ConditionCompare,
+        threshold: i32,
+    },
+    IndicatorAtLeast {
+        indicator_id: i32,
         threshold: i32,
     },
     PowerIncrChange {
@@ -243,6 +260,9 @@ pub enum ParsedConditionKind {
         threshold: i32,
     },
     TargetAttacked,
+    HitDamagePercentMoreThan {
+        threshold_permille: i32,
+    },
     AllyAttacked,
     ShareDamage,
     Assassinate,
@@ -308,9 +328,11 @@ pub enum ParsedConditionKind {
         group: i32,
         rank: i32,
     },
-    UseExSkill,
-    TargetUseExSkill,
+    UseExSkill {
+        slot: i32,
+    },
     TeammateUseExSkill,
+    ActiveSkillSourceIsTarget,
     ActiveSkillRank {
         compare: ConditionCompare,
         ranks: Vec<i32>,
@@ -513,6 +535,21 @@ pub(super) fn hp_less(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCond
     Some(ParsedConditionKind::HpPermille {
         compare: ConditionCompare::LessThan,
         threshold: first_i32(raw_args)?,
+    })
+}
+
+pub(super) fn hp_less_permille(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [raw_threshold] = raw_args else {
+        return None;
+    };
+    let threshold = parse_i32(raw_threshold)?;
+    (0 < threshold && threshold < 1000).then_some(ParsedConditionKind::HpPermille {
+        compare: ConditionCompare::LessThan,
+        threshold,
     })
 }
 

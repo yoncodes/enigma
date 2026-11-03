@@ -143,44 +143,6 @@ fn card_draws_are_seeded_but_preview_can_supply_the_decision() {
 }
 
 #[test]
-fn captured_card_energy_only_applies_to_the_matching_hand() {
-    let card = |uid, skill_id, energy| CardInfo {
-        uid: Some(uid),
-        skill_id: Some(skill_id),
-        energy: Some(energy),
-        ..Default::default()
-    };
-    let hand = vec![card(1, 10, 0), card(2, 20, 0)];
-    let mut determinism = RoundDeterminism::default();
-    determinism.enqueue_card_energy_snapshot(vec![card(1, 10, 3), card(2, 20, 1)]);
-
-    assert_eq!(
-        determinism
-            .take_card_energy_snapshot(&hand, 4)
-            .unwrap()
-            .iter()
-            .map(|card| card.energy)
-            .collect::<Vec<_>>(),
-        vec![Some(3), Some(1)]
-    );
-}
-
-#[test]
-fn captured_card_energy_validates_the_added_energy_not_the_total() {
-    let card = |uid, skill_id, energy| CardInfo {
-        uid: Some(uid),
-        skill_id: Some(skill_id),
-        energy: Some(energy),
-        ..Default::default()
-    };
-    let hand = vec![card(1, 10, 3), card(2, 20, 1)];
-    let mut determinism = RoundDeterminism::default();
-    determinism.enqueue_card_energy_snapshot(vec![card(1, 10, 5), card(2, 20, 3)]);
-
-    assert!(determinism.take_card_energy_snapshot(&hand, 4).is_some());
-}
-
-#[test]
 fn captured_condition_roll_is_owned_by_skill_and_opcode() {
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_condition_random_choices(vec![ConditionRandomChoice {

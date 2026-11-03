@@ -122,6 +122,7 @@ pub(crate) fn heal_command(
         source_uid,
         subscriber.owner_uid,
         managers,
+        &[],
     );
     (amount > 0).then(|| {
         HpCommand::Heal(HpHeal {

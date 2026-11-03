@@ -266,10 +266,9 @@ fn passive_skill_link_activates_at_the_configured_buff_layer() {
     };
 
     assert!(manager(9).passive_skill_links_for(10).is_empty());
-    assert_eq!(
-        manager(10).passive_skill_links_for(10)[0].skill_id,
-        12110011
-    );
+    let manager = manager(10);
+    assert_eq!(manager.passive_skill_links_for(10)[0].skill_id, 12110011);
+    assert_eq!(manager.passive_skill_links()[0].skill_id, 12110011);
 }
 
 #[test]

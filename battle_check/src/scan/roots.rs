@@ -266,6 +266,28 @@ pub(crate) fn collect_battle_roots(
         .battle
         .get(battle_id)
         .with_context(|| format!("battle {battle_id} is missing"))?;
+    for entry in battle
+        .trial_heros
+        .split('|')
+        .filter(|entry| !entry.is_empty())
+    {
+        let Some(trial_id) = entry
+            .split('#')
+            .next()
+            .and_then(|value| value.parse::<i32>().ok())
+        else {
+            report.error(format!(
+                "InvalidTrialHero path=episode {episode_id} > battle {battle_id} raw={entry:?}"
+            ));
+            continue;
+        };
+        let path = format!("episode {episode_id} > battle {battle_id} > trial {trial_id}");
+        for skill_id in battle::tooling::configured_trial_skill_ids(trial_id)
+            .map_err(|error| anyhow::anyhow!("{path}: {error}"))?
+        {
+            enqueue(skills, skill_id, path.clone());
+        }
+    }
     for group_id in split_ids(&battle.monster_group_ids) {
         let Some(group) = db.monster_group.get(group_id) else {
             report.error(format!(

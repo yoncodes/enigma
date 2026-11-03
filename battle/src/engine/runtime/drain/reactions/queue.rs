@@ -186,7 +186,7 @@ fn queued_reaction_pass(
         })
         .collect::<Result<Vec<_>, DrainError>>()?;
     for (subscriber, ops) in dispatched.buff_acts {
-        let ops = ops.ok_or(DrainError::MissingBuffActOp(
+        let ops = ops?.ok_or(DrainError::MissingBuffActOp(
             subscriber.key.definition.opcode,
         ))?;
         let key = required_buff_act_definition(

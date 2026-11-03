@@ -67,7 +67,10 @@ pub fn satisfied_condition(
         ParsedConditionKind::Lifecycle(_)
         | ParsedConditionKind::AllyAttacked
         | ParsedConditionKind::EntityDead => true,
-        ParsedConditionKind::None(mode) => mode != super::none::NoneMode::AllyAction,
+        ParsedConditionKind::None(mode) => !matches!(
+            mode,
+            super::none::NoneMode::AllyAction | super::none::NoneMode::EmitterSkillAction
+        ),
         _ => false,
     };
     if trigger_key.matches(condition.opcode, &condition.type_name)
@@ -298,6 +301,15 @@ fn condition_repeat_count(
                 })
                 .unwrap_or_default(),
         ),
+        ParsedConditionKind::PerEureka => managers.map(|managers| {
+            managers
+                .eureka
+                .get(
+                    source_uid,
+                    crate::engine::manager::eureka::EUREKA_RESOURCE_ID,
+                )
+                .current
+        }),
         ParsedConditionKind::PowerConsumed {
             power_id,
             max_count,
@@ -362,6 +374,11 @@ fn condition_repeat_count(
                 .map(|managers| {
                     super::buff::added_count_repeats(condition, source_uid, managers, context)
                 })
+                .unwrap_or_default(),
+        ),
+        ParsedConditionKind::AccBuffTypeAddedCount { .. } => Some(
+            managers
+                .map(|managers| super::buff::added_type_count_repeats(condition, managers, context))
                 .unwrap_or_default(),
         ),
         ParsedConditionKind::BurnOverflow => Some(context.buff_overflow_amount),
@@ -436,15 +453,18 @@ fn condition_kind_matches(
             start_round,
             period,
         } => {
-            // 45101 runs during next-round setup but compares the completed round counter.
-            let current_round = if condition.opcode == 45101 {
-                context.current_round.saturating_sub(1)
-            } else {
-                context.current_round
-            };
             *period > 0
-                && current_round >= *start_round
-                && (current_round - *start_round) % *period == 0
+                && context.current_round >= *start_round
+                && (context.current_round - *start_round) % *period == 0
+        }
+        ParsedConditionKind::CompletedRoundInterval {
+            start_round,
+            period,
+        } => {
+            let completed_round = context.current_round.saturating_sub(1);
+            *period > 0
+                && completed_round >= *start_round
+                && (completed_round - *start_round) % *period == 0
         }
         ParsedConditionKind::ActionOrder(order) => context.action_order == *order,
         ParsedConditionKind::ActionOrderRange { start, count } => {
@@ -456,6 +476,9 @@ fn condition_kind_matches(
             condition_targets.contains(&source_uid)
                 || (context.active_skill_source_uid != 0
                     && condition_targets.contains(&context.active_skill_source_uid))
+        }
+        ParsedConditionKind::None(super::none::NoneMode::EmitterSkillAction) => {
+            context.active_skill_source_uid == crate::engine::manager::emitter::UID
         }
         ParsedConditionKind::None(_) => condition.allows_active_skill(),
         ParsedConditionKind::BuffId { mode, buff_ids } => {
@@ -727,6 +750,9 @@ fn condition_kind_matches(
         ParsedConditionKind::AccBuffAddedCount { .. } => managers.is_some_and(|managers| {
             super::buff::added_count_repeats(condition, source_uid, managers, context) > 0
         }),
+        ParsedConditionKind::AccBuffTypeAddedCount { .. } => managers.is_some_and(|managers| {
+            super::buff::added_type_count_repeats(condition, managers, context) > 0
+        }),
         ParsedConditionKind::HpPermille { compare, threshold } => {
             let Some(managers) = managers else {
                 return false;
@@ -845,6 +871,16 @@ fn condition_kind_matches(
                 .iter()
                 .any(|uid| managers.ex_point.get(*uid) >= *threshold)
         }),
+        ParsedConditionKind::PerEureka => managers.is_some_and(|managers| {
+            managers
+                .eureka
+                .get(
+                    source_uid,
+                    crate::engine::manager::eureka::EUREKA_RESOURCE_ID,
+                )
+                .current
+                > 0
+        }),
         ParsedConditionKind::Random { threshold } => context
             .condition_random_roll
             .is_some_and(|roll| roll < *threshold),
@@ -894,6 +930,16 @@ fn condition_kind_matches(
         } => managers
             .and_then(|managers| managers.fight_progress.get(*progress_id))
             .is_some_and(|progress| compare_resource(progress.value, *compare_code, *threshold)),
+        ParsedConditionKind::PlayerLevel { compare, threshold } => {
+            managers.is_some_and(|managers| {
+                managers.player.level() > 0
+                    && compare_value(managers.player.level(), *compare, *threshold)
+            })
+        }
+        ParsedConditionKind::IndicatorAtLeast {
+            indicator_id,
+            threshold,
+        } => managers.is_some_and(|managers| managers.indicator.value(*indicator_id) >= *threshold),
         ParsedConditionKind::ConduitExPoint {
             compare_code,
             threshold,
@@ -930,6 +976,16 @@ fn condition_kind_matches(
         ParsedConditionKind::TargetAttacked => {
             context.hit_target_uid != 0 && condition_targets.contains(&context.hit_target_uid)
         }
+        ParsedConditionKind::HitDamagePercentMoreThan { threshold_permille } => managers
+            .is_some_and(|managers| {
+                context.hit_resolved_damage > 0
+                    && context.hit_target_uid != 0
+                    && condition_targets.contains(&context.hit_target_uid)
+                    && managers.hp.max(context.hit_target_uid) > 0
+                    && i64::from(context.hit_resolved_damage) * 1000
+                        > i64::from(managers.hp.max(context.hit_target_uid))
+                            * i64::from(*threshold_permille)
+            }),
         ParsedConditionKind::AllyAttacked => {
             context.hit_target_uid != 0
                 && pool.entity(source_uid).is_some()
@@ -1095,35 +1151,22 @@ fn condition_kind_matches(
             pool,
             context,
         ),
-        ParsedConditionKind::UseExSkill => pool
-            .entity(if context.active_skill_source_uid != 0 {
-                context.active_skill_source_uid
-            } else {
-                source_uid
-            })
-            .is_some_and(|source| {
-                managers.is_some_and(|managers| {
-                    crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
-                        managers,
-                        context.active_skill_id,
-                        source,
-                    )
-                })
-            }),
-        ParsedConditionKind::TargetUseExSkill => {
-            context.active_skill_source_uid != 0
-                && condition_targets.contains(&context.active_skill_source_uid)
+        ParsedConditionKind::UseExSkill { slot } => {
+            (*slot == 0 || context.active_skill_slot == *slot)
                 && pool
-                    .entity(context.active_skill_source_uid)
-                    .is_some_and(|actor| {
-                        actor.ex_skill != 0
-                            && managers.is_some_and(|managers| {
-                                crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
-                                    managers,
-                                    context.active_skill_id,
-                                    actor,
-                                )
-                            })
+                    .entity(if context.active_skill_source_uid != 0 {
+                        context.active_skill_source_uid
+                    } else {
+                        source_uid
+                    })
+                    .is_some_and(|source| {
+                        managers.is_some_and(|managers| {
+                            crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                                managers,
+                                context.active_skill_id,
+                                source,
+                            )
+                        })
                     })
         }
         ParsedConditionKind::TeammateUseExSkill => pool.allies(source_uid).iter().any(|ally| {
@@ -1138,6 +1181,10 @@ fn condition_kind_matches(
                     )
                 })
         }),
+        ParsedConditionKind::ActiveSkillSourceIsTarget => {
+            context.active_skill_source_uid != 0
+                && condition_targets.contains(&context.active_skill_source_uid)
+        }
         ParsedConditionKind::ActiveSkillRank { compare, ranks } => {
             context.active_skill_rank != 0
                 && ranks

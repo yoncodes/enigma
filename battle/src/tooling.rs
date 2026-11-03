@@ -98,8 +98,10 @@ pub fn damage_tracing_enabled() -> bool {
 pub fn unstarted_battle(
     catalog: crate::catalog::BattleCatalog,
     fight: sonettobuf::Fight,
-) -> crate::Battle {
-    crate::Battle::from_runtime(replay::ReplayBattle::new(catalog, fight))
+) -> Result<crate::Battle, String> {
+    Ok(crate::Battle::from_runtime(replay::ReplayBattle::new(
+        catalog, fight,
+    )?))
 }
 
 pub fn into_battle(runtime: replay::ReplayBattle) -> crate::Battle {
@@ -127,10 +129,11 @@ pub fn ultimate_ignores_limit(
     fight: &sonettobuf::Fight,
     owner_uid: i64,
     skill_id: i32,
-) -> bool {
-    let managers = crate::engine::manager::BattleManagers::seeded_with_catalog(catalog, fight);
-    crate::engine::mechanic::card::CardMechanic
-        .ultimate_ignores_limit(&managers, owner_uid, skill_id)
+) -> Result<bool, String> {
+    let managers = crate::engine::manager::BattleManagers::seeded_with_catalog(catalog, fight)
+        .map_err(|error| error.to_string())?;
+    Ok(crate::engine::mechanic::card::CardMechanic
+        .ultimate_ignores_limit(&managers, owner_uid, skill_id))
 }
 
 pub fn system_plan_rule_skills(
@@ -166,6 +169,24 @@ pub fn configured_conduit_skill_ids_for_rank(
         destiny_rank,
     )
     .map_err(|error| format!("{error:?}"))
+}
+
+pub fn configured_trial_skill_ids(trial_id: i32) -> Result<Vec<i32>, String> {
+    let (entity, _) = crate::engine::entity::builder::EntityBuilder::configured_trial(
+        crate::catalog::BattleCatalog::global(),
+        trial_id,
+        -1,
+        1,
+        1,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(entity
+        .skill_group1
+        .into_iter()
+        .chain(entity.skill_group2)
+        .chain(entity.ex_skill.filter(|skill_id| *skill_id > 0))
+        .chain(entity.passive_skill)
+        .collect())
 }
 
 pub fn shell_process_spec(game_data: &'static config::GameDB, buff_id: i32) -> Option<(i32, i32)> {

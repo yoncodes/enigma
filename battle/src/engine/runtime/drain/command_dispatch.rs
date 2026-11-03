@@ -468,9 +468,12 @@ pub(super) fn drain_command(
         }
         _ => None,
     };
-    let changes = outcome.changes();
-    for change in changes {
-        push_change(&mut result.frames, &frame_path, change);
+    if let RuleOutcome::DeathSettlement(death) = &outcome {
+        push_death(&mut result.frames, &frame_path, managers, *death);
+    } else {
+        for change in outcome.changes() {
+            push_change(&mut result.frames, &frame_path, change);
+        }
     }
     if let Some(cards) = redeal_hand {
         push_cue(&mut result.frames, RoundCue::RedealHandSync { cards });
@@ -776,10 +779,11 @@ pub(super) fn drain_command(
                 result,
                 state,
             )?;
-            push_change(
+            push_death(
                 &mut result.frames,
                 action_scope,
-                crate::engine::runtime::change::BattleChange::Death(death.transition()),
+                managers,
+                death.transition(),
             );
         }
         cleanup_deaths.extend(settled_deaths.iter().map(|death| death.transition()));
@@ -816,11 +820,7 @@ pub(super) fn drain_command(
                 result,
                 state,
             )?;
-            push_change(
-                &mut result.frames,
-                action_scope,
-                crate::engine::runtime::change::BattleChange::Death(*death),
-            );
+            push_death(&mut result.frames, action_scope, managers, *death);
         }
         terminal_death = terminal_death.or_else(|| deaths.first().copied());
         cleanup_deaths.extend(deaths);

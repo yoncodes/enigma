@@ -8,7 +8,10 @@ use crate::engine::{
             AttackModifierContext, BehaviorOpContext, classify::BehaviorKind,
             registry::BehaviorHandler,
         },
-        condition::{conditions_fire_count, registry as condition_registry, satisfied_conditions},
+        condition::{
+            ParsedCondition, ParsedConditionKind, conditions_fire_count,
+            registry as condition_registry, satisfied_conditions,
+        },
         effect::{ParsedBehavior, SkillEffectCatalog, SkillEffectSlot},
         rule::output::{BattleCommand, RuleOp},
         target::{TargetContext, TargetPool, TargetResolver},
@@ -52,6 +55,7 @@ impl BehaviorHandler for Handler {
                     target_uid: context.source_uid,
                     effect_type: sonettobuf::effect_type_enum::EffectType::Twinsupcount as i32,
                     effect_num: consumed,
+                    effect_num1: None,
                     config_effect: behavior.spec.key.opcode,
                     reserve_id: None,
                     reserve_str: None,
@@ -219,17 +223,7 @@ impl BehaviorHandler for Handler {
         let [base_rate, bonus_rate, max_count] = behavior.args.as_slice() else {
             return false;
         };
-        let Some(group_ids) =
-            context
-                .conditions
-                .iter()
-                .find_map(|condition| match &condition.kind {
-                    crate::engine::skill::condition::ParsedConditionKind::BuffGroup(ids) => {
-                        Some(ids.as_slice())
-                    }
-                    _ => None,
-                })
-        else {
+        let Some(group_ids) = bullet_groups(context.conditions) else {
             return false;
         };
         let count = context
@@ -241,6 +235,19 @@ impl BehaviorHandler for Handler {
         context.operation.modifiers.excess_crit_conversion_rate += base_rate + bonus_rate * count;
         true
     }
+
+    fn matches_attack_context(conditions: &[ParsedCondition]) -> bool {
+        bullet_groups(conditions).is_some()
+    }
+}
+
+fn bullet_groups(conditions: &[ParsedCondition]) -> Option<&[i32]> {
+    conditions
+        .iter()
+        .find_map(|condition| match &condition.kind {
+            ParsedConditionKind::BuffGroup(ids) => Some(ids.as_slice()),
+            _ => None,
+        })
 }
 
 pub(super) fn supports_conduit_rate(behavior: &ParsedBehavior) -> bool {
@@ -320,6 +327,7 @@ fn conduit_power_up_ops(
             target_uid: context.source_uid,
             effect_type: sonettobuf::effect_type_enum::EffectType::Twinspowerupcount as i32,
             effect_num: spent,
+            effect_num1: None,
             config_effect: behavior.spec.key.opcode,
             reserve_id: None,
             reserve_str: None,
@@ -389,7 +397,7 @@ pub struct RateRuntime<'a> {
     pub context: TargetContext,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModifierSide {
     Source,
     IncomingTarget,
@@ -480,6 +488,7 @@ fn collect_attack_modifier_slot(
         return false;
     };
     for conditions in condition_sets {
+        let rate_count_before = modifiers.rates.len();
         let targets = TargetResolver::resolve_with_managers_and_context(
             &slot.target,
             active_skill_id,
@@ -575,6 +584,15 @@ fn collect_attack_modifier_slot(
             );
         }
         if collected {
+            if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Damage)
+                && modifiers.rates.len() > rate_count_before
+            {
+                eprintln!(
+                    "attack modifier rate side={side:?} owner={owner_uid} skill={owner_skill_id} active_skill={active_skill_id} opcode={} rates={:?}",
+                    slot.behavior.spec.key.opcode,
+                    &modifiers.rates[rate_count_before..],
+                );
+            }
             modifiers.consume_team_injury_count_round = modifiers
                 .consume_team_injury_count_round
                 .or_else(|| team_injury_count_key(&conditions));

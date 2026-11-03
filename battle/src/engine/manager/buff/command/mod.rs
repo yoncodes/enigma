@@ -474,6 +474,39 @@ impl BuffPlan {
         Some((plan.route.source_uid, plan.route.buff_id))
     }
 
+    pub(crate) fn each_change_attr_route(&self) -> Option<(i64, i64, i32)> {
+        let plan = match &self.action {
+            BuffPlanAction::Grant(plan) => plan.as_ref(),
+            _ => return None,
+        };
+        self.added_buff_uid()?;
+        plan.definition
+            .features()
+            .iter()
+            .any(|feature| {
+                feature.arguments_supported
+                    && feature.kind
+                        == Some(
+                            crate::engine::skill::buff_act::registry::BuffActKind::EachChangeAttr,
+                        )
+            })
+            .then_some((
+                plan.route.source_uid,
+                plan.route.target_uid,
+                plan.route.buff_id,
+            ))
+    }
+
+    pub(crate) fn add_attr_snapshots(
+        &mut self,
+        values: Vec<(i64, crate::engine::entity::attr::AttrId, i32)>,
+    ) {
+        let BuffPlanAction::Grant(plan) = &mut self.action else {
+            return;
+        };
+        plan.attr_snapshots.extend(values);
+    }
+
     pub(crate) fn initialize_added_act_info_without_markers(&mut self, values: Vec<BuffActInfo>) {
         if values.is_empty() {
             return;
@@ -728,6 +761,7 @@ pub(super) struct GrantPlan {
     initial_act_info_markers: Option<Vec<BuffActInfo>>,
     dot_snapshots: Vec<super::state::DotSnapshotPlan>,
     grant_values: Vec<(i32, i32)>,
+    attr_snapshots: Vec<(i64, crate::engine::entity::attr::AttrId, i32)>,
     immunity_action: Option<(i64, ConsumeAction)>,
     transition_progress: Option<i32>,
     transition: Option<Box<ReplacePlan>>,

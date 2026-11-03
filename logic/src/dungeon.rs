@@ -46,11 +46,11 @@ impl DungeonManager {
         db: &SqlitePool,
         episode_id: i32,
     ) -> Result<DungeonUnlock, AppError> {
-        config::configs::get()
-            .episode
-            .get(episode_id)
+        let tables = config::configs::get();
+        let targets = tables
+            .episode_family_ids(episode_id)
             .ok_or(AppError::InvalidRequest)?;
-        self.unlock(db, [episode_id]).await
+        self.unlock(db, targets).await
     }
 
     pub async fn unlock_chapter(
@@ -59,9 +59,8 @@ impl DungeonManager {
         chapter_id: i32,
     ) -> Result<DungeonUnlock, AppError> {
         let tables = config::configs::get();
-        tables
-            .chapter
-            .get(chapter_id)
+        let chapter_ids = tables
+            .chapter_family_ids(chapter_id)
             .ok_or(AppError::InvalidRequest)?;
         let missing_heroes = chapter_missing_reward_heroes(chapter_id);
         if !missing_heroes.is_empty() {
@@ -72,7 +71,7 @@ impl DungeonManager {
         let targets = tables
             .episode
             .iter()
-            .filter(|episode| episode.chapter_id == chapter_id)
+            .filter(|episode| chapter_ids.contains(&episode.chapter_id))
             .map(|episode| episode.id)
             .collect::<Vec<_>>();
         if targets.is_empty() {
@@ -229,19 +228,24 @@ impl DungeonManager {
     ) -> Result<DungeonUnlock, AppError> {
         let targets = targets.into_iter().collect::<Vec<_>>();
         let prerequisites = dungeons::prerequisite_episode_ids(targets.iter().copied())?;
-        let episodes = config::configs::get()
+        let mut episodes = config::configs::get()
             .tutorial_episodes()
             .map(|episode| episode.id)
             .chain(prerequisites)
-            .collect();
-        self.complete(db, episodes, targets).await
+            .collect::<Vec<_>>();
+        let mut included = episodes.iter().copied().collect::<HashSet<_>>();
+        episodes.extend(
+            targets
+                .into_iter()
+                .filter(|episode_id| included.insert(*episode_id)),
+        );
+        self.complete(db, episodes).await
     }
 
     async fn complete(
         self,
         db: &SqlitePool,
         episodes: Vec<i32>,
-        targets: Vec<i32>,
     ) -> Result<DungeonUnlock, AppError> {
         let mut tx = db.begin().await?;
         let mut completed = Vec::new();
@@ -266,18 +270,6 @@ impl DungeonManager {
                 completed.push(completion);
             }
         }
-        for episode_id in targets {
-            complete_episode_trails_in_transaction(
-                &mut tx,
-                self.player_id,
-                episode_id,
-                &mut finished_element_ids,
-                &mut reward_points,
-                &mut trail_reward_set,
-                &mut trail_material_changes,
-            )
-            .await?;
-        }
         let rewards = RewardManager::new(self.player_id)
             .apply_in_transaction(&mut tx, db, trail_reward_set)
             .await?;
@@ -297,11 +289,14 @@ impl DungeonManager {
 
 pub fn chapter_missing_reward_heroes(chapter_id: i32) -> Vec<i32> {
     let tables = config::configs::get();
+    let Some(chapter_ids) = tables.chapter_family_ids(chapter_id) else {
+        return Vec::new();
+    };
     let mut missing = BTreeSet::new();
     for episode in tables
         .episode
         .iter()
-        .filter(|episode| episode.chapter_id == chapter_id)
+        .filter(|episode| chapter_ids.contains(&episode.chapter_id))
     {
         let rewards =
             completion_rewards(episode, true, 0, configured_clear_star(episode), 1).rewards;

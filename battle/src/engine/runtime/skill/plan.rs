@@ -14,6 +14,7 @@ use crate::engine::{
         },
     },
 };
+use std::sync::Arc;
 
 pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) modifiers: SkillModifiers,
@@ -22,6 +23,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) configured_targets: Option<Vec<i64>>,
     pub(super) additional_damage_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
+    pub(super) action_start_managers: Option<Arc<BattleManagers>>,
     pub(super) assassination_marks_at_action_start:
         Option<Vec<crate::engine::skill::buff_act::assassination::TargetMark>>,
     pub(super) assassination_rate_marks_at_action_start: Option<Vec<(i64, i32)>>,
@@ -45,6 +47,8 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) resume_target: usize,
     // SkillEffectStarted subscribers settle before the skill's immediate slots.
     pub(super) effect_started: bool,
+    // Action healing modifiers are collected once, after start subscribers settle.
+    pub(super) healing_modifiers_collected: bool,
     // Extra-action opening effects settle once after SkillEffectStarted subscribers.
     pub(super) opening_effects_emitted: bool,
     // An exact immediate-settlement rule defeated this action's source.
@@ -110,6 +114,7 @@ impl SkillExecution {
             configured_targets: None,
             additional_damage_targets: None,
             planned_crits: None,
+            action_start_managers: None,
             assassination_marks_at_action_start: None,
             assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
@@ -129,6 +134,7 @@ impl SkillExecution {
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
+            healing_modifiers_collected: false,
             opening_effects_emitted: false,
             immediate_source_death: false,
         }
@@ -145,6 +151,7 @@ impl SkillExecution {
             configured_targets: None,
             additional_damage_targets: None,
             planned_crits: None,
+            action_start_managers: None,
             assassination_marks_at_action_start: None,
             assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
@@ -164,6 +171,7 @@ impl SkillExecution {
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
+            healing_modifiers_collected: false,
             opening_effects_emitted: false,
             immediate_source_death: false,
         }
@@ -679,10 +687,9 @@ pub(super) fn damage_ops(
             execution.context.damage_target_count_kind,
             crate::engine::entity::attr::AttrId::DmgBonus,
         );
-    let source_damage_type = pool
-        .entity(source_uid)
-        .map(|entity| entity.damage_type)
-        .unwrap_or_default();
+    let source_damage_type = crate::engine::skill::buff_act::emitter_damage_type::source_type(
+        source_uid, pool, managers,
+    );
     let mut damage_commands = Vec::new();
     let mut additional_damage_commands = Vec::new();
     let mut avoided = Vec::new();
@@ -694,9 +701,7 @@ pub(super) fn damage_ops(
                 managers,
                 target_uid,
                 pool.skill_slot(managers, source_uid, skill_id),
-                pool.entity(source_uid)
-                    .map(|entity| entity.damage_type)
-                    .unwrap_or_default(),
+                source_damage_type,
             )
         {
             avoided.push(feature);
@@ -954,7 +959,7 @@ pub(super) fn damage_ops(
             target_buffs: &managers.buff,
             hp: &managers.hp,
             fields: Some((&managers.field, managers.catalog())),
-            emitter: None,
+            emitter: Some(&managers.emitter),
             team_inspiration: 0,
         };
         let main_origin = CommandOrigin {
@@ -1037,10 +1042,12 @@ pub(super) fn damage_ops(
                     action_owner_uid,
                     additional.credited_source_uid,
                 );
-                let additional_damage_type = pool
-                    .entity(additional.credited_source_uid)
-                    .map(|entity| entity.damage_type)
-                    .unwrap_or_default();
+                let additional_damage_type =
+                    crate::engine::skill::buff_act::emitter_damage_type::source_type(
+                        additional.credited_source_uid,
+                        pool,
+                        managers,
+                    );
                 let incoming_reduction =
                     crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
                         managers,
@@ -1129,7 +1136,7 @@ pub(super) fn damage_ops(
                         target_buffs: &managers.buff,
                         hp: &managers.hp,
                         fields: Some((&managers.field, managers.catalog())),
-                        emitter: None,
+                        emitter: Some(&managers.emitter),
                         team_inspiration: 0,
                     },
                     additional.formula,

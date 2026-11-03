@@ -51,6 +51,21 @@ pub fn active_action(_: i32, _: &str, args: &[String]) -> Option<ParsedCondition
     })
 }
 
+pub fn active_action_kinds(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [raw] = args else {
+        return None;
+    };
+    let kinds = match raw.as_str() {
+        "1" => vec![1],
+        "1,2,3" => vec![1, 2, 3],
+        _ => return None,
+    };
+    Some(ParsedConditionKind::ExtraAction {
+        mode: ExtraActionConditionMode::ActiveAction,
+        kinds,
+    })
+}
+
 pub fn other_ally_action(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::ExtraAction {
         mode: ExtraActionConditionMode::OtherAllyAction,

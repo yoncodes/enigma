@@ -24,6 +24,20 @@ pub struct SummonConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityConfig {
     pub schedule: Vec<ActivitySchedule>,
+    #[serde(default = "default_hero_story_schedule")]
+    pub hero_story_schedule: Vec<HeroStorySchedule>,
+}
+
+fn default_hero_story_schedule() -> Vec<HeroStorySchedule> {
+    #[derive(Deserialize)]
+    struct Template {
+        activity: ActivityConfig,
+    }
+
+    toml::from_str::<Template>(CONFIG_TEMPLATE)
+        .expect("embedded hero story schedule must be valid")
+        .activity
+        .hero_story_schedule
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +46,15 @@ pub struct ActivitySchedule {
     pub start_time: u64,
     pub end_time: u64,
     pub is_unlock: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeroStorySchedule {
+    pub story_id: i32,
+    pub start_time: i32,
+    pub end_time: i32,
+    pub start_time_resident: i32,
+    pub end_time_resident: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,6 +181,21 @@ impl ServerConfig {
         {
             anyhow::bail!("invalid activity schedule row {}", row.id);
         }
+        if self
+            .activity
+            .hero_story_schedule
+            .windows(2)
+            .any(|rows| rows[0].story_id >= rows[1].story_id)
+        {
+            anyhow::bail!("hero story schedule IDs must be sorted and unique");
+        }
+        if let Some(row) = self.activity.hero_story_schedule.iter().find(|row| {
+            row.story_id <= 0
+                || row.start_time >= row.end_time
+                || row.start_time_resident >= row.end_time_resident
+        }) {
+            anyhow::bail!("invalid hero story schedule row {}", row.story_id);
+        }
 
         Ok(())
     }
@@ -187,7 +225,31 @@ mod tests {
         assert_eq!(cfg.muip_gm.port, 21101);
         assert_eq!(cfg.summon.permanent_pool_ids, [2]);
         assert!(cfg.activity.schedule.iter().any(|row| row.id == 13801));
+        assert_eq!(cfg.activity.hero_story_schedule.len(), 31);
 
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_hero_story_schedule_uses_embedded_default() {
+        let activity: ActivityConfig = toml::from_str("schedule = []").unwrap();
+
+        assert_eq!(activity.hero_story_schedule.len(), 31);
+    }
+
+    #[test]
+    fn configured_hero_story_schedule_replaces_default() {
+        let activity: ActivityConfig = toml::from_str(
+            r#"
+            schedule = []
+            hero_story_schedule = [
+              { story_id = 99, start_time = 1, end_time = 2, start_time_resident = 3, end_time_resident = 4 }
+            ]
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(activity.hero_story_schedule.len(), 1);
+        assert_eq!(activity.hero_story_schedule[0].story_id, 99);
     }
 }

@@ -230,10 +230,6 @@ impl BuffManager {
 
     pub(super) fn remove_at(&mut self, index: usize, config_effect: i32) -> Vec<BuffRemoveResult> {
         let active = self.buffs.remove(index);
-        let clears_count = active
-            .definition
-            .as_ref()
-            .is_some_and(|definition| definition.uses_typed_count());
         let before_amount = count_or_layer_from(&active.buff, active.definition.as_ref());
         let recorded_mode_hp_delta = active
             .buff
@@ -300,20 +296,15 @@ impl BuffManager {
         } else {
             0
         };
-        let mut buff = active.buff;
-        if clears_count {
-            buff.count = Some(0);
-        }
         removed.push(BuffRemoveResult {
             target_uid: owner_uid,
             before_amount,
-            buff,
+            buff: active.buff,
             effective: active.effective,
             config_effect,
             delete_reason: None,
             depleted: false,
             fixed_max_hp_delta,
-            target_max_hp: 0,
         });
         removed
     }

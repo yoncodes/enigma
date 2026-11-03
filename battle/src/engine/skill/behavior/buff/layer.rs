@@ -69,6 +69,53 @@ pub(super) fn add_buff_by_layer_ops(
     ))])
 }
 
+pub(in crate::engine::skill::behavior) fn supports_team_layer(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [source, rate, output] if *source > 0 && *rate > 0 && *output > 0)
+        && behavior.raw_args.len() <= 3
+}
+
+pub(super) fn add_buff_by_team_layer_ops(
+    context: &BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    let [source_buff_id, rate, output_buff_id] = behavior.args.as_slice() else {
+        return None;
+    };
+    let source_layers = context
+        .managers
+        .buff
+        .buff_id_or_type_amount(context.source_uid, *source_buff_id);
+    let team_layers = context
+        .pool
+        .enemies(context.source_uid, false)
+        .iter()
+        .map(|enemy| {
+            context
+                .managers
+                .buff
+                .buff_id_amount(enemy.uid, *output_buff_id)
+        })
+        .fold(0, i32::saturating_add);
+    let amount = source_layers
+        .saturating_mul(team_layers)
+        .saturating_mul(*rate)
+        / 1000;
+    if amount <= 0 {
+        return Some(Vec::new());
+    }
+    Some(vec![RuleOp::Command(BattleCommand::Buff(
+        BuffCommand::Grant(BuffGrant {
+            origin: super::command_origin(behavior)?,
+            source_uid: context.source_uid,
+            target_uid: context.target_uid,
+            buff_id: *output_buff_id,
+            amount: Some(amount),
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }),
+    ))])
+}
+
 pub(super) fn add_buff_by_layer_range_ops(
     context: &BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,

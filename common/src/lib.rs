@@ -65,6 +65,10 @@ pub fn activity_schedule() -> &'static [config::ActivitySchedule] {
     &config().activity.schedule
 }
 
+pub fn hero_story_schedule() -> &'static [config::HeroStorySchedule] {
+    &config().activity.hero_story_schedule
+}
+
 pub fn init_tracing() {
     #[cfg(target_os = "windows")]
     let _ = ansi_term::enable_ansi_support();

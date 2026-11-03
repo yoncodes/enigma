@@ -1,6 +1,48 @@
 use super::*;
 
 #[test]
+fn emitter_skill_condition_rejects_regular_actions() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let condition = exact_condition(903, "None", &[]);
+    assert_eq!(
+        satisfied_conditions(
+            std::slice::from_ref(&condition),
+            DefinitionKey::new(903, "None"),
+        )[0]
+        .kind,
+        condition.kind
+    );
+    let matches = |active_skill_source_uid| {
+        conditions_match(
+            std::slice::from_ref(&condition),
+            10,
+            &[10],
+            None,
+            &pool,
+            TargetContext {
+                active_skill_source_uid,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(!matches(10));
+    assert!(matches(crate::engine::manager::emitter::UID));
+}
+
+#[test]
 fn hand_skill_presence_reads_the_committed_spelldock() {
     init_config();
     let fight = Fight {
@@ -275,15 +317,12 @@ fn completed_active_use_skill_requires_an_active_execution_mode_and_real_source(
 #[test]
 fn hero_round_interval_alternates_from_its_configured_start_round() {
     init_config();
-    let matches = |opcode, start_round, period, current_round| {
+    let matches = |opcode, kind, current_round| {
         let condition = ParsedCondition {
             opcode,
             type_name: "HeroRoundInterval".into(),
-            kind: ParsedConditionKind::RoundInterval {
-                start_round,
-                period,
-            },
-            raw_args: vec![period.to_string(), start_round.to_string()],
+            kind,
+            raw_args: Vec::new(),
         };
         condition_matches(
             &condition,
@@ -298,18 +337,26 @@ fn hero_round_interval_alternates_from_its_configured_start_round() {
         )
     };
 
-    assert!(matches(45104, 1, 2, 1));
-    assert!(!matches(45104, 1, 2, 2));
-    assert!(matches(45104, 1, 2, 3));
-    assert!(!matches(45104, 2, 2, 1));
-    assert!(matches(45104, 2, 2, 2));
-    assert!(!matches(45104, 2, 2, 3));
-    assert!(!matches(45101, 11, 1, 11));
-    assert!(matches(45101, 11, 1, 12));
-    assert!(!matches(45101, 2, 2, 2));
-    assert!(matches(45101, 2, 2, 3));
-    assert!(!matches(45101, 2, 2, 4));
-    assert!(matches(45101, 2, 2, 5));
+    let current = |start_round, period| ParsedConditionKind::RoundInterval {
+        start_round,
+        period,
+    };
+    let completed = |start_round, period| ParsedConditionKind::CompletedRoundInterval {
+        start_round,
+        period,
+    };
+    assert!(matches(45104, current(1, 2), 1));
+    assert!(!matches(45104, current(1, 2), 2));
+    assert!(matches(45104, current(1, 2), 3));
+    assert!(!matches(45104, current(2, 2), 1));
+    assert!(matches(45104, current(2, 2), 2));
+    assert!(!matches(45104, current(2, 2), 3));
+    assert!(!matches(45101, completed(11, 1), 11));
+    assert!(matches(45101, completed(11, 1), 12));
+    assert!(!matches(45101, completed(2, 2), 2));
+    assert!(matches(45101, completed(2, 2), 3));
+    assert!(!matches(45101, completed(2, 2), 4));
+    assert!(matches(45101, completed(2, 2), 5));
 }
 
 #[test]
@@ -339,7 +386,7 @@ fn use_ex_skill_checks_the_active_skill_payload() {
     let condition = ParsedCondition {
         opcode: 25210,
         type_name: String::new(),
-        kind: ParsedConditionKind::UseExSkill,
+        kind: ParsedConditionKind::UseExSkill { slot: 0 },
         raw_args: Vec::new(),
     };
     let matches = |active_skill_id| {
@@ -371,6 +418,30 @@ fn use_ex_skill_checks_the_active_skill_payload() {
             ..Default::default()
         },
     ));
+
+    let slot_condition = ParsedCondition {
+        opcode: 25203,
+        type_name: "UseExSkill".into(),
+        kind: ParsedConditionKind::UseExSkill { slot: 3 },
+        raw_args: vec!["3".into()],
+    };
+    let matches_slot = |active_skill_slot| {
+        condition_matches(
+            &slot_condition,
+            10,
+            &[10],
+            Some(&managers),
+            &pool,
+            TargetContext {
+                active_skill_id: 31345131,
+                active_skill_slot,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches_slot(3));
+    assert!(!matches_slot(2));
 }
 
 #[test]
@@ -392,7 +463,7 @@ fn negated_use_ex_skill_matches_basic_incantations_only() {
     let condition = ParsedCondition {
         opcode: 25208,
         type_name: "UseExSkill".into(),
-        kind: ParsedConditionKind::Not(Box::new(ParsedConditionKind::UseExSkill)),
+        kind: ParsedConditionKind::Not(Box::new(ParsedConditionKind::UseExSkill { slot: 0 })),
         raw_args: Vec::new(),
     };
     let matches = |active_skill_id| {
@@ -432,7 +503,7 @@ fn use_ex_skill_does_not_treat_an_enhanced_basic_skill_as_an_ultimate() {
     let condition = ParsedCondition {
         opcode: 25210,
         type_name: "UseExSkill".into(),
-        kind: ParsedConditionKind::UseExSkill,
+        kind: ParsedConditionKind::UseExSkill { slot: 0 },
         raw_args: Vec::new(),
     };
     let matches = |active_skill_id| {
@@ -502,7 +573,7 @@ fn teammate_ex_skill_requires_the_other_ally_as_runtime_source() {
 }
 
 #[test]
-fn target_use_ex_skill_requires_the_selected_runtime_actor() {
+fn effect_entity_supplies_the_selected_actor_gate_for_ally_ultimates() {
     init_config();
     let managers = BattleManagers::default();
     let pool = TargetPool::from_fight(&Fight {
@@ -523,31 +594,64 @@ fn target_use_ex_skill_requires_the_selected_runtime_actor() {
         }),
         ..Default::default()
     });
-    let condition = ParsedCondition {
+    let ultimate = ParsedCondition {
         opcode: 25212,
         type_name: "UseExSkill".into(),
-        kind: ParsedConditionKind::TargetUseExSkill,
+        kind: ParsedConditionKind::UseExSkill { slot: 0 },
         raw_args: Vec::new(),
     };
-    let matches = |condition_targets: &[i64], active_skill_source_uid, active_skill_id| {
-        condition_matches(
-            &condition,
+    let effect_entity = ParsedCondition {
+        opcode: 737212,
+        type_name: "IsEffectEntity".into(),
+        kind: ParsedConditionKind::ActiveSkillSourceIsTarget,
+        raw_args: Vec::new(),
+    };
+    let matches = |conditions: &[ParsedCondition], condition_targets: &[i64]| {
+        conditions_match(
+            conditions,
             10,
             condition_targets,
             Some(&managers),
             &pool,
             TargetContext {
-                active_skill_source_uid,
-                active_skill_id,
+                active_skill_source_uid: 11,
+                active_skill_id: 200,
                 ..Default::default()
             },
         )
     };
 
-    assert!(matches(&[11], 11, 200));
-    assert!(!matches(&[11], 10, 100));
-    assert!(!matches(&[11], 11, 100));
-    assert!(matches(&[10], 10, 100));
+    assert!(matches(std::slice::from_ref(&ultimate), &[10]));
+    let conditions = [ultimate, effect_entity];
+    assert!(matches(&conditions, &[11]));
+    assert!(!matches(&conditions, &[10]));
+}
+
+#[test]
+fn effect_entity_requires_the_selected_runtime_actor() {
+    let condition = ParsedCondition {
+        opcode: 737212,
+        type_name: "IsEffectEntity".into(),
+        kind: ParsedConditionKind::ActiveSkillSourceIsTarget,
+        raw_args: Vec::new(),
+    };
+    let matches = |condition_targets: &[i64], active_skill_source_uid| {
+        condition_matches(
+            &condition,
+            10,
+            condition_targets,
+            None,
+            &TargetPool::default(),
+            TargetContext {
+                active_skill_source_uid,
+                ..Default::default()
+            },
+        )
+    };
+
+    assert!(matches(&[11], 11));
+    assert!(!matches(&[11], 10));
+    assert!(!matches(&[11], 0));
 }
 
 #[test]
@@ -630,13 +734,7 @@ fn ally_ultimate_and_summon_selectors_use_runtime_owners() {
     };
 
     assert!(matches(
-        ParsedConditionKind::TargetUseExSkill,
-        &[11],
-        11,
-        999
-    ));
-    assert!(!matches(
-        ParsedConditionKind::TargetUseExSkill,
+        ParsedConditionKind::UseExSkill { slot: 0 },
         &[10],
         11,
         999

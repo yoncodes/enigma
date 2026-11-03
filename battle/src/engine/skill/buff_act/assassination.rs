@@ -654,7 +654,7 @@ mod tests {
             .unwrap()
             .buff_acts
             .into_iter()
-            .flat_map(|(_, ops)| ops.unwrap_or_default())
+            .flat_map(|(_, ops)| ops.unwrap().unwrap_or_default())
             .collect::<Vec<_>>()
         };
         let mut without_field = fight.clone();

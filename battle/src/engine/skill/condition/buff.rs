@@ -65,6 +65,29 @@ pub fn added_count_repeats(
     repeats
 }
 
+pub fn added_type_count_repeats(
+    condition: &ParsedCondition,
+    managers: &BattleManagers,
+    context: crate::engine::skill::target::TargetContext,
+) -> i32 {
+    let ParsedConditionKind::AccBuffTypeAddedCount {
+        type_ids,
+        threshold,
+    } = &condition.kind
+    else {
+        return 0;
+    };
+    if context.added_buff_amount <= 0 || !type_ids.contains(&context.added_buff_type_id) {
+        return 0;
+    }
+    let total = managers
+        .buff
+        .added_type_count_for_owner(context.added_buff_target_uid, type_ids);
+    let threshold = (*threshold).max(1);
+    let previous = (total - context.added_buff_amount).max(0);
+    total / threshold - previous / threshold
+}
+
 pub fn buff_group(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::BuffGroup(parse_buff_ids(raw_args)?))
 }
@@ -221,6 +244,13 @@ pub fn owner_added_count(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedC
     })
 }
 
+pub fn owner_added_type_count(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::AccBuffTypeAddedCount {
+        type_ids: parse_buff_ids(raw_args.get(..1)?)?,
+        threshold: raw_args.get(1)?.parse().ok()?,
+    })
+}
+
 pub fn buff_type_at_least(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     buff_type_count(raw_args, ConditionCompare::GreaterThanOrEqual)
 }
@@ -299,6 +329,45 @@ pub fn team_buff_type_layer_at_least(
     })
 }
 
+pub fn death_team_buff_type_layer(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [threshold, type_id] = parse_fixed(raw_args)?;
+    (threshold == 1 && type_id > 0).then_some(ParsedConditionKind::BuffTypeCount {
+        threshold,
+        type_ids: vec![type_id],
+        compare: ConditionCompare::GreaterThanOrEqual,
+    })
+}
+
+pub fn death_team_buff_type_absent(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [threshold, type_id] = parse_fixed(raw_args)?;
+    (threshold == 0 && type_id > 0).then_some(ParsedConditionKind::BuffTypeCount {
+        threshold,
+        type_ids: vec![type_id],
+        compare: ConditionCompare::LessThanOrEqual,
+    })
+}
+
+pub fn round_team_buff_type_at_most(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [threshold, type_id] = parse_fixed(raw_args)?;
+    (threshold >= 0 && type_id > 0).then_some(ParsedConditionKind::BuffTypeCount {
+        threshold,
+        type_ids: vec![type_id],
+        compare: ConditionCompare::LessThanOrEqual,
+    })
+}
+
 fn buff_type_count(raw_args: &[String], compare: ConditionCompare) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::BuffTypeCount {
         type_ids: parse_buff_ids(raw_args.get(..1)?)?,
@@ -344,6 +413,25 @@ pub fn visible_stacked_status_types_at_least(
         compare: ConditionCompare::GreaterThanOrEqual,
         threshold: raw_args.first()?.parse().ok()?,
     })
+}
+
+pub fn visible_status_threshold(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [raw_threshold, raw_status_ids] = raw_args else {
+        return None;
+    };
+    let threshold = raw_threshold.parse().ok()?;
+    let status_ids = parse_buff_ids(std::slice::from_ref(raw_status_ids))?;
+    ((1..=3).contains(&threshold) && status_ids.iter().all(|status_id| *status_id > 0)).then_some(
+        ParsedConditionKind::VisibleStackedStatusTypeCount {
+            status_ids,
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold,
+        },
+    )
 }
 
 pub fn visible_buff_status_types_less_than(
@@ -447,6 +535,27 @@ pub fn buff_present_and_consume(
 
 pub fn buff_absent(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     buff_presence(raw_args, BuffConditionMode::Absent)
+}
+
+pub fn single_buff_absent(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let [raw_id] = raw_args else {
+        return None;
+    };
+    let buff_id = raw_id.parse::<i32>().ok().filter(|buff_id| *buff_id > 0)?;
+    Some(ParsedConditionKind::BuffId {
+        mode: BuffConditionMode::Absent,
+        buff_ids: vec![buff_id],
+    })
+}
+
+pub fn positive_buff_absent(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let condition = buff_presence(raw_args, BuffConditionMode::Absent)?;
+    matches!(
+        &condition,
+        ParsedConditionKind::BuffId { buff_ids, .. }
+            if buff_ids.iter().all(|buff_id| *buff_id > 0)
+    )
+    .then_some(condition)
 }
 
 fn buff_presence(raw_args: &[String], mode: BuffConditionMode) -> Option<ParsedConditionKind> {

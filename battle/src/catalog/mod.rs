@@ -6,6 +6,7 @@ use crate::engine::skill::rule::{CommandOrigin, RuleDomain};
 const BURN_BUFF_FIGHT_CONST: i32 = 29;
 const CONTRACT_OWNER_BUFF_MAP: i32 = 30;
 const CONTRACT_BOUND_BUFF_MAP: i32 = 31;
+const MECHANIC_TUTORIAL_EPISODE_TYPE: i32 = 37;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MagicCircleDefinition {
@@ -14,7 +15,15 @@ pub(crate) struct MagicCircleDefinition {
     pub enemy_attributes: Vec<(i32, i32)>,
     pub allied_buffs: Vec<i32>,
     pub enemy_buffs: Vec<i32>,
+    pub linked_buffs: Vec<i32>,
     pub self_skills: Vec<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MagicCircleLevel {
+    pub definition: FieldDefinition,
+    pub level: i32,
+    pub linked_buffs: Vec<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,6 +198,42 @@ impl BattleCatalog {
                 })
             })
             .collect()
+    }
+
+    pub(crate) fn next_magic_circle_level(self, circle_id: i32) -> Option<MagicCircleLevel> {
+        let current = self.game_data.magic_wqsz.get(circle_id)?;
+        let next = self
+            .game_data
+            .magic_wqsz
+            .iter()
+            .find(|row| row.group == current.group && row.level == current.level + 1)?;
+        let circle = self.magic_circle(next.id)?;
+        Some(MagicCircleLevel {
+            definition: FieldDefinition {
+                field_id: next.id,
+                duration: circle.duration,
+            },
+            level: next.level,
+            linked_buffs: circle.linked_buffs,
+        })
+    }
+
+    pub(crate) fn return_magic_circle_level(self, circle_id: i32) -> Option<MagicCircleLevel> {
+        let current = self.game_data.magic_wqsz.get(circle_id)?;
+        let returned = self
+            .game_data
+            .magic_wqsz
+            .iter()
+            .find(|row| row.group == current.group && row.level == current.return_level)?;
+        let circle = self.magic_circle(returned.id)?;
+        Some(MagicCircleLevel {
+            definition: FieldDefinition {
+                field_id: returned.id,
+                duration: circle.duration,
+            },
+            level: returned.level,
+            linked_buffs: circle.linked_buffs,
+        })
     }
 
     pub(crate) fn buff_has_effect_count(self, buff_id: i32) -> bool {
@@ -621,6 +666,13 @@ impl BattleCatalog {
         configured_teaching_cards(self.game_data, episode_id)
     }
 
+    pub(crate) fn is_mechanic_tutorial(self, episode_id: i32) -> bool {
+        self.game_data
+            .episode
+            .get(episode_id)
+            .is_some_and(|episode| episode.r#type == MECHANIC_TUTORIAL_EPISODE_TYPE)
+    }
+
     pub(crate) fn device_card_weights(
         self,
         entity: &sonettobuf::FightEntityInfo,
@@ -1051,14 +1103,56 @@ fn magic_circle_definition(
     circle_id: i32,
 ) -> Option<MagicCircleDefinition> {
     let row = game_data.magic_circle.get(circle_id)?;
+    let (complex_skill, linked_buffs) = parse_magic_circle_complex_effect(&row.complex_effect)
+        .unwrap_or_else(|reason| {
+            panic!(
+                "invalid magic circle {circle_id} complexEffect {:?}: {reason}",
+                row.complex_effect
+            )
+        });
     Some(MagicCircleDefinition {
         duration: row.round,
         allied_attributes: parse_attribute_pairs(&row.self_attrs),
         enemy_attributes: parse_attribute_pairs(&row.enemy_attrs),
         allied_buffs: parse_positive_ids(&row.self_buff),
         enemy_buffs: parse_positive_ids(&row.enemy_buff),
-        self_skills: parse_positive_ids(&row.self_skills),
+        linked_buffs,
+        self_skills: parse_positive_ids(&row.self_skills)
+            .into_iter()
+            .chain(complex_skill)
+            .collect(),
     })
+}
+
+fn parse_magic_circle_complex_effect(raw: &str) -> Result<(Option<i32>, Vec<i32>), &'static str> {
+    if raw.is_empty() {
+        return Ok((None, Vec::new()));
+    }
+    let (kind, payload) = raw.split_once(':').ok_or("missing kind separator")?;
+    if kind != "1" {
+        return Err("unsupported kind");
+    }
+    let mut fields = payload.split(',');
+    if fields.next() != Some("null") {
+        return Err("invalid marker");
+    }
+    let skill = fields
+        .next()
+        .and_then(|value| value.parse::<i32>().ok())
+        .filter(|id| *id > 0)
+        .ok_or("invalid skill")?;
+    let buffs = fields
+        .next()
+        .ok_or("missing buffs")?
+        .split('#')
+        .map(|value| value.parse::<i32>().ok().filter(|id| *id > 0))
+        .collect::<Option<Vec<_>>>()
+        .filter(|buffs| !buffs.is_empty())
+        .ok_or("invalid buffs")?;
+    if fields.next().is_some() {
+        return Err("unexpected field");
+    }
+    Ok((Some(skill), buffs))
 }
 
 fn parse_attribute_pairs(raw: &str) -> Vec<(i32, i32)> {

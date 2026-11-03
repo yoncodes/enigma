@@ -181,6 +181,19 @@ pub(super) fn supports_mixed_rate(behavior: &ParsedBehavior) -> bool {
     )
 }
 
+pub(super) fn supports_rate(behavior: &ParsedBehavior) -> bool {
+    let argument_count = if behavior.raw_args.is_empty() {
+        behavior.args.len()
+    } else {
+        behavior.raw_args.len()
+    };
+    argument_count == 3
+        && matches!(
+            behavior.args.as_slice(),
+            [buff_id, amount, rate] if *buff_id > 0 && *amount >= 0 && *rate > 0
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,6 +249,33 @@ mod tests {
             )))]
         ));
         assert_eq!(modifiers.rates[0].fixed_value(), Some(250));
+
+        modifiers = SkillModifiers::default();
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60034, "ConsumeBuffUpSkillDamageRate"),
+            vec![90071, 0, 600],
+            Vec::new(),
+        );
+        let ops = behavior::rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 100,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+
+        assert!(ops.is_empty());
+        assert_eq!(modifiers.rates[0].fixed_value(), Some(600));
 
         modifiers = SkillModifiers::default();
         let behavior = ParsedBehavior::from_spec(

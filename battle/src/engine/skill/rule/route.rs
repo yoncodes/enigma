@@ -212,6 +212,16 @@ fn merge_driver(
                 // Both events carry the same action context; the pre-effect event owns
                 // a combined route when they describe the same explicit phase.
                 match (first.event, second.event) {
+                    (EventKind::ConduitActivated, EventKind::SkillAction)
+                        if second.phase == Some(SkillPhase::AfterDamage) =>
+                    {
+                        Some(ConditionDriver::Trigger(first))
+                    }
+                    (EventKind::SkillAction, EventKind::ConduitActivated)
+                        if first.phase == Some(SkillPhase::AfterDamage) =>
+                    {
+                        Some(ConditionDriver::Trigger(second))
+                    }
                     (EventKind::SkillEffectStarted, EventKind::SkillAction)
                         if first.phase.is_some() && first.phase == second.phase =>
                     {

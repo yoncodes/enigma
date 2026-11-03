@@ -20,6 +20,14 @@ pub fn use_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind
     )?))
 }
 
+pub fn incantation_rank(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [raw_rank] = args else {
+        return None;
+    };
+    let rank = raw_rank.parse().ok()?;
+    matches!(rank, 2 | 3).then_some(ParsedConditionKind::UseSkillRank(vec![rank]))
+}
+
 pub fn hurt_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     args.is_empty().then_some(ParsedConditionKind::UseHurtSkill)
 }
@@ -83,6 +91,16 @@ pub fn effect_tags(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKi
         tags.extend(parse_i32_list(arg)?);
     }
     (!tags.is_empty()).then_some(ParsedConditionKind::ActiveSkillEffectTag(tags))
+}
+
+pub fn single_effect_tag(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [raw] = args else {
+        return None;
+    };
+    let tag = raw.parse().ok()?;
+    (1..=6)
+        .contains(&tag)
+        .then_some(ParsedConditionKind::ActiveSkillEffectTag(vec![tag]))
 }
 
 pub fn rank(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {

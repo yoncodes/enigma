@@ -25,33 +25,25 @@ fn setup_initializes_owned_card_state_without_publishing_a_change() {
 }
 
 #[test]
-fn state_publication_reports_the_committed_hand_and_deck_without_mutating_them() {
-    let hand = vec![CardInfo {
-        uid: Some(10),
-        skill_id: Some(100),
-        ..Default::default()
-    }];
-    let mut manager = CardManager::new(hand.clone());
-    manager.set_deck_num(30);
+fn energy_allocation_obeys_its_configured_limit() {
+    let mut manager = CardManager::new(vec![CardInfo::default()]);
 
-    let changes = manager
-        .execute_command(CardCommand::PublishState(CardPublishState {
+    manager
+        .execute_command(CardCommand::AllocateEnergy(CardEnergyAllocation {
             origin: ORIGIN,
-            team_type: 1,
+            energies: vec![8],
+            limit: 8,
         }))
         .unwrap();
-
-    assert_eq!(changes.kind, CardChangeKind::StatePublished);
-    assert_eq!(changes.before, hand);
-    assert_eq!(changes.after, hand);
-    assert!(changes.events().is_empty());
-    assert!(matches!(
-        changes.operation,
-        Some(CardChange::DeckCount {
-            deck_num: 30,
-            team_type: 1
-        })
-    ));
+    assert_eq!(manager.hand()[0].energy, Some(8));
+    assert_eq!(
+        manager.execute_command(CardCommand::AllocateEnergy(CardEnergyAllocation {
+            origin: ORIGIN,
+            energies: vec![9],
+            limit: 8,
+        })),
+        Err(CardCommandError::InvalidCommand)
+    );
 }
 
 #[test]
@@ -508,6 +500,7 @@ fn card_setup_rules_commit_enchants_and_temporary_lifecycle_through_the_manager(
         .execute_command(CardCommand::AllocateEnergy(CardEnergyAllocation {
             origin: ORIGIN,
             energies: vec![1, 2, 3],
+            limit: 5,
         }))
         .unwrap();
     manager

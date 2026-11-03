@@ -145,6 +145,65 @@ fn player_owned_negative_uid_gains_card_play_moxie() {
 }
 
 #[test]
+fn blocked_ai_card_still_gains_card_play_moxie() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(116_370_081),
+                level: Some(175),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(4011),
+                    from_uid: Some(10),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [117_373_053], []);
+
+    let result = run_ai_actions(
+        &fight,
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [AiSkillChoice {
+            source_uid: -1,
+            skill_id: 117_373_053,
+            target_uid: 10,
+        }],
+        &[],
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(-1), 1);
+    assert!(!result.events.iter().any(|event| matches!(
+        event,
+        crate::engine::event::payload::BattleEvent::SkillAction(action)
+            if action.source_uid == -1
+    )));
+}
+
+#[test]
 fn precast_card_does_not_grant_card_play_moxie() {
     init_config();
     let fight = Fight {

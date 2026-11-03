@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn device_ultimate_compound_uses_the_activation_driver_in_either_order() {
+    init_config();
+
+    for raw in ["25208&792208", "792208&25208"] {
+        let conditions =
+            crate::engine::skill::condition::parse_conditions(config::configs::get(), raw);
+        let route =
+            crate::engine::skill::rule::route::ConditionRoute::compile(&conditions).unwrap();
+
+        let descriptors = &route.branches[0].conditions;
+        assert_eq!(descriptors.len(), 2);
+        for key in [
+            crate::engine::skill::rule::DefinitionKey::new(25208, "UseExSkill"),
+            crate::engine::skill::rule::DefinitionKey::new(792208, "UseDeviceSkill"),
+        ] {
+            assert_eq!(
+                descriptors
+                    .iter()
+                    .filter(|descriptor| descriptor.key == key)
+                    .count(),
+                1
+            );
+        }
+        assert_eq!(
+            route.branches[0].driver,
+            Some(crate::engine::skill::rule::route::ConditionDriver::Trigger(
+                crate::engine::skill::rule::route::ConditionTrigger {
+                    key: crate::engine::skill::rule::DefinitionKey::new(792208, "UseDeviceSkill",),
+                    event: crate::engine::event::kind::EventKind::ConduitActivated,
+                    phase: None,
+                },
+            ))
+        );
+    }
+}
+
+#[test]
 fn ultimate_rank_compound_keeps_its_after_hit_driver_and_buff_branches() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());

@@ -8,7 +8,7 @@ use crate::engine::{
     entity::attr::AttrId,
     manager::{
         attribute::AttributeManager,
-        buff::BuffManager,
+        buff::{ActiveBuffFeature, BuffManager},
         field::FieldManager,
         hp::{DamageEffectKind, HpCommand, HpDamage, HpManager, HurtDamageFromType, HurtInfoData},
     },
@@ -62,6 +62,21 @@ pub struct DamageRuntime<'a> {
 pub struct DamageFraction {
     pub numerator: i128,
     pub denominator: i128,
+}
+
+fn attack_career(
+    source: &TargetEntity,
+    requested: Option<i32>,
+    features: &[ActiveBuffFeature],
+) -> i32 {
+    requested.unwrap_or_else(|| {
+        if source.uid == crate::engine::manager::emitter::UID {
+            crate::engine::skill::buff_act::emitter_career::career(features)
+                .unwrap_or(source.career)
+        } else {
+            source.career
+        }
+    })
 }
 
 pub struct ResolvedAttack {
@@ -174,6 +189,7 @@ pub fn resolve_configured_replacement_damage_command(
         crate::engine::skill::buff_act::attack_replacement_rule(&feature, runtime.hp)?;
     let source = runtime.pool.entity(request.source_uid)?;
     let target = runtime.pool.entity(request.target_uid)?;
+    let active_features = runtime.buffs.active_features(runtime.hp);
     let (base_rate, added_rate) = composed_damage_rates(request.rate, request.rate_terms);
     let amount = direct_damage(
         request,
@@ -206,7 +222,7 @@ pub fn resolve_configured_replacement_damage_command(
             career_restraint: request.force_career_restraint
                 || restrains_target_either(
                     runtime.pool.catalog(),
-                    request.attack_career.unwrap_or(source.career),
+                    attack_career(source, request.attack_career, &active_features),
                     request.additional_attack_career,
                     target,
                 ),
@@ -248,12 +264,12 @@ fn resolve_row_damage_result(
     } = runtime;
     let source = pool.entity(source_uid)?;
     let target = pool.entity(target_uid)?;
-    let attack_replacement = buffs
-        .active_features(hp)
-        .into_iter()
+    let active_features = buffs.active_features(hp);
+    let attack_replacement = active_features
+        .iter()
         .filter(|feature| feature.owner_uid == source_uid)
         .find_map(|feature| {
-            crate::engine::skill::buff_act::direct_attack_replacement_rule(&feature, hp)
+            crate::engine::skill::buff_act::direct_attack_replacement_rule(feature, hp)
                 .map(|replacement| (feature.buff_id, replacement))
         });
     if crate::engine::damage::trace::enabled()
@@ -281,14 +297,13 @@ fn resolve_row_damage_result(
         },
     );
     let career_restraint = request.force_career_restraint
-        || buffs
-            .active_features(hp)
+        || active_features
             .iter()
             .filter(|feature| feature.owner_uid == source_uid)
             .any(crate::engine::skill::buff_act::forces_career_restraint)
         || restrains_target_either(
             runtime.pool.catalog(),
-            request.attack_career.unwrap_or(source.career),
+            attack_career(source, request.attack_career, &active_features),
             request.additional_attack_career,
             target,
         );
@@ -394,14 +409,18 @@ pub fn resolve_proportional_additional_damage_command(
     };
     let credited_source = runtime.pool.entity(credited_source_uid)?;
     let target = runtime.pool.entity(main.target_uid)?;
+    let active_features = runtime.buffs.active_features(runtime.hp);
     let career_restraint = force_career_restraint
-        || runtime
-            .buffs
-            .active_features(runtime.hp)
+        || active_features
             .iter()
             .filter(|feature| feature.owner_uid == credited_source_uid)
             .any(crate::engine::skill::buff_act::forces_career_restraint)
-        || restrains_target_either(runtime.pool.catalog(), credited_source.career, None, target);
+        || restrains_target_either(
+            runtime.pool.catalog(),
+            attack_career(credited_source, None, &active_features),
+            None,
+            target,
+        );
     (amount > 0).then_some(HpCommand::Damage(HpDamage {
         origin,
         source_uid: credited_source_uid,
@@ -469,11 +488,12 @@ fn resolve_additional_damage_result(
         additional_replaced_attack_damage_amount(request, runtime, formula, attack_replacement);
     let source = runtime.pool.entity(credited_source_uid)?;
     let target = runtime.pool.entity(target_uid)?;
+    let active_features = runtime.buffs.active_features(runtime.hp);
     let career_restraint = formula.rules().applies_career
         && (request.force_career_restraint
             || restrains_target_either(
                 runtime.pool.catalog(),
-                request.attack_career.unwrap_or(source.career),
+                attack_career(source, request.attack_career, &active_features),
                 request.additional_attack_career,
                 target,
             ));
@@ -626,7 +646,6 @@ fn direct_damage_trace(
         target_buffs,
         hp,
         fields,
-        emitter,
         team_inspiration,
         ..
     } = runtime;
@@ -639,6 +658,12 @@ fn direct_damage_trace(
     let formula_rules = formula.rules();
     let source_active_features = buffs.active_features(hp);
     let target_active_features = target_buffs.active_features(hp);
+    let source_damage_type = crate::engine::skill::buff_act::emitter_damage_type::resolve(
+        source.damage_type,
+        source.uid,
+        buffs,
+        hp,
+    );
     let include_trigger_history = formula_rules.includes_trigger_history;
     let attribute_delta = |entity: &TargetEntity, attr_id: AttrId| -> i32 {
         let (entity_buffs, active_features) = if entity.uid == target.uid {
@@ -647,14 +672,11 @@ fn direct_damage_trace(
             (buffs, &source_active_features)
         };
         let emitter_attribute = if entity.uid == crate::engine::manager::emitter::UID {
-            crate::engine::manager::emitter::average_ally_buff_attribute(
-                runtime.pool,
-                buffs,
-                hp,
-                attr_id,
-            ) + emitter
-                .map(|emitter| emitter.ally_attribute(attr_id))
-                .unwrap_or_default()
+            runtime.emitter.map_or(0, |emitter| {
+                crate::engine::manager::emitter::average_ally_attribute_delta(
+                    emitter, attributes, buffs, hp, attr_id,
+                )
+            })
         } else {
             0
         };
@@ -693,7 +715,11 @@ fn direct_damage_trace(
                     .map(|feature| {
                         crate::engine::skill::buff_act::attr_by_damage_type::attribute_delta(
                             feature,
-                            entity.damage_type,
+                            if entity.uid == source.uid {
+                                source_damage_type
+                            } else {
+                                entity.damage_type
+                            },
                             attr_id,
                         )
                     })
@@ -838,7 +864,19 @@ fn direct_damage_trace(
             .sum::<i32>()
     };
     let flat_attack =
-        crate::engine::manager::snapshotted_attribute_delta(buffs, hp, source.uid, AttrId::Attack);
+        crate::engine::manager::snapshotted_attribute_delta(buffs, hp, source.uid, AttrId::Attack)
+            .saturating_add(buffs.fixed_attribute_delta(source.uid, AttrId::Attack))
+            .saturating_add(if source.uid == crate::engine::manager::emitter::UID {
+                runtime.emitter.map_or(0, |emitter| {
+                    crate::engine::manager::emitter::average_ally_fixed_attribute(
+                        emitter,
+                        buffs,
+                        AttrId::Attack,
+                    )
+                })
+            } else {
+                0
+            });
     let base_attack = attributes.base(source.uid, AttrId::Attack);
     let attack_rate = 1000
         + attributes.get(source.uid, AttrId::Attack)
@@ -854,7 +892,7 @@ fn direct_damage_trace(
         final_atk
     };
     let defense_attr =
-        if source.damage_type == crate::engine::skill::target::EntityDamageType::Mental {
+        if source_damage_type == crate::engine::skill::target::EntityDamageType::Mental {
             AttrId::MentalDef
         } else {
             AttrId::RealityDef
@@ -876,14 +914,7 @@ fn direct_damage_trace(
             .iter()
             .filter(|feature| feature.owner_uid == source.uid)
             .any(crate::engine::skill::buff_act::forces_career_restraint);
-    let source_career = if let Some(career) = request.attack_career {
-        career
-    } else if source.uid == crate::engine::manager::emitter::UID {
-        crate::engine::skill::buff_act::emitter_career::career(&source_active_features)
-            .unwrap_or(source.career)
-    } else {
-        source.career
-    };
+    let source_career = attack_career(source, request.attack_career, &source_active_features);
     let natural_career = career_multiplier_against_either(
         runtime.pool.catalog(),
         source_career,
@@ -910,6 +941,10 @@ fn direct_damage_trace(
             .map(crate::engine::skill::buff_act::career_ratio_bonus)
             .sum::<i32>()
             + career_ratio_bonus
+            + attributes.get(source.uid, AttrId::StrongerAfflatusDmgMultiplier)
+            + attribute_delta(source, AttrId::StrongerAfflatusDmgMultiplier)
+            + attack_attribute_delta(AttrId::StrongerAfflatusDmgMultiplier)
+            + attack_local_attribute(AttrId::StrongerAfflatusDmgMultiplier)
     } else {
         1000
     };
@@ -1045,7 +1080,7 @@ fn direct_damage_trace(
     };
     let crit_multiplier = crit_multiplier.max(0);
     let inputs = DamageInputs {
-        kind: if source.damage_type == crate::engine::skill::target::EntityDamageType::Mental {
+        kind: if source_damage_type == crate::engine::skill::target::EntityDamageType::Mental {
             DamageKind::Mental
         } else {
             DamageKind::Reality
@@ -1124,38 +1159,52 @@ fn direct_damage_trace(
                 )
             })
             .collect::<Vec<_>>();
-        let emitter_ally_inputs = (source.uid == crate::engine::manager::emitter::UID).then(|| {
-            runtime
-                .pool
-                .main_allies(source.uid)
+        let emitter_ally_inputs = runtime
+            .emitter
+            .filter(|_| source.uid == crate::engine::manager::emitter::UID)
+            .map(|emitter| {
+                emitter
+                .ally_uids()
                 .iter()
-                .filter(|ally| hp.current(ally.uid) > 0)
-                .map(|ally| {
-                    let stored_rate = attributes.get(ally.uid, AttrId::Attack);
-                    let dynamic_rate = attribute_delta(ally, AttrId::Attack);
+                .map(|uid| {
+                    let parts = |attr_id| {
+                        (
+                            attributes.get(*uid, attr_id),
+                            buffs.attribute_delta(*uid, attr_id),
+                            buffs.fixed_attribute_delta(*uid, attr_id),
+                            crate::engine::manager::emitter::ally_derived_attribute(
+                                *uid,
+                                &source_active_features,
+                                buffs,
+                                hp,
+                                attr_id,
+                            ),
+                        )
+                    };
+                    let fixed_attack = buffs.fixed_attribute_delta(*uid, AttrId::Attack);
+                    let snapshotted_attack = crate::engine::manager::snapshotted_attribute_delta(
+                        buffs,
+                        hp,
+                        *uid,
+                        AttrId::Attack,
+                    );
                     format!(
-                        "uid={} attack={}/{stored_rate}/{dynamic_rate} crit={}/{}/{} damage={}/{} might={}/{}/{}/{} penetration={}/{} final={}/{} playmode={}/{}",
-                        ally.uid,
-                        attributes.base(ally.uid, AttrId::Attack),
-                        attributes.get(ally.uid, AttrId::CriticalDmg),
-                        ally.technic,
-                        attribute_delta(ally, AttrId::CriticalDmg),
-                        attributes.get(ally.uid, AttrId::DmgBonus),
-                        attribute_delta(ally, AttrId::DmgBonus),
-                        attributes.get(ally.uid, AttrId::IncantationMight),
-                        attribute_delta(ally, AttrId::IncantationMight),
-                        attributes.get(ally.uid, AttrId::UltimateMight),
-                        attribute_delta(ally, AttrId::UltimateMight),
-                        attributes.get(ally.uid, AttrId::Penetration),
-                        attribute_delta(ally, AttrId::Penetration),
-                        attributes.get(ally.uid, AttrId::FinalDmgBonus),
-                        attribute_delta(ally, AttrId::FinalDmgBonus),
-                        attributes.get(ally.uid, AttrId::PlaymodeDmgIncrease),
-                        attribute_delta(ally, AttrId::PlaymodeDmgIncrease),
+                        "uid={uid} attack[base/stored/ordinary/fixed/snapshot]={}/{}/{}/{fixed_attack}/{snapshotted_attack} critical_rate[stored/ordinary/fixed/derived]={:?} critical_dmg[stored/ordinary/fixed/derived]={:?} damage[stored/ordinary/fixed/derived]={:?} incantation_might[stored/ordinary/fixed/derived]={:?} ultimate_might[stored/ordinary/fixed/derived]={:?} penetration[stored/ordinary/fixed/derived]={:?} final[stored/ordinary/fixed/derived]={:?} playmode[stored/ordinary/fixed/derived]={:?}",
+                        attributes.base(*uid, AttrId::Attack),
+                        attributes.get(*uid, AttrId::Attack),
+                        buffs.attribute_delta(*uid, AttrId::Attack),
+                        parts(AttrId::CriticalRate),
+                        parts(AttrId::CriticalDmg),
+                        parts(AttrId::DmgBonus),
+                        parts(AttrId::IncantationMight),
+                        parts(AttrId::UltimateMight),
+                        parts(AttrId::Penetration),
+                        parts(AttrId::FinalDmgBonus),
+                        parts(AttrId::PlaymodeDmgIncrease),
                     )
                 })
                 .collect::<Vec<_>>()
-        });
+            });
         eprintln!(
             "damage formula={formula:?} skill={skill_id} source={} target={} source_hp={}/{} target_hp={}/{} shield={} attack={final_atk}({base_attack}*{attack_rate}/1000+{flat_attack}) emitter_ally_inputs={emitter_ally_inputs:?} source_buffs={source_buffs:?} target_buffs={target_buffs:?} penetration={penetration} regular={source_regular}({source_base_regular}+{source_buff_regular}+{source_attack_regular}+{})+action({action_bonus}, {})-{target_regular}({target_base_regular}+{target_buff_regular}) local_bonus={local_damage_bonus:?} ultimate_might={}+{}+{} extra={} rebound={} reuse={} hp_pct={} atk_pct={} crit={source_crit}+{technique_crit}+{buff_crit}-({target_base_crit}+{target_buff_crit}) trace={damage_trace:?}",
             source.uid,

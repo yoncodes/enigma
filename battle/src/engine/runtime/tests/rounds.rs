@@ -115,6 +115,41 @@ fn destination_begin_round_owns_the_round_transition_and_reply_buckets() {
 }
 
 #[test]
+fn disposable_round_candidate_matches_transactional_advance() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        cur_round: Some(1),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let request = BeginRoundRequest::default();
+    let mut transactional = runtime(fight.clone());
+    let mut candidate = runtime(fight);
+
+    let expected = transactional.advance_round(request.clone()).unwrap();
+    let actual = candidate.advance_round_candidate(request).unwrap();
+
+    assert_eq!(actual, expected);
+    assert_eq!(candidate.reconnect_state(), transactional.reconnect_state());
+}
+
+#[test]
 fn advance_round_discards_state_after_late_projection_failure() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -147,7 +182,7 @@ fn advance_round_discards_state_after_late_projection_failure() {
 }
 
 #[test]
-fn no_conduit_round_clears_card_energy_once() {
+fn enabled_impromptu_gauge_without_tag_keeps_the_generic_card_clear() {
     crate::test_support::init_config();
     let fight = Fight {
         version: Some(7),
@@ -170,6 +205,21 @@ fn no_conduit_round_clears_card_energy_once() {
         ..Default::default()
     };
     let mut runtime = runtime(fight);
+    let origin = crate::engine::skill::buff_act::configured_command_origin(
+        875,
+        crate::engine::skill::buff_act::registry::BuffActKind::EmitterTag,
+    )
+    .unwrap();
+    runtime
+        .managers
+        .execute_gauge(crate::engine::manager::gauge::GaugeCommand::new(
+            origin,
+            crate::engine::mechanic::impromptu::inspiration_key(
+                crate::engine::manager::emitter::UID,
+            ),
+            crate::engine::manager::gauge::GaugeOperation::Enable { max: None },
+        ))
+        .unwrap();
     runtime
         .managers
         .execute_card(crate::engine::manager::card::CardCommand::Setup(

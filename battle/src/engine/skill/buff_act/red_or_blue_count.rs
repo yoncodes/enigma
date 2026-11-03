@@ -78,6 +78,7 @@ pub fn rule_ops(
             target_uid: subscriber.owner_uid,
             effect_type: EffectType::Redorbluecountexskill as i32,
             effect_num: 0,
+            effect_num1: None,
             config_effect: 0,
             reserve_id: Some(i64::from(skill_id)),
             reserve_str: Some(format!(

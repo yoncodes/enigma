@@ -517,7 +517,7 @@ fn action_queue_commit_collects_played_card_energy_as_inspiration() {
 }
 
 #[test]
-fn player_actions_resolved_activates_internal_inspiration_thresholds() {
+fn player_actions_resolved_groups_visible_inspiration_thresholds() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -539,7 +539,7 @@ fn player_actions_resolved_activates_internal_inspiration_thresholds() {
                     buffs: vec![BuffInfo {
                         uid: Some(30),
                         buff_id: Some(31080151),
-                        from_uid: Some(99998),
+                        from_uid: Some(10),
                         ..Default::default()
                     }],
                     ..Default::default()
@@ -600,10 +600,32 @@ fn player_actions_resolved_activates_internal_inspiration_thresholds() {
             .iter()
             .map(BattleEvent::kind)
             .collect::<Vec<_>>(),
-        vec![EventKind::PlayerActionsResolved]
+        vec![
+            EventKind::PlayerActionsResolved,
+            EventKind::BuffAdded,
+            EventKind::BuffAdded,
+        ]
     );
     let steps = crate::engine::packet::timeline::project(&activated.frames).unwrap();
-    assert!(steps.is_empty());
+    assert_eq!(steps.len(), 1);
+    let threshold = steps[0].act_effect[0].fight_step.as_ref().unwrap();
+    assert_eq!(threshold.from_id, Some(10));
+    assert_eq!(threshold.to_id, Some(99998));
+    assert_eq!(threshold.act_id, Some(31080151));
+    assert_eq!(threshold.act_effect.len(), 4);
+    assert_eq!(
+        threshold
+            .act_effect
+            .iter()
+            .map(|effect| effect.effect_type.unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            sonettobuf::effect_type_enum::EffectType::Buffadd as i32,
+            sonettobuf::effect_type_enum::EffectType::Emitternumchange as i32,
+            sonettobuf::effect_type_enum::EffectType::Buffadd as i32,
+            sonettobuf::effect_type_enum::EffectType::Emitternumchange as i32,
+        ]
+    );
     assert!(managers.buff.has_buff_id(99998, 31080152));
     assert!(managers.buff.has_buff_id(99998, 31080153));
     let plan = build_plan(&managers, 1, 99998).unwrap();
@@ -704,7 +726,8 @@ fn idle_impromptu_finalizes_card_and_emitter_energy_once() {
     )
     .unwrap();
 
-    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert!(result.card_energy_finalized);
+    let steps = crate::engine::packet::timeline::project(&result.drain.frames).unwrap();
     assert!(matches!(
         steps.as_slice(),
         [finalization]
@@ -719,7 +742,7 @@ fn idle_impromptu_finalizes_card_and_emitter_energy_once() {
 }
 
 #[test]
-fn impromptu_executes_the_transient_plan_then_resets_inspiration() {
+fn impromptu_owns_its_clear_after_owner_death_across_conduit() {
     init_config();
     let fighter = |uid, hp| FightEntityInfo {
         uid: Some(uid),
@@ -796,7 +819,7 @@ fn impromptu_executes_the_transient_plan_then_resets_inspiration() {
             crate::engine::manager::gauge::GaugeOperation::ChangeValue { delta: 6 },
         ))
         .unwrap();
-    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let mut catalog = SkillEffectCatalog::from_game_db(config::configs::get());
     let definition =
         crate::catalog::impromptu_definition(crate::test_support::game_data()).unwrap();
     let mut determinism = RoundDeterminism::default();
@@ -812,6 +835,10 @@ fn impromptu_executes_the_transient_plan_then_resets_inspiration() {
         99998,
     )
     .unwrap();
+
+    assert!(result.card_energy_finalized);
+    let card_energy_finalized = result.card_energy_finalized;
+    let result = result.drain;
 
     assert!(managers.hp.current(-1) < 100_000);
     assert!(managers.hp.current(-2) < 100_000);
@@ -833,6 +860,63 @@ fn impromptu_executes_the_transient_plan_then_resets_inspiration() {
         }
     )));
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert_eq!(
+        steps.first().unwrap().act_effect[0].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Allocatecardenergy as i32)
+    );
+    assert_eq!(steps.first().unwrap().act_effect.len(), 1);
+    assert_eq!(
+        steps.last().unwrap().act_effect[0].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Allocatecardenergy as i32)
+    );
+    assert_eq!(
+        steps.last().unwrap().act_effect[1].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Emitterenergychange as i32)
+    );
+
+    let tag_owner_uid = managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .find(|feature| buff_act::is_kind(feature, buff_act::registry::BuffActKind::EmitterTag))
+        .unwrap()
+        .owner_uid;
+    let tag_owner_hp = managers.hp.current(tag_owner_uid);
+    managers.hp.lose(tag_owner_uid, tag_owner_hp, 0);
+    assert_eq!(managers.hp.current(tag_owner_uid), 0);
+    assert!(
+        managers
+            .buff
+            .active_features(&managers.hp)
+            .iter()
+            .filter(|feature| {
+                buff_act::is_kind(feature, buff_act::registry::BuffActKind::EmitterTag)
+            })
+            .all(|feature| !feature.owner_alive)
+    );
+    let battle_catalog = managers.catalog();
+    let conduit = run_conduit_phase(
+        battle_catalog,
+        &fight,
+        &mut managers,
+        &pool,
+        &mut catalog,
+        &mut determinism,
+        TargetContext::default(),
+        &[],
+    )
+    .unwrap();
+    assert!(conduit.frames.is_empty());
+    let pending = run_pending_card_energy_clear(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        TargetContext::default(),
+        card_energy_finalized,
+    )
+    .unwrap();
+    assert!(pending.frames.is_empty());
     assert!(steps.iter().any(|step| {
         step.act_effect.iter().any(|effect| {
             effect.effect_type

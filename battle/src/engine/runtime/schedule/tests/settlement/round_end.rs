@@ -363,6 +363,150 @@ fn final_settlement_runs_side_expiry_reactions_before_entity_expiry() {
 }
 
 #[test]
+fn wangqi_return_uses_its_lifecycle_frame_after_final_settlement() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(1_000),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31410409),
+                    from_uid: Some(10),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        [31411151, 31411152, 31411153],
+        std::iter::empty(),
+    );
+    managers
+        .field
+        .execute_command(FieldCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(50019, "AddMagicCircle"),
+            },
+            team: 1,
+            operation: FieldOperation::DeployIfAbsent {
+                definition: FieldDefinition {
+                    field_id: 42004,
+                    duration: 1,
+                },
+                create_uid: 10,
+                initial_level: 4,
+                thresholds: Vec::new(),
+            },
+        })
+        .unwrap();
+    for buff_id in [31410601, 31412602, 31410603] {
+        managers
+            .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+                crate::engine::manager::buff::BuffGrant {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Behavior,
+                        key: DefinitionKey::new(50019, "AddMagicCircle"),
+                    },
+                    source_uid: 10,
+                    target_uid: crate::engine::manager::emitter::UID,
+                    buff_id,
+                    amount: None,
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                },
+            ))
+            .unwrap();
+    }
+    managers.field.begin_round();
+
+    let result = run_round_end_final_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        Vec::new(),
+    )
+    .unwrap();
+
+    let steps = crate::engine::packet::timeline::project_for_version(&result.frames, 7).unwrap();
+    let parent = steps
+        .iter()
+        .find(|step| {
+            step.act_effect.iter().any(|effect| {
+                effect.fight_step.as_ref().is_some_and(|nested| {
+                    nested.act_effect.iter().any(|effect| {
+                        effect.effect_type
+                            == Some(
+                                sonettobuf::effect_type_enum::EffectType::Magiccircledelete as i32,
+                            )
+                    })
+                })
+            })
+        })
+        .unwrap();
+    let nested = parent.act_effect[0].fight_step.as_ref().unwrap();
+    assert_eq!(
+        (nested.from_id, nested.to_id, nested.act_id),
+        (Some(0), Some(0), Some(0))
+    );
+    assert_eq!(
+        nested
+            .act_effect
+            .iter()
+            .filter(|effect| {
+                effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Buffdel as i32)
+            })
+            .count(),
+        3
+    );
+    assert!(nested.act_effect.iter().any(|effect| {
+        effect.effect_type
+            == Some(sonettobuf::effect_type_enum::EffectType::Magiccircledelete as i32)
+    }));
+    let parent_effects = parent
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.effect_type)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        parent_effects
+            .iter()
+            .filter(|effect| {
+                **effect == sonettobuf::effect_type_enum::EffectType::Buffadd as i32
+            })
+            .count(),
+        3
+    );
+    assert!(
+        parent_effects.contains(&(sonettobuf::effect_type_enum::EffectType::Magiccircleadd as i32))
+    );
+    assert!(
+        !parent_effects
+            .contains(&(sonettobuf::effect_type_enum::EffectType::Magiccircledelete as i32))
+    );
+    let returned = parent
+        .act_effect
+        .iter()
+        .find(|effect| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Magiccircleadd as i32)
+        })
+        .unwrap();
+    assert_eq!(returned.magic_circle.as_ref().unwrap().electric_level, None);
+}
+
+#[test]
 fn scalding_incantations_settle_current_hp_in_one_round_end_frame() {
     init_config();
     let entity = |uid, hp| FightEntityInfo {

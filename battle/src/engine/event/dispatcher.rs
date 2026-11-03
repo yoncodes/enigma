@@ -11,10 +11,15 @@ use crate::engine::{
     },
 };
 
+pub type BuffActDispatch = (
+    BuffActSubscriber,
+    Result<Option<Vec<buff_act::BuffActRuleOp>>, buff_act::BuffActRuleError>,
+);
+
 #[derive(Debug, Default)]
 pub struct DispatchBatch {
     pub skills: Vec<(SkillSubscriber, RuleOp)>,
-    pub buff_acts: Vec<(BuffActSubscriber, Option<Vec<buff_act::BuffActRuleOp>>)>,
+    pub buff_acts: Vec<BuffActDispatch>,
     pub(crate) following: Vec<DispatchBatch>,
 }
 
@@ -134,7 +139,7 @@ fn outputs(
         .filter(|subscriber| buff_act::subscriber_kind(subscriber).is_some())
         .map(|subscriber| {
             let output =
-                buff_act::rule_ops(managers, pool, catalog, determinism, &subscriber, event);
+                buff_act::try_rule_ops(managers, pool, catalog, determinism, &subscriber, event);
             (subscriber, output)
         })
         .collect();

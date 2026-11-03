@@ -163,6 +163,52 @@ fn remove_id_or_type_resolves_a_configured_type_id() {
 }
 
 #[test]
+fn removal_snapshot_policy_owns_effect_count_clearing() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(119381171),
+                    count: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let remove = |manager: &mut BuffManager, command: fn(BuffRemove) -> BuffCommand| {
+        manager.seed(&fight);
+        manager
+            .execute(
+                &HpManager::default(),
+                command(BuffRemove {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Behavior,
+                        key: DefinitionKey::new(60010, "DisperseForce2"),
+                    },
+                    target_uid: -1,
+                    selector: BuffRemoveSelector::Uid(20),
+                }),
+            )
+            .unwrap()
+            .change
+            .removed
+            .remove(0)
+            .buff
+            .count
+    };
+    let mut manager = BuffManager::default();
+
+    assert_eq!(remove(&mut manager, BuffCommand::Remove), Some(1));
+    assert_eq!(remove(&mut manager, BuffCommand::ExpireAction), Some(0));
+}
+
+#[test]
 fn convert_consumes_one_exact_source_buff_before_granting_output() {
     crate::test_support::init_config();
     let entity = |uid, buffs| FightEntityInfo {

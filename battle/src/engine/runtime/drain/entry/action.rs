@@ -50,34 +50,22 @@ pub fn run_skill(
         subscriber: None,
         caster_frame: None,
     }]);
+    let mut result = drain_queue(managers, pool, catalog, determinism, context, &mut queue)?;
     if publishes_card_state {
-        queue.push_back(QueuedOp {
-            op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Card(
-                crate::engine::manager::card::CardCommand::PublishState(
-                    crate::engine::manager::card::CardPublishState {
-                        origin: crate::engine::skill::rule::CommandOrigin {
-                            domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
-                            key: crate::engine::skill::rule::DefinitionKey::new(
-                                0,
-                                "SynchronizationCardState",
-                            ),
-                        },
-                        team_type: pool.team_type(source_uid).unwrap_or_default(),
-                    },
+        let team_type = pool
+            .team_type(source_uid)
+            .ok_or(DrainError::MissingCardStateTeam(source_uid))?;
+        result.frames.push(SemanticFrame {
+            owner: FrameOwner::SynchronizationCardState { source_uid },
+            trigger: FrameTrigger::Active,
+            items: vec![crate::engine::runtime::record::FrameItem::Change(Box::new(
+                crate::engine::runtime::change::BattleChange::CardStateSnapshot(
+                    managers.card.state_snapshot(team_type),
                 ),
-            )),
-            trigger: SkillOpTrigger::Active,
-            skill_execution: None,
-            frame_path: None,
-            parent_path: None,
-            frame_group: None,
-            independent_parent_group: None,
-            frame_owner: None,
-            subscriber: None,
-            caster_frame: None,
+            ))],
         });
     }
-    drain_queue(managers, pool, catalog, determinism, context, &mut queue)
+    Ok(result)
 }
 
 pub fn run_action(
@@ -99,6 +87,22 @@ pub fn run_action(
         None,
         invocation,
     )
+}
+
+fn append_fight_task_update(result: &mut DrainResult, managers: &mut BattleManagers) {
+    let Some(change) = managers.fight_task.take_pending(1) else {
+        return;
+    };
+    let path = push_root(
+        &mut result.frames,
+        FrameOwner::Command,
+        FrameTrigger::Active,
+    );
+    push_change(
+        &mut result.frames,
+        &path,
+        crate::engine::runtime::change::BattleChange::FightTask(change),
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -210,7 +214,7 @@ fn run_action_with_cost_and_cleanup_owner(
         subscriber: None,
         caster_frame: None,
     });
-    drain_queue_with_frames_and_cleanup_owner(
+    let mut result = drain_queue_with_frames_and_cleanup_owner(
         managers,
         pool,
         catalog,
@@ -219,7 +223,9 @@ fn run_action_with_cost_and_cleanup_owner(
         &mut queue,
         frames,
         cleanup_owner,
-    )
+    )?;
+    append_fight_task_update(&mut result, managers);
+    Ok(result)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -465,6 +471,7 @@ pub fn run_conduit_action(
     result.outcomes.append(&mut completed.outcomes);
     result.events.append(&mut completed.events);
     result.frames = completed.frames;
+    append_fight_task_update(&mut result, managers);
     Ok(result)
 }
 

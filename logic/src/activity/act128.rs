@@ -2,8 +2,9 @@ use crate::{error::AppError, reward};
 use common::time::ServerTime;
 use database::db::game::{
     activity_state::{self, ActivityStateKind, ActivityStateSet},
-    currencies,
+    currencies, tasks,
 };
+use database::models::game::tasks::UserTask;
 use sonettobuf::{
     Act128BossDetail, Act128GetMilestoneBonusReply, Act128GetTotalRewardsReply, Get128InfosReply,
 };
@@ -274,22 +275,23 @@ pub async fn settle_act128_score_in_transaction(
     episode_id: i32,
     battle_id: i32,
     score: i32,
-) -> Result<(), AppError> {
+) -> Result<Vec<UserTask>, AppError> {
     let Some(route) = config::configs::get().activity128_battle(episode_id, battle_id) else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     if score <= 0 {
-        return Ok(());
+        return Ok(Vec::new());
     }
 
-    sqlx::query(
+    let (total, highest) = sqlx::query_as::<_, (i32, i32)>(
         "INSERT INTO user_activity_state
             (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, '', ?)
          ON CONFLICT(user_id, activity_id, kind, entry_id) DO UPDATE SET
             state = MIN(2147483647, user_activity_state.state + excluded.state),
             progress = MAX(user_activity_state.progress, excluded.progress),
-            updated_at = excluded.updated_at",
+            updated_at = excluded.updated_at
+         RETURNING state, progress",
     )
     .bind(player_id)
     .bind(route.activity_id)
@@ -298,9 +300,17 @@ pub async fn settle_act128_score_in_transaction(
     .bind(score)
     .bind(score)
     .bind(ServerTime::now_ms())
-    .execute(&mut **tx)
+    .fetch_one(&mut **tx)
     .await?;
-    Ok(())
+    Ok(tasks::act128::sync_score(
+        tx,
+        player_id,
+        route.activity_id,
+        route.boss_id,
+        total,
+        highest,
+    )
+    .await?)
 }
 
 #[cfg(test)]

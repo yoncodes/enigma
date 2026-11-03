@@ -296,6 +296,49 @@ async fn chapter_unlock_grants_reward_character_once() {
     );
 }
 
+#[tokio::test]
+async fn stage_unlock_completes_its_story_and_hard_family_once() {
+    let pool = test_pool(36).await;
+    let manager = DungeonManager::new(36);
+    let first = manager.unlock_stage(&pool, 10303).await.unwrap();
+
+    for episode_id in [10303, 20301] {
+        let episode = config::configs::get().episode.get(episode_id).unwrap();
+        let expected = completion_rewards(episode, true, 0, configured_clear_star(episode), 1);
+        let completed = first
+            .episodes
+            .iter()
+            .find(|completion| {
+                completion
+                    .dungeon
+                    .as_ref()
+                    .is_some_and(|dungeon| dungeon.episode_id == episode_id)
+            })
+            .unwrap();
+
+        assert!(
+            expected
+                .first_bonus
+                .iter()
+                .all(|reward| completed.material_changes.contains(reward))
+        );
+        assert_eq!(
+            dungeons::episode_star(&pool, 36, episode_id).await.unwrap(),
+            configured_clear_star(episode)
+        );
+    }
+    assert!(
+        first
+            .episodes
+            .iter()
+            .any(|completion| completion.finished_story_ids.contains(&100303))
+    );
+
+    let repeated = manager.unlock_stage(&pool, 10303).await.unwrap();
+    assert!(!repeated.changed);
+    assert!(repeated.episodes.is_empty());
+}
+
 #[test]
 fn final_initial_tutorial_battle_grants_room_inventory_outside_bonus_lists() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));

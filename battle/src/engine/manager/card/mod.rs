@@ -21,8 +21,8 @@ pub use command::{
     CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange,
     CardHandLimitChange, CardInvalidateAiOwner, CardInvalidatePlayed, CardInvalidatedAi,
     CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary, CardPlay,
-    CardPublishState, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
-    CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
+    CardQueueUse, CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel,
+    CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
     CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability,
     CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp,
     QueuedUseCard, TemporaryCardKind,
@@ -62,12 +62,20 @@ pub struct CardManager {
     persisting_temporary: Vec<CardInstanceId>,
     hand_limit_bonus: i32,
     refill_floor: usize,
+    preserve_deck_count: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CardRefill {
     pub drawn: Vec<CardInfo>,
     pub composed_owners: Vec<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CardStateSnapshot {
+    pub hand: Vec<CardInfo>,
+    pub deck_num: i32,
+    pub team_type: i32,
 }
 
 struct DeckRankUpStep {
@@ -79,6 +87,14 @@ struct DeckRankUpStep {
 }
 
 impl CardManager {
+    pub fn state_snapshot(&self, team_type: i32) -> CardStateSnapshot {
+        CardStateSnapshot {
+            hand: self.hand().to_vec(),
+            deck_num: self.deck_num(),
+            team_type,
+        }
+    }
+
     pub(crate) fn set_catalog(&mut self, catalog: crate::catalog::BattleCatalog) {
         self.deck = std::mem::take(&mut self.deck).with_catalog(catalog);
     }
@@ -123,6 +139,7 @@ impl CardManager {
             persisting_temporary: Vec::new(),
             hand_limit_bonus: 0,
             refill_floor: 0,
+            preserve_deck_count: false,
         }
     }
 
@@ -145,6 +162,7 @@ impl CardManager {
             persisting_temporary: Vec::new(),
             hand_limit_bonus: 0,
             refill_floor: 0,
+            preserve_deck_count: false,
         }
     }
 
@@ -190,11 +208,15 @@ impl CardManager {
     }
 
     pub fn refill_consumes_deck(&self) -> bool {
-        self.refill_floor == 0
+        !self.preserve_deck_count
     }
 
     pub(crate) fn preserve_refill_floor(&mut self) {
         self.refill_floor = self.normal_hand_len();
+    }
+
+    pub(crate) fn preserve_deck_count(&mut self) {
+        self.preserve_deck_count = true;
     }
 
     pub(crate) fn add_hand_limit_bonus(&mut self, delta: i32) {
@@ -332,6 +354,7 @@ impl CardManager {
         self.pending_temporary.clear();
         self.persisting_temporary.clear();
         self.refill_floor = 0;
+        self.preserve_deck_count = false;
     }
 
     pub fn seed(&mut self, fight: &sonettobuf::Fight) {
@@ -533,6 +556,29 @@ impl CardManager {
         played.rewritten |= rewritten && played.skill_id != skill_id;
         played.skill_id = skill_id;
         Some(skill_id)
+    }
+
+    pub(crate) fn available_played_rank_ups(&self, card_index: i32, limit: i32) -> i32 {
+        let Some(played) = self
+            .played
+            .iter()
+            .find(|played| played.card_index == card_index)
+        else {
+            return 0;
+        };
+        let mut skill_id = played.skill_id;
+        let mut levels = 0;
+        while levels < limit {
+            let Some(next) = self.rank_up.get(&(played.caster_uid, skill_id)).copied() else {
+                break;
+            };
+            if self.skill_rank(next) <= self.skill_rank(skill_id) {
+                break;
+            }
+            skill_id = next;
+            levels += 1;
+        }
+        levels
     }
 
     pub(crate) fn change_played_rank(

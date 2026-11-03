@@ -24,7 +24,9 @@ pub fn rule_op(source_uid: i64, target_uid: i64, behavior: &ParsedBehavior) -> O
         BehaviorKind::AddSummonedLevel => SummonOperation::AddLevel {
             delta: behavior.arg(1)?,
         },
-        BehaviorKind::RemoveSummoned => SummonOperation::Remove { count: 0 },
+        BehaviorKind::RemoveSummoned => SummonOperation::Remove {
+            count: behavior.arg(2)?,
+        },
         _ => return None,
     };
     Some(RuleOp::Command(BattleCommand::Summon(SummonCommand {
@@ -47,8 +49,38 @@ pub(super) fn supports_combatant(behavior: &ParsedBehavior) -> bool {
     )
 }
 
+pub(super) fn supports_special(behavior: &ParsedBehavior) -> bool {
+    (behavior.raw_args.is_empty() || behavior.raw_args.len() == 1)
+        && matches!(behavior.args.as_slice(), [model_id] if *model_id > 0)
+}
+
 pub(super) fn supports_add_summoned(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [summoned_id, count, level] if *summoned_id > 0 && *count > 0 && *level > 0)
+}
+
+pub(super) fn supports_change_summoned_level(behavior: &ParsedBehavior) -> bool {
+    let exact_shape =
+        behavior.raw_args.is_empty() && behavior.args.len() == 2 || behavior.raw_args.len() == 2;
+    exact_shape
+        && behavior.arg(0).is_some_and(|summoned_id| summoned_id > 0)
+        && matches!(behavior.arg(1), Some(3 | 4))
+}
+
+pub(super) fn supports_add_summoned_level(behavior: &ParsedBehavior) -> bool {
+    let exact_shape =
+        behavior.raw_args.is_empty() && behavior.args.len() == 2 || behavior.raw_args.len() == 2;
+    exact_shape
+        && behavior.arg(0).is_some_and(|summoned_id| summoned_id > 0)
+        && behavior.arg(1) == Some(1)
+}
+
+pub(super) fn supports_remove_summoned(behavior: &ParsedBehavior) -> bool {
+    let exact_shape =
+        behavior.raw_args.is_empty() && behavior.args.len() == 3 || behavior.raw_args.len() == 3;
+    exact_shape
+        && behavior.arg(0).is_some_and(|summoned_id| summoned_id > 0)
+        && behavior.arg(1) == Some(4)
+        && matches!(behavior.arg(2), Some(1 | 2))
 }
 
 impl BehaviorHandler for Handler {
@@ -155,6 +187,143 @@ mod tests {
             )));
         }
     }
+
+    #[test]
+    fn change_summoned_level_requires_a_positive_id_and_level() {
+        assert!(supports_change_summoned_level(&ParsedBehavior::new(
+            40010,
+            "ChangeSummonedLevel",
+            vec![150011, 4],
+        )));
+        for args in [
+            vec![150011],
+            vec![0, 4],
+            vec![150011, 0],
+            vec![150011, 2],
+            vec![150011, 5],
+        ] {
+            assert!(!supports_change_summoned_level(&ParsedBehavior::new(
+                40010,
+                "ChangeSummonedLevel",
+                args,
+            )));
+        }
+        for raw_args in [
+            vec!["150011".into(), "bad".into()],
+            vec!["150011".into(), "4".into(), "extra".into()],
+        ] {
+            assert!(!supports_change_summoned_level(&ParsedBehavior::from_spec(
+                BehaviorSpec::new(40010, "ChangeSummonedLevel"),
+                vec![150011, 4],
+                raw_args,
+            )));
+        }
+    }
+
+    #[test]
+    fn change_summoned_level_emits_the_configured_absolute_level() {
+        let behavior = ParsedBehavior::new(40010, "ChangeSummonedLevel", vec![150011, 4]);
+
+        assert!(matches!(
+            rule_op(7, 7, &behavior),
+            Some(RuleOp::Command(BattleCommand::Summon(SummonCommand {
+                owner_uid: 7,
+                summoned_id: 150011,
+                operation: SummonOperation::ChangeLevel { level: 4 },
+                ..
+            })))
+        ));
+    }
+
+    #[test]
+    fn add_summoned_level_requires_the_observed_single_growth() {
+        assert!(supports_add_summoned_level(&ParsedBehavior::new(
+            40011,
+            "AddSummonedLevel",
+            vec![150011, 1],
+        )));
+        for args in [vec![150011], vec![0, 1], vec![150011, 0], vec![150011, 2]] {
+            assert!(!supports_add_summoned_level(&ParsedBehavior::new(
+                40011,
+                "AddSummonedLevel",
+                args,
+            )));
+        }
+        for raw_args in [
+            vec!["150011".into(), "bad".into()],
+            vec!["150011".into(), "1".into(), "extra".into()],
+        ] {
+            assert!(!supports_add_summoned_level(&ParsedBehavior::from_spec(
+                BehaviorSpec::new(40011, "AddSummonedLevel"),
+                vec![150011, 1],
+                raw_args,
+            )));
+        }
+    }
+
+    #[test]
+    fn add_summoned_level_emits_one_configured_growth() {
+        let behavior = ParsedBehavior::new(40011, "AddSummonedLevel", vec![150011, 1]);
+
+        assert!(matches!(
+            rule_op(7, 7, &behavior),
+            Some(RuleOp::Command(BattleCommand::Summon(SummonCommand {
+                owner_uid: 7,
+                summoned_id: 150011,
+                operation: SummonOperation::AddLevel { delta: 1 },
+                ..
+            })))
+        ));
+    }
+
+    #[test]
+    fn remove_summoned_requires_the_observed_level_and_count() {
+        for count in [1, 2] {
+            assert!(supports_remove_summoned(&ParsedBehavior::new(
+                40012,
+                "RemoveSummoned",
+                vec![150011, 4, count],
+            )));
+        }
+        for args in [
+            vec![150011, 4],
+            vec![0, 4, 1],
+            vec![150011, 3, 1],
+            vec![150011, 4, 0],
+            vec![150011, 4, 3],
+        ] {
+            assert!(!supports_remove_summoned(&ParsedBehavior::new(
+                40012,
+                "RemoveSummoned",
+                args,
+            )));
+        }
+        for raw_args in [
+            vec!["150011".into(), "4".into(), "bad".into()],
+            vec!["150011".into(), "4".into(), "1".into(), "extra".into()],
+        ] {
+            assert!(!supports_remove_summoned(&ParsedBehavior::from_spec(
+                BehaviorSpec::new(40012, "RemoveSummoned"),
+                vec![150011, 4, 1],
+                raw_args,
+            )));
+        }
+    }
+
+    #[test]
+    fn remove_summoned_emits_the_configured_count() {
+        let behavior = ParsedBehavior::new(40012, "RemoveSummoned", vec![150011, 4, 2]);
+
+        assert!(matches!(
+            rule_op(7, 7, &behavior),
+            Some(RuleOp::Command(BattleCommand::Summon(SummonCommand {
+                owner_uid: 7,
+                summoned_id: 150011,
+                operation: SummonOperation::Remove { count: 2 },
+                ..
+            })))
+        ));
+    }
     use crate::engine::{
         manager::BattleManagers,
         runtime::determinism::RoundDeterminism,
@@ -190,7 +359,7 @@ mod tests {
             vec!["151416".into()],
         );
 
-        let ops = Handler::emit_ops(
+        let ops = super::super::rule_ops(
             BehaviorOpContext {
                 source_uid: -2,
                 source_team: 2,

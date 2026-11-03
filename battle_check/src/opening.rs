@@ -28,7 +28,8 @@ fn run(db: &'static config::GameDB, episode_id: i32) -> Result<()> {
         battle::dungeon::FightOptions::default(),
         None,
     )?;
-    let mut runtime = ReplayBattle::new(BattleCatalog::new(db), built.fight);
+    let mut runtime =
+        ReplayBattle::new(BattleCatalog::new(db), built.fight).map_err(anyhow::Error::msg)?;
     let round = runtime.start_round().map_err(anyhow::Error::msg)?;
     let push = runtime.card_info_push();
 

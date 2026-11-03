@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 use crate::engine::skill::rule::CommandOrigin;
 
 mod execute;
+mod projection;
 mod seed;
 #[cfg(test)]
 mod tests;
@@ -408,6 +409,10 @@ impl ConduitManager {
             .flat_map(|area| &area.devices)
             .map(|device| (device.uid, device.selected_group))
             .collect()
+    }
+
+    pub(crate) fn devices(&self) -> impl Iterator<Item = &ConduitDevice> {
+        self.areas.values().flat_map(|area| &area.devices)
     }
 
     pub fn skill_ids(&self) -> impl Iterator<Item = i32> + '_ {

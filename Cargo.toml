@@ -97,5 +97,9 @@ opt-level = 2
 [profile.dev.package.config]
 opt-level = 2
 
+# Auto-battle capture replay is prohibitively slow without optimizing the engine.
+[profile.dev.package.battle]
+opt-level = 2
+
 [profile.test]
 debug = 0

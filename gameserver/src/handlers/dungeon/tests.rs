@@ -43,6 +43,7 @@ fn empty_settlement() -> dungeon::DungeonSettlement {
         open_infos: Vec::new(),
         end_dungeon: sonettobuf::EndDungeonPush::default(),
         compose_push: None,
+        tasks: Vec::new(),
     }
 }
 

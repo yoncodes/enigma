@@ -1,6 +1,11 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 
+pub struct PlayerPhaseResult {
+    pub drain: DrainResult,
+    pub card_energy_finalized: bool,
+}
+
 /// Allocates configured card energy before the owning action phase begins.
 pub fn run_card_energy_allocation(
     managers: &mut BattleManagers,
@@ -362,7 +367,7 @@ pub fn run_player_phase(
     before_actions: Vec<SemanticFrame>,
     team: i32,
     emitter_uid: i64,
-) -> Result<DrainResult, DrainError> {
+) -> Result<PlayerPhaseResult, DrainError> {
     let context = TargetContext {
         battle_id: fight.battle_id.unwrap_or_default(),
         ..context
@@ -380,22 +385,27 @@ pub fn run_player_phase(
         Some(fight),
         before_actions,
     )?;
-    append(
-        &mut result,
-        run_impromptu(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            team,
-            emitter_uid,
-        )?,
-    );
+    let impromptu = run_impromptu(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        team,
+        emitter_uid,
+    )?;
+    let card_energy_finalized = impromptu.card_energy_finalized;
+    append(&mut result, impromptu.drain);
     if crate::engine::round::outcome::battle_ended(fight, pool, managers) {
-        return Ok(result);
+        return Ok(PlayerPhaseResult {
+            drain: result,
+            card_energy_finalized,
+        });
     }
-    Ok(result)
+    Ok(PlayerPhaseResult {
+        drain: result,
+        card_energy_finalized,
+    })
 }
 
 #[allow(clippy::large_enum_variant)]
