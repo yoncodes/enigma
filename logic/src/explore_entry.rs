@@ -178,6 +178,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn inventory_is_isolated_between_maps_and_restored_on_return() {
+        let pool = setup().await;
+        sqlx::query("INSERT INTO user_open_infos (user_id, open_id, is_open) VALUES (920001, 47, 1)")
+            .execute(&pool).await.unwrap();
+        change_map(&pool, 920001, 101).await.unwrap();
+        let mut tx = pool.begin().await.unwrap();
+        let item = explore_runtime::grant_item(&mut tx, 920001, 150002, 1).await.unwrap().remove(0);
+        explore_runtime::select_item(&mut tx, 920001, item.uid.unwrap()).await.unwrap();
+        sqlx::query("INSERT INTO user_explore_unlocked_maps (user_id, map_id) VALUES (920001, 102)")
+            .execute(&mut *tx).await.unwrap();
+        tx.commit().await.unwrap();
+
+        let second = change_map(&pool, 920001, 102).await.unwrap().explore_info.unwrap();
+        assert!(second.explore_items.is_empty());
+        assert_eq!(second.use_item_uid, Some(0));
+        let mut tx = pool.begin().await.unwrap();
+        assert!(explore_runtime::select_item(&mut tx, 920001, item.uid.unwrap()).await.is_err());
+        assert!(explore_runtime::update_item_status(&mut tx, 920001, item.uid.unwrap(), 0, 1).await.is_err());
+        let other = explore_runtime::grant_item(&mut tx, 920001, 150002, 1).await.unwrap().remove(0);
+        tx.commit().await.unwrap();
+        let first = change_map(&pool, 920001, 101).await.unwrap().explore_info.unwrap();
+        assert_eq!(first.explore_items.len(), 1);
+        assert_eq!(first.explore_items[0].uid, item.uid);
+        let second = change_map(&pool, 920001, 102).await.unwrap().explore_info.unwrap();
+        assert_eq!(second.explore_items.len(), 1);
+        assert_eq!(second.explore_items[0].uid, other.uid);
+    }
+
+    #[tokio::test]
     async fn entry_requires_unlock_and_resume_restores_the_same_map() {
         let pool = setup().await;
         assert!(change_map(&pool, 920001, 101).await.is_err());

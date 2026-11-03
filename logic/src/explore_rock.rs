@@ -153,8 +153,8 @@ pub async fn take(pool: &SqlitePool, user_id: i64, object_id: i32) -> Result<Roc
     }, "stone table cannot be used from this direction");
     if object.status & 4 != 0 {
         let code = table_code(map_id, object_id)?;
-        let matches: Vec<i64> = sqlx::query_scalar("SELECT uid FROM user_explore_runtime_items WHERE user_id = ? AND item_id = ? AND quantity = 1 AND uid >= ? AND uid % ? = ?")
-            .bind(user_id).bind(ROCK_ITEM).bind(ROCK_UID_STRIDE * ROCK_UID_FIRST_SLOT).bind(ROCK_UID_STRIDE).bind(code)
+        let matches: Vec<i64> = sqlx::query_scalar("SELECT uid FROM user_explore_runtime_items WHERE user_id = ? AND item_id = ? AND quantity = 1 AND map_id = ? AND uid >= ? AND uid % ? = ?")
+            .bind(user_id).bind(ROCK_ITEM).bind(map_id).bind(ROCK_UID_STRIDE * ROCK_UID_FIRST_SLOT).bind(ROCK_UID_STRIDE).bind(code)
             .fetch_all(&mut *tx).await?;
         ensure!(matches.len() == 1, "stone table rock identity is missing or ambiguous");
         let uid = matches[0];
@@ -205,9 +205,13 @@ pub async fn take(pool: &SqlitePool, user_id: i64, object_id: i32) -> Result<Roc
     set_table_rock(table, false);
     explore_runtime::save_map(&mut tx, user_id, &mut stored).await?;
     let mut steps = changed_object_steps(&stored.state, &[object_id])?;
-    steps.push(ExploreStep { param: Some(serde_json::json!({"stepType":4,"materialData":[
-        serde_json::json!({"materilType":15,"materilId":ROCK_ITEM,"quantity":1}).to_string()
-    ]}).to_string()) });
+    let first_hint = sqlx::query("INSERT OR IGNORE INTO user_explore_stone_hints (user_id, map_id, unit_id) VALUES (?, ?, ?)")
+        .bind(user_id).bind(map_id).bind(object_id).execute(&mut *tx).await?.rows_affected() == 1;
+    if first_hint {
+        steps.push(ExploreStep { param: Some(serde_json::json!({"stepType":4,"materialData":[
+            serde_json::json!({"materilType":15,"materilId":ROCK_ITEM,"quantity":1}).to_string()
+        ]}).to_string()) });
+    }
     tx.commit().await?;
     Ok(RockChange { item, steps })
 }
@@ -340,8 +344,9 @@ mod tests {
     async fn stone_table_recalls_its_placed_rock_and_can_grant_it_again() {
         let user = 992004;
         let pool = setup(user, 5, 12).await;
-        let rock = take(&pool, user, 29).await.unwrap().item;
-        let uid = rock.uid.unwrap();
+        let first = take(&pool, user, 29).await.unwrap();
+        assert!(first.steps.iter().any(|s| serde_json::from_str::<serde_json::Value>(s.param.as_ref().unwrap()).unwrap()["stepType"] == 4));
+        let uid = first.item.uid.unwrap();
         set_position(&pool, user, 5, 5).await;
         place(&pool, user, uid, 6, 5).await.unwrap();
         let mut tx = pool.begin().await.unwrap();
@@ -360,9 +365,10 @@ mod tests {
         assert_eq!(state.objects[&(uid as i32)].status & 1, 0);
         assert_eq!(state.objects[&14].status & 4, 0);
         tx.commit().await.unwrap();
-        let next = take(&pool, user, 29).await.unwrap().item;
-        assert_ne!(next.uid, Some(uid));
-        assert_eq!(next.quantity, Some(1));
+        let next = take(&pool, user, 29).await.unwrap();
+        assert!(!next.steps.iter().any(|s| serde_json::from_str::<serde_json::Value>(s.param.as_ref().unwrap()).unwrap()["stepType"] == 4));
+        assert_ne!(next.item.uid, Some(uid));
+        assert_eq!(next.item.quantity, Some(1));
     }
 
     #[tokio::test]
@@ -412,7 +418,20 @@ mod tests {
         explore_runtime::insert_map(&mut tx, user, &other).await.unwrap();
         explore_runtime::set_current_map(&mut tx, user, 101).await.unwrap();
         tx.commit().await.unwrap();
-        place(&pool, user, uid, 1, 5).await.unwrap();
+        // A new cross-map placement is rejected.
+        assert!(place(&pool, user, uid, 1, 5).await.is_err());
+        // Simulate a placement made by an older server before map isolation.
+        let mut tx = pool.begin().await.unwrap();
+        let mut other = explore_runtime::load_map(&mut tx, user, 101).await.unwrap().unwrap();
+        other.state.objects.insert(uid as i32, ObjectState { kind: ROCK_KIND, status: 3,
+            status2: String::new(), x: 1, y: 5, direction: 0 });
+        explore_runtime::save_map(&mut tx, user, &mut other).await.unwrap();
+        let mut origin = explore_runtime::load_map(&mut tx, user, 102).await.unwrap().unwrap();
+        set_table_rock(origin.state.objects.get_mut(&29).unwrap(), true);
+        explore_runtime::save_map(&mut tx, user, &mut origin).await.unwrap();
+        sqlx::query("UPDATE user_explore_runtime_items SET status = -1 WHERE uid = ?")
+            .bind(uid).execute(&mut *tx).await.unwrap();
+        tx.commit().await.unwrap();
         let mut tx = pool.begin().await.unwrap();
         let origin = explore_runtime::load_map(&mut tx, user, 102).await.unwrap().unwrap();
         let status: serde_json::Value = serde_json::from_str(&origin.state.objects[&29].status2).unwrap();

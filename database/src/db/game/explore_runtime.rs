@@ -183,7 +183,7 @@ pub async fn set_current_map(
     tx: &mut Transaction<'_, Sqlite>, user_id: i64, map_id: i32,
 ) -> Result<()> {
     let result = sqlx::query(
-        "UPDATE user_explore_runtime_profiles SET current_map_id = ?1 WHERE user_id = ?2 \
+        "UPDATE user_explore_runtime_profiles SET use_item_uid = CASE WHEN current_map_id IS NOT ?1 THEN 0 ELSE use_item_uid END, current_map_id = ?1 WHERE user_id = ?2 \
          AND EXISTS (SELECT 1 FROM user_explore_runtime_maps WHERE user_id = ?2 AND map_id = ?1)",
     ).bind(map_id).bind(user_id).execute(&mut **tx).await?;
     ensure!(result.rows_affected() == 1, "cannot select a missing exploration map");
@@ -234,7 +234,7 @@ pub async fn list_items(
     let rows: Vec<(i64, i32, i32, i32)> = sqlx::query_as(
         // A placed rock remains owned in storage but is absent from the backpack.
         "SELECT uid, item_id, quantity, status FROM user_explore_runtime_items \
-         WHERE user_id = ? AND NOT (item_id = 150001 AND status = -1) ORDER BY uid",
+         WHERE user_id = ? AND map_id = (SELECT current_map_id FROM user_explore_runtime_profiles WHERE user_id = user_explore_runtime_items.user_id) AND NOT (item_id = 150001 AND status = -1) ORDER BY uid",
     ).bind(user_id).fetch_all(&mut **tx).await?;
     Ok(rows.into_iter().map(|(uid, item_id, quantity, status)| sonettobuf::ExploreItemNo {
         uid: Some(uid), item_id: Some(item_id), quantity: Some(quantity), status: Some(status),
@@ -252,7 +252,7 @@ pub async fn select_item(
 ) -> Result<()> {
     let result = sqlx::query("UPDATE user_explore_runtime_profiles SET use_item_uid = ? \
         WHERE user_id = ? AND (? = 0 OR EXISTS(SELECT 1 FROM user_explore_runtime_items \
-        WHERE user_id = ? AND uid = ? AND status >= 0))")
+        WHERE user_id = ? AND uid = ? AND status >= 0 AND map_id = user_explore_runtime_profiles.current_map_id))")
         .bind(uid).bind(user_id).bind(uid).bind(user_id).bind(uid)
         .execute(&mut **tx).await?;
     ensure!(result.rows_affected() == 1, "exploration item is not owned by this user");
@@ -263,7 +263,7 @@ pub async fn update_item_status(
     tx: &mut Transaction<'_, Sqlite>, user_id: i64, uid: i64, previous: i32, next: i32,
 ) -> Result<sonettobuf::ExploreItemNo> {
     let changed = sqlx::query("UPDATE user_explore_runtime_items SET status = ? \
-        WHERE user_id = ? AND uid = ? AND status = ?")
+        WHERE user_id = ? AND uid = ? AND status = ? AND map_id = (SELECT current_map_id FROM user_explore_runtime_profiles WHERE user_id = user_explore_runtime_items.user_id)")
         .bind(next).bind(user_id).bind(uid).bind(previous).execute(&mut **tx).await?;
     ensure!(changed.rows_affected() == 1, "exploration item changed concurrently or is missing");
     let (item_id, quantity, status): (i32, i32, i32) = sqlx::query_as(

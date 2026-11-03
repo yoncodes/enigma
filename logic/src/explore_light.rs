@@ -304,8 +304,8 @@ pub async fn repair_prism(pool: &SqlitePool, user_id: i64, uid: i64, object_id: 
     ensure!((i64::from(stored.state.x) - i64::from(object.x)).abs()
         + (i64::from(stored.state.y) - i64::from(object.y)).abs() == 1, "prism is too far away");
     let removed = sqlx::query("DELETE FROM user_explore_runtime_items WHERE user_id = ? AND uid = ? \
-        AND item_id = 150004 AND quantity = 1 AND status = 0")
-        .bind(user_id).bind(uid).execute(&mut *tx).await?;
+        AND item_id = 150004 AND quantity = 1 AND status = 0 AND map_id = ?")
+        .bind(user_id).bind(uid).bind(map_id).execute(&mut *tx).await?;
     ensure!(removed.rows_affected() == 1, "repair tool is not available");
     stored.state.objects.get_mut(&object_id).context("missing prism state")?.status |= 2;
     let mut changed = BTreeSet::from([object_id]);
