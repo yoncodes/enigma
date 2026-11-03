@@ -1,0 +1,15 @@
+# The Three Doors
+
+The Three Doors exploration implementation originated in `stokes1235/enigma` commit `6b8246109c139795d0192483b8e2fc4fa99bdc9c` and incorporates the subsequent exploration-specific changes from the `The-Three-Doors` branch.
+
+The server stores map state, items and encounter state per player. It handles map entry and resume, movement, chests, archives, runes, pressure plates, rocks, spikes, pipes, light puzzles, bonus scenes, map exits and exploration battles where supported by the ported implementation. Embedded layout data covers maps 101–103, 201–203 and 301–303. The presence of a layout does not imply that every object or puzzle on the map is implemented: unsupported effects and mechanics are rejected rather than treated as completed. Pipe and light interactions, in particular, are currently limited to maps 201 and 301 respectively.
+
+The normal server setup and matching game-data requirements in the main README still apply. Migrations 097–099 and 102 add exploration state; migrations 100–101 preserve compatibility with the corresponding database history on the expanded personal main branch. Build and update `gameserver` and `sdkserver` together: both access the same database, and an older executable may attempt a database rescue when it sees a newer migration. Back up the database before changing server versions. Other server branches may include different functionality and database migrations, even when they use the same game client. Migration checksums also depend on the exact SQL file bytes, including line endings, so verify compatibility with an existing database before replacing its servers.
+
+Exploration items are stored per map. For legacy items whose origin cannot be established, migration 102 keeps them on the currently selected map rather than deleting them.
+
+A legacy profile containing only the initial map unlock can be initialized; older summary-only progress without detailed map state is preserved but cannot be resumed automatically.
+
+**1-1 (map 101, The Gambit): verified by automated tests.** The tests exercise a route to the exit and successor-map unlocks, using simulated battle victories. A separate router test covers crossing the revealed southern-area marker, opening its chest, preserving collection totals, and rejecting duplicate rewards. These checks do not establish full in-client playthrough parity.
+
+Tests also cover other map mechanics, router interactions and per-player persistence. They do not replace a complete in-client playthrough of all maps.

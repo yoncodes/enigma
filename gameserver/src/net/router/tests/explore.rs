@@ -11,6 +11,191 @@ fn request<M: Message>(cmd: CmdId, message: M, tag: u8) -> Vec<u8> {
 }
 
 #[tokio::test]
+async fn map_102_rune_and_return_slide_follow_client_requests() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("data/excel2json");
+    config::init(data_dir.to_str().unwrap()).unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let user_id = 950011_i64;
+    sqlx::query("INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, 0, 0)")
+        .bind(user_id).bind("isolated-rune-slide").execute(&pool).await.unwrap();
+    let layout = config::explore_layout::layout(102).unwrap().unwrap();
+    let mut map = database::db::game::explore_runtime::MapState::new(layout);
+    map.x = 17; map.y = 22;
+    let mut tx = pool.begin().await.unwrap();
+    database::db::game::explore_runtime::ensure_profile(&mut tx, user_id).await.unwrap();
+    database::db::game::explore_runtime::insert_map(&mut tx, user_id, &map).await.unwrap();
+    database::db::game::explore_runtime::set_current_map(&mut tx, user_id, 102).await.unwrap();
+    let item = database::db::game::explore_runtime::grant_item(&mut tx, user_id, 150002, 1).await.unwrap()[0];
+    database::db::game::explore_runtime::select_item(&mut tx, user_id, item.uid.unwrap()).await.unwrap();
+    tx.commit().await.unwrap();
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(64);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(user_id, PlayerState::new(user_id, 0)));
+    dispatch_command(&mut ctx, request(CmdId::ExploreInteractCmd,
+        ExploreInteractRequest { id: Some(35), params: None }, 1)).await.unwrap();
+    let mut interacted = false;
+    while let Ok(packet) = packets.try_recv() {
+        if let CommandPacket::Reply { cmd_id: CmdId::ExploreInteractCmd, result_code, .. } = packet {
+            assert_eq!(result_code, 0); interacted = true;
+        }
+    }
+    assert!(interacted);
+    let uid = item.uid.unwrap();
+    let use_rune = || ExploreUseItemRequest { uid: Some(uid), posx: Some(0), posy: Some(0), interact_id: None };
+    dispatch_command(&mut ctx, request(CmdId::ExploreUseItemCmd, use_rune(), 20)).await.unwrap();
+    let CommandPacket::Push { cmd_id: CmdId::ExploreStepPushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing deselection step") };
+    let step = ExploreStepPush::decode(&*body).unwrap();
+    let step: serde_json::Value = serde_json::from_str(step.steps[0].param.as_deref().unwrap()).unwrap();
+    assert_eq!(step["itemUid"], 0);
+    let CommandPacket::Reply { cmd_id: CmdId::ExploreUseItemCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing deselection reply") };
+
+    dispatch_command(&mut ctx, request(CmdId::ExploreUseItemCmd, use_rune(), 21)).await.unwrap();
+    let CommandPacket::Push { cmd_id: CmdId::ExploreItemChangePushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing uncharged rune update") };
+    let changed = ExploreItemChangePush::decode(&*body).unwrap().explore_items[0];
+    assert_eq!((changed.uid, changed.status), (Some(uid), Some(0)));
+    let CommandPacket::Push { cmd_id: CmdId::ExploreStepPushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing selection step") };
+    let step = ExploreStepPush::decode(&*body).unwrap();
+    let step: serde_json::Value = serde_json::from_str(step.steps[0].param.as_deref().unwrap()).unwrap();
+    assert_eq!(step["itemUid"], uid);
+    let CommandPacket::Reply { cmd_id: CmdId::ExploreUseItemCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing selection reply") };
+    dispatch_command(&mut ctx, request(CmdId::ExploreInteractCmd,
+        ExploreInteractRequest { id: Some(35), params: None }, 22)).await.unwrap();
+    let CommandPacket::Push { cmd_id: CmdId::ExploreItemChangePushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing recharge") };
+    assert_eq!(ExploreItemChangePush::decode(&*body).unwrap().explore_items[0].status, Some(1));
+    let CommandPacket::Reply { cmd_id: CmdId::ExploreInteractCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing recharge reply") };
+
+    for (tag, (x, y)) in [(18,22),(18,21),(18,20),(18,19),(18,18),(18,13)].into_iter().enumerate() {
+        dispatch_command(&mut ctx, request(CmdId::ExploreMoveCmd,
+            ExploreMoveRequest { posx: Some(x), posy: Some(y), interact_id: None }, tag as u8 + 2)).await.unwrap();
+        let mut replied = false;
+        while let Ok(packet) = packets.try_recv() {
+            if let CommandPacket::Reply { cmd_id: CmdId::ExploreMoveCmd, result_code, .. } = packet {
+                assert_eq!(result_code, 0, "movement to ({x}, {y}) rejected"); replied = true;
+            }
+        }
+        assert!(replied);
+    }
+    let mut tx = state.db.begin().await.unwrap();
+    let mut saved = database::db::game::explore_runtime::load_map(&mut tx, user_id, 102).await.unwrap().unwrap();
+    assert_eq!((saved.state.x, saved.state.y), (18, 13));
+    // Simulate a persisted player-placed stone on the return slide.
+    saved.state.x = 18;
+    saved.state.y = 18;
+    saved.state.objects.insert(1_000_002, database::db::game::explore_runtime::ObjectState {
+        kind: 209, status: 3, status2: String::new(), x: 18, y: 14, direction: 0,
+    });
+    database::db::game::explore_runtime::save_map(&mut tx, user_id, &mut saved).await.unwrap();
+    tx.commit().await.unwrap();
+    dispatch_command(&mut ctx, request(CmdId::ExploreMoveCmd,
+        ExploreMoveRequest { posx: Some(18), posy: Some(15), interact_id: None }, 9)).await.unwrap();
+    let mut replied = false;
+    while let Ok(packet) = packets.try_recv() {
+        if let CommandPacket::Reply { cmd_id: CmdId::ExploreMoveCmd, result_code, .. } = packet {
+            assert_eq!(result_code, 0, "slide should stop before the placed stone"); replied = true;
+        }
+    }
+    assert!(replied);
+    let mut tx = state.db.begin().await.unwrap();
+    let saved = database::db::game::explore_runtime::load_map(&mut tx, user_id, 102).await.unwrap().unwrap();
+    assert_eq!((saved.state.x, saved.state.y), (18, 15));
+    assert_eq!((saved.state.objects[&1_000_002].x, saved.state.objects[&1_000_002].y), (18, 14));
+    tx.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn first_map_southern_chest_can_be_reached_and_claimed_after_area_reveal() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("data/excel2json");
+    config::init(data_dir.to_str().unwrap()).unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let user_id = 950009_i64;
+    sqlx::query("INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, 0, 0)")
+        .bind(user_id).bind("isolated-southern-chest").execute(&pool).await.unwrap();
+    let layout = config::explore_layout::layout(101).unwrap().unwrap();
+    let mut map = database::db::game::explore_runtime::MapState::new(layout);
+    map.areas.insert(1001);
+    map.x = 20;
+    map.y = -6;
+    let mut tx = pool.begin().await.unwrap();
+    database::db::game::explore_runtime::ensure_profile(&mut tx, user_id).await.unwrap();
+    database::db::game::explore_runtime::insert_map(&mut tx, user_id, &map).await.unwrap();
+    database::db::game::explore_runtime::set_current_map(&mut tx, user_id, 101).await.unwrap();
+    sqlx::query("INSERT INTO user_explore_maps (user_id, map_id, bonus_num, gold_coin, purple_coin, bonus_num_total, gold_coin_total, purple_coin_total) VALUES (?, 101, 1, 2, 25, 2, 2, 25)")
+        .bind(user_id).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO user_explore_map_bonuses (user_id, map_id, bonus_id) VALUES (?, 101, 2)")
+        .bind(user_id).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(32);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(user_id, PlayerState::new(user_id, 0)));
+
+    for (tag, y) in [(1, -7), (2, -8)] {
+        dispatch_command(&mut ctx, request(CmdId::ExploreMoveCmd,
+            ExploreMoveRequest { posx: Some(20), posy: Some(y), interact_id: None }, tag)).await.unwrap();
+        let mut success = false;
+        while let Ok(packet) = packets.try_recv() {
+            if let CommandPacket::Reply { cmd_id: CmdId::ExploreMoveCmd, result_code, .. } = packet {
+                assert_eq!(result_code, 0, "movement to (20, {y}) was rejected");
+                success = true;
+            }
+        }
+        assert!(success);
+    }
+    dispatch_command(&mut ctx, request(CmdId::ExploreInteractCmd,
+        ExploreInteractRequest { id: Some(386), params: None }, 3)).await.unwrap();
+    let mut success = false;
+    while let Ok(packet) = packets.try_recv() {
+        if let CommandPacket::Reply { cmd_id: CmdId::ExploreInteractCmd, result_code, .. } = packet {
+            assert_eq!(result_code, 0);
+            success = true;
+        }
+    }
+    assert!(success);
+    let claimed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_explore_map_bonuses WHERE user_id = ? AND map_id = 101 AND bonus_id = 1")
+        .bind(user_id).fetch_one(state.db).await.unwrap();
+    assert_eq!(claimed, 1);
+    let summary: (i32, i32, i32) = sqlx::query_as("SELECT bonus_num, gold_coin, purple_coin FROM user_explore_maps WHERE user_id = ? AND map_id = 101")
+        .bind(user_id).fetch_one(state.db).await.unwrap();
+    assert_eq!(summary, (2, 2, 25));
+    let currency: i32 = sqlx::query_scalar("SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = 2")
+        .bind(user_id).fetch_one(state.db).await.unwrap();
+    assert_eq!(currency, 20);
+    let mut tx = state.db.begin().await.unwrap();
+    let saved = database::db::game::explore_runtime::load_map(&mut tx, user_id, 101).await.unwrap().unwrap();
+    assert_eq!((saved.state.x, saved.state.y), (20, -8));
+    assert_eq!(saved.state.objects[&386].status & 4, 4);
+    tx.commit().await.unwrap();
+
+    dispatch_command(&mut ctx, request(CmdId::ExploreInteractCmd,
+        ExploreInteractRequest { id: Some(386), params: None }, 5)).await.unwrap();
+    let mut rejected = false;
+    while let Ok(packet) = packets.try_recv() {
+        if let CommandPacket::Reply { cmd_id: CmdId::ExploreInteractCmd, result_code, .. } = packet {
+            assert_ne!(result_code, 0);
+            rejected = true;
+        }
+    }
+    assert!(rejected);
+    let currency_after: i32 = sqlx::query_scalar("SELECT quantity FROM currencies WHERE user_id = ? AND currency_id = 2")
+        .bind(user_id).fetch_one(state.db).await.unwrap();
+    assert_eq!(currency_after, currency);
+
+    dispatch_command(&mut ctx, request(CmdId::ExploreMoveCmd,
+        ExploreMoveRequest { posx: Some(20), posy: Some(-7), interact_id: None }, 4)).await.unwrap();
+    let mut returned = false;
+    while let Ok(packet) = packets.try_recv() {
+        if let CommandPacket::Reply { cmd_id: CmdId::ExploreMoveCmd, result_code, .. } = packet {
+            assert_eq!(result_code, 0);
+            returned = true;
+        }
+    }
+    assert!(returned);
+}
+
+#[tokio::test]
 async fn portable_rock_and_pressure_plate_use_the_actual_router() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("data/excel2json");
     config::init(data_dir.to_str().unwrap()).unwrap();
@@ -51,7 +236,15 @@ async fn portable_rock_and_pressure_plate_use_the_actual_router() {
     assert_eq!(ExploreItemChangePush::decode(&*body).unwrap().explore_items[0].quantity, Some(0));
     let CommandPacket::Push { cmd_id: CmdId::ExploreStepPushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing placement updates") };
     let steps = ExploreStepPush::decode(&*body).unwrap();
-    assert_eq!(steps.steps.len(), 3); // rock, plate, and door
+    assert_eq!(steps.steps.len(), 4); // rock, plate, door, and table recall state
+    let table_status = steps.steps.iter().filter_map(|s| {
+        let step: serde_json::Value = serde_json::from_str(s.param.as_deref()?).ok()?;
+        let unit: serde_json::Value = serde_json::from_str(step["interact"].as_str()?).ok()?;
+        (unit["id"] == 29).then_some(unit)
+    }).next().expect("missing table interaction update");
+    let status: serde_json::Value = serde_json::from_str(table_status["status2"].as_str().unwrap()).unwrap();
+    assert_eq!(status["status"], 1);
+    assert!(status.get("rockUid").is_none());
     let CommandPacket::Reply { cmd_id: CmdId::ExploreUseItemCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing placement reply") };
 
     dispatch_command(&mut ctx, request(CmdId::ExploreItemInteractCmd,
@@ -59,11 +252,32 @@ async fn portable_rock_and_pressure_plate_use_the_actual_router() {
     let CommandPacket::Push { cmd_id: CmdId::ExploreItemChangePushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing retrieved rock") };
     assert_eq!(ExploreItemChangePush::decode(&*body).unwrap().explore_items[0].quantity, Some(1));
     let CommandPacket::Push { cmd_id: CmdId::ExploreStepPushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing pickup updates") };
-    assert_eq!(ExploreStepPush::decode(&*body).unwrap().steps.len(), 3);
+    assert_eq!(ExploreStepPush::decode(&*body).unwrap().steps.len(), 4);
     let CommandPacket::Reply { cmd_id: CmdId::ExploreItemInteractCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing pickup reply") };
     let mut tx = state.db.begin().await.unwrap();
     let stored = database::db::game::explore_runtime::load_map(&mut tx, user_id, 102).await.unwrap().unwrap();
     assert_eq!((stored.state.objects[&14].status & 4, stored.state.objects[&2].status & 4), (0, 0));
+    tx.commit().await.unwrap();
+
+    dispatch_command(&mut ctx, request(CmdId::ExploreUseItemCmd,
+        ExploreUseItemRequest { uid: Some(uid), posx: Some(6), posy: Some(5), interact_id: None }, 4)).await.unwrap();
+    while packets.try_recv().is_ok() {}
+    let mut tx = state.db.begin().await.unwrap();
+    let mut stored = database::db::game::explore_runtime::load_map(&mut tx, user_id, 102).await.unwrap().unwrap();
+    stored.state.x = 5; stored.state.y = 12;
+    database::db::game::explore_runtime::save_map(&mut tx, user_id, &mut stored).await.unwrap();
+    tx.commit().await.unwrap();
+    dispatch_command(&mut ctx, request(CmdId::ExploreInteractCmd,
+        ExploreInteractRequest { id: Some(29), params: None }, 5)).await.unwrap();
+    let CommandPacket::Push { cmd_id: CmdId::ExploreItemChangePushCmd, body, .. } = packets.try_recv().unwrap() else { panic!("missing recalled rock update") };
+    assert_eq!(ExploreItemChangePush::decode(&*body).unwrap().explore_items[0].quantity, Some(0));
+    let CommandPacket::Push { cmd_id: CmdId::ExploreStepPushCmd, .. } = packets.try_recv().unwrap() else { panic!("missing recall updates") };
+    let CommandPacket::Reply { cmd_id: CmdId::ExploreInteractCmd, result_code: 0, .. } = packets.try_recv().unwrap() else { panic!("missing recall reply") };
+    let mut tx = state.db.begin().await.unwrap();
+    let stored = database::db::game::explore_runtime::load_map(&mut tx, user_id, 102).await.unwrap().unwrap();
+    assert_eq!(stored.state.objects[&29].status & 4, 0);
+    assert_eq!(stored.state.objects[&(uid as i32)].status & 1, 0);
+    assert_eq!(stored.state.objects[&14].status & 4, 0);
     tx.commit().await.unwrap();
 }
 

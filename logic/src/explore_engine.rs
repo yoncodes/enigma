@@ -233,6 +233,16 @@ pub(crate) fn move_basic_with_ignored_unit(state: &mut MapState, layout: &Layout
             }
             match unit.kind {
                 202 | 227 if object.status & 4 != 0 => {}
+                // Area-reveal markers are walkable once their configured areas
+                // have been opened by the linked counters. Camera and audio
+                // effects do not need to run again when the player crosses.
+                6 if unit.default_walkable && unit.done_effects.is_empty()
+                    && unit.trigger_effects.iter().any(|effect| effect.0 == 11)
+                    && unit.trigger_effects.iter().all(|effect| match effect.0 {
+                        10 | 33 => true,
+                        11 => counter_target(&effect.1).is_some_and(|id| area_open(state, id)),
+                        _ => false,
+                    }) => {}
                 205 if unit.default_walkable && unit.special_data.is_empty()
                     && unit.done_effects.is_empty()
                     && unit.trigger_effects.iter().all(|effect| effect.0 == 22) => {}
@@ -473,12 +483,14 @@ pub(crate) fn move_client_with_ignored_unit(state: &mut MapState, layout: &Layou
         match move_basic_with_ignored_unit(&mut probe, layout, px, py, ignored) {
             Err(MoveError::InvalidStep | MoveError::UnavailableNode) => {}
             Err(MoveError::UnsupportedObject(id)) => {
-                let unit = layout.unit(id).ok_or(MoveError::UnsupportedObject(id))?;
                 let object = next.objects.get(&id).ok_or(MoveError::InvalidObjectState)?;
-                let blocked = if matches!(unit.kind, 202 | 227) {
-                    object.status & 4 == 0
-                } else {
-                    !unit.default_walkable
+                let blocked = match layout.unit(id) {
+                    Some(unit) if matches!(unit.kind, 202 | 227) => object.status & 4 == 0,
+                    Some(unit) => !unit.default_walkable,
+                    // A placed rock is a dynamic map object, so it has no
+                    // static layout entry. It still stops an ice slide.
+                    None => object.kind == 209 && object.status & 1 != 0
+                        && (object.x, object.y) == (px, py),
                 };
                 if !blocked { return Err(MoveError::UnsupportedObject(id)); }
             }

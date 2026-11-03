@@ -97,7 +97,7 @@ pub async fn claim(pool: &SqlitePool, user_id: i64, object_id: i32) -> Result<Ch
     }
     let ordinary_rewards = reward::parse_strict(&ordinary_parts.join("|"))?;
     stored.state.objects.get_mut(&object_id).context("chest state is missing")?.status |= 4;
-    if unit.done_effects.iter().any(|effect| effect.0 == 1) {
+    if unit.kind == 232 || unit.done_effects.iter().any(|effect| effect.0 == 1) {
         stored.state.objects.get_mut(&object_id).context("chest state is missing")?.status &= !1;
     }
     let mut changed = BTreeSet::from([object_id]);
@@ -205,7 +205,33 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].uid, granted.items[0].uid);
         let state = explore_runtime::load_map(&mut tx, user_id, 101).await.unwrap().unwrap();
-        assert_eq!(state.state.objects[&214].status, 7);
+        assert_eq!(state.state.objects[&214].status, 6);
+        tx.commit().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn map_103_claimed_item_disappears_and_cannot_repeat() {
+        let user_id = 910004;
+        let pool = setup(user_id, 1, 6).await;
+        let mut map = MapState::new(config::explore_layout::layout(103).unwrap().unwrap());
+        map.x = 19; map.y = -18;
+        let mut tx = pool.begin().await.unwrap();
+        explore_runtime::insert_map(&mut tx, user_id, &map).await.unwrap();
+        explore_runtime::set_current_map(&mut tx, user_id, 103).await.unwrap();
+        tx.commit().await.unwrap();
+        let claim = claim(&pool, user_id, 67).await.unwrap();
+        assert_eq!(claim.items[0].item_id, Some(150002));
+        assert!(claim.steps.iter().any(|s| {
+            let outer: serde_json::Value = serde_json::from_str(s.param.as_ref().unwrap()).unwrap();
+            if outer["stepType"] != 2 { return false; }
+            let unit: serde_json::Value = serde_json::from_str(outer["interact"].as_str().unwrap()).unwrap();
+            unit["id"] == 67 && unit["status"] == 6
+        }));
+        assert!(super::claim(&pool, user_id, 67).await.is_err());
+        let mut tx = pool.begin().await.unwrap();
+        let stored = explore_runtime::load_map(&mut tx, user_id, 103).await.unwrap().unwrap();
+        assert_eq!(stored.state.objects[&67].status, 6);
+        assert_eq!(explore_runtime::list_items(&mut tx, user_id).await.unwrap().len(), 1);
         tx.commit().await.unwrap();
     }
 

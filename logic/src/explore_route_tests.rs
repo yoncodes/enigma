@@ -121,3 +121,24 @@ async fn second_map_route_fetches_a_rock_and_holds_open_the_first_door() {
     assert!(explore_runtime::list_items(&mut tx, user_id).await.unwrap().is_empty());
     tx.commit().await.unwrap();
 }
+
+#[tokio::test]
+async fn entering_with_legacy_unlocked_map_succeeds() {
+    crate::init_test_server_config();
+    let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("data/excel2json");
+    config::init(data.to_str().unwrap()).unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1)
+        .connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let user_id = 991003_i64;
+    sqlx::query("INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, 0, 0)")
+        .bind(user_id).bind("legacy-exploration").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO user_open_infos (user_id, open_id, is_open) VALUES (?, 47, 1)")
+        .bind(user_id).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO user_explore_unlocked_maps (user_id, map_id) VALUES (?, 101)")
+        .bind(user_id).execute(&pool).await.unwrap();
+    crate::explore_entry::change_map(&pool, user_id, 101).await.unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_explore_unlocked_maps WHERE user_id = ? AND map_id = 101")
+        .bind(user_id).fetch_one(&pool).await.unwrap();
+    assert_eq!(count, 1);
+}
