@@ -815,6 +815,15 @@ pub(in crate::engine::runtime) fn emit_ops(
         if definition.target_emission_mode == behavior::registry::TargetEmissionMode::Once {
             targets.truncate(1);
         }
+        super::trace::targets(
+            &invocation,
+            slot,
+            trigger,
+            execution.context,
+            managers,
+            pool,
+            &targets,
+        );
         let outputs_before = outputs.len();
         let target_count = targets.len();
         for (target_index, target_uid) in targets.iter().copied().enumerate().skip(resume_target) {
