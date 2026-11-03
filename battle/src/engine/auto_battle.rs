@@ -129,7 +129,6 @@ pub(crate) fn plan(
         &mut played_owners,
         &request.opers,
         managers,
-        &pool,
         catalog,
         &mut sim_determinism,
         &simulation,
@@ -310,7 +309,6 @@ fn apply_prefix(
     played_owners: &mut HashSet<i64>,
     opers: &[BeginRoundOper],
     managers: &BattleManagers,
-    pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     simulation: &simulation::Simulation<'_>,
@@ -369,10 +367,10 @@ fn apply_prefix(
                     source_uid,
                     skill_id,
                     target_uid,
-                    sim,
-                    &pool.runtime_view(sim),
+                    &simulation.managers,
+                    &simulation.pool.runtime_view(&simulation.managers),
                     catalog,
-                    determinism,
+                    &simulation.determinism,
                 );
                 if card_skill_is_blocked(managers, catalog, source_uid, skill_id) || !legal_target {
                     return false;

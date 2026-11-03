@@ -1,6 +1,49 @@
 use super::*;
 
 #[test]
+fn prefix_targets_use_queue_admission_state() {
+    let mut sonetto = team_hero(11, 3023, 1_000, [30230111, 30230121]);
+    sonetto.attr.as_mut().unwrap().attack = Some(1_000);
+    let mut runtime = team_runtime_against(
+        vec![team_hero(10, 3145, 1_000, [31450111, 31450121]), sonetto],
+        vec![enemy(-1, 1), enemy(-2, 100_000)],
+        vec![
+            hand_card(11, 30230111, false),
+            hand_card(11, 30230111, false),
+            hand_card(10, 31446062, false),
+        ],
+    );
+    runtime.round_state.act_point = 3;
+    let mut request = AutoRoundRequest {
+        opers: vec![
+            BeginRoundOper {
+                oper_type: Some(CardOpType::PlayCard.id()),
+                param1: Some(1),
+                to_id: Some(-1),
+                ..Default::default()
+            };
+            2
+        ],
+        ..Default::default()
+    };
+
+    let reply = runtime.plan_auto_round(&request);
+
+    assert_eq!(reply.opers.len(), 1);
+    assert_eq!(reply.opers[0].param1, Some(1));
+    request.opers.extend(reply.opers);
+    runtime
+        .advance_round(BeginRoundRequest {
+            opers: request.opers,
+            devices_opers: reply.devices_opers,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(runtime.managers.hp.current(-1), 0);
+    assert!(runtime.managers.hp.current(-2) > 0);
+}
+
+#[test]
 fn auto_conduit_plan_replays_the_enabling_buff_boundary() {
     for enabled in [false, true] {
         let mut everecho = team_hero(10, 3145, 1_000, [31450111, 31450121]);
