@@ -762,11 +762,13 @@ fn run_player_card_ops(
                 determinism,
                 context,
                 CARD_PLAY_ORIGIN,
-                pending_rewards,
+                std::mem::take(&mut pending_rewards),
             )?,
         );
-        result.frames.extend(before_actions);
-        return Ok(result);
+        if !include_device_action {
+            result.frames.extend(before_actions);
+            return Ok(result);
+        }
     }
     if !pending_rewards.is_empty() {
         skills

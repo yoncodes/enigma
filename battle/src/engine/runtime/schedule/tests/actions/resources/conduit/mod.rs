@@ -3,6 +3,7 @@ use super::*;
 mod completion;
 mod device_ultimate;
 mod everecho;
+mod queue;
 
 fn find_step(step: &sonettobuf::FightStep, act_id: i32) -> Option<&sonettobuf::FightStep> {
     (step.act_id == Some(act_id)).then_some(step).or_else(|| {
