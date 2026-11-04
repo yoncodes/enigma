@@ -310,6 +310,95 @@ fn first_melody_redeal_preserves_basic_coverage_and_ranks() {
 }
 
 #[test]
+fn twins_selection_refreshes_a_populated_hand_with_the_selected_precast() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3149),
+                current_hp: Some(100),
+                buffs: vec![sonettobuf::BuffInfo {
+                    uid: Some(1146),
+                    buff_id: Some(31490013),
+                    from_uid: Some(10),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(fight);
+    let existing = (100..109)
+        .map(|skill_id| CardInfo {
+            uid: Some(10),
+            skill_id: Some(skill_id),
+            ..Default::default()
+        })
+        .collect::<Vec<_>>();
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::Setup(
+            crate::engine::manager::card::CardSetup {
+                hand: existing.clone(),
+                draw_pile: Vec::new(),
+                deck_num: 12,
+            },
+        ))
+        .unwrap();
+
+    let reply = runtime
+        .use_cloth_skill(UseClothSkillRequest {
+            skill_id: Some(0),
+            from_id: Some(10),
+            to_id: Some(4),
+            r#type: Some(ClothSkillType::TwinsSelect as i32),
+        })
+        .unwrap()
+        .round
+        .unwrap();
+
+    let hand = runtime.card_hand();
+    assert_eq!(hand.len(), 10);
+    for card in &existing {
+        assert!(hand.iter().any(|entry| entry.skill_id == card.skill_id));
+    }
+    assert_eq!(
+        hand.iter()
+            .filter(|card| card.skill_id == Some(31446012) && card.temp_card == Some(true))
+            .count(),
+        1
+    );
+
+    let effects = reply
+        .fight_step
+        .iter()
+        .flat_map(|step| &step.act_effect)
+        .collect::<Vec<_>>();
+    let push = effects
+        .iter()
+        .find(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Cardspush as i32)
+        })
+        .expect("the client needs a hand refresh after selecting a precast");
+    let identities = |cards: &[CardInfo]| {
+        cards
+            .iter()
+            .map(|card| (card.uid, card.skill_id, card.temp_card.unwrap_or_default()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(identities(&push.card_info_list), identities(hand));
+    assert!(effects.iter().any(|effect| {
+        effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Carddecknum as i32)
+            && effect.effect_num == Some(12)
+    }));
+}
+
+#[test]
 fn conduit_selection_adds_the_configured_precast_and_commits_the_choice() {
     crate::test_support::init_config();
     let fight = Fight {
