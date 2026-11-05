@@ -5,7 +5,7 @@ use std::{
 
 use battle::tooling::{
     damage_tracing_enabled,
-    replay::{ReplayBattle, seed_observed_redeal},
+    replay::{ClothSkillType, ReplayBattle, seed_observed_redeal},
     scan::effect_catalog,
 };
 use battle_preview::{
@@ -17,7 +17,7 @@ use battle_preview::{
 };
 use sonettobuf::{
     AutoRoundReply, AutoRoundRequest, BeginRoundReply, BeginRoundRequest, Fight, FightRound,
-    FightStep, UseClothSkillReply,
+    FightStep, UseClothSkillReply, UseClothSkillRequest,
 };
 
 mod capture;
@@ -488,7 +488,11 @@ fn replay_rounds(
         let prepared = (|| -> anyhow::Result<(BeginRoundRequest, FightRound)> {
             let request = begin_round_request(&round.request)?;
             let captured = captured_round(&round.reply)?;
-            validate_captured_round_continuity(&previous_captured_round, &captured)?;
+            validate_captured_round_continuity(
+                &previous_captured_round,
+                &captured,
+                captured_extra_round(&round.cloth)?,
+            )?;
             for (index, cloth) in round.cloth.iter().enumerate() {
                 replay_cloth_input(
                     std::slice::from_ref(cloth),
@@ -554,6 +558,21 @@ fn replay_auto_inputs(
     Ok(())
 }
 
+fn cloth_request(path: &Path) -> anyhow::Result<UseClothSkillRequest> {
+    let mut request: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    normalize_live_json(&mut request);
+    Ok(serde_json::from_value(request)?)
+}
+
+fn captured_extra_round(inputs: &[capture::CapturedCloth]) -> anyhow::Result<bool> {
+    for input in inputs {
+        if cloth_request(&input.request)?.r#type == Some(ClothSkillType::ExtraRound as i32) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn resync_round(
     runtime: &mut ReplayBattle,
     index: i32,
@@ -576,10 +595,7 @@ fn replay_cloth_input(
     outcomes: &mut Vec<ClothOutcome>,
 ) -> anyhow::Result<()> {
     for input in inputs {
-        let mut request: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(&input.request)?)?;
-        normalize_live_json(&mut request);
-        let request = serde_json::from_value(request)?;
+        let request = cloth_request(&input.request)?;
         let captured = input
             .reply
             .as_deref()
@@ -717,10 +733,14 @@ fn captured_round(path: &Path) -> anyhow::Result<FightRound> {
     Ok(serde_json::from_value(round)?)
 }
 
-fn validate_captured_round_continuity(previous: &FightRound, next: &FightRound) -> io::Result<()> {
+fn validate_captured_round_continuity(
+    previous: &FightRound,
+    next: &FightRound,
+    extra_round: bool,
+) -> io::Result<()> {
     match (previous.cur_round, next.cur_round) {
         (Some(previous), Some(next_round))
-            if i64::from(next_round) != i64::from(previous) + 1
+            if i64::from(next_round) != i64::from(previous) + i64::from(!extra_round)
                 && !(next_round == previous && next.is_finish == Some(true)) =>
         {
             Err(io::Error::new(

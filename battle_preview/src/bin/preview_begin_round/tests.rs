@@ -36,12 +36,12 @@ fn captured_round_continuity_rejects_skips_and_reversals() {
         ..Default::default()
     };
 
-    let error = validate_captured_round_continuity(&previous, &skipped).unwrap_err();
+    let error = validate_captured_round_continuity(&previous, &skipped, false).unwrap_err();
 
     assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     assert!(error.to_string().contains("previous round 1"));
     assert!(error.to_string().contains("next round 3"));
-    assert!(validate_captured_round_continuity(&previous, &reversed).is_err());
+    assert!(validate_captured_round_continuity(&previous, &reversed, false).is_err());
 }
 
 #[test]
@@ -58,26 +58,48 @@ fn captured_round_continuity_accepts_next_terminal_and_missing_evidence() {
         is_finish: Some(true),
         ..next.clone()
     };
-    assert!(validate_captured_round_continuity(&previous, &next).is_ok());
-    assert!(validate_captured_round_continuity(&next, &terminal).is_ok());
-    assert!(validate_captured_round_continuity(&FightRound::default(), &next).is_ok());
-    assert!(validate_captured_round_continuity(&next, &FightRound::default()).is_ok());
+    assert!(validate_captured_round_continuity(&previous, &next, false).is_ok());
+    assert!(validate_captured_round_continuity(&next, &terminal, false).is_ok());
+    assert!(validate_captured_round_continuity(&FightRound::default(), &next, false).is_ok());
+    assert!(validate_captured_round_continuity(&next, &FightRound::default(), false).is_ok());
 }
 
 #[test]
-fn captured_round_continuity_rejects_same_round_without_terminal_evidence() {
+fn captured_round_continuity_accepts_same_round_from_extra_round_input() {
     let round = FightRound {
         cur_round: Some(4),
         ..Default::default()
     };
 
-    assert!(validate_captured_round_continuity(&round, &round).is_err());
+    assert!(validate_captured_round_continuity(&round, &round, false).is_err());
+    assert!(validate_captured_round_continuity(&round, &round, true).is_ok());
 
     let maximum = FightRound {
         cur_round: Some(i32::MAX),
         ..Default::default()
     };
-    assert!(validate_captured_round_continuity(&maximum, &maximum).is_err());
+    assert!(validate_captured_round_continuity(&maximum, &maximum, false).is_err());
+}
+
+#[test]
+fn captured_extra_round_reads_the_cloth_operation_type() {
+    let path = std::env::temp_dir().join(format!(
+        "enigma-extra-round-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::write(&path, r#"{"skillId":0,"fromId":"10","toId":"0","type":9}"#).unwrap();
+    let input = capture::CapturedCloth {
+        request: path.clone(),
+        reply: None,
+    };
+
+    assert!(captured_extra_round(&[input]).unwrap());
+
+    fs::remove_file(path).unwrap();
 }
 
 #[test]
