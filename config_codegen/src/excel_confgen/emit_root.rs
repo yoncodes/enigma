@@ -1,6 +1,7 @@
 use crate::excel_confgen::rust_ident::{camel_to_snake, snake_to_pascal};
 
 pub fn emit_root_module(table_names: &[String]) -> String {
+    let exploration = table_names.iter().any(|name| name == "explore_scene");
     let mut lines = vec![
         "// Auto-generated module declarations".to_string(),
         "".to_string(),
@@ -24,6 +25,9 @@ pub fn emit_root_module(table_names: &[String]) -> String {
         ));
     }
 
+    if exploration {
+        lines.push("    pub explore_map: crate::exploration::MapTable,".to_string());
+    }
     lines.push("}".to_string());
     lines.push("".to_string());
     lines.push("impl GameDB {".to_string());
@@ -47,9 +51,15 @@ pub fn emit_root_module(table_names: &[String]) -> String {
     }
 
     lines.push("".to_string());
+    if exploration {
+        lines.push("        let explore_map = crate::exploration::MapTable::load(data_dir, &explore_scene)?;".to_string());
+    }
     lines.push("        Ok(Self {".to_string());
     for table_name in table_names {
         lines.push(format!("            {},", camel_to_snake(table_name)));
+    }
+    if exploration {
+        lines.push("            explore_map,".to_string());
     }
     lines.push("        })".to_string());
     lines.push("    }".to_string());

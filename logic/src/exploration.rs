@@ -3,6 +3,12 @@ use database::db::game::{explore, weekwalk_v2};
 use sonettobuf::{GetExploreSimpleInfoReply, WeekwalkVer2GetInfoReply};
 use sqlx::SqlitePool;
 
+mod entry;
+mod snapshot;
+
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone, Copy, Debug)]
 pub struct ExplorationManager {
     player_id: i64,
@@ -29,7 +35,10 @@ async fn explore_simple_info(
     db: &SqlitePool,
     player_id: i64,
 ) -> Result<GetExploreSimpleInfoReply, AppError> {
-    let (info, chapters, maps, unlock_map_ids) = explore::get_explore_info(db, player_id).await?;
+    let (info, chapters, maps, _) = explore::get_explore_info(db, player_id).await?;
+    let unlock_map_ids = ExplorationManager::new(player_id)
+        .available_maps(db)
+        .await?;
 
     Ok(GetExploreSimpleInfoReply {
         last_map_id: Some(info.last_map_id),

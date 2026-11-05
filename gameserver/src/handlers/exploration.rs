@@ -4,10 +4,34 @@ use crate::{
 };
 use prost::Message;
 use sonettobuf::{
-    BeforeStartWeekwalkBattleRequest, ChangeWeekwalkHeroGroupSelectRequest, CmdId,
-    MarkPopDeepSettleRequest, MarkPopShallowSettleRequest, WeekwalkDialogHistoryRequest,
-    WeekwalkDialogRequest,
+    BeforeStartWeekwalkBattleRequest, ChangeMapRequest, ChangeWeekwalkHeroGroupSelectRequest,
+    CmdId, GetExploreInfoRequest, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
+    WeekwalkDialogHistoryRequest, WeekwalkDialogRequest,
 };
+
+pub async fn on_change_map(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let request = ChangeMapRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .exploration
+        .change_map(
+            ctx.state.db,
+            request.map_id.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.send_reply(CmdId::ChangeMapCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_get_explore_info(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    GetExploreInfoRequest::decode(&req.data[..])?;
+    let reply = ctx.player()?.exploration.info(ctx.state.db).await?;
+    ctx.send_reply(CmdId::GetExploreInfoCmd, reply, 0, req.up_tag)
+        .await
+}
 
 pub async fn on_get_explore_simple_info(
     ctx: &mut ConnectionContext,
