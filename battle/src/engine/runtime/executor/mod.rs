@@ -47,6 +47,8 @@ pub(crate) enum RuleOutcome {
         lifecycle: crate::engine::skill::action::SkillLifecycle,
         cost: ExPointChanges,
     },
+    ActionCostPaid(ExPointChanges),
+    PaidSkillStarted(crate::engine::skill::action::SkillLifecycle),
     ActionHandSettlement(Box<ActionHandSettlement>),
     Buff(Box<BuffChanges>),
     BuffBatch(Vec<BuffChanges>),
@@ -242,6 +244,8 @@ impl RuleOutcome {
         match self {
             Self::PublishedEvent => Vec::new(),
             Self::SkillLifecycle(change) => vec![BattleChange::SkillLifecycle(change.clone())],
+            Self::PaidSkillStarted(change) => vec![BattleChange::SkillLifecycle(change.clone())],
+            Self::ActionCostPaid(change) => vec![BattleChange::ExPoint(*change)],
             Self::DeathSettlement(_) => Vec::new(),
             Self::SkillActionStarted { lifecycle, cost } => vec![
                 BattleChange::SkillLifecycle(lifecycle.clone()),
@@ -1036,6 +1040,26 @@ pub(crate) fn execute_rule_op_with(
             Ok(RuleOutcome::StateChanged)
         }
         RuleOp::Skill(_) => Err(RuleExecutionError::UnexpectedSkill),
+        RuleOp::PaySkillAction { action, cost } => {
+            let changes = managers.execute_ex_point(cost)?;
+            managers
+                .hp
+                .capture_action_start(action.source_uid, action.skill_id);
+            for event in changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::ActionCostPaid(changes))
+        }
+        RuleOp::PaidSkillStarted(lifecycle) => {
+            let crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action) = &lifecycle
+            else {
+                return Err(RuleExecutionError::UnexpectedSkill);
+            };
+            events.push(crate::engine::event::payload::BattleEvent::SkillAction(
+                action.clone(),
+            ));
+            Ok(RuleOutcome::PaidSkillStarted(lifecycle))
+        }
         RuleOp::BeginSkillAction { lifecycle, cost } => {
             let changes = managers.execute_ex_point(cost)?;
             for event in changes.events() {

@@ -92,7 +92,7 @@ fn exempt_spell_keeps_ultimate_classification() {
                 skill,
                 grants_ex_point: false,
                 grant_after_action: false,
-                queued_resource_delta: 0,
+                composition_rewards: Vec::new(),
                 prelude: Vec::new(),
             },
         )

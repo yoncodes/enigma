@@ -27,7 +27,7 @@ use crate::engine::{
         magic_circle_level::MagicCircleLevelCommand, monster_change::MonsterChangeCommand,
         nuo_di_ka::NuoDiKaCommand, shell::ShellCommand,
     },
-    skill::action::{SkillInvocation, SkillLifecycle},
+    skill::action::{SkillInvocation, SkillLifecycle, SkillRequest},
     skill::buff_act::{
         blood_pool::count_add_ex_point::BloodPoolCountAddExPointCommand,
         raspberry::{AddCountCommand, CapacityCommand},
@@ -123,6 +123,11 @@ pub enum RuleOp {
         lifecycle: SkillLifecycle,
         cost: ExPointCommand,
     },
+    PaySkillAction {
+        action: SkillRequest,
+        cost: ExPointCommand,
+    },
+    PaidSkillStarted(SkillLifecycle),
     BuffFeatureMarker {
         target_uid: i64,
         effect_type: i32,

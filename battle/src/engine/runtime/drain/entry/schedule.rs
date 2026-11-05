@@ -25,6 +25,8 @@ pub fn run_command_group(
                 | RuleOp::SubscriberGroupComplete
                 | RuleOp::TerminalSettlement
                 | RuleOp::BeginSkillAction { .. }
+                | RuleOp::PaySkillAction { .. }
+                | RuleOp::PaidSkillStarted(_)
                 | RuleOp::BuffFeatureMarker { .. }
                 | RuleOp::EffectMarker { .. }
                 | RuleOp::SceneChange { .. }

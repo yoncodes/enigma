@@ -352,7 +352,12 @@ pub(super) fn drain_command(
         None,
     )?;
     let mut started_after_reactions = None;
-    if matches!(&outcome, RuleOutcome::SkillActionStarted { .. }) {
+    if matches!(
+        &outcome,
+        RuleOutcome::SkillActionStarted { .. }
+            | RuleOutcome::ActionCostPaid(_)
+            | RuleOutcome::PaidSkillStarted(_)
+    ) {
         let mut started_reactions = dispatch_event_groups(
             pool,
             managers,
@@ -523,7 +528,12 @@ pub(super) fn drain_command(
             crate::engine::runtime::change::BattleChange::BuffFanout(Box::new(fanout)),
         );
     }
-    let was_skill_action_started = matches!(&outcome, RuleOutcome::SkillActionStarted { .. });
+    let was_skill_action_started = matches!(
+        &outcome,
+        RuleOutcome::SkillActionStarted { .. }
+            | RuleOutcome::ActionCostPaid(_)
+            | RuleOutcome::PaidSkillStarted(_)
+    );
     let was_hp_batch = matches!(&outcome, RuleOutcome::HpBatch(_));
     result.outcomes.push(outcome);
 

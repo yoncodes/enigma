@@ -953,7 +953,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
     }
     if active_phase == Some(SkillPhase::Immediate) {
-        let mut phase_completed = phase_completed_op(
+        let phase_completed = phase_completed_op(
             &invocation,
             managers,
             catalog,
@@ -961,15 +961,11 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution,
             SkillPhase::Immediate,
         );
-        if let Some(cost) = execution.take_action_cost() {
-            let RuleOp::SkillLifecycle(lifecycle) = phase_completed.op else {
-                unreachable!("a completed phase emits a skill lifecycle")
-            };
-            phase_completed.op = RuleOp::BeginSkillAction { lifecycle, cost };
-            outputs.push(phase_completed);
-        } else {
-            outputs.push(phase_completed);
-        }
+        outputs.extend(super::resources::settle(
+            &invocation,
+            execution,
+            phase_completed,
+        ));
         if execution
             .modifiers
             .rates

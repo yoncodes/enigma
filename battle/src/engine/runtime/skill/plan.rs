@@ -41,6 +41,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pending_after_damage_ops: Vec<RuleOp>,
     pending_after_damage_frame_owner: Option<crate::engine::runtime::record::FrameOwner>,
     action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
+    composition_rewards: Vec<crate::engine::manager::ex_point::ExPointChange>,
     // The next slot to run when a phase continues after an earlier slot's changes commit.
     pub(super) resume_slot: usize,
     // The next target in a slot whose prior target must settle first.
@@ -131,6 +132,7 @@ impl SkillExecution {
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
             action_cost: None,
+            composition_rewards: Vec::new(),
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
@@ -168,6 +170,7 @@ impl SkillExecution {
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
             action_cost: None,
+            composition_rewards: Vec::new(),
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
@@ -177,14 +180,21 @@ impl SkillExecution {
         }
     }
 
-    pub(in crate::engine::runtime) fn with_action_cost(
+    pub(in crate::engine::runtime) fn with_resources(
         context: TargetContext,
-        cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
+        resources: crate::engine::skill::action::ActionResources,
     ) -> Self {
         Self {
-            action_cost: cost,
+            action_cost: resources.cost,
+            composition_rewards: resources.composition,
             ..Self::new(context)
         }
+    }
+
+    pub(super) fn take_composition_rewards(
+        &mut self,
+    ) -> Vec<crate::engine::manager::ex_point::ExPointChange> {
+        std::mem::take(&mut self.composition_rewards)
     }
 
     pub(super) fn take_action_cost(

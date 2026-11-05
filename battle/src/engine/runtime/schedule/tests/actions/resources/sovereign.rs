@@ -123,7 +123,7 @@ fn played_enhancements_apply_before_damage_at_the_selected_main_target() {
                 skill,
                 grants_ex_point: false,
                 grant_after_action: false,
-                queued_resource_delta: 0,
+                composition_rewards: Vec::new(),
                 prelude: Vec::new(),
             },
         )

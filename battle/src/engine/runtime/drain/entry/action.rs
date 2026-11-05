@@ -116,52 +116,55 @@ pub fn run_action_with_cost(
     action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
-    run_action_with_cost_and_cleanup_owner(
+    run_action_with_cleanup_owner(
         managers,
         pool,
         catalog,
         determinism,
         context,
         prelude,
-        action_cost,
+        crate::engine::skill::action::ActionResources {
+            cost: action_cost,
+            ..Default::default()
+        },
         invocation,
         DefenderCardCleanupOwner::DeathAction,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn run_round_action_with_cost(
+pub fn run_round_action(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     prelude: impl IntoIterator<Item = RuleOp>,
-    action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
+    resources: crate::engine::skill::action::ActionResources,
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
-    run_action_with_cost_and_cleanup_owner(
+    run_action_with_cleanup_owner(
         managers,
         pool,
         catalog,
         determinism,
         context,
         prelude,
-        action_cost,
+        resources,
         invocation,
         DefenderCardCleanupOwner::ScheduledRoundPhase,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_action_with_cost_and_cleanup_owner(
+fn run_action_with_cleanup_owner(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     prelude: impl IntoIterator<Item = RuleOp>,
-    action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
+    resources: crate::engine::skill::action::ActionResources,
     invocation: crate::engine::skill::action::SkillInvocation,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
@@ -205,7 +208,7 @@ fn run_action_with_cost_and_cleanup_owner(
     queue.push_back(QueuedOp {
         op: RuleOp::Skill(invocation),
         trigger: SkillOpTrigger::Active,
-        skill_execution: Some(SkillExecution::with_action_cost(context, action_cost)),
+        skill_execution: Some(SkillExecution::with_resources(context, resources)),
         frame_path: Some(root.clone()),
         parent_path: None,
         frame_group: None,

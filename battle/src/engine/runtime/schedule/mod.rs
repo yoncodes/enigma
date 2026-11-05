@@ -91,6 +91,7 @@ const ROUND_START_VERSION6_SYNC_SETUP: &[(SetupStage, i32)] =
     &[(SetupStage::RoundStart, 4), (SetupStage::BuffSync, 0)];
 
 mod ai;
+mod card_rewards;
 mod player;
 mod refill;
 mod resolution;
@@ -516,7 +517,7 @@ pub fn run_ai_actions(
                     skill: invocation,
                     grants_ex_point: true,
                     grant_after_action: false,
-                    queued_resource_delta: 0,
+                    composition_rewards: Vec::new(),
                     prelude: Vec::new(),
                 },
             )?,

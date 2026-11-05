@@ -122,6 +122,7 @@ fn action_event(
 }
 
 mod dispatch;
+mod resources;
 mod trace;
 
 #[cfg(test)]

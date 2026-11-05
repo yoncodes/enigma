@@ -508,6 +508,8 @@ fn drain_queue_with_deferred(
             | RuleOp::ActionHandSettlement { .. }
             | RuleOp::DeathSettlement(_)
             | RuleOp::BeginSkillAction { .. }
+            | RuleOp::PaySkillAction { .. }
+            | RuleOp::PaidSkillStarted(_)
             | RuleOp::BuffFeatureMarker { .. }
             | RuleOp::EffectMarker { .. }
             | RuleOp::SceneChange { .. }

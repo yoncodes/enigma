@@ -136,6 +136,8 @@ fn run_owned_buff_act_groups(
                 | RuleOp::SubscriberGroupComplete
                 | RuleOp::TerminalSettlement
                 | RuleOp::BeginSkillAction { .. }
+                | RuleOp::PaySkillAction { .. }
+                | RuleOp::PaidSkillStarted(_)
                 | RuleOp::BuffFeatureMarker { .. }
                 | RuleOp::EffectMarker { .. }
                 | RuleOp::SceneChange { .. }

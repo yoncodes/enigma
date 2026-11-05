@@ -1,5 +1,8 @@
 use sonettobuf::CardInfo;
 
+mod resources;
+pub use resources::ActionResources;
+
 use crate::engine::damage::DamageRateComposition;
 use crate::engine::entity::attr::AttrId;
 use crate::engine::skill::rule::{CommandOrigin, DefinitionKey};
