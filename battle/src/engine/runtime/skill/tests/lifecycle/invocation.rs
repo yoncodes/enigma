@@ -93,7 +93,7 @@ fn direct_nested_invocation_owns_its_attack_context() {
     assert!(execution.context.active_skill_is_attack);
     assert_eq!(execution.context.active_skill_effect_tag, 11);
     assert!(execution.context.direct_skill_body);
-    assert!(!SkillExecutionMode::Direct.completes_action());
+    assert!(SkillExecutionMode::Direct.completes_action());
     assert!(!crate::engine::skill::action::performs_extra_action(
         0,
         SkillExecutionMode::Direct,

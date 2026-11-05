@@ -42,6 +42,7 @@ impl SkillExecutionMode {
         matches!(
             self,
             Self::Active
+                | Self::Direct
                 | Self::Synchronization
                 | Self::DirectBig
                 | Self::Device

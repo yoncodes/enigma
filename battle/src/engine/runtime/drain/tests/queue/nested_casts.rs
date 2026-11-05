@@ -90,7 +90,7 @@ fn nested_cast_keeps_its_frame_target_without_reordering_damage() {
 }
 
 #[test]
-fn terminal_direct_cast_completes_only_when_it_ends_the_battle() {
+fn direct_action_cast_completes_before_its_parent_without_a_terminal_outcome() {
     crate::test_support::init_config();
     let run = |target_hp| {
         let entity = |uid, hp, attack| FightEntityInfo {
@@ -165,7 +165,7 @@ fn terminal_direct_cast_completes_only_when_it_ends_the_battle() {
     };
 
     assert_eq!(run(100), vec![200, 100]);
-    assert_eq!(run(101), vec![100]);
+    assert_eq!(run(101), vec![200, 100]);
 }
 
 #[test]
