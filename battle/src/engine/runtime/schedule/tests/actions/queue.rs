@@ -681,6 +681,100 @@ fn terminal_player_action_stops_the_remaining_action_queue() {
 }
 
 #[test]
+fn side_owned_support_card_reports_defeated_opponents_during_wave_transition() {
+    init_config();
+    let fight = Fight {
+        battle_id: Some(2514),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_hp(crate::engine::manager::hp::HpCommand::Kill(
+            crate::engine::manager::hp::HpKill {
+                origin: CARD_PLAY_ORIGIN,
+                source_uid: 10,
+                target_uid: -1,
+                config_effect: 1,
+            },
+        ))
+        .unwrap();
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![CardInfo {
+                uid: Some(0),
+                skill_id: Some(100),
+                ..Default::default()
+            }],
+            draw_pile: Vec::new(),
+            deck_num: 1,
+        }))
+        .unwrap();
+    assert!(managers.wave.has_next_wave());
+    assert!(!crate::engine::round::outcome::battle_ended(
+        &fight, &pool, &managers
+    ));
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: Vec::new(),
+    });
+    catalog.insert_logic_target(
+        100,
+        crate::engine::skill::target::request::SOURCE_TARGET_CODE,
+    );
+
+    let result = run_player_phase(
+        &fight,
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RoundCommand::PlayCard {
+            card_index: 0,
+            target_uid: Some(-1),
+            chosen_skill_id: None,
+            recorded_skill: None,
+        }],
+        Vec::new(),
+        1,
+        0,
+    )
+    .unwrap()
+    .drain;
+    let invalid = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| {
+            step.act_effect.iter().any(|effect| {
+                effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Cardinvalid as i32)
+            })
+        })
+        .unwrap();
+    assert_eq!(invalid.act_effect[0].config_effect, Some(-1));
+}
+
+#[test]
 fn repeated_play_index_tracks_the_composed_mutating_hand() {
     init_config();
     let fight = Fight {

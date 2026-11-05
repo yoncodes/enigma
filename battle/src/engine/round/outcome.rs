@@ -41,6 +41,21 @@ fn team_defeated(team_type: i32, managers: &BattleManagers) -> bool {
             }))
 }
 
+pub(crate) fn opponents_defeated(team_type: i32, managers: &BattleManagers) -> bool {
+    let opponent_team = match team_type {
+        1 => 2,
+        2 => 1,
+        _ => return false,
+    };
+    let roster = managers
+        .entity
+        .ordered_uids()
+        .filter(|uid| managers.entity.team_type(*uid) == Some(opponent_team))
+        .filter(|uid| managers.entity.roster_lane(*uid) == Some(RosterLane::Main))
+        .collect::<Vec<_>>();
+    !roster.is_empty() && roster.iter().all(|uid| managers.hp.current(*uid) <= 0)
+}
+
 pub(crate) fn defenders_defeated(_pool: &TargetPool, managers: &BattleManagers) -> bool {
     team_defeated(2, managers)
 }

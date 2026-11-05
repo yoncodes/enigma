@@ -911,11 +911,8 @@ fn run_player_card_ops(
             | (None, crate::engine::skill::action::SkillTarget::Configured)
             | (None, crate::engine::skill::action::SkillTarget::LogicRule(_)) => true,
         };
-        let current_opponents = pool.enemies(source_uid, false);
-        let current_opponents_defeated = !current_opponents.is_empty()
-            && current_opponents
-                .iter()
-                .all(|enemy| managers.hp.current(enemy.uid) <= 0);
+        let current_opponents_defeated =
+            crate::engine::round::outcome::opponents_defeated(team, managers);
         append(
             &mut result,
             run_card_composition_rewards(
@@ -956,7 +953,7 @@ fn run_player_card_ops(
                     RoundCue::CardInvalid {
                         card_index: skill.card_index,
                         team_type: team,
-                        reason: if current_opponents_defeated && targets_enemy {
+                        reason: if current_opponents_defeated {
                             CardInvalidReason::OpponentsDefeated
                         } else {
                             CardInvalidReason::Default
