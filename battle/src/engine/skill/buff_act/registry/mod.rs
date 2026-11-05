@@ -1303,10 +1303,11 @@ buff_act_definitions! {
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(926, "ExPointAddByHit"), &[EffectType::None as i32]));
     (927, "AddBuffByOtherExSkill") => AddBuffByOtherExSkill,
         transactions: [EventKind::BuffAdded],
-        frame: CausingFrame,
+        source: Owner,
         runtime: |context| super::add_buff_by_other_ex_skill::rule_ops(context.catalog, context.subscriber, context.event?),
         transaction: super::add_buff_by_other_ex_skill::grant_transaction_rule_ops,
-        supports: super::add_buff_by_other_ex_skill::supports;
+        supports: super::add_buff_by_other_ex_skill::supports,
+        wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(927, "AddBuffByOtherExSkill"), &[], &[], &[]));
     (932, "FixAttrBySubBuffLayer") => FixAttrBySubBuffLayer,
         supports: super::fix_attr_by_sub_buff_layer::supports, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(932, "FixAttrBySubBuffLayer"), &[EffectType::None as i32]));

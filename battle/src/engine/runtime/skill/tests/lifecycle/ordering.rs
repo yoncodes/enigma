@@ -156,6 +156,7 @@ fn source_opening_and_pre_effect_reactions_precede_action_cost() {
             cost: crate::engine::manager::ex_point::ExPointCommand::Spend(change),
         } if action.phase == SkillPhase::Immediate && change.delta == -5
     )));
+    assert_eq!(execution.moxie_spent, 5);
 }
 
 #[test]

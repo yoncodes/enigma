@@ -134,6 +134,8 @@ pub struct ActionEvent {
     pub skill_type: i32,
     pub effect_tag: i32,
     pub additional_moxie: i32,
+    pub moxie_spent: i32,
+    pub trigger: SkillTrigger,
     pub extra_skill_kind: i32,
     pub mode: SkillExecutionMode,
     pub is_interval: bool,

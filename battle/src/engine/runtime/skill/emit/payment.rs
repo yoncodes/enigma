@@ -6,13 +6,14 @@ pub(super) fn settle(
     execution: &mut SkillExecution,
     mut completed: SkillEmissionOp,
 ) -> Vec<SkillEmissionOp> {
-    let Some(ActionPayment {
-        cost,
-        composition: rewards,
-    }) = execution.take_payment()
-    else {
+    let Some(payment) = execution.take_payment() else {
         return vec![completed];
     };
+    execution.record_payment(&payment);
+    let ActionPayment {
+        cost,
+        composition: rewards,
+    } = payment;
     if rewards.is_empty() {
         let RuleOp::SkillLifecycle(lifecycle) = completed.op else {
             unreachable!("a completed phase emits a skill lifecycle")

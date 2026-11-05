@@ -41,6 +41,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pending_after_damage_ops: Vec<RuleOp>,
     pending_after_damage_frame_owner: Option<crate::engine::runtime::record::FrameOwner>,
     payment: Option<crate::engine::skill::action::ActionPayment>,
+    pub(super) moxie_spent: i32,
     // The next slot to run when a phase continues after an earlier slot's changes commit.
     pub(super) resume_slot: usize,
     // The next target in a slot whose prior target must settle first.
@@ -131,6 +132,7 @@ impl SkillExecution {
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
             payment: None,
+            moxie_spent: 0,
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
@@ -168,6 +170,7 @@ impl SkillExecution {
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
             payment: None,
+            moxie_spent: 0,
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
@@ -183,12 +186,17 @@ impl SkillExecution {
     ) -> Self {
         Self {
             payment,
+            moxie_spent: 0,
             ..Self::new(context)
         }
     }
 
     pub(super) fn take_payment(&mut self) -> Option<crate::engine::skill::action::ActionPayment> {
         self.payment.take()
+    }
+
+    pub(super) fn record_payment(&mut self, payment: &crate::engine::skill::action::ActionPayment) {
+        self.moxie_spent = payment.spent();
     }
 
     pub(in crate::engine::runtime) fn prepare_direct_big(&mut self, additional_moxie: i32) {

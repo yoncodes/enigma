@@ -1391,6 +1391,10 @@ pub(in crate::engine::runtime) fn emit_ops(
                         skill_type: execution.context.damage_target_count_kind,
                         effect_tag: catalog.effect_tag(effect_skill_id),
                         additional_moxie: invocation.additional_moxie,
+                        moxie_spent: execution
+                            .moxie_spent
+                            .max(invocation.additional_moxie.max(0)),
+                        trigger: invocation.trigger,
                         extra_skill_kind: execution.context.extra_skill_kind,
                         mode: invocation.mode,
                         is_interval: catalog.is_interval(invocation.plan.skill_id),

@@ -843,7 +843,7 @@ fn direct_big_skill_refunds_only_the_configured_ultimate_cost() {
             source_uid: -1,
             source_team: 2,
             target_uid: 10,
-            active_skill_id: 0,
+            active_skill_id: 311401511,
             transfer_count: 1,
             event: None,
             managers: &managers,
@@ -872,5 +872,7 @@ fn direct_big_skill_refunds_only_the_configured_ultimate_cost() {
             && invocation.plan.skill_id == 30020131
             && invocation.mode == crate::engine::skill::action::SkillExecutionMode::DirectBig
             && invocation.additional_moxie == 5
+            && invocation.trigger
+                == crate::engine::skill::action::SkillTrigger::Explicit(311401511)
     ));
 }
