@@ -167,3 +167,77 @@ fn invalidated_card_keeps_composition_and_play_rewards_separate() {
         .collect::<Vec<_>>();
     assert_eq!(rewards, [(111, 1), (160, 2), (111, 1)]);
 }
+
+#[test]
+fn side_owned_temporary_card_executes_without_entity_hp() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![CardInfo {
+                uid: Some(crate::engine::fight::rules::ATTACKER_SIDE_UID),
+                skill_id: Some(100),
+                temp_card: Some(true),
+                ..Default::default()
+            }],
+            draw_pile: Vec::new(),
+            deck_num: 1,
+        }))
+        .unwrap();
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: Vec::new(),
+    });
+
+    let result = run_player_commands(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [play(0, -1)],
+        1,
+        crate::engine::manager::emitter::UID,
+    )
+    .unwrap();
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+
+    assert!(result.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        RuleOutcome::SkillLifecycle(
+            crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action)
+        ) if action.skill_id == 100
+    )));
+    assert!(
+        steps
+            .iter()
+            .flat_map(|step| &step.act_effect)
+            .all(|effect| {
+                effect.effect_type
+                    != Some(sonettobuf::effect_type_enum::EffectType::Cardinvalid as i32)
+            })
+    );
+}

@@ -867,7 +867,10 @@ fn run_player_card_ops(
             skill.plan.skill_id = played.skill_id;
         }
         let source_uid = skill.plan.source_uid;
-        let source_alive = !is_card_action || managers.hp.current(source_uid) > 0;
+        let side_owned_card =
+            is_card_action && crate::engine::fight::rules::is_side_uid(source_uid);
+        let source_alive =
+            !is_card_action || side_owned_card || managers.hp.current(source_uid) > 0;
         let is_ultimate = pool.entity(source_uid).is_some_and(|entity| {
             crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
                 managers,
@@ -925,7 +928,10 @@ fn run_player_card_ops(
                 before_rewards,
             )?,
         );
-        if !source_alive || !target_alive || current_opponents_defeated && targets_enemy {
+        if !source_alive
+            || !target_alive
+            || current_opponents_defeated && (targets_enemy || side_owned_card)
+        {
             append(
                 &mut result,
                 run_card_composition_rewards(
