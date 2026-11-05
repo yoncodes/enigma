@@ -94,6 +94,31 @@ fn unnamed_client_effect_emits_only_the_captured_strengthen_marker() {
 }
 
 #[test]
+fn consumed_buff_target_expansion_runs_before_source_opening_markers() {
+    let definition = find_key(60036, "ConsumeBuffChangeTargets").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.phase, BehaviorPhase::SourceOpening);
+    assert!(supports(&ParsedBehavior::new(
+        60036,
+        "ConsumeBuffChangeTargets",
+        vec![31470005, 1, 4],
+    )));
+    for args in [
+        vec![31470005, 1],
+        vec![0, 1, 4],
+        vec![31470005, -1, 4],
+        vec![31470005, 1, 0],
+    ] {
+        assert!(!supports(&ParsedBehavior::new(
+            60036,
+            "ConsumeBuffChangeTargets",
+            args,
+        )));
+    }
+}
+
+#[test]
 fn moxie_absorption_accepts_exact_aliases() {
     for opcode in [30002, 30011] {
         let definition = find_key(opcode, "AbsorbExPoint").unwrap();

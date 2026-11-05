@@ -181,7 +181,7 @@ pub(super) fn supports_mixed_rate(behavior: &ParsedBehavior) -> bool {
     )
 }
 
-pub(super) fn supports_rate(behavior: &ParsedBehavior) -> bool {
+pub(super) fn supports_consume(behavior: &ParsedBehavior) -> bool {
     let argument_count = if behavior.raw_args.is_empty() {
         behavior.args.len()
     } else {

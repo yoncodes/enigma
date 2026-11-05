@@ -808,8 +808,8 @@ behavior_definitions! {
     [40007] "AddActAndCardLimit" => super::card_limit::Handler, AddActAndCardLimit, AfterDamage, round_modifier_with_output;
     [60221] "IgnoreSkillConfigDamageRate" => super::general::DamageRateMarkerHandler, IgnoreSkillConfigDamageRate, Immediate, destination, arguments::none;
     [100017] "IgnoreSkillConfigDamageRate" => super::general::DamageRateMarkerHandler, IgnoreSkillConfigDamageRate, Immediate, destination, arguments::none;
-    [60036] "ConsumeBuffChangeTargets" => super::skill_modifier::Handler, ConsumeBuffChangeTargets, Immediate, destination;
-    [60034] "ConsumeBuffUpSkillDamageRate" => super::skill_modifier::Handler, ConsumeBuffUpSkillDamageRate, Immediate, destination, super::skill_modifier::supports_rate;
+    [60036] "ConsumeBuffChangeTargets" => super::skill_modifier::Handler, ConsumeBuffChangeTargets, SourceOpening, destination, super::skill_modifier::supports_consume;
+    [60034] "ConsumeBuffUpSkillDamageRate" => super::skill_modifier::Handler, ConsumeBuffUpSkillDamageRate, Immediate, destination, super::skill_modifier::supports_consume;
     [60307] "FoundationCounterClear" => super::foundation_counter::Handler, FoundationCounterClear, Immediate, destination;
     [60035] "ConsumeBuffAttrFix" => super::skill_modifier::Handler, ConsumeBuffAttrFix, Immediate, destination;
     [100019] "ConsumeBuffFixMixedRate" => super::skill_modifier::Handler, ConsumeBuffFixMixedRate, Immediate, destination, super::skill_modifier::supports_mixed_rate;
