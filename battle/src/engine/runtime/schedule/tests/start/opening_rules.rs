@@ -601,7 +601,7 @@ fn configured_special_temp_card_runs_during_the_opening_round_start_card_event()
 
     assert!(
         managers.card.hand().iter().any(|card| {
-            card.skill_id == Some(31140151) && card.uid == Some(10) && card.temp_card == Some(true)
+            card.skill_id == Some(31140151) && card.uid == Some(0) && card.temp_card == Some(true)
         }),
         "hand={:?} active_features={:?}",
         managers.card.hand(),

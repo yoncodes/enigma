@@ -242,12 +242,10 @@ fn temporary_card_and_energy_changes_share_one_command_path() {
         .unwrap();
     assert_eq!(added.kind, CardChangeKind::TemporaryAdded);
     assert_eq!(added.added.as_ref().unwrap().skill_id, Some(999));
-    assert_eq!(added.added.as_ref().unwrap().uid, Some(10));
+    assert_eq!(added.added.as_ref().unwrap().uid, Some(0));
+    assert_eq!(added.added.as_ref().unwrap().hero_id, Some(0));
     assert_eq!(added.added.as_ref().unwrap().temp_card, Some(true));
-    assert_eq!(
-        added.added.as_ref().unwrap().card_type,
-        Some(sonettobuf::card_info::CardType::Skill3 as i32)
-    );
+    assert_eq!(added.added.as_ref().unwrap().card_type, Some(0));
     assert!(matches!(
         added.operation,
         Some(CardChange::SpCardAdd {

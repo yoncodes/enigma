@@ -126,7 +126,7 @@ impl BehaviorHandler for Handler {
                     crate::engine::manager::card::TemporaryCardKind::GenericSkill
                 }
                 BehaviorKind::AddSpTempCard2 => {
-                    crate::engine::manager::card::TemporaryCardKind::ConfiguredSkill
+                    crate::engine::manager::card::TemporaryCardKind::PrecastSkill
                 }
                 _ => unreachable!("temporary-card branch has an exact kind guard"),
             };
@@ -908,6 +908,8 @@ mod tests {
                     && add.skill_id == 31446013
                     && add.reserve_id == 3149
                     && add.team_type == 1
+                    && add.kind
+                        == crate::engine::manager::card::TemporaryCardKind::PrecastSkill
         ));
         assert_eq!(Handler::references(&behavior).skills, vec![31446013]);
     }

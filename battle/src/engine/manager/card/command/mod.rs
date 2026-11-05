@@ -29,6 +29,7 @@ pub struct CardSetup {
 pub enum TemporaryCardKind {
     GenericSkill,
     ConfiguredSkill,
+    PrecastSkill,
     ConfiguredSkill3,
     HeroSkill,
 }
@@ -902,8 +903,10 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             let card = match add.kind {
-                TemporaryCardKind::GenericSkill => manager.add_temp_card(add.skill_id),
-                TemporaryCardKind::ConfiguredSkill
+                TemporaryCardKind::GenericSkill | TemporaryCardKind::ConfiguredSkill => {
+                    manager.add_temp_card(add.skill_id)
+                }
+                TemporaryCardKind::PrecastSkill
                 | TemporaryCardKind::ConfiguredSkill3
                 | TemporaryCardKind::HeroSkill => manager.add_temp_card_for(
                     add.target_uid,
@@ -923,7 +926,9 @@ pub(super) fn execute(
                 Some(add.origin),
                 match add.kind {
                     TemporaryCardKind::GenericSkill => CardChangeKind::GenericTemporaryAdded,
-                    TemporaryCardKind::ConfiguredSkill => CardChangeKind::TemporaryAdded,
+                    TemporaryCardKind::ConfiguredSkill | TemporaryCardKind::PrecastSkill => {
+                        CardChangeKind::TemporaryAdded
+                    }
                     TemporaryCardKind::ConfiguredSkill3 => CardChangeKind::ConfiguredSkill3Added,
                     TemporaryCardKind::HeroSkill => CardChangeKind::HeroTemporaryAdded,
                 },
