@@ -389,22 +389,18 @@ fn hero_round_interval_alternates_from_its_configured_start_round() {
         start_round,
         period,
     };
-    let completed = |start_round, period| ParsedConditionKind::CompletedRoundInterval {
-        start_round,
-        period,
-    };
     assert!(matches(45104, current(1, 2), 1));
     assert!(!matches(45104, current(1, 2), 2));
     assert!(matches(45104, current(1, 2), 3));
     assert!(!matches(45104, current(2, 2), 1));
     assert!(matches(45104, current(2, 2), 2));
     assert!(!matches(45104, current(2, 2), 3));
-    assert!(!matches(45101, completed(11, 1), 11));
-    assert!(matches(45101, completed(11, 1), 12));
-    assert!(!matches(45101, completed(2, 2), 2));
-    assert!(matches(45101, completed(2, 2), 3));
-    assert!(!matches(45101, completed(2, 2), 4));
-    assert!(matches(45101, completed(2, 2), 5));
+    assert!(matches(45101, current(11, 1), 11));
+    assert!(matches(45101, current(11, 1), 12));
+    assert!(matches(45101, current(2, 2), 2));
+    assert!(!matches(45101, current(2, 2), 3));
+    assert!(matches(45101, current(2, 2), 4));
+    assert!(!matches(45101, current(2, 2), 5));
 }
 
 #[test]

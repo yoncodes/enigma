@@ -463,15 +463,6 @@ fn condition_kind_matches(
                 && context.current_round >= *start_round
                 && (context.current_round - *start_round) % *period == 0
         }
-        ParsedConditionKind::CompletedRoundInterval {
-            start_round,
-            period,
-        } => {
-            let completed_round = context.current_round.saturating_sub(1);
-            *period > 0
-                && completed_round >= *start_round
-                && (completed_round - *start_round) % *period == 0
-        }
         ParsedConditionKind::ActionOrder(order) => context.action_order == *order,
         ParsedConditionKind::ActionOrderRange { start, count } => {
             *count > 0
