@@ -90,6 +90,85 @@ fn nested_cast_keeps_its_frame_target_without_reordering_damage() {
 }
 
 #[test]
+fn terminal_direct_cast_completes_only_when_it_ends_the_battle() {
+    crate::test_support::init_config();
+    let run = |target_hp| {
+        let entity = |uid, hp, attack| FightEntityInfo {
+            uid: Some(uid),
+            current_hp: Some(hp),
+            attr: Some(HeroAttribute {
+                hp: Some(hp),
+                attack: Some(attack),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let fight = Fight {
+            battle_id: Some(1),
+            attacker: Some(FightTeam {
+                entitys: vec![entity(10, 1_000, 100)],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![entity(-1, target_hp, 0)],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert(ParsedSkillEffect {
+            skill_id: 100,
+            slots: vec![SkillEffectSlot::new(
+                ParsedBehavior::new(60223, "DirectUseSkillNotExtra", vec![200]),
+                TargetRequest {
+                    code: 233,
+                    raw: Vec::new(),
+                },
+            )],
+        });
+        catalog.insert(ParsedSkillEffect {
+            skill_id: 200,
+            slots: Vec::new(),
+        });
+        catalog.insert_logic_target(200, 202);
+        catalog.insert_damage_rate(200, 1_000);
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 100,
+        }
+        .into();
+        invocation.mode = SkillExecutionMode::Active;
+        invocation.target = SkillTarget::Explicit(-1);
+
+        run_action(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                battle_id: 1,
+                ..Default::default()
+            },
+            [],
+            invocation,
+        )
+        .unwrap()
+        .events
+        .into_iter()
+        .filter_map(|event| match event {
+            BattleEvent::AllyAction(action) => Some(action.skill_id),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+    };
+
+    assert_eq!(run(100), vec![200, 100]);
+    assert_eq!(run(101), vec![100]);
+}
+
+#[test]
 fn self_destructing_attack_finishes_its_damage_phase() {
     crate::test_support::init_config();
     let entity = |uid, hp, attack| FightEntityInfo {
