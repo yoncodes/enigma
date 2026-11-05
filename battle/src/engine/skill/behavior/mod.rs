@@ -102,6 +102,7 @@ pub fn is_slot_supported(slot: &SkillEffectSlot) -> bool {
         return false;
     };
     is_supported(&slot.behavior)
+        && (definition.supports_slot)(slot)
         && definition.required_event.is_none_or(|required| {
             slot.compiled_subscriptions()
                 .is_ok_and(|subscriptions| subscriptions.iter().any(|key| key.event == required))

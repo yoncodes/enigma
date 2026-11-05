@@ -487,6 +487,12 @@ pub(in crate::engine::runtime) fn emit_ops(
                 type_name: slot.behavior.spec.key.type_name.clone(),
             }
         })?;
+        if !(definition.supports_slot)(slot) {
+            return Err(SkillOpError::MissingBehaviorOp {
+                skill_id: invocation.plan.skill_id,
+                key: definition.key,
+            });
+        }
         let managers = if attack_modifier_reads_action_start(slot) {
             action_start_managers.as_deref().unwrap_or(managers)
         } else {
@@ -905,6 +911,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                 execution.resume_target = target_index + 1;
                 let mut continuation = invocation.clone();
                 continuation.phase = active_phase;
+                continuation.additional_moxie = execution.context.additional_moxie;
                 return Ok(SkillEmission {
                     ops: outputs,
                     fired_rules,
@@ -947,6 +954,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution.resume_slot = slot_index + 1;
             let mut continuation = invocation.clone();
             continuation.phase = Some(phase);
+            continuation.additional_moxie = execution.context.additional_moxie;
             return Ok(SkillEmission {
                 ops: outputs,
                 fired_rules,
@@ -1235,6 +1243,7 @@ pub(in crate::engine::runtime) fn emit_ops(
     let continuation = next_phase.map(|phase| {
         let mut continuation = invocation.clone();
         continuation.phase = Some(phase);
+        continuation.additional_moxie = execution.context.additional_moxie;
         continuation
     });
     let publishes_lifecycle =
@@ -1390,10 +1399,11 @@ pub(in crate::engine::runtime) fn emit_ops(
                         rank: managers.catalog().skill_rank(invocation.plan.skill_id),
                         skill_type: execution.context.damage_target_count_kind,
                         effect_tag: catalog.effect_tag(effect_skill_id),
-                        additional_moxie: invocation.additional_moxie,
+                        additional_moxie: execution.context.additional_moxie,
                         moxie_spent: execution
                             .moxie_spent
-                            .max(invocation.additional_moxie.max(0)),
+                            .saturating_add(execution.context.additional_moxie.max(0))
+                            .max(invocation.moxie_spent.max(0)),
                         trigger: invocation.trigger,
                         extra_skill_kind: execution.context.extra_skill_kind,
                         mode: invocation.mode,

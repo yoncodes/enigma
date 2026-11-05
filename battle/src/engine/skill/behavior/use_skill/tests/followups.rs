@@ -871,7 +871,8 @@ fn direct_big_skill_refunds_only_the_configured_ultimate_cost() {
         ] if invocation.plan.source_uid == 10
             && invocation.plan.skill_id == 30020131
             && invocation.mode == crate::engine::skill::action::SkillExecutionMode::DirectBig
-            && invocation.additional_moxie == 5
+            && invocation.additional_moxie == 0
+            && invocation.moxie_spent == 5
             && invocation.trigger
                 == crate::engine::skill::action::SkillTrigger::Explicit(311401511)
     ));

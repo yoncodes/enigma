@@ -36,6 +36,28 @@ fn lookup_requires_the_exact_opcode_type_pair() {
 }
 
 #[test]
+fn consume_ex_point_validates_its_semantic_argument_shape() {
+    let definition = find_key(60174, "ConsumeExPointAddAttr").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert!(supports(&ParsedBehavior::new(
+        60174,
+        "ConsumeExPointAddAttr",
+        vec![211, 60, 1, 5, 221, 1000],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60174,
+        "ConsumeExPointAddAttr",
+        vec![211, 60, 1, 5, 221],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60174,
+        "ConsumeExPointAddAttr",
+        vec![205, 60, 1, 5, 221, 1000],
+    )));
+}
+
+#[test]
 fn unnamed_client_effect_emits_only_the_captured_strengthen_marker() {
     let behavior = ParsedBehavior::new(60304, "UnnamedClientEffect", vec![1, 4]);
     let definition = find(&behavior).expect("captured client effect must be registered");

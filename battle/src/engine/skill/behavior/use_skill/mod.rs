@@ -699,7 +699,8 @@ fn direct_big_skill_rule_ops(
         }
         .into();
     invocation.mode = crate::engine::skill::action::SkillExecutionMode::DirectBig;
-    invocation.additional_moxie = consumed;
+    invocation.additional_moxie = consumed.saturating_sub(refund);
+    invocation.moxie_spent = consumed;
     invocation.trigger =
         crate::engine::skill::action::SkillTrigger::Explicit(context.active_skill_id);
     ops.push(RuleOp::Skill(invocation));

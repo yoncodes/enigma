@@ -433,6 +433,9 @@ impl SkillEffectCatalog {
         };
         let mut subscriptions = Vec::new();
         for slot in &effect.slots {
+            if !crate::engine::skill::behavior::is_slot_supported(slot) {
+                continue;
+            }
             for subscription in slot.subscriptions() {
                 if !subscriptions.contains(&subscription) {
                     subscriptions.push(subscription);
@@ -451,6 +454,9 @@ impl SkillEffectCatalog {
         };
         let mut subscriptions = Vec::new();
         for slot in &effect.slots {
+            if !crate::engine::skill::behavior::is_slot_supported(slot) {
+                continue;
+            }
             for subscription in slot.compiled_subscriptions()? {
                 if !subscriptions.contains(&subscription) {
                     subscriptions.push(subscription);
@@ -469,6 +475,9 @@ impl SkillEffectCatalog {
         };
         let mut lanes = Vec::new();
         for (slot_index, slot) in effect.slots.iter().enumerate() {
+            if !crate::engine::skill::behavior::is_slot_supported(slot) {
+                continue;
+            }
             for subscription in slot.compiled_subscriptions()? {
                 if !lanes
                     .iter()

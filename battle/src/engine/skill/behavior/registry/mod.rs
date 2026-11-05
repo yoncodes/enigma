@@ -124,6 +124,7 @@ pub struct BehaviorDefinition {
     pub condition_route_override: Option<ConditionRouteOverride>,
     pub required_event: Option<EventKind>,
     pub supports: Option<fn(&ParsedBehavior) -> bool>,
+    pub supports_slot: fn(&crate::engine::skill::effect::SkillEffectSlot) -> bool,
 }
 
 pub trait BehaviorHandler {
@@ -131,6 +132,10 @@ pub trait BehaviorHandler {
 
     fn supports(_: &ParsedBehavior) -> bool {
         false
+    }
+
+    fn supports_slot(_: &crate::engine::skill::effect::SkillEffectSlot) -> bool {
+        true
     }
 
     fn references(_: &ParsedBehavior) -> RuleReferences {
@@ -232,6 +237,7 @@ pub const fn definition<H: BehaviorHandler>(
         } else {
             None
         },
+        supports_slot: H::supports_slot,
     }
 }
 
@@ -823,7 +829,7 @@ behavior_definitions! {
     [60067] "SkillRateUpCardLevel" => super::rate::Handler, SkillRateUpCardLevel, Immediate, modifier, super::rate::supports_card_rank_skill_rate;
     [60234] "AddSkillRateByTargetCount" => super::rate::Handler, AddSkillRateByTargetCount, Immediate, modifier, super::rate::supports_target_count_rate;
     [60182] "SkillRateUpBySelfBuffType" => super::rate::Handler, SkillRateUpBySelfBuffType, Immediate, modifier, super::rate::supports_self_buff_type_rate;
-    [60174] "ConsumeExPointAddAttr" => super::rate::Handler, ConsumeExPointAddAttr, Immediate, modifier;
+    [60174] "ConsumeExPointAddAttr" => super::rate::Handler, ConsumeExPointAddAttr, Immediate, modifier, super::rate::supports_consume_ex_point_add_attr;
     [60255] "HeatScaleAddSkillRate" => super::rate::Handler, HeatScaleAddSkillRate, Immediate, modifier, super::rate::supports_heat_scale_rate;
     [100030] "TwinsUpByCounter" => super::rate::Handler, ConduitRateByConsumedPower, Immediate, modifier, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(203, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::SourceOpening) }), super::rate::supports_conduit_rate;
     [100031] "TwinsPowerUp" => super::rate::Handler, ConduitPowerUp, Immediate, modifier, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(203, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::SourceOpening) }), super::rate::supports_conduit_power_up;
