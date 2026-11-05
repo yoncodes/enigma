@@ -935,6 +935,13 @@ fn project_change(
                 .ok_or(ProjectionError::Card(changes.kind))?;
             vec![CardPacket::from_change(change)]
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignCharged => {
+            let change = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(change)]
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Dissolved => changes
             .operation
             .clone()

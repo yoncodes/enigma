@@ -48,6 +48,7 @@ fn subscriber() -> BuffActSubscriber {
 fn impromptu() -> BattleEvent {
     BattleEvent::SkillAction(SkillActionEvent {
         source_uid: emitter::UID,
+        card_index: 0,
         skill_id: 31411001,
         target_uid: -7,
         target_uids: vec![-7, -5, -6],

@@ -44,6 +44,7 @@ pub mod career_ratio_fix;
 pub mod career_restraint;
 pub mod cast_channel;
 pub mod change_remove_buff_use_skill_param;
+pub mod charge_sovereign_card;
 pub mod conduit_select;
 pub mod consume_and_grant;
 pub mod consume_buff_add_buff_continue_channel;
@@ -624,6 +625,7 @@ pub struct BuffActRuleOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuffActRuleError {
+    ChargeSovereignCard(charge_sovereign_card::ChargeError),
     UnlockSovereignCard(unlock_sovereign_card::UnlockError),
     CreateSovereignCard(create_sovereign_card::CreateSovereignCardError),
     RecordReplaceMagicCircle(record_replace_magic_circle::RecordReplaceMagicCircleError),

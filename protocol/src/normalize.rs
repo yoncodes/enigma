@@ -119,7 +119,6 @@ pub fn normalize_live_json(value: &mut serde_json::Value) {
                 }
             }
             for (field, value) in map.iter_mut() {
-                // CardData.value is a string payload, including when it contains digits.
                 if field != "cardDataes" {
                     normalize_live_json(value);
                 }

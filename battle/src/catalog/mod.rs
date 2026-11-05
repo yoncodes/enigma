@@ -484,6 +484,11 @@ impl BattleCatalog {
             .unwrap_or_default()
     }
 
+    pub(crate) fn skill_target_type(self, skill_id: i32) -> Option<i32> {
+        self.game_data
+            .skill_target_type(&self.skill_effect(skill_id)?.logic_target)
+    }
+
     pub(crate) fn skill_extra_kind(self, skill_id: i32) -> i32 {
         self.skill_effect(skill_id)
             .map(|effect| effect.is_extra)

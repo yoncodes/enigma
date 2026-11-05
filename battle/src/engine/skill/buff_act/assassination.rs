@@ -462,6 +462,7 @@ mod tests {
         };
         let action = |skill_id, rank| crate::engine::skill::action::SkillActionEvent {
             source_uid: 11,
+            card_index: 0,
             skill_id,
             target_uid: -1,
             target_uids: vec![-1],
@@ -618,6 +619,7 @@ mod tests {
             SkillEffectCatalog::from_roots(config::configs::get(), [31240103, 312401453], []);
         let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
             source_uid: 10,
+            card_index: 0,
             skill_id: 31240103,
             target_uid: -1,
             target_uids: vec![-1, -1, -2],

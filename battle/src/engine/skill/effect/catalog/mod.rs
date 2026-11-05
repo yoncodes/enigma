@@ -51,6 +51,7 @@ pub(crate) enum SkillEffectTag {
     Buff = 4,
     CounterSpell = 5,
     Heal = 6,
+    Channel = 9,
     Device = 14,
 }
 

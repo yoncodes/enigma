@@ -35,18 +35,14 @@ impl CardPacket {
 
     pub fn from_change(change: CardChange) -> ActEffect {
         match change {
-            CardChange::SovereignUnlocked { card, team_type } => ActEffect {
-                target_id: Some(0),
-                effect_type: Some(EffectType::Updatecarddata as i32),
-                effect_num: Some(1),
-                effect_num1: Some(0),
-                config_effect: Some(0),
-                buff_act_id: Some(0),
-                reserve_id: Some(0),
-                team_type: Some(team_type),
-                card_info: Some(wire_card(card)),
-                ..Default::default()
-            },
+            CardChange::SovereignUnlocked { card, team_type } => {
+                sovereign::data(0, card, team_type)
+            }
+            CardChange::SovereignCharged {
+                card,
+                index,
+                team_type,
+            } => sovereign::data(index, card, team_type),
             CardChange::InsertHand {
                 target_uid,
                 card,

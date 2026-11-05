@@ -37,6 +37,7 @@ mod player;
 mod reward_query;
 mod room;
 mod scene;
+mod skill_query;
 mod summon_query;
 mod task;
 mod toughness;

@@ -2,6 +2,11 @@ use sonettobuf::CardInfo;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CardChange {
+    SovereignCharged {
+        card: CardInfo,
+        index: usize,
+        team_type: i32,
+    },
     SovereignUnlocked {
         card: CardInfo,
         team_type: i32,

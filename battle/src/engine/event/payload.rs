@@ -508,6 +508,7 @@ mod subscription_tests {
     fn skill_cast_uses_the_hit_passives_phase_not_action_completion() {
         let action = crate::engine::skill::action::SkillActionEvent {
             source_uid: 1,
+            card_index: 0,
             skill_id: 2,
             target_uid: -1,
             target_uids: vec![-1],

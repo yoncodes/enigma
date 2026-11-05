@@ -4,7 +4,11 @@ use sonettobuf::{CardData, CardExtraInfo, CardInfo, card_data::CardDataKey, card
 use super::{CardChange, CardCommandError, CardManager, command::CardInsertSovereign, permissions};
 
 mod boost;
+mod charge;
 mod unlock;
+
+pub(crate) use charge::ChargeTarget;
+pub use charge::SovereignEnhancement;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,24 +36,28 @@ fn payload(card: &CardInfo) -> impl Iterator<Item = &CardData> {
         .filter(|data| data.key == Some(CardDataKey::Unnamed as i32))
 }
 
-pub(super) fn is_locked(card: &CardInfo) -> Result<bool, ()> {
+fn state(card: &CardInfo) -> Result<Option<SovereignState>, ()> {
     let mut entries = payload(card);
     let Some(data) = entries.next() else {
-        return Ok(false);
+        return Ok(None);
     };
     if entries.next().is_some() {
         return Err(());
     }
     let state: SovereignState =
         serde_json::from_str(data.value.as_deref().ok_or(())?).map_err(|_| ())?;
-    let levels = state.strengthen;
+    let levels = &state.strengthen;
     if [levels.first, levels.second, levels.third, levels.fourth]
         .iter()
         .any(|level| *level > 4)
     {
         return Err(());
     }
-    Ok(state.lock)
+    Ok(Some(state))
+}
+
+pub(super) fn is_locked(card: &CardInfo) -> Result<bool, ()> {
+    state(card).map(|state| state.is_some_and(|state| state.lock))
 }
 
 impl CardManager {

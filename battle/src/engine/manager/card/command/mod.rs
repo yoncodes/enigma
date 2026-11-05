@@ -5,7 +5,7 @@ use crate::engine::{event::payload::BattleEvent, skill::rule::CommandOrigin};
 
 use super::{
     CardChange, CardManager, CardPlayChoice, CardPrepareAiSkill, EnchantedType, PlayedCard,
-    PreparedAiSkill,
+    PreparedAiSkill, SovereignEnhancement,
 };
 
 pub const CARD_PLAY_ORIGIN: CommandOrigin = CommandOrigin {
@@ -408,6 +408,12 @@ pub enum CardCommand {
         owner_uid: i64,
         team_type: i32,
     },
+    ChargeSovereign {
+        origin: CommandOrigin,
+        owner_uid: i64,
+        kind: SovereignEnhancement,
+        team_type: i32,
+    },
     AddUniversal(CardAddUniversal),
     RedealKeepRanks {
         origin: CommandOrigin,
@@ -498,6 +504,7 @@ impl CardCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardChangeKind {
+    SovereignCharged,
     SovereignUnlocked,
     InitialSovereignBoost,
     SovereignInserted,
@@ -778,6 +785,22 @@ pub(super) fn execute(
             (
                 Some(origin),
                 CardChangeKind::SovereignUnlocked,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::ChargeSovereign {
+            origin,
+            owner_uid,
+            kind,
+            team_type,
+        } => {
+            operation = Some(manager.charge_sovereign(owner_uid, kind, team_type)?);
+            (
+                Some(origin),
+                CardChangeKind::SovereignCharged,
                 None,
                 None,
                 Vec::new(),

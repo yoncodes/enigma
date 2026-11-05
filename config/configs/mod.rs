@@ -355,6 +355,7 @@ pub mod skill_effect;
 pub mod skill_ex_level;
 pub mod skill_next;
 pub mod skill_passive_level;
+pub mod skill_target_type_define;
 pub mod skin;
 pub mod store;
 pub mod store_charge_goods;
@@ -793,6 +794,7 @@ pub struct GameDB {
     pub skill_ex_level: skill_ex_level::SkillExLevelTable,
     pub skill_next: skill_next::SkillNextTable,
     pub skill_passive_level: skill_passive_level::SkillPassiveLevelTable,
+    pub skill_target_type_define: skill_target_type_define::SkillTargetTypeDefineTable,
     pub skin: skin::SkinTable,
     pub store: store::StoreTable,
     pub store_charge_goods: store_charge_goods::StoreChargeGoodsTable,
@@ -1942,6 +1944,9 @@ impl GameDB {
         let skill_passive_level = skill_passive_level::SkillPassiveLevelTable::load(
             &format!("{}/skill_passive_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill_passive_level.json: {}", e))?;
+        let skill_target_type_define = skill_target_type_define::SkillTargetTypeDefineTable::load(
+            &format!("{}/skill_target_type_define.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load skill_target_type_define.json: {}", e))?;
         let skin = skin::SkinTable::load(
             &format!("{}/skin.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skin.json: {}", e))?;
@@ -2537,6 +2542,7 @@ impl GameDB {
             skill_ex_level,
             skill_next,
             skill_passive_level,
+            skill_target_type_define,
             skin,
             store,
             store_charge_goods,

@@ -12,6 +12,8 @@ mod permissions;
 pub mod pool;
 pub(crate) mod prepared;
 mod sovereign;
+pub(crate) use sovereign::ChargeTarget;
+pub use sovereign::SovereignEnhancement;
 pub mod start;
 pub mod temp;
 pub mod types;

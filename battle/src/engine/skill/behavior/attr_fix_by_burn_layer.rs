@@ -178,6 +178,7 @@ mod tests {
 
         let event = BattleEvent::SkillAction(SkillActionEvent {
             source_uid: 10,
+            card_index: 0,
             skill_id: 30940111,
             target_uid: -1,
             target_uids: vec![-1],

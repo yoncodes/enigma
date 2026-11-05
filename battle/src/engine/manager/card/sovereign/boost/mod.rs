@@ -1,4 +1,4 @@
-use super::{CardCommandError, CardManager, SovereignState, Strengthen, payload};
+use super::{CardCommandError, CardManager, Strengthen, state};
 use crate::engine::manager::card::{CardInitialSovereignBoost, SovereignBoostChange};
 
 impl CardManager {
@@ -15,19 +15,9 @@ impl CardManager {
             .filter(|card| card.uid == Some(boost.owner_uid))
             .cloned()
             .ok_or(CardCommandError::InvalidCommand)?;
-        let mut state: SovereignState = {
-            let mut entries = payload(&card);
-            let data = entries.next().ok_or(CardCommandError::InvalidCommand)?;
-            if entries.next().is_some() {
-                return Err(CardCommandError::InvalidCommand);
-            }
-            serde_json::from_str(
-                data.value
-                    .as_deref()
-                    .ok_or(CardCommandError::InvalidCommand)?,
-            )
+        let mut state = state(&card)
             .map_err(|_| CardCommandError::InvalidCommand)?
-        };
+            .ok_or(CardCommandError::InvalidCommand)?;
         if !state.lock
             || [
                 state.strengthen.first,

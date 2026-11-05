@@ -180,6 +180,7 @@ pub enum BuffActKind {
     CreateTempSkill3Card,
     SovereignCardGeneration,
     SovereignCardUnlock,
+    SovereignCardCharge,
     CreateMaxHpAdditionalDamageAndRemove,
     CritRateAlter2,
     CritRateAlterByOtherBuff,
@@ -1599,6 +1600,12 @@ buff_act_definitions! {
         supports: |args| matches!(args, [31470163]),
         references: references_for_feature,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1134, "UnnamedUnlockSpCard"), &[EffectType::None as i32]));
+    (1135, "UnnamedChargingSpCard") => SovereignCardCharge,
+        source: Owner, actor: Team,
+        fallible_scoped_runtime: super::charge_sovereign_card::rule_ops,
+        raw_supports: |_, raw| raw == "1135#1,3#2,4#5,6#7,8",
+        completion_gap: "positive charging of a future queued Sovereign card is unproven; held-card charging is implemented",
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1135, "UnnamedChargingSpCard"), &[EffectType::None as i32]));
     (1139, "MeiLeiErCharge") => BuffOwnedCharge,
         effect_time_subscription: false,
         supports: |args| matches!(args, [trigger, limit, linked_skill]

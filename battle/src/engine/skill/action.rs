@@ -89,6 +89,7 @@ pub enum SkillLifecycle {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillActionEvent {
     pub source_uid: i64,
+    pub card_index: i32,
     pub skill_id: i32,
     pub target_uid: i64,
     pub target_uids: Vec<i64>,

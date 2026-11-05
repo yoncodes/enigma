@@ -86,6 +86,7 @@ fn action_event(
 ) -> SkillActionEvent {
     SkillActionEvent {
         source_uid: invocation.plan.source_uid,
+        card_index: invocation.card_index,
         skill_id: invocation.plan.skill_id,
         target_uid: execution
             .primary_target_uid

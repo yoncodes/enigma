@@ -64,6 +64,7 @@ mod tests {
         );
         let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
             source_uid: 10,
+            card_index: 0,
             target_uid: -1,
             skill_id: 100,
             is_attack: true,

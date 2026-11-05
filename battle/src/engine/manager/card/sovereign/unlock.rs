@@ -1,4 +1,4 @@
-use super::{CardChange, CardCommandError, CardManager, SovereignState, is_locked, permissions};
+use super::{CardChange, CardCommandError, CardManager, is_locked, permissions, state};
 use sonettobuf::card_data::CardDataKey;
 
 impl CardManager {
@@ -22,17 +22,14 @@ impl CardManager {
             return Err(CardCommandError::InvalidCommand);
         }
         let mut card = self.hand()[0].clone();
+        let mut state = state(&card)
+            .map_err(|_| CardCommandError::InvalidCommand)?
+            .ok_or(CardCommandError::InvalidCommand)?;
         let data = card
             .card_dataes
             .iter_mut()
             .find(|data| data.key == Some(CardDataKey::Unnamed as i32))
             .ok_or(CardCommandError::InvalidCommand)?;
-        let mut state: SovereignState = serde_json::from_str(
-            data.value
-                .as_deref()
-                .ok_or(CardCommandError::InvalidCommand)?,
-        )
-        .map_err(|_| CardCommandError::InvalidCommand)?;
         state.lock = false;
         data.value =
             Some(serde_json::to_string(&state).map_err(|_| CardCommandError::InvalidCommand)?);
