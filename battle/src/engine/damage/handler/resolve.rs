@@ -50,6 +50,7 @@ pub struct DamageRuntime<'a> {
     pub fight_version: i32,
     pub pool: &'a TargetPool,
     pub attributes: &'a AttributeManager,
+    pub target_attributes: &'a AttributeManager,
     pub buffs: &'a BuffManager,
     pub target_buffs: &'a BuffManager,
     pub hp: &'a HpManager,
@@ -642,6 +643,7 @@ fn direct_damage_trace(
     } = request;
     let DamageRuntime {
         attributes,
+        target_attributes,
         buffs,
         target_buffs,
         hp,
@@ -666,10 +668,10 @@ fn direct_damage_trace(
     );
     let include_trigger_history = formula_rules.includes_trigger_history;
     let attribute_delta = |entity: &TargetEntity, attr_id: AttrId| -> i32 {
-        let (entity_buffs, active_features) = if entity.uid == target.uid {
-            (target_buffs, &target_active_features)
+        let (entity_attributes, entity_buffs, active_features) = if entity.uid == target.uid {
+            (target_attributes, target_buffs, &target_active_features)
         } else {
-            (buffs, &source_active_features)
+            (attributes, buffs, &source_active_features)
         };
         let emitter_attribute = if entity.uid == crate::engine::manager::emitter::UID {
             runtime.emitter.map_or(0, |emitter| {
@@ -688,7 +690,7 @@ fn direct_damage_trace(
                 active_features,
                 entity.uid,
                 attr_id,
-                attributes,
+                    entity_attributes,
                 entity_buffs,
                 hp,
                 ),
@@ -897,10 +899,11 @@ fn direct_damage_trace(
         } else {
             AttrId::RealityDef
         };
-    let target_defense = attributes.base(target.uid, defense_attr);
-    let defense_multiplier =
-        (1000 + attributes.get(target.uid, defense_attr) + attribute_delta(target, defense_attr))
-            .max(0);
+    let target_defense = target_attributes.base(target.uid, defense_attr);
+    let defense_multiplier = (1000
+        + target_attributes.get(target.uid, defense_attr)
+        + attribute_delta(target, defense_attr))
+    .max(0);
     let penetration = (attributes.get(source.uid, AttrId::Penetration)
         + attribute_delta(source, AttrId::Penetration)
         + attack_local_attribute(AttrId::Penetration)
@@ -1026,7 +1029,7 @@ fn direct_damage_trace(
         })
         .sum::<i32>();
     let action_joins_might = formula_rules.combines_action_with_might;
-    let target_base_regular = attributes.get(target.uid, AttrId::DmgTakenReduction);
+    let target_base_regular = target_attributes.get(target.uid, AttrId::DmgTakenReduction);
     let target_buff_regular = attribute_delta(target, AttrId::DmgTakenReduction);
     let target_regular = target_base_regular
         + target_buff_regular
@@ -1035,7 +1038,7 @@ fn direct_damage_trace(
         + attribute_delta(source, AttrId::PlaymodeDmgIncrease)
         + attack_attribute_delta(AttrId::PlaymodeDmgIncrease)
         + attack_local_attribute(AttrId::PlaymodeDmgIncrease);
-    let playmode_immunity = attributes.get(target.uid, AttrId::PlaymodeDmgImmunity)
+    let playmode_immunity = target_attributes.get(target.uid, AttrId::PlaymodeDmgImmunity)
         + attribute_delta(target, AttrId::PlaymodeDmgImmunity)
         + attack_attribute_delta(AttrId::PlaymodeDmgImmunity);
     let final_delta = attribute_delta(source, AttrId::FinalDmgBonus)
@@ -1066,7 +1069,7 @@ fn direct_damage_trace(
     let buff_crit = attribute_delta(source, AttrId::CriticalDmg)
         + attack_attribute_delta(AttrId::CriticalDmg)
         + attack_local_attribute(AttrId::CriticalDmg);
-    let target_base_crit = attributes.get(target.uid, AttrId::CriticalDef);
+    let target_base_crit = target_attributes.get(target.uid, AttrId::CriticalDef);
     let target_buff_crit = attribute_delta(target, AttrId::CriticalDef);
     let target_crit = if formula_rules.applies_target_base_critical_defense {
         target_base_crit
@@ -1162,7 +1165,7 @@ fn direct_damage_trace(
                 )
             })
             .collect::<Vec<_>>();
-        let target_buffs = buffs
+        let target_buffs = target_buffs
             .active_for(target.uid)
             .map(|buff| {
                 (

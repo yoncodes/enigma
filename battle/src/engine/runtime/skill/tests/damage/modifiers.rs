@@ -156,6 +156,163 @@ fn source_passive_attack_modifier_is_collected_by_runtime_damage() {
 }
 
 #[test]
+fn paid_action_damage_keeps_source_snapshot_and_current_target_state() {
+    crate::test_support::init_config();
+    const SKILL_ID: i32 = 999_999_008;
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                buffs: vec![BuffInfo {
+                    uid: Some(1),
+                    buff_id: Some(434421),
+                    from_uid: Some(10),
+                    layer: Some(4),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.attribute.override_ex(
+        10,
+        &HeroExAttribute {
+            cri_dmg: Some(1_400),
+            ..Default::default()
+        },
+    );
+    let mut catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    catalog.insert(ParsedSkillEffect {
+        skill_id: SKILL_ID,
+        slots: Vec::new(),
+    });
+    catalog.insert_damage_rate(SKILL_ID, 1_000);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: SKILL_ID,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-1);
+    let mut execution = SkillExecution::with_payment(
+        TargetContext::default(),
+        Some(crate::engine::skill::action::ActionPayment {
+            cost: crate::engine::manager::ex_point::ExPointCommand::Spend(
+                crate::engine::manager::ex_point::ExPointChange {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Skill,
+                        key: DefinitionKey::new(0, "TestPaidAction"),
+                    },
+                    source_uid: 10,
+                    target_uid: 10,
+                    delta: -5,
+                    config_effect: 0,
+                    effect_type: 0,
+                },
+            ),
+            composition: Vec::new(),
+        }),
+    );
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_hidden_crits(SKILL_ID, 10, [true]);
+    let mut damage = None;
+
+    loop {
+        let emission = emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            &mut execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap();
+        if emission.ops.iter().any(|emission| {
+            matches!(
+                &emission.op,
+                RuleOp::BeginSkillAction {
+                    lifecycle: crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action),
+                    ..
+                } if action.phase == SkillPhase::Immediate
+            )
+        }) {
+            managers.buff.add_replacing_excluded_with_layer_specified(
+                &managers.hp,
+                10,
+                10,
+                434421,
+                5,
+                true,
+            );
+            managers.buff.add_replacing_excluded_with_layer_specified(
+                &managers.hp,
+                -1,
+                -1,
+                204,
+                1,
+                true,
+            );
+            managers.attribute.override_ex(
+                -1,
+                &HeroExAttribute {
+                    cri_def: Some(200),
+                    ..Default::default()
+                },
+            );
+        }
+        damage = emission
+            .ops
+            .iter()
+            .find_map(|emission| match &emission.op {
+                RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(damage))) => {
+                    Some(damage.amount)
+                }
+                RuleOp::Command(BattleCommand::HpBatch(commands)) => {
+                    commands.iter().find_map(|command| match command {
+                        HpCommand::Damage(damage) => Some(damage.amount),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
+            .or(damage);
+        let Some(continuation) = emission.continuation else {
+            break;
+        };
+        invocation = continuation;
+    }
+
+    assert_eq!(managers.buff.buff_id_amount(10, 434421), 9);
+    assert!(managers.buff.has_buff_id(-1, 204));
+    assert_eq!(managers.attribute.get(-1, AttrId::CriticalDef), 200);
+    assert_eq!(damage, Some(1_100));
+}
+
+#[test]
 fn configured_single_and_mass_attack_penalties_follow_the_skill_target_count() {
     crate::test_support::init_config();
     let fight = Fight {
