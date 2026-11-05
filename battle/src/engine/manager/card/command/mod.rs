@@ -54,6 +54,16 @@ pub struct CardAddGenerated {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardInsertSovereign {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub skill_id: i32,
+    pub hero_id: i32,
+    pub max_position: usize,
+    pub team_type: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CardAddUniversal {
     pub origin: CommandOrigin,
     pub count: i32,
@@ -374,6 +384,7 @@ pub enum CardCommand {
         card_index: usize,
     },
     AddGenerated(CardAddGenerated),
+    InsertSovereign(CardInsertSovereign),
     AddUniversal(CardAddUniversal),
     RedealKeepRanks {
         origin: CommandOrigin,
@@ -464,6 +475,7 @@ impl CardCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardChangeKind {
+    SovereignInserted,
     Setup,
     ConsumedForEffect,
     Moved,
@@ -549,7 +561,8 @@ impl CardChanges {
                 cards: queue.cards.clone(),
             }];
         }
-        self.origin
+        let mut events: Vec<_> = self
+            .origin
             .filter(|_| self.before != self.after)
             .map(|origin| {
                 BattleEvent::CardChanged(crate::engine::event::payload::CardChangeEvent {
@@ -562,12 +575,33 @@ impl CardChanges {
                 })
             })
             .into_iter()
-            .collect()
+            .collect();
+        if let (
+            Some(origin),
+            Some(CardChange::InsertHand {
+                target_uid,
+                index,
+                team_type,
+                ..
+            }),
+        ) = (self.origin, &self.operation)
+        {
+            events.push(BattleEvent::SovereignCardCreated(
+                crate::engine::event::payload::SovereignCardCreatedEvent {
+                    origin,
+                    owner_uid: *target_uid,
+                    index: *index,
+                    team_type: *team_type,
+                },
+            ));
+        }
+        events
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardCommandError {
+    PlayForbidden,
     InvalidCommand,
     InvalidPlaySkill,
     InvalidPlayIndex,
@@ -692,6 +726,21 @@ pub(super) fn execute(
                 Some(origin),
                 CardChangeKind::Dissolved,
                 None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::InsertSovereign(insert) => {
+            operation = manager.insert_sovereign(insert)?;
+            let added = operation.as_ref().and_then(|operation| match operation {
+                CardChange::InsertHand { card, .. } => Some(card.clone()),
+                _ => None,
+            });
+            (
+                Some(insert.origin),
+                CardChangeKind::SovereignInserted,
+                added,
                 None,
                 Vec::new(),
                 Vec::new(),
@@ -963,6 +1012,7 @@ pub(super) fn execute(
             {
                 return Err(CardCommandError::InvalidPlaySkill);
             }
+            manager.check_play_permission(play.hand_index, play.choice.as_ref())?;
             let played = manager
                 .play_card_with_record(
                     play.hand_index,

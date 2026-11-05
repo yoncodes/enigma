@@ -8,8 +8,10 @@ pub mod draw;
 pub mod enchant;
 pub mod energy;
 pub mod op;
+mod permissions;
 pub mod pool;
 pub(crate) mod prepared;
+mod sovereign;
 pub mod start;
 pub mod temp;
 pub mod types;
@@ -20,9 +22,9 @@ pub use command::{
     CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
     CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardConsumptionKind,
     CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange,
-    CardHandLimitChange, CardInvalidateAiOwner, CardInvalidatePlayed, CardInvalidatedAi,
-    CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary, CardPlay,
-    CardQueueUse, CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel,
+    CardHandLimitChange, CardInsertSovereign, CardInvalidateAiOwner, CardInvalidatePlayed,
+    CardInvalidatedAi, CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary,
+    CardPlay, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel,
     CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
     CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability,
     CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp,
@@ -87,6 +89,12 @@ struct DeckRankUpStep {
     card_index: i32,
     next_skill_id: i32,
     rank_delta: i32,
+}
+
+#[derive(Clone, Copy)]
+enum PlaySource {
+    Hand(usize),
+    Team(usize),
 }
 
 impl CardManager {
@@ -927,6 +935,13 @@ impl CardManager {
     }
 
     pub fn move_card(&mut self, from_index: usize, to_index: usize) -> bool {
+        if self
+            .hand()
+            .get(from_index)
+            .is_none_or(|card| !permissions::permits(card, permissions::NOT_MOVE))
+        {
+            return false;
+        }
         self.deck.move_card(from_index, to_index)
     }
 
@@ -1171,6 +1186,46 @@ impl CardManager {
         self.deck.dissolve(index, replacement)
     }
 
+    fn resolve_play_source(
+        &self,
+        index: usize,
+        choice: Option<&CardPlayChoice>,
+    ) -> Option<PlaySource> {
+        if let Some(choice) = choice {
+            if self
+                .hand()
+                .get(index)
+                .is_some_and(|card| deck::same_card(card, &choice.source))
+            {
+                return Some(PlaySource::Hand(index));
+            }
+            if let Some(index) = self
+                .team_cards
+                .iter()
+                .rposition(|card| deck::same_card(card, &choice.source))
+            {
+                return Some(PlaySource::Team(index));
+            }
+            if let Some(index) = self.deck.matching_index(&choice.source) {
+                return Some(PlaySource::Hand(index));
+            }
+        }
+        if index < self.hand().len() {
+            return Some(PlaySource::Hand(index));
+        }
+        index
+            .checked_sub(self.hand().len())
+            .filter(|index| *index < self.team_cards.len())
+            .map(PlaySource::Team)
+    }
+
+    fn play_source_card(&self, source: PlaySource) -> &CardInfo {
+        match source {
+            PlaySource::Hand(index) => &self.hand()[index],
+            PlaySource::Team(index) => &self.team_cards[index],
+        }
+    }
+
     fn take_for_play(
         &mut self,
         card_index: usize,
@@ -1185,35 +1240,14 @@ impl CardManager {
             })
         });
         let has_choice = choice.is_some();
-        let choice_matches_index = choice.as_ref().is_some_and(|choice| {
-            self.deck.hand().get(card_index).is_some_and(|card| {
-                card.uid == choice.source.uid
-                    && card.skill_id == choice.source.skill_id
-                    && card.temp_card == choice.source.temp_card
-            })
-        });
-        let source = if choice_matches_index {
-            self.deck.take_for_play(card_index)
-        } else if let Some(index) = choice.as_ref().and_then(|choice| {
-            self.team_cards.iter().rposition(|candidate| {
-                candidate.uid == choice.source.uid
-                    && candidate.skill_id == choice.source.skill_id
-                    && candidate.temp_card == choice.source.temp_card
-            })
-        }) {
-            Some(self.team_cards.remove(index))
-        } else {
-            choice
-                .as_ref()
-                .and_then(|choice| self.deck.take_matching(&choice.source))
-                .or_else(|| self.deck.take_for_play(card_index))
-                .or_else(|| {
-                    card_index
-                        .checked_sub(self.deck.hand().len())
-                        .filter(|index| *index < self.team_cards.len())
-                        .map(|index| self.team_cards.remove(index))
-                })
-        }?;
+        let source = self.resolve_play_source(card_index, choice.as_ref())?;
+        if !self.can_use_card(self.play_source_card(source)) {
+            return None;
+        }
+        let source = match source {
+            PlaySource::Hand(index) => self.deck.take_for_play(index)?,
+            PlaySource::Team(index) => self.team_cards.remove(index),
+        };
         let resolved_skill_id = choice.as_ref().and_then(|choice| choice.played.skill_id);
         let caster_uid = choice
             .as_ref()

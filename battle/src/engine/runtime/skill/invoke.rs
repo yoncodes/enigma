@@ -202,6 +202,9 @@ pub(super) fn apply_event_context(
                     };
             }
         }
+        BattleEvent::SovereignCardCreated(change) => {
+            context.runtime_target_uid = change.owner_uid;
+        }
         BattleEvent::EntityDied(death) => context.runtime_target_uid = death.target_uid,
         BattleEvent::EntityEntered { target_uid }
         | BattleEvent::EntityTransformed { target_uid } => context.runtime_target_uid = *target_uid,

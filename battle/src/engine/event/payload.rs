@@ -5,6 +5,14 @@ use crate::engine::manager::gauge::{GaugeChangeKind, GaugeKey};
 use crate::engine::{event::kind::EventKind, skill::rule::CommandOrigin};
 use sonettobuf::CardInfo;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct SovereignCardCreatedEvent {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+    pub index: usize,
+    pub team_type: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillEffectStartedEvent {
     pub action: Box<crate::engine::skill::action::SkillActionEvent>,
@@ -271,6 +279,7 @@ pub enum BattleEvent {
     ConduitActivated(ConduitActivatedEvent),
     GaugeChanged(GaugeChangeEvent),
     CardChanged(CardChangeEvent),
+    SovereignCardCreated(SovereignCardCreatedEvent),
     FieldChanged(FieldChangeEvent),
     SummonChanged(SummonChangeEvent),
     ShellChanged(ShellChangeEvent),
@@ -316,6 +325,7 @@ impl BattleEvent {
             Self::EurekaChanged(change) => Some(change.source_uid),
             Self::ConduitActivated(change) => Some(change.source_uid),
             Self::GaugeChanged(change) => Some(change.source_uid),
+            Self::SovereignCardCreated(change) => Some(change.owner_uid),
             Self::SummonChanged(change) => Some(change.owner_uid),
             Self::ShellChanged(change) => Some(change.source_uid),
             Self::EnterFight
@@ -355,6 +365,7 @@ impl BattleEvent {
             Self::ConduitActivated(change) => Some(change.source_uid),
             Self::SummonChanged(change) => Some(change.owner_uid),
             Self::ShellChanged(change) => Some(change.target_uid),
+            Self::SovereignCardCreated(change) => Some(change.owner_uid),
             Self::EnterFight
             | Self::BattleTerminalCommitted { .. }
             | Self::RoundStart
@@ -402,6 +413,7 @@ impl BattleEvent {
             Self::ConduitActivated(_) => EventKind::ConduitActivated,
             Self::GaugeChanged(_) => EventKind::GaugeChanged,
             Self::CardChanged(_) => EventKind::CardChanged,
+            Self::SovereignCardCreated(_) => EventKind::SovereignCardCreated,
             Self::FieldChanged(_) => EventKind::FieldChanged,
             Self::SummonChanged(_) => EventKind::SummonChanged,
             Self::ShellChanged(change) => match change.kind {

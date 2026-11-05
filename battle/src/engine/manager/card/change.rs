@@ -2,6 +2,12 @@ use sonettobuf::CardInfo;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CardChange {
+    InsertHand {
+        target_uid: i64,
+        card: CardInfo,
+        index: usize,
+        team_type: i32,
+    },
     DeckCount {
         deck_num: i32,
         team_type: i32,

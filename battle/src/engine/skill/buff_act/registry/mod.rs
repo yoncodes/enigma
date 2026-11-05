@@ -178,6 +178,7 @@ pub enum BuffActKind {
     CreateAdditionalDamage,
     CreateHeroTempCards,
     CreateTempSkill3Card,
+    SovereignCardGeneration,
     CreateMaxHpAdditionalDamageAndRemove,
     CritRateAlter2,
     CritRateAlterByOtherBuff,
@@ -1585,6 +1586,12 @@ buff_act_definitions! {
     (1130, "DeviceCostReduce") => DeviceCostReduce,
         effect_time_subscription: false,
         supports: super::device_cost_reduce::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1130, "DeviceCostReduce"), &[EffectType::None as i32]));
+    (1133, "UnnamedAddSpCard") => SovereignCardGeneration,
+        fallible_scoped_runtime: super::create_sovereign_card::scoped_rule_ops,
+        supports: super::create_sovereign_card::supports,
+        references: references_for_feature,
+        completion_gap: "only player-hand zero-resource generation is captured; positive-resource consumption and enhancement tie selection remain unproven",
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1133, "UnnamedAddSpCard"), &[EffectType::None as i32]));
     (1139, "MeiLeiErCharge") => BuffOwnedCharge,
         effect_time_subscription: false,
         supports: |args| matches!(args, [trigger, limit, linked_skill]
@@ -1639,6 +1646,10 @@ fn references_for_feature(
         }
     };
     match feature.kind {
+        Some(BuffActKind::SovereignCardGeneration) => {
+            add_skill(&mut references, feature.args.first().copied());
+            add_buff(&mut references, feature.args.get(2).copied());
+        }
         Some(BuffActKind::SubBuff) => add_buff(&mut references, feature.values.get(1).copied()),
         Some(BuffActKind::MasterHalo) => add_buff(&mut references, feature.values.get(2).copied()),
         Some(BuffActKind::BuffReplace) => add_buff(&mut references, feature.values.get(2).copied()),

@@ -52,6 +52,7 @@ pub mod control_team_injury_count_round;
 pub mod count_continue_channel;
 pub mod create_additional_damage;
 pub mod create_max_hp_additional_damage_and_remove;
+pub mod create_sovereign_card;
 pub mod crit_rate_alter2;
 pub mod crit_rate_alter_by_other_buff;
 pub mod crystal_add_buff;
@@ -622,6 +623,7 @@ pub struct BuffActRuleOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuffActRuleError {
+    CreateSovereignCard(create_sovereign_card::CreateSovereignCardError),
     RecordReplaceMagicCircle(record_replace_magic_circle::RecordReplaceMagicCircleError),
 }
 

@@ -1085,7 +1085,9 @@ fn project_change(
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,
-                CardChangeKind::GeneratedAdded | CardChangeKind::OwnedGeneratedAdded
+                CardChangeKind::GeneratedAdded
+                    | CardChangeKind::OwnedGeneratedAdded
+                    | CardChangeKind::SovereignInserted
             ) =>
         {
             changes

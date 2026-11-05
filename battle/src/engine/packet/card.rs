@@ -33,6 +33,19 @@ impl CardPacket {
 
     pub fn from_change(change: CardChange) -> ActEffect {
         match change {
+            CardChange::InsertHand {
+                target_uid,
+                card,
+                index,
+                team_type,
+            } => ActEffect {
+                target_id: Some(target_uid),
+                effect_type: Some(EffectType::Inserthandcard as i32),
+                effect_num: Some(i32::try_from(index + 1).expect("committed insertion position")),
+                card_info: Some(wire_card(card)),
+                team_type: Some(team_type),
+                ..Default::default()
+            },
             CardChange::DeckCount {
                 deck_num,
                 team_type,

@@ -594,6 +594,12 @@ fn run_player_card_ops(
             &op,
             PlayerCardOp::Move { .. } | PlayerCardOp::UseUniversal { .. } | PlayerCardOp::Play(_)
         );
+        if let PlayerCardOp::Play(play) = &op {
+            managers
+                .card
+                .check_play_permission(play.hand_index, play.choice.as_ref())
+                .map_err(|error| DrainError::Command(error.into()))?;
+        }
         let blocked_card_index = match &op {
             PlayerCardOp::Play(play)
                 if play
