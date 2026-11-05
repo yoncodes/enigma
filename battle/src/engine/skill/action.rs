@@ -28,6 +28,7 @@ pub struct SkillRequest {
 pub enum SkillExecutionMode {
     #[default]
     Nested,
+    Direct,
     NestedExtra,
     Active,
     Synchronization,

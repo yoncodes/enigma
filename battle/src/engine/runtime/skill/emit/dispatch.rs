@@ -152,7 +152,8 @@ pub(in crate::engine::runtime) fn emit_ops(
         .unwrap_or_else(|| catalog.extra_kind(invocation.plan.skill_id));
     if matches!(
         invocation.mode,
-        crate::engine::skill::action::SkillExecutionMode::Active
+        crate::engine::skill::action::SkillExecutionMode::Direct
+            | crate::engine::skill::action::SkillExecutionMode::Active
             | crate::engine::skill::action::SkillExecutionMode::Synchronization
             | crate::engine::skill::action::SkillExecutionMode::DirectBig
             | crate::engine::skill::action::SkillExecutionMode::Device
@@ -160,7 +161,9 @@ pub(in crate::engine::runtime) fn emit_ops(
     ) {
         execution.context.active_skill_mode = invocation.mode;
         execution.context.active_skill_is_attack = catalog.is_attack(effect_skill_id);
-        if matches!(trigger, SkillOpTrigger::Active) && invocation.card_index > 0 {
+        if invocation.mode == crate::engine::skill::action::SkillExecutionMode::Direct
+            || (matches!(trigger, SkillOpTrigger::Active) && invocation.card_index > 0)
+        {
             execution.context.active_skill_slot = pool.skill_slot(
                 managers,
                 invocation.plan.source_uid,

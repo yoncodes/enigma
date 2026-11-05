@@ -46,6 +46,62 @@ fn active_invocation_initializes_the_condition_mode() {
 }
 
 #[test]
+fn direct_nested_invocation_owns_its_attack_context() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: Vec::new(),
+    });
+    catalog.insert_damage_rate(100, 1000);
+    catalog.insert_effect_tag(100, 11);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Direct;
+    let mut execution = SkillExecution::new(TargetContext::default());
+
+    emit_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        &mut execution,
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+
+    assert_eq!(
+        execution.context.active_skill_mode,
+        SkillExecutionMode::Direct
+    );
+    assert!(execution.context.active_skill_is_attack);
+    assert_eq!(execution.context.active_skill_effect_tag, 11);
+    assert!(execution.context.direct_skill_body);
+    assert!(!SkillExecutionMode::Direct.completes_action());
+    assert!(!crate::engine::skill::action::performs_extra_action(
+        0,
+        SkillExecutionMode::Direct,
+        0
+    ));
+}
+
+#[test]
 fn synchronization_uses_the_extra_action_lane_and_completes_its_own_action() {
     let fight = Fight {
         attacker: Some(FightTeam {

@@ -121,7 +121,7 @@ fn direct_use_skill_not_extra_keeps_the_nested_cast_out_of_extra_reactions() {
                     == crate::engine::skill::action::SkillTarget::Explicit(-5)
                 && invocation.frame_target == Some(-5)
                 && invocation.mode
-                    == crate::engine::skill::action::SkillExecutionMode::Nested
+                    == crate::engine::skill::action::SkillExecutionMode::Direct
                 && invocation.target_observed_extra_action == Some(false)
     ));
 }
