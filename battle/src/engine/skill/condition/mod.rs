@@ -18,6 +18,7 @@ pub mod none;
 pub mod parse;
 pub mod player;
 pub mod query;
+pub mod rank;
 pub mod registry;
 pub(crate) mod resource;
 pub mod sovereign_card;
