@@ -39,6 +39,7 @@ pub mod skill_modifier;
 pub mod sovereign_boost;
 pub mod sovereign_enhancement;
 pub mod special_count;
+pub mod strengthen;
 pub mod summon;
 pub mod synchronization;
 pub mod toughness;

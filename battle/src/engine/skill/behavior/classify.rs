@@ -172,6 +172,7 @@ pub enum BehaviorKind {
     NotifyUpgradeHero,
     IgnoreSkillConfigDamageRate,
     ClientEffect,
+    UnnamedClientEffect,
     AddMaxRound,
     AddIndicator,
     DelIndicator,
