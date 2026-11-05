@@ -154,6 +154,7 @@ mod tests {
             },
             caster_uid: uid,
             card_index: 1,
+            hand_index: None,
             skill_id,
             rank_change_pending: false,
             rewritten: false,

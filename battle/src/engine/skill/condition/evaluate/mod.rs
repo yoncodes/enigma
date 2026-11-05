@@ -821,6 +821,9 @@ fn condition_kind_matches(
             (*min..=*max).contains(&value)
         }
         ParsedConditionKind::CurrentCardEnchant { .. } => false,
+        ParsedConditionKind::CardAnchor(order) => managers.is_some_and(|managers| {
+            card_anchor_matches(source_uid, context.active_card_index, *order, managers)
+        }),
         ParsedConditionKind::HandSkillPresence(skill_ids) => managers.is_some_and(|managers| {
             managers.card.hand().iter().any(|card| {
                 card.skill_id
@@ -1377,6 +1380,34 @@ fn condition_kind_matches(
             .any(|uid| has_master_halo(*uid, managers)),
         ParsedConditionKind::NoActionRound => !context.owner_played_card,
         ParsedConditionKind::Unsupported(_) => false,
+    }
+}
+
+fn card_anchor_matches(
+    source_uid: i64,
+    active_card_index: i32,
+    order: super::card::AnchorOrder,
+    managers: &BattleManagers,
+) -> bool {
+    let Some(hand_index) = managers
+        .card
+        .played()
+        .iter()
+        .find(|played| played.caster_uid == source_uid && played.card_index == active_card_index)
+        .and_then(|played| played.hand_index)
+    else {
+        return false;
+    };
+    let Some(anchor_index) = managers.card.committed_hand().iter().position(|card| {
+        card.uid == Some(source_uid)
+            && card.card_type == Some(sonettobuf::card_info::CardType::Skill3 as i32)
+    }) else {
+        return false;
+    };
+
+    match order {
+        super::card::AnchorOrder::Earlier => hand_index < anchor_index,
+        super::card::AnchorOrder::Later => hand_index > anchor_index,
     }
 }
 

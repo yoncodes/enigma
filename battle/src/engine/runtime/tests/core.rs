@@ -213,6 +213,7 @@ fn committed_cards_grant_cloth_power_without_waiting_for_execution() {
                 },
                 caster_uid: 10,
                 card_index,
+                hand_index: None,
                 skill_id: 100,
                 rank_change_pending: false,
                 rewritten: false,

@@ -339,6 +339,7 @@ fn moves_cards_before_playing() {
         Some(PlayedCard {
             target_uid: Some(-1),
             card_index: 1,
+            hand_index: Some(0),
             skill_id: 200,
             rank_change_pending: false,
             rewritten: false,
@@ -352,6 +353,14 @@ fn moves_cards_before_playing() {
         vec![Some(12), Some(10)]
     );
     assert_eq!(cards.played()[0].skill_id, 200);
+    assert_eq!(
+        cards
+            .committed_hand()
+            .iter()
+            .map(|card| card.uid)
+            .collect::<Vec<_>>(),
+        vec![Some(11), Some(12), Some(10)]
+    );
     assert_eq!(cards.played_skill_counts(11), vec![(200, 1)]);
 }
 
@@ -359,10 +368,11 @@ fn moves_cards_before_playing() {
 fn fight_step_card_index_is_play_order_not_hand_slot() {
     let mut cards = CardManager::new(vec![card(10, 100), card(11, 200), card(12, 300)]);
 
-    let first = cards.play_card(2, None, None, None).unwrap();
-    let second = cards.play_card(0, None, None, None).unwrap();
+    let first = cards.play_card(0, None, None, None).unwrap();
+    let second = cards.play_card(1, None, None, None).unwrap();
 
     assert_eq!((first.card_index, second.card_index), (1, 2));
+    assert_eq!((first.hand_index, second.hand_index), (Some(0), Some(2)));
 }
 
 #[test]

@@ -1,6 +1,33 @@
 use super::*;
 
 #[test]
+fn card_anchor_order_keeps_its_exact_predicates() {
+    use crate::engine::skill::condition::card::AnchorOrder;
+
+    assert_eq!(
+        parse(790203, "UnnamedCardAnchor", &["1".into()]),
+        Some(ParsedConditionKind::CardAnchor(AnchorOrder::Later))
+    );
+    assert_eq!(
+        parse(790210, "UnnamedCardAnchor", &["2".into()]),
+        Some(ParsedConditionKind::CardAnchor(AnchorOrder::Earlier))
+    );
+    assert!(parse(790203, "UnnamedCardAnchor", &["2".into()]).is_none());
+    assert!(parse(790210, "UnnamedCardAnchor", &["1".into()]).is_none());
+    assert_eq!(
+        find_key(790203, "UnnamedCardAnchor").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert_eq!(
+        find_key(790210, "UnnamedCardAnchor").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterHit),
+        })
+    );
+}
+
+#[test]
 fn enemy_effect_tag_keeps_its_exact_action_route() {
     for tag in 1..=6 {
         assert_eq!(

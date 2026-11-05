@@ -481,6 +481,7 @@ mod tests {
             },
             caster_uid: 0,
             card_index: 1,
+            hand_index: None,
             skill_id: 1,
             rank_change_pending: false,
             rewritten: false,

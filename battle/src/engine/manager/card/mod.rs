@@ -59,6 +59,7 @@ pub struct CardManager {
     prepared_ai_skills: Vec<PreparedAiSkill>,
     cleaned_owners: HashSet<i64>,
     played: Vec<PlayedCard>,
+    committed_hand: Vec<CardInfo>,
     refilled: Vec<CardInfo>,
     rank_up: HashMap<(i64, i32), i32>,
     queued_use_cards: Vec<QueuedUseCard>,
@@ -143,6 +144,7 @@ impl CardManager {
             prepared_ai_skills: Vec::new(),
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
+            committed_hand: Vec::new(),
             refilled: Vec::new(),
             rank_up: HashMap::new(),
             queued_use_cards: Vec::new(),
@@ -167,6 +169,7 @@ impl CardManager {
             prepared_ai_skills: Vec::new(),
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
+            committed_hand: Vec::new(),
             refilled: Vec::new(),
             rank_up: HashMap::new(),
             queued_use_cards: Vec::new(),
@@ -371,6 +374,7 @@ impl CardManager {
         self.deck_num = deck_num;
         self.deck_capacity = deck_num;
         self.played.clear();
+        self.committed_hand.clear();
         self.refilled.clear();
         self.queued_use_cards.clear();
         self.cast_channels.clear();
@@ -390,6 +394,7 @@ impl CardManager {
 
     pub(super) fn begin_round(&mut self) {
         self.played.clear();
+        self.committed_hand.clear();
         self.refilled.clear();
         self.queued_use_cards.clear();
         for card_id in std::mem::take(&mut self.pending_temporary) {
@@ -475,6 +480,10 @@ impl CardManager {
 
     pub fn played(&self) -> &[PlayedCard] {
         &self.played
+    }
+
+    pub(crate) fn committed_hand(&self) -> &[CardInfo] {
+        &self.committed_hand
     }
 
     pub fn total_played_rank(&self) -> i32 {
@@ -1246,6 +1255,23 @@ impl CardManager {
         if !self.can_use_card(self.play_source_card(source)) {
             return None;
         }
+        if self.played.is_empty() {
+            self.committed_hand = self.hand().to_vec();
+        }
+        let hand_index = match source {
+            PlaySource::Hand(index) => self
+                .committed_hand
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| {
+                    self.played
+                        .iter()
+                        .all(|played| played.hand_index != Some(*index))
+                })
+                .nth(index)
+                .map(|(index, _)| index),
+            PlaySource::Team(_) => None,
+        };
         let source = match source {
             PlaySource::Hand(index) => self.deck.take_for_play(index)?,
             PlaySource::Team(index) => self.team_cards.remove(index),
@@ -1272,6 +1298,7 @@ impl CardManager {
             card: source,
             caster_uid,
             card_index: action_index,
+            hand_index,
             skill_id,
             rank_change_pending: false,
             rewritten: false,
