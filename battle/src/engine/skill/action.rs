@@ -175,6 +175,7 @@ pub struct SkillInvocation {
     pub(crate) reaction_action_path: Option<Vec<usize>>,
     pub phase: Option<SkillPhase>,
     pub target: SkillTarget,
+    pub frame_target: Option<i64>,
     pub extra_skill_kind: Option<crate::engine::skill::condition::extra::ExtraSkillKind>,
     /// Whether target-owned "when the attacker performs an extra action" rules observe this cast.
     /// Defaults to the configured extra-skill kind when the producer does not override it.
@@ -204,6 +205,7 @@ impl From<SkillRequest> for SkillInvocation {
             reaction_action_path: None,
             phase: None,
             target: SkillTarget::Configured,
+            frame_target: None,
             extra_skill_kind: None,
             target_observed_extra_action: None,
             rate_modifier: None,
@@ -239,6 +241,7 @@ mod invocation_tests {
             reaction_action_path: None,
             phase: Some(SkillPhase::AfterDamage),
             target: SkillTarget::Explicit(-1),
+            frame_target: None,
             extra_skill_kind: Some(ExtraSkillKind::FollowUp),
             target_observed_extra_action: None,
             rate_modifier: None,

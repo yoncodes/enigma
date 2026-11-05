@@ -79,6 +79,9 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
 fn direct_use_skill_not_extra_keeps_the_nested_cast_out_of_extra_reactions() {
     let behavior = ParsedBehavior::new(60223, "DirectUseSkillNotExtra", vec![31473162]);
     assert!(crate::engine::skill::behavior::is_supported(&behavior));
+    let definition = crate::engine::skill::behavior::registry::find(&behavior).unwrap();
+    assert!(definition.destination);
+    assert_eq!(definition.output_owner, OutputOwner::Parent);
     assert!(!crate::engine::skill::behavior::is_supported(
         &ParsedBehavior::new(60223, "DirectUseSkillNotExtra", vec![31473162, 0])
     ));
@@ -115,7 +118,8 @@ fn direct_use_skill_not_extra_keeps_the_nested_cast_out_of_extra_reactions() {
             if invocation.plan.source_uid == 10
                 && invocation.plan.skill_id == 31473162
                 && invocation.target
-                    == crate::engine::skill::action::SkillTarget::Configured
+                    == crate::engine::skill::action::SkillTarget::Explicit(-5)
+                && invocation.frame_target == Some(-5)
                 && invocation.mode
                     == crate::engine::skill::action::SkillExecutionMode::Nested
                 && invocation.target_observed_extra_action == Some(false)

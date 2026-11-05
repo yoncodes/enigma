@@ -498,6 +498,9 @@ impl BehaviorHandler for Handler {
                         skill_id: behavior.arg(0)?,
                     }
                     .into();
+                invocation.target =
+                    crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
+                invocation.frame_target = Some(context.target_uid);
                 invocation.target_observed_extra_action = Some(false);
                 Some(vec![RuleOp::Skill(invocation)])
             }

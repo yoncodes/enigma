@@ -1,6 +1,95 @@
 use super::*;
 
 #[test]
+fn nested_cast_keeps_its_frame_target_without_reordering_damage() {
+    crate::test_support::init_config();
+    let entity = |uid, hp, attack| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(hp),
+        attr: Some(HeroAttribute {
+            hp: Some(10_000),
+            attack: Some(attack),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1_000, 1_000)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-4, 100, 0), entity(-5, 300, 0), entity(-6, 200, 0)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::new(60223, "DirectUseSkillNotExtra", vec![200]),
+            TargetRequest {
+                code: 233,
+                raw: Vec::new(),
+            },
+        )],
+    });
+    catalog.insert_logic_target(100, 1);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 200,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::new(60036, "ConsumeBuffChangeTargets", vec![1, 0, 2]),
+            TargetRequest::self_only(),
+        )],
+    });
+    catalog.insert_logic_target(200, 208);
+    catalog.insert_damage_rate(200, 1_000);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-4);
+
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+    let parent = crate::engine::packet::timeline::project(&result.frames)
+        .unwrap()
+        .into_iter()
+        .find(|step| step.act_id == Some(100))
+        .unwrap();
+    let child = parent
+        .act_effect
+        .iter()
+        .filter_map(|effect| effect.fight_step.as_ref())
+        .find(|step| step.act_id == Some(200))
+        .unwrap();
+
+    assert_eq!(child.to_id, Some(-4));
+    assert_eq!(
+        child
+            .act_effect
+            .iter()
+            .filter(|effect| effect.hurt_info.is_some())
+            .filter_map(|effect| effect.target_id)
+            .collect::<Vec<_>>(),
+        vec![-5, -4, -6]
+    );
+}
+
+#[test]
 fn self_destructing_attack_finishes_its_damage_phase() {
     crate::test_support::init_config();
     let entity = |uid, hp, attack| FightEntityInfo {

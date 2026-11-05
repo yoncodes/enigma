@@ -186,7 +186,7 @@ fn run_action_with_cleanup_owner(
             source_uid: invocation.plan.source_uid,
             skill_id: invocation.plan.skill_id,
             card_index: invocation.card_index,
-            target_uid: invocation_frame_target(invocation.target, &SkillOpTrigger::Active),
+            target_uid: invocation_frame_target(&invocation, &SkillOpTrigger::Active),
         },
         FrameTrigger::Active,
     );

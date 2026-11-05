@@ -665,10 +665,10 @@ fn commit_terminal(
 }
 
 fn invocation_frame_target(
-    target: crate::engine::skill::action::SkillTarget,
+    invocation: &crate::engine::skill::action::SkillInvocation,
     trigger: &SkillOpTrigger,
 ) -> Option<i64> {
-    match target {
+    invocation.frame_target.or_else(|| match invocation.target {
         crate::engine::skill::action::SkillTarget::Explicit(uid) => Some(uid),
         crate::engine::skill::action::SkillTarget::Inherited => match trigger {
             SkillOpTrigger::Event(event) => event.target_uid(),
@@ -676,7 +676,7 @@ fn invocation_frame_target(
         },
         crate::engine::skill::action::SkillTarget::Configured
         | crate::engine::skill::action::SkillTarget::LogicRule(_) => None,
-    }
+    })
 }
 
 fn attach_buff_grant_relation(
