@@ -440,6 +440,8 @@ async fn dispatch_registered_command(
         CmdId::UpdateNecrologistStoryCmd => story::on_update_necrologist_story,
         CmdId::FinishNecrologistStoryModeCmd => story::on_finish_necrologist_story_mode,
         CmdId::GetExploreSimpleInfoCmd => exploration::on_get_explore_simple_info,
+        CmdId::ChangeMapCmd => exploration::on_change_map,
+        CmdId::GetExploreInfoCmd => exploration::on_get_explore_info,
         CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
         CmdId::BeforeStartWeekwalkBattleCmd => exploration::on_before_start_weekwalk_battle,
         CmdId::ChangeWeekwalkHeroGroupSelectCmd => exploration::on_change_weekwalk_hero_group_select,

@@ -31,6 +31,7 @@ mod activity_query;
 mod battle_pass;
 mod dungeon;
 mod equipment;
+pub mod exploration;
 mod hero;
 mod player;
 mod reward_query;
@@ -44,3 +45,6 @@ mod tower;
 pub mod configs {
     pub use crate::{GameDB, get, init, try_get};
 }
+
+#[cfg(test)]
+mod tests;
