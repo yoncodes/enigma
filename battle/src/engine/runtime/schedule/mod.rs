@@ -675,6 +675,7 @@ pub fn run_wave_entry_setup(
     for (stage, priority) in [
         (SetupStage::EnterFight, 0),
         (SetupStage::RoundStartCondition, 100),
+        (SetupStage::EnterBattleStatic, 0),
     ] {
         let next = drain::run_setup_stage_for_owners(
             managers,
@@ -722,22 +723,21 @@ pub fn run_wave_entry(
         &root,
         BattleChange::WaveAdvanced(Box::new(change.clone())),
     );
-    for &entering_uid in &change.entering_uids {
-        append(
-            &mut result,
-            drain::run_owner_event(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
-                BattleEvent::EntityEntered {
-                    target_uid: entering_uid,
-                },
-                std::slice::from_ref(&entering_uid),
-            )?,
-        );
-    }
+    append(
+        &mut result,
+        drain::run(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            [RuleOp::Command(BattleCommand::Buff(
+                BuffCommand::FanoutEntryHalos(
+                    crate::engine::manager::buff::BuffEntryHaloFanout::new(change.entering_uids),
+                ),
+            ))],
+        )?,
+    );
     Ok(result)
 }
 

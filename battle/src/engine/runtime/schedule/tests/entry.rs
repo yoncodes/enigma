@@ -306,14 +306,14 @@ fn promoted_defender_joins_the_normal_round_start_once() {
 }
 
 #[test]
-fn wave_entry_setup_runs_enter_fight_and_early_round_start() {
+fn wave_advance_defers_enter_fight_to_entry_setup() {
     init_config();
     let fight = Fight {
         defender: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(-3),
                 current_hp: Some(100),
-                passive_skill: vec![2531, 2370, 2524, 2533],
+                passive_skill: vec![2531, 2370, 2524, 2533, 40],
                 ..Default::default()
             }],
             ..Default::default()
@@ -322,20 +322,22 @@ fn wave_entry_setup_runs_enter_fight_and_early_round_start() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
-    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
-
-    let result = run_wave_entry_setup(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 2,
-            ..Default::default()
-        },
-        &[-3],
-    )
-    .unwrap();
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = vec![ParsedCondition {
+        opcode: 55,
+        type_name: "None".to_owned(),
+        kind: ParsedConditionKind::None(NoneMode::EnterBattle),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 40,
+        slots: vec![slot],
+    });
 
     fn collect_act_ids(step: &sonettobuf::FightStep, ids: &mut Vec<i32>) {
         if let Some(skill_id) = step.act_id.filter(|skill_id| *skill_id > 0) {
@@ -350,6 +352,41 @@ fn wave_entry_setup_runs_enter_fight_and_early_round_start() {
         }
     }
 
+    let wave = run_wave_entry(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        crate::engine::manager::wave::WaveAdvanced {
+            wave: 2,
+            entering_uids: vec![-3],
+            fight: fight.clone(),
+        },
+    )
+    .unwrap();
+    let mut wave_act_ids = Vec::new();
+    for step in crate::engine::packet::timeline::project(&wave.frames).unwrap() {
+        collect_act_ids(&step, &mut wave_act_ids);
+    }
+    assert!(wave_act_ids.is_empty());
+
+    let result = run_wave_entry_setup(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        &[-3],
+    )
+    .unwrap();
+
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     let mut act_ids = Vec::new();
     for step in &steps {
@@ -358,7 +395,7 @@ fn wave_entry_setup_runs_enter_fight_and_early_round_start() {
     assert_eq!(steps.len(), 1);
     assert!(act_ids.contains(&2531));
     assert!(act_ids.contains(&2370));
-    assert_eq!(act_ids, vec![2531, 2370]);
+    assert_eq!(act_ids, vec![2531, 2370, 40]);
     assert!(!act_ids.contains(&2533));
     assert!(matches!(
         result.frames[0].owner,
