@@ -6,6 +6,79 @@ use crate::engine::{
 };
 
 #[test]
+fn moxie_cleanup_keeps_sovereign() {
+    use crate::engine::{
+        manager::BattleManagers,
+        runtime::{determinism::RoundDeterminism, drain},
+        skill::{
+            action::{SkillInvocation, SkillRequest},
+            effect::SkillEffectCatalog,
+            rule::output::RuleOp,
+            target::{TargetContext, TargetPool},
+        },
+    };
+    use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute};
+
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3147),
+                entity_type: Some(1),
+                team_type: Some(1),
+                level: Some(150),
+                current_hp: Some(1000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1000),
+                    ..Default::default()
+                }),
+                ex_skill: Some(31473141),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.card = CardManager::new(vec![CardInfo {
+        uid: Some(10),
+        skill_id: Some(31473141),
+        ..Default::default()
+    }]);
+    managers
+        .execute_card(CardCommand::InsertSovereign(CardInsertSovereign {
+            origin: CARD_PLAY_ORIGIN,
+            target_uid: 10,
+            skill_id: 31472131,
+            hero_id: 3147,
+            max_position: 1,
+            team_type: 1,
+        }))
+        .unwrap();
+    let sovereign = managers.card.hand()[0].clone();
+    let physical_id = managers.card.deck.hand_id(0);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31470163], []);
+    drain::run_command_group(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(SkillInvocation::from(SkillRequest {
+            source_uid: 10,
+            skill_id: 31470163,
+        }))],
+    )
+    .unwrap();
+    assert_eq!(managers.ex_point.get(10), 3);
+    assert_eq!(managers.card.hand(), &[sovereign]);
+    assert_eq!(managers.card.deck.hand_id(0), physical_id);
+}
+
+#[test]
 fn sovereign_insertion_keeps_physical_identity_and_denies_the_resolved_locked_source() {
     let normal = CardInfo {
         uid: Some(10),

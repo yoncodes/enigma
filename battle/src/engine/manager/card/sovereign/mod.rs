@@ -52,11 +52,15 @@ pub(super) fn is_locked(card: &CardInfo) -> Result<bool, ()> {
 }
 
 impl CardManager {
+    pub(crate) fn is_sovereign(card: &CardInfo) -> bool {
+        payload(card).next().is_some()
+    }
+
     pub(crate) fn has_sovereign_card(&self, owner_uid: i64) -> bool {
         self.hand()
             .iter()
             .chain(self.team_cards())
-            .any(|card| card.uid == Some(owner_uid) && payload(card).next().is_some())
+            .any(|card| card.uid == Some(owner_uid) && Self::is_sovereign(card))
     }
 
     pub(super) fn insert_sovereign(
