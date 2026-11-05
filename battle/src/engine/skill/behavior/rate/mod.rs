@@ -511,14 +511,19 @@ fn collect_attack_modifier_slot(
         let targets_owner = targets.contains(&owner_uid);
         let targets_subject =
             modifier_subject.is_some_and(|target_uid| targets.contains(&target_uid));
-        let applies_to_current_attack = targets_owner || targets_subject;
+        let uses_current_hit_target = slot.target_from_condition
+            && slot.condition_target.code == 0
+            && !targets_owner
+            && !targets_subject
+            && modifier_subject.is_some();
+        let applies_to_current_attack = targets_owner || targets_subject || uses_current_hit_target;
         if !applies_to_current_attack {
             continue;
         }
         let condition_targets =
             if condition_registry::conditions_use_active_skill_target_group(&conditions) {
                 targets.clone()
-            } else if slot.target_from_condition && targets_subject {
+            } else if uses_current_hit_target || slot.target_from_condition && targets_subject {
                 vec![modifier_subject.unwrap_or_default()]
             } else {
                 TargetResolver::resolve_with_managers_and_context(
@@ -553,7 +558,9 @@ fn collect_attack_modifier_slot(
             continue;
         }
         let modifier_target_uid = if incoming_side
-            || (side == ModifierSide::Source && targets_subject && !targets_owner)
+            || (side == ModifierSide::Source
+                && (targets_subject || uses_current_hit_target)
+                && !targets_owner)
         {
             modifier_subject.unwrap_or_default()
         } else {

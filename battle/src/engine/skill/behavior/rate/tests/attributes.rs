@@ -377,6 +377,72 @@ fn source_modifier_with_target_999_uses_the_current_hit_target() {
 }
 
 #[test]
+fn source_modifier_with_target_999_reaches_a_widened_hit_target() {
+    crate::test_support::init_config();
+    let effects = SkillEffectCatalog::from_roots(config::configs::get(), [31473162], []);
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(200),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(31470002),
+                        from_uid: Some(10),
+                        duration: Some(3),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+
+    emit_active_target_attack_attributes(
+        &mut modifiers,
+        10,
+        31473162,
+        31473162,
+        RateRuntime {
+            effects: &effects,
+            managers: &managers,
+            pool: &pool,
+            context: TargetContext {
+                hit_source_uid: 10,
+                hit_target_uid: -2,
+                runtime_target_uid: -2,
+                ..Default::default()
+            },
+        },
+        &mut RoundDeterminism::default(),
+    );
+
+    assert_eq!(
+        modifiers.attack_attributes,
+        vec![(AttrId::CriticalRate, 200), (AttrId::CriticalDmg, 400)]
+    );
+}
+
+#[test]
 fn passive_status_thresholds_query_the_current_hit_target() {
     crate::test_support::init_config();
     let effects = SkillEffectCatalog::from_roots(config::configs::get(), [103374116], []);
