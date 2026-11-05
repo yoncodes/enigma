@@ -179,6 +179,7 @@ pub enum BuffActKind {
     CreateHeroTempCards,
     CreateTempSkill3Card,
     SovereignCardGeneration,
+    SovereignCardUnlock,
     CreateMaxHpAdditionalDamageAndRemove,
     CritRateAlter2,
     CritRateAlterByOtherBuff,
@@ -1592,6 +1593,12 @@ buff_act_definitions! {
         references: references_for_feature,
         completion_gap: "only player-hand zero-resource generation is captured; positive-resource consumption and enhancement tie selection remain unproven",
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1133, "UnnamedAddSpCard"), &[EffectType::None as i32]));
+    (1134, "UnnamedUnlockSpCard") => SovereignCardUnlock,
+        event: EventKind::SovereignUnlock, source: Owner,
+        fallible_scoped_runtime: super::unlock_sovereign_card::rule_ops,
+        supports: |args| matches!(args, [31470163]),
+        references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1134, "UnnamedUnlockSpCard"), &[EffectType::None as i32]));
     (1139, "MeiLeiErCharge") => BuffOwnedCharge,
         effect_time_subscription: false,
         supports: |args| matches!(args, [trigger, limit, linked_skill]
@@ -1646,6 +1653,9 @@ fn references_for_feature(
         }
     };
     match feature.kind {
+        Some(BuffActKind::SovereignCardUnlock) => {
+            add_skill(&mut references, feature.args.first().copied());
+        }
         Some(BuffActKind::SovereignCardGeneration) => {
             add_skill(&mut references, feature.args.first().copied());
             add_buff(&mut references, feature.args.get(2).copied());

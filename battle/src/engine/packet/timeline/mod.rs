@@ -928,6 +928,13 @@ fn project_change(
             super::card::sovereign::initial_boost(boost)
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Moved => Vec::new(),
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignUnlocked => {
+            let change = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(change)]
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Dissolved => changes
             .operation
             .clone()

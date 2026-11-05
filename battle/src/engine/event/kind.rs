@@ -27,6 +27,7 @@ pub enum EventKind {
     GaugeChanged,
     CardChanged,
     SovereignCardCreated,
+    SovereignUnlock,
     FieldChanged,
     SummonChanged,
     ShellDeployed,

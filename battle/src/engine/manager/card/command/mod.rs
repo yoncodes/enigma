@@ -403,6 +403,11 @@ pub enum CardCommand {
     AddGenerated(CardAddGenerated),
     InsertSovereign(CardInsertSovereign),
     InitialSovereignBoost(CardInitialSovereignBoost),
+    UnlockSovereign {
+        origin: CommandOrigin,
+        owner_uid: i64,
+        team_type: i32,
+    },
     AddUniversal(CardAddUniversal),
     RedealKeepRanks {
         origin: CommandOrigin,
@@ -493,6 +498,7 @@ impl CardCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardChangeKind {
+    SovereignUnlocked,
     InitialSovereignBoost,
     SovereignInserted,
     Setup,
@@ -757,6 +763,21 @@ pub(super) fn execute(
             (
                 Some(boost.origin),
                 CardChangeKind::InitialSovereignBoost,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::UnlockSovereign {
+            origin,
+            owner_uid,
+            team_type,
+        } => {
+            operation = Some(manager.unlock_sovereign(owner_uid, team_type)?);
+            (
+                Some(origin),
+                CardChangeKind::SovereignUnlocked,
                 None,
                 None,
                 Vec::new(),

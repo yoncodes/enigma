@@ -2,6 +2,10 @@ use sonettobuf::CardInfo;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CardChange {
+    SovereignUnlocked {
+        card: CardInfo,
+        team_type: i32,
+    },
     InsertHand {
         target_uid: i64,
         card: CardInfo,

@@ -95,6 +95,7 @@ mod player;
 mod refill;
 mod resolution;
 mod settlement;
+mod sovereign;
 mod start;
 
 use ai::run_ai_preparation;

@@ -133,6 +133,7 @@ pub mod team_per_power_add_buff;
 pub mod team_share_shield;
 pub mod toughness;
 pub mod transfer_energy_buff;
+pub mod unlock_sovereign_card;
 pub mod use_damage_skill_add_to_target;
 pub mod use_skill;
 pub mod use_skill_modifier;
@@ -623,6 +624,7 @@ pub struct BuffActRuleOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuffActRuleError {
+    UnlockSovereignCard(unlock_sovereign_card::UnlockError),
     CreateSovereignCard(create_sovereign_card::CreateSovereignCardError),
     RecordReplaceMagicCircle(record_replace_magic_circle::RecordReplaceMagicCircleError),
 }
