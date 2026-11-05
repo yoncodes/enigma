@@ -49,7 +49,7 @@ fn other_ultimate_grants_one_narrative_per_spent_moxie() {
 }
 
 #[test]
-fn configured_direct_ultimate_adds_its_bonus() {
+fn configured_direct_ultimate_adds_its_bonus_per_spent_moxie() {
     crate::test_support::init_config();
     let catalog = crate::engine::skill::effect::catalog::global();
     let subscriber = subscriber(vec![1, 31140113, 31140114, 311401511, 1]);
@@ -67,5 +67,5 @@ fn configured_direct_ultimate_adds_its_bonus() {
         .unwrap(),
     );
 
-    assert_eq!(grant.amount, Some(6));
+    assert_eq!(grant.amount, Some(10));
 }

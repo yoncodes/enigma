@@ -92,7 +92,7 @@ pub fn rule_op(
         [_, _] => 0,
         _ => return None,
     };
-    let amount = per_moxie.checked_mul(moxie_spent)?.checked_add(bonus)?;
+    let amount = per_moxie.checked_add(bonus)?.checked_mul(moxie_spent)?;
     if buff_id <= 0 || amount <= 0 {
         return None;
     }
