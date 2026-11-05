@@ -719,6 +719,7 @@ fn linked_attack_attributes_keep_temporary_critical_damage_source_owned() {
         (AttrId::DmgBonus, 200),
         (AttrId::CriticalDmg, 500),
         (AttrId::IncantationMight, 300),
+        (AttrId::UltimateIncantationMightMultiplier, 1_000),
     ];
     let shared = vec![(AttrId::CriticalDmg, -700)];
 
