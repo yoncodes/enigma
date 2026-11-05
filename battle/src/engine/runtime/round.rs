@@ -816,34 +816,18 @@ pub(super) fn apply_cloth_power(
     let Some(power) = managers.catalog().cloth_power(fight) else {
         return;
     };
-    let mut pending_cards = Vec::new();
     for outcome in &result.outcomes {
-        match outcome {
-            executor::RuleOutcome::Card(changes) => {
-                if changes.kind == crate::engine::manager::card::CardChangeKind::Played
-                    && let Some(played) = &changes.played
-                {
-                    pending_cards.push(played.card_index);
-                }
-                state.power = cloth_power_after_card_change(
-                    &power,
-                    state.power,
-                    changes.kind,
-                    eligible_composition_count(managers, &changes.composed_owners),
-                );
-            }
-            executor::RuleOutcome::SkillLifecycle(
-                crate::engine::skill::action::SkillLifecycle::ActionCompleted(action),
-            ) if action.card_index > 0 => {
-                if let Some(index) = pending_cards
-                    .iter()
-                    .position(|card_index| *card_index == action.card_index)
-                {
-                    pending_cards.remove(index);
-                    state.power = power.card_used(state.power);
-                }
-            }
-            _ => {}
+        if let executor::RuleOutcome::Card(changes) = outcome {
+            state.power = cloth_power_after_card_change(
+                &power,
+                state.power,
+                changes.kind,
+                changes.played.as_ref().is_some_and(|played| {
+                    crate::engine::mechanic::card::CardMechanic
+                        .is_device_card(managers, &played.card)
+                }),
+                eligible_composition_count(managers, &changes.composed_owners),
+            );
         }
     }
 }
@@ -862,9 +846,11 @@ pub(super) fn cloth_power_after_card_change(
     power: &ClothPower,
     current: i32,
     kind: crate::engine::manager::card::CardChangeKind,
+    device: bool,
     composed_count: usize,
 ) -> i32 {
     match kind {
+        crate::engine::manager::card::CardChangeKind::Played => power.card_used(current, device),
         crate::engine::manager::card::CardChangeKind::Moved => power.card_moved(current),
         crate::engine::manager::card::CardChangeKind::Refilled
         | crate::engine::manager::card::CardChangeKind::Composed

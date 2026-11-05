@@ -550,6 +550,7 @@ impl BattleCatalog {
         Some(ClothPower::configured(
             cloth.max_power,
             cloth.r#use,
+            cloth.use_device_card,
             cloth.r#move,
             cloth.compose,
             &cloth.recover,

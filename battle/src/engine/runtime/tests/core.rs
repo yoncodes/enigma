@@ -154,6 +154,7 @@ fn refill_and_all_compositions_grant_cloth_power() {
             &power,
             15,
             crate::engine::manager::card::CardChangeKind::Refilled,
+            false,
             1,
         ),
         17
@@ -163,6 +164,7 @@ fn refill_and_all_compositions_grant_cloth_power() {
             &power,
             15,
             crate::engine::manager::card::CardChangeKind::Composed,
+            false,
             1,
         ),
         17
@@ -172,14 +174,15 @@ fn refill_and_all_compositions_grant_cloth_power() {
             &power,
             15,
             crate::engine::manager::card::CardChangeKind::Played,
+            false,
             0,
         ),
-        15
+        19
     );
 }
 
 #[test]
-fn played_cards_grant_cloth_power_only_after_action_completion() {
+fn committed_cards_grant_cloth_power_without_waiting_for_execution() {
     use crate::engine::{
         manager::card::{CardChangeKind, CardChanges, PlayedCard},
         round::state::RoundState,
@@ -196,7 +199,7 @@ fn played_cards_grant_cloth_power_only_after_action_completion() {
         ..Default::default()
     };
     let managers = crate::engine::manager::BattleManagers::seeded(&fight);
-    let played = |card_index| {
+    let played = |card_index, skill_id| {
         RuleOutcome::Card(Box::new(CardChanges {
             origin: None,
             kind: CardChangeKind::Played,
@@ -204,7 +207,10 @@ fn played_cards_grant_cloth_power_only_after_action_completion() {
             after: Vec::new(),
             added: None,
             played: Some(PlayedCard {
-                card: Default::default(),
+                card: CardInfo {
+                    skill_id: Some(skill_id),
+                    ..Default::default()
+                },
                 caster_uid: 10,
                 card_index,
                 skill_id: 100,
@@ -242,24 +248,7 @@ fn played_cards_grant_cloth_power_only_after_action_completion() {
         &managers,
         &mut state,
         &DrainResult {
-            outcomes: vec![played(1)],
-            ..Default::default()
-        },
-    );
-    assert_eq!(state.power, 15);
-
-    round::apply_cloth_power(
-        &fight,
-        &managers,
-        &mut state,
-        &DrainResult {
-            outcomes: vec![
-                played(1),
-                RuleOutcome::SkillLifecycle(SkillLifecycle::ActionCompleted(ActionEvent {
-                    card_index: 1,
-                    ..Default::default()
-                })),
-            ],
+            outcomes: vec![played(1, 100)],
             ..Default::default()
         },
     );
@@ -272,16 +261,53 @@ fn played_cards_grant_cloth_power_only_after_action_completion() {
         &mut state,
         &DrainResult {
             outcomes: vec![
+                played(1, 100),
+                played(2, 100),
                 RuleOutcome::SkillLifecycle(SkillLifecycle::ActionCompleted(ActionEvent {
                     card_index: 1,
                     ..Default::default()
                 })),
-                played(1),
             ],
             ..Default::default()
         },
     );
+    assert_eq!(state.power, 23);
+
+    state.power = 15;
+    round::apply_cloth_power(
+        &fight,
+        &managers,
+        &mut state,
+        &DrainResult {
+            outcomes: vec![RuleOutcome::SkillLifecycle(
+                SkillLifecycle::ActionCompleted(ActionEvent {
+                    card_index: 1,
+                    ..Default::default()
+                }),
+            )],
+            ..Default::default()
+        },
+    );
     assert_eq!(state.power, 15);
+
+    let device_fight = Fight {
+        attacker: Some(FightTeam {
+            cloth_id: Some(7),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let device_managers = crate::engine::manager::BattleManagers::seeded(&device_fight);
+    round::apply_cloth_power(
+        &device_fight,
+        &device_managers,
+        &mut state,
+        &DrainResult {
+            outcomes: vec![played(1, 100), played(2, 31446011)],
+            ..Default::default()
+        },
+    );
+    assert_eq!(state.power, 20);
 }
 
 #[test]
