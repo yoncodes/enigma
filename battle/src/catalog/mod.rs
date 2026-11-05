@@ -473,6 +473,11 @@ impl BattleCatalog {
             .unwrap_or_default()
     }
 
+    pub(crate) fn skill_moxie_exempt(self, skill_id: i32) -> bool {
+        self.skill_effect(skill_id)
+            .is_some_and(|effect| effect.need_ex_point == 1)
+    }
+
     pub(crate) fn skill_is_big(self, skill_id: i32) -> bool {
         self.skill_effect(skill_id)
             .is_some_and(|effect| effect.is_big_skill != 0)

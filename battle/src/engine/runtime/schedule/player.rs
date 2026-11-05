@@ -1210,8 +1210,7 @@ pub(super) fn run_active_action(
         {
             pool.entity(source_uid)
                 .map(|entity| {
-                    crate::engine::mechanic::card::CardMechanic
-                        .required_ultimate_cost(managers, entity)
+                    crate::engine::skill::cost::moxie(managers, entity, skill.plan.skill_id)
                 })
                 .unwrap_or(current_resource)
         } else {
