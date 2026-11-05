@@ -4,7 +4,7 @@ pub(crate) fn enabled() -> bool {
     crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Damage)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum DefenseTrace {
     Applied {
         kind: DamageKind,
@@ -34,7 +34,7 @@ impl DefenseTrace {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct SkillRateTrace {
     pub input: i32,
     pub base_rate: i32,
@@ -48,7 +48,7 @@ pub struct SkillRateTrace {
     pub output: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct DamageMultipliers {
     pub regular: i32,
     pub attack_local: i32,
@@ -71,7 +71,7 @@ impl DamageMultipliers {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct CombinedMultiplierTrace {
     pub input: i32,
     pub multipliers: DamageMultipliers,
@@ -80,7 +80,7 @@ pub struct CombinedMultiplierTrace {
     pub output: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct CriticalTrace {
     pub input: i32,
     pub applied: bool,
@@ -90,7 +90,7 @@ pub struct CriticalTrace {
     pub output: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct PoisonMultiplierTrace {
     pub input: i32,
     pub multiplier: i32,
@@ -108,7 +108,7 @@ pub enum DamageStageTrace {
     Critical(CriticalTrace),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct DamageTrace {
     pub defense: DefenseTrace,
     pub skill_rate: SkillRateTrace,
@@ -116,6 +116,25 @@ pub struct DamageTrace {
     pub poison_multiplier: Option<PoisonMultiplierTrace>,
     pub critical: CriticalTrace,
     pub amount: i32,
+}
+
+#[derive(serde::Serialize)]
+pub(super) struct HitTrace<'a> {
+    pub skill_id: i32,
+    pub source_uid: i64,
+    pub target_uid: i64,
+    pub fight_version: i32,
+    pub formula: super::DamageFormula,
+    pub trace: &'a DamageTrace,
+}
+
+impl HitTrace<'_> {
+    pub fn emit(&self) {
+        match serde_json::to_string(self) {
+            Ok(json) => eprintln!("damage-json {json}"),
+            Err(error) => eprintln!("damage-json error: {error}"),
+        }
+    }
 }
 
 impl DamageTrace {

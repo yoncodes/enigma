@@ -1123,6 +1123,15 @@ fn direct_damage_trace(
             formula,
         );
     if crate::engine::damage::trace::enabled() {
+        crate::engine::damage::trace::HitTrace {
+            skill_id,
+            source_uid: source.uid,
+            target_uid: target.uid,
+            fight_version: runtime.fight_version,
+            formula,
+            trace: &damage_trace,
+        }
+        .emit();
         let local_damage_bonus = source_active_features
             .iter()
             .filter(|feature| feature.owner_uid == source.uid)
