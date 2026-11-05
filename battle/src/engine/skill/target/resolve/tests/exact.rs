@@ -152,7 +152,7 @@ fn ally_single_target_opcodes_keep_their_exact_selection_rules() {
     );
     assert_eq!(
         resolve_code(109, 10, &pool, &mut RoundDeterminism::default()),
-        vec![11]
+        vec![10]
     );
 }
 

@@ -26,7 +26,6 @@ enum TargetRule {
     RandomAllyByRng,
     RandomOtherAllyByRng,
     LowestHpPercentageAlly,
-    LowestHpAlly,
     HighestAttackAlly,
     LowestExPointAlly,
     HighestExPointAlly,
@@ -257,7 +256,6 @@ impl TargetResolver {
                 determinism,
             ),
             TargetRule::LowestHpPercentageAlly => lowest_hp_percentage(pool.allies(source_uid)),
-            TargetRule::LowestHpAlly => lowest_hp(pool.allies(source_uid)),
             TargetRule::HighestAttackAlly => highest_attack(pool.allies(source_uid), managers),
             TargetRule::LowestExPointAlly => lowest_ex_point(pool.allies(source_uid), source_uid),
             TargetRule::HighestExPointAlly => {
@@ -583,7 +581,6 @@ pub fn targets_enemy(code: i32) -> Option<bool> {
         | TargetRule::RandomAllyByRng
         | TargetRule::RandomOtherAllyByRng
         | TargetRule::LowestHpPercentageAlly
-        | TargetRule::LowestHpAlly
         | TargetRule::HighestAttackAlly
         | TargetRule::LowestExPointAlly
         | TargetRule::HighestExPointAlly
@@ -639,9 +636,8 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         309 => TargetRule::BoundAlly,
         106 => TargetRule::RandomAllyByRng,
         131 => TargetRule::RandomOtherAllyByRng,
-        107 => TargetRule::LowestHpPercentageAlly,
+        107 | 109 => TargetRule::LowestHpPercentageAlly,
         108 => TargetRule::HighestAttackAlly,
-        109 => TargetRule::LowestHpAlly,
         111 => TargetRule::LowestExPointAlly,
         112 => TargetRule::HighestExPointAlly,
         113..=116 => TargetRule::AllyPosition(code - 112),
@@ -915,14 +911,6 @@ fn compare_hp_percentage(
 ) -> std::cmp::Ordering {
     (i64::from(left_current) * i64::from(right_max.max(1)))
         .cmp(&(i64::from(right_current) * i64::from(left_max.max(1))))
-}
-
-fn lowest_hp(entities: &[TargetEntity]) -> Vec<i64> {
-    entities
-        .iter()
-        .min_by_key(|entity| (entity.current_hp, entity.position, entity.uid))
-        .map(|entity| vec![entity.uid])
-        .unwrap_or_default()
 }
 
 fn highest_attack(entities: &[TargetEntity], managers: Option<&BattleManagers>) -> Vec<i64> {
