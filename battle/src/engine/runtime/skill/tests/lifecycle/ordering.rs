@@ -66,10 +66,10 @@ fn source_opening_and_pre_effect_reactions_precede_action_cost() {
     }
     .into();
     invocation.mode = SkillExecutionMode::Active;
-    let mut execution = SkillExecution::with_resources(
+    let mut execution = SkillExecution::with_payment(
         TargetContext::default(),
-        crate::engine::skill::action::ActionResources {
-            cost: Some(crate::engine::manager::ex_point::ExPointCommand::Spend(
+        Some(crate::engine::skill::action::ActionPayment {
+            cost: crate::engine::manager::ex_point::ExPointCommand::Spend(
                 crate::engine::manager::ex_point::ExPointChange {
                     origin: CommandOrigin {
                         domain: RuleDomain::Skill,
@@ -81,9 +81,9 @@ fn source_opening_and_pre_effect_reactions_precede_action_cost() {
                     config_effect: 0,
                     effect_type: 0,
                 },
-            )),
-            ..Default::default()
-        },
+            ),
+            composition: Vec::new(),
+        }),
     );
     let mut determinism = RoundDeterminism::default();
 
@@ -191,10 +191,10 @@ fn paid_skill_publishes_immediate_commands_before_action_start_lifecycle() {
         skill_id: 100,
     }
     .into();
-    let mut execution = SkillExecution::with_resources(
+    let mut execution = SkillExecution::with_payment(
         TargetContext::default(),
-        crate::engine::skill::action::ActionResources {
-            cost: Some(crate::engine::manager::ex_point::ExPointCommand::Spend(
+        Some(crate::engine::skill::action::ActionPayment {
+            cost: crate::engine::manager::ex_point::ExPointCommand::Spend(
                 crate::engine::manager::ex_point::ExPointChange {
                     origin: CommandOrigin {
                         domain: RuleDomain::Skill,
@@ -206,9 +206,9 @@ fn paid_skill_publishes_immediate_commands_before_action_start_lifecycle() {
                     config_effect: 0,
                     effect_type: 0,
                 },
-            )),
-            ..Default::default()
-        },
+            ),
+            composition: Vec::new(),
+        }),
     );
     let mut determinism = RoundDeterminism::default();
 

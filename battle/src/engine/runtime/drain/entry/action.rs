@@ -123,10 +123,10 @@ pub fn run_action_with_cost(
         determinism,
         context,
         prelude,
-        crate::engine::skill::action::ActionResources {
-            cost: action_cost,
-            ..Default::default()
-        },
+        action_cost.map(|cost| crate::engine::skill::action::ActionPayment {
+            cost,
+            composition: Vec::new(),
+        }),
         invocation,
         DefenderCardCleanupOwner::DeathAction,
     )
@@ -140,7 +140,7 @@ pub fn run_round_action(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     prelude: impl IntoIterator<Item = RuleOp>,
-    resources: crate::engine::skill::action::ActionResources,
+    payment: Option<crate::engine::skill::action::ActionPayment>,
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
     run_action_with_cleanup_owner(
@@ -150,7 +150,7 @@ pub fn run_round_action(
         determinism,
         context,
         prelude,
-        resources,
+        payment,
         invocation,
         DefenderCardCleanupOwner::ScheduledRoundPhase,
     )
@@ -164,7 +164,7 @@ fn run_action_with_cleanup_owner(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     prelude: impl IntoIterator<Item = RuleOp>,
-    resources: crate::engine::skill::action::ActionResources,
+    payment: Option<crate::engine::skill::action::ActionPayment>,
     invocation: crate::engine::skill::action::SkillInvocation,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
@@ -208,7 +208,7 @@ fn run_action_with_cleanup_owner(
     queue.push_back(QueuedOp {
         op: RuleOp::Skill(invocation),
         trigger: SkillOpTrigger::Active,
-        skill_execution: Some(SkillExecution::with_resources(context, resources)),
+        skill_execution: Some(SkillExecution::with_payment(context, payment)),
         frame_path: Some(root.clone()),
         parent_path: None,
         frame_group: None,

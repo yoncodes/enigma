@@ -1,6 +1,8 @@
 use super::*;
 use crate::engine::manager::card::{CardInsertSovereign, CardSetup};
 
+mod timing;
+
 fn setup(
     hand: &[i32],
     moxie: i32,

@@ -961,7 +961,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution,
             SkillPhase::Immediate,
         );
-        outputs.extend(super::resources::settle(
+        outputs.extend(super::payment::settle(
             &invocation,
             execution,
             phase_completed,

@@ -995,7 +995,22 @@ fn run_player_card_ops(
             );
             continue;
         }
-        let composition_rewards = super::card_rewards::changes(CARD_PLAY_ORIGIN, composed_owners);
+        let (own_rewards, other_rewards): (Vec<_>, Vec<_>) = composed_owners
+            .into_iter()
+            .partition(|(owner_uid, _)| *owner_uid == source_uid);
+        append(
+            &mut result,
+            run_card_composition_rewards(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                CARD_PLAY_ORIGIN,
+                other_rewards,
+            )?,
+        );
+        let composition_rewards = super::card_rewards::changes(CARD_PLAY_ORIGIN, own_rewards);
         append(
             &mut result,
             run_active_action(
@@ -1216,9 +1231,40 @@ pub(super) fn run_active_action(
     }
     let resource_delta =
         card_play_resource_delta(managers, source_uid, grants_ex_point, is_ultimate);
-    let pre_action_delta = resource_delta
-        .filter(|_| !grant_after_action)
-        .unwrap_or_default();
+    let ultimate_moxie = if boss_power.is_some() {
+        0
+    } else {
+        ultimate_cost.max(0)
+    };
+    let (composition_delta, payment) = if ultimate_moxie > 0 {
+        (
+            0,
+            Some(crate::engine::skill::action::ActionPayment {
+                cost: ExPointCommand::Spend(ExPointChange {
+                    origin: CARD_PLAY_ORIGIN,
+                    source_uid,
+                    target_uid: source_uid,
+                    delta: -ultimate_moxie,
+                    config_effect: 0,
+                    effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+                }),
+                composition: composition_rewards,
+            }),
+        )
+    } else {
+        (
+            composition_rewards
+                .into_iter()
+                .map(|change| change.delta)
+                .fold(0, i32::saturating_add),
+            None,
+        )
+    };
+    let pre_action_delta = composition_delta.saturating_add(
+        resource_delta
+            .filter(|_| !grant_after_action)
+            .unwrap_or_default(),
+    );
     if pre_action_delta > 0 {
         append(
             &mut result,
@@ -1241,21 +1287,6 @@ pub(super) fn run_active_action(
             )?,
         );
     }
-    let ultimate_moxie = if boss_power.is_some() {
-        0
-    } else {
-        ultimate_cost.max(0)
-    };
-    let action_cost = (ultimate_moxie > 0).then(|| {
-        ExPointCommand::Spend(ExPointChange {
-            origin: CARD_PLAY_ORIGIN,
-            source_uid,
-            target_uid: source_uid,
-            delta: -ultimate_moxie,
-            config_effect: 0,
-            effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-        })
-    });
     append(
         &mut result,
         drain::run_round_action(
@@ -1265,10 +1296,7 @@ pub(super) fn run_active_action(
             determinism,
             context,
             prelude,
-            crate::engine::skill::action::ActionResources {
-                cost: action_cost,
-                composition: composition_rewards,
-            },
+            payment,
             skill,
         )?,
     );

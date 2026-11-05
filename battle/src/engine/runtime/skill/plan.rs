@@ -40,8 +40,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) pending_additional_damage: Vec<HpCommand>,
     pending_after_damage_ops: Vec<RuleOp>,
     pending_after_damage_frame_owner: Option<crate::engine::runtime::record::FrameOwner>,
-    action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
-    composition_rewards: Vec<crate::engine::manager::ex_point::ExPointChange>,
+    payment: Option<crate::engine::skill::action::ActionPayment>,
     // The next slot to run when a phase continues after an earlier slot's changes commit.
     pub(super) resume_slot: usize,
     // The next target in a slot whose prior target must settle first.
@@ -131,8 +130,7 @@ impl SkillExecution {
             pending_additional_damage: Vec::new(),
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
-            action_cost: None,
-            composition_rewards: Vec::new(),
+            payment: None,
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
@@ -169,8 +167,7 @@ impl SkillExecution {
             pending_additional_damage: Vec::new(),
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
-            action_cost: None,
-            composition_rewards: Vec::new(),
+            payment: None,
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
@@ -180,27 +177,18 @@ impl SkillExecution {
         }
     }
 
-    pub(in crate::engine::runtime) fn with_resources(
+    pub(in crate::engine::runtime) fn with_payment(
         context: TargetContext,
-        resources: crate::engine::skill::action::ActionResources,
+        payment: Option<crate::engine::skill::action::ActionPayment>,
     ) -> Self {
         Self {
-            action_cost: resources.cost,
-            composition_rewards: resources.composition,
+            payment,
             ..Self::new(context)
         }
     }
 
-    pub(super) fn take_composition_rewards(
-        &mut self,
-    ) -> Vec<crate::engine::manager::ex_point::ExPointChange> {
-        std::mem::take(&mut self.composition_rewards)
-    }
-
-    pub(super) fn take_action_cost(
-        &mut self,
-    ) -> Option<crate::engine::manager::ex_point::ExPointCommand> {
-        self.action_cost.take()
+    pub(super) fn take_payment(&mut self) -> Option<crate::engine::skill::action::ActionPayment> {
+        self.payment.take()
     }
 
     pub(in crate::engine::runtime) fn prepare_direct_big(&mut self, additional_moxie: i32) {

@@ -1,7 +1,7 @@
 use sonettobuf::CardInfo;
 
-mod resources;
-pub use resources::ActionResources;
+mod payment;
+pub use payment::ActionPayment;
 
 use crate::engine::damage::DamageRateComposition;
 use crate::engine::entity::attr::AttrId;
