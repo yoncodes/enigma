@@ -220,7 +220,7 @@ fn auto_input(parent: &Path, round_index: i32) -> Option<CapturedAuto> {
 }
 
 fn cloth_inputs(parent: &Path, round_index: i32) -> io::Result<Vec<CapturedCloth>> {
-    let requests = super::cloth_input_paths(parent, round_index)?;
+    let mut requests = super::cloth_input_paths(parent, round_index)?;
     let reply_name = format!("UseClothSkillReply_{round_index}");
     let mut replies = fs::read_dir(parent)?
         .filter_map(Result::ok)
@@ -228,6 +228,15 @@ fn cloth_inputs(parent: &Path, round_index: i32) -> io::Result<Vec<CapturedCloth
         .filter(|path| super::is_cloth_input(path, &reply_name))
         .collect::<Vec<_>>();
     replies.sort();
+    if requests.is_empty() && !replies.is_empty() {
+        let recovered = replies
+            .iter()
+            .map(|reply| common_cloth_request(parent, reply))
+            .collect::<io::Result<Vec<_>>>()?;
+        if recovered.iter().all(Option::is_some) {
+            requests = recovered.into_iter().flatten().collect();
+        }
+    }
     if !replies.is_empty() && replies.len() != requests.len() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -246,6 +255,44 @@ fn cloth_inputs(parent: &Path, round_index: i32) -> io::Result<Vec<CapturedCloth
             reply: replies.get(index).cloned(),
         })
         .collect())
+}
+
+fn common_cloth_request(parent: &Path, reply: &Path) -> io::Result<Option<PathBuf>> {
+    let Some(common) = parent
+        .parent()
+        .and_then(Path::parent)
+        .map(|root| root.join("common"))
+        .filter(|path| path.is_dir())
+    else {
+        return Ok(None);
+    };
+    let expected = fs::read(reply)?;
+    let mut files = fs::read_dir(common)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    files.sort();
+    let mut request = None;
+    let mut matched = None;
+    for path in files {
+        match command(&path) {
+            Some("UseClothSkillRequest") => request = Some(path),
+            Some("UseClothSkillReply") => {
+                let candidate = request.take();
+                if fs::read(&path)? == expected
+                    && let Some(candidate) = candidate
+                    && matched.replace(candidate).is_some()
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("ambiguous common cloth reply: {}", reply.display()),
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(matched)
 }
 
 fn is_start_reply(command: &str) -> bool {
@@ -488,6 +535,52 @@ mod tests {
             io::ErrorKind::InvalidData
         );
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn fixed_folder_recovers_cloth_request_from_common_capture() {
+        let root = std::env::temp_dir().join(format!(
+            "enigma-common-cloth-pairing-{}",
+            std::process::id()
+        ));
+        let battle = root.join("decoded/FocusedFlashback/Battle1");
+        let common = root.join("decoded/common");
+        fs::create_dir_all(&battle).unwrap();
+        fs::create_dir_all(&common).unwrap();
+        let request = common.join("20261104_140111_560_000235_UseClothSkillRequest.json");
+        fs::write(&request, r#"{"type":9}"#).unwrap();
+        fs::write(
+            common.join("20261104_140111_694_000236_UseClothSkillReply.json"),
+            r#"{"round":{"curRound":3}}"#,
+        )
+        .unwrap();
+        let reply = battle.join("UseClothSkillReply_3.json");
+        fs::write(&reply, r#"{"round":{"curRound":3}}"#).unwrap();
+
+        assert_eq!(
+            cloth_inputs(&battle, 3).unwrap(),
+            vec![CapturedCloth {
+                request,
+                reply: Some(reply),
+            }]
+        );
+
+        fs::write(
+            common.join("20261104_140112_560_000237_UseClothSkillRequest.json"),
+            r#"{"type":8}"#,
+        )
+        .unwrap();
+        fs::write(
+            common.join("20261104_140112_694_000238_UseClothSkillReply.json"),
+            r#"{"round":{"curRound":3}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            cloth_inputs(&battle, 3).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
