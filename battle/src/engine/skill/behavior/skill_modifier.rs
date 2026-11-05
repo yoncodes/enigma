@@ -58,13 +58,17 @@ impl BehaviorHandler for Handler {
         }
         let mut ops = Vec::new();
         if *amount > 0 {
+            let depleted = match behavior.spec.kind {
+                BehaviorKind::ConsumeBuffChangeTargets => DepletedBuff::RemoveWithZeroLayer,
+                _ => DepletedBuff::Remove,
+            };
             ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(
                 BuffConsume {
                     origin: super::command_origin(behavior)?,
                     target_uid: context.target_uid,
                     selector: BuffSelector::IdOrType(*type_or_buff_id),
                     amount: *amount,
-                    depleted: DepletedBuff::Remove,
+                    depleted,
                 },
             ))));
         }
@@ -507,7 +511,10 @@ mod tests {
         assert!(matches!(
             ops.as_slice(),
             [
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(_))),
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                    depleted: DepletedBuff::RemoveWithZeroLayer,
+                    ..
+                }))),
                 RuleOp::ModifyActiveSkillTargets {
                     additional_count: 1
                 }
