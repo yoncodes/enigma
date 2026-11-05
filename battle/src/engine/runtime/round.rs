@@ -345,8 +345,6 @@ impl BattleRuntime {
             absorb_hurt_map_layout,
         )?);
         let ended_after_attacker_settlement = battle_ended(&self.fight, &pool, &self.managers);
-        let wave_defeated_after_attacker_settlement =
-            crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         let runs_phase_two = !ended_after_attacker_settlement;
         let needs_refill = crate::engine::mechanic::card::CardMechanic
             .refill_hand_len(&self.managers, &pool)
@@ -475,8 +473,7 @@ impl BattleRuntime {
                 context,
                 1,
                 &wave_entry_condition_uids,
-                (uses_action_phase_power_clear && !wave_defeated_after_attacker_settlement)
-                    .then_some(2),
+                uses_action_phase_power_clear.then_some(2),
             )
             .map_err(|error| format!("{error:?}"))?;
             ai_turn.observe(&before_ai);

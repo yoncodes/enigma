@@ -63,6 +63,7 @@ fn destination_begin_round_owns_the_round_transition_and_reply_buckets() {
         cur_round: Some(1),
         version: Some(6),
         attacker: Some(FightTeam {
+            device_area: Some(Default::default()),
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 current_hp: Some(100),
@@ -71,6 +72,7 @@ fn destination_begin_round_owns_the_round_transition_and_reply_buckets() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
+            device_area: Some(Default::default()),
             entitys: vec![FightEntityInfo {
                 uid: Some(-1),
                 current_hp: Some(100),
@@ -112,6 +114,12 @@ fn destination_begin_round_owns_the_round_transition_and_reply_buckets() {
             sonettobuf::effect_type_enum::EffectType::Carddecknum as i32,
         ]
     );
+    assert!(round.fight_step.iter().all(|step| {
+        step.act_effect.iter().all(|effect| {
+            effect.effect_type
+                != Some(sonettobuf::effect_type_enum::EffectType::Devicepowerclear as i32)
+        })
+    }));
 }
 
 #[test]
