@@ -460,6 +460,7 @@ struct QueuedPlayerAction {
     grant_after_action: bool,
     composed_owners: Vec<(i64, i32)>,
     before_rewards: Vec<(i64, i32)>,
+    after_rewards: Vec<(i64, i32)>,
     prelude: Vec<RuleOp>,
 }
 
@@ -587,7 +588,8 @@ fn run_player_card_ops(
                 grants_ex_point: false,
                 grant_after_action: false,
                 composed_owners: Vec::new(),
-                before_rewards: Vec::new(),
+                before_rewards: std::mem::take(&mut pending_rewards),
+                after_rewards: Vec::new(),
                 prelude,
             });
             continue;
@@ -710,6 +712,7 @@ fn run_player_card_ops(
                 grant_after_action: played.card.temp_card.unwrap_or_default(),
                 composed_owners: Vec::new(),
                 before_rewards: Vec::new(),
+                after_rewards: Vec::new(),
                 prelude: Vec::new(),
             })
         }));
@@ -779,7 +782,7 @@ fn run_player_card_ops(
         skills
             .last_mut()
             .expect("a non-empty action queue has a final skill")
-            .before_rewards
+            .after_rewards
             .extend(pending_rewards);
     }
     let committed = run_action_queue_committed(
@@ -804,6 +807,7 @@ fn run_player_card_ops(
             grant_after_action: false,
             composed_owners: Vec::new(),
             before_rewards: Vec::new(),
+            after_rewards: Vec::new(),
             prelude: Vec::new(),
         })
     }));
@@ -855,6 +859,7 @@ fn run_player_card_ops(
             grant_after_action,
             composed_owners,
             before_rewards,
+            after_rewards,
             prelude,
         } = queued;
         let is_card_action = source == PlayerActionSource::Card;
@@ -996,6 +1001,18 @@ fn run_player_card_ops(
                     rewards,
                 )?,
             );
+            append(
+                &mut result,
+                run_card_composition_rewards(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    CARD_PLAY_ORIGIN,
+                    after_rewards,
+                )?,
+            );
             continue;
         }
         let (own_rewards, other_rewards): (Vec<_>, Vec<_>) = composed_owners
@@ -1029,6 +1046,18 @@ fn run_player_card_ops(
                     composition_rewards,
                     prelude,
                 },
+            )?,
+        );
+        append(
+            &mut result,
+            run_card_composition_rewards(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                CARD_PLAY_ORIGIN,
+                after_rewards,
             )?,
         );
     }

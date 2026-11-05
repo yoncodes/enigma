@@ -880,95 +880,134 @@ fn repeated_play_index_tracks_the_composed_mutating_hand() {
 }
 
 #[test]
-fn queued_move_projects_composition_reward_before_the_triggering_skill() {
-    init_config();
-    let entity = |uid, skills| FightEntityInfo {
-        uid: Some(uid),
-        team_type: Some(1),
-        current_hp: Some(100),
-        ex_point: Some(0),
-        skill_group1: skills,
-        ..Default::default()
-    };
-    let fight = Fight {
-        attacker: Some(FightTeam {
-            entitys: vec![entity(10, vec![100]), entity(20, vec![200, 201])],
+fn queued_move_projects_composition_reward_at_its_command_position() {
+    let run = |move_first| {
+        init_config();
+        let entity = |uid, skills| FightEntityInfo {
+            uid: Some(uid),
+            team_type: Some(1),
+            current_hp: Some(100),
+            ex_point: Some(0),
+            skill_group1: skills,
             ..Default::default()
-        }),
-        ..Default::default()
-    };
-    let pool = TargetPool::from_fight(&fight);
-    let mut managers = BattleManagers::seeded(&fight);
-    managers
-        .execute_card(CardCommand::Setup(CardSetup {
-            hand: vec![
-                CardInfo {
-                    uid: Some(20),
-                    skill_id: Some(200),
-                    ..Default::default()
-                },
-                CardInfo {
-                    uid: Some(10),
-                    skill_id: Some(100),
-                    ..Default::default()
-                },
-                CardInfo {
-                    uid: Some(20),
-                    skill_id: Some(200),
-                    ..Default::default()
-                },
-            ],
-            draw_pile: Vec::new(),
-            deck_num: 30,
-        }))
+        };
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![
+                    entity(10, vec![100]),
+                    entity(20, vec![200, 201]),
+                    entity(30, vec![300]),
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        managers
+            .execute_card(CardCommand::Setup(CardSetup {
+                hand: vec![
+                    CardInfo {
+                        uid: Some(20),
+                        skill_id: Some(200),
+                        ..Default::default()
+                    },
+                    CardInfo {
+                        uid: Some(10),
+                        skill_id: Some(100),
+                        ..Default::default()
+                    },
+                    CardInfo {
+                        uid: Some(30),
+                        skill_id: Some(300),
+                        ..Default::default()
+                    },
+                    CardInfo {
+                        uid: Some(20),
+                        skill_id: Some(200),
+                        ..Default::default()
+                    },
+                ],
+                draw_pile: Vec::new(),
+                deck_num: 30,
+            }))
+            .unwrap();
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert(ParsedSkillEffect {
+            skill_id: 100,
+            slots: vec![SkillEffectSlot::new(
+                ParsedBehavior::from_spec(
+                    BehaviorSpec::new(20002, "AddExPoint"),
+                    vec![1],
+                    Vec::new(),
+                ),
+                TargetRequest::self_only(),
+            )],
+        });
+        let movement = RoundCommand::MoveCard {
+            from_index: 0,
+            to_index: if move_first { 2 } else { 1 },
+        };
+        let play = RoundCommand::PlayCard {
+            card_index: if move_first { 0 } else { 1 },
+            target_uid: None,
+            chosen_skill_id: None,
+            recorded_skill: None,
+        };
+        let commands = if move_first {
+            vec![movement, play]
+        } else {
+            vec![play, movement]
+        };
+        let result = run_player_commands(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            commands,
+            1,
+            crate::engine::manager::emitter::UID,
+        )
         .unwrap();
-    let mut catalog = SkillEffectCatalog::default();
-    catalog.insert(ParsedSkillEffect {
-        skill_id: 100,
-        slots: vec![SkillEffectSlot::new(
-            ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
-            TargetRequest::self_only(),
-        )],
-    });
+        (
+            crate::engine::packet::timeline::project(&result.frames).unwrap(),
+            managers.ex_point.get(20),
+            managers
+                .card
+                .hand()
+                .iter()
+                .any(|card| card.skill_id == Some(201)),
+        )
+    };
+    let positions = |steps: &[sonettobuf::FightStep]| {
+        let skill = steps
+            .iter()
+            .position(|step| step.act_id == Some(100))
+            .unwrap();
+        let reward = steps
+            .iter()
+            .position(|step| {
+                step.act_effect.iter().any(|effect| {
+                    effect.effect_type
+                        == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
+                        && effect.target_id == Some(20)
+                        && effect.effect_num == Some(2)
+                })
+            })
+            .unwrap();
+        (skill, reward)
+    };
 
-    let result = run_player_commands(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
-        [
-            RoundCommand::MoveCard {
-                from_index: 0,
-                to_index: 1,
-            },
-            RoundCommand::PlayCard {
-                card_index: 0,
-                target_uid: None,
-                chosen_skill_id: None,
-                recorded_skill: None,
-            },
-        ],
-        1,
-        crate::engine::manager::emitter::UID,
-    )
-    .unwrap();
-    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let (before, before_moxie, before_card) = run(true);
+    let (after, after_moxie, after_card) = run(false);
+    let (before_skill, before_reward) = positions(&before);
+    let (after_skill, after_reward) = positions(&after);
 
-    assert_eq!(steps.len(), 4);
-    assert_eq!(
-        steps[0].act_effect[0].effect_type,
-        Some(sonettobuf::effect_type_enum::EffectType::Usecards as i32)
-    );
-    assert_eq!(
-        steps[1].act_effect[0].effect_type,
-        Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
-    );
-    assert_eq!(steps[1].act_effect[0].target_id, Some(20));
-    assert_eq!(steps[1].act_effect[0].effect_num, Some(2));
-    assert_eq!(steps[3].act_id, Some(100));
-    assert_eq!(managers.ex_point.get(20), 2);
-    assert_eq!(managers.card.hand()[0].skill_id, Some(201));
+    assert!(before_reward < before_skill);
+    assert!(after_skill < after_reward);
+    assert_eq!((before_moxie, after_moxie), (2, 2));
+    assert!(before_card && after_card);
 }
 
 #[test]
