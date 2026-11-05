@@ -903,18 +903,17 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             let card = match add.kind {
-                TemporaryCardKind::GenericSkill | TemporaryCardKind::ConfiguredSkill => {
-                    manager.add_temp_card(add.skill_id)
-                }
-                TemporaryCardKind::PrecastSkill
-                | TemporaryCardKind::ConfiguredSkill3
-                | TemporaryCardKind::HeroSkill => manager.add_temp_card_for(
-                    add.target_uid,
-                    add.skill_id,
-                    add.hero_id,
-                    add.reserve_id,
-                    add.team_type,
-                ),
+                TemporaryCardKind::GenericSkill
+                | TemporaryCardKind::ConfiguredSkill
+                | TemporaryCardKind::PrecastSkill => manager.add_temp_card(add.skill_id),
+                TemporaryCardKind::ConfiguredSkill3 | TemporaryCardKind::HeroSkill => manager
+                    .add_temp_card_for(
+                        add.target_uid,
+                        add.skill_id,
+                        add.hero_id,
+                        add.reserve_id,
+                        add.team_type,
+                    ),
             };
             operation = Some(CardChange::SpCardAdd {
                 target_uid: add.target_uid,

@@ -912,7 +912,7 @@ fn twins_round_start_passive_adds_the_captured_precast_card() {
     .unwrap();
 
     assert!(managers.card.hand().iter().any(|card| {
-        card.skill_id == Some(31446013) && card.uid == Some(10) && card.temp_card == Some(true)
+        card.skill_id == Some(31446013) && card.uid == Some(0) && card.temp_card == Some(true)
     }));
     fn has_precast(effect: &sonettobuf::ActEffect) -> bool {
         (effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Spcardadd as i32)
@@ -1110,6 +1110,6 @@ fn twins_battle_rule_unlocks_the_precast_card_after_two_round_starts() {
 
     assert!(managers.buff.has_buff_id(10, 116385670));
     assert!(managers.card.hand().iter().any(|card| {
-        card.skill_id == Some(31446013) && card.uid == Some(10) && card.temp_card == Some(true)
+        card.skill_id == Some(31446013) && card.uid == Some(0) && card.temp_card == Some(true)
     }));
 }
