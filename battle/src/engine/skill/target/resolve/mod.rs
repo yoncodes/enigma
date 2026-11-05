@@ -1,5 +1,5 @@
 use crate::engine::{
-    manager::{BattleManagers, buff::BuffStatus, emitter},
+    manager::{BattleManagers, buff::BuffStatus, emitter, ex_point::ExPointKind},
     runtime::determinism::RoundDeterminism,
     skill::target::{
         BehaviorTargetOrder, TargetContext, TargetEntity, TargetPool, request::TargetRequest,
@@ -980,6 +980,11 @@ fn highest_ex_point(
 ) -> Vec<i64> {
     let uid = entities
         .iter()
+        .filter(|entity| {
+            managers.is_none_or(|managers| {
+                managers.ex_point.kind(entity.uid) == ExPointKind::Common.as_wire()
+            })
+        })
         .min_by_key(|entity| {
             (
                 -managers
