@@ -1,5 +1,4 @@
 use std::{
-    collections::{HashMap, VecDeque},
     env, fs, io,
     path::{Path, PathBuf},
 };
@@ -22,19 +21,9 @@ use sonettobuf::{
 };
 
 mod capture;
+mod damage_comparison;
 
 use capture::CapturedBattle;
-
-const TRACED_DAMAGE_EFFECT_TYPES: [i32; 8] = [
-    sonettobuf::effect_type_enum::EffectType::Damage as i32,
-    sonettobuf::effect_type_enum::EffectType::Crit as i32,
-    sonettobuf::effect_type_enum::EffectType::Origindamage as i32,
-    sonettobuf::effect_type_enum::EffectType::Origincrit as i32,
-    sonettobuf::effect_type_enum::EffectType::Additionaldamage as i32,
-    sonettobuf::effect_type_enum::EffectType::Additionaldamagecrit as i32,
-    sonettobuf::effect_type_enum::EffectType::Nuodikarandomattack as i32,
-    sonettobuf::effect_type_enum::EffectType::Nuodikateamattack as i32,
-];
 
 fn main() -> anyhow::Result<()> {
     std::thread::Builder::new()
@@ -296,9 +285,7 @@ fn report_input(
     };
     let original_text = fs::read_to_string(input)?;
     let original = captured_original(input)?;
-    if damage_tracing_enabled() {
-        report_damage_comparison(&generated_round, &captured_round(input)?);
-    }
+    damage_comparison::report(&generated_round, &captured_round(input)?);
     let generated = BeginRoundReply {
         round: Some(generated_round),
     };
@@ -463,8 +450,8 @@ fn replay_rounds(
         .map_err(io::Error::other)?;
     if damage_tracing_enabled() {
         eprintln!("  start-round damage:");
-        report_damage_comparison(&start_round, &captured_start_round);
     }
+    damage_comparison::report(&start_round, &captured_start_round);
     let mut run = ReplayRun {
         outcomes: Vec::new(),
         auto_outcomes: Vec::new(),
@@ -703,97 +690,6 @@ fn nested_steps(round: &FightRound) -> impl Iterator<Item = &FightStep> {
         );
         Some(step)
     })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct DamageIdentity {
-    skill_id: i32,
-    source_uid: i64,
-    target_uid: i64,
-    effect_type: i32,
-    config_effect: i32,
-    buff_act_id: i32,
-}
-
-fn damage_observations(round: &FightRound) -> Vec<(DamageIdentity, (i32, bool))> {
-    nested_steps(round)
-        .flat_map(|step| {
-            step.act_effect.iter().filter_map(move |effect| {
-                let effect_type = effect.effect_type?;
-                TRACED_DAMAGE_EFFECT_TYPES
-                    .contains(&effect_type)
-                    .then_some((
-                        DamageIdentity {
-                            skill_id: step.act_id.unwrap_or_default(),
-                            source_uid: effect
-                                .hurt_info
-                                .as_ref()
-                                .and_then(|info| info.from_uid)
-                                .unwrap_or_else(|| step.from_id.unwrap_or_default()),
-                            target_uid: effect.target_id.unwrap_or_default(),
-                            effect_type,
-                            config_effect: effect.config_effect.unwrap_or_default(),
-                            buff_act_id: effect.buff_act_id.unwrap_or_default(),
-                        },
-                        (
-                            effect.effect_num.unwrap_or_default(),
-                            effect
-                                .hurt_info
-                                .as_ref()
-                                .and_then(|info| info.career_restraint)
-                                .unwrap_or_default(),
-                        ),
-                    ))
-            })
-        })
-        .collect()
-}
-
-fn report_damage_comparison(generated: &FightRound, captured: &FightRound) {
-    for (label, round) in [("generated", generated), ("captured", captured)] {
-        for effect in nested_steps(round)
-            .flat_map(|step| &step.act_effect)
-            .filter(|effect| {
-                effect.effect_type
-                    == Some(sonettobuf::effect_type_enum::EffectType::Twinsupcount as i32)
-            })
-        {
-            eprintln!(
-                "  conduit consumed {label}={} config={}",
-                effect.effect_num.unwrap_or_default(),
-                effect.config_effect.unwrap_or_default()
-            );
-        }
-    }
-    let mut captured = damage_observations(captured).into_iter().fold(
-        HashMap::<DamageIdentity, VecDeque<(i32, bool)>>::new(),
-        |mut amounts, (identity, observation)| {
-            amounts.entry(identity).or_default().push_back(observation);
-            amounts
-        },
-    );
-    for (identity, (generated, generated_restrained)) in damage_observations(generated) {
-        let captured = captured.get_mut(&identity).and_then(VecDeque::pop_front);
-        match captured {
-            Some((captured, captured_restrained)) => {
-                let delta = generated - captured;
-                eprintln!(
-                    "  damage parity identity={identity:?} generated={generated} captured={captured} delta={delta} restrained={generated_restrained}/{captured_restrained} earliest_observable_divergence={}",
-                    if delta == 0 { "none" } else { "final_effect" },
-                );
-            }
-            None => eprintln!(
-                "  damage parity identity={identity:?} generated={generated} captured=missing"
-            ),
-        }
-    }
-    for (identity, amounts) in captured {
-        for (captured, restrained) in amounts {
-            eprintln!(
-                "  damage parity identity={identity:?} generated=missing captured={captured} restrained={restrained}"
-            );
-        }
-    }
 }
 
 fn begin_round_request(path: &Path) -> anyhow::Result<BeginRoundRequest> {
