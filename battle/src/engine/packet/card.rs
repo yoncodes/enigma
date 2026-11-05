@@ -2,6 +2,8 @@ use sonettobuf::{ActEffect, CardInfo, effect_type_enum::EffectType};
 
 use crate::engine::{fight::versions::RedealWireLayout, manager::card::CardChange};
 
+pub(super) mod sovereign;
+
 pub struct CardPacket;
 
 impl CardPacket {

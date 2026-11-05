@@ -226,6 +226,7 @@ fn played_cards_grant_cloth_power_only_after_action_completion() {
             entity: None,
             hand_limit: None,
             owner_removal: None,
+            sovereign_boost: None,
             ai_invalidations: Vec::new(),
             ai_queue: None,
             team_cards: None,

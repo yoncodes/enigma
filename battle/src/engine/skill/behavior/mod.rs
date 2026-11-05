@@ -36,6 +36,7 @@ pub mod scene;
 pub mod shell;
 pub mod shield;
 pub mod skill_modifier;
+pub mod sovereign_boost;
 pub mod special_count;
 pub mod summon;
 pub mod synchronization;

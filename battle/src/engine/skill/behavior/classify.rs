@@ -15,6 +15,7 @@ impl BehaviorKey {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BehaviorKind {
+    InitialSovereignBoost,
     AddBuff,
     AddBuffPowerUse,
     AddBuffRanId,

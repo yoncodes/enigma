@@ -113,6 +113,15 @@ impl RuleOutcome {
 
     pub(crate) fn owned_changes(&self) -> Vec<(OutputOwner, BattleChange)> {
         match self {
+            Self::Card(changes)
+                if changes.kind
+                    == crate::engine::manager::card::CardChangeKind::InitialSovereignBoost =>
+            {
+                vec![(
+                    OutputOwner::InitialSovereignBoost,
+                    BattleChange::Card(changes.clone()),
+                )]
+            }
             Self::BloodtitheSpend(changes) => vec![
                 (OutputOwner::Parent, BattleChange::Gauge(changes.gauge)),
                 (
@@ -328,6 +337,12 @@ impl RuleOutcome {
             Self::Entity(change) => vec![BattleChange::Entity(change.clone())],
             Self::MonsterChange(changes) => {
                 vec![BattleChange::Entity(Box::new(changes.entity.clone()))]
+            }
+            Self::Card(change)
+                if change.kind
+                    == crate::engine::manager::card::CardChangeKind::InitialSovereignBoost =>
+            {
+                Vec::new()
             }
             Self::Card(change) => vec![BattleChange::Card(change.clone())],
             Self::BuffPrecast(changes) => vec![

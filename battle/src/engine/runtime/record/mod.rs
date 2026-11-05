@@ -52,6 +52,7 @@ pub enum FrameOwner {
     },
     SetupMechanic,
     LifecycleMechanic,
+    InitialSovereignBoost,
     BuffDuration {
         owner_uid: i64,
         buff_uid: i64,

@@ -50,6 +50,7 @@ pub enum ParsedConditionKind {
         count: i32,
     },
     None(NoneMode),
+    SovereignCardCreated,
     BuffId {
         mode: BuffConditionMode,
         buff_ids: Vec<i32>,

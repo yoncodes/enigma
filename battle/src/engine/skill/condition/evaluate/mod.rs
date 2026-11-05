@@ -449,6 +449,9 @@ fn condition_kind_matches(
             context,
         ),
         ParsedConditionKind::Lifecycle(_) => false,
+        ParsedConditionKind::SovereignCardCreated => {
+            context.runtime_target_uid != 0 && context.runtime_target_uid == source_uid
+        }
         ParsedConditionKind::RoundInterval {
             start_round,
             period,

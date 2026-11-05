@@ -64,6 +64,23 @@ pub struct CardInsertSovereign {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardInitialSovereignBoost {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+    pub index: usize,
+    pub distance: usize,
+    pub team_type: i32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SovereignBoostChange {
+    pub from_index: usize,
+    pub to_index: usize,
+    pub card: CardInfo,
+    pub team_type: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CardAddUniversal {
     pub origin: CommandOrigin,
     pub count: i32,
@@ -385,6 +402,7 @@ pub enum CardCommand {
     },
     AddGenerated(CardAddGenerated),
     InsertSovereign(CardInsertSovereign),
+    InitialSovereignBoost(CardInitialSovereignBoost),
     AddUniversal(CardAddUniversal),
     RedealKeepRanks {
         origin: CommandOrigin,
@@ -475,6 +493,7 @@ impl CardCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardChangeKind {
+    InitialSovereignBoost,
     SovereignInserted,
     Setup,
     ConsumedForEffect,
@@ -547,6 +566,7 @@ pub struct CardChanges {
     pub entity: Option<FightEntityInfo>,
     pub hand_limit: Option<(i64, i32)>,
     pub owner_removal: Option<CardOwnerRemoval>,
+    pub sovereign_boost: Option<SovereignBoostChange>,
     pub ai_invalidations: Vec<CardInvalidatedAi>,
     pub ai_queue: Option<Vec<CardInfo>>,
     pub team_cards: Option<Vec<CardInfo>>,
@@ -623,6 +643,7 @@ pub(super) fn execute(
     let mut consumption_kind = None;
     let mut hand_limit = None;
     let mut owner_removal = None;
+    let mut sovereign_boost = None;
     let mut ai_invalidations = Vec::new();
     let mut ai_queue = None;
     let mut team_cards = None;
@@ -725,6 +746,17 @@ pub(super) fn execute(
             (
                 Some(origin),
                 CardChangeKind::Dissolved,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::InitialSovereignBoost(boost) => {
+            sovereign_boost = Some(manager.initial_sovereign_boost(boost)?);
+            (
+                Some(boost.origin),
+                CardChangeKind::InitialSovereignBoost,
                 None,
                 None,
                 Vec::new(),
@@ -1590,6 +1622,7 @@ pub(super) fn execute(
         entity: None,
         hand_limit,
         owner_removal,
+        sovereign_boost,
         ai_invalidations,
         ai_queue,
         team_cards,

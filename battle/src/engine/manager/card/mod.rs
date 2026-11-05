@@ -22,13 +22,13 @@ pub use command::{
     CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
     CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardConsumptionKind,
     CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange,
-    CardHandLimitChange, CardInsertSovereign, CardInvalidateAiOwner, CardInvalidatePlayed,
-    CardInvalidatedAi, CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary,
-    CardPlay, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel,
-    CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
+    CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign, CardInvalidateAiOwner,
+    CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval,
+    CardPersistTemporary, CardPlay, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
+    CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
     CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability,
     CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp,
-    QueuedUseCard, TemporaryCardKind,
+    QueuedUseCard, SovereignBoostChange, TemporaryCardKind,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;

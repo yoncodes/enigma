@@ -2,7 +2,7 @@ use super::{
     act_order, active_skill, battle_tag, buff, card, career, conduit, entity_count, extra, hp,
     indicator, injury, lifecycle, magic_circle, none,
     parse::{self, ParsedCondition, ParsedConditionKind},
-    player, resource, target_identity, trigger,
+    player, resource, sovereign_card, target_identity, trigger,
 };
 use crate::engine::{
     entity::passive::PassiveSourceKind,
@@ -617,6 +617,7 @@ macro_rules! condition_definitions {
 }
 
 condition_definitions! {
+    [10500] "None" => sovereign_card::created, in_independent_frame(reaction_targets_owner(event_trigger(EventKind::SovereignCardCreated, None)));
     [0] "None" => none::always, predicate(&[]);
     [5] "EnterFight" => lifecycle::enter_fight, reactivates_on(in_event_sibling_frame(setup_route(SetupStage::EnterFight, 0, &[])), &[EventKind::EntityEntered, EventKind::EntityTransformed]);
     [55, 1050, 655036, 655038] "None" => none::enter_battle, companion_setup(event_trigger(EventKind::EntityEntered, None), &[(SetupStage::EnterBattleStatic, 0)]);

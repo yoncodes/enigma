@@ -742,6 +742,7 @@ fn output_frame_path(
         OutputOwner::CausingEvent
         | OutputOwner::ActionSkillReaction
         | OutputOwner::NestedLifecycleMechanic
+        | OutputOwner::InitialSovereignBoost
         | OutputOwner::SetupParent
         | OutputOwner::SetupOrFinalSettlementParent => {
             unreachable!("conditional output ownership must be resolved before draining")

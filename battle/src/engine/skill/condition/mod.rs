@@ -20,6 +20,7 @@ pub mod player;
 pub mod query;
 pub mod registry;
 pub(crate) mod resource;
+pub mod sovereign_card;
 pub mod target_identity;
 pub mod timing;
 pub mod trigger;

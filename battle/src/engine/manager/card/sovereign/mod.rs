@@ -3,6 +3,8 @@ use sonettobuf::{CardData, CardExtraInfo, CardInfo, card_data::CardDataKey, card
 
 use super::{CardChange, CardCommandError, CardManager, command::CardInsertSovereign, permissions};
 
+mod boost;
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Strengthen {
