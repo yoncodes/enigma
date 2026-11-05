@@ -22,7 +22,7 @@ fn required_state(card: &CardInfo) -> Result<SovereignState, CardCommandError> {
 }
 
 impl SovereignState {
-    fn level(&self, kind: SovereignEnhancement) -> u8 {
+    pub(super) fn level(&self, kind: SovereignEnhancement) -> u8 {
         match kind {
             SovereignEnhancement::Single => self.strengthen.first,
             SovereignEnhancement::Mass => self.strengthen.second,

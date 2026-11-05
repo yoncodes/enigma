@@ -641,6 +641,7 @@ pub(crate) fn emit_runtime_ops(
 }
 
 behavior_definitions! {
+    [60295] "UnnamedStrengthen" => super::sovereign_enhancement::Handler, SovereignEnhancement, SourceOpening, destination;
     [60296] "UnnamedMoveCard" => super::sovereign_boost::Handler, InitialSovereignBoost, Immediate, destination;
     [20002] "AddExPoint" => super::resource::Handler, AddExPoint, AfterDamage, aggregated_destination, arguments::at_least_one;
     [100004] "AddAdrenalineExPoint" => super::resource::Handler, AddAdrenalineExPoint, AfterDamage, destination, super::resource::supports_ex_point_gain;

@@ -61,6 +61,30 @@ pub(super) fn is_locked(card: &CardInfo) -> Result<bool, ()> {
 }
 
 impl CardManager {
+    pub(crate) fn sovereign_level(
+        &self,
+        owner_uid: i64,
+        skill_id: i32,
+        card_index: i32,
+        kind: SovereignEnhancement,
+    ) -> Result<u8, CardCommandError> {
+        let played = self
+            .played()
+            .iter()
+            .find(|played| {
+                played.card_index == card_index
+                    && played.caster_uid == owner_uid
+                    && played.skill_id == skill_id
+                    && played.card.uid == Some(owner_uid)
+            })
+            .ok_or(CardCommandError::InvalidCommand)?;
+        let state = state(&played.card)
+            .map_err(|_| CardCommandError::InvalidCommand)?
+            .filter(|state| !state.lock)
+            .ok_or(CardCommandError::InvalidCommand)?;
+        Ok(state.level(kind))
+    }
+
     pub(crate) fn is_sovereign(card: &CardInfo) -> bool {
         payload(card).next().is_some()
     }
