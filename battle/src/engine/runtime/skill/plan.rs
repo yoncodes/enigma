@@ -107,7 +107,8 @@ impl SkillExecution {
         self.resume_slot > 0 || self.resume_target > 0
     }
 
-    pub(in crate::engine::runtime) fn new(context: TargetContext) -> Self {
+    pub(in crate::engine::runtime) fn new(mut context: TargetContext) -> Self {
+        context.action_start_ex_point = None;
         Self {
             modifiers: SkillModifiers::default(),
             context,
@@ -143,9 +144,10 @@ impl SkillExecution {
     }
 
     pub(in crate::engine::runtime) fn with_modifiers(
-        context: TargetContext,
+        mut context: TargetContext,
         modifiers: SkillModifiers,
     ) -> Self {
+        context.action_start_ex_point = None;
         Self {
             modifiers,
             context,

@@ -168,7 +168,7 @@ fn outgoing_restraint_modifier_only_applies_to_the_weaker_afflatus() {
 }
 
 #[test]
-fn passive_attr_fix_uses_held_moxie_for_the_current_attack() {
+fn passive_attr_fix_uses_action_start_moxie_after_payment() {
     let mut effects = SkillEffectCatalog::default();
     let mut slot = SkillEffectSlot::new(
         ParsedBehavior::new(10004, "AttrFix", vec![211, 24]),
@@ -188,7 +188,7 @@ fn passive_attr_fix_uses_held_moxie_for_the_current_attack() {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
-                ex_point: Some(3),
+                ex_point: Some(0),
                 ..Default::default()
             }],
             ..Default::default()
@@ -215,7 +215,10 @@ fn passive_attr_fix_uses_held_moxie_for_the_current_attack() {
                 }),
                 ..Default::default()
             }),
-            context: TargetContext::default(),
+            context: TargetContext {
+                action_start_ex_point: Some(3),
+                ..Default::default()
+            },
         },
         &mut RoundDeterminism::default(),
     );

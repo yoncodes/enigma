@@ -296,7 +296,9 @@ fn condition_repeat_count(
                 .and_then(|managers| {
                     super::ex_point::per_ex_point_count(
                         *threshold,
-                        managers.ex_point.get(source_uid),
+                        context
+                            .action_start_ex_point
+                            .unwrap_or_else(|| managers.ex_point.get(source_uid)),
                     )
                 })
                 .unwrap_or_default(),
@@ -867,9 +869,16 @@ fn condition_kind_matches(
             })
         }
         ParsedConditionKind::PerExPoint { threshold } => managers.is_some_and(|managers| {
-            condition_targets
-                .iter()
-                .any(|uid| managers.ex_point.get(*uid) >= *threshold)
+            condition_targets.iter().any(|uid| {
+                if *uid == source_uid {
+                    context
+                        .action_start_ex_point
+                        .unwrap_or_else(|| managers.ex_point.get(*uid))
+                        >= *threshold
+                } else {
+                    managers.ex_point.get(*uid) >= *threshold
+                }
+            })
         }),
         ParsedConditionKind::PerEureka => managers.is_some_and(|managers| {
             managers

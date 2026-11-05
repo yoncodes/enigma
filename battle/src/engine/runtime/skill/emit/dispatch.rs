@@ -132,6 +132,10 @@ pub(in crate::engine::runtime) fn emit_ops(
 
     execution.context.active_skill_id = invocation.plan.skill_id;
     execution.context.active_skill_source_uid = invocation.plan.source_uid;
+    execution
+        .context
+        .action_start_ex_point
+        .get_or_insert_with(|| managers.ex_point.get(invocation.plan.source_uid));
     if invocation.card_index > 0 {
         execution.context.active_card_index = invocation.card_index;
     }

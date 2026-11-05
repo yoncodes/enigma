@@ -107,6 +107,7 @@ pub struct TargetContext {
     pub emitter_attack_max: i32,
     pub ex_point_changed_uid: i64,
     pub ex_point_delta: i32,
+    pub action_start_ex_point: Option<i32>,
     pub additional_moxie: i32,
     pub lost_power_id: i32,
     pub lost_power_amount: i32,
