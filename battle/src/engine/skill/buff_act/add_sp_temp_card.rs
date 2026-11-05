@@ -59,6 +59,7 @@ pub fn subscriber_rule_ops(
         None,
         reserve_id,
         TemporaryCardKind::ConfiguredSkill,
+        subscriber.amount,
     )
 }
 
@@ -87,6 +88,7 @@ pub fn configured_skill3_subscriber_rule_ops(
         Some(hero_id),
         0,
         TemporaryCardKind::ConfiguredSkill3,
+        1,
     )
 }
 
@@ -120,6 +122,7 @@ pub fn hero_skill_subscriber_rule_ops(
         None,
         i64::from(owner.model_id),
         TemporaryCardKind::HeroSkill,
+        1,
     )
 }
 
@@ -129,9 +132,12 @@ fn temporary_card_rule_ops(
     hero_id: Option<i32>,
     reserve_id: i64,
     kind: TemporaryCardKind,
+    count: i32,
 ) -> Option<Vec<super::BuffActRuleOp>> {
     let origin = super::command_origin(subscriber)?;
-    Some(vec![
+    let count = usize::try_from(count).ok().filter(|count| *count > 0)?;
+    let mut ops = Vec::with_capacity(count + 1);
+    ops.extend((0..count).map(|_| {
         super::BuffActRuleOp::subscriber_from_owner(RuleOp::Command(BattleCommand::Card(
             CardCommand::AddTemporary(CardAddTemporary {
                 origin,
@@ -142,15 +148,18 @@ fn temporary_card_rule_ops(
                 team_type: subscriber.team_type,
                 kind,
             }),
-        ))),
-        super::BuffActRuleOp::separate_independent_command(RuleOp::Command(BattleCommand::Buff(
-            BuffCommand::RemoveAfterTrigger(BuffRemove {
+        )))
+    }));
+    ops.push(super::BuffActRuleOp::separate_independent_command(
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::RemoveAfterTrigger(
+            BuffRemove {
                 origin,
                 target_uid: subscriber.owner_uid,
                 selector: BuffRemoveSelector::Uid(subscriber.buff_uid),
-            }),
+            },
         ))),
-    ])
+    ));
+    Some(ops)
 }
 
 #[cfg(test)]
@@ -194,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn round_start_card_consumes_the_buff_after_adding_its_configured_card() {
+    fn round_start_card_adds_one_card_per_layer_before_consuming_the_buff() {
         let subscriber = BuffActSubscriber {
             owner_uid: 10,
             source_uid: 10,
@@ -202,7 +211,7 @@ mod tests {
             buff_id: 30,
             team_type: 1,
             owner_alive: true,
-            amount: 1,
+            amount: 2,
             key: SubscriptionKey::new(
                 EventKind::RoundStartCard,
                 DefinitionKey::new(815, "AddSpTempCard"),
@@ -228,6 +237,11 @@ mod tests {
         ));
         assert!(matches!(
             &ops[1].op,
+            RuleOp::Command(BattleCommand::Card(CardCommand::AddTemporary(add)))
+                if add.skill_id == 999 && add.target_uid == 10 && add.reserve_id == 3114
+        ));
+        assert!(matches!(
+            &ops[2].op,
             RuleOp::Command(BattleCommand::Buff(BuffCommand::RemoveAfterTrigger(remove)))
                 if remove.target_uid == 10
                     && remove.selector == BuffRemoveSelector::Uid(20)
@@ -237,8 +251,9 @@ mod tests {
             super::super::BuffActFrameScope::SubscriberFrame
         );
         assert_eq!(ops[0].source, super::super::BuffActFrameSource::Owner);
-        assert!(!ops[1].group_with_siblings);
-        assert_eq!(ops[1].frame_owner, super::super::BuffActFrameOwner::Command);
+        assert_eq!(ops[1].source, super::super::BuffActFrameSource::Owner);
+        assert!(!ops[2].group_with_siblings);
+        assert_eq!(ops[2].frame_owner, super::super::BuffActFrameOwner::Command);
     }
 
     #[test]
