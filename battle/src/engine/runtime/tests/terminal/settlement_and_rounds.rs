@@ -586,6 +586,18 @@ fn configured_wave_advances_before_the_next_round_cue() {
             .unwrap()
             .entitys
             .iter()
+            .map(|entity| entity.ex_point_max)
+            .collect::<Vec<_>>(),
+        vec![Some(5), Some(5)]
+    );
+    assert_eq!(
+        runtime
+            .fight
+            .defender
+            .as_ref()
+            .unwrap()
+            .entitys
+            .iter()
             .filter_map(|entity| entity.uid)
             .collect::<Vec<_>>(),
         vec![-3, -4]
