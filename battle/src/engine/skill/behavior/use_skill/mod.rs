@@ -491,6 +491,16 @@ impl BehaviorHandler for Handler {
             }
             BehaviorKind::DirectUseSkillNoAct => direct_no_action_skill(context, behavior),
             BehaviorKind::DirectUseSkillNoAct2 => direct_no_action_skill(context, behavior),
+            BehaviorKind::DirectUseSkillNotExtra => {
+                let mut invocation: crate::engine::skill::action::SkillInvocation =
+                    crate::engine::skill::action::SkillRequest {
+                        source_uid: context.source_uid,
+                        skill_id: behavior.arg(0)?,
+                    }
+                    .into();
+                invocation.target_observed_extra_action = Some(false);
+                Some(vec![RuleOp::Skill(invocation)])
+            }
             BehaviorKind::DirectUseBigSkill => direct_big_skill_rule_ops(context, behavior),
             BehaviorKind::DirectUseGroupAndStarSkill => {
                 let [group, star, ..] = behavior.args.as_slice() else {
