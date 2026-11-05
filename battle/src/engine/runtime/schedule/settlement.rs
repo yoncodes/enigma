@@ -58,7 +58,7 @@ pub fn run_attacker_round_end(
     owners.push(crate::engine::fight::rules::ATTACKER_SIDE_UID);
     append(
         &mut result,
-        drain::run_grouped_owner_event(
+        drain::run_grouped_owner_event_lanes(
             managers,
             pool,
             catalog,
@@ -66,7 +66,7 @@ pub fn run_attacker_round_end(
             context,
             BattleEvent::Kind(EventKind::SmallRoundEnd),
             &owners,
-            drain::ReactionLane::Skills,
+            &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
         )?,
     );
     append(
@@ -200,15 +200,28 @@ pub fn run_finished_attacker_settlement(
         .filter(|entity| managers.hp.current(entity.uid) > 0)
         .map(|entity| entity.uid)
         .collect::<Vec<_>>();
-    let mut result = run_duration_advances_for_event(
+    let mut result = drain::run_group_event(
         managers,
         pool,
         catalog,
         determinism,
         context,
-        EventKind::SmallRoundEnd,
-        &owners,
+        BattleEvent::Kind(EventKind::SmallRoundEnd),
+        drain::ReactionLane::BuffActs,
+        Some(&owners),
     )?;
+    append(
+        &mut result,
+        run_duration_advances_for_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            EventKind::SmallRoundEnd,
+            &owners,
+        )?,
+    );
     owners.push(crate::engine::manager::emitter::UID);
     append(
         &mut result,
@@ -294,7 +307,7 @@ fn run_defender_settlement(
     )?;
     append(
         &mut result,
-        drain::run_grouped_owner_event(
+        drain::run_grouped_owner_event_lanes(
             managers,
             pool,
             catalog,
@@ -302,7 +315,7 @@ fn run_defender_settlement(
             context,
             BattleEvent::Kind(EventKind::SmallRoundEnd),
             &owners,
-            drain::ReactionLane::Skills,
+            &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
         )?,
     );
     let settlement = run_entity_settlement(

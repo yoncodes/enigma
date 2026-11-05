@@ -181,6 +181,7 @@ pub enum BuffActKind {
     SovereignCardGeneration,
     SovereignCardUnlock,
     SovereignCardCharge,
+    GuardBreakReward,
     CreateMaxHpAdditionalDamageAndRemove,
     CritRateAlter2,
     CritRateAlterByOtherBuff,
@@ -1606,6 +1607,12 @@ buff_act_definitions! {
         raw_supports: |_, raw| raw == "1135#1,3#2,4#5,6#7,8",
         completion_gap: "positive charging of a future queued Sovereign card is unproven; held-card charging is implemented",
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1135, "UnnamedChargingSpCard"), &[EffectType::None as i32]));
+    (1136, "PerBrokenAddBuff") => GuardBreakReward,
+        events: [EventKind::ToughnessBroken], source: Owner,
+        runtime: |context| super::guard_break_reward::rule_ops(context.managers, context.subscriber, context.event?),
+        raw_supports: |_, raw| matches!(raw, "1136#31470001#1" | "1136#31470001#2"),
+        references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1136, "PerBrokenAddBuff"), &[EffectType::None as i32]));
     (1139, "MeiLeiErCharge") => BuffOwnedCharge,
         effect_time_subscription: false,
         supports: |args| matches!(args, [trigger, limit, linked_skill]
@@ -1660,6 +1667,9 @@ fn references_for_feature(
         }
     };
     match feature.kind {
+        Some(BuffActKind::GuardBreakReward) => {
+            add_buff(&mut references, feature.args.first().copied());
+        }
         Some(BuffActKind::SovereignCardUnlock) => {
             add_skill(&mut references, feature.args.first().copied());
         }

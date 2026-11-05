@@ -98,6 +98,7 @@ pub mod forbid;
 pub mod foundation;
 pub mod foundation_counter;
 pub mod frozen;
+pub mod guard_break_reward;
 pub mod heat_scale_tag;
 pub mod heat_scale_use_skill;
 pub mod hurt_to_progress;
