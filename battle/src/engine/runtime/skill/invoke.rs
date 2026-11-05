@@ -98,6 +98,7 @@ pub(super) fn apply_event_context(
         context.active_skill_id = action.skill_id;
         context.active_skill_source_uid = action.source_uid;
         context.active_skill_slot = action.skill_slot;
+        context.logic_target = effects.logic_target(action.skill_id);
         context.active_skill_is_attack = action.is_attack;
         context.active_skill_rank = action.rank;
         context.active_skill_type = action.skill_type;

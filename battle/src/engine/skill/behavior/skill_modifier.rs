@@ -56,6 +56,16 @@ impl BehaviorHandler for Handler {
         ) {
             return None;
         }
+        if behavior.spec.kind == BehaviorKind::ConsumeBuffChangeTargets
+            && context.pool.enemies(context.source_uid, false).len()
+                <= context
+                    .managers
+                    .catalog()
+                    .target_count(context.target.logic_target)
+                    .max(0) as usize
+        {
+            return Some(Vec::new());
+        }
         let mut ops = Vec::new();
         if *amount > 0 {
             let depleted = match behavior.spec.kind {
@@ -210,6 +220,7 @@ mod tests {
             target::{TargetContext, TargetPool},
         },
     };
+    use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
     #[test]
     fn consume_rate_emits_state_change_and_keeps_rate_cast_local() {
@@ -479,34 +490,62 @@ mod tests {
 
     #[test]
     fn change_targets_emits_an_active_cast_modifier() {
-        let managers = BattleManagers::default();
-        let pool = TargetPool::default();
-        let mut determinism = RoundDeterminism::default();
-        let mut modifiers = SkillModifiers::default();
-        let mut target = TargetContext::default();
+        crate::test_support::init_config();
         let behavior = ParsedBehavior::from_spec(
             BehaviorSpec::new(60036, "ConsumeBuffChangeTargets"),
             vec![370002190, 1, 1],
             Vec::new(),
         );
+        let emit = |enemy_count, logic_target| {
+            let fight = Fight {
+                attacker: Some(FightTeam {
+                    entitys: vec![FightEntityInfo {
+                        uid: Some(10),
+                        current_hp: Some(100),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+                defender: Some(FightTeam {
+                    entitys: (1..=enemy_count)
+                        .map(|index| FightEntityInfo {
+                            uid: Some(-i64::from(index)),
+                            current_hp: Some(100),
+                            ..Default::default()
+                        })
+                        .collect(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            let managers = BattleManagers::seeded(&fight);
+            let pool = TargetPool::from_fight(&fight);
+            let mut determinism = RoundDeterminism::default();
+            let mut modifiers = SkillModifiers::default();
+            let mut target = TargetContext {
+                logic_target,
+                ..Default::default()
+            };
+            behavior::rule_ops(
+                BehaviorOpContext {
+                    source_uid: 10,
+                    source_team: 1,
+                    target_uid: 10,
+                    active_skill_id: 370001002,
+                    transfer_count: 1,
+                    event: None,
+                    managers: &managers,
+                    pool: &pool,
+                    determinism: &mut determinism,
+                    modifiers: &mut modifiers,
+                    target: &mut target,
+                },
+                &behavior,
+            )
+            .unwrap()
+        };
 
-        let ops = behavior::rule_ops(
-            BehaviorOpContext {
-                source_uid: -1,
-                source_team: 2,
-                target_uid: -1,
-                active_skill_id: 370001002,
-                transfer_count: 1,
-                event: None,
-                managers: &managers,
-                pool: &pool,
-                determinism: &mut determinism,
-                modifiers: &mut modifiers,
-                target: &mut target,
-            },
-            &behavior,
-        )
-        .unwrap();
+        let ops = emit(3, 201);
 
         assert!(matches!(
             ops.as_slice(),
@@ -520,7 +559,7 @@ mod tests {
                 }
             ]
         ));
-        assert_eq!(target.additional_skill_target_count, 0);
+        assert!(emit(1, 208).is_empty());
     }
 
     #[test]
