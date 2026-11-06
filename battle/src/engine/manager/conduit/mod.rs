@@ -352,13 +352,6 @@ impl ConduitManager {
             .collect()
     }
 
-    pub fn empty_area_reset_command(&self, team: i32) -> Option<ConduitCommand> {
-        self.areas
-            .get(&team)
-            .filter(|area| area.devices.is_empty() && area.powers.is_empty())
-            .map(|_| ConduitCommand::ResetPowers { team })
-    }
-
     pub fn power(&self, team: i32, power_id: i32) -> i32 {
         self.areas
             .get(&team)

@@ -57,7 +57,6 @@ fn configured_seed_matches_the_borrowed_database_adapter() {
         configured.initialization_errors,
         legacy.initialization_errors
     );
-    assert_eq!(configured.empty_area_reset_command(1), None);
 }
 
 #[test]
@@ -71,7 +70,7 @@ fn configured_seed_preserves_an_empty_captured_area() {
         ..Default::default()
     };
 
-    let mut manager = ConduitManager::configured(
+    let manager = ConduitManager::configured(
         crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
         &fight,
     );
@@ -80,18 +79,7 @@ fn configured_seed_preserves_an_empty_captured_area() {
         manager.action_phase_start_commands(1),
         vec![ConduitCommand::ResetPowers { team: 1 }]
     );
-    assert_eq!(
-        manager.empty_area_reset_command(1),
-        Some(ConduitCommand::ResetPowers { team: 1 })
-    );
     assert!(manager.initialization_commands().is_empty());
-    manager
-        .areas
-        .get_mut(&1)
-        .unwrap()
-        .powers
-        .push(ConduitPower { id: 1, value: 0 });
-    assert_eq!(manager.empty_area_reset_command(1), None);
 }
 
 #[test]

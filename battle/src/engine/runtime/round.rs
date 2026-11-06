@@ -485,23 +485,6 @@ impl BattleRuntime {
                 fight_version,
                 absorb_hurt_map_layout,
             )?);
-            if uses_action_phase_power_clear && wave_defeated_after_attacker_settlement {
-                let reset = schedule::run_empty_area_reset(
-                    &mut self.managers,
-                    &pool,
-                    catalog,
-                    &mut self.determinism,
-                    context,
-                    2,
-                )
-                .map_err(|error| format!("{error:?}"))?;
-                ai_turn.observe(&reset);
-                fight_steps.extend(project_result(
-                    reset,
-                    fight_version,
-                    absorb_hurt_map_layout,
-                )?);
-            }
             let choices = ai_turn.into_choices();
             let ai = schedule::run_ai_actions(
                 &self.fight,
