@@ -287,26 +287,23 @@ fn append_skill_setup_stage(
     let current_pool = pool.runtime_view(managers);
     let subscribers =
         dispatcher::dispatch_compiled_setup(&current_pool, managers, catalog, stage, priority)?;
-    let subscribers = subscribers
-            .into_iter()
-            .filter(|(subscriber, _)| {
-                let included = catalog
-                    .get(subscriber.skill_id)
-                    .and_then(|effect| effect.slots.get(subscriber.slot_index))
-                    .is_some_and(|slot| skill_filter.includes(&slot.behavior));
-                !excluded_owner_uids.contains(&subscriber.owner_uid)
-                    && included
-                    && (owner_uids.is_none_or(|uids| uids.contains(&subscriber.owner_uid))
-                        || (include_both_sides_opening
-                            && crate::engine::skill::condition::registry::opening_owner_eligibility(
-                                subscriber.key.opcode,
-                                subscriber.key.type_name,
-                            )
-                            .is_some_and(|eligibility| {
-                                eligibility
-                                    == crate::engine::skill::condition::registry::OpeningOwnerEligibility::BothSides
-                            })))
-            });
+    let subscribers = subscribers.into_iter().filter(|(subscriber, _)| {
+        let slot = catalog
+            .get(subscriber.skill_id)
+            .and_then(|effect| effect.slots.get(subscriber.slot_index));
+        let included = slot.is_some_and(|slot| skill_filter.includes(&slot.behavior));
+        !excluded_owner_uids.contains(&subscriber.owner_uid)
+            && included
+            && (owner_uids.is_none_or(|uids| uids.contains(&subscriber.owner_uid))
+                || (include_both_sides_opening
+                    && crate::engine::skill::condition::registry::opening_owner_eligibility(
+                        subscriber.key.opcode,
+                        subscriber.key.type_name,
+                    )
+                    .is_some_and(|eligibility| {
+                        slot.is_some_and(|slot| eligibility.includes_defender(slot))
+                    })))
+    });
     let subscribers = subscribers.collect::<Vec<_>>();
     let mut frames = std::mem::take(&mut state.result.frames);
     let side_paths = &mut state.side_paths;

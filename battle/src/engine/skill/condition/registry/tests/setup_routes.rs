@@ -283,6 +283,10 @@ fn round_after_uses_an_inclusive_round_start_threshold() {
         Some(OpeningOwnerEligibility::PlayerSide)
     );
     assert_eq!(
+        find_key(19100, "HasBuffId").map(|definition| definition.opening_owner_eligibility),
+        Some(OpeningOwnerEligibility::SelfBuffMaintenance)
+    );
+    assert_eq!(
         opening_owner_eligibility(101, "None"),
         Some(OpeningOwnerEligibility::PlayerSide)
     );

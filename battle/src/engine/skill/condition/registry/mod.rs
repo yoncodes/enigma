@@ -12,8 +12,10 @@ use crate::engine::{
     },
     skill::{
         action::SkillPhase,
+        behavior::classify::BehaviorKind,
+        effect::SkillEffectSlot,
         rule::{DefinitionKey, SetupStage},
-        target::BehaviorTargetOrder,
+        target::{BehaviorTargetOrder, request::SOURCE_TARGET_CODE},
     },
 };
 
@@ -51,6 +53,35 @@ pub(crate) enum OpeningOwnerEligibility {
     #[default]
     PlayerSide,
     BothSides,
+    SelfBuffMaintenance,
+}
+
+impl OpeningOwnerEligibility {
+    pub(crate) fn includes_defender(self, slot: &SkillEffectSlot) -> bool {
+        match self {
+            Self::PlayerSide => false,
+            Self::BothSides => true,
+            Self::SelfBuffMaintenance => {
+                let [condition] = slot.conditions.as_slice() else {
+                    return false;
+                };
+                let ParsedConditionKind::BuffId {
+                    mode: buff::BuffConditionMode::Absent,
+                    buff_ids,
+                } = &condition.kind
+                else {
+                    return false;
+                };
+                let [buff_id] = buff_ids.as_slice() else {
+                    return false;
+                };
+                slot.behavior.spec.kind == BehaviorKind::AddBuff
+                    && slot.behavior.arg(0) == Some(*buff_id)
+                    && slot.condition_target.code == SOURCE_TARGET_CODE
+                    && slot.target.code == SOURCE_TARGET_CODE
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -609,6 +640,11 @@ pub const fn opening_owner_both_sides(mut metadata: ConditionMetadata) -> Condit
     metadata
 }
 
+pub const fn opening_self_buff(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.opening_owner_eligibility = OpeningOwnerEligibility::SelfBuffMaintenance;
+    metadata
+}
+
 macro_rules! condition_definitions {
     ($([$($opcode:expr),+ $(,)?] $type_name:literal => $parse:path, $role:expr);+ $(;)?) => {
         pub const DEFINITIONS: &[ConditionDefinition] =
@@ -675,7 +711,7 @@ condition_definitions! {
     [19003] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [19004] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [19012] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
-    [19100] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 100, &[]));
+    [19100] "HasBuffId" => buff::buff_present, opening_self_buff(filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 100, &[])));
     [19101] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 101, &[]));
     [19102] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 102, &[]));
     [18201] "HasBuff" => buff::any_status_present, predicate(&[EventKind::BuffChanged]);
