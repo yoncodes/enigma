@@ -15,21 +15,21 @@ fn entity(uid: i64, ex_point: i32, max: i32, buffs: Vec<BuffInfo>) -> FightEntit
     }
 }
 
-fn command() -> RuleOp {
+fn command(candidates: Vec<(i64, i32)>) -> RuleOp {
     RuleOp::Command(BattleCommand::LowestExPoint(LowestExPointChange {
         origin: CommandOrigin {
             domain: RuleDomain::Behavior,
             key: DefinitionKey::new(60174, "ConsumeExPointAddAttr"),
         },
         source_uid: 10,
-        candidates: vec![(20, 2), (30, 3)],
+        candidates,
         delta: 1,
         config_effect: 0,
         effect_type: 0,
     }))
 }
 
-fn run(fight: Fight, count: usize) -> (BattleManagers, DrainResult) {
+fn run(fight: Fight, count: usize, candidates: &[(i64, i32)]) -> (BattleManagers, DrainResult) {
     crate::test_support::init_config();
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
@@ -39,7 +39,7 @@ fn run(fight: Fight, count: usize) -> (BattleManagers, DrainResult) {
         &SkillEffectCatalog::default(),
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        (0..count).map(|_| command()),
+        (0..count).map(|_| command(candidates.to_vec())),
     )
     .unwrap();
     (managers, result)
@@ -61,20 +61,36 @@ fn changes(result: &DrainResult) -> Vec<(i64, i32)> {
 
 #[test]
 fn lowest_moxie_commands_reselect_from_committed_state() {
+    let mut everecho = entity(40, 0, 100, Vec::new());
+    everecho.ex_point_type = Some(
+        crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire(),
+    );
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![
                 entity(10, 5, 10, Vec::new()),
                 entity(20, 0, 10, Vec::new()),
-                entity(30, 2, 10, Vec::new()),
+                entity(30, 3, 10, Vec::new()),
+                everecho,
             ],
             ..Default::default()
         }),
         ..Default::default()
     };
-    let (_, result) = run(fight, 4);
+    let (_, result) = run(fight, 7, &[(20, 2), (30, 3), (40, 4)]);
 
-    assert_eq!(changes(&result), [(20, 1), (20, 1), (20, 1), (30, 1)]);
+    assert_eq!(
+        changes(&result),
+        [
+            (20, 1),
+            (20, 1),
+            (20, 1),
+            (20, 1),
+            (30, 1),
+            (20, 1),
+            (30, 1)
+        ]
+    );
 }
 
 #[test]
@@ -100,7 +116,7 @@ fn lowest_moxie_commands_observe_redirects_blocks_and_caps() {
         }),
         ..Default::default()
     };
-    let (managers, result) = run(redirected, 3);
+    let (managers, result) = run(redirected, 3, &[(20, 2), (30, 3)]);
     assert_eq!(changes(&result), [(10, 1), (10, 1), (10, 1)]);
     assert_eq!(managers.ex_point.get(20), 0);
 
@@ -125,7 +141,7 @@ fn lowest_moxie_commands_observe_redirects_blocks_and_caps() {
         }),
         ..Default::default()
     };
-    let (_, result) = run(blocked, 3);
+    let (_, result) = run(blocked, 3, &[(20, 2), (30, 3)]);
     assert_eq!(changes(&result), [(20, 0), (20, 0), (20, 0)]);
 
     let capped = Fight {
@@ -139,6 +155,6 @@ fn lowest_moxie_commands_observe_redirects_blocks_and_caps() {
         }),
         ..Default::default()
     };
-    let (_, result) = run(capped, 3);
+    let (_, result) = run(capped, 3, &[(20, 2), (30, 3)]);
     assert_eq!(changes(&result), [(20, 0), (20, 0), (20, 0)]);
 }
