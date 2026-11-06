@@ -68,4 +68,19 @@ fn configured_direct_ultimate_adds_its_bonus_per_spent_moxie() {
     );
 
     assert_eq!(grant.amount, Some(10));
+
+    let base_grant = granted(
+        rule_op(
+            catalog,
+            &subscriber,
+            22,
+            30630183,
+            1,
+            5,
+            SkillTrigger::Explicit(30630183),
+        )
+        .unwrap(),
+    );
+
+    assert_eq!(base_grant.amount, Some(5));
 }
