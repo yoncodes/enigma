@@ -293,8 +293,7 @@ pub(super) fn drain_command(
         // Multi-part active hits share one HitPassives boundary. Hold
         // primary hits and their own HP loss. Their BeforePublish
         // buff acts still belong before this HP outcome.
-        let (mut immediate, deferred) = split_active_hit_event_groups(event_groups);
-        prioritize_target_death_group(&mut immediate, current_skill.and_then(|skill| skill.2));
+        let (immediate, deferred) = split_active_hit_event_groups(event_groups);
         let hit_buff_acts = dispatch_event_groups(
             pool,
             managers,

@@ -184,17 +184,6 @@ fn split_active_hit_event_groups(
     (immediate_groups, deferred_groups)
 }
 
-fn prioritize_target_death_group(event_groups: &mut [Vec<BattleEvent>], target_uid: Option<i64>) {
-    let Some(target_uid) = target_uid else {
-        return;
-    };
-    event_groups.sort_by_key(|events| {
-        !events.iter().any(|event| {
-            matches!(event, BattleEvent::EntityDied(death) if death.target_uid == target_uid)
-        })
-    });
-}
-
 fn flatten_event_groups(event_groups: &[Vec<BattleEvent>]) -> Vec<BattleEvent> {
     event_groups
         .iter()

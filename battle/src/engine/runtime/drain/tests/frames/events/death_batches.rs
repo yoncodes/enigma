@@ -1,34 +1,6 @@
 use super::*;
 
 #[test]
-fn selected_target_death_group_runs_first() {
-    let mut groups = [-5, -4, -6]
-        .into_iter()
-        .map(|target_uid| {
-            vec![BattleEvent::EntityDied(
-                crate::engine::event::payload::EntityDiedEvent {
-                    source_uid: 10,
-                    target_uid,
-                },
-            )]
-        })
-        .collect::<Vec<_>>();
-
-    prioritize_target_death_group(&mut groups, Some(-4));
-
-    assert_eq!(
-        groups
-            .iter()
-            .filter_map(|events| match events.as_slice() {
-                [BattleEvent::EntityDied(death)] => Some(death.target_uid),
-                _ => None,
-            })
-            .collect::<Vec<_>>(),
-        [-4, -5, -6]
-    );
-}
-
-#[test]
 fn death_outside_the_subscriber_group_supersedes_its_pending_transition() {
     let fight = Fight {
         attacker: Some(FightTeam {
