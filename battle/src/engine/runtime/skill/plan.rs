@@ -24,8 +24,6 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) additional_damage_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
     pub(super) action_start_managers: Option<Arc<BattleManagers>>,
-    pre_payment_attributes: Option<Arc<crate::engine::manager::attribute::AttributeManager>>,
-    pre_payment_buffs: Option<Arc<crate::engine::manager::buff::BuffManager>>,
     pub(super) assassination_marks_at_action_start:
         Option<Vec<crate::engine::skill::buff_act::assassination::TargetMark>>,
     pub(super) assassination_rate_marks_at_action_start: Option<Vec<(i64, i32)>>,
@@ -119,8 +117,6 @@ impl SkillExecution {
             additional_damage_targets: None,
             planned_crits: None,
             action_start_managers: None,
-            pre_payment_attributes: None,
-            pre_payment_buffs: None,
             assassination_marks_at_action_start: None,
             assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
@@ -160,8 +156,6 @@ impl SkillExecution {
             additional_damage_targets: None,
             planned_crits: None,
             action_start_managers: None,
-            pre_payment_attributes: None,
-            pre_payment_buffs: None,
             assassination_marks_at_action_start: None,
             assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
@@ -205,15 +199,6 @@ impl SkillExecution {
 
     pub(super) fn record_payment(&mut self, payment: &crate::engine::skill::action::ActionPayment) {
         self.moxie_spent = payment.spent();
-    }
-
-    pub(super) fn snapshot_before_payment(&mut self, managers: &BattleManagers) {
-        if self.payment.is_some() {
-            self.pre_payment_attributes
-                .get_or_insert_with(|| Arc::new(managers.attribute.clone()));
-            self.pre_payment_buffs
-                .get_or_insert_with(|| Arc::new(managers.buff.clone()));
-        }
     }
 
     pub(in crate::engine::runtime) fn prepare_direct_big(&mut self, additional_moxie: i32) {
@@ -639,8 +624,6 @@ pub(super) fn damage_ops(
     determinism: &mut RoundDeterminism,
     execution: &mut SkillExecution,
 ) -> DamageOps {
-    let pre_payment_attributes = execution.pre_payment_attributes.clone();
-    let pre_payment_buffs = execution.pre_payment_buffs.clone();
     let source_uid = invocation.plan.source_uid;
     let skill_id = invocation.plan.skill_id;
     let skill_model_id = managers.catalog().skill_hero_id(skill_id);
@@ -980,11 +963,8 @@ pub(super) fn damage_ops(
         let damage_runtime = damage::DamageRuntime {
             fight_version: managers.fight_version(),
             pool,
-            attributes: pre_payment_attributes
-                .as_deref()
-                .unwrap_or(&managers.attribute),
-            target_attributes: &managers.attribute,
-            buffs: pre_payment_buffs.as_deref().unwrap_or(&managers.buff),
+            attributes: &managers.attribute,
+            buffs: &managers.buff,
             target_buffs: &managers.buff,
             hp: &managers.hp,
             fields: Some((&managers.field, managers.catalog())),
@@ -1161,7 +1141,6 @@ pub(super) fn damage_ops(
                         fight_version: managers.fight_version(),
                         pool,
                         attributes: &managers.attribute,
-                        target_attributes: &managers.attribute,
                         buffs: &managers.buff,
                         target_buffs: &managers.buff,
                         hp: &managers.hp,

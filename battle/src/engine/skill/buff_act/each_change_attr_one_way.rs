@@ -398,7 +398,6 @@ mod tests {
                         fight_version: 7,
                         pool: &damage_pool,
                         attributes: &managers.attribute,
-                        target_attributes: &managers.attribute,
                         buffs: &managers.buff,
                         target_buffs: &managers.buff,
                         hp: &managers.hp,

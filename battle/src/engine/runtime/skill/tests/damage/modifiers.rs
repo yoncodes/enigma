@@ -156,7 +156,7 @@ fn source_passive_attack_modifier_is_collected_by_runtime_damage() {
 }
 
 #[test]
-fn paid_action_damage_keeps_source_snapshot_and_current_target_state() {
+fn paid_action_damage_uses_committed_source_and_target_state() {
     crate::test_support::init_config();
     const SKILL_ID: i32 = 999_999_008;
     let fight = Fight {
@@ -309,7 +309,7 @@ fn paid_action_damage_keeps_source_snapshot_and_current_target_state() {
     assert_eq!(managers.buff.buff_id_amount(10, 434421), 9);
     assert!(managers.buff.has_buff_id(-1, 204));
     assert_eq!(managers.attribute.get(-1, AttrId::CriticalDef), 200);
-    assert_eq!(damage, Some(1_100));
+    assert_eq!(damage, Some(1_140));
 }
 
 #[test]

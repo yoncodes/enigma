@@ -217,7 +217,6 @@ fn converted_type_drives_defense_dodge_mitigation_consumption_and_critical_attri
                 fight_version: 7,
                 pool,
                 attributes: &managers.attribute,
-                target_attributes: &managers.attribute,
                 buffs: &managers.buff,
                 target_buffs: &managers.buff,
                 hp: &managers.hp,

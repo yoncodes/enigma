@@ -568,7 +568,6 @@ impl BehaviorHandler for Handler {
                         fight_version: context.managers.fight_version(),
                         pool: context.pool,
                         attributes: &context.managers.attribute,
-                        target_attributes: &context.managers.attribute,
                         buffs: &context.managers.buff,
                         target_buffs: &context.managers.buff,
                         hp: &context.managers.hp,

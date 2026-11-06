@@ -968,9 +968,6 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
     }
     if active_phase == Some(SkillPhase::Immediate) {
-        if has_row_damage {
-            execution.snapshot_before_payment(managers);
-        }
         let phase_completed = phase_completed_op(
             &invocation,
             managers,
