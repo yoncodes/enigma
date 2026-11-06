@@ -306,14 +306,14 @@ fn promoted_defender_joins_the_normal_round_start_once() {
 }
 
 #[test]
-fn wave_advance_defers_enter_fight_to_entry_setup() {
+fn wave_entry_event_and_setup_each_own_their_stage() {
     init_config();
     let fight = Fight {
         defender: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(-3),
                 current_hp: Some(100),
-                passive_skill: vec![2531, 2370, 2524, 2533, 40],
+                passive_skill: vec![2370, 40, 50],
                 ..Default::default()
             }],
             ..Default::default()
@@ -323,20 +323,38 @@ fn wave_advance_defers_enter_fight_to_entry_setup() {
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
     let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
-    let mut slot = SkillEffectSlot::new(
+    let mut entry_slot = SkillEffectSlot::new(
         ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
         TargetRequest::self_only(),
     );
-    slot.conditions = vec![ParsedCondition {
+    entry_slot.conditions = vec![ParsedCondition {
         opcode: 55,
         type_name: "None".to_owned(),
         kind: ParsedConditionKind::None(NoneMode::EnterBattle),
         raw_args: Vec::new(),
     }];
-    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    entry_slot.compiled_route = ConditionRoute::compile(&entry_slot.conditions);
     catalog.insert(ParsedSkillEffect {
         skill_id: 40,
-        slots: vec![slot],
+        slots: vec![entry_slot],
+    });
+    let mut early_round_slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
+        TargetRequest::self_only(),
+    );
+    early_round_slot.conditions = vec![ParsedCondition {
+        opcode: 727100,
+        type_name: "RoundAfter".to_owned(),
+        kind: ParsedConditionKind::RoundInterval {
+            start_round: 0,
+            period: 1,
+        },
+        raw_args: Vec::new(),
+    }];
+    early_round_slot.compiled_route = ConditionRoute::compile(&early_round_slot.conditions);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 50,
+        slots: vec![early_round_slot],
     });
 
     fn collect_act_ids(step: &sonettobuf::FightStep, ids: &mut Vec<i32>) {
@@ -372,7 +390,7 @@ fn wave_advance_defers_enter_fight_to_entry_setup() {
     for step in crate::engine::packet::timeline::project(&wave.frames).unwrap() {
         collect_act_ids(&step, &mut wave_act_ids);
     }
-    assert!(wave_act_ids.is_empty());
+    assert_eq!(wave_act_ids, vec![2370, 40]);
 
     let result = run_wave_entry_setup(
         &mut managers,
@@ -386,17 +404,14 @@ fn wave_advance_defers_enter_fight_to_entry_setup() {
         &[-3],
     )
     .unwrap();
-
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     let mut act_ids = Vec::new();
     for step in &steps {
         collect_act_ids(step, &mut act_ids);
     }
     assert_eq!(steps.len(), 1);
-    assert!(act_ids.contains(&2531));
-    assert!(act_ids.contains(&2370));
-    assert_eq!(act_ids, vec![2531, 2370, 40]);
-    assert!(!act_ids.contains(&2533));
+    assert_eq!(act_ids, vec![50]);
+    assert_eq!(managers.ex_point.get(-3), 2);
     assert!(matches!(
         result.frames[0].owner,
         FrameOwner::RoundPhase(RoundPhase::EntityEntrySetup)
