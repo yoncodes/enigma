@@ -64,6 +64,22 @@ pub fn run_action_phase_start(
     drain::run_command_group(managers, pool, catalog, determinism, context, ops)
 }
 
+pub fn run_empty_area_reset(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    team: i32,
+) -> Result<DrainResult, DrainError> {
+    let ops = managers
+        .conduit
+        .empty_area_reset_command(team)
+        .into_iter()
+        .map(|command| RuleOp::Command(BattleCommand::Conduit(command)));
+    drain::run_command_group(managers, pool, catalog, determinism, context, ops)
+}
+
 fn free_skill_consumed_remaining_buff(action: &DrainResult, source_uid: i64) -> bool {
     let mut amounts = HashMap::new();
     let mut record = |changes: &crate::engine::manager::buff::BuffChanges| {

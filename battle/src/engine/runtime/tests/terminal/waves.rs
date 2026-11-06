@@ -3,6 +3,8 @@ use super::settlement_and_rounds::{
 };
 use super::*;
 
+mod empty_area;
+
 #[test]
 fn wave_entry_round_start_condition_is_not_repeated_on_the_next_request() {
     crate::test_support::init_config();
