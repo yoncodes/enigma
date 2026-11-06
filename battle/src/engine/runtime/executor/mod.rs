@@ -47,6 +47,8 @@ pub(crate) enum RuleOutcome {
         lifecycle: crate::engine::skill::action::SkillLifecycle,
         cost: ExPointChanges,
     },
+    ActionCostPaid(ExPointChanges),
+    PaidSkillStarted(crate::engine::skill::action::SkillLifecycle),
     ActionHandSettlement(Box<ActionHandSettlement>),
     Buff(Box<BuffChanges>),
     BuffBatch(Vec<BuffChanges>),
@@ -113,6 +115,15 @@ impl RuleOutcome {
 
     pub(crate) fn owned_changes(&self) -> Vec<(OutputOwner, BattleChange)> {
         match self {
+            Self::Card(changes)
+                if changes.kind
+                    == crate::engine::manager::card::CardChangeKind::InitialSovereignBoost =>
+            {
+                vec![(
+                    OutputOwner::InitialSovereignBoost,
+                    BattleChange::Card(changes.clone()),
+                )]
+            }
             Self::BloodtitheSpend(changes) => vec![
                 (OutputOwner::Parent, BattleChange::Gauge(changes.gauge)),
                 (
@@ -233,6 +244,8 @@ impl RuleOutcome {
         match self {
             Self::PublishedEvent => Vec::new(),
             Self::SkillLifecycle(change) => vec![BattleChange::SkillLifecycle(change.clone())],
+            Self::PaidSkillStarted(change) => vec![BattleChange::SkillLifecycle(change.clone())],
+            Self::ActionCostPaid(change) => vec![BattleChange::ExPoint(*change)],
             Self::DeathSettlement(_) => Vec::new(),
             Self::SkillActionStarted { lifecycle, cost } => vec![
                 BattleChange::SkillLifecycle(lifecycle.clone()),
@@ -328,6 +341,12 @@ impl RuleOutcome {
             Self::Entity(change) => vec![BattleChange::Entity(change.clone())],
             Self::MonsterChange(changes) => {
                 vec![BattleChange::Entity(Box::new(changes.entity.clone()))]
+            }
+            Self::Card(change)
+                if change.kind
+                    == crate::engine::manager::card::CardChangeKind::InitialSovereignBoost =>
+            {
+                Vec::new()
             }
             Self::Card(change) => vec![BattleChange::Card(change.clone())],
             Self::BuffPrecast(changes) => vec![
@@ -714,6 +733,15 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::ExPoint(changes))
         }
+        RuleOp::Command(BattleCommand::LowestExPoint(command)) => {
+            let Some(changes) = managers.execute_lowest_ex_point(command)? else {
+                return Ok(RuleOutcome::StateChanged);
+            };
+            for event in changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::ExPoint(changes))
+        }
         RuleOp::Command(BattleCommand::BloodPoolCountAddExPoint(command)) => {
             let Some(changes) =
                 crate::engine::skill::buff_act::blood_pool::count_add_ex_point::execute(
@@ -1021,6 +1049,26 @@ pub(crate) fn execute_rule_op_with(
             Ok(RuleOutcome::StateChanged)
         }
         RuleOp::Skill(_) => Err(RuleExecutionError::UnexpectedSkill),
+        RuleOp::PaySkillAction { action, cost } => {
+            let changes = managers.execute_ex_point(cost)?;
+            managers
+                .hp
+                .capture_action_start(action.source_uid, action.skill_id);
+            for event in changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::ActionCostPaid(changes))
+        }
+        RuleOp::PaidSkillStarted(lifecycle) => {
+            let crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action) = &lifecycle
+            else {
+                return Err(RuleExecutionError::UnexpectedSkill);
+            };
+            events.push(crate::engine::event::payload::BattleEvent::SkillAction(
+                action.clone(),
+            ));
+            Ok(RuleOutcome::PaidSkillStarted(lifecycle))
+        }
         RuleOp::BeginSkillAction { lifecycle, cost } => {
             let changes = managers.execute_ex_point(cost)?;
             for event in changes.events() {
@@ -1114,6 +1162,9 @@ pub(crate) fn execute_rule_op_with(
         }
         RuleOp::ImmediateReservePromotion => {
             unreachable!("reserve promotion is owned by the action drain")
+        }
+        RuleOp::ExpandActiveSkillTargets { .. } => {
+            unreachable!("conditional target expansion is owned by the skill drain")
         }
         RuleOp::FreezeActiveSkillRates => unreachable!("rate freezing is owned by the skill drain"),
     }

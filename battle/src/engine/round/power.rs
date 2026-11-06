@@ -6,6 +6,7 @@ use crate::catalog::BattleCatalog;
 pub struct ClothPower {
     max: i32,
     use_card: i32,
+    use_device_card: i32,
     move_card: i32,
     compose: i32,
     recovery: Vec<(i32, i32)>,
@@ -15,6 +16,7 @@ impl ClothPower {
     pub(crate) fn configured(
         max: i32,
         use_card: i32,
+        use_device_card: i32,
         move_card: i32,
         compose: i32,
         recovery: &str,
@@ -22,6 +24,7 @@ impl ClothPower {
         Self {
             max,
             use_card,
+            use_device_card,
             move_card,
             compose,
             recovery: parse_recovery(recovery),
@@ -38,6 +41,7 @@ impl ClothPower {
         Some(Self::configured(
             config.max_power,
             config.r#use,
+            config.use_device_card,
             config.r#move,
             config.compose,
             &config.recover,
@@ -68,8 +72,15 @@ impl ClothPower {
         rule.add(current, rule.recovery_for(1))
     }
 
-    pub fn card_used(&self, current: i32) -> i32 {
-        self.add(current, self.use_card)
+    pub fn card_used(&self, current: i32, device: bool) -> i32 {
+        self.add(
+            current,
+            if device {
+                self.use_device_card
+            } else {
+                self.use_card
+            },
+        )
     }
 
     pub fn card_moved(&self, current: i32) -> i32 {
@@ -128,11 +139,13 @@ mod tests {
         let power = ClothPower {
             max: 99,
             use_card: 4,
+            use_device_card: 5,
             compose: 2,
             ..Default::default()
         };
 
-        assert_eq!(power.card_used(97), 99);
+        assert_eq!(power.card_used(97, false), 99);
+        assert_eq!(power.card_used(90, true), 95);
         assert_eq!(power.cards_composed(98, 2), 99);
     }
 }

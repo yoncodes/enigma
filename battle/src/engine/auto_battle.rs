@@ -164,7 +164,13 @@ pub(crate) fn plan(
             .hand()
             .iter()
             .chain(cards.team_cards())
-            .map(|card| random_card_choice(card, managers, &mut choice_determinism))
+            .map(|card| {
+                if cards.can_use_card(card) {
+                    random_card_choice(card, managers, &mut choice_determinism)
+                } else {
+                    None
+                }
+            })
             .collect();
         let Some(candidate) = best_candidate(
             &cards,
@@ -453,6 +459,9 @@ fn best_candidate(
         .chain(cards.team_cards())
         .enumerate()
         .filter_map(|(card_index, card)| {
+            if !cards.can_use_card(card) {
+                return None;
+            }
             let chosen_skill_id = choices.get(card_index).copied().flatten();
             let (source_uid, skill_id) = card_identity(card, chosen_skill_id)?;
             let normal_ap_cost = action_point_cost(card, source_uid, skill_id, managers, catalog);

@@ -306,14 +306,14 @@ fn promoted_defender_joins_the_normal_round_start_once() {
 }
 
 #[test]
-fn wave_entry_setup_runs_enter_fight_and_early_round_start() {
+fn wave_entry_event_and_setup_each_own_their_stage() {
     init_config();
     let fight = Fight {
         defender: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(-3),
                 current_hp: Some(100),
-                passive_skill: vec![2531, 2370, 2524, 2533],
+                passive_skill: vec![2531, 2370, 40, 50],
                 ..Default::default()
             }],
             ..Default::default()
@@ -322,20 +322,40 @@ fn wave_entry_setup_runs_enter_fight_and_early_round_start() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
-    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
-
-    let result = run_wave_entry_setup(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 2,
-            ..Default::default()
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut entry_slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
+        TargetRequest::self_only(),
+    );
+    entry_slot.conditions = vec![ParsedCondition {
+        opcode: 55,
+        type_name: "None".to_owned(),
+        kind: ParsedConditionKind::None(NoneMode::EnterBattle),
+        raw_args: Vec::new(),
+    }];
+    entry_slot.compiled_route = ConditionRoute::compile(&entry_slot.conditions);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 40,
+        slots: vec![entry_slot],
+    });
+    let mut early_round_slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
+        TargetRequest::self_only(),
+    );
+    early_round_slot.conditions = vec![ParsedCondition {
+        opcode: 727100,
+        type_name: "RoundAfter".to_owned(),
+        kind: ParsedConditionKind::RoundInterval {
+            start_round: 0,
+            period: 1,
         },
-        &[-3],
-    )
-    .unwrap();
+        raw_args: Vec::new(),
+    }];
+    early_round_slot.compiled_route = ConditionRoute::compile(&early_round_slot.conditions);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 50,
+        slots: vec![early_round_slot],
+    });
 
     fn collect_act_ids(step: &sonettobuf::FightStep, ids: &mut Vec<i32>) {
         if let Some(skill_id) = step.act_id.filter(|skill_id| *skill_id > 0) {
@@ -350,20 +370,88 @@ fn wave_entry_setup_runs_enter_fight_and_early_round_start() {
         }
     }
 
+    let wave = run_wave_entry(crate::engine::manager::wave::WaveAdvanced {
+        wave: 2,
+        entering_uids: vec![-3],
+        fight: fight.clone(),
+    })
+    .unwrap();
+    let mut wave_act_ids = Vec::new();
+    for step in crate::engine::packet::timeline::project(&wave.frames).unwrap() {
+        collect_act_ids(&step, &mut wave_act_ids);
+    }
+    assert!(wave_act_ids.is_empty());
+
+    let result = run_wave_entry_setup(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        &[-3],
+    )
+    .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     let mut act_ids = Vec::new();
     for step in &steps {
         collect_act_ids(step, &mut act_ids);
     }
     assert_eq!(steps.len(), 1);
-    assert!(act_ids.contains(&2531));
-    assert!(act_ids.contains(&2370));
-    assert_eq!(act_ids, vec![2531, 2370]);
-    assert!(!act_ids.contains(&2533));
+    assert_eq!(act_ids, vec![2531, 2370, 40, 50]);
+    assert_eq!(managers.ex_point.get(-3), 2);
+    let [phase] = result.frames.as_slice() else {
+        panic!("entry setup owns one phase frame")
+    };
     assert!(matches!(
-        result.frames[0].owner,
+        phase.owner,
         FrameOwner::RoundPhase(RoundPhase::EntityEntrySetup)
     ));
+    let event_frames = phase
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            FrameItem::Child(frame) if matches!(frame.owner, FrameOwner::EventRule) => {
+                Some(frame.as_ref())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let [event_frame] = event_frames.as_slice() else {
+        panic!("entry setup owns one event frame")
+    };
+    assert!(matches!(
+        event_frame.trigger,
+        FrameTrigger::Event(BattleEvent::EntityEntered { target_uid: -3 })
+    ));
+    let event_skills = event_frame
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            FrameItem::Child(frame) => match frame.owner {
+                FrameOwner::Skill {
+                    source_uid,
+                    skill_id,
+                    target_uid,
+                    ..
+                } => Some((source_uid, skill_id, target_uid)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        event_skills,
+        vec![
+            (-3, 2531, Some(-3)),
+            (-3, 2370, Some(-3)),
+            (-3, 40, Some(-3))
+        ]
+    );
+    assert!(managers.buff.has_active_buff_id(-3, 25241));
+    assert!(managers.buff.has_active_buff_id(-3, 2137001));
 }
 
 #[test]

@@ -76,6 +76,57 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
 }
 
 #[test]
+fn direct_use_skill_not_extra_keeps_the_nested_cast_out_of_extra_reactions() {
+    let behavior = ParsedBehavior::new(60223, "DirectUseSkillNotExtra", vec![31473162]);
+    assert!(crate::engine::skill::behavior::is_supported(&behavior));
+    let definition = crate::engine::skill::behavior::registry::find(&behavior).unwrap();
+    assert!(definition.destination);
+    assert_eq!(definition.output_owner, OutputOwner::Parent);
+    assert!(!crate::engine::skill::behavior::is_supported(
+        &ParsedBehavior::new(60223, "DirectUseSkillNotExtra", vec![31473162, 0])
+    ));
+    assert!(!crate::engine::skill::behavior::is_supported(
+        &ParsedBehavior::new(60223, "DirectUseSkillNotExtra", vec![31473162, 1])
+    ));
+    let managers = crate::engine::manager::BattleManagers::default();
+    let pool = TargetPool::default();
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: -5,
+            active_skill_id: 31473161,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Skill(invocation)]
+            if invocation.plan.source_uid == 10
+                && invocation.plan.skill_id == 31473162
+                && invocation.target
+                    == crate::engine::skill::action::SkillTarget::Explicit(-5)
+                && invocation.frame_target == Some(-5)
+                && invocation.mode
+                    == crate::engine::skill::action::SkillExecutionMode::Direct
+                && invocation.target_observed_extra_action == Some(false)
+    ));
+}
+
+#[test]
 fn crystal_reuse_scales_the_configured_chance_by_selected_crystals() {
     crate::test_support::init_config();
     let behavior = ParsedBehavior::new(60242, "CrystalReuse", vec![334, 31340152, 1]);

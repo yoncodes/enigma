@@ -2,6 +2,8 @@ use sonettobuf::{ActEffect, CardInfo, effect_type_enum::EffectType};
 
 use crate::engine::{fight::versions::RedealWireLayout, manager::card::CardChange};
 
+pub(super) mod sovereign;
+
 pub struct CardPacket;
 
 impl CardPacket {
@@ -33,6 +35,27 @@ impl CardPacket {
 
     pub fn from_change(change: CardChange) -> ActEffect {
         match change {
+            CardChange::SovereignUnlocked { card, team_type } => {
+                sovereign::data(0, card, team_type)
+            }
+            CardChange::SovereignCharged {
+                card,
+                index,
+                team_type,
+            } => sovereign::data(index, card, team_type),
+            CardChange::InsertHand {
+                target_uid,
+                card,
+                index,
+                team_type,
+            } => ActEffect {
+                target_id: Some(target_uid),
+                effect_type: Some(EffectType::Inserthandcard as i32),
+                effect_num: Some(i32::try_from(index + 1).expect("committed insertion position")),
+                card_info: Some(wire_card(card)),
+                team_type: Some(team_type),
+                ..Default::default()
+            },
             CardChange::DeckCount {
                 deck_num,
                 team_type,
@@ -169,12 +192,12 @@ impl CardPacket {
         ActEffect {
             target_id: Some(owner_uid),
             effect_type: Some(EffectType::Cardaconvertcardb as i32),
-            effect_num: Some(1),
-            config_effect: card.skill_id,
-            buff_act_id: Some(0),
-            reserve_id: i64::try_from(hand_index)
+            effect_num: i32::try_from(hand_index)
                 .ok()
                 .and_then(|index| index.checked_add(1)),
+            config_effect: card.skill_id,
+            buff_act_id: Some(0),
+            reserve_id: Some(1),
             card_info: Some(card),
             team_type: Some(team_type),
             effect_num1: Some(0),

@@ -25,6 +25,8 @@ pub fn run_command_group(
                 | RuleOp::SubscriberGroupComplete
                 | RuleOp::TerminalSettlement
                 | RuleOp::BeginSkillAction { .. }
+                | RuleOp::PaySkillAction { .. }
+                | RuleOp::PaidSkillStarted(_)
                 | RuleOp::BuffFeatureMarker { .. }
                 | RuleOp::EffectMarker { .. }
                 | RuleOp::SceneChange { .. }
@@ -32,6 +34,7 @@ pub fn run_command_group(
                 | RuleOp::BuffActInfoMarker(_)
                 | RuleOp::MarkBuffActFired { .. }
                 | RuleOp::ModifyActiveSkillTargets { .. }
+                | RuleOp::ExpandActiveSkillTargets { .. }
                 | RuleOp::FreezeActiveSkillRates
                 | RuleOp::NuoDiKaHit(_) => (Some(root.clone()), None),
             };

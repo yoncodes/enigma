@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn sovereign_card_generation_has_an_exact_runtime_route() {
+    let definition = find(1133, "UnnamedAddSpCard").expect("special-card generation rule");
+    assert!(definition.validate_arguments(None, &[31472131, 9, 31470001, 4], None));
+    assert_eq!(
+        runtime_event(1133, "UnnamedAddSpCard", 105),
+        Some(EventKind::RoundStartCard)
+    );
+    assert!(definition.completion_gap.is_some());
+    assert!(definition.runtime.fallible_scoped_handler.is_some());
+    for args in [
+        &[31472131, 9, 31470001][..],
+        &[31472131, 0, 31470001, 4],
+        &[31472131, 9, 31470001, 0],
+    ] {
+        assert!(!definition.validate_arguments(None, args, None));
+    }
+    assert!(find(1133, "AddSpTempCard").is_none());
+}
+
+#[test]
 fn share_hurt_marks_adds_and_refreshes() {
     let wire = find(872, "ShareHurt").unwrap().wire.unwrap();
 

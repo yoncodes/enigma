@@ -223,6 +223,7 @@ fn be_attacked_reaction_commits_before_same_hit_threshold() {
         TargetContext::default(),
         BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
             source_uid: 10,
+            card_index: 0,
             skill_id: 1163855063,
             target_uid: -1,
             target_uids: vec![-1],
@@ -506,6 +507,7 @@ fn contract_psychube_buffs_the_owner_then_the_selected_bound_ally() {
         TargetContext::default(),
         BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
             source_uid: 10,
+            card_index: 0,
             skill_id: 31000451,
             target_uid: -1,
             target_uids: vec![-1],

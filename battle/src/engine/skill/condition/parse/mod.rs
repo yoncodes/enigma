@@ -1,7 +1,7 @@
 use config::GameDB;
 
 use crate::engine::skill::condition::{
-    buff::BuffConditionMode, extra::ExtraActionConditionMode, lifecycle::LifecycleMode,
+    buff::BuffConditionMode, card, extra::ExtraActionConditionMode, lifecycle::LifecycleMode,
     none::NoneMode, registry,
 };
 
@@ -40,16 +40,14 @@ pub enum ParsedConditionKind {
         start_round: i32,
         period: i32,
     },
-    CompletedRoundInterval {
-        start_round: i32,
-        period: i32,
-    },
     ActionOrder(i32),
     ActionOrderRange {
         start: i32,
         count: i32,
     },
     None(NoneMode),
+    SovereignCardCreated,
+    RankAtLeast(i32),
     BuffId {
         mode: BuffConditionMode,
         buff_ids: Vec<i32>,
@@ -168,6 +166,7 @@ pub enum ParsedConditionKind {
     CurrentCardEnchant {
         enchant_id: i32,
     },
+    CardAnchor(card::AnchorOrder),
     HandSkillPresence(Vec<i32>),
     RoundUsedMinimumRank {
         minimum_rank: i32,

@@ -29,6 +29,7 @@ fn permanent_action_marker_does_not_expire() {
         manager
             .plan_action_expiries(&SkillActionEvent {
                 source_uid: 10,
+                card_index: 0,
                 skill_id: 1,
                 target_uid: -1,
                 target_uids: vec![-1],

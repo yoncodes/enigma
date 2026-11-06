@@ -44,6 +44,7 @@ pub mod career_ratio_fix;
 pub mod career_restraint;
 pub mod cast_channel;
 pub mod change_remove_buff_use_skill_param;
+pub mod charge_sovereign_card;
 pub mod conduit_select;
 pub mod consume_and_grant;
 pub mod consume_buff_add_buff_continue_channel;
@@ -52,6 +53,7 @@ pub mod control_team_injury_count_round;
 pub mod count_continue_channel;
 pub mod create_additional_damage;
 pub mod create_max_hp_additional_damage_and_remove;
+pub mod create_sovereign_card;
 pub mod crit_rate_alter2;
 pub mod crit_rate_alter_by_other_buff;
 pub mod crystal_add_buff;
@@ -96,6 +98,7 @@ pub mod forbid;
 pub mod foundation;
 pub mod foundation_counter;
 pub mod frozen;
+pub mod guard_break_reward;
 pub mod heat_scale_tag;
 pub mod heat_scale_use_skill;
 pub mod hurt_to_progress;
@@ -132,6 +135,7 @@ pub mod team_per_power_add_buff;
 pub mod team_share_shield;
 pub mod toughness;
 pub mod transfer_energy_buff;
+pub mod unlock_sovereign_card;
 pub mod use_damage_skill_add_to_target;
 pub mod use_skill;
 pub mod use_skill_modifier;
@@ -622,6 +626,9 @@ pub struct BuffActRuleOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuffActRuleError {
+    ChargeSovereignCard(charge_sovereign_card::ChargeError),
+    UnlockSovereignCard(unlock_sovereign_card::UnlockError),
+    CreateSovereignCard(create_sovereign_card::CreateSovereignCardError),
     RecordReplaceMagicCircle(record_replace_magic_circle::RecordReplaceMagicCircleError),
 }
 

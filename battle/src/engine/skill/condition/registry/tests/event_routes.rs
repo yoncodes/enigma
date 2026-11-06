@@ -899,6 +899,14 @@ fn post_hit_buff_presence_conditions_are_filters_with_event_dependencies() {
 }
 
 #[test]
+fn per_ex_point_reads_the_action_start_resource() {
+    assert_eq!(
+        find_key(58201, "PerExPoint").unwrap().read_timing,
+        ConditionReadTiming::ActionStart
+    );
+}
+
+#[test]
 fn genesis_critical_branch_uses_exact_static_buff_predicates() {
     for (opcode, type_name) in [(192081, "HasBuffId"), (572081, "NoBuffId")] {
         let definition = find_key(opcode, type_name).unwrap();

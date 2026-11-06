@@ -90,7 +90,7 @@ pub(super) fn drain_skill(
             source_uid: invocation.plan.source_uid,
             skill_id: invocation.plan.skill_id,
             card_index: invocation.card_index,
-            target_uid: invocation_frame_target(invocation.target, &trigger),
+            target_uid: invocation_frame_target(&invocation, &trigger),
         }),
         &trigger,
     );
@@ -187,17 +187,19 @@ pub(super) fn drain_skill(
         &mut execution,
         &trigger,
     )?;
-    let configured_target_replaces_selection = matches!(trigger, SkillOpTrigger::Active)
+    let configured_target_replaces_selection = invocation.frame_target.is_none()
+        && matches!(trigger, SkillOpTrigger::Active)
         && execution.configured_target_replaces(
             invocation.target,
             invocation.plan.source_uid,
             pool,
         );
-    let preserves_selected_frame_target = execution.preserves_selected_frame_target(
-        invocation.target,
-        invocation.plan.source_uid,
-        pool,
-    );
+    let preserves_selected_frame_target = invocation.frame_target.is_some()
+        || execution.preserves_selected_frame_target(
+            invocation.target,
+            invocation.plan.source_uid,
+            pool,
+        );
     for &(slot_index, condition_key) in &emission.fired_rules {
         managers.mark_rule_fired(
             invocation.plan.source_uid,

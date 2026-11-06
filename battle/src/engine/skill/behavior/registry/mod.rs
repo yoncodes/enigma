@@ -30,6 +30,7 @@ pub enum OutputOwner {
     Skill,
     ActionSkillReaction,
     NestedLifecycleMechanic,
+    InitialSovereignBoost,
     Parent,
     CausingEvent,
     SetupParent,
@@ -123,6 +124,7 @@ pub struct BehaviorDefinition {
     pub condition_route_override: Option<ConditionRouteOverride>,
     pub required_event: Option<EventKind>,
     pub supports: Option<fn(&ParsedBehavior) -> bool>,
+    pub supports_slot: fn(&crate::engine::skill::effect::SkillEffectSlot) -> bool,
 }
 
 pub trait BehaviorHandler {
@@ -130,6 +132,10 @@ pub trait BehaviorHandler {
 
     fn supports(_: &ParsedBehavior) -> bool {
         false
+    }
+
+    fn supports_slot(_: &crate::engine::skill::effect::SkillEffectSlot) -> bool {
+        true
     }
 
     fn references(_: &ParsedBehavior) -> RuleReferences {
@@ -231,6 +237,7 @@ pub const fn definition<H: BehaviorHandler>(
         } else {
             None
         },
+        supports_slot: H::supports_slot,
     }
 }
 
@@ -640,6 +647,8 @@ pub(crate) fn emit_runtime_ops(
 }
 
 behavior_definitions! {
+    [60295] "UnnamedStrengthen" => super::sovereign_enhancement::Handler, SovereignEnhancement, SourceOpening, destination;
+    [60296] "UnnamedMoveCard" => super::sovereign_boost::Handler, InitialSovereignBoost, Immediate, destination;
     [20002] "AddExPoint" => super::resource::Handler, AddExPoint, AfterDamage, aggregated_destination, arguments::at_least_one;
     [100004] "AddAdrenalineExPoint" => super::resource::Handler, AddAdrenalineExPoint, AfterDamage, destination, super::resource::supports_ex_point_gain;
     [100014] "EzioAddSynchronization" => super::resource::Handler, AddSynchronization, AfterDamage, destination, super::resource::supports_ex_point_gain;
@@ -701,7 +710,7 @@ behavior_definitions! {
     [50039] "DirectUseSkillCard" => super::use_skill::Handler, DirectUseSkillCard, Immediate, plain, super::use_skill::supports_direct_skill_card;
     [50012] "DirectUseSkillNoAct" => super::use_skill::Handler, DirectUseSkillNoAct, Immediate, once_destination, super::use_skill::supports_direct_no_action_skill;
     [50038] "DirectUseSkillNoAct2" => super::use_skill::Handler, DirectUseSkillNoAct2, Immediate, destination, super::use_skill::supports_nested_skill;
-    [60223] "DirectUseSkillNotExtra" => super::use_skill::Handler, DirectUseSkillNotExtra, Immediate, plain;
+    [60223] "DirectUseSkillNotExtra" => super::use_skill::Handler, DirectUseSkillNotExtra, Immediate, parent_destination, super::use_skill::supports_nested_skill;
     [60225] "RandomUseSkill" => super::use_skill::Handler, RandomUseSkill, Immediate, destination, super::use_skill::supports_random_skill;
     [60172] "Drive" => super::use_skill::Handler, Drive, Immediate, destination, super::use_skill::supports_drive;
     [60175] "DirectUseBigSkill" => super::use_skill::Handler, DirectUseBigSkill, Immediate, parent_destination, arguments::none;
@@ -789,6 +798,7 @@ behavior_definitions! {
     [60092] "NotifyHeroContract" => super::contract::Handler, NotifyHeroContract, Immediate, destination;
     [60093] "ContractEndClearBuff" => super::contract::EndHandler, ContractEndClearBuff, Immediate, destination;
     [60198] "ClientEffect" => super::general::Handler, ClientEffect, Immediate, destination, arguments::at_least_one;
+    [60304] "UnnamedClientEffect" => super::strengthen::Handler, UnnamedClientEffect, Immediate, destination;
     [60249] "AddMaxRound" => super::general::AddMaxRoundHandler, AddMaxRound, Immediate, destination;
     [60016] "AddIndicator" => super::general::AddIndicatorHandler, AddIndicator, Immediate, destination;
     [60017] "DelIndicator" => super::general::DelIndicatorHandler, DelIndicator, Immediate, destination;
@@ -804,8 +814,8 @@ behavior_definitions! {
     [40007] "AddActAndCardLimit" => super::card_limit::Handler, AddActAndCardLimit, AfterDamage, round_modifier_with_output;
     [60221] "IgnoreSkillConfigDamageRate" => super::general::DamageRateMarkerHandler, IgnoreSkillConfigDamageRate, Immediate, destination, arguments::none;
     [100017] "IgnoreSkillConfigDamageRate" => super::general::DamageRateMarkerHandler, IgnoreSkillConfigDamageRate, Immediate, destination, arguments::none;
-    [60036] "ConsumeBuffChangeTargets" => super::skill_modifier::Handler, ConsumeBuffChangeTargets, Immediate, destination;
-    [60034] "ConsumeBuffUpSkillDamageRate" => super::skill_modifier::Handler, ConsumeBuffUpSkillDamageRate, Immediate, destination, super::skill_modifier::supports_rate;
+    [60036] "ConsumeBuffChangeTargets" => super::skill_modifier::Handler, ConsumeBuffChangeTargets, SourceOpening, destination, super::skill_modifier::supports_consume;
+    [60034] "ConsumeBuffUpSkillDamageRate" => super::skill_modifier::Handler, ConsumeBuffUpSkillDamageRate, Immediate, destination, super::skill_modifier::supports_consume;
     [60307] "FoundationCounterClear" => super::foundation_counter::Handler, FoundationCounterClear, Immediate, destination;
     [60035] "ConsumeBuffAttrFix" => super::skill_modifier::Handler, ConsumeBuffAttrFix, Immediate, destination;
     [100019] "ConsumeBuffFixMixedRate" => super::skill_modifier::Handler, ConsumeBuffFixMixedRate, Immediate, destination, super::skill_modifier::supports_mixed_rate;
@@ -819,7 +829,7 @@ behavior_definitions! {
     [60067] "SkillRateUpCardLevel" => super::rate::Handler, SkillRateUpCardLevel, Immediate, modifier, super::rate::supports_card_rank_skill_rate;
     [60234] "AddSkillRateByTargetCount" => super::rate::Handler, AddSkillRateByTargetCount, Immediate, modifier, super::rate::supports_target_count_rate;
     [60182] "SkillRateUpBySelfBuffType" => super::rate::Handler, SkillRateUpBySelfBuffType, Immediate, modifier, super::rate::supports_self_buff_type_rate;
-    [60174] "ConsumeExPointAddAttr" => super::rate::Handler, ConsumeExPointAddAttr, Immediate, modifier;
+    [60174] "ConsumeExPointAddAttr" => super::rate::Handler, ConsumeExPointAddAttr, Immediate, modifier, super::rate::supports_consume_ex_point_add_attr;
     [60255] "HeatScaleAddSkillRate" => super::rate::Handler, HeatScaleAddSkillRate, Immediate, modifier, super::rate::supports_heat_scale_rate;
     [100030] "TwinsUpByCounter" => super::rate::Handler, ConduitRateByConsumedPower, Immediate, modifier, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(203, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::SourceOpening) }), super::rate::supports_conduit_rate;
     [100031] "TwinsPowerUp" => super::rate::Handler, ConduitPowerUp, Immediate, modifier, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(203, "None"), event: EventKind::SkillAction, phase: Some(SkillPhase::SourceOpening) }), super::rate::supports_conduit_power_up;

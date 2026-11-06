@@ -1017,6 +1017,38 @@ impl BattleManagers {
         self.execute_ex_point_with(command, resisted)
     }
 
+    pub(crate) fn execute_lowest_ex_point(
+        &mut self,
+        command: ex_point::LowestExPointChange,
+    ) -> Result<Option<ex_point::ExPointChanges>, ex_point::ExPointCommandError> {
+        if command.source_uid == 0 || command.delta <= 0 {
+            return Err(ex_point::ExPointCommandError::InvalidCommand);
+        }
+        let Some(target_uid) = command
+            .candidates
+            .iter()
+            .copied()
+            .filter(|(uid, _)| {
+                self.hp.current(*uid) > 0
+                    && ex_point::ExPointKind::from_wire(self.ex_point.kind(*uid))
+                        == ex_point::ExPointKind::Common
+            })
+            .min_by_key(|(uid, position)| (self.ex_point.get(*uid), *position, *uid))
+            .map(|(uid, _)| uid)
+        else {
+            return Ok(None);
+        };
+        self.execute_ex_point(ex_point::ExPointCommand::Change(ex_point::ExPointChange {
+            origin: command.origin,
+            source_uid: command.source_uid,
+            target_uid,
+            delta: command.delta,
+            config_effect: command.config_effect,
+            effect_type: command.effect_type,
+        }))
+        .map(Some)
+    }
+
     fn execute_ex_point_with(
         &mut self,
         command: ex_point::ExPointCommand,

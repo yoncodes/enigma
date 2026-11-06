@@ -178,6 +178,10 @@ pub enum BuffActKind {
     CreateAdditionalDamage,
     CreateHeroTempCards,
     CreateTempSkill3Card,
+    SovereignCardGeneration,
+    SovereignCardUnlock,
+    SovereignCardCharge,
+    GuardBreakReward,
     CreateMaxHpAdditionalDamageAndRemove,
     CritRateAlter2,
     CritRateAlterByOtherBuff,
@@ -1299,10 +1303,11 @@ buff_act_definitions! {
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(926, "ExPointAddByHit"), &[EffectType::None as i32]));
     (927, "AddBuffByOtherExSkill") => AddBuffByOtherExSkill,
         transactions: [EventKind::BuffAdded],
-        frame: CausingFrame,
+        source: Owner,
         runtime: |context| super::add_buff_by_other_ex_skill::rule_ops(context.catalog, context.subscriber, context.event?),
         transaction: super::add_buff_by_other_ex_skill::grant_transaction_rule_ops,
-        supports: super::add_buff_by_other_ex_skill::supports;
+        supports: super::add_buff_by_other_ex_skill::supports,
+        wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(927, "AddBuffByOtherExSkill"), &[], &[], &[]));
     (932, "FixAttrBySubBuffLayer") => FixAttrBySubBuffLayer,
         supports: super::fix_attr_by_sub_buff_layer::supports, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(932, "FixAttrBySubBuffLayer"), &[EffectType::None as i32]));
@@ -1585,6 +1590,30 @@ buff_act_definitions! {
     (1130, "DeviceCostReduce") => DeviceCostReduce,
         effect_time_subscription: false,
         supports: super::device_cost_reduce::supports, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1130, "DeviceCostReduce"), &[EffectType::None as i32]));
+    (1133, "UnnamedAddSpCard") => SovereignCardGeneration,
+        fallible_scoped_runtime: super::create_sovereign_card::scoped_rule_ops,
+        supports: super::create_sovereign_card::supports,
+        references: references_for_feature,
+        completion_gap: "only player-hand zero-resource generation is captured; positive-resource consumption and enhancement tie selection remain unproven",
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1133, "UnnamedAddSpCard"), &[EffectType::None as i32]));
+    (1134, "UnnamedUnlockSpCard") => SovereignCardUnlock,
+        event: EventKind::SovereignUnlock, source: Owner,
+        fallible_scoped_runtime: super::unlock_sovereign_card::rule_ops,
+        supports: |args| matches!(args, [31470163]),
+        references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1134, "UnnamedUnlockSpCard"), &[EffectType::None as i32]));
+    (1135, "UnnamedChargingSpCard") => SovereignCardCharge,
+        source: Owner, actor: Team,
+        fallible_scoped_runtime: super::charge_sovereign_card::rule_ops,
+        raw_supports: |_, raw| raw == "1135#1,3#2,4#5,6#7,8",
+        completion_gap: "positive charging of a future queued Sovereign card is unproven; held-card charging is implemented",
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1135, "UnnamedChargingSpCard"), &[EffectType::None as i32]));
+    (1136, "PerBrokenAddBuff") => GuardBreakReward,
+        events: [EventKind::ToughnessBroken], source: Owner,
+        runtime: |context| super::guard_break_reward::rule_ops(context.managers, context.subscriber, context.event?),
+        raw_supports: |_, raw| matches!(raw, "1136#31470001#1" | "1136#31470001#2"),
+        references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1136, "PerBrokenAddBuff"), &[EffectType::None as i32]));
     (1139, "MeiLeiErCharge") => BuffOwnedCharge,
         effect_time_subscription: false,
         supports: |args| matches!(args, [trigger, limit, linked_skill]
@@ -1639,6 +1668,16 @@ fn references_for_feature(
         }
     };
     match feature.kind {
+        Some(BuffActKind::GuardBreakReward) => {
+            add_buff(&mut references, feature.args.first().copied());
+        }
+        Some(BuffActKind::SovereignCardUnlock) => {
+            add_skill(&mut references, feature.args.first().copied());
+        }
+        Some(BuffActKind::SovereignCardGeneration) => {
+            add_skill(&mut references, feature.args.first().copied());
+            add_buff(&mut references, feature.args.get(2).copied());
+        }
         Some(BuffActKind::SubBuff) => add_buff(&mut references, feature.values.get(1).copied()),
         Some(BuffActKind::MasterHalo) => add_buff(&mut references, feature.values.get(2).copied()),
         Some(BuffActKind::BuffReplace) => add_buff(&mut references, feature.values.get(2).copied()),

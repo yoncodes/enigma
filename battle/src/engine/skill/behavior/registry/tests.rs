@@ -36,6 +36,116 @@ fn lookup_requires_the_exact_opcode_type_pair() {
 }
 
 #[test]
+fn consume_ex_point_validates_its_semantic_argument_shape() {
+    let definition = find_key(60174, "ConsumeExPointAddAttr").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert!(supports(&ParsedBehavior::new(
+        60174,
+        "ConsumeExPointAddAttr",
+        vec![211, 60, 1, 5, 221, 1000],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60174,
+        "ConsumeExPointAddAttr",
+        vec![211, 60, 1, 5, 221],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60174,
+        "ConsumeExPointAddAttr",
+        vec![205, 60, 1, 5, 221, 1000],
+    )));
+}
+
+#[test]
+fn unnamed_client_effect_emits_configured_strengthen_layers() {
+    let managers = crate::engine::manager::BattleManagers::default();
+    let pool = crate::engine::skill::target::TargetPool::default();
+    let definition = find_key(60304, "UnnamedClientEffect").expect("effect must be registered");
+    let supports = definition.supports.expect("arguments must stay exact");
+
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+
+    for layers in [2, 3, 4] {
+        let behavior = ParsedBehavior::new(60304, "UnnamedClientEffect", vec![1, layers]);
+        assert!(supports(&behavior));
+
+        let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext {
+            runtime_target_uid: -4,
+            ..Default::default()
+        };
+        let ops = crate::engine::skill::behavior::rule_ops(
+            crate::engine::skill::behavior::BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 0,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            ops.as_slice(),
+            [crate::engine::skill::rule::output::RuleOp::EffectMarker {
+                target_uid: -4,
+                effect_type,
+                effect_num: 1,
+                effect_num1: Some(actual_layers),
+                config_effect: 0,
+                reserve_id: None,
+                reserve_str: None,
+            }] if *effect_type
+                == sonettobuf::effect_type_enum::EffectType::Unnamedstrengthen as i32
+                && *actual_layers == layers
+        ));
+    }
+
+    for args in [vec![1], vec![1, 1], vec![1, 5], vec![2, 4], vec![1, 4, 0]] {
+        assert!(!supports(&ParsedBehavior::new(
+            60304,
+            "UnnamedClientEffect",
+            args
+        )));
+    }
+}
+
+#[test]
+fn consumed_buff_target_expansion_runs_before_source_opening_markers() {
+    let definition = find_key(60036, "ConsumeBuffChangeTargets").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.phase, BehaviorPhase::SourceOpening);
+    assert!(supports(&ParsedBehavior::new(
+        60036,
+        "ConsumeBuffChangeTargets",
+        vec![31470005, 1, 4],
+    )));
+    for args in [
+        vec![31470005, 1],
+        vec![0, 1, 4],
+        vec![31470005, -1, 4],
+        vec![31470005, 1, 0],
+    ] {
+        assert!(!supports(&ParsedBehavior::new(
+            60036,
+            "ConsumeBuffChangeTargets",
+            args,
+        )));
+    }
+}
+
+#[test]
 fn moxie_absorption_accepts_exact_aliases() {
     for opcode in [30002, 30011] {
         let definition = find_key(opcode, "AbsorbExPoint").unwrap();

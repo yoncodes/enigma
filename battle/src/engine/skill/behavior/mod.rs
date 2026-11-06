@@ -36,7 +36,10 @@ pub mod scene;
 pub mod shell;
 pub mod shield;
 pub mod skill_modifier;
+pub mod sovereign_boost;
+pub mod sovereign_enhancement;
 pub mod special_count;
+pub mod strengthen;
 pub mod summon;
 pub mod synchronization;
 pub mod toughness;
@@ -99,6 +102,7 @@ pub fn is_slot_supported(slot: &SkillEffectSlot) -> bool {
         return false;
     };
     is_supported(&slot.behavior)
+        && (definition.supports_slot)(slot)
         && definition.required_event.is_none_or(|required| {
             slot.compiled_subscriptions()
                 .is_ok_and(|subscriptions| subscriptions.iter().any(|key| key.event == required))

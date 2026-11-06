@@ -352,7 +352,12 @@ pub(super) fn drain_command(
         None,
     )?;
     let mut started_after_reactions = None;
-    if matches!(&outcome, RuleOutcome::SkillActionStarted { .. }) {
+    if matches!(
+        &outcome,
+        RuleOutcome::SkillActionStarted { .. }
+            | RuleOutcome::ActionCostPaid(_)
+            | RuleOutcome::PaidSkillStarted(_)
+    ) {
         let mut started_reactions = dispatch_event_groups(
             pool,
             managers,
@@ -479,11 +484,20 @@ pub(super) fn drain_command(
         push_cue(&mut result.frames, RoundCue::RedealHandSync { cards });
     }
     for (owner, change) in outcome.owned_changes() {
-        if owner == crate::engine::skill::behavior::registry::OutputOwner::NestedLifecycleMechanic {
+        let nested_owner = match owner {
+            crate::engine::skill::behavior::registry::OutputOwner::NestedLifecycleMechanic => {
+                Some(FrameOwner::LifecycleMechanic)
+            }
+            crate::engine::skill::behavior::registry::OutputOwner::InitialSovereignBoost => {
+                Some(FrameOwner::InitialSovereignBoost)
+            }
+            _ => None,
+        };
+        if let Some(nested_owner) = nested_owner {
             let nested = push_child(
                 &mut result.frames,
                 &frame_path,
-                FrameOwner::LifecycleMechanic,
+                nested_owner,
                 frame_trigger(&trigger),
             );
             push_change(&mut result.frames, &nested, change);
@@ -514,7 +528,12 @@ pub(super) fn drain_command(
             crate::engine::runtime::change::BattleChange::BuffFanout(Box::new(fanout)),
         );
     }
-    let was_skill_action_started = matches!(&outcome, RuleOutcome::SkillActionStarted { .. });
+    let was_skill_action_started = matches!(
+        &outcome,
+        RuleOutcome::SkillActionStarted { .. }
+            | RuleOutcome::ActionCostPaid(_)
+            | RuleOutcome::PaidSkillStarted(_)
+    );
     let was_hp_batch = matches!(&outcome, RuleOutcome::HpBatch(_));
     result.outcomes.push(outcome);
 
@@ -900,6 +919,7 @@ pub(super) fn drain_command(
             crate::engine::skill::behavior::registry::OutputOwner::CausingEvent
             | crate::engine::skill::behavior::registry::OutputOwner::ActionSkillReaction
             | crate::engine::skill::behavior::registry::OutputOwner::NestedLifecycleMechanic
+            | crate::engine::skill::behavior::registry::OutputOwner::InitialSovereignBoost
             | crate::engine::skill::behavior::registry::OutputOwner::SetupParent
             | crate::engine::skill::behavior::registry::OutputOwner::SetupOrFinalSettlementParent =>
             {

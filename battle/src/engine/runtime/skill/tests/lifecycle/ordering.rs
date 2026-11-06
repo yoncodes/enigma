@@ -66,21 +66,24 @@ fn source_opening_and_pre_effect_reactions_precede_action_cost() {
     }
     .into();
     invocation.mode = SkillExecutionMode::Active;
-    let mut execution = SkillExecution::with_action_cost(
+    let mut execution = SkillExecution::with_payment(
         TargetContext::default(),
-        Some(crate::engine::manager::ex_point::ExPointCommand::Spend(
-            crate::engine::manager::ex_point::ExPointChange {
-                origin: CommandOrigin {
-                    domain: RuleDomain::Skill,
-                    key: DefinitionKey::new(0, "TestPaidAction"),
+        Some(crate::engine::skill::action::ActionPayment {
+            cost: crate::engine::manager::ex_point::ExPointCommand::Spend(
+                crate::engine::manager::ex_point::ExPointChange {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Skill,
+                        key: DefinitionKey::new(0, "TestPaidAction"),
+                    },
+                    source_uid: 10,
+                    target_uid: 10,
+                    delta: -5,
+                    config_effect: 0,
+                    effect_type: 0,
                 },
-                source_uid: 10,
-                target_uid: 10,
-                delta: -5,
-                config_effect: 0,
-                effect_type: 0,
-            },
-        )),
+            ),
+            composition: Vec::new(),
+        }),
     );
     let mut determinism = RoundDeterminism::default();
 
@@ -153,6 +156,7 @@ fn source_opening_and_pre_effect_reactions_precede_action_cost() {
             cost: crate::engine::manager::ex_point::ExPointCommand::Spend(change),
         } if action.phase == SkillPhase::Immediate && change.delta == -5
     )));
+    assert_eq!(execution.moxie_spent, 5);
 }
 
 #[test]
@@ -188,21 +192,24 @@ fn paid_skill_publishes_immediate_commands_before_action_start_lifecycle() {
         skill_id: 100,
     }
     .into();
-    let mut execution = SkillExecution::with_action_cost(
+    let mut execution = SkillExecution::with_payment(
         TargetContext::default(),
-        Some(crate::engine::manager::ex_point::ExPointCommand::Spend(
-            crate::engine::manager::ex_point::ExPointChange {
-                origin: CommandOrigin {
-                    domain: RuleDomain::Skill,
-                    key: DefinitionKey::new(0, "TestPaidAction"),
+        Some(crate::engine::skill::action::ActionPayment {
+            cost: crate::engine::manager::ex_point::ExPointCommand::Spend(
+                crate::engine::manager::ex_point::ExPointChange {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Skill,
+                        key: DefinitionKey::new(0, "TestPaidAction"),
+                    },
+                    source_uid: 10,
+                    target_uid: 10,
+                    delta: -5,
+                    config_effect: 0,
+                    effect_type: 0,
                 },
-                source_uid: 10,
-                target_uid: 10,
-                delta: -5,
-                config_effect: 0,
-                effect_type: 0,
-            },
-        )),
+            ),
+            composition: Vec::new(),
+        }),
     );
     let mut determinism = RoundDeterminism::default();
 

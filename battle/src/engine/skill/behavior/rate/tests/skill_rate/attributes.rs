@@ -256,7 +256,7 @@ fn bullet_types_repeat_each_configured_attack_attribute() {
 }
 
 #[test]
-fn consume_ex_point_uses_only_additional_moxie() {
+fn consume_ex_point_rate_uses_only_additional_moxie() {
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     emit(
         &mut modifiers,
@@ -264,21 +264,267 @@ fn consume_ex_point_uses_only_additional_moxie() {
         10,
         None,
         31140131,
-        3,
+        1,
         &ParsedBehavior::from_spec(
             crate::engine::skill::behavior::classify::BehaviorSpec::new(
                 60174,
                 "ConsumeExPointAddAttr",
             ),
-            vec![211, 30, 1, 5, 221, 1000],
+            vec![211, 30, 3, 5, 221, 1000],
             Vec::new(),
         ),
     );
 
     assert_eq!(
         modifiers.attack_attributes,
-        vec![(AttrId::UltimateMight, 90)]
+        vec![(AttrId::UltimateMight, 30)]
     );
+}
+
+#[test]
+fn consume_ex_point_spends_the_excess_and_rewards_the_lowest_ally() {
+    crate::test_support::init_config();
+    let entity = |uid, ex_point| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(1),
+        current_hp: Some(100),
+        ex_point: Some(ex_point),
+        ex_point_max: Some(10),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 9), entity(20, 0), entity(30, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(60174, "ConsumeExPointAddAttr"),
+        vec![211, 60, 1, 5, 221, 1000],
+        Vec::new(),
+    );
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = TargetContext {
+        active_skill_id: 311401351,
+        active_skill_source_uid: 10,
+        ..Default::default()
+    };
+
+    let ops = crate::engine::skill::behavior::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 311401351,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert_eq!(target.additional_moxie, 4);
+    assert_eq!(
+        modifiers.attack_attributes,
+        vec![(AttrId::UltimateMight, 240)]
+    );
+    assert!(matches!(
+        &ops[0],
+        RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Spend(change)))
+            if change.target_uid == 10 && change.delta == -4
+    ));
+    assert_eq!(ops.len(), 5);
+    assert!(ops[1..].iter().all(|op| matches!(
+        op,
+        RuleOp::Command(BattleCommand::LowestExPoint(change))
+            if change.source_uid == 10
+                && change.candidates == [(20, 0), (30, 0)]
+                && change.delta == 1
+    )));
+
+    let stacked = crate::engine::skill::behavior::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 311401351,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+    assert_eq!(stacked.len(), 4);
+    assert!(stacked.iter().all(|op| matches!(
+        op,
+        RuleOp::Command(BattleCommand::LowestExPoint(change))
+            if change.source_uid == 10
+                && change.candidates == [(20, 0), (30, 0)]
+                && change.delta == 1
+    )));
+    assert_eq!(
+        modifiers.attack_attributes,
+        vec![(AttrId::UltimateMight, 240), (AttrId::UltimateMight, 240)]
+    );
+
+    let event = crate::engine::event::payload::BattleEvent::RoundStart;
+    assert!(
+        crate::engine::skill::behavior::rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 311401351,
+                transfer_count: 1,
+                event: Some(&event),
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn consume_ex_point_passive_stays_unsupported_until_distribution_is_owned() {
+    crate::test_support::init_config();
+    let effects = SkillEffectCatalog::from_game_db(config::configs::get());
+    let active = effects.get(311401351).expect("active skill must be parsed");
+    let active_slot = active
+        .slots
+        .iter()
+        .find(|slot| slot.behavior.spec.kind == BehaviorKind::ConsumeExPointAddAttr)
+        .expect("active consume behavior must be parsed");
+    assert!(crate::engine::skill::behavior::is_slot_supported(
+        active_slot
+    ));
+    let mut mass_target = active_slot.clone();
+    mass_target.target.code = 202;
+    assert!(!crate::engine::skill::behavior::is_slot_supported(
+        &mass_target
+    ));
+    let mut mass_condition_target = active_slot.clone();
+    mass_condition_target.condition_target.code = 202;
+    assert!(!crate::engine::skill::behavior::is_slot_supported(
+        &mass_condition_target
+    ));
+    let mut extra_condition = active_slot.clone();
+    extra_condition.compiled_route.as_mut().unwrap().branches[0]
+        .conditions
+        .push(crate::engine::skill::rule::RuleDescriptor::new(
+            crate::engine::skill::rule::RuleDomain::Condition,
+            crate::engine::skill::rule::DefinitionKey::new(210, "None"),
+        ));
+    assert!(!crate::engine::skill::behavior::is_slot_supported(
+        &extra_condition
+    ));
+    let mut multiple_branches = active_slot.clone();
+    let branch = multiple_branches.compiled_route.as_ref().unwrap().branches[0].clone();
+    multiple_branches
+        .compiled_route
+        .as_mut()
+        .unwrap()
+        .branches
+        .push(branch);
+    assert!(!crate::engine::skill::behavior::is_slot_supported(
+        &multiple_branches
+    ));
+    let mut raw_condition_args = active_slot.clone();
+    raw_condition_args.conditions =
+        crate::engine::skill::condition::parse_conditions(config::configs::get(), "203#1");
+    raw_condition_args.compiled_route =
+        crate::engine::skill::rule::route::ConditionRoute::compile_for_behavior(
+            &raw_condition_args.conditions,
+            &raw_condition_args.behavior.spec,
+        );
+    assert!(!crate::engine::skill::behavior::is_slot_supported(
+        &raw_condition_args
+    ));
+    let mut negated_condition = active_slot.clone();
+    negated_condition.conditions =
+        crate::engine::skill::condition::parse_conditions(config::configs::get(), "203!");
+    negated_condition.compiled_route =
+        crate::engine::skill::rule::route::ConditionRoute::compile_for_behavior(
+            &negated_condition.conditions,
+            &negated_condition.behavior.spec,
+        );
+    assert!(!crate::engine::skill::behavior::is_slot_supported(
+        &negated_condition
+    ));
+    let passive = effects.get(82600002).expect("passive must be parsed");
+    let slot = passive
+        .slots
+        .iter()
+        .find(|slot| slot.behavior.spec.kind == BehaviorKind::ConsumeExPointAddAttr)
+        .expect("consume behavior must be parsed");
+    assert!(!crate::engine::skill::behavior::is_slot_supported(slot));
+    assert!(
+        effects
+            .compiled_subscription_lanes(82600002)
+            .unwrap()
+            .iter()
+            .all(
+                |(slot_index, _)| passive.slots[*slot_index].behavior.spec.kind
+                    != BehaviorKind::ConsumeExPointAddAttr
+            )
+    );
+
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ex_point: Some(9),
+                passive_skill: vec![82600002],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+
+    emit_passive_attack_attributes(
+        &mut modifiers,
+        10,
+        311401351,
+        &[82600002],
+        RateRuntime {
+            effects: &effects,
+            managers: &managers,
+            pool: &pool,
+            context: TargetContext {
+                active_skill_is_attack: true,
+                active_skill_source_uid: 10,
+                active_skill_id: 311401351,
+                ..Default::default()
+            },
+        },
+        &mut RoundDeterminism::default(),
+    );
+
+    assert!(modifiers.attack_attributes.is_empty());
 }
 
 #[test]

@@ -296,7 +296,9 @@ fn condition_repeat_count(
                 .and_then(|managers| {
                     super::ex_point::per_ex_point_count(
                         *threshold,
-                        managers.ex_point.get(source_uid),
+                        context
+                            .action_start_ex_point
+                            .unwrap_or_else(|| managers.ex_point.get(source_uid)),
                     )
                 })
                 .unwrap_or_default(),
@@ -449,6 +451,12 @@ fn condition_kind_matches(
             context,
         ),
         ParsedConditionKind::Lifecycle(_) => false,
+        ParsedConditionKind::RankAtLeast(minimum) => managers.is_some_and(|managers| {
+            super::rank::matches(*minimum, condition_targets, managers, pool)
+        }),
+        ParsedConditionKind::SovereignCardCreated => {
+            context.runtime_target_uid != 0 && context.runtime_target_uid == source_uid
+        }
         ParsedConditionKind::RoundInterval {
             start_round,
             period,
@@ -456,15 +464,6 @@ fn condition_kind_matches(
             *period > 0
                 && context.current_round >= *start_round
                 && (context.current_round - *start_round) % *period == 0
-        }
-        ParsedConditionKind::CompletedRoundInterval {
-            start_round,
-            period,
-        } => {
-            let completed_round = context.current_round.saturating_sub(1);
-            *period > 0
-                && completed_round >= *start_round
-                && (completed_round - *start_round) % *period == 0
         }
         ParsedConditionKind::ActionOrder(order) => context.action_order == *order,
         ParsedConditionKind::ActionOrderRange { start, count } => {
@@ -815,6 +814,9 @@ fn condition_kind_matches(
             (*min..=*max).contains(&value)
         }
         ParsedConditionKind::CurrentCardEnchant { .. } => false,
+        ParsedConditionKind::CardAnchor(order) => managers.is_some_and(|managers| {
+            card_anchor_matches(source_uid, context.active_card_index, *order, managers)
+        }),
         ParsedConditionKind::HandSkillPresence(skill_ids) => managers.is_some_and(|managers| {
             managers.card.hand().iter().any(|card| {
                 card.skill_id
@@ -867,9 +869,16 @@ fn condition_kind_matches(
             })
         }
         ParsedConditionKind::PerExPoint { threshold } => managers.is_some_and(|managers| {
-            condition_targets
-                .iter()
-                .any(|uid| managers.ex_point.get(*uid) >= *threshold)
+            condition_targets.iter().any(|uid| {
+                if *uid == source_uid {
+                    context
+                        .action_start_ex_point
+                        .unwrap_or_else(|| managers.ex_point.get(*uid))
+                        >= *threshold
+                } else {
+                    managers.ex_point.get(*uid) >= *threshold
+                }
+            })
         }),
         ParsedConditionKind::PerEureka => managers.is_some_and(|managers| {
             managers
@@ -1371,6 +1380,34 @@ fn condition_kind_matches(
             .any(|uid| has_master_halo(*uid, managers)),
         ParsedConditionKind::NoActionRound => !context.owner_played_card,
         ParsedConditionKind::Unsupported(_) => false,
+    }
+}
+
+fn card_anchor_matches(
+    source_uid: i64,
+    active_card_index: i32,
+    order: super::card::AnchorOrder,
+    managers: &BattleManagers,
+) -> bool {
+    let Some(hand_index) = managers
+        .card
+        .played()
+        .iter()
+        .find(|played| played.caster_uid == source_uid && played.card_index == active_card_index)
+        .and_then(|played| played.hand_index)
+    else {
+        return false;
+    };
+    let Some(anchor_index) = managers.card.committed_hand().iter().position(|card| {
+        card.uid == Some(source_uid)
+            && card.card_type == Some(sonettobuf::card_info::CardType::Skill3 as i32)
+    }) else {
+        return false;
+    };
+
+    match order {
+        super::card::AnchorOrder::Earlier => hand_index < anchor_index,
+        super::card::AnchorOrder::Later => hand_index > anchor_index,
     }
 }
 

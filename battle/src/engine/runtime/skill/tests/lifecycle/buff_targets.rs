@@ -73,6 +73,7 @@ fn hit_bound_target_301_add_buff_stays_on_attacked_enemies() {
     invocation.mode = SkillExecutionMode::Active;
     let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
         source_uid: -1,
+        card_index: 0,
         skill_id: 6190237,
         target_uid: 10,
         target_uids: vec![10],

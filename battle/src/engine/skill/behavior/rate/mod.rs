@@ -1,6 +1,10 @@
 use crate::engine::{
     entity::attr::AttrId,
-    manager::{BattleManagers, conduit::ConduitCommand},
+    manager::{
+        BattleManagers,
+        conduit::ConduitCommand,
+        ex_point::{ExPointChange, ExPointCommand, LowestExPointChange},
+    },
     runtime::determinism::RoundDeterminism,
     skill::{
         action::{PostImmediateTargetBuffModifier, SkillModifiers, SkillRateModifier},
@@ -200,6 +204,9 @@ impl BehaviorHandler for Handler {
             }
             return Some(Vec::new());
         }
+        if behavior.spec.kind == BehaviorKind::ConsumeExPointAddAttr {
+            return consume_ex_point_ops(context, behavior);
+        }
         let additional_moxie = context.target.additional_moxie;
         emit(
             context.modifiers,
@@ -217,6 +224,11 @@ impl BehaviorHandler for Handler {
         context: AttackModifierContext<'_>,
         behavior: &ParsedBehavior,
     ) -> bool {
+        if behavior.spec.kind == BehaviorKind::ConsumeExPointAddAttr
+            && context.owner_skill_id != context.operation.active_skill_id
+        {
+            return false;
+        }
         if behavior.spec.kind != BehaviorKind::BulletCritRateAlter {
             return Self::emit_ops(context.operation, behavior).is_some();
         }
@@ -236,9 +248,161 @@ impl BehaviorHandler for Handler {
         true
     }
 
+    fn supports_slot(slot: &SkillEffectSlot) -> bool {
+        slot.behavior.spec.kind != BehaviorKind::ConsumeExPointAddAttr
+            || (slot.target.code == crate::engine::skill::target::request::SOURCE_TARGET_CODE
+                && slot.condition_target.code
+                    == crate::engine::skill::target::request::SOURCE_TARGET_CODE
+                && slot.target.raw.is_empty()
+                && slot.condition_target.raw.is_empty()
+                && !slot.target_from_condition
+                && matches!(
+                    slot.conditions.as_slice(),
+                    [condition]
+                        if condition.opcode == 203
+                            && condition.type_name == "None"
+                            && condition.raw_args.is_empty()
+                            && matches!(
+                                condition.kind,
+                                ParsedConditionKind::None(
+                                    crate::engine::skill::condition::none::NoneMode::SkillActionStart
+                                )
+                            )
+                )
+                && slot.compiled_route.as_ref().is_ok_and(|route| {
+                    matches!(route.branches.as_slice(), [branch] if {
+                        matches!(
+                            branch.driver,
+                            Some(crate::engine::skill::rule::route::ConditionDriver::Trigger(
+                                trigger
+                            )) if trigger.key
+                                == crate::engine::skill::rule::DefinitionKey::new(203, "None")
+                                && trigger.event
+                                    == crate::engine::event::kind::EventKind::SkillAction
+                                && trigger.phase
+                                    == Some(crate::engine::skill::action::SkillPhase::Immediate)
+                        )
+                            && branch.conditions.as_slice()
+                                == [crate::engine::skill::rule::RuleDescriptor::new(
+                                    crate::engine::skill::rule::RuleDomain::Condition,
+                                    crate::engine::skill::rule::DefinitionKey::new(203, "None"),
+                                )]
+                    })
+                }))
+    }
+
     fn matches_attack_context(conditions: &[ParsedCondition]) -> bool {
         bullet_groups(conditions).is_some()
     }
+}
+
+pub(super) fn supports_consume_ex_point_add_attr(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [attr, per_point, ally_gain, double_at, multiplier_attr, multiplier]
+            if AttrId::from_raw(*attr) == Some(AttrId::UltimateMight)
+                && *per_point > 0
+                && *ally_gain > 0
+                && *double_at > 0
+                && AttrId::from_raw(*multiplier_attr) == Some(AttrId::UltimateMightMultiplier)
+                && *multiplier >= 0
+    )
+}
+
+fn consume_ex_point_ops(
+    context: BehaviorOpContext<'_>,
+    behavior: &ParsedBehavior,
+) -> Option<Vec<RuleOp>> {
+    if context.event.is_some() {
+        return None;
+    }
+    let [_, _, ally_gain, _, _, _] = behavior.args.as_slice() else {
+        return None;
+    };
+    let action_source_uid = if context.target.active_skill_source_uid != 0 {
+        context.target.active_skill_source_uid
+    } else {
+        context.source_uid
+    };
+    let action_skill_id = if context.target.active_skill_id != 0 {
+        context.target.active_skill_id
+    } else {
+        context.active_skill_id
+    };
+    let additional_moxie = context
+        .managers
+        .ex_point
+        .get(action_source_uid)
+        .saturating_sub(
+            context
+                .pool
+                .catalog()
+                .skill_big_skill_point(action_skill_id)
+                .max(0),
+        )
+        .max(0);
+    let first_consumption = context.target.additional_moxie == 0;
+    if first_consumption {
+        context.target.additional_moxie = additional_moxie;
+    }
+    let additional_moxie = context.target.additional_moxie.max(0);
+    if !emit(
+        context.modifiers,
+        context.source_uid,
+        context.target_uid,
+        Some(context.managers),
+        context.active_skill_id,
+        additional_moxie,
+        behavior,
+    ) {
+        return None;
+    }
+    if additional_moxie == 0 {
+        return Some(Vec::new());
+    }
+    let origin = super::command_origin(behavior)?;
+    let change = |target_uid, delta, spend| {
+        let change = ExPointChange {
+            origin,
+            source_uid: action_source_uid,
+            target_uid,
+            delta,
+            config_effect: 0,
+            effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+        };
+        RuleOp::Command(BattleCommand::ExPoint(if spend {
+            ExPointCommand::Spend(change)
+        } else {
+            ExPointCommand::Change(change)
+        }))
+    };
+    let mut ops = first_consumption
+        .then(|| change(action_source_uid, -additional_moxie, true))
+        .into_iter()
+        .collect::<Vec<_>>();
+    if *ally_gain <= 0 {
+        return Some(ops);
+    }
+    let candidates = context
+        .pool
+        .main_allies(action_source_uid)
+        .iter()
+        .filter(|ally| ally.uid != action_source_uid)
+        .map(|ally| (ally.uid, ally.position))
+        .collect::<Vec<_>>();
+    if !candidates.is_empty() {
+        ops.extend((0..additional_moxie).map(|_| {
+            RuleOp::Command(BattleCommand::LowestExPoint(LowestExPointChange {
+                origin,
+                source_uid: action_source_uid,
+                candidates: candidates.clone(),
+                delta: *ally_gain,
+                config_effect: 0,
+                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+            }))
+        }));
+    }
+    Some(ops)
 }
 
 fn bullet_groups(conditions: &[ParsedCondition]) -> Option<&[i32]> {
@@ -511,14 +675,19 @@ fn collect_attack_modifier_slot(
         let targets_owner = targets.contains(&owner_uid);
         let targets_subject =
             modifier_subject.is_some_and(|target_uid| targets.contains(&target_uid));
-        let applies_to_current_attack = targets_owner || targets_subject;
+        let uses_current_hit_target = slot.target_from_condition
+            && slot.condition_target.code == 0
+            && !targets_owner
+            && !targets_subject
+            && modifier_subject.is_some();
+        let applies_to_current_attack = targets_owner || targets_subject || uses_current_hit_target;
         if !applies_to_current_attack {
             continue;
         }
         let condition_targets =
             if condition_registry::conditions_use_active_skill_target_group(&conditions) {
                 targets.clone()
-            } else if slot.target_from_condition && targets_subject {
+            } else if uses_current_hit_target || slot.target_from_condition && targets_subject {
                 vec![modifier_subject.unwrap_or_default()]
             } else {
                 TargetResolver::resolve_with_managers_and_context(
@@ -553,7 +722,9 @@ fn collect_attack_modifier_slot(
             continue;
         }
         let modifier_target_uid = if incoming_side
-            || (side == ModifierSide::Source && targets_subject && !targets_owner)
+            || (side == ModifierSide::Source
+                && (targets_subject || uses_current_hit_target)
+                && !targets_owner)
         {
             modifier_subject.unwrap_or_default()
         } else {
@@ -872,7 +1043,7 @@ pub fn emit(
             let [
                 attr_id,
                 per_point,
-                minimum,
+                _ally_gain,
                 double_at,
                 multiplier_attr,
                 multiplier,
@@ -883,9 +1054,6 @@ pub fn emit(
             let Some(attr_id) = AttrId::from_raw(*attr_id) else {
                 return true;
             };
-            if additional_moxie < *minimum {
-                return true;
-            }
             let mut delta = per_point * additional_moxie;
             if additional_moxie >= *double_at
                 && AttrId::from_raw(*multiplier_attr) == Some(AttrId::UltimateMightMultiplier)

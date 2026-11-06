@@ -262,6 +262,7 @@ fn visible_status_threshold_runs_only_before_attacks() {
         let event = BattleEvent::SkillEffectStarted(
             crate::engine::skill::action::SkillActionEvent {
                 source_uid: 10,
+                card_index: 0,
                 skill_id: 200,
                 target_uid: 10,
                 target_uids: vec![10],

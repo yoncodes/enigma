@@ -40,7 +40,8 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) pending_additional_damage: Vec<HpCommand>,
     pending_after_damage_ops: Vec<RuleOp>,
     pending_after_damage_frame_owner: Option<crate::engine::runtime::record::FrameOwner>,
-    action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
+    payment: Option<crate::engine::skill::action::ActionPayment>,
+    pub(super) moxie_spent: i32,
     // The next slot to run when a phase continues after an earlier slot's changes commit.
     pub(super) resume_slot: usize,
     // The next target in a slot whose prior target must settle first.
@@ -106,7 +107,8 @@ impl SkillExecution {
         self.resume_slot > 0 || self.resume_target > 0
     }
 
-    pub(in crate::engine::runtime) fn new(context: TargetContext) -> Self {
+    pub(in crate::engine::runtime) fn new(mut context: TargetContext) -> Self {
+        context.action_start_ex_point = None;
         Self {
             modifiers: SkillModifiers::default(),
             context,
@@ -130,7 +132,8 @@ impl SkillExecution {
             pending_additional_damage: Vec::new(),
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
-            action_cost: None,
+            payment: None,
+            moxie_spent: 0,
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
@@ -141,9 +144,10 @@ impl SkillExecution {
     }
 
     pub(in crate::engine::runtime) fn with_modifiers(
-        context: TargetContext,
+        mut context: TargetContext,
         modifiers: SkillModifiers,
     ) -> Self {
+        context.action_start_ex_point = None;
         Self {
             modifiers,
             context,
@@ -167,7 +171,8 @@ impl SkillExecution {
             pending_additional_damage: Vec::new(),
             pending_after_damage_ops: Vec::new(),
             pending_after_damage_frame_owner: None,
-            action_cost: None,
+            payment: None,
+            moxie_spent: 0,
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
@@ -177,20 +182,23 @@ impl SkillExecution {
         }
     }
 
-    pub(in crate::engine::runtime) fn with_action_cost(
+    pub(in crate::engine::runtime) fn with_payment(
         context: TargetContext,
-        cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
+        payment: Option<crate::engine::skill::action::ActionPayment>,
     ) -> Self {
         Self {
-            action_cost: cost,
+            payment,
+            moxie_spent: 0,
             ..Self::new(context)
         }
     }
 
-    pub(super) fn take_action_cost(
-        &mut self,
-    ) -> Option<crate::engine::manager::ex_point::ExPointCommand> {
-        self.action_cost.take()
+    pub(super) fn take_payment(&mut self) -> Option<crate::engine::skill::action::ActionPayment> {
+        self.payment.take()
+    }
+
+    pub(super) fn record_payment(&mut self, payment: &crate::engine::skill::action::ActionPayment) {
+        self.moxie_spent = payment.spent();
     }
 
     pub(in crate::engine::runtime) fn prepare_direct_big(&mut self, additional_moxie: i32) {
@@ -207,6 +215,37 @@ impl SkillExecution {
 
     pub(in crate::engine::runtime) fn add_skill_targets(&mut self, count: i32) {
         self.context.additional_skill_target_count += count.max(0);
+    }
+
+    pub(in crate::engine::runtime) fn expand_skill_targets(
+        &mut self,
+        managers: &BattleManagers,
+        pool: &TargetPool,
+        count: i32,
+    ) -> bool {
+        if count <= 0 {
+            return false;
+        }
+        let source_uid = self.context.active_skill_source_uid;
+        let occupied = self
+            .configured_targets
+            .as_ref()
+            .filter(|targets| !targets.is_empty())
+            .map_or_else(
+                || {
+                    managers
+                        .catalog()
+                        .target_count(self.context.logic_target)
+                        .max(1) as usize
+                },
+                Vec::len,
+            )
+            + self.context.additional_skill_target_count.max(0) as usize;
+        if pool.enemies(source_uid, false).len() <= occupied {
+            return false;
+        }
+        self.add_skill_targets(count);
+        true
     }
 
     pub(super) fn sync_team_injury_count(&mut self, count: i32) {
@@ -519,6 +558,7 @@ impl LinkedDamagePlan {
                         | crate::engine::entity::attr::AttrId::UltimateMightMultiplier
                         | crate::engine::entity::attr::AttrId::IncantationSkillUltMightMultiplier
                         | crate::engine::entity::attr::AttrId::IncantationMightMultiplier
+                        | crate::engine::entity::attr::AttrId::UltimateIncantationMightMultiplier
                 )
             })
             .collect()

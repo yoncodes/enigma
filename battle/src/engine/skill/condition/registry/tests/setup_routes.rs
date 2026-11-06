@@ -238,7 +238,7 @@ fn missing_buff_round_end_gate_keeps_the_actor_target() {
 fn conditional_round_start_interval_preserves_period_then_start_order() {
     assert_eq!(
         parse(45101, "HeroRoundInterval", &["99".into(), "15".into()]),
-        Some(ParsedConditionKind::CompletedRoundInterval {
+        Some(ParsedConditionKind::RoundInterval {
             start_round: 15,
             period: 99,
         })
@@ -281,6 +281,10 @@ fn round_after_uses_an_inclusive_round_start_threshold() {
     assert_eq!(
         find_key(101, "None").map(|definition| definition.opening_owner_eligibility),
         Some(OpeningOwnerEligibility::PlayerSide)
+    );
+    assert_eq!(
+        find_key(19100, "HasBuffId").map(|definition| definition.opening_owner_eligibility),
+        Some(OpeningOwnerEligibility::SelfBuffMaintenance)
     );
     assert_eq!(
         opening_owner_eligibility(101, "None"),

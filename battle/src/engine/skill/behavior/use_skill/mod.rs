@@ -491,6 +491,20 @@ impl BehaviorHandler for Handler {
             }
             BehaviorKind::DirectUseSkillNoAct => direct_no_action_skill(context, behavior),
             BehaviorKind::DirectUseSkillNoAct2 => direct_no_action_skill(context, behavior),
+            BehaviorKind::DirectUseSkillNotExtra => {
+                let mut invocation: crate::engine::skill::action::SkillInvocation =
+                    crate::engine::skill::action::SkillRequest {
+                        source_uid: context.source_uid,
+                        skill_id: behavior.arg(0)?,
+                    }
+                    .into();
+                invocation.target =
+                    crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
+                invocation.mode = crate::engine::skill::action::SkillExecutionMode::Direct;
+                invocation.frame_target = Some(context.target_uid);
+                invocation.target_observed_extra_action = Some(false);
+                Some(vec![RuleOp::Skill(invocation)])
+            }
             BehaviorKind::DirectUseBigSkill => direct_big_skill_rule_ops(context, behavior),
             BehaviorKind::DirectUseGroupAndStarSkill => {
                 let [group, star, ..] = behavior.args.as_slice() else {
@@ -685,7 +699,10 @@ fn direct_big_skill_rule_ops(
         }
         .into();
     invocation.mode = crate::engine::skill::action::SkillExecutionMode::DirectBig;
-    invocation.additional_moxie = consumed;
+    invocation.additional_moxie = consumed.saturating_sub(refund);
+    invocation.moxie_spent = consumed;
+    invocation.trigger =
+        crate::engine::skill::action::SkillTrigger::Explicit(context.active_skill_id);
     ops.push(RuleOp::Skill(invocation));
     if refund > 0 {
         ops.push(ex_point(refund));

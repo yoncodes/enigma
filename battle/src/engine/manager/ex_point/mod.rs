@@ -191,6 +191,16 @@ pub struct ExPointChange {
     pub effect_type: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LowestExPointChange {
+    pub origin: CommandOrigin,
+    pub source_uid: i64,
+    pub candidates: Vec<(i64, i32)>,
+    pub delta: i32,
+    pub config_effect: i32,
+    pub effect_type: i32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExPointSet {
     pub origin: CommandOrigin,

@@ -333,6 +333,181 @@ fn start_schedule_runs_the_leading_round_start_lane() {
 }
 
 #[test]
+fn opening_includes_defender_self_buff_maintenance_only() {
+    init_config();
+    let defender = |uid, skill_id, buffs| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(2),
+        current_hp: Some(100),
+        passive_skill: vec![skill_id],
+        buffs,
+        ..Default::default()
+    };
+    for version in [6, 7] {
+        let fight = Fight {
+            version: Some(version),
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![
+                    defender(-1, 116371016, Vec::new()),
+                    defender(-2, 40, Vec::new()),
+                    defender(-3, 41, Vec::new()),
+                    defender(-4, 42, Vec::new()),
+                    defender(
+                        -5,
+                        43,
+                        vec![BuffInfo {
+                            uid: Some(50),
+                            buff_id: Some(116371017),
+                            from_uid: Some(-5),
+                            layer: Some(1),
+                            duration: Some(-1),
+                            ..Default::default()
+                        }],
+                    ),
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let source = || TargetRequest {
+            code: 103,
+            raw: Vec::new(),
+        };
+        let condition = |mode, buff_id| ParsedCondition {
+            opcode: 19100,
+            type_name: "HasBuffId".to_owned(),
+            kind: ParsedConditionKind::BuffId {
+                mode,
+                buff_ids: vec![buff_id],
+            },
+            raw_args: vec![buff_id.to_string()],
+        };
+        let slot = |buff_id, target, conditions| {
+            let mut slot =
+                SkillEffectSlot::new(ParsedBehavior::new(1, "AddBuff", vec![buff_id]), target);
+            slot.condition_target = source();
+            slot.conditions = conditions;
+            slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+            slot
+        };
+        let absent = BuffConditionMode::Absent;
+        let mut catalog =
+            SkillEffectCatalog::from_roots(config::configs::get(), [116371016], std::iter::empty());
+        for (skill_id, slot) in [
+            (
+                40,
+                slot(116371018, source(), vec![condition(absent, 116371017)]),
+            ),
+            (
+                41,
+                slot(
+                    116371017,
+                    TargetRequest {
+                        code: 1,
+                        raw: Vec::new(),
+                    },
+                    vec![condition(absent, 116371017)],
+                ),
+            ),
+            (
+                42,
+                slot(
+                    116371017,
+                    source(),
+                    vec![condition(absent, 116371017), condition(absent, 116371018)],
+                ),
+            ),
+            (
+                43,
+                slot(
+                    116371017,
+                    source(),
+                    vec![condition(BuffConditionMode::Present, 116371017)],
+                ),
+            ),
+        ] {
+            catalog.insert(ParsedSkillEffect {
+                skill_id,
+                slots: vec![slot],
+            });
+        }
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+
+        let (opening, _) = run_start(
+            managers.catalog(),
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            CardSetup {
+                hand: Vec::new(),
+                draw_pile: Vec::new(),
+                deck_num: 0,
+            },
+            0,
+        )
+        .unwrap();
+
+        fn skill_count(step: &sonettobuf::FightStep, skill_id: i32) -> usize {
+            usize::from(step.act_id == Some(skill_id))
+                + step
+                    .act_effect
+                    .iter()
+                    .filter_map(|effect| effect.fight_step.as_ref())
+                    .map(|child| skill_count(child, skill_id))
+                    .sum::<usize>()
+        }
+        let steps = crate::engine::packet::timeline::project(&opening.frames).unwrap();
+        assert_eq!(
+            steps
+                .iter()
+                .map(|step| skill_count(step, 116371016))
+                .sum::<usize>(),
+            1
+        );
+        for skill_id in 40..=43 {
+            assert_eq!(
+                steps
+                    .iter()
+                    .map(|step| skill_count(step, skill_id))
+                    .sum::<usize>(),
+                0
+            );
+        }
+        assert_eq!(
+            opening
+                .outcomes
+                .iter()
+                .filter_map(|outcome| match outcome {
+                    RuleOutcome::Buff(result) => Some(&result.change.added),
+                    _ => None,
+                })
+                .flatten()
+                .filter(|added| { added.target_uid == -1 && added.buff.buff_id == Some(116371017) })
+                .count(),
+            1
+        );
+        assert!(
+            managers
+                .buff
+                .active_for(-1)
+                .any(|buff| buff.buff_id == Some(116371017))
+        );
+    }
+}
+
+#[test]
 fn opening_round_does_not_consume_a_timed_layered_buff() {
     init_config();
     let fight = Fight {

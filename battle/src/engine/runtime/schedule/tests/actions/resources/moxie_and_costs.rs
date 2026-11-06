@@ -45,7 +45,7 @@ fn full_named_boss_power_authorizes_an_ultimate_without_moxie() {
             .into(),
             grants_ex_point: true,
             grant_after_action: false,
-            queued_resource_delta: 0,
+            composition_rewards: Vec::new(),
             prelude: Vec::new(),
         },
     )
@@ -68,7 +68,7 @@ fn full_named_boss_power_authorizes_an_ultimate_without_moxie() {
             .into(),
             grants_ex_point: true,
             grant_after_action: false,
-            queued_resource_delta: 0,
+            composition_rewards: Vec::new(),
             prelude: Vec::new(),
         },
     ) {

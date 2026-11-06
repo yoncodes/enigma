@@ -56,33 +56,39 @@ impl BehaviorHandler for Handler {
         ) {
             return None;
         }
-        let mut ops = Vec::new();
-        if *amount > 0 {
-            ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(
-                BuffConsume {
-                    origin: super::command_origin(behavior)?,
-                    target_uid: context.target_uid,
-                    selector: BuffSelector::IdOrType(*type_or_buff_id),
-                    amount: *amount,
-                    depleted: DepletedBuff::Remove,
+        let consume = if *amount > 0 {
+            Some(BuffConsume {
+                origin: super::command_origin(behavior)?,
+                target_uid: context.target_uid,
+                selector: BuffSelector::IdOrType(*type_or_buff_id),
+                amount: *amount,
+                depleted: match behavior.spec.kind {
+                    BehaviorKind::ConsumeBuffChangeTargets => DepletedBuff::RemoveWithZeroLayer,
+                    _ => DepletedBuff::Remove,
                 },
+            })
+        } else {
+            None
+        };
+        if behavior.spec.kind == BehaviorKind::ConsumeBuffChangeTargets && *value > 0 {
+            return Some(vec![RuleOp::ExpandActiveSkillTargets {
+                additional_count: *value,
+                consume,
+            }]);
+        }
+        let mut ops = Vec::new();
+        if let Some(consume) = consume {
+            ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(
+                consume,
             ))));
         }
-        match behavior.spec.kind {
-            BehaviorKind::ConsumeBuffUpSkillDamageRate if *value != 0 => {
-                context.modifiers.rates.push(SkillRateModifier::fixed(
-                    0,
-                    behavior.spec.key.opcode,
-                    *value,
-                    true,
-                ));
-            }
-            BehaviorKind::ConsumeBuffChangeTargets if *value > 0 => {
-                ops.push(RuleOp::ModifyActiveSkillTargets {
-                    additional_count: *value,
-                });
-            }
-            _ => {}
+        if behavior.spec.kind == BehaviorKind::ConsumeBuffUpSkillDamageRate && *value != 0 {
+            context.modifiers.rates.push(SkillRateModifier::fixed(
+                0,
+                behavior.spec.key.opcode,
+                *value,
+                true,
+            ));
         }
         Some(ops)
     }
@@ -181,7 +187,7 @@ pub(super) fn supports_mixed_rate(behavior: &ParsedBehavior) -> bool {
     )
 }
 
-pub(super) fn supports_rate(behavior: &ParsedBehavior) -> bool {
+pub(super) fn supports_consume(behavior: &ParsedBehavior) -> bool {
     let argument_count = if behavior.raw_args.is_empty() {
         behavior.args.len()
     } else {
@@ -506,12 +512,13 @@ mod tests {
 
         assert!(matches!(
             ops.as_slice(),
-            [
-                RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(_))),
-                RuleOp::ModifyActiveSkillTargets {
-                    additional_count: 1
-                }
-            ]
+            [RuleOp::ExpandActiveSkillTargets {
+                additional_count: 1,
+                consume: Some(BuffConsume {
+                    depleted: DepletedBuff::RemoveWithZeroLayer,
+                    ..
+                })
+            }]
         ));
         assert_eq!(target.additional_skill_target_count, 0);
     }

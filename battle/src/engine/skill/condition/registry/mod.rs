@@ -2,7 +2,7 @@ use super::{
     act_order, active_skill, battle_tag, buff, card, career, conduit, entity_count, extra, hp,
     indicator, injury, lifecycle, magic_circle, none,
     parse::{self, ParsedCondition, ParsedConditionKind},
-    player, resource, target_identity, trigger,
+    player, rank, resource, sovereign_card, target_identity, trigger,
 };
 use crate::engine::{
     entity::passive::PassiveSourceKind,
@@ -12,8 +12,10 @@ use crate::engine::{
     },
     skill::{
         action::SkillPhase,
+        behavior::classify::BehaviorKind,
+        effect::SkillEffectSlot,
         rule::{DefinitionKey, SetupStage},
-        target::BehaviorTargetOrder,
+        target::{BehaviorTargetOrder, request::SOURCE_TARGET_CODE},
     },
 };
 
@@ -51,6 +53,35 @@ pub(crate) enum OpeningOwnerEligibility {
     #[default]
     PlayerSide,
     BothSides,
+    SelfBuffMaintenance,
+}
+
+impl OpeningOwnerEligibility {
+    pub(crate) fn includes_defender(self, slot: &SkillEffectSlot) -> bool {
+        match self {
+            Self::PlayerSide => false,
+            Self::BothSides => true,
+            Self::SelfBuffMaintenance => {
+                let [condition] = slot.conditions.as_slice() else {
+                    return false;
+                };
+                let ParsedConditionKind::BuffId {
+                    mode: buff::BuffConditionMode::Absent,
+                    buff_ids,
+                } = &condition.kind
+                else {
+                    return false;
+                };
+                let [buff_id] = buff_ids.as_slice() else {
+                    return false;
+                };
+                slot.behavior.spec.kind == BehaviorKind::AddBuff
+                    && slot.behavior.arg(0) == Some(*buff_id)
+                    && slot.condition_target.code == SOURCE_TARGET_CODE
+                    && slot.target.code == SOURCE_TARGET_CODE
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -609,6 +640,11 @@ pub const fn opening_owner_both_sides(mut metadata: ConditionMetadata) -> Condit
     metadata
 }
 
+pub const fn opening_self_buff(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.opening_owner_eligibility = OpeningOwnerEligibility::SelfBuffMaintenance;
+    metadata
+}
+
 macro_rules! condition_definitions {
     ($([$($opcode:expr),+ $(,)?] $type_name:literal => $parse:path, $role:expr);+ $(;)?) => {
         pub const DEFINITIONS: &[ConditionDefinition] =
@@ -617,6 +653,8 @@ macro_rules! condition_definitions {
 }
 
 condition_definitions! {
+    [789208] "Rank" => rank::minimum, predicate(&[]);
+    [10500] "None" => sovereign_card::created, in_independent_frame(reaction_targets_owner(event_trigger(EventKind::SovereignCardCreated, None)));
     [0] "None" => none::always, predicate(&[]);
     [5] "EnterFight" => lifecycle::enter_fight, reactivates_on(in_event_sibling_frame(setup_route(SetupStage::EnterFight, 0, &[])), &[EventKind::EntityEntered, EventKind::EntityTransformed]);
     [55, 1050, 655036, 655038] "None" => none::enter_battle, companion_setup(event_trigger(EventKind::EntityEntered, None), &[(SetupStage::EnterBattleStatic, 0)]);
@@ -628,7 +666,7 @@ condition_definitions! {
     [103] "None" => none::round_start, setup_route(SetupStage::RoundStart, 1, &[]);
     [104] "None" => none::round_start, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [45100] "HeroRoundInterval" => lifecycle::period_then_start, setup_route(SetupStage::RoundStart, -1, &[]);
-    [45101] "HeroRoundInterval" => lifecycle::completed_period_then_start, setup_route(SetupStage::RoundStartCondition, 101, &[]);
+    [45101] "HeroRoundInterval" => lifecycle::period_then_start, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [727100] "RoundAfter" => lifecycle::after_round, opening_owner_both_sides(setup_route(SetupStage::RoundStartCondition, 100, &[]));
     [45102] "HeroRoundInterval" => lifecycle::round_interval, setup_route(SetupStage::RoundTransitionStart, 0, &[]);
     [45104] "HeroRoundInterval" => lifecycle::period_then_start, setup_route(SetupStage::RoundTransitionStart, 1, &[]);
@@ -673,7 +711,7 @@ condition_definitions! {
     [19003] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [19004] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [19012] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
-    [19100] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 100, &[]));
+    [19100] "HasBuffId" => buff::buff_present, opening_self_buff(filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 100, &[])));
     [19101] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 101, &[]));
     [19102] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 102, &[]));
     [18201] "HasBuff" => buff::any_status_present, predicate(&[EventKind::BuffChanged]);
@@ -832,6 +870,8 @@ condition_definitions! {
     [793002] "Level" => player::level, setup_route(SetupStage::EnterFight, 0, &[]);
     [1010003] "ProgressValue" => resource::progress_complete, predicate(&[]);
     [1010004] "ProgressValue" => resource::progress_band, predicate(&[]);
+    [790203] "UnnamedCardAnchor" => card::anchor_later, predicate(&[]);
+    [790210] "UnnamedCardAnchor" => card::anchor_earlier, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [710301] "PerHandCardHasSkillId" => card::hand_skill_presence, event_trigger(EventKind::SmallRoundEnd, None);
     [622304] "RoundUseSkillLevel" => card::round_used_minimum_rank, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
     [745304] "ExPointMax" => resource::ex_point_full, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
@@ -879,7 +919,7 @@ condition_definitions! {
     [16204] "TargetCareer" => career::target_career, predicate(&[]);
     [762005] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::EnterFight, 0, &[]);
     [762021] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::EnterFight, 0, &[]);
-    [1021002] "BattleTagCheck" => battle_tag::present, setup_route(SetupStage::BattleStart, 0, &[]);
+    [1021002] "BattleTagCheck" => battle_tag::present, setup_route(SetupStage::EnterFight, 0, &[]);
     [1021209] "BattleTagCheck" => battle_tag::present, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
     [762103] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::RoundStart, 1, &[]);
     [760212] "CurUseCardEnchant" => card::current_enchant, event_trigger(EventKind::AllyAction, None);
@@ -1019,7 +1059,7 @@ condition_definitions! {
     [21209] "HurtMagic" => parse::mental_damage, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
     [538203] "EntityHurtMagic" => parse::mental_damage, predicate(&[]);
     [540203] "EntityHurtReal" => parse::reality_damage, predicate(&[]);
-    [58201] "PerExPoint" => resource::per_ex_point, predicate(&[]);
+    [58201] "PerExPoint" => resource::per_ex_point, reads_action_start(predicate(&[]));
     [765203] "PerAura" => resource::per_eureka, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [1] "LifeLess" => parse::hp_less, reaction_targets_owner(predicate(&[EventKind::HpLost]));
     [1201] "LifeLess" => parse::hp_less, predicate(&[]);

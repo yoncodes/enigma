@@ -99,6 +99,7 @@ pub fn run_before_ai_round_start(
     wave_entry_condition_uids: &[i64],
     action_phase_team: Option<i32>,
 ) -> Result<DrainResult, DrainError> {
+    let mut result = super::sovereign::run_unlock(managers, pool, catalog, determinism, context)?;
     let mut owner_uids = pool
         .defender_main
         .iter()
@@ -108,7 +109,7 @@ pub fn run_before_ai_round_start(
     owner_uids.extend(pool.assist_boss(crate::engine::fight::rules::DEFENDER_SIDE_UID));
     let round_start_duration_snapshot = duration_snapshot(managers, &owner_uids);
     let setup_owner_uids = round_start_setup_owner_uids(&owner_uids, 2);
-    let (mut result, pending_settlement, split_losses) = run_round_start_before_duration(
+    let (before, pending_settlement, split_losses) = run_round_start_before_duration(
         managers,
         pool,
         catalog,
@@ -120,6 +121,7 @@ pub fn run_before_ai_round_start(
         wave_entry_condition_uids,
         action_phase_team.is_some(),
     )?;
+    append(&mut result, before);
     debug_assert!(pending_settlement.capacity_groups.is_empty());
     debug_assert!(split_losses.frames.is_empty());
     if let Some(team) = action_phase_team {
@@ -1231,6 +1233,10 @@ pub fn run_start(
             drain::ReactionLane::Skills,
             Some(&owner_uids),
         )?,
+    );
+    append(
+        &mut result,
+        super::sovereign::run_unlock(managers, pool, catalog, determinism, context)?,
     );
     append(
         &mut result,

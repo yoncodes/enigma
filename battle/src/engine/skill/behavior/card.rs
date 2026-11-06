@@ -120,13 +120,25 @@ impl BehaviorHandler for Handler {
             let [skill_id] = behavior.args.as_slice() else {
                 return None;
             };
-            let reserve_id = i64::from(context.pool.entity(context.source_uid)?.model_id);
+            let reserve_id = match context.pool.entity(context.source_uid) {
+                Some(source) => i64::from(source.model_id),
+                None if behavior.spec.kind == BehaviorKind::AddSpTempCard2
+                    && matches!(
+                        context.source_uid,
+                        crate::engine::fight::rules::ATTACKER_SIDE_UID
+                            | crate::engine::fight::rules::DEFENDER_SIDE_UID
+                    ) =>
+                {
+                    0
+                }
+                None => return None,
+            };
             let kind = match behavior.spec.kind {
                 BehaviorKind::AddSpTempCard => {
                     crate::engine::manager::card::TemporaryCardKind::GenericSkill
                 }
                 BehaviorKind::AddSpTempCard2 => {
-                    crate::engine::manager::card::TemporaryCardKind::ConfiguredSkill
+                    crate::engine::manager::card::TemporaryCardKind::PrecastSkill
                 }
                 _ => unreachable!("temporary-card branch has an exact kind guard"),
             };
@@ -859,7 +871,7 @@ mod tests {
     }
 
     #[test]
-    fn special_temporary_card_uses_the_source_model_as_reserve_id() {
+    fn special_temporary_card_uses_the_source_identity_as_reserve_id() {
         use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
         crate::test_support::init_config();
@@ -878,37 +890,50 @@ mod tests {
         };
         let managers = crate::engine::manager::BattleManagers::seeded(&fight);
         let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
-        let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
-        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
-        let mut target = crate::engine::skill::target::TargetContext::default();
         let behavior = ParsedBehavior::new(60300, "AddSpTempCard2", vec![31446013]);
 
-        let ops = Handler::emit_ops(
-            BehaviorOpContext {
-                source_uid: 10,
-                source_team: 1,
-                target_uid: 10,
-                active_skill_id: 0,
-                transfer_count: 1,
-                event: None,
-                managers: &managers,
-                pool: &pool,
-                determinism: &mut determinism,
-                modifiers: &mut modifiers,
-                target: &mut target,
-            },
-            &behavior,
-        )
-        .unwrap();
+        for (source_uid, reserve_id) in [
+            (10, Some(3149)),
+            (crate::engine::fight::rules::ATTACKER_SIDE_UID, Some(0)),
+            (999, None),
+        ] {
+            let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+            let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+            let mut target = crate::engine::skill::target::TargetContext::default();
+            let ops = Handler::emit_ops(
+                BehaviorOpContext {
+                    source_uid,
+                    source_team: 1,
+                    target_uid: 10,
+                    active_skill_id: 0,
+                    transfer_count: 1,
+                    event: None,
+                    managers: &managers,
+                    pool: &pool,
+                    determinism: &mut determinism,
+                    modifiers: &mut modifiers,
+                    target: &mut target,
+                },
+                &behavior,
+            );
 
-        assert!(matches!(
-            ops.as_slice(),
-            [RuleOp::Command(BattleCommand::Card(CardCommand::AddTemporary(add)))]
-                if add.target_uid == 10
-                    && add.skill_id == 31446013
-                    && add.reserve_id == 3149
-                    && add.team_type == 1
-        ));
+            let Some(reserve_id) = reserve_id else {
+                assert!(ops.is_none());
+                continue;
+            };
+            let ops = ops.unwrap();
+
+            assert!(matches!(
+                ops.as_slice(),
+                [RuleOp::Command(BattleCommand::Card(CardCommand::AddTemporary(add)))]
+                    if add.target_uid == 10
+                        && add.skill_id == 31446013
+                        && add.reserve_id == reserve_id
+                        && add.team_type == 1
+                        && add.kind
+                            == crate::engine::manager::card::TemporaryCardKind::PrecastSkill
+            ));
+        }
         assert_eq!(Handler::references(&behavior).skills, vec![31446013]);
     }
 

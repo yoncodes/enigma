@@ -1,6 +1,6 @@
 use crate::engine::{
     manager::{
-        buff::BuffCommand,
+        buff::{BuffCommand, BuffConsume},
         card::CardCommand,
         conduit::ConduitCommand,
         contract::ContractCommand,
@@ -8,7 +8,7 @@ use crate::engine::{
         entity::EntityCommand,
         entity::EntitySkillCommand,
         eureka::EurekaCommand,
-        ex_point::ExPointCommand,
+        ex_point::{ExPointCommand, LowestExPointChange},
         field::FieldCommand,
         fight_progress::{FightProgressCommand, FightProgressValueCommand},
         gauge::{GaugeBatchId, GaugeCommand},
@@ -27,7 +27,7 @@ use crate::engine::{
         magic_circle_level::MagicCircleLevelCommand, monster_change::MonsterChangeCommand,
         nuo_di_ka::NuoDiKaCommand, shell::ShellCommand,
     },
-    skill::action::{SkillInvocation, SkillLifecycle},
+    skill::action::{SkillInvocation, SkillLifecycle, SkillRequest},
     skill::buff_act::{
         blood_pool::count_add_ex_point::BloodPoolCountAddExPointCommand,
         raspberry::{AddCountCommand, CapacityCommand},
@@ -72,6 +72,7 @@ pub enum BattleCommand {
     Revive(ReviveCommand),
     Shield(ShieldCommand),
     ExPoint(ExPointCommand),
+    LowestExPoint(LowestExPointChange),
     Eureka(EurekaCommand),
     Gauge(GaugeCommand),
     StartRawGaugeBatch(GaugeBatchId, Vec<GaugeCommand>),
@@ -123,6 +124,11 @@ pub enum RuleOp {
         lifecycle: SkillLifecycle,
         cost: ExPointCommand,
     },
+    PaySkillAction {
+        action: SkillRequest,
+        cost: ExPointCommand,
+    },
+    PaidSkillStarted(SkillLifecycle),
     BuffFeatureMarker {
         target_uid: i64,
         effect_type: i32,
@@ -150,6 +156,10 @@ pub enum RuleOp {
     },
     ModifyActiveSkillTargets {
         additional_count: i32,
+    },
+    ExpandActiveSkillTargets {
+        additional_count: i32,
+        consume: Option<BuffConsume>,
     },
     FreezeActiveSkillRates,
     NuoDiKaHit(crate::engine::mechanic::nuo_di_ka::NuoDiKaHit),

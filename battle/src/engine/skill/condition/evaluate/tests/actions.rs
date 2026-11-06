@@ -1,6 +1,54 @@
 use super::*;
 
 #[test]
+fn card_anchor_conditions_read_the_committed_hand_order() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let card = |skill_id, card_type| sonettobuf::CardInfo {
+        uid: Some(10),
+        skill_id: Some(skill_id),
+        card_type: Some(card_type),
+        ..Default::default()
+    };
+    let matches = |hand, card_index, opcode, arg| {
+        let mut managers = BattleManagers::seeded(&fight);
+        managers.card.reset(hand, 3);
+        managers
+            .card
+            .play_card(card_index, None, None, None)
+            .unwrap();
+        conditions_match(
+            &[exact_condition(opcode, "UnnamedCardAnchor", &[arg])],
+            10,
+            &[10],
+            Some(&managers),
+            &pool,
+            TargetContext {
+                active_card_index: 1,
+                ..Default::default()
+            },
+        )
+    };
+    let anchor = sonettobuf::card_info::CardType::Skill3 as i32;
+
+    assert!(matches(vec![card(2, anchor), card(1, 0)], 1, 790203, "1"));
+    assert!(!matches(vec![card(2, anchor), card(1, 0)], 1, 790210, "2"));
+    assert!(matches(vec![card(1, 0), card(2, anchor)], 0, 790210, "2"));
+    assert!(!matches(vec![card(1, 0), card(2, anchor)], 0, 790203, "1"));
+}
+
+#[test]
 fn emitter_skill_condition_rejects_regular_actions() {
     init_config();
     let fight = Fight {
@@ -341,22 +389,18 @@ fn hero_round_interval_alternates_from_its_configured_start_round() {
         start_round,
         period,
     };
-    let completed = |start_round, period| ParsedConditionKind::CompletedRoundInterval {
-        start_round,
-        period,
-    };
     assert!(matches(45104, current(1, 2), 1));
     assert!(!matches(45104, current(1, 2), 2));
     assert!(matches(45104, current(1, 2), 3));
     assert!(!matches(45104, current(2, 2), 1));
     assert!(matches(45104, current(2, 2), 2));
     assert!(!matches(45104, current(2, 2), 3));
-    assert!(!matches(45101, completed(11, 1), 11));
-    assert!(matches(45101, completed(11, 1), 12));
-    assert!(!matches(45101, completed(2, 2), 2));
-    assert!(matches(45101, completed(2, 2), 3));
-    assert!(!matches(45101, completed(2, 2), 4));
-    assert!(matches(45101, completed(2, 2), 5));
+    assert!(matches(45101, current(11, 1), 11));
+    assert!(matches(45101, current(11, 1), 12));
+    assert!(matches(45101, current(2, 2), 2));
+    assert!(!matches(45101, current(2, 2), 3));
+    assert!(matches(45101, current(2, 2), 4));
+    assert!(!matches(45101, current(2, 2), 5));
 }
 
 #[test]

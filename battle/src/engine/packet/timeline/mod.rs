@@ -219,6 +219,7 @@ fn project_frame(
         | FrameOwner::SetupEntity { .. }
         | FrameOwner::StageWave { .. }
         | FrameOwner::EventRule
+        | FrameOwner::InitialSovereignBoost
         | FrameOwner::RoundPhase(_)
         | FrameOwner::SynchronizationCardState { .. }
         | FrameOwner::Command => Ok(StepPacket::effect(effects)),
@@ -919,7 +920,28 @@ fn project_change(
                 })
                 .collect()
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::InitialSovereignBoost => {
+            let boost = changes
+                .sovereign_boost
+                .as_ref()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            super::card::sovereign::initial_boost(boost)
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Moved => Vec::new(),
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignUnlocked => {
+            let change = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(change)]
+        }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignCharged => {
+            let change = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(change)]
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Dissolved => changes
             .operation
             .clone()
@@ -1085,7 +1107,9 @@ fn project_change(
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,
-                CardChangeKind::GeneratedAdded | CardChangeKind::OwnedGeneratedAdded
+                CardChangeKind::GeneratedAdded
+                    | CardChangeKind::OwnedGeneratedAdded
+                    | CardChangeKind::SovereignInserted
             ) =>
         {
             changes

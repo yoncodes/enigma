@@ -20,6 +20,24 @@ fn normalize_custom_data_types(map: &mut serde_json::Map<String, serde_json::Val
     }
 }
 
+fn normalize_card_data(map: &mut serde_json::Map<String, serde_json::Value>) {
+    let Some(entries) = map
+        .get_mut("cardDataes")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return;
+    };
+    for entry in entries {
+        if let Some(key) = entry.get_mut("key")
+            && let Some(kind) = key
+                .as_str()
+                .and_then(crate::card_data::CardDataKey::from_str_name)
+        {
+            *key = (kind as i32).into();
+        }
+    }
+}
+
 pub fn normalize_live_json(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(map) => {
@@ -48,6 +66,7 @@ pub fn normalize_live_json(value: &mut serde_json::Value) {
                 map.insert("fightActType".to_owned(), 1.into());
             }
             normalize_custom_data_types(map);
+            normalize_card_data(map);
             if let Some(card_type) = map.get("cardType").and_then(|value| value.as_str()) {
                 let value = match card_type {
                     "NONE" => Some(0),
@@ -99,8 +118,10 @@ pub fn normalize_live_json(value: &mut serde_json::Value) {
                     map.insert("damageFromType".to_owned(), value.into());
                 }
             }
-            for value in map.values_mut() {
-                normalize_live_json(value);
+            for (field, value) in map.iter_mut() {
+                if field != "cardDataes" {
+                    normalize_live_json(value);
+                }
             }
             prune_default_wrapper_fields(map);
         }

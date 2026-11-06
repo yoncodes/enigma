@@ -15,6 +15,8 @@ impl BehaviorKey {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BehaviorKind {
+    InitialSovereignBoost,
+    SovereignEnhancement,
     AddBuff,
     AddBuffPowerUse,
     AddBuffRanId,
@@ -170,6 +172,7 @@ pub enum BehaviorKind {
     NotifyUpgradeHero,
     IgnoreSkillConfigDamageRate,
     ClientEffect,
+    UnnamedClientEffect,
     AddMaxRound,
     AddIndicator,
     DelIndicator,

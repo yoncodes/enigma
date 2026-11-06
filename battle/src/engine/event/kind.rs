@@ -26,6 +26,8 @@ pub enum EventKind {
     HeatScaleChanged,
     GaugeChanged,
     CardChanged,
+    SovereignCardCreated,
+    SovereignUnlock,
     FieldChanged,
     SummonChanged,
     ShellDeployed,

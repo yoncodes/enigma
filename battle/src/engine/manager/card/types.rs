@@ -38,6 +38,7 @@ pub struct PlayedCard {
     pub card: CardInfo,
     pub caster_uid: i64,
     pub card_index: i32,
+    pub hand_index: Option<usize>,
     pub skill_id: i32,
     pub rank_change_pending: bool,
     pub rewritten: bool,

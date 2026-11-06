@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use sonettobuf::{CardEnchant, CardInfo, card_info::CardType};
 
-use super::{EnchantedType, precast_card, temp_card};
+use super::{EnchantedType, permissions, precast_card, temp_card};
 
 #[derive(Debug, Clone)]
 pub struct CardDeck {
@@ -416,7 +416,13 @@ impl CardDeck {
         let mut indices = indices.to_vec();
         indices.sort_unstable();
         indices.dedup();
-        if indices.len() < 2 || indices.iter().any(|index| *index >= self.hand.len()) {
+        if indices.len() < 2
+            || indices.iter().any(|index| {
+                self.hand
+                    .get(*index)
+                    .is_none_or(|card| !permissions::permits(card, permissions::NOT_COMPOSE))
+            })
+        {
             return None;
         }
 
@@ -436,6 +442,8 @@ impl CardDeck {
         if universal_index == target_index
             || universal_index >= self.hand.len()
             || target_index >= self.hand.len()
+            || !permissions::permits(&self.hand[universal_index], permissions::NOT_COMPOSE)
+            || !permissions::permits(&self.hand[target_index], permissions::NOT_COMPOSE)
         {
             return None;
         }
@@ -446,7 +454,7 @@ impl CardDeck {
         };
         self.remove_card(universal_index.max(target_index));
         self.remove_card(universal_index.min(target_index));
-        self.insert_hand(result_index, result.clone());
+        self.insert_hand(result_index, result.clone())?;
         Some(result)
     }
 
@@ -463,12 +471,14 @@ impl CardDeck {
     }
 
     pub fn take_matching(&mut self, card: &CardInfo) -> Option<CardInfo> {
-        let index = self.hand.iter().rposition(|candidate| {
-            candidate.uid == card.uid
-                && candidate.skill_id == card.skill_id
-                && candidate.temp_card == card.temp_card
-        })?;
+        let index = self.matching_index(card)?;
         self.remove_card(index)
+    }
+
+    pub(super) fn matching_index(&self, card: &CardInfo) -> Option<usize> {
+        self.hand
+            .iter()
+            .rposition(|candidate| same_card(candidate, card))
     }
 
     fn remove_card(&mut self, index: usize) -> Option<CardInfo> {
@@ -503,10 +513,14 @@ impl CardDeck {
         self.hand_ids.push(card_id);
     }
 
-    fn insert_hand(&mut self, index: usize, card: CardInfo) {
+    pub(super) fn insert_hand(&mut self, index: usize, card: CardInfo) -> Option<CardInstanceId> {
+        if index > self.hand.len() {
+            return None;
+        }
         let card_id = self.allocate_hand_id();
         self.hand.insert(index, card);
         self.hand_ids.insert(index, card_id);
+        Some(card_id)
     }
 
     fn allocate_hand_id(&mut self) -> CardInstanceId {
@@ -530,6 +544,8 @@ fn composable_next(
         || is_special(owner_uid)
         || has_non_combine_enchant(left)
         || has_non_combine_enchant(right)
+        || !permissions::permits(left, permissions::NOT_COMPOSE)
+        || !permissions::permits(right, permissions::NOT_COMPOSE)
         || (left.card_type != Some(CardType::Skill3 as i32)
             && right.card_type != Some(CardType::Skill3 as i32)
             && catalog.is_some_and(|catalog| catalog.skill_is_big(skill_id)))
@@ -539,7 +555,7 @@ fn composable_next(
     rank_up.get(&(owner_uid, skill_id)).copied()
 }
 
-fn same_card(left: &CardInfo, right: &CardInfo) -> bool {
+pub(super) fn same_card(left: &CardInfo, right: &CardInfo) -> bool {
     left.uid == right.uid && left.skill_id == right.skill_id && left.temp_card == right.temp_card
 }
 

@@ -40,6 +40,7 @@ fn attack_crit_reaction(condition_opcode: i32) -> SkillInvocation {
 fn skill_action_event(extra_skill_kind: i32, crit_count: i32) -> BattleEvent {
     BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
         source_uid: 10,
+        card_index: 0,
         skill_id: 100,
         target_uid: 10,
         target_uids: vec![10],

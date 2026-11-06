@@ -1,5 +1,8 @@
 use sonettobuf::CardInfo;
 
+mod payment;
+pub use payment::ActionPayment;
+
 use crate::engine::damage::DamageRateComposition;
 use crate::engine::entity::attr::AttrId;
 use crate::engine::skill::rule::{CommandOrigin, DefinitionKey};
@@ -25,6 +28,7 @@ pub struct SkillRequest {
 pub enum SkillExecutionMode {
     #[default]
     Nested,
+    Direct,
     NestedExtra,
     Active,
     Synchronization,
@@ -38,6 +42,7 @@ impl SkillExecutionMode {
         matches!(
             self,
             Self::Active
+                | Self::Direct
                 | Self::Synchronization
                 | Self::DirectBig
                 | Self::Device
@@ -89,6 +94,7 @@ pub enum SkillLifecycle {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillActionEvent {
     pub source_uid: i64,
+    pub card_index: i32,
     pub skill_id: i32,
     pub target_uid: i64,
     pub target_uids: Vec<i64>,
@@ -129,6 +135,8 @@ pub struct ActionEvent {
     pub skill_type: i32,
     pub effect_tag: i32,
     pub additional_moxie: i32,
+    pub moxie_spent: i32,
+    pub trigger: SkillTrigger,
     pub extra_skill_kind: i32,
     pub mode: SkillExecutionMode,
     pub is_interval: bool,
@@ -164,6 +172,7 @@ pub struct SkillInvocation {
     pub plan: SkillRequest,
     pub card_index: i32,
     pub additional_moxie: i32,
+    pub moxie_spent: i32,
     pub condition_key: Option<DefinitionKey>,
     pub(crate) reaction_multiplicity_key: Option<DefinitionKey>,
     pub condition_slot: Option<usize>,
@@ -171,6 +180,7 @@ pub struct SkillInvocation {
     pub(crate) reaction_action_path: Option<Vec<usize>>,
     pub phase: Option<SkillPhase>,
     pub target: SkillTarget,
+    pub frame_target: Option<i64>,
     pub extra_skill_kind: Option<crate::engine::skill::condition::extra::ExtraSkillKind>,
     /// Whether target-owned "when the attacker performs an extra action" rules observe this cast.
     /// Defaults to the configured extra-skill kind when the producer does not override it.
@@ -193,6 +203,7 @@ impl From<SkillRequest> for SkillInvocation {
             plan,
             card_index: 0,
             additional_moxie: 0,
+            moxie_spent: 0,
             condition_key: None,
             reaction_multiplicity_key: None,
             condition_slot: None,
@@ -200,6 +211,7 @@ impl From<SkillRequest> for SkillInvocation {
             reaction_action_path: None,
             phase: None,
             target: SkillTarget::Configured,
+            frame_target: None,
             extra_skill_kind: None,
             target_observed_extra_action: None,
             rate_modifier: None,
@@ -228,6 +240,7 @@ mod invocation_tests {
             },
             card_index: 4,
             additional_moxie: 0,
+            moxie_spent: 0,
             condition_key: Some(DefinitionKey::new(30, "TestCondition")),
             reaction_multiplicity_key: None,
             condition_slot: Some(2),
@@ -235,6 +248,7 @@ mod invocation_tests {
             reaction_action_path: None,
             phase: Some(SkillPhase::AfterDamage),
             target: SkillTarget::Explicit(-1),
+            frame_target: None,
             extra_skill_kind: Some(ExtraSkillKind::FollowUp),
             target_observed_extra_action: None,
             rate_modifier: None,

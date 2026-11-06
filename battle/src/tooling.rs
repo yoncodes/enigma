@@ -13,7 +13,7 @@ pub mod replay {
         fight::rules::OwnedBattleSkill,
         manager::card::{CardOpType, CardSetup},
         runtime::{
-            BattleRuntime as ReplayBattle,
+            BattleRuntime as ReplayBattle, ClothSkillType,
             determinism::{
                 CrystalReuseChoice, HandRankChoice, MoxieReductionResistanceChoice,
                 RoundDeterminism, SkillTargetChoice,

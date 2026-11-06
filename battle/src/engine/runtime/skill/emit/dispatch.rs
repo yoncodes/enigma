@@ -132,6 +132,10 @@ pub(in crate::engine::runtime) fn emit_ops(
 
     execution.context.active_skill_id = invocation.plan.skill_id;
     execution.context.active_skill_source_uid = invocation.plan.source_uid;
+    execution
+        .context
+        .action_start_ex_point
+        .get_or_insert_with(|| managers.ex_point.get(invocation.plan.source_uid));
     if invocation.card_index > 0 {
         execution.context.active_card_index = invocation.card_index;
     }
@@ -152,7 +156,8 @@ pub(in crate::engine::runtime) fn emit_ops(
         .unwrap_or_else(|| catalog.extra_kind(invocation.plan.skill_id));
     if matches!(
         invocation.mode,
-        crate::engine::skill::action::SkillExecutionMode::Active
+        crate::engine::skill::action::SkillExecutionMode::Direct
+            | crate::engine::skill::action::SkillExecutionMode::Active
             | crate::engine::skill::action::SkillExecutionMode::Synchronization
             | crate::engine::skill::action::SkillExecutionMode::DirectBig
             | crate::engine::skill::action::SkillExecutionMode::Device
@@ -160,7 +165,9 @@ pub(in crate::engine::runtime) fn emit_ops(
     ) {
         execution.context.active_skill_mode = invocation.mode;
         execution.context.active_skill_is_attack = catalog.is_attack(effect_skill_id);
-        if matches!(trigger, SkillOpTrigger::Active) && invocation.card_index > 0 {
+        if invocation.mode == crate::engine::skill::action::SkillExecutionMode::Direct
+            || (matches!(trigger, SkillOpTrigger::Active) && invocation.card_index > 0)
+        {
             execution.context.active_skill_slot = pool.skill_slot(
                 managers,
                 invocation.plan.source_uid,
@@ -484,6 +491,12 @@ pub(in crate::engine::runtime) fn emit_ops(
                 type_name: slot.behavior.spec.key.type_name.clone(),
             }
         })?;
+        if !(definition.supports_slot)(slot) {
+            return Err(SkillOpError::MissingBehaviorOp {
+                skill_id: invocation.plan.skill_id,
+                key: definition.key,
+            });
+        }
         let managers = if attack_modifier_reads_action_start(slot) {
             action_start_managers.as_deref().unwrap_or(managers)
         } else {
@@ -902,6 +915,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                 execution.resume_target = target_index + 1;
                 let mut continuation = invocation.clone();
                 continuation.phase = active_phase;
+                continuation.additional_moxie = execution.context.additional_moxie;
                 return Ok(SkillEmission {
                     ops: outputs,
                     fired_rules,
@@ -944,6 +958,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution.resume_slot = slot_index + 1;
             let mut continuation = invocation.clone();
             continuation.phase = Some(phase);
+            continuation.additional_moxie = execution.context.additional_moxie;
             return Ok(SkillEmission {
                 ops: outputs,
                 fired_rules,
@@ -953,7 +968,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
     }
     if active_phase == Some(SkillPhase::Immediate) {
-        let mut phase_completed = phase_completed_op(
+        let phase_completed = phase_completed_op(
             &invocation,
             managers,
             catalog,
@@ -961,15 +976,11 @@ pub(in crate::engine::runtime) fn emit_ops(
             execution,
             SkillPhase::Immediate,
         );
-        if let Some(cost) = execution.take_action_cost() {
-            let RuleOp::SkillLifecycle(lifecycle) = phase_completed.op else {
-                unreachable!("a completed phase emits a skill lifecycle")
-            };
-            phase_completed.op = RuleOp::BeginSkillAction { lifecycle, cost };
-            outputs.push(phase_completed);
-        } else {
-            outputs.push(phase_completed);
-        }
+        outputs.extend(super::payment::settle(
+            &invocation,
+            execution,
+            phase_completed,
+        ));
         if execution
             .modifiers
             .rates
@@ -1236,6 +1247,7 @@ pub(in crate::engine::runtime) fn emit_ops(
     let continuation = next_phase.map(|phase| {
         let mut continuation = invocation.clone();
         continuation.phase = Some(phase);
+        continuation.additional_moxie = execution.context.additional_moxie;
         continuation
     });
     let publishes_lifecycle =
@@ -1391,7 +1403,12 @@ pub(in crate::engine::runtime) fn emit_ops(
                         rank: managers.catalog().skill_rank(invocation.plan.skill_id),
                         skill_type: execution.context.damage_target_count_kind,
                         effect_tag: catalog.effect_tag(effect_skill_id),
-                        additional_moxie: invocation.additional_moxie,
+                        additional_moxie: execution.context.additional_moxie,
+                        moxie_spent: execution
+                            .moxie_spent
+                            .saturating_add(execution.context.additional_moxie.max(0))
+                            .max(invocation.moxie_spent.max(0)),
+                        trigger: invocation.trigger,
                         extra_skill_kind: execution.context.extra_skill_kind,
                         mode: invocation.mode,
                         is_interval: catalog.is_interval(invocation.plan.skill_id),

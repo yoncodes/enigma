@@ -56,7 +56,10 @@ fn queued_invalid_ultimate_removal(
         .card
         .hand()
         .iter()
-        .find(|card| mechanic.is_ultimate(managers, card, entity))
+        .find(|card| {
+            !crate::engine::manager::card::CardManager::is_sovereign(card)
+                && mechanic.is_ultimate(managers, card, entity)
+        })
         .cloned();
     if mechanic.ultimate_ready(managers, entity) {
         return None;

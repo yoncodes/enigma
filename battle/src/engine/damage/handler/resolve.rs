@@ -974,14 +974,19 @@ fn direct_damage_trace(
     } else {
         0
     };
+    let incantation_might = attributes.get(source.uid, AttrId::IncantationMight)
+        + attribute_delta(source, AttrId::IncantationMight)
+        + attack_attr(AttrId::IncantationMight)
+        + attack_local_attribute(AttrId::IncantationMight);
     let might = conduit_might
         + if is_ultimate {
-            1000 + ultimate_might
+            let cross_multiplier = attributes
+                .get(source.uid, AttrId::UltimateIncantationMightMultiplier)
+                + attribute_delta(source, AttrId::UltimateIncantationMightMultiplier)
+                + attack_attr(AttrId::UltimateIncantationMightMultiplier)
+                + attack_local_attribute(AttrId::UltimateIncantationMightMultiplier);
+            1000 + ultimate_might + incantation_might * cross_multiplier / 1000
         } else {
-            let incantation_might = attributes.get(source.uid, AttrId::IncantationMight)
-                + attribute_delta(source, AttrId::IncantationMight)
-                + attack_attr(AttrId::IncantationMight)
-                + attack_local_attribute(AttrId::IncantationMight);
             let cross_multiplier = attributes
                 .get(source.uid, AttrId::IncantationSkillUltMightMultiplier)
                 + attribute_delta(source, AttrId::IncantationSkillUltMightMultiplier)
@@ -1118,6 +1123,15 @@ fn direct_damage_trace(
             formula,
         );
     if crate::engine::damage::trace::enabled() {
+        crate::engine::damage::trace::HitTrace {
+            skill_id,
+            source_uid: source.uid,
+            target_uid: target.uid,
+            fight_version: runtime.fight_version,
+            formula,
+            trace: &damage_trace,
+        }
+        .emit();
         let local_damage_bonus = source_active_features
             .iter()
             .filter(|feature| feature.owner_uid == source.uid)
