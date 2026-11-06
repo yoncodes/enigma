@@ -672,6 +672,24 @@ pub fn run_wave_entry_setup(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     let mut result = begin_round_phase(RoundPhase::EntityEntrySetup);
+    for &entering_uid in owner_uids {
+        let event = BattleEvent::EntityEntered {
+            target_uid: entering_uid,
+        };
+        append_entry_event(
+            &mut result,
+            event.clone(),
+            drain::run_owner_event(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                event,
+                std::slice::from_ref(&entering_uid),
+            )?,
+        );
+    }
     for (stage, priority) in [(SetupStage::RoundStartCondition, 100)] {
         let next = drain::run_setup_stage_for_owners(
             managers,
@@ -701,11 +719,6 @@ pub fn run_wave_entry_setup(
 }
 
 pub fn run_wave_entry(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
     change: crate::engine::manager::wave::WaveAdvanced,
 ) -> Result<DrainResult, DrainError> {
     let mut result = DrainResult::default();
@@ -719,23 +732,25 @@ pub fn run_wave_entry(
         &root,
         BattleChange::WaveAdvanced(Box::new(change.clone())),
     );
-    for &entering_uid in &change.entering_uids {
-        append(
-            &mut result,
-            drain::run_owner_event(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
-                BattleEvent::EntityEntered {
-                    target_uid: entering_uid,
-                },
-                std::slice::from_ref(&entering_uid),
-            )?,
-        );
-    }
     Ok(result)
+}
+
+fn append_entry_event(result: &mut DrainResult, event: BattleEvent, next: DrainResult) {
+    result.outcomes.extend(next.outcomes);
+    result.events.extend(next.events);
+    let mut event_frame = SemanticFrame {
+        owner: FrameOwner::EventRule,
+        trigger: FrameTrigger::Event(event.clone()),
+        items: Vec::new(),
+    };
+    for frame in next.frames {
+        append_to_event(&mut event_frame.items, frame, &event);
+    }
+    let root = result
+        .frames
+        .first_mut()
+        .expect("entry-setup phase has a root");
+    root.items.push(FrameItem::Child(Box::new(event_frame)));
 }
 
 fn append(result: &mut DrainResult, next: DrainResult) {

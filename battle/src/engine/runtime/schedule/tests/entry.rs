@@ -313,7 +313,7 @@ fn wave_entry_event_and_setup_each_own_their_stage() {
             entitys: vec![FightEntityInfo {
                 uid: Some(-3),
                 current_hp: Some(100),
-                passive_skill: vec![2370, 40, 50],
+                passive_skill: vec![2531, 2370, 40, 50],
                 ..Default::default()
             }],
             ..Default::default()
@@ -370,27 +370,17 @@ fn wave_entry_event_and_setup_each_own_their_stage() {
         }
     }
 
-    let wave = run_wave_entry(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 2,
-            ..Default::default()
-        },
-        crate::engine::manager::wave::WaveAdvanced {
-            wave: 2,
-            entering_uids: vec![-3],
-            fight: fight.clone(),
-        },
-    )
+    let wave = run_wave_entry(crate::engine::manager::wave::WaveAdvanced {
+        wave: 2,
+        entering_uids: vec![-3],
+        fight: fight.clone(),
+    })
     .unwrap();
     let mut wave_act_ids = Vec::new();
     for step in crate::engine::packet::timeline::project(&wave.frames).unwrap() {
         collect_act_ids(&step, &mut wave_act_ids);
     }
-    assert_eq!(wave_act_ids, vec![2370, 40]);
+    assert!(wave_act_ids.is_empty());
 
     let result = run_wave_entry_setup(
         &mut managers,
@@ -410,12 +400,58 @@ fn wave_entry_event_and_setup_each_own_their_stage() {
         collect_act_ids(step, &mut act_ids);
     }
     assert_eq!(steps.len(), 1);
-    assert_eq!(act_ids, vec![50]);
+    assert_eq!(act_ids, vec![2531, 2370, 40, 50]);
     assert_eq!(managers.ex_point.get(-3), 2);
+    let [phase] = result.frames.as_slice() else {
+        panic!("entry setup owns one phase frame")
+    };
     assert!(matches!(
-        result.frames[0].owner,
+        phase.owner,
         FrameOwner::RoundPhase(RoundPhase::EntityEntrySetup)
     ));
+    let event_frames = phase
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            FrameItem::Child(frame) if matches!(frame.owner, FrameOwner::EventRule) => {
+                Some(frame.as_ref())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let [event_frame] = event_frames.as_slice() else {
+        panic!("entry setup owns one event frame")
+    };
+    assert!(matches!(
+        event_frame.trigger,
+        FrameTrigger::Event(BattleEvent::EntityEntered { target_uid: -3 })
+    ));
+    let event_skills = event_frame
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            FrameItem::Child(frame) => match frame.owner {
+                FrameOwner::Skill {
+                    source_uid,
+                    skill_id,
+                    target_uid,
+                    ..
+                } => Some((source_uid, skill_id, target_uid)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        event_skills,
+        vec![
+            (-3, 2531, Some(-3)),
+            (-3, 2370, Some(-3)),
+            (-3, 40, Some(-3))
+        ]
+    );
+    assert!(managers.buff.has_active_buff_id(-3, 25241));
+    assert!(managers.buff.has_active_buff_id(-3, 2137001));
 }
 
 #[test]

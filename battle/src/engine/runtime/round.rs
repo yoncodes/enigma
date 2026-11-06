@@ -69,8 +69,6 @@ fn advance_wave_transition(
     managers: &mut crate::engine::manager::BattleManagers,
     catalog: &mut crate::engine::skill::effect::SkillEffectCatalog,
     battle_catalog: crate::catalog::BattleCatalog,
-    determinism: &mut RoundDeterminism,
-    context: crate::engine::skill::target::TargetContext,
     pool: &crate::engine::skill::target::TargetPool,
     power: i32,
     fight_version: i32,
@@ -94,8 +92,7 @@ fn advance_wave_transition(
     let pool =
         crate::engine::skill::target::TargetPool::from_fight_with_catalog(battle_catalog, fight);
     let steps = project_result(
-        schedule::run_wave_entry(managers, &pool, catalog, determinism, context, change)
-            .map_err(|error| format!("{error:?}"))?,
+        schedule::run_wave_entry(change).map_err(|error| format!("{error:?}"))?,
         fight_version,
         absorb_hurt_map_layout,
     )?;
@@ -518,8 +515,6 @@ impl BattleRuntime {
             &mut self.managers,
             catalog,
             battle_catalog,
-            &mut self.determinism,
-            context,
             &pool,
             self.round_state.power,
             fight_version,
@@ -635,8 +630,6 @@ impl BattleRuntime {
             &mut self.managers,
             catalog,
             battle_catalog,
-            &mut self.determinism,
-            context,
             &pool,
             self.round_state.power,
             fight_version,
