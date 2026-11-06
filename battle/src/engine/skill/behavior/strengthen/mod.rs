@@ -11,7 +11,7 @@ impl BehaviorHandler for Handler {
 
     fn supports(behavior: &ParsedBehavior) -> bool {
         (behavior.raw_args.is_empty() || behavior.raw_args.len() == 2)
-            && matches!(behavior.args.as_slice(), [1, 4])
+            && matches!(behavior.args.as_slice(), [1, 2] | [1, 3] | [1, 4])
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {

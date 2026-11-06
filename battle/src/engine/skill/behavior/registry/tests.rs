@@ -58,61 +58,66 @@ fn consume_ex_point_validates_its_semantic_argument_shape() {
 }
 
 #[test]
-fn unnamed_client_effect_emits_only_the_captured_strengthen_marker() {
-    let behavior = ParsedBehavior::new(60304, "UnnamedClientEffect", vec![1, 4]);
-    let definition = find(&behavior).expect("captured client effect must be registered");
+fn unnamed_client_effect_emits_configured_strengthen_layers() {
+    let managers = crate::engine::manager::BattleManagers::default();
+    let pool = crate::engine::skill::target::TargetPool::default();
+    let definition = find_key(60304, "UnnamedClientEffect").expect("effect must be registered");
     let supports = definition.supports.expect("arguments must stay exact");
 
     assert_eq!(definition.phase, BehaviorPhase::Immediate);
     assert!(definition.destination);
-    assert!(supports(&behavior));
-    for args in [vec![1, 2], vec![1, 3], vec![2, 4], vec![1, 4, 0]] {
+
+    for layers in [2, 3, 4] {
+        let behavior = ParsedBehavior::new(60304, "UnnamedClientEffect", vec![1, layers]);
+        assert!(supports(&behavior));
+
+        let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext {
+            runtime_target_uid: -4,
+            ..Default::default()
+        };
+        let ops = crate::engine::skill::behavior::rule_ops(
+            crate::engine::skill::behavior::BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 0,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            ops.as_slice(),
+            [crate::engine::skill::rule::output::RuleOp::EffectMarker {
+                target_uid: -4,
+                effect_type,
+                effect_num: 1,
+                effect_num1: Some(actual_layers),
+                config_effect: 0,
+                reserve_id: None,
+                reserve_str: None,
+            }] if *effect_type
+                == sonettobuf::effect_type_enum::EffectType::Unnamedstrengthen as i32
+                && *actual_layers == layers
+        ));
+    }
+
+    for args in [vec![1], vec![1, 1], vec![1, 5], vec![2, 4], vec![1, 4, 0]] {
         assert!(!supports(&ParsedBehavior::new(
             60304,
             "UnnamedClientEffect",
             args
         )));
     }
-
-    let managers = crate::engine::manager::BattleManagers::default();
-    let pool = crate::engine::skill::target::TargetPool::default();
-    let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
-    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
-    let mut target = crate::engine::skill::target::TargetContext {
-        runtime_target_uid: -4,
-        ..Default::default()
-    };
-    let ops = crate::engine::skill::behavior::rule_ops(
-        crate::engine::skill::behavior::BehaviorOpContext {
-            source_uid: 10,
-            source_team: 1,
-            target_uid: 10,
-            active_skill_id: 31473162,
-            transfer_count: 1,
-            event: None,
-            managers: &managers,
-            pool: &pool,
-            determinism: &mut determinism,
-            modifiers: &mut modifiers,
-            target: &mut target,
-        },
-        &behavior,
-    )
-    .unwrap();
-
-    assert!(matches!(
-        ops.as_slice(),
-        [crate::engine::skill::rule::output::RuleOp::EffectMarker {
-            target_uid: -4,
-            effect_type,
-            effect_num: 1,
-            effect_num1: Some(4),
-            config_effect: 0,
-            reserve_id: None,
-            reserve_str: None,
-        }] if *effect_type
-            == sonettobuf::effect_type_enum::EffectType::Unnamedstrengthen as i32
-    ));
 }
 
 #[test]
