@@ -245,7 +245,6 @@ fn wave_clear_runtime(
         cur_round: Some(1),
         cur_wave: Some(1),
         attacker: Some(FightTeam {
-            device_area: Some(Default::default()),
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 position: Some(1),
@@ -263,7 +262,6 @@ fn wave_clear_runtime(
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            device_area: Some(Default::default()),
             entitys,
             sub_entitys,
             ..Default::default()
@@ -460,13 +458,14 @@ fn predepleted_wave_runs_phase_two_refill_before_wave_transition() {
         .map(|(index, _)| index)
         .unwrap();
     let wave = position(sonettobuf::effect_type_enum::EffectType::Newchangewave as i32);
-    let clear = position(sonettobuf::effect_type_enum::EffectType::Devicepowerclear as i32);
 
     assert_eq!(invalidations.len(), 2);
-    assert!(deal < clear);
-    assert!(clear < invalidations[0]);
+    assert!(deal < invalidations[0]);
     assert!(invalidations[1] < defender_settlement);
     assert!(defender_settlement < wave);
+    assert!(effect_types[deal..wave].iter().all(|effect| {
+        *effect != sonettobuf::effect_type_enum::EffectType::Devicepowerclear as i32
+    }));
 }
 
 #[test]
