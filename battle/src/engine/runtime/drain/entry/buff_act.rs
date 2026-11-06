@@ -145,6 +145,7 @@ fn run_owned_buff_act_groups(
                 | RuleOp::BuffActInfoMarker(_)
                 | RuleOp::MarkBuffActFired { .. }
                 | RuleOp::ModifyActiveSkillTargets { .. }
+                | RuleOp::ExpandActiveSkillTargets { .. }
                 | RuleOp::FreezeActiveSkillRates
                 | RuleOp::NuoDiKaHit(_) => (Some(buff_act.clone()), None, skill_trigger.clone()),
                 // A skill cast by a buff act is an active cast, also during a setup stage.

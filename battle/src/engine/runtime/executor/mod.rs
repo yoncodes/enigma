@@ -1163,6 +1163,9 @@ pub(crate) fn execute_rule_op_with(
         RuleOp::ImmediateReservePromotion => {
             unreachable!("reserve promotion is owned by the action drain")
         }
+        RuleOp::ExpandActiveSkillTargets { .. } => {
+            unreachable!("conditional target expansion is owned by the skill drain")
+        }
         RuleOp::FreezeActiveSkillRates => unreachable!("rate freezing is owned by the skill drain"),
     }
 }

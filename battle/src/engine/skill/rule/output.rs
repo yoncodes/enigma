@@ -1,6 +1,6 @@
 use crate::engine::{
     manager::{
-        buff::BuffCommand,
+        buff::{BuffCommand, BuffConsume},
         card::CardCommand,
         conduit::ConduitCommand,
         contract::ContractCommand,
@@ -156,6 +156,10 @@ pub enum RuleOp {
     },
     ModifyActiveSkillTargets {
         additional_count: i32,
+    },
+    ExpandActiveSkillTargets {
+        additional_count: i32,
+        consume: Option<BuffConsume>,
     },
     FreezeActiveSkillRates,
     NuoDiKaHit(crate::engine::mechanic::nuo_di_ka::NuoDiKaHit),

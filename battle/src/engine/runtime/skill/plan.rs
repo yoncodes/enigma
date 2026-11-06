@@ -217,6 +217,37 @@ impl SkillExecution {
         self.context.additional_skill_target_count += count.max(0);
     }
 
+    pub(in crate::engine::runtime) fn expand_skill_targets(
+        &mut self,
+        managers: &BattleManagers,
+        pool: &TargetPool,
+        count: i32,
+    ) -> bool {
+        if count <= 0 {
+            return false;
+        }
+        let source_uid = self.context.active_skill_source_uid;
+        let occupied = self
+            .configured_targets
+            .as_ref()
+            .filter(|targets| !targets.is_empty())
+            .map_or_else(
+                || {
+                    managers
+                        .catalog()
+                        .target_count(self.context.logic_target)
+                        .max(1) as usize
+                },
+                Vec::len,
+            )
+            + self.context.additional_skill_target_count.max(0) as usize;
+        if pool.enemies(source_uid, false).len() <= occupied {
+            return false;
+        }
+        self.add_skill_targets(count);
+        true
+    }
+
     pub(super) fn sync_team_injury_count(&mut self, count: i32) {
         self.team_injury_count_round = count.max(0);
         self.context.team_injury_count_round = self.team_injury_count_round;

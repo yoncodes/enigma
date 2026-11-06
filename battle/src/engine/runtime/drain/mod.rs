@@ -6,7 +6,7 @@ use std::{
 
 use crate::engine::{
     event::{bus::EventBus, dispatcher, payload::BattleEvent},
-    manager::BattleManagers,
+    manager::{BattleManagers, buff::BuffCommand},
     runtime::{
         determinism::RoundDeterminism,
         executor::{RuleExecutionError, RuleOutcome, execute_rule_op_with},
@@ -21,7 +21,10 @@ use crate::engine::{
     skill::{
         action::{SkillPhase, SkillTarget},
         effect::SkillEffectCatalog,
-        rule::{SetupStage, output::RuleOp},
+        rule::{
+            SetupStage,
+            output::{BattleCommand, RuleOp},
+        },
         subscriber::SubscriberError,
         target::{TargetContext, TargetPool, TargetRequest, TargetResolver, targets_enemy},
     },
@@ -501,6 +504,50 @@ fn drain_queue_with_deferred(
                     })
                     .ok_or(DrainError::MissingActiveSkillContext)?;
                 execution.freeze_rate_amounts(&managers.gauge);
+            }
+            RuleOp::ExpandActiveSkillTargets {
+                additional_count,
+                consume,
+            } => {
+                let frame_path = frame_path.ok_or(DrainError::MissingActiveSkillContext)?;
+                let action_path = active_skill_scope_path(&result.frames, &frame_path)
+                    .ok_or(DrainError::MissingActiveSkillContext)?;
+                let expanded = queue
+                    .iter_mut()
+                    .find_map(|queued| {
+                        (matches!(queued.trigger, SkillOpTrigger::Active)
+                            && queued.frame_path.as_ref() == Some(&action_path)
+                            && matches!(queued.op, RuleOp::Skill(_)))
+                        .then_some(queued.skill_execution.as_mut())
+                        .flatten()
+                    })
+                    .ok_or(DrainError::MissingActiveSkillContext)?
+                    .expand_skill_targets(managers, pool, additional_count);
+                if expanded && let Some(consume) = consume {
+                    drain_command(
+                        managers,
+                        base_pool,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        queue,
+                        &mut result,
+                        state,
+                        &mut bus,
+                        &mut pending_hits,
+                        RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(consume))),
+                        trigger,
+                        skill_execution,
+                        Some(frame_path),
+                        parent_path,
+                        frame_group,
+                        independent_parent_group,
+                        frame_owner,
+                        subscriber,
+                        caster_frame,
+                    )?;
+                }
             }
             command @ (RuleOp::Command(_)
             | RuleOp::Publish(_)
