@@ -3,7 +3,7 @@ use crate::engine::{
     manager::{
         BattleManagers,
         conduit::ConduitCommand,
-        ex_point::{ExPointChange, ExPointCommand, ExPointKind},
+        ex_point::{ExPointChange, ExPointCommand, LowestExPointChange},
     },
     runtime::determinism::RoundDeterminism,
     skill::{
@@ -383,26 +383,24 @@ fn consume_ex_point_ops(
     if *ally_gain <= 0 {
         return Some(ops);
     }
-    let ally_uid = context
+    let candidates = context
         .pool
         .main_allies(action_source_uid)
         .iter()
-        .filter(|ally| {
-            ally.uid != action_source_uid
-                && context.managers.hp.current(ally.uid) > 0
-                && ExPointKind::from_wire(context.managers.ex_point.kind(ally.uid))
-                    == ExPointKind::Common
-        })
-        .min_by_key(|ally| {
-            (
-                context.managers.ex_point.get(ally.uid),
-                ally.position,
-                ally.uid,
-            )
-        })
-        .map(|ally| ally.uid);
-    if let Some(ally_uid) = ally_uid {
-        ops.extend((0..additional_moxie).map(|_| change(ally_uid, *ally_gain, false)));
+        .filter(|ally| ally.uid != action_source_uid)
+        .map(|ally| (ally.uid, ally.position))
+        .collect::<Vec<_>>();
+    if !candidates.is_empty() {
+        ops.extend((0..additional_moxie).map(|_| {
+            RuleOp::Command(BattleCommand::LowestExPoint(LowestExPointChange {
+                origin,
+                source_uid: action_source_uid,
+                candidates: candidates.clone(),
+                delta: *ally_gain,
+                config_effect: 0,
+                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+            }))
+        }));
     }
     Some(ops)
 }

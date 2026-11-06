@@ -733,6 +733,15 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::ExPoint(changes))
         }
+        RuleOp::Command(BattleCommand::LowestExPoint(command)) => {
+            let Some(changes) = managers.execute_lowest_ex_point(command)? else {
+                return Ok(RuleOutcome::StateChanged);
+            };
+            for event in changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::ExPoint(changes))
+        }
         RuleOp::Command(BattleCommand::BloodPoolCountAddExPoint(command)) => {
             let Some(changes) =
                 crate::engine::skill::buff_act::blood_pool::count_add_ex_point::execute(

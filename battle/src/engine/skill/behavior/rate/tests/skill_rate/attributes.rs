@@ -345,8 +345,10 @@ fn consume_ex_point_spends_the_excess_and_rewards_the_lowest_ally() {
     assert_eq!(ops.len(), 5);
     assert!(ops[1..].iter().all(|op| matches!(
         op,
-        RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(change)))
-            if change.source_uid == 10 && change.target_uid == 20 && change.delta == 1
+        RuleOp::Command(BattleCommand::LowestExPoint(change))
+            if change.source_uid == 10
+                && change.candidates == [(20, 0), (30, 0)]
+                && change.delta == 1
     )));
 
     let stacked = crate::engine::skill::behavior::rule_ops(
@@ -369,8 +371,10 @@ fn consume_ex_point_spends_the_excess_and_rewards_the_lowest_ally() {
     assert_eq!(stacked.len(), 4);
     assert!(stacked.iter().all(|op| matches!(
         op,
-        RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(change)))
-            if change.source_uid == 10 && change.target_uid == 20 && change.delta == 1
+        RuleOp::Command(BattleCommand::LowestExPoint(change))
+            if change.source_uid == 10
+                && change.candidates == [(20, 0), (30, 0)]
+                && change.delta == 1
     )));
     assert_eq!(
         modifiers.attack_attributes,
