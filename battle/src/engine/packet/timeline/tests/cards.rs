@@ -315,19 +315,31 @@ fn owner_skill_group_replacement_commits_state_and_projects_changed_hand_cards_f
     let mut managers = BattleManagers::seeded(&fight);
     managers
         .execute_card(CardCommand::Setup(CardSetup {
-            hand: vec![CardInfo {
-                uid: Some(10),
-                hero_id: Some(3146),
-                skill_id: Some(31460114),
-                ..Default::default()
-            }],
+            hand: vec![
+                CardInfo {
+                    uid: Some(20),
+                    skill_id: Some(1),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(30),
+                    skill_id: Some(2),
+                    ..Default::default()
+                },
+                CardInfo {
+                    uid: Some(10),
+                    hero_id: Some(3146),
+                    skill_id: Some(31460114),
+                    ..Default::default()
+                },
+            ],
             draw_pile: vec![CardInfo {
                 uid: Some(10),
                 hero_id: Some(3146),
                 skill_id: Some(31460127),
                 ..Default::default()
             }],
-            deck_num: 2,
+            deck_num: 4,
         }))
         .unwrap();
 
@@ -342,7 +354,7 @@ fn owner_skill_group_replacement_commits_state_and_projects_changed_hand_cards_f
         }))
         .unwrap();
 
-    assert_eq!(managers.card.hand()[0].skill_id, Some(31460214));
+    assert_eq!(managers.card.hand()[2].skill_id, Some(31460214));
     let entity = managers.entity_snapshot(10).unwrap();
     assert_eq!(entity.skill_group1, replacement_group1);
     assert_eq!(entity.skill_group2, replacement_group2);
@@ -359,7 +371,7 @@ fn owner_skill_group_replacement_commits_state_and_projects_changed_hand_cards_f
     );
     let converted = &effects[0];
     assert_eq!(converted.target_id, Some(10));
-    assert_eq!(converted.effect_num, Some(1));
+    assert_eq!(converted.effect_num, Some(3));
     assert_eq!(converted.config_effect, Some(31460214));
     assert_eq!(converted.reserve_id, Some(1));
     assert_eq!(converted.team_type, Some(1));
@@ -387,7 +399,7 @@ fn owner_skill_group_replacement_commits_state_and_projects_changed_hand_cards_f
             replacement_group2: base_group2.clone(),
         }))
         .unwrap();
-    assert_eq!(managers.card.hand()[0].skill_id, Some(31460114));
+    assert_eq!(managers.card.hand()[2].skill_id, Some(31460114));
     let entity = managers.entity_snapshot(10).unwrap();
     assert_eq!(entity.skill_group1, base_group1);
     assert_eq!(entity.skill_group2, base_group2);

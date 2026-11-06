@@ -192,12 +192,12 @@ impl CardPacket {
         ActEffect {
             target_id: Some(owner_uid),
             effect_type: Some(EffectType::Cardaconvertcardb as i32),
-            effect_num: Some(1),
-            config_effect: card.skill_id,
-            buff_act_id: Some(0),
-            reserve_id: i64::try_from(hand_index)
+            effect_num: i32::try_from(hand_index)
                 .ok()
                 .and_then(|index| index.checked_add(1)),
+            config_effect: card.skill_id,
+            buff_act_id: Some(0),
+            reserve_id: Some(1),
             card_info: Some(card),
             team_type: Some(team_type),
             effect_num1: Some(0),
