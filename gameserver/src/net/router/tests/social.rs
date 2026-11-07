@@ -1,6 +1,49 @@
 use super::*;
 
 #[tokio::test]
+async fn trigger_party_result_replies_without_side_effects() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(2);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    let mut data = Vec::new();
+    TriggerPartyResultRequest {}.encode(&mut data).unwrap();
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::TriggerPartyResultCmd as i16,
+            up_tag: 60,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        result_code: 0,
+        up_tag,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("party result request did not reach its handler");
+    };
+    assert_eq!(cmd_id, CmdId::TriggerPartyResultCmd);
+    assert_eq!(up_tag, 60);
+    TriggerPartyResultReply::decode(&*body).unwrap();
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn investigate_commands_reach_handlers_and_persist_links() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

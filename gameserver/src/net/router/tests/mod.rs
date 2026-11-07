@@ -25,7 +25,8 @@ use sonettobuf::{
     MaterialChangePush, NewOrderRequest, PutClueReply, PutClueRequest, Rouge2AlchemyInfo,
     Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo, Rouge2CareerLevelInfo, Rouge2OutsideInfo,
     Rouge2RewardInfo, Rouge2TotalRecordInfo, TeachingGetBonusReply, TeachingGetBonusRequest,
-    TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush, UpdateTaskPush,
+    TeachingGetInfoReply, TeachingGetInfoRequest, TriggerPartyResultReply,
+    TriggerPartyResultRequest, UpdateRedDotPush, UpdateTaskPush,
 };
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;

@@ -212,6 +212,7 @@ async fn dispatch_registered_command(
         CmdId::GetRedDotInfosCmd => red_dot::on_get_red_dot_infos,
         CmdId::ShowRedDotCmd => red_dot::on_show_red_dot,
         CmdId::PartyServerListCmd => party::on_party_server_list,
+        CmdId::TriggerPartyResultCmd => party::on_trigger_result,
         CmdId::GetActivityInfosCmd => activity::on_get_activity_infos,
         CmdId::GetActivityInfosWithParamCmd => activity::on_get_activity_infos_with_param,
         CmdId::ActivityNewStageReadCmd => activity::on_activity_new_stage_read,
