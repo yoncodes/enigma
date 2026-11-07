@@ -9,6 +9,18 @@ use crate::{
     talent_style_cost::TalentStyleCost,
 };
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CharacterVoiceType {
+    GetSkin = 9,
+    Summon = 11,
+}
+
+impl CharacterVoiceType {
+    const fn id(self) -> i32 {
+        self as i32
+    }
+}
+
 impl GameDB {
     pub fn max_faith(&self) -> i32 {
         self.friendless.iter().map(|row| row.friendliness).sum()
@@ -104,6 +116,15 @@ impl GameDB {
         self.character_voice
             .iter()
             .filter(move |row| row.hero_id == hero_id)
+    }
+
+    pub fn character_voices_of_type(
+        &self,
+        hero_id: i32,
+        voice_type: CharacterVoiceType,
+    ) -> impl Iterator<Item = &CharacterVoice> {
+        self.character_voices(hero_id)
+            .filter(move |row| row.r#type == voice_type.id())
     }
 
     pub fn character_unlock_item(&self, hero_id: i32, item_id: i32) -> Option<&CharacterData> {

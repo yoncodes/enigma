@@ -34,6 +34,7 @@ mod dungeon;
 mod equipment;
 pub mod exploration;
 mod hero;
+pub use hero::CharacterVoiceType;
 mod player;
 mod reward_query;
 mod room;
