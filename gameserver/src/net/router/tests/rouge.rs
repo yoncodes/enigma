@@ -5,7 +5,8 @@ use sonettobuf::{
     Rouge2ActiveGeniusRequest, Rouge2AlchemyReply, Rouge2AlchemyRequest, Rouge2Attr,
     Rouge2AttrInfo, Rouge2AttrUpdatePush, Rouge2Bag, Rouge2BagInfo, Rouge2CurAlchemyInfo,
     Rouge2GameCurAlchemyInfo, Rouge2Info, Rouge2LeaderInfo, Rouge2RewardReply, Rouge2RewardRequest,
-    Rouge2UpdateGeniusPointPush, UpdateAchievementPush, UpdateRedDotPush,
+    Rouge2SetSystemIdReply, Rouge2SetSystemIdRequest, Rouge2UpdateGeniusPointPush,
+    UpdateAchievementPush, UpdateRedDotPush,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -215,6 +216,79 @@ async fn reward_command_emits_captured_purchase_push_order() {
     let reply = Rouge2RewardReply::decode(&*body).unwrap();
     assert_eq!(reply.num, Some(4));
     assert_eq!(reply.goods_info.unwrap().buy_count, Some(4));
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn set_system_id_command_echoes_the_persisted_selection() {
+    crate::net::app::init_test_server_config();
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 542;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'rouge2-system-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    database::db::game::rouge::get_or_create_rouge2_outside(&pool, player_id, configs::get())
+        .await
+        .unwrap();
+    sqlx::query("UPDATE user_rouge2_state SET state = 2 WHERE user_id = ?")
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(1);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    let mut data = Vec::new();
+    Rouge2SetSystemIdRequest {
+        system_id: Some(131),
+    }
+    .encode(&mut data)
+    .unwrap();
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Rouge2SetSystemIdCmd as i16,
+            up_tag: 61,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Reply {
+        cmd_id: CmdId::Rouge2SetSystemIdCmd,
+        body,
+        result_code: 0,
+        up_tag: 61,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("Rouge2 system selection did not return its captured reply");
+    };
+    assert_eq!(
+        Rouge2SetSystemIdReply::decode(&*body).unwrap().system_id,
+        Some(131)
+    );
     assert!(packets.try_recv().is_err());
 }
 

@@ -297,6 +297,46 @@ async fn genius_snapshot(pool: &SqlitePool) -> (i32, i32, String) {
 }
 
 #[tokio::test]
+async fn system_selection_persists_only_for_an_active_run() {
+    let pool = test_pool().await;
+    let manager = RougeManager::new(1);
+    sqlx::query("UPDATE user_rouge2_state SET state = 2 WHERE user_id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let reply = manager.set_system_id(&pool, 131).await.unwrap();
+    assert_eq!(reply.system_id, Some(131));
+    assert_eq!(system_id(&pool).await, 131);
+    assert!(matches!(
+        manager.set_system_id(&pool, i32::MAX).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert_eq!(system_id(&pool).await, 131);
+    assert_eq!(
+        manager.set_system_id(&pool, 0).await.unwrap().system_id,
+        Some(0)
+    );
+
+    sqlx::query("UPDATE user_rouge2_state SET state = 1 WHERE user_id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        manager.set_system_id(&pool, 131).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert_eq!(system_id(&pool).await, 0);
+}
+
+async fn system_id(pool: &SqlitePool) -> i32 {
+    sqlx::query_scalar("SELECT system_team_id FROM user_rouge2_state WHERE user_id = 1")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
 async fn reward_store_spends_currency_and_enforces_schedule_and_limits() {
     let pool = test_pool().await;
     let manager = RougeManager::new(1);

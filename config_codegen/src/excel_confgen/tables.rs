@@ -309,6 +309,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "rouge2_relics",
     "rouge2_reward",
     "rouge2_shop_date",
+    "rouge2_system",
     "activity188_task",
     "activity189",
     "activity189_task",

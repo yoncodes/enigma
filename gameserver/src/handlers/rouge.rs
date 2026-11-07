@@ -10,7 +10,7 @@ use sonettobuf::{
     CmdId, EnterRouge2SelectDifficultyRequest, GetRouge2InfoRequest, GetRouge2OutsideInfoRequest,
     GetRougeOutsideInfoRequest, Rouge2ActiveGeniusRequest, Rouge2AlchemyRequest,
     Rouge2AttrUpdatePush, Rouge2GetUnlockCollectionsRequest, Rouge2RewardRequest,
-    Rouge2UpdateGeniusPointPush,
+    Rouge2SetSystemIdRequest, Rouge2UpdateGeniusPointPush,
 };
 
 pub async fn on_get_rouge_outside_info(
@@ -130,6 +130,20 @@ pub async fn on_rouge2_reward(
     )
     .await?;
     ctx.send_reply(CmdId::Rouge2RewardCmd, result.reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_rouge2_set_system_id(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = Rouge2SetSystemIdRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .rouge
+        .set_system_id(ctx.state.db, msg.system_id.ok_or(AppError::InvalidRequest)?)
+        .await?;
+    ctx.send_reply(CmdId::Rouge2SetSystemIdCmd, reply, 0, req.up_tag)
         .await
 }
 

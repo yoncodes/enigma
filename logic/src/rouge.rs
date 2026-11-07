@@ -19,6 +19,7 @@ mod projection;
 pub use projection::{HeroRewardEvent, hero_reward_events};
 mod store;
 pub use store::StoreResult;
+mod system;
 
 #[derive(Clone, Copy, Debug)]
 pub struct RougeManager {

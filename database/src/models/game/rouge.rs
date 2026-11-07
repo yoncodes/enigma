@@ -22,6 +22,7 @@ pub struct Rouge2State {
     pub alchemy_formula: i32,
     pub alchemy_main_effect: i32,
     pub alchemy_sub_effects: String,
+    pub system_team_id: i32,
     pub updated_at: i64,
 }
 

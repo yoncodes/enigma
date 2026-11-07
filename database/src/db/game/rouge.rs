@@ -105,7 +105,8 @@ pub async fn get_or_create_rouge2_outside(
                 genius_point, genius_ids, reward_point, max_difficulty,
                 pass_layer_ids, pass_event_ids, pass_end_ids, pass_entrust_ids,
                 pass_collections, last_game_time, hotfix_str,
-                alchemy_formula, alchemy_main_effect, alchemy_sub_effects, updated_at
+                alchemy_formula, alchemy_main_effect, alchemy_sub_effects,
+                system_team_id, updated_at
          FROM user_rouge2_state
          WHERE user_id = ?",
     )
@@ -295,6 +296,26 @@ pub async fn activate_genius(
     .bind(activation.expected_state)
     .bind(activation.expected_ids)
     .bind(activation.point_cost)
+    .fetch_optional(pool)
+    .await?)
+}
+
+pub async fn set_system_id(
+    pool: &SqlitePool,
+    user_id: i64,
+    system_id: i32,
+    expected_state: i32,
+) -> Result<Option<i32>> {
+    Ok(sqlx::query_scalar(
+        "UPDATE user_rouge2_state
+         SET system_team_id = ?, updated_at = ?
+         WHERE user_id = ? AND state = ?
+         RETURNING system_team_id",
+    )
+    .bind(system_id)
+    .bind(common::time::ServerTime::now_ms())
+    .bind(user_id)
+    .bind(expected_state)
     .fetch_optional(pool)
     .await?)
 }
