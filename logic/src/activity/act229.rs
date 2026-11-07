@@ -1,7 +1,8 @@
 use crate::error::AppError;
 use common::time::ServerTime;
 use sonettobuf::{
-    Act229BattleFinishPush, Act229HeroNo, Act229ResetStageReply, Act229StageNo, GetAct229InfoReply,
+    Act229BattleFinishPush, Act229HeroNo, Act229ModifySkillReply, Act229ResetStageReply,
+    Act229StageNo, GetAct229InfoReply,
 };
 use sqlx::SqlitePool;
 
@@ -19,8 +20,8 @@ pub async fn act229_info(
                 .and_then(|row| row.value.parse().ok())
         })
         .ok_or(AppError::InvalidRequest)?;
-    let saved = sqlx::query_as::<_, (i32, i32, i32, i32, i32, String)>(
-        "SELECT stage_id, star, max_star, round, min_round, heroes_json
+    let saved = sqlx::query_as::<_, (i32, i32, i32, i32, i32, String, i32)>(
+        "SELECT stage_id, star, max_star, round, min_round, heroes_json, skill_id
          FROM user_activity229_stages
          WHERE user_id = ? AND activity_id = ?",
     )
@@ -48,7 +49,9 @@ pub async fn act229_info(
                 min_round: Some(state.map(|state| state.4).unwrap_or_default()),
                 heros: heroes,
                 hero_group_sub_id: None,
-                skill_ids: Vec::new(),
+                skill_ids: state
+                    .and_then(|state| (state.6 != 0).then_some(vec![state.6]))
+                    .unwrap_or_default(),
                 last_update_team_time: None,
             })
         })
@@ -72,6 +75,73 @@ pub fn act229_battle_episode(activity_id: i32, stage_id: i32) -> Result<i32, App
         .find(|row| row.activity_id == activity_id && row.stage == stage_id)
         .map(|row| row.episode_id)
         .ok_or(AppError::InvalidRequest)
+}
+
+pub async fn modify_act229_skill(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: i32,
+    stage_id: i32,
+    skill_ids: Vec<i32>,
+) -> Result<Act229ModifySkillReply, AppError> {
+    let [skill_id] = skill_ids.as_slice() else {
+        return Err(AppError::InvalidRequest);
+    };
+    let tables = config::configs::get();
+    let stage = tables
+        .activity229_episode
+        .iter()
+        .find(|row| row.activity_id == activity_id && row.stage == stage_id)
+        .ok_or(AppError::InvalidRequest)?;
+    let allowed = stage
+        .optional_skills
+        .split('#')
+        .map(|id| id.parse::<i32>().map_err(|_| AppError::InvalidRequest))
+        .collect::<Result<Vec<_>, _>>()?;
+    if !allowed.contains(skill_id) || tables.activity229_skill.get(*skill_id).is_none() {
+        return Err(AppError::InvalidRequest);
+    }
+
+    let saved_heroes = sqlx::query_scalar::<_, String>(
+        "SELECT heroes_json
+         FROM user_activity229_stages
+         WHERE user_id = ? AND activity_id = ? AND stage_id = ?",
+    )
+    .bind(player_id)
+    .bind(activity_id)
+    .bind(stage_id)
+    .fetch_optional(db)
+    .await?;
+    if saved_heroes
+        .as_deref()
+        .map(heroes)
+        .transpose()?
+        .is_some_and(|heroes| !heroes.is_empty())
+    {
+        return Err(AppError::InvalidRequest);
+    }
+
+    sqlx::query(
+        "INSERT INTO user_activity229_stages
+            (user_id, activity_id, stage_id, skill_id, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, activity_id, stage_id) DO UPDATE SET
+            skill_id = excluded.skill_id,
+            updated_at = excluded.updated_at",
+    )
+    .bind(player_id)
+    .bind(activity_id)
+    .bind(stage_id)
+    .bind(skill_id)
+    .bind(ServerTime::now_ms())
+    .execute(db)
+    .await?;
+
+    Ok(Act229ModifySkillReply {
+        activity_id: Some(activity_id),
+        stage_id: Some(stage_id),
+        skill_ids,
+    })
 }
 
 pub async fn act229_heroes_available(
@@ -197,109 +267,5 @@ pub async fn reset_act229_stage(
 }
 
 #[cfg(test)]
-mod test {
-    use super::*;
-
-    #[tokio::test]
-    async fn finish_preserves_best_result_and_reset_only_unlocks_the_team() {
-        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
-        let _ = config::init(&data_dir);
-        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        database::run_migrations(&db).await.unwrap();
-        sqlx::query(
-            "INSERT INTO users (id, username, created_at, updated_at)
-             VALUES (7, 'act229', 0, 0)",
-        )
-        .execute(&db)
-        .await
-        .unwrap();
-        let heroes = vec![Act229HeroNo {
-            hero_id: Some(3143),
-            equip_uids: vec![49],
-        }];
-
-        let first = finish_act229_battle(&db, 7, 138521, 1, 15, 2, &heroes)
-            .await
-            .unwrap();
-        assert_eq!(first.last_min_round, Some(0));
-        let better = finish_act229_battle(&db, 7, 138521, 1, 10, 3, &heroes)
-            .await
-            .unwrap();
-        assert_eq!(better.last_min_round, Some(15));
-        act229_heroes_available(&db, 7, 138521, 1, &heroes)
-            .await
-            .unwrap();
-        assert!(
-            act229_heroes_available(
-                &db,
-                7,
-                138521,
-                1,
-                &[Act229HeroNo {
-                    hero_id: Some(3149),
-                    equip_uids: vec![50],
-                }],
-            )
-            .await
-            .is_err()
-        );
-        assert!(
-            act229_heroes_available(&db, 7, 138521, 2, &heroes)
-                .await
-                .is_err()
-        );
-
-        reset_act229_stage(&db, 7, 138521, 1).await.unwrap();
-        let stage = act229_info(&db, 7, Some(138521))
-            .await
-            .unwrap()
-            .stages
-            .into_iter()
-            .find(|stage| stage.stage_id == Some(1))
-            .unwrap();
-        assert_eq!(stage.star, Some(0));
-        assert_eq!(stage.max_star, Some(3));
-        assert_eq!(stage.round, Some(0));
-        assert_eq!(stage.min_round, Some(10));
-        assert!(stage.heros.is_empty());
-        act229_heroes_available(&db, 7, 138521, 2, &heroes)
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
-    async fn malformed_saved_heroes_do_not_unlock_a_roster() {
-        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
-        let _ = config::init(&data_dir);
-        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        database::run_migrations(&db).await.unwrap();
-        sqlx::query(
-            "INSERT INTO users (id, username, created_at, updated_at)
-             VALUES (42, 'act229-corrupt', 0, 0)",
-        )
-        .execute(&db)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO user_activity229_stages
-                (user_id, activity_id, stage_id, heroes_json)
-             VALUES (42, 138521, 1, '{')",
-        )
-        .execute(&db)
-        .await
-        .unwrap();
-        let selected = [Act229HeroNo {
-            hero_id: Some(3143),
-            equip_uids: Vec::new(),
-        }];
-
-        assert!(matches!(
-            act229_heroes_available(&db, 42, 138521, 1, &selected).await,
-            Err(AppError::Serde(_))
-        ));
-        assert!(matches!(
-            act229_info(&db, 42, Some(138521)).await,
-            Err(AppError::Serde(_))
-        ));
-    }
-}
+#[path = "act229/tests.rs"]
+mod tests;

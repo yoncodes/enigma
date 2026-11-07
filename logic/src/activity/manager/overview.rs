@@ -282,4 +282,14 @@ impl ActivityManager {
     ) -> Result<Act229ResetStageReply, AppError> {
         reset_act229_stage(db, self.player_id, activity_id, stage_id).await
     }
+
+    pub async fn modify_act229_skill(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        stage_id: i32,
+        skill_ids: Vec<i32>,
+    ) -> Result<Act229ModifySkillReply, AppError> {
+        modify_act229_skill(db, self.player_id, activity_id, stage_id, skill_ids).await
+    }
 }
