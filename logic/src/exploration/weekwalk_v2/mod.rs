@@ -1,9 +1,13 @@
 use crate::error::AppError;
 use common::time::ServerTime;
-use database::db::game::weekwalk_v2::{
-    self, WeekwalkV2BattleSeed, WeekwalkV2LayerSeed, WeekwalkV2Seed,
+use database::db::game::{
+    hero_groups,
+    weekwalk_v2::{self, WeekwalkV2BattleSeed, WeekwalkV2LayerSeed, WeekwalkV2Seed},
 };
-use sonettobuf::{WeekwalkVer2GetInfoReply, WeekwalkVer2MarkShowFinishedReply};
+use sonettobuf::{
+    WeekwalkVer2ChangeHeroGroupSelectReply, WeekwalkVer2GetInfoReply,
+    WeekwalkVer2MarkShowFinishedReply,
+};
 use sqlx::SqlitePool;
 
 #[cfg(test)]
@@ -22,6 +26,24 @@ pub(super) async fn mark_finished_shown(
     layer_id: i32,
 ) -> Result<WeekwalkVer2MarkShowFinishedReply, AppError> {
     mark_finished_shown_at(db, player_id, layer_id, ServerTime::now_ms()).await
+}
+
+pub(super) async fn change_group(
+    db: &SqlitePool,
+    player_id: i64,
+    layer_id: i32,
+    battle_id: i32,
+    select: i32,
+) -> Result<WeekwalkVer2ChangeHeroGroupSelectReply, AppError> {
+    change_group_at(
+        db,
+        player_id,
+        layer_id,
+        battle_id,
+        select,
+        ServerTime::now_ms(),
+    )
+    .await
 }
 
 async fn info_at(
@@ -47,6 +69,32 @@ async fn mark_finished_shown_at(
     }
     Ok(WeekwalkVer2MarkShowFinishedReply {
         layer_id: Some(layer_id),
+    })
+}
+
+async fn change_group_at(
+    db: &SqlitePool,
+    player_id: i64,
+    layer_id: i32,
+    battle_id: i32,
+    select: i32,
+    now_ms: i64,
+) -> Result<WeekwalkVer2ChangeHeroGroupSelectReply, AppError> {
+    ensure_at(db, player_id, now_ms).await?;
+    if select <= 0
+        || hero_groups::get_hero_group(db, player_id, select)
+            .await?
+            .is_none()
+    {
+        return Err(AppError::InvalidRequest);
+    }
+    if !weekwalk_v2::set_battle_group(db, player_id, layer_id, battle_id, select).await? {
+        return Err(AppError::InvalidRequest);
+    }
+    Ok(WeekwalkVer2ChangeHeroGroupSelectReply {
+        layer_id: Some(layer_id),
+        battle_id: Some(battle_id),
+        select: Some(select),
     })
 }
 

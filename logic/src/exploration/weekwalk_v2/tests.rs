@@ -148,3 +148,79 @@ async fn mark_finished_shown_persists_the_captured_layer_flag() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn change_group_persists_an_owned_group_for_the_captured_battle() {
+    let db = test_db().await;
+    let schedule = &common::config().weekwalk_v2.schedule[0];
+    sqlx::query(
+        "INSERT INTO hero_groups_common
+         (user_id, group_id, created_at, updated_at) VALUES (1, 3, 0, 0)",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (2, 'other-weekwalk-player', 0, 0)",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO hero_groups_common
+         (user_id, group_id, created_at, updated_at) VALUES (2, 4, 0, 0)",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let reply = change_group_at(&db, 1, 1069, 120384100, 3, schedule.start_time)
+        .await
+        .unwrap();
+    assert_eq!(reply.layer_id, Some(1069));
+    assert_eq!(reply.battle_id, Some(120384100));
+    assert_eq!(reply.select, Some(3));
+    let info = info_at(&db, 1, schedule.start_time)
+        .await
+        .unwrap()
+        .info
+        .unwrap();
+    assert_eq!(
+        info.layer_infos[0].battle_infos[0].hero_group_select,
+        Some(3)
+    );
+
+    assert!(
+        change_group_at(&db, 1, 1069, 120384100, 4, schedule.start_time)
+            .await
+            .is_err()
+    );
+    assert!(
+        change_group_at(&db, 1, 1070, 120384300, 3, schedule.start_time)
+            .await
+            .is_err()
+    );
+    assert!(
+        change_group_at(&db, 1, 1069, 120384200, 3, schedule.start_time)
+            .await
+            .is_err()
+    );
+    sqlx::query(
+        "UPDATE user_weekwalk_v2_battles SET status = 1
+         WHERE user_id = 1 AND layer_id = 1069 AND battle_id = 120384100",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    assert!(
+        change_group_at(&db, 1, 1069, 120384100, 3, schedule.start_time)
+            .await
+            .is_err()
+    );
+    assert!(
+        change_group_at(&db, 1, 1069, 9999, 3, schedule.start_time)
+            .await
+            .is_err()
+    );
+}

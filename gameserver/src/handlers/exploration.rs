@@ -7,7 +7,7 @@ use sonettobuf::{
     BeforeStartWeekwalkBattleRequest, ChangeMapRequest, ChangeWeekwalkHeroGroupSelectRequest,
     CmdId, GetExploreInfoRequest, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
     MarkShowFinishedRequest, WeekwalkDialogHistoryRequest, WeekwalkDialogRequest,
-    WeekwalkVer2MarkShowFinishedRequest,
+    WeekwalkVer2ChangeHeroGroupSelectRequest, WeekwalkVer2MarkShowFinishedRequest,
 };
 
 pub async fn on_change_map(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
@@ -207,4 +207,28 @@ pub async fn on_weekwalk_ver2_mark_show_finished(
         .await?;
     ctx.send_reply(CmdId::WeekwalkVer2MarkShowFinishedCmd, reply, 0, req.up_tag)
         .await
+}
+
+pub async fn on_weekwalk_ver2_change_hero_group_select(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = WeekwalkVer2ChangeHeroGroupSelectRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .exploration
+        .change_weekwalk_v2_group(
+            ctx.state.db,
+            request.layer_id.ok_or(AppError::InvalidRequest)?,
+            request.battle_id.ok_or(AppError::InvalidRequest)?,
+            request.select.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.send_reply(
+        CmdId::WeekwalkVer2ChangeHeroGroupSelectCmd,
+        reply,
+        0,
+        req.up_tag,
+    )
+    .await
 }

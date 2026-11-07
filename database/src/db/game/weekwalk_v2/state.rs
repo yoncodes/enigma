@@ -157,3 +157,36 @@ pub async fn mark_layer_finished_shown(
     .await?;
     Ok(result.rows_affected() == 1)
 }
+
+pub async fn set_battle_group(
+    pool: &SqlitePool,
+    user_id: i64,
+    layer_id: i32,
+    battle_id: i32,
+    select: i32,
+) -> Result<bool> {
+    let result = sqlx::query(
+        "UPDATE user_weekwalk_v2_battles SET hero_group_select = ?
+         WHERE user_id = ? AND layer_id = ? AND battle_id = ? AND status = 0
+           AND EXISTS (
+               SELECT 1 FROM user_weekwalk_v2_layers AS layer
+               WHERE layer.user_id = user_weekwalk_v2_battles.user_id
+                 AND layer.layer_id = user_weekwalk_v2_battles.layer_id
+                 AND layer.unlock = 1
+           )
+           AND EXISTS (
+               SELECT 1 FROM user_weekwalk_v2_elements AS element
+               WHERE element.user_id = user_weekwalk_v2_battles.user_id
+                 AND element.layer_id = user_weekwalk_v2_battles.layer_id
+                 AND element.element_id = user_weekwalk_v2_battles.element_id
+                 AND element.visible = 1 AND element.finish = 0
+           )",
+    )
+    .bind(select)
+    .bind(user_id)
+    .bind(layer_id)
+    .bind(battle_id)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}

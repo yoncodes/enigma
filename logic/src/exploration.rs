@@ -38,6 +38,16 @@ impl ExplorationManager {
     ) -> Result<sonettobuf::WeekwalkVer2MarkShowFinishedReply, AppError> {
         weekwalk_v2::mark_finished_shown(db, self.player_id, layer_id).await
     }
+
+    pub async fn change_weekwalk_v2_group(
+        self,
+        db: &SqlitePool,
+        layer_id: i32,
+        battle_id: i32,
+        select: i32,
+    ) -> Result<sonettobuf::WeekwalkVer2ChangeHeroGroupSelectReply, AppError> {
+        weekwalk_v2::change_group(db, self.player_id, layer_id, battle_id, select).await
+    }
 }
 
 async fn explore_simple_info(
