@@ -31,11 +31,9 @@ pub(super) async fn turnback_info(
     let Some(state) = turnback::get_active_state(db, player_id, tables).await? else {
         return Ok(GetTurnbackInfoReply { info: None });
     };
-    let tasks = task_db::list_turnback(db, player_id, state.turnback_id)
-        .await?
-        .into_iter()
-        .map(Into::into)
-        .collect();
+    let state = super::return_rewards::sync_tasks(db, player_id, &state, tables).await?;
+    let task_rows = task_db::list_turnback(db, player_id, state.turnback_id).await?;
+    let tasks = task_rows.iter().cloned().map(Into::into).collect();
     let sign_in_infos = turnback::list_sign_ins(db, player_id, state.turnback_id)
         .await?
         .into_iter()
@@ -59,6 +57,8 @@ pub(super) async fn turnback_info(
             current_num: Some(*drop_state.get(&row.id).unwrap_or(&0)),
         })
         .collect();
+    let resource_return =
+        super::return_rewards::info(db, player_id, &state, &task_rows, tables).await?;
 
     Ok(GetTurnbackInfoReply {
         info: Some(TurnbackInfo {
@@ -80,7 +80,7 @@ pub(super) async fn turnback_info(
             drop_infos,
             get_daily_bonus: Some(state.get_daily_bonus),
             common_drop_infos: Vec::new(),
-            resource_return: None,
+            resource_return,
         }),
     })
 }

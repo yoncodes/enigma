@@ -851,6 +851,23 @@ pub async fn reset_daily_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<
     Ok(reset_ids)
 }
 
+pub async fn reset_turnback_return_daily_tasks(
+    pool: &SqlitePool,
+    user_id: i64,
+    turnback_id: i32,
+    tables: &config::GameDB,
+) -> sqlx::Result<Vec<i32>> {
+    let ids = tables
+        .turnback_task
+        .iter()
+        .filter(|task| {
+            task.turnback_id == turnback_id && task.is_online != 0 && task.turnback_task_type == 1
+        })
+        .map(|task| task.id)
+        .collect();
+    reset_task_ids(pool, user_id, vec![(TaskType::Turnback.id(), ids)]).await
+}
+
 pub async fn reset_weekly_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<i32>> {
     let weekly_ids = config::configs::get()
         .task_weekly

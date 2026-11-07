@@ -24,7 +24,9 @@ pub async fn get_active_state(
         "SELECT user_id, turnback_id, bonus_point, first_show, has_get_task_bonus,
                 sign_in_day, once_bonus, start_time, end_time, remain_addition_count,
                 leave_time, month_card_added_buy_count, version, buy_double_bonus,
-                get_daily_bonus, updated_at
+                get_daily_bonus, has_get_return_reward_ids, return_random_task_id,
+                return_left_task_ids, return_last_random_task_id, return_random_refresh_day,
+                updated_at
          FROM user_turnback_state
          WHERE user_id = ?",
     )
@@ -51,7 +53,9 @@ pub async fn get_active_state_in_transaction(
         "SELECT user_id, turnback_id, bonus_point, first_show, has_get_task_bonus,
                 sign_in_day, once_bonus, start_time, end_time, remain_addition_count,
                 leave_time, month_card_added_buy_count, version, buy_double_bonus,
-                get_daily_bonus, updated_at
+                get_daily_bonus, has_get_return_reward_ids, return_random_task_id,
+                return_left_task_ids, return_last_random_task_id, return_random_refresh_day,
+                updated_at
          FROM user_turnback_state WHERE user_id = ?",
     )
     .bind(user_id)
@@ -407,6 +411,66 @@ pub async fn save_claimed_task_bonus_in_transaction(
     .execute(&mut **tx)
     .await?;
     Ok((result.rows_affected() == 1).then(|| ids.to_vec()))
+}
+
+pub async fn save_claimed_return_rewards_in_transaction(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    user_id: i64,
+    turnback_id: i32,
+    expected_json: &str,
+    ids: &[i32],
+) -> Result<Option<Vec<i32>>> {
+    let json = serde_json::to_string(ids)?;
+    let result = sqlx::query(
+        "UPDATE user_turnback_state
+         SET has_get_return_reward_ids = ?, updated_at = ?
+         WHERE user_id = ? AND turnback_id = ? AND has_get_return_reward_ids = ?",
+    )
+    .bind(json)
+    .bind(common::time::ServerTime::now_ms())
+    .bind(user_id)
+    .bind(turnback_id)
+    .bind(expected_json)
+    .execute(&mut **tx)
+    .await?;
+    Ok((result.rows_affected() == 1).then(|| ids.to_vec()))
+}
+
+pub async fn save_return_task_rotation(
+    pool: &SqlitePool,
+    user_id: i64,
+    turnback_id: i32,
+    expected_active: i32,
+    expected_left: &str,
+    expected_last: i32,
+    expected_refresh_day: i64,
+    active: i32,
+    left: &[i32],
+    last: i32,
+    refresh_day: i64,
+) -> Result<bool> {
+    let result = sqlx::query(
+        "UPDATE user_turnback_state
+         SET return_random_task_id = ?, return_left_task_ids = ?,
+             return_last_random_task_id = ?, return_random_refresh_day = ?, updated_at = ?
+         WHERE user_id = ? AND turnback_id = ?
+           AND return_random_task_id = ? AND return_left_task_ids = ?
+           AND return_last_random_task_id = ? AND return_random_refresh_day = ?",
+    )
+    .bind(active)
+    .bind(serde_json::to_string(left)?)
+    .bind(last)
+    .bind(refresh_day)
+    .bind(common::time::ServerTime::now_ms())
+    .bind(user_id)
+    .bind(turnback_id)
+    .bind(expected_active)
+    .bind(expected_left)
+    .bind(expected_last)
+    .bind(expected_refresh_day)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() == 1)
 }
 
 async fn update_bool_field(

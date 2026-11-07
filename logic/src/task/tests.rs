@@ -2,6 +2,129 @@ use super::*;
 use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
+async fn turnback_task_commands_enforce_daily_selection() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let tables = config::configs::get();
+    let turnback = tables
+        .turnback
+        .iter()
+        .find(|row| !row.resource_return_condition.is_empty())
+        .unwrap();
+    let range = tables.turnback_return_range.iter().next().unwrap();
+    let range_start = range
+        .loss_days
+        .split_once('|')
+        .unwrap()
+        .0
+        .parse::<i32>()
+        .unwrap();
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (75, 'turnback-task-gate', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let now = common::time::ServerTime::now_sec_i32();
+    sqlx::query(
+        "INSERT INTO user_turnback_state
+            (user_id, turnback_id, start_time, end_time, leave_time)
+         VALUES (75, ?, ?, ?, ?)",
+    )
+    .bind(turnback.id)
+    .bind(now)
+    .bind(now + turnback.duration_days * 86_400)
+    .bind(now - (range_start + 1) * 86_400)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let turnback_manager = crate::turnback::TurnbackManager::new(75);
+    turnback_manager.sync_state(&pool, tables).await.unwrap();
+    let resource = turnback_manager
+        .info(&pool, tables)
+        .await
+        .unwrap()
+        .info
+        .unwrap()
+        .resource_return
+        .unwrap();
+    let fixed = resource
+        .resource_return_tasks
+        .iter()
+        .find(|task| {
+            tables
+                .turnback_task
+                .get(task.id)
+                .is_some_and(|row| row.turnback_task_type == 1)
+        })
+        .unwrap()
+        .id;
+    let inactive = resource.left_task_ids[0];
+    let mut tasks = TaskManager::new(75);
+
+    assert!(matches!(
+        tasks.finish_read(&pool, Some(inactive)).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert!(matches!(
+        tasks.finish(&pool, inactive).await,
+        Err(AppError::InvalidRequest)
+    ));
+    sqlx::query(
+        "UPDATE user_tasks SET progress = 1, has_finished = 1
+         WHERE user_id = 75 AND type_id = ? AND task_id = ?",
+    )
+    .bind(TaskType::Turnback.id())
+    .bind(inactive)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(matches!(
+        tasks
+            .finish_all(
+                &pool,
+                TaskType::Turnback.id(),
+                None,
+                Vec::new(),
+                Some(turnback.id),
+            )
+            .await,
+        Err(AppError::InvalidRequest)
+    ));
+
+    sqlx::query(
+        "UPDATE user_tasks SET progress = 1, has_finished = 1
+         WHERE user_id = 75 AND type_id = ? AND task_id = ?",
+    )
+    .bind(TaskType::Turnback.id())
+    .bind(fixed)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let yesterday = common::time::ServerTime::server_day(common::time::ServerTime::now_ms()) - 1;
+    sqlx::query("UPDATE user_turnback_state SET return_random_refresh_day = ? WHERE user_id = 75")
+        .bind(yesterday)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        tasks.finish(&pool, fixed).await,
+        Err(AppError::InvalidRequest)
+    ));
+    let fixed = task_db::get_by_id(&pool, 75, fixed).await.unwrap().unwrap();
+    assert_eq!(fixed.progress, 0);
+    assert!(!fixed.has_finished);
+    assert_eq!(fixed.finish_count, 0);
+}
+
+#[tokio::test]
 async fn anecdote_tasks_reconcile_finished_plot_groups() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);

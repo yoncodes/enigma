@@ -28,12 +28,25 @@ pub struct TurnbackState {
     pub version: i32,
     pub buy_double_bonus: bool,
     pub get_daily_bonus: i32,
+    pub has_get_return_reward_ids: String,
+    pub return_random_task_id: i32,
+    pub return_left_task_ids: String,
+    pub return_last_random_task_id: i32,
+    pub return_random_refresh_day: i64,
     pub updated_at: i64,
 }
 
 impl TurnbackState {
     pub fn claimed_task_bonus_ids(&self) -> serde_json::Result<Vec<i32>> {
         serde_json::from_str(&self.has_get_task_bonus)
+    }
+
+    pub fn claimed_return_reward_ids(&self) -> serde_json::Result<Vec<i32>> {
+        serde_json::from_str(&self.has_get_return_reward_ids)
+    }
+
+    pub fn return_left_task_ids(&self) -> serde_json::Result<Vec<i32>> {
+        serde_json::from_str(&self.return_left_task_ids)
     }
 }
 

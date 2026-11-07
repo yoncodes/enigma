@@ -549,6 +549,10 @@ async fn dispatch_registered_command(
         CmdId::GetTurnbackDailyBonusCmd => turnback::on_get_turnback_daily_bonus,
         CmdId::TurnbackBonusPointCmd => turnback::on_turnback_bonus_point,
         CmdId::AcceptAllTurnbackBonusPointCmd => turnback::on_accept_all_turnback_bonus_point,
+        CmdId::TurnbackReturnRewardCmd => turnback::on_turnback_return_reward,
+        CmdId::AcceptAllTurnbackReturnRewardCmd => {
+            turnback::on_accept_all_turnback_return_reward
+        },
         CmdId::BuyDoubleBonusCmd => turnback::on_buy_double_bonus,
         CmdId::GetTradeTaskInfoCmd => trade::on_get_trade_task_info,
         CmdId::GetOrderInfoCmd => trade::on_get_order_info,
