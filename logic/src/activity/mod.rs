@@ -28,8 +28,8 @@ use sonettobuf::{
     GetAct209InfoReply, GetAct212InfoReply, GetAct216InfoReply, GetAct225InfoReply,
     GetAct228InfoReply, GetAct229InfoReply, GetAct236InfoReply, GetAct239InfoReply,
     GetAct243InfoReply, GetActivityInfosReply, GetActivityInfosWithParamReply,
-    MarkActivity104StoryReply, MarkEpisodeAfterStoryReply, MarkPopSummaryReply, PutTrapReply,
-    StepInfo, UnlockPermanentReply, UpgradeElementReply,
+    GetPartyOutSideInfoReply, MarkActivity104StoryReply, MarkEpisodeAfterStoryReply,
+    MarkPopSummaryReply, PutTrapReply, StepInfo, UnlockPermanentReply, UpgradeElementReply,
 };
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
@@ -76,6 +76,7 @@ mod act236;
 mod act239;
 mod act243;
 mod dice_hero;
+mod party_game;
 
 pub use act243::total_stars as activity243_total_stars;
 
@@ -130,3 +131,4 @@ pub(crate) use act239::act239_red_dot_entries;
 use act239::{act239_bonus, act239_info};
 use act243::{info as act243_info, info_push as act243_info_push};
 use catalog::*;
+use party_game::party_outside_info;

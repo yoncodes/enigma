@@ -1,6 +1,71 @@
 use super::*;
 
 #[tokio::test]
+async fn party_outside_info_matches_captured_initial_state() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 5614;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'party-outside-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(2);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    let mut data = Vec::new();
+    GetPartyOutSideInfoRequest {
+        activity_id: Some(13914),
+    }
+    .encode(&mut data)
+    .unwrap();
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::GetPartyOutSideInfoCmd as i16,
+            up_tag: 59,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        result_code: 0,
+        up_tag,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("party outside information request did not reach its handler");
+    };
+    assert_eq!(cmd_id, CmdId::GetPartyOutSideInfoCmd);
+    assert_eq!(up_tag, 59);
+    assert_eq!(
+        GetPartyOutSideInfoReply::decode(&*body).unwrap(),
+        GetPartyOutSideInfoReply {
+            activity_id: Some(13914),
+            have_extra_bonus_count: Some(0),
+        }
+    );
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn trigger_party_result_replies_without_side_effects() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

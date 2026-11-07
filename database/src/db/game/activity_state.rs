@@ -58,6 +58,7 @@ pub enum ActivityStateKind {
     Act186Like,
     Act128ModeOpen,
     Act128ModeTeam,
+    PartyGameExtraBonus,
 }
 
 impl ActivityStateKind {
@@ -107,6 +108,7 @@ impl ActivityStateKind {
             Self::Act186Like => 42,
             Self::Act128ModeOpen => 43,
             Self::Act128ModeTeam => 44,
+            Self::PartyGameExtraBonus => 45,
         }
     }
 }

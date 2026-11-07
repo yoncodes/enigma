@@ -4,9 +4,25 @@ use crate::{
 };
 use prost::Message;
 use sonettobuf::{
-    CmdId, PartyServerListReply, PartyServerListRequest, TriggerPartyResultReply,
-    TriggerPartyResultRequest,
+    CmdId, GetPartyOutSideInfoRequest, PartyServerListReply, PartyServerListRequest,
+    TriggerPartyResultReply, TriggerPartyResultRequest,
 };
+
+pub async fn on_get_outside_info(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = GetPartyOutSideInfoRequest::decode(&req.data[..])?;
+    let db = ctx.state.db;
+    let reply = ctx
+        .player()?
+        .activity
+        .party_outside_info(db, msg.activity_id)
+        .await?;
+
+    ctx.send_reply(CmdId::GetPartyOutSideInfoCmd, reply, 0, req.up_tag)
+        .await
+}
 
 pub async fn on_party_server_list(
     ctx: &mut ConnectionContext,

@@ -133,6 +133,14 @@ impl ActivityManager {
         act239_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn party_outside_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<GetPartyOutSideInfoReply, AppError> {
+        party_outside_info(db, self.player_id, activity_id).await
+    }
+
     pub async fn act239_bonus(
         &self,
         db: &SqlitePool,
