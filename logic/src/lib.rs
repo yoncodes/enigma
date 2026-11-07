@@ -23,6 +23,7 @@ pub mod hero_invitation;
 pub mod inventory;
 pub mod investigate;
 pub mod mail;
+pub mod milestone;
 pub mod odyssey;
 pub mod preferences;
 pub mod profile;

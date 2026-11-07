@@ -2,9 +2,9 @@ use crate::error::{AppError, ClientErrorAction, CmdError};
 use crate::handlers::{
     activity, arcade, bgm, bp, charge, chat, collection, command_post, common, critter, dice_hero,
     dungeon, equipment, exploration, fairyland, friends, guide, hero, hero_group, hero_invitation,
-    inventory, investigate, mail, manufacture, misc, odyssey, party, player_card, player_info,
-    player_misc, property, red_dot, room, rouge, sign_in, stat, store, story, summon, survival,
-    system, talent, tasks, teaching, tower, tower_compose, trade, turnback, udimo, user,
+    inventory, investigate, mail, manufacture, milestone, misc, odyssey, party, player_card,
+    player_info, player_misc, property, red_dot, room, rouge, sign_in, stat, store, story, summon,
+    survival, system, talent, tasks, teaching, tower, tower_compose, trade, turnback, udimo, user,
 };
 use crate::net::context::ConnectionContext;
 use crate::net::packet::ClientPacket;
@@ -194,6 +194,7 @@ async fn dispatch_registered_command(
         CmdId::LogoutCmd => user::on_logout,
         CmdId::DebugLogoutCmd => user::on_debug_logout,
         CmdId::GetAllMailsCmd => mail::on_get_all_mails,
+        CmdId::GetMilestoneInfoCmd => milestone::on_get_info,
         CmdId::ReadMailCmd => mail::on_read_mail,
         CmdId::ReadMailBatchCmd => mail::on_read_mail_batch,
         CmdId::MailLockCmd => mail::on_mail_lock,

@@ -8,11 +8,11 @@ use logic::{
     critter::CritterManager, exploration::ExplorationManager, fairyland::FairylandManager,
     guide::GuideManager, hero::HeroManager, hero_invitation::HeroInvitationManager,
     inventory::InventoryManager, investigate::InvestigateManager, mail::MailManager,
-    odyssey::OdysseyManager, preferences::PreferenceManager, profile::ProfileManager,
-    red_dot::RedDotManager, room::RoomManager, rouge::RougeManager, sign_in::SignInManager,
-    social::SocialManager, stat::StatManager, store::StoreManager, story::StoryManager,
-    summon::SummonManager, task::TaskManager, turnback::TurnbackManager, udimo::UdimoManager,
-    weekwalk::WeekwalkManager,
+    milestone::MilestoneManager, odyssey::OdysseyManager, preferences::PreferenceManager,
+    profile::ProfileManager, red_dot::RedDotManager, room::RoomManager, rouge::RougeManager,
+    sign_in::SignInManager, social::SocialManager, stat::StatManager, store::StoreManager,
+    story::StoryManager, summon::SummonManager, task::TaskManager, turnback::TurnbackManager,
+    udimo::UdimoManager, weekwalk::WeekwalkManager,
 };
 pub use state::PlayerState;
 
@@ -36,6 +36,7 @@ pub struct Player {
     pub inventory: InventoryManager,
     pub investigate: InvestigateManager,
     pub mail: MailManager,
+    pub milestone: MilestoneManager,
     pub odyssey: OdysseyManager,
     pub preferences: PreferenceManager,
     pub profile: ProfileManager,
@@ -75,6 +76,7 @@ impl Player {
             inventory: InventoryManager::new(id),
             investigate: InvestigateManager::new(id),
             mail: MailManager::new(id),
+            milestone: MilestoneManager::new(id),
             odyssey: OdysseyManager::new(id),
             preferences: PreferenceManager::new(id),
             profile: ProfileManager::new(id),
