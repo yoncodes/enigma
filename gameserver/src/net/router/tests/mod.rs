@@ -23,10 +23,10 @@ use sonettobuf::{
     GetRouge2OutsideInfoReply, GetRouge2OutsideInfoRequest, ItemChangePush, MarkPopDeepSettleReply,
     MarkPopDeepSettleRequest, MarkPopShallowSettleReply, MarkPopShallowSettleRequest,
     MaterialChangePush, NewOrderRequest, PutClueReply, PutClueRequest, Rouge2AlchemyInfo,
-    Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo, Rouge2CareerLevelInfo, Rouge2OutsideInfo,
-    Rouge2RewardInfo, Rouge2TotalRecordInfo, TeachingGetBonusReply, TeachingGetBonusRequest,
-    TeachingGetInfoReply, TeachingGetInfoRequest, TriggerPartyResultReply,
-    TriggerPartyResultRequest, UpdateRedDotPush, UpdateTaskPush,
+    Rouge2BossBattleInfo, Rouge2CareerLevelInfo, Rouge2OutsideInfo, Rouge2RewardInfo,
+    Rouge2TotalRecordInfo, TeachingGetBonusReply, TeachingGetBonusRequest, TeachingGetInfoReply,
+    TeachingGetInfoRequest, TriggerPartyResultReply, TriggerPartyResultRequest, UpdateRedDotPush,
+    UpdateTaskPush,
 };
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
@@ -60,6 +60,7 @@ mod arcade;
 mod exploration;
 mod milestone;
 mod progression;
+mod rouge;
 mod social;
 mod story;
 mod teaching;

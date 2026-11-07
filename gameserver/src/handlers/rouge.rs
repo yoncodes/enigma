@@ -6,7 +6,7 @@ use crate::{
 use prost::Message;
 use sonettobuf::{
     CmdId, GetRouge2InfoRequest, GetRouge2OutsideInfoRequest, GetRougeOutsideInfoRequest,
-    Rouge2GetUnlockCollectionsRequest,
+    Rouge2AlchemyRequest, Rouge2GetUnlockCollectionsRequest, Rouge2UpdateGeniusPointPush,
 };
 
 pub async fn on_get_rouge_outside_info(
@@ -46,5 +46,35 @@ pub async fn on_rouge2_get_unlock_collections(
     let _ = Rouge2GetUnlockCollectionsRequest::decode(&req.data[..])?;
     let reply = ctx.player()?.rouge.unlock_collections(ctx.state.db).await?;
     ctx.send_reply(CmdId::Rouge2GetUnlockCollectionsCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_rouge2_alchemy(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = Rouge2AlchemyRequest::decode(&req.data[..])?;
+    let formula = msg.formula.ok_or(AppError::InvalidRequest)?;
+    let result = ctx
+        .player()?
+        .rouge
+        .alchemy(ctx.state.db, formula, msg.sub_material)
+        .await?;
+    let achievement_push = ctx
+        .player_mut()?
+        .collection
+        .record_updates(result.achievements);
+
+    ctx.notify(
+        CmdId::Rouge2UpdateGeniusPointPushCmd,
+        Rouge2UpdateGeniusPointPush {
+            genius_point: Some(result.genius_point),
+        },
+    )
+    .await?;
+    if let Some(push) = achievement_push {
+        ctx.notify(CmdId::UpdateAchievementPushCmd, push).await?;
+    }
+    ctx.send_reply(CmdId::Rouge2AlchemyCmd, result.reply, 0, req.up_tag)
         .await
 }

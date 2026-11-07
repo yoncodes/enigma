@@ -344,6 +344,7 @@ pub mod room_theme;
 pub mod rouge2_active_skill;
 pub mod rouge2_buff;
 pub mod rouge2_career;
+pub mod rouge2_formula;
 pub mod rouge2_material;
 pub mod rouge2_outside_const;
 pub mod rouge2_relics;
@@ -799,6 +800,7 @@ pub struct GameDB {
     pub rouge2_active_skill: rouge2_active_skill::Rouge2ActiveSkillTable,
     pub rouge2_buff: rouge2_buff::Rouge2BuffTable,
     pub rouge2_career: rouge2_career::Rouge2CareerTable,
+    pub rouge2_formula: rouge2_formula::Rouge2FormulaTable,
     pub rouge2_material: rouge2_material::Rouge2MaterialTable,
     pub rouge2_outside_const: rouge2_outside_const::Rouge2OutsideConstTable,
     pub rouge2_relics: rouge2_relics::Rouge2RelicsTable,
@@ -1943,6 +1945,9 @@ impl GameDB {
         let rouge2_career = rouge2_career::Rouge2CareerTable::load(
             &format!("{}/rouge2_career.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_career.json: {}", e))?;
+        let rouge2_formula = rouge2_formula::Rouge2FormulaTable::load(
+            &format!("{}/rouge2_formula.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_formula.json: {}", e))?;
         let rouge2_material = rouge2_material::Rouge2MaterialTable::load(
             &format!("{}/rouge2_material.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_material.json: {}", e))?;
@@ -2611,6 +2616,7 @@ impl GameDB {
             rouge2_active_skill,
             rouge2_buff,
             rouge2_career,
+            rouge2_formula,
             rouge2_material,
             rouge2_outside_const,
             rouge2_relics,

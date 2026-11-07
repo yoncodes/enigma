@@ -222,15 +222,6 @@ async fn rouge2_outside_info_command_decodes_captured_initial_boss_state() {
         })
         .collect::<Vec<_>>();
     expected_rewards.sort_by_key(|row| row.id);
-    let mut expected_materials = configs::get()
-        .rouge2_material
-        .iter()
-        .map(|row| Rouge2AlchemyMaterialInfo {
-            id: Some(row.id),
-            num: Some(0),
-        })
-        .collect::<Vec<_>>();
-    expected_materials.sort_by_key(|row| row.id);
     assert_eq!(
         reply,
         GetRouge2OutsideInfoReply {
@@ -252,7 +243,7 @@ async fn rouge2_outside_info_command_decodes_captured_initial_boss_state() {
                 reward_point: Some(0),
                 alchemy_info: Some(Rouge2AlchemyInfo {
                     cur_alchemy_info: None,
-                    alchemy_material_info: expected_materials,
+                    alchemy_material_info: Vec::new(),
                 }),
                 review: Vec::new(),
                 boss_battle_info: Some(Rouge2BossBattleInfo {

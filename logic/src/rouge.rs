@@ -3,10 +3,14 @@ use database::db::game::rouge;
 use sonettobuf::{
     GetRouge2InfoReply, GetRouge2OutsideInfoReply, GetRougeOutsideInfoReply, Rouge2AlchemyInfo,
     Rouge2AlchemyMaterialInfo, Rouge2AttrInfo, Rouge2BagInfo, Rouge2BossBattleInfo,
-    Rouge2CareerLevelInfo, Rouge2GetUnlockCollectionsReply, Rouge2Info, Rouge2OutsideInfo,
-    Rouge2RewardInfo, Rouge2TotalRecordInfo, RougeOutsideInfo,
+    Rouge2CareerLevelInfo, Rouge2CurAlchemyInfo, Rouge2GameCurAlchemyInfo,
+    Rouge2GetUnlockCollectionsReply, Rouge2Info, Rouge2OutsideInfo, Rouge2RewardInfo,
+    Rouge2TotalRecordInfo, RougeOutsideInfo,
 };
 use sqlx::SqlitePool;
+
+mod alchemy;
+pub use alchemy::AlchemyResult;
 
 #[derive(Clone, Copy, Debug)]
 pub struct RougeManager {
@@ -35,6 +39,15 @@ impl RougeManager {
     ) -> Result<Rouge2GetUnlockCollectionsReply, AppError> {
         rouge2_unlock_collections(db, self.player_id).await
     }
+
+    pub async fn alchemy(
+        self,
+        db: &SqlitePool,
+        formula: i32,
+        sub_materials: Vec<i32>,
+    ) -> Result<AlchemyResult, AppError> {
+        alchemy::combine(db, self.player_id, formula, sub_materials).await
+    }
 }
 
 pub fn rouge_outside_info(season: i32) -> GetRougeOutsideInfoReply {
@@ -61,6 +74,7 @@ async fn rouge2_outside_info(
 ) -> Result<GetRouge2OutsideInfoReply, AppError> {
     let rows = rouge::get_or_create_rouge2_outside(db, user_id, config::configs::get()).await?;
     let state = rows.state;
+    let current_alchemy = current_alchemy(&state)?;
 
     Ok(GetRouge2OutsideInfoReply {
         outside_info: Some(Rouge2OutsideInfo {
@@ -94,7 +108,7 @@ async fn rouge2_outside_info(
                 .collect(),
             reward_point: Some(state.reward_point),
             alchemy_info: Some(Rouge2AlchemyInfo {
-                cur_alchemy_info: None,
+                cur_alchemy_info: current_alchemy,
                 alchemy_material_info: rows
                     .materials
                     .into_iter()
@@ -129,7 +143,7 @@ async fn rouge2_info(db: &SqlitePool, user_id: i64) -> Result<GetRouge2InfoReply
             game_num: Some(state.game_num),
             leader_info: None,
             attr_info: Some(Rouge2AttrInfo { attr: Vec::new() }),
-            alchemy_info: None,
+            alchemy_info: current_game_alchemy(&state)?,
         }),
     })
 }
@@ -168,3 +182,32 @@ async fn rouge2_unlock_collections(
 fn json_ids(value: &str) -> Vec<i32> {
     serde_json::from_str(value).unwrap_or_default()
 }
+
+fn current_alchemy(
+    state: &database::models::game::rouge::Rouge2State,
+) -> Result<Option<Rouge2CurAlchemyInfo>, AppError> {
+    if state.alchemy_formula == 0 {
+        return Ok(None);
+    }
+
+    Ok(Some(Rouge2CurAlchemyInfo {
+        formula: Some(state.alchemy_formula),
+        main_effect: Some(state.alchemy_main_effect),
+        sub_effect: serde_json::from_str(&state.alchemy_sub_effects)?,
+    }))
+}
+
+fn current_game_alchemy(
+    state: &database::models::game::rouge::Rouge2State,
+) -> Result<Option<Rouge2GameCurAlchemyInfo>, AppError> {
+    Ok(
+        current_alchemy(state)?.map(|info| Rouge2GameCurAlchemyInfo {
+            formula: info.formula,
+            main_effect: info.main_effect,
+            sub_effect: info.sub_effect,
+        }),
+    )
+}
+
+#[cfg(test)]
+mod tests;

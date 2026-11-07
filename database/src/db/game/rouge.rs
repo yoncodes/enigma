@@ -1,6 +1,7 @@
 use crate::models::game::rouge::{
     Rouge2CareerLevel, Rouge2MaterialState, Rouge2RewardState, Rouge2State,
 };
+use crate::{db::game::tasks::TaskEvent, models::game::achievements::Achievement};
 use anyhow::Result;
 use sqlx::SqlitePool;
 
@@ -9,6 +10,21 @@ pub struct Rouge2OutsideState {
     pub career_levels: Vec<Rouge2CareerLevel>,
     pub rewards: Vec<Rouge2RewardState>,
     pub materials: Vec<Rouge2MaterialState>,
+}
+
+pub struct AlchemyUpdate<'a> {
+    pub expected_state: i32,
+    pub formula: i32,
+    pub main_effect: i32,
+    pub sub_effects: &'a str,
+    pub genius_point_gain: i32,
+    pub costs: &'a [(i32, i32)],
+}
+
+pub struct AlchemyApply {
+    pub genius_point: i32,
+    pub materials: Vec<Rouge2MaterialState>,
+    pub achievements: Vec<Achievement>,
 }
 
 #[derive(Clone, Copy)]
@@ -71,24 +87,12 @@ pub async fn get_or_create_rouge2_outside(
         .await?;
     }
 
-    for material in tables.rouge2_material.iter() {
-        sqlx::query(
-            "INSERT INTO user_rouge2_materials (user_id, material_id, updated_at)
-             VALUES (?, ?, ?)
-             ON CONFLICT DO NOTHING",
-        )
-        .bind(user_id)
-        .bind(material.id)
-        .bind(now)
-        .execute(pool)
-        .await?;
-    }
-
     let state = sqlx::query_as::<_, Rouge2State>(
         "SELECT user_id, state, difficulty, coin, end_id, game_num,
                 genius_point, genius_ids, reward_point, max_difficulty,
                 pass_layer_ids, pass_event_ids, pass_end_ids, pass_entrust_ids,
-                pass_collections, last_game_time, hotfix_str, updated_at
+                pass_collections, last_game_time, hotfix_str,
+                alchemy_formula, alchemy_main_effect, alchemy_sub_effects, updated_at
          FROM user_rouge2_state
          WHERE user_id = ?",
     )
@@ -117,10 +121,10 @@ pub async fn get_or_create_rouge2_outside(
     .await?;
 
     let materials = sqlx::query_as::<_, Rouge2MaterialState>(
-        "SELECT user_id, material_id, num, updated_at
+        "SELECT user_id, material_id, num, is_seen, updated_at
          FROM user_rouge2_materials
-         WHERE user_id = ?
-         ORDER BY material_id",
+         WHERE user_id = ? AND is_seen = 1
+         ORDER BY rowid",
     )
     .bind(user_id)
     .fetch_all(pool)
@@ -132,6 +136,76 @@ pub async fn get_or_create_rouge2_outside(
         rewards,
         materials,
     })
+}
+
+pub async fn apply_alchemy(
+    pool: &SqlitePool,
+    user_id: i64,
+    update: AlchemyUpdate<'_>,
+) -> Result<Option<AlchemyApply>> {
+    let now = common::time::ServerTime::now_ms();
+    let mut tx = pool.begin().await?;
+
+    for &(material_id, amount) in update.costs {
+        let changed = sqlx::query(
+            "UPDATE user_rouge2_materials
+             SET num = num - ?, is_seen = 1, updated_at = ?
+             WHERE user_id = ? AND material_id = ? AND num >= ?",
+        )
+        .bind(amount)
+        .bind(now)
+        .bind(user_id)
+        .bind(material_id)
+        .bind(amount)
+        .execute(&mut *tx)
+        .await?;
+        if changed.rows_affected() != 1 {
+            return Ok(None);
+        }
+    }
+
+    let genius_point = sqlx::query_scalar::<_, i32>(
+        "UPDATE user_rouge2_state
+         SET alchemy_formula = ?, alchemy_main_effect = ?, alchemy_sub_effects = ?,
+             genius_point = genius_point + ?, updated_at = ?
+         WHERE user_id = ? AND state = ? AND alchemy_formula = 0
+         RETURNING genius_point",
+    )
+    .bind(update.formula)
+    .bind(update.main_effect)
+    .bind(update.sub_effects)
+    .bind(update.genius_point_gain)
+    .bind(now)
+    .bind(user_id)
+    .bind(update.expected_state)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(genius_point) = genius_point else {
+        return Ok(None);
+    };
+
+    let achievements = super::achievements::sync_event_in_transaction(
+        &mut tx,
+        user_id,
+        TaskEvent::Rouge2Alchemy { count: 1 },
+    )
+    .await?;
+    let materials = sqlx::query_as::<_, Rouge2MaterialState>(
+        "SELECT user_id, material_id, num, is_seen, updated_at
+         FROM user_rouge2_materials
+         WHERE user_id = ? AND is_seen = 1
+         ORDER BY rowid",
+    )
+    .bind(user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(Some(AlchemyApply {
+        genius_point,
+        materials,
+        achievements,
+    }))
 }
 
 pub async fn get_or_create_unlock_ids(
@@ -176,3 +250,6 @@ pub async fn get_or_create_unlock_ids(
     .fetch_all(pool)
     .await?)
 }
+
+#[cfg(test)]
+mod tests;

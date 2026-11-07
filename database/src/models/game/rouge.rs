@@ -19,6 +19,9 @@ pub struct Rouge2State {
     pub pass_collections: String,
     pub last_game_time: i64,
     pub hotfix_str: String,
+    pub alchemy_formula: i32,
+    pub alchemy_main_effect: i32,
+    pub alchemy_sub_effects: String,
     pub updated_at: i64,
 }
 
@@ -43,5 +46,6 @@ pub struct Rouge2MaterialState {
     pub user_id: i64,
     pub material_id: i32,
     pub num: i32,
+    pub is_seen: bool,
     pub updated_at: i64,
 }

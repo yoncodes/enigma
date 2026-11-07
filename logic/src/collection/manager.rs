@@ -32,12 +32,29 @@ impl CollectionManager {
         event: TaskEvent,
     ) -> Result<Vec<Achievement>, AppError> {
         let achievements = achievements::sync_event(db, self.player_id, event).await?;
+        self.track(&achievements);
+        Ok(achievements)
+    }
+
+    pub fn record_updates(
+        &mut self,
+        achievements: Vec<Achievement>,
+    ) -> Option<UpdateAchievementPush> {
+        if achievements.is_empty() {
+            return None;
+        }
+        self.track(&achievements);
+        Some(UpdateAchievementPush {
+            infos: achievements.into_iter().map(Into::into).collect(),
+        })
+    }
+
+    fn track(&mut self, achievements: &[Achievement]) {
         self.achievements.extend(
             achievements
                 .iter()
                 .map(|achievement| (achievement.achievement_id, achievement.clone())),
         );
-        Ok(achievements)
     }
 
     pub async fn achievement_info(

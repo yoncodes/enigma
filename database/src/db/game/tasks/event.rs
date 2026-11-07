@@ -50,6 +50,9 @@ pub enum TaskEvent {
         action: ProductionLineAction,
         count: i32,
     },
+    Rouge2Alchemy {
+        count: i32,
+    },
     StoreGoodsBought {
         store_id: i32,
     },
@@ -86,6 +89,7 @@ impl TaskEvent {
             Self::DoneCount { count, .. }
             | Self::DungeonPass { count, .. }
             | Self::ProductionLine { count, .. }
+            | Self::Rouge2Alchemy { count }
             | Self::TowerMopUp { count } => count.max(1),
             Self::EpisodeFinish { .. }
             | Self::HeroLevelReach { .. }
@@ -151,6 +155,7 @@ impl TaskEvent {
                         .parse::<i32>()
                         .is_ok_and(|param| param == action as i32)
             }
+            Self::Rouge2Alchemy { .. } => listener_type == "Rouge2Alchemy",
             Self::StoreGoodsBought { store_id } => {
                 listener_type == "BuyStoreGoods" && listener_param.parse::<i32>() == Ok(store_id)
             }
@@ -206,6 +211,7 @@ impl TaskEvent {
             {
                 Some(1)
             }
+            Self::Rouge2Alchemy { count } if listener_type == "Rouge2Alchemy" => Some(count.max(1)),
             _ => None,
         }
     }

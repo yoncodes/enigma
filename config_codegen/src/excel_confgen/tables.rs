@@ -299,6 +299,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "rouge2_active_skill",
     "rouge2_buff",
     "rouge2_career",
+    "rouge2_formula",
     "rouge2_material",
     "rouge2_outside_const",
     "rouge2_relics",
