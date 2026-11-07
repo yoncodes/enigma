@@ -6,7 +6,7 @@ use prost::Message;
 use sonettobuf::{
     BeforeStartWeekwalkBattleRequest, ChangeMapRequest, ChangeWeekwalkHeroGroupSelectRequest,
     CmdId, GetExploreInfoRequest, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
-    WeekwalkDialogHistoryRequest, WeekwalkDialogRequest,
+    MarkShowFinishedRequest, WeekwalkDialogHistoryRequest, WeekwalkDialogRequest,
 };
 
 pub async fn on_change_map(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
@@ -144,6 +144,23 @@ pub async fn on_mark_pop_shallow_settle(
         .mark_pop_shallow_settle(ctx.state.db)
         .await?;
     ctx.send_reply(CmdId::MarkPopShallowSettleCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_mark_show_finished(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = MarkShowFinishedRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .weekwalk
+        .mark_show_finished(
+            ctx.state.db,
+            request.layer_id.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.send_reply(CmdId::MarkShowFinishedCmd, reply, 0, req.up_tag)
         .await
 }
 

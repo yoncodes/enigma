@@ -461,6 +461,7 @@ async fn dispatch_registered_command(
         CmdId::WeekwalkDialogHistoryCmd => exploration::on_weekwalk_dialog_history,
         CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
         CmdId::MarkPopDeepSettleCmd => exploration::on_mark_pop_deep_settle,
+        CmdId::MarkShowFinishedCmd => exploration::on_mark_show_finished,
         CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,
         CmdId::GetTowerInfoCmd => tower::on_get_info,
         CmdId::TowerMopUpCmd => tower::on_mop_up,

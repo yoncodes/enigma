@@ -9,8 +9,8 @@ use database::models::game::tasks::UserTask;
 use serde::{Deserialize, Serialize};
 use sonettobuf::{
     BeforeStartWeekwalkBattleReply, ChangeWeekwalkHeroGroupSelectReply, GetWeekwalkInfoReply,
-    MarkPopDeepSettleReply, MarkPopShallowSettleReply, WeekwalkDialogHistoryReply,
-    WeekwalkDialogReply, WeekwalkInfo, WeekwalkInfoUpdatePush,
+    MarkPopDeepSettleReply, MarkPopShallowSettleReply, MarkShowFinishedReply,
+    WeekwalkDialogHistoryReply, WeekwalkDialogReply, WeekwalkInfo, WeekwalkInfoUpdatePush,
 };
 use sqlx::SqlitePool;
 
@@ -147,6 +147,20 @@ impl WeekwalkManager {
     ) -> Result<MarkPopShallowSettleReply, AppError> {
         weekwalk::mark_pop_shallow_settle(db, self.player_id).await?;
         Ok(MarkPopShallowSettleReply {})
+    }
+
+    pub async fn mark_show_finished(
+        &self,
+        db: &SqlitePool,
+        map_id: i32,
+    ) -> Result<MarkShowFinishedReply, AppError> {
+        self.ensure_cycle(db).await?;
+        if !weekwalk::mark_show_finished(db, self.player_id, map_id).await? {
+            return Err(AppError::InvalidRequest);
+        }
+        Ok(MarkShowFinishedReply {
+            layer_id: Some(map_id),
+        })
     }
 
     pub async fn mark_pop_deep_settle(

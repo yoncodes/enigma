@@ -1,5 +1,42 @@
 use super::*;
 
+#[tokio::test]
+async fn mark_show_finished_persists_the_client_flag() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&db).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (1, 'weekwalk-mark', 0, 0)",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    let manager = WeekwalkManager::new(1);
+    let map_id = manager.info(&db).await.unwrap().info.unwrap().map_info[0]
+        .id
+        .unwrap();
+    sqlx::query(
+        "UPDATE user_weekwalk_maps SET is_show_finished = TRUE
+         WHERE user_id = 1 AND map_id = ?",
+    )
+    .bind(map_id)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        manager.mark_show_finished(&db, map_id).await.unwrap(),
+        MarkShowFinishedReply {
+            layer_id: Some(map_id)
+        }
+    );
+    let (_, maps) = weekwalk::get_weekwalk_info(&db, 1).await.unwrap();
+    assert!(!maps[0].is_show_finished.unwrap());
+    assert!(manager.mark_show_finished(&db, i32::MAX).await.is_err());
+}
+
 #[test]
 fn current_cycle_maps_each_configured_layer_to_its_encounters() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));

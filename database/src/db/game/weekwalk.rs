@@ -511,6 +511,20 @@ pub async fn mark_pop_shallow_settle(pool: &SqlitePool, user_id: i64) -> Result<
     Ok(())
 }
 
+pub async fn mark_show_finished(pool: &SqlitePool, user_id: i64, map_id: i32) -> Result<bool> {
+    Ok(sqlx::query(
+        "UPDATE user_weekwalk_maps
+         SET is_show_finished = FALSE
+         WHERE user_id = ? AND map_id = ?",
+    )
+    .bind(user_id)
+    .bind(map_id)
+    .execute(pool)
+    .await?
+    .rows_affected()
+        == 1)
+}
+
 pub async fn mark_pop_deep_settle(pool: &SqlitePool, user_id: i64) -> Result<()> {
     sqlx::query(
         "UPDATE user_weekwalk_info
