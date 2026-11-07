@@ -167,6 +167,15 @@ impl ActivityManager {
         act128_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn change_act128_mode(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        open: bool,
+    ) -> Result<sonettobuf::Act128ChangeActModeReply, AppError> {
+        change_act_mode(db, self.player_id, activity_id, open).await
+    }
+
     pub async fn act116_info(
         &self,
         db: &SqlitePool,

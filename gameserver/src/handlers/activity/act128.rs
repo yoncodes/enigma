@@ -6,9 +6,27 @@ use crate::{
 };
 use prost::Message;
 use sonettobuf::{
-    Act128GetExpRequest, Act128GetMilestoneBonusRequest, Act128GetTotalRewardsRequest, CmdId,
-    GetGalleryInfosRequest,
+    Act128ChangeActModeRequest, Act128GetExpRequest, Act128GetMilestoneBonusRequest,
+    Act128GetTotalRewardsRequest, CmdId, GetGalleryInfosRequest,
 };
+
+pub async fn on_act128_change_act_mode(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = Act128ChangeActModeRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .activity
+        .change_act128_mode(
+            ctx.state.db,
+            msg.activity_id.ok_or(AppError::InvalidRequest)?,
+            msg.is_activity_mode_open.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.send_reply(CmdId::Act128ChangeActModeCmd, reply, 0, req.up_tag)
+        .await
+}
 
 pub async fn on_get_gallery_infos(
     ctx: &mut ConnectionContext,

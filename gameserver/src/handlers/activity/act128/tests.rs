@@ -4,9 +4,80 @@ use crate::{
     player::{Player, PlayerState},
 };
 use database::db::game::activity_state::{self, ActivityStateKind, ActivityStateSet};
-use sonettobuf::{Act128GetExpReply, CurrencyChangePush, GetGalleryInfosReply};
+use sonettobuf::{
+    Act128ChangeActModeReply, Act128ChangeActModeRequest, Act128GetExpReply, CurrencyChangePush,
+    Get128InfosReply, Get128InfosRequest, GetGalleryInfosReply,
+};
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
+
+#[tokio::test]
+async fn change_mode_routes_and_persists_in_activity_info() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at) VALUES (81, 'act128-mode', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let activity_id = config::configs::get().latest_open_activity_id(128).unwrap();
+    let state = Box::leak(Box::new(AppState::new(pool, config::configs::get())));
+    let (outbound, mut packets) = mpsc::channel(4);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(81, PlayerState::new(81, 0)));
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Act128ChangeActModeCmd as i16,
+            up_tag: 41,
+            data: Act128ChangeActModeRequest {
+                activity_id: Some(activity_id),
+                is_activity_mode_open: Some(true),
+            }
+            .encode_to_vec(),
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let CommandPacket::Reply { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("mode request did not reach its handler");
+    };
+    assert_eq!(cmd_id, CmdId::Act128ChangeActModeCmd);
+    let reply = Act128ChangeActModeReply::decode(&*body).unwrap();
+    assert_eq!(reply.activity_id, Some(activity_id));
+    assert_eq!(reply.is_activity_mode_open, Some(true));
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 2,
+            cmd_id: CmdId::Get128InfosCmd as i16,
+            up_tag: 42,
+            data: Get128InfosRequest {
+                activity_id: Some(activity_id),
+            }
+            .encode_to_vec(),
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let CommandPacket::Reply { body, .. } = packets.try_recv().unwrap() else {
+        panic!("activity info request did not reach its handler");
+    };
+    assert_eq!(
+        Get128InfosReply::decode(&*body)
+            .unwrap()
+            .is_activity_mode_open,
+        Some(true)
+    );
+}
 
 #[tokio::test]
 async fn gallery_commands_route_and_send_currency_before_the_claim_reply() {

@@ -6,7 +6,8 @@ use database::db::game::{
 };
 use database::models::game::tasks::UserTask;
 use sonettobuf::{
-    Act128BossDetail, Act128GetMilestoneBonusReply, Act128GetTotalRewardsReply, Get128InfosReply,
+    Act128BossDetail, Act128ChangeActModeReply, Act128GetMilestoneBonusReply,
+    Act128GetTotalRewardsReply, Get128InfosReply,
 };
 use sqlx::{Sqlite, SqlitePool, Transaction};
 
@@ -36,6 +37,13 @@ pub async fn act128_info(
         player_id,
         activity_id,
         ActivityStateKind::Act128Milestone,
+    )
+    .await?;
+    let mode = activity_state::get(
+        db,
+        player_id,
+        activity_id,
+        ActivityStateKind::Act128ModeOpen,
     )
     .await?;
     let (player_exp, player_level) = rank_state(db, player_id).await?;
@@ -79,8 +87,38 @@ pub async fn act128_info(
                 .map(|(state, _, _)| *state)
                 .unwrap_or_default(),
         ),
-        is_activity_mode_open: Some(false),
+        is_activity_mode_open: Some(
+            mode.get(&0)
+                .map(|(state, _, _)| *state != 0)
+                .unwrap_or_default(),
+        ),
         max_total_latest_point: Some(0),
+    })
+}
+
+pub async fn change_act_mode(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: i32,
+    open: bool,
+) -> Result<Act128ChangeActModeReply, AppError> {
+    ensure_act128_activity(activity_id)?;
+    activity_state::set(
+        db,
+        player_id,
+        activity_id,
+        ActivityStateSet {
+            kind: ActivityStateKind::Act128ModeOpen,
+            entry_id: 0,
+            state: i32::from(open),
+            progress: 0,
+            ext: "",
+        },
+    )
+    .await?;
+    Ok(Act128ChangeActModeReply {
+        activity_id: Some(activity_id),
+        is_activity_mode_open: Some(open),
     })
 }
 
