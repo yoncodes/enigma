@@ -5,8 +5,9 @@ use crate::{
 use prost::Message;
 use sonettobuf::{
     ChangeHeroGroupSelectRequest, CheckHeroGroupNameRequest, CmdId, DeleteHeroGroupRequest,
-    GetHeroGroupSnapshotListRequest, SetHeroGroupEquipRequest, SetHeroGroupSnapshotRequest,
-    UpdateHeroGroupNameRequest, UpdateHeroGroupRequest, UpdateHeroGroupSortRequest,
+    GetHeroGroupSnapshotListRequest, SetHeroGroupEquipRequest, SetHeroGroupSnapshotBatchRequest,
+    SetHeroGroupSnapshotRequest, UpdateHeroGroupNameRequest, UpdateHeroGroupRequest,
+    UpdateHeroGroupSortRequest,
 };
 
 pub async fn on_check_hero_group_name(
@@ -146,6 +147,24 @@ pub async fn on_set_hero_group_snapshot(
         .await?;
 
     ctx.send_reply(CmdId::SetHeroGroupSnapshotCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_set_hero_group_snapshot_batch(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let heroes = ctx.player()?.hero;
+    let msg = SetHeroGroupSnapshotBatchRequest::decode(&req.data[..])?;
+    let reply = heroes
+        .set_group_snapshot_batch(
+            ctx.state.db,
+            msg.snapshot_id.ok_or(AppError::InvalidRequest)?,
+            msg.fight_groups,
+        )
+        .await?;
+
+    ctx.send_reply(CmdId::SetHeroGroupSnapshotBatchCmd, reply, 0, req.up_tag)
         .await
 }
 

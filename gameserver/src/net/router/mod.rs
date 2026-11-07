@@ -111,6 +111,7 @@ async fn dispatch_registered_command(
         CmdId::GetHeroGroupSnapshotListCmd => hero_group::on_get_hero_group_snapshot_list,
         CmdId::SetHeroGroupEquipCmd => hero_group::on_set_hero_group_equip,
         CmdId::SetHeroGroupSnapshotCmd => hero_group::on_set_hero_group_snapshot,
+        CmdId::SetHeroGroupSnapshotBatchCmd => hero_group::on_set_hero_group_snapshot_batch,
         CmdId::ChangeHeroGroupSelectCmd => hero_group::on_change_hero_group_select,
         CmdId::CheckHeroGroupNameCmd => hero_group::on_check_hero_group_name,
         CmdId::UpdateHeroGroupNameCmd => hero_group::on_update_hero_group_name,
