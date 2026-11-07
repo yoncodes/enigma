@@ -261,6 +261,8 @@ async fn dispatch_registered_command(
         CmdId::Get126InfosCmd => activity::on_get_126_infos,
         CmdId::Get128InfosCmd => activity::on_get_128_infos,
         CmdId::Act128ChangeActModeCmd => activity::on_act128_change_act_mode,
+        CmdId::SetAct128TeamCmd => activity::on_set_act128_team,
+        CmdId::ResetAct128TeamCmd => activity::on_reset_act128_team,
         CmdId::GetGalleryInfosCmd => activity::on_get_gallery_infos,
         CmdId::Act128GetExpCmd => activity::on_act128_get_exp,
         CmdId::Act128GetTotalRewardsCmd => activity::on_act128_get_total_rewards,

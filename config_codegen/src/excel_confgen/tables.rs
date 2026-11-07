@@ -225,6 +225,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "activity128_countboss",
     "activity128_const",
     "activity128_episode",
+    "activity128_expand_bond",
     "activity128_gallery",
     "activity128_level",
     "activity128_rewards",

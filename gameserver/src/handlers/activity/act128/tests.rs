@@ -4,9 +4,11 @@ use crate::{
     player::{Player, PlayerState},
 };
 use database::db::game::activity_state::{self, ActivityStateKind, ActivityStateSet};
+use database::models::game::heros::UserHeroModel;
 use sonettobuf::{
-    Act128ChangeActModeReply, Act128ChangeActModeRequest, Act128GetExpReply, CurrencyChangePush,
-    Get128InfosReply, Get128InfosRequest, GetGalleryInfosReply,
+    Act128ActModeHeroSlot, Act128ChangeActModeReply, Act128ChangeActModeRequest, Act128GetExpReply,
+    CurrencyChangePush, Get128InfosReply, Get128InfosRequest, GetGalleryInfosReply,
+    ResetAct128TeamReply, ResetAct128TeamRequest, SetAct128TeamReply, SetAct128TeamRequest,
 };
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
@@ -77,6 +79,180 @@ async fn change_mode_routes_and_persists_in_activity_info() {
             .is_activity_mode_open,
         Some(true)
     );
+}
+
+#[tokio::test]
+async fn mode_team_commands_route_persist_and_reset() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (82, 'act128-team', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let tables = config::configs::get();
+    let hero = tables.character.get(3146).unwrap();
+    let boost = tables.character.get(3134).unwrap();
+    let bond = tables
+        .activity128_expand_bond
+        .iter()
+        .find(|row| {
+            row.tag_type == 2
+                && row
+                    .tag2
+                    .split('|')
+                    .any(|tag| boost.battle_tag.split('#').any(|hero_tag| hero_tag == tag))
+        })
+        .unwrap();
+    let boss_id = tables
+        .activity128_episode
+        .iter()
+        .find(|row| row.activity_id == bond.activity_id)
+        .unwrap()
+        .stage;
+    let hero_uid = UserHeroModel::new(82, pool.clone())
+        .create_hero(hero.id)
+        .await
+        .unwrap();
+    let boost_uid = UserHeroModel::new(82, pool.clone())
+        .create_hero(boost.id)
+        .await
+        .unwrap();
+    let mut front_hero_slots = vec![Act128ActModeHeroSlot::default(); 4];
+    front_hero_slots[0].uid = Some(hero_uid);
+    front_hero_slots[0].is_friend = Some(false);
+    front_hero_slots[0].friend_user_id = Some(0);
+    front_hero_slots[1].uid = Some(boost_uid);
+    front_hero_slots[1].is_friend = Some(false);
+    front_hero_slots[1].friend_user_id = Some(0);
+    let state = Box::leak(Box::new(AppState::new(pool, tables)));
+    let (outbound, mut packets) = mpsc::channel(8);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(82, PlayerState::new(82, 0)));
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::SetAct128TeamCmd as i16,
+            up_tag: 43,
+            data: SetAct128TeamRequest {
+                activity_id: Some(bond.activity_id),
+                boss_id: Some(boss_id),
+                front_hero_slots,
+                back_hero_slots: vec![Act128ActModeHeroSlot::default(); 4],
+                add_bond_group_id: Some(bond.group_id),
+            }
+            .encode_to_vec(),
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let CommandPacket::Reply { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("team request did not reach its handler");
+    };
+    assert_eq!(cmd_id, CmdId::SetAct128TeamCmd);
+    let set = SetAct128TeamReply::decode(&*body).unwrap();
+    let team = set.act_mode_team.unwrap();
+    assert_eq!(team.front_hero_infos.len(), 4);
+    assert_eq!(team.front_hero_infos[0].uid, Some(hero_uid));
+    assert_eq!(team.add_bond_group_id, Some(bond.group_id));
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 2,
+            cmd_id: CmdId::Get128InfosCmd as i16,
+            up_tag: 44,
+            data: Get128InfosRequest {
+                activity_id: Some(bond.activity_id),
+            }
+            .encode_to_vec(),
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let CommandPacket::Reply { body, .. } = packets.try_recv().unwrap() else {
+        panic!("activity info request did not reach its handler");
+    };
+    let info = Get128InfosReply::decode(&*body).unwrap();
+    let stored = info
+        .boss_detail
+        .iter()
+        .find(|detail| detail.boss_id == Some(boss_id))
+        .unwrap()
+        .act_mode_team
+        .as_ref()
+        .unwrap();
+    assert_eq!(stored.front_hero_infos[0].uid, Some(hero_uid));
+
+    sqlx::query(
+        "UPDATE user_activity_state SET state = 123
+         WHERE user_id = 82 AND activity_id = ? AND kind = ? AND entry_id = ?",
+    )
+    .bind(bond.activity_id)
+    .bind(ActivityStateKind::Act128ModeTeam.id())
+    .bind(boss_id)
+    .execute(ctx.state.db)
+    .await
+    .unwrap();
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 3,
+            cmd_id: CmdId::ResetAct128TeamCmd as i16,
+            up_tag: 45,
+            data: ResetAct128TeamRequest {
+                activity_id: Some(bond.activity_id),
+                boss_id: Some(boss_id),
+            }
+            .encode_to_vec(),
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let CommandPacket::Reply { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("reset request did not reach its handler");
+    };
+    assert_eq!(cmd_id, CmdId::ResetAct128TeamCmd);
+    let reset = ResetAct128TeamReply::decode(&*body).unwrap();
+    assert_eq!(reset.latest_point, Some(0));
+    assert_eq!(reset.act_mode_team, Some(Default::default()));
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 4,
+            cmd_id: CmdId::Get128InfosCmd as i16,
+            up_tag: 46,
+            data: Get128InfosRequest {
+                activity_id: Some(bond.activity_id),
+            }
+            .encode_to_vec(),
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let CommandPacket::Reply { body, .. } = packets.try_recv().unwrap() else {
+        panic!("activity info request did not reach its handler");
+    };
+    let info = Get128InfosReply::decode(&*body).unwrap();
+    let reset_detail = info
+        .boss_detail
+        .iter()
+        .find(|detail| detail.boss_id == Some(boss_id))
+        .unwrap();
+    assert_eq!(reset_detail.latest_point, Some(0));
+    assert_eq!(reset_detail.act_mode_team, Some(Default::default()));
 }
 
 #[tokio::test]

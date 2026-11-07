@@ -34,6 +34,7 @@ pub mod activity125_task;
 pub mod activity128_const;
 pub mod activity128_countboss;
 pub mod activity128_episode;
+pub mod activity128_expand_bond;
 pub mod activity128_gallery;
 pub mod activity128_level;
 pub mod activity128_rewards;
@@ -481,6 +482,7 @@ pub struct GameDB {
     pub activity128_const: activity128_const::Activity128ConstTable,
     pub activity128_countboss: activity128_countboss::Activity128CountbossTable,
     pub activity128_episode: activity128_episode::Activity128EpisodeTable,
+    pub activity128_expand_bond: activity128_expand_bond::Activity128ExpandBondTable,
     pub activity128_gallery: activity128_gallery::Activity128GalleryTable,
     pub activity128_level: activity128_level::Activity128LevelTable,
     pub activity128_rewards: activity128_rewards::Activity128RewardsTable,
@@ -997,6 +999,9 @@ impl GameDB {
         let activity128_episode = activity128_episode::Activity128EpisodeTable::load(
             &format!("{}/activity128_episode.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity128_episode.json: {}", e))?;
+        let activity128_expand_bond = activity128_expand_bond::Activity128ExpandBondTable::load(
+            &format!("{}/activity128_expand_bond.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity128_expand_bond.json: {}", e))?;
         let activity128_gallery = activity128_gallery::Activity128GalleryTable::load(
             &format!("{}/activity128_gallery.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity128_gallery.json: {}", e))?;
@@ -2261,6 +2266,7 @@ impl GameDB {
             activity128_const,
             activity128_countboss,
             activity128_episode,
+            activity128_expand_bond,
             activity128_gallery,
             activity128_level,
             activity128_rewards,

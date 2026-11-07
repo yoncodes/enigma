@@ -176,6 +176,36 @@ impl ActivityManager {
         change_act_mode(db, self.player_id, activity_id, open).await
     }
 
+    pub async fn set_act128_team(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        boss_id: i32,
+        front: Vec<sonettobuf::Act128ActModeHeroSlot>,
+        back: Vec<sonettobuf::Act128ActModeHeroSlot>,
+        add_bond_group_id: i32,
+    ) -> Result<sonettobuf::SetAct128TeamReply, AppError> {
+        set_act128_team(
+            db,
+            self.player_id,
+            activity_id,
+            boss_id,
+            front,
+            back,
+            add_bond_group_id,
+        )
+        .await
+    }
+
+    pub async fn reset_act128_team(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        boss_id: i32,
+    ) -> Result<sonettobuf::ResetAct128TeamReply, AppError> {
+        reset_act128_team(db, self.player_id, activity_id, boss_id).await
+    }
+
     pub async fn act116_info(
         &self,
         db: &SqlitePool,

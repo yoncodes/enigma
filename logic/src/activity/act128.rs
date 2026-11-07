@@ -6,8 +6,9 @@ use database::db::game::{
 };
 use database::models::game::tasks::UserTask;
 use sonettobuf::{
-    Act128BossDetail, Act128ChangeActModeReply, Act128GetMilestoneBonusReply,
-    Act128GetTotalRewardsReply, Get128InfosReply,
+    Act128ActModeHeroSlot, Act128BossDetail, Act128ChangeActModeReply,
+    Act128GetMilestoneBonusReply, Act128GetTotalRewardsReply, Get128InfosReply,
+    ResetAct128TeamReply, SetAct128TeamReply,
 };
 use sqlx::{Sqlite, SqlitePool, Transaction};
 
@@ -15,6 +16,7 @@ pub type Act128MilestoneClaim = reward::RewardedReply<Act128GetMilestoneBonusRep
 pub type Act128TotalRewardsClaim = reward::RewardedReply<Act128GetTotalRewardsReply>;
 
 mod gallery;
+mod team;
 pub use gallery::{Act128ExpClaim, get_act128_exp, get_gallery_infos};
 
 pub async fn act128_info(
@@ -46,6 +48,13 @@ pub async fn act128_info(
         ActivityStateKind::Act128ModeOpen,
     )
     .await?;
+    let teams = activity_state::get(
+        db,
+        player_id,
+        activity_id,
+        ActivityStateKind::Act128ModeTeam,
+    )
+    .await?;
     let (player_exp, player_level) = rank_state(db, player_id).await?;
     let mut boss_ids = tables
         .activity128_episode
@@ -56,25 +65,29 @@ pub async fn act128_info(
     boss_ids.sort_unstable();
     boss_ids.dedup();
 
-    let boss_detail = boss_ids
-        .into_iter()
-        .map(|boss_id| {
-            let (total, highest, ext) = saved.get(&boss_id).cloned().unwrap_or_default();
-            Ok(Act128BossDetail {
-                boss_id: Some(boss_id),
-                total_point: Some(total),
-                has_get_bonus_ids: claimed_reward_ids(&ext)?,
-                highest_point: Some(highest),
-                double_num: Some(0),
-                layer4_total_point: Some(0),
-                layer4_highest_point: Some(0),
-                sp_highest_point: Some(0),
-                sp_item_type_ids: Vec::new(),
-                latest_point: Some(0),
-                act_mode_team: Some(Default::default()),
-            })
-        })
-        .collect::<Result<Vec<_>, AppError>>()?;
+    let mut boss_detail = Vec::with_capacity(boss_ids.len());
+    for boss_id in boss_ids {
+        let (total, highest, ext) = saved.get(&boss_id).cloned().unwrap_or_default();
+        let (latest_point, team_ext) = teams
+            .get(&boss_id)
+            .map(|(latest, _, ext)| (*latest, ext.as_str()))
+            .unwrap_or((0, ""));
+        boss_detail.push(Act128BossDetail {
+            boss_id: Some(boss_id),
+            total_point: Some(total),
+            has_get_bonus_ids: claimed_reward_ids(&ext)?,
+            highest_point: Some(highest),
+            double_num: Some(0),
+            layer4_total_point: Some(0),
+            layer4_highest_point: Some(0),
+            sp_highest_point: Some(0),
+            sp_item_type_ids: Vec::new(),
+            latest_point: Some(latest_point),
+            act_mode_team: Some(
+                team::from_state(db, player_id, activity_id, boss_id, team_ext).await?,
+            ),
+        });
+    }
 
     Ok(Get128InfosReply {
         activity_id: Some(activity_id),
@@ -94,6 +107,36 @@ pub async fn act128_info(
         ),
         max_total_latest_point: Some(0),
     })
+}
+
+pub async fn set_act128_team(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: i32,
+    boss_id: i32,
+    front: Vec<Act128ActModeHeroSlot>,
+    back: Vec<Act128ActModeHeroSlot>,
+    add_bond_group_id: i32,
+) -> Result<SetAct128TeamReply, AppError> {
+    team::set(
+        db,
+        player_id,
+        activity_id,
+        boss_id,
+        front,
+        back,
+        add_bond_group_id,
+    )
+    .await
+}
+
+pub async fn reset_act128_team(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: i32,
+    boss_id: i32,
+) -> Result<ResetAct128TeamReply, AppError> {
+    team::reset(db, player_id, activity_id, boss_id).await
 }
 
 pub async fn change_act_mode(

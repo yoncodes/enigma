@@ -85,7 +85,7 @@ use act125::{act125_infos, finish_act125_episode};
 pub use act128::settle_act128_score_in_transaction;
 use act128::{
     act128_info, change_act_mode, get_act128_exp, get_act128_milestone_bonus,
-    get_act128_total_rewards, get_gallery_infos,
+    get_act128_total_rewards, get_gallery_infos, reset_act128_team, set_act128_team,
 };
 use act136::{act136_info, act136_select};
 use act146::{act146_episode_bonus, act146_infos, finish_act146_episode};

@@ -1,4 +1,7 @@
+mod bonds;
 mod gallery;
+
+pub use bonds::{Activity128BondGroup, Activity128BondHero};
 
 use crate::{
     GameDB, activity104_episode::Activity104Episode, activity104_retail::Activity104Retail,
