@@ -26,6 +26,16 @@ path = "./db/sonetto.db"
 [summon]
 permanent_pool_ids = [2]
 
+[weekwalk_v2]
+schedule = [
+  { time_id = 21, start_time = 1793527200000, end_time = 1796119200000, pop_rule = true, layers = [
+    { layer_id = 1069, front_element_id = 400001, rear_element_id = 400002 },
+    { layer_id = 1070, front_element_id = 400006, rear_element_id = 400007 },
+    { layer_id = 1071, front_element_id = 400011, rear_element_id = 400012 },
+    { layer_id = 1072, front_element_id = 400016, rear_element_id = 400017 },
+  ] },
+]
+
 [activity]
 hero_story_schedule = [
   { story_id = 1, start_time = 1711965600, end_time = 1713175199, start_time_resident = 1713434400, end_time_resident = 2145934800 },

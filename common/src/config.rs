@@ -13,12 +13,46 @@ pub struct ServerConfig {
     pub paths: PathConfig,
     pub database: DatabaseConfig,
     pub summon: SummonConfig,
+    #[serde(default = "default_weekwalk_v2_config")]
+    pub weekwalk_v2: WeekwalkV2Config,
     pub activity: ActivityConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummonConfig {
     pub permanent_pool_ids: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeekwalkV2Config {
+    pub schedule: Vec<WeekwalkV2Schedule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeekwalkV2Schedule {
+    pub time_id: i32,
+    pub start_time: i64,
+    pub end_time: i64,
+    pub pop_rule: bool,
+    pub layers: Vec<WeekwalkV2Layer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeekwalkV2Layer {
+    pub layer_id: i32,
+    pub front_element_id: i32,
+    pub rear_element_id: i32,
+}
+
+fn default_weekwalk_v2_config() -> WeekwalkV2Config {
+    #[derive(Deserialize)]
+    struct Template {
+        weekwalk_v2: WeekwalkV2Config,
+    }
+
+    toml::from_str::<Template>(CONFIG_TEMPLATE)
+        .expect("embedded Weekwalk v2 schedule must be valid")
+        .weekwalk_v2
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +200,35 @@ impl ServerConfig {
         }
 
         if self
+            .weekwalk_v2
+            .schedule
+            .windows(2)
+            .any(|rows| rows[0].time_id >= rows[1].time_id)
+        {
+            anyhow::bail!("Weekwalk v2 schedule IDs must be sorted and unique");
+        }
+        for row in &self.weekwalk_v2.schedule {
+            if row.time_id <= 0 || row.start_time >= row.end_time || row.layers.is_empty() {
+                anyhow::bail!("invalid Weekwalk v2 schedule row {}", row.time_id);
+            }
+            let layer_ids = row
+                .layers
+                .iter()
+                .map(|layer| layer.layer_id)
+                .collect::<std::collections::HashSet<_>>();
+            if layer_ids.len() != row.layers.len()
+                || row.layers.iter().any(|layer| {
+                    layer.layer_id <= 0
+                        || layer.front_element_id <= 0
+                        || layer.rear_element_id <= 0
+                        || layer.front_element_id == layer.rear_element_id
+                })
+            {
+                anyhow::bail!("invalid Weekwalk v2 layer mapping {}", row.time_id);
+            }
+        }
+
+        if self
             .activity
             .schedule
             .windows(2)
@@ -224,10 +287,40 @@ mod tests {
         assert_eq!(cfg.muip.port, 21100);
         assert_eq!(cfg.muip_gm.port, 21101);
         assert_eq!(cfg.summon.permanent_pool_ids, [2]);
+        assert_eq!(cfg.weekwalk_v2.schedule[0].time_id, 21);
+        assert_eq!(cfg.weekwalk_v2.schedule[0].layers[0].layer_id, 1069);
         assert!(cfg.activity.schedule.iter().any(|row| row.id == 13930));
         assert_eq!(cfg.activity.hero_story_schedule.len(), 33);
 
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_weekwalk_v2_schedule_uses_embedded_default() {
+        let mut template: toml::Value = toml::from_str(CONFIG_TEMPLATE).unwrap();
+        template.as_table_mut().unwrap().remove("weekwalk_v2");
+
+        let config: ServerConfig = template.try_into().unwrap();
+        assert_eq!(config.weekwalk_v2.schedule[0].time_id, 21);
+    }
+
+    #[test]
+    fn invalid_weekwalk_v2_schedule_is_rejected() {
+        let mut duplicate = ServerConfig::template();
+        duplicate.paths.excel_data = std::env::temp_dir();
+        duplicate.database.path = std::env::temp_dir().join("enigma-config-test.db");
+        duplicate
+            .weekwalk_v2
+            .schedule
+            .push(duplicate.weekwalk_v2.schedule[0].clone());
+        assert!(duplicate.validate_paths().is_err());
+
+        let mut invalid_layer = ServerConfig::template();
+        invalid_layer.paths.excel_data = std::env::temp_dir();
+        invalid_layer.database.path = std::env::temp_dir().join("enigma-config-test.db");
+        invalid_layer.weekwalk_v2.schedule[0].layers[0].rear_element_id =
+            invalid_layer.weekwalk_v2.schedule[0].layers[0].front_element_id;
+        assert!(invalid_layer.validate_paths().is_err());
     }
 
     #[test]
