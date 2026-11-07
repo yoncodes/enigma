@@ -79,6 +79,8 @@ pub(super) async fn turnback_info(
             buy_double_bonus: Some(state.buy_double_bonus),
             drop_infos,
             get_daily_bonus: Some(state.get_daily_bonus),
+            common_drop_infos: Vec::new(),
+            resource_return: None,
         }),
     })
 }

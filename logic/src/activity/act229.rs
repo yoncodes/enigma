@@ -47,6 +47,9 @@ pub async fn act229_info(
                 round: Some(state.map(|state| state.3).unwrap_or_default()),
                 min_round: Some(state.map(|state| state.4).unwrap_or_default()),
                 heros: heroes,
+                hero_group_sub_id: None,
+                skill_ids: Vec::new(),
+                last_update_team_time: None,
             })
         })
         .collect::<Result<Vec<_>, AppError>>()?;

@@ -61,7 +61,9 @@ pub async fn act128_info(
                 layer4_total_point: Some(0),
                 layer4_highest_point: Some(0),
                 sp_highest_point: Some(0),
-                ..Default::default()
+                sp_item_type_ids: Vec::new(),
+                latest_point: Some(0),
+                act_mode_team: Some(Default::default()),
             })
         })
         .collect::<Result<Vec<_>, AppError>>()?;
@@ -77,6 +79,8 @@ pub async fn act128_info(
                 .map(|(state, _, _)| *state)
                 .unwrap_or_default(),
         ),
+        is_activity_mode_open: Some(false),
+        max_total_latest_point: Some(0),
     })
 }
 
@@ -398,6 +402,10 @@ mod tests {
             .unwrap();
         assert_eq!(boss.total_point, Some(4_580_748));
         assert_eq!(boss.highest_point, Some(4_580_648));
+        assert_eq!(boss.latest_point, Some(0));
+        assert_eq!(boss.act_mode_team, Some(Default::default()));
+        assert_eq!(reply.is_activity_mode_open, Some(false));
+        assert_eq!(reply.max_total_latest_point, Some(0));
     }
 
     #[tokio::test]
