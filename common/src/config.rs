@@ -224,8 +224,8 @@ mod tests {
         assert_eq!(cfg.muip.port, 21100);
         assert_eq!(cfg.muip_gm.port, 21101);
         assert_eq!(cfg.summon.permanent_pool_ids, [2]);
-        assert!(cfg.activity.schedule.iter().any(|row| row.id == 13801));
-        assert_eq!(cfg.activity.hero_story_schedule.len(), 31);
+        assert!(cfg.activity.schedule.iter().any(|row| row.id == 13930));
+        assert_eq!(cfg.activity.hero_story_schedule.len(), 33);
 
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -234,7 +234,7 @@ mod tests {
     fn missing_hero_story_schedule_uses_embedded_default() {
         let activity: ActivityConfig = toml::from_str("schedule = []").unwrap();
 
-        assert_eq!(activity.hero_story_schedule.len(), 31);
+        assert_eq!(activity.hero_story_schedule.len(), 33);
     }
 
     #[test]
