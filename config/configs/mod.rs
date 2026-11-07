@@ -294,6 +294,8 @@ pub mod manufacture_building_level;
 pub mod manufacture_building_trade_level;
 pub mod manufacture_const;
 pub mod manufacture_item;
+pub mod milestone;
+pub mod milestone_bonus;
 pub mod monster;
 pub mod monster_group;
 pub mod monster_instance;
@@ -444,6 +446,11 @@ pub mod weekwalk_dialog;
 pub mod weekwalk_element;
 pub mod weekwalk_scene;
 pub mod weekwalk_type;
+pub mod weekwalk_ver2;
+pub mod weekwalk_ver2_cup;
+pub mod weekwalk_ver2_element;
+pub mod weekwalk_ver2_skill;
+pub mod weekwalk_ver2_time;
 
 use std::sync::{Mutex, OnceLock};
 
@@ -742,6 +749,8 @@ pub struct GameDB {
     pub manufacture_building_trade_level: manufacture_building_trade_level::ManufactureBuildingTradeLevelTable,
     pub manufacture_const: manufacture_const::ManufactureConstTable,
     pub manufacture_item: manufacture_item::ManufactureItemTable,
+    pub milestone: milestone::MilestoneTable,
+    pub milestone_bonus: milestone_bonus::MilestoneBonusTable,
     pub monster: monster::MonsterTable,
     pub monster_group: monster_group::MonsterGroupTable,
     pub monster_instance: monster_instance::MonsterInstanceTable,
@@ -892,6 +901,11 @@ pub struct GameDB {
     pub weekwalk_element: weekwalk_element::WeekwalkElementTable,
     pub weekwalk_scene: weekwalk_scene::WeekwalkSceneTable,
     pub weekwalk_type: weekwalk_type::WeekwalkTypeTable,
+    pub weekwalk_ver2: weekwalk_ver2::WeekwalkVer2Table,
+    pub weekwalk_ver2_cup: weekwalk_ver2_cup::WeekwalkVer2CupTable,
+    pub weekwalk_ver2_element: weekwalk_ver2_element::WeekwalkVer2ElementTable,
+    pub weekwalk_ver2_skill: weekwalk_ver2_skill::WeekwalkVer2SkillTable,
+    pub weekwalk_ver2_time: weekwalk_ver2_time::WeekwalkVer2TimeTable,
     pub explore_map: crate::exploration::MapTable,
 }
 
@@ -1779,6 +1793,12 @@ impl GameDB {
         let manufacture_item = manufacture_item::ManufactureItemTable::load(
             &format!("{}/manufacture_item.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load manufacture_item.json: {}", e))?;
+        let milestone = milestone::MilestoneTable::load(
+            &format!("{}/milestone.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load milestone.json: {}", e))?;
+        let milestone_bonus = milestone_bonus::MilestoneBonusTable::load(
+            &format!("{}/milestone_bonus.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load milestone_bonus.json: {}", e))?;
         let monster = monster::MonsterTable::load(
             &format!("{}/monster.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load monster.json: {}", e))?;
@@ -2229,6 +2249,21 @@ impl GameDB {
         let weekwalk_type = weekwalk_type::WeekwalkTypeTable::load(
             &format!("{}/weekwalk_type.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_type.json: {}", e))?;
+        let weekwalk_ver2 = weekwalk_ver2::WeekwalkVer2Table::load(
+            &format!("{}/weekwalk_ver2.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2.json: {}", e))?;
+        let weekwalk_ver2_cup = weekwalk_ver2_cup::WeekwalkVer2CupTable::load(
+            &format!("{}/weekwalk_ver2_cup.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2_cup.json: {}", e))?;
+        let weekwalk_ver2_element = weekwalk_ver2_element::WeekwalkVer2ElementTable::load(
+            &format!("{}/weekwalk_ver2_element.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2_element.json: {}", e))?;
+        let weekwalk_ver2_skill = weekwalk_ver2_skill::WeekwalkVer2SkillTable::load(
+            &format!("{}/weekwalk_ver2_skill.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2_skill.json: {}", e))?;
+        let weekwalk_ver2_time = weekwalk_ver2_time::WeekwalkVer2TimeTable::load(
+            &format!("{}/weekwalk_ver2_time.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2_time.json: {}", e))?;
 
         let explore_map = crate::exploration::MapTable::load(data_dir, &explore_scene)?;
         Ok(Self {
@@ -2526,6 +2561,8 @@ impl GameDB {
             manufacture_building_trade_level,
             manufacture_const,
             manufacture_item,
+            milestone,
+            milestone_bonus,
             monster,
             monster_group,
             monster_instance,
@@ -2676,6 +2713,11 @@ impl GameDB {
             weekwalk_element,
             weekwalk_scene,
             weekwalk_type,
+            weekwalk_ver2,
+            weekwalk_ver2_cup,
+            weekwalk_ver2_element,
+            weekwalk_ver2_skill,
+            weekwalk_ver2_time,
             explore_map,
         })
     }
