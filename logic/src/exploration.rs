@@ -4,11 +4,13 @@ use sonettobuf::{GetExploreSimpleInfoReply, WeekwalkVer2GetInfoReply};
 use sqlx::SqlitePool;
 
 mod entry;
+mod interaction;
 mod items;
 mod movement;
 mod snapshot;
 mod weekwalk_v2;
 
+pub use interaction::{InteractAction, InteractOutcome};
 pub use items::UseItemOutcome;
 pub use movement::{MoveOutcome, RoleMove};
 
@@ -82,6 +84,15 @@ impl ExplorationManager {
         interact_id: Option<i32>,
     ) -> Result<UseItemOutcome, AppError> {
         items::use_item(db, self.player_id, uid, posx, posy, interact_id).await
+    }
+
+    pub async fn interact(
+        self,
+        db: &SqlitePool,
+        id: i32,
+        params: Option<String>,
+    ) -> Result<InteractOutcome, AppError> {
+        interaction::interact(db, self.player_id, id, params).await
     }
 }
 

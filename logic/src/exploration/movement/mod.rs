@@ -81,23 +81,10 @@ pub(super) async fn move_to(
         steps.push(RoleMove { x, y, direction });
     }
 
-    let mut visited = saved
-        .move_nodes
-        .split('|')
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    let mut known = visited.iter().cloned().collect::<BTreeSet<_>>();
-    for step in &steps {
-        let key = format!("{}#{}", step.x, step.y);
-        if known.insert(key.clone()) {
-            visited.push(key);
-        }
-    }
+    record_visited(&mut saved, steps.iter().map(|step| (step.x, step.y)));
     saved.posx = posx;
     saved.posy = posy;
     saved.dir = direction;
-    saved.move_nodes = visited.join("|");
     if !state::update(&mut tx, player_id, &saved).await? {
         return Err(AppError::InvalidRequest);
     }
@@ -105,7 +92,7 @@ pub(super) async fn move_to(
     Ok(MoveOutcome { steps })
 }
 
-fn blocked_nodes(
+pub(super) fn blocked_nodes(
     map: &config::exploration::Map,
     saved: &database::models::game::explore::state::MapState,
 ) -> Result<BTreeSet<(i32, i32)>, AppError> {
@@ -130,4 +117,24 @@ fn blocked_nodes(
         }
     }
     Ok(blocked)
+}
+
+pub(super) fn record_visited(
+    saved: &mut database::models::game::explore::state::MapState,
+    positions: impl IntoIterator<Item = (i32, i32)>,
+) {
+    let mut visited = saved
+        .move_nodes
+        .split('|')
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let mut known = visited.iter().cloned().collect::<BTreeSet<_>>();
+    for (x, y) in positions {
+        let key = format!("{x}#{y}");
+        if known.insert(key.clone()) {
+            visited.push(key);
+        }
+    }
+    saved.move_nodes = visited.join("|");
 }

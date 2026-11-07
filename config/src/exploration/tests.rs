@@ -37,4 +37,12 @@ fn map_data_retains_client_unit_fields() {
         (0, [1, 2], 1000, 3, 90)
     );
     assert!(second.areas.values().any(|area| area.can_reset));
+
+    let teleport = map
+        .areas
+        .values()
+        .flat_map(|area| &area.units)
+        .find(|unit| unit.id == 440)
+        .unwrap();
+    assert_eq!(teleport.trigger_dir, 4);
 }

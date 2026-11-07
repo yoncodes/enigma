@@ -27,6 +27,7 @@ pub struct Unit {
     pub area_id: i32,
     pub interact: i32,
     pub unit_dir: i32,
+    pub trigger_dir: i32,
     pub offset_size: [i32; 4],
     pub default_walkable: bool,
     pub trigger_by_click: bool,

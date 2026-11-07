@@ -13,7 +13,7 @@ pub struct UseItemOutcome {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ItemEffect {
+pub(super) enum ItemEffect {
     Active,
 }
 

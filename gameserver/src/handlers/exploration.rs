@@ -5,12 +5,72 @@ use crate::{
 use prost::Message;
 use sonettobuf::{
     BeforeStartWeekwalkBattleRequest, ChangeMapRequest, ChangeWeekwalkHeroGroupSelectRequest,
-    CmdId, ExploreItemChangePush, ExploreItemNo, ExploreMoveReply, ExploreMoveRequest, ExploreStep,
-    ExploreStepPush, ExploreUseItemReply, ExploreUseItemRequest, GetExploreInfoRequest,
-    MarkPopDeepSettleRequest, MarkPopShallowSettleRequest, MarkShowFinishedRequest,
-    WeekwalkDialogHistoryRequest, WeekwalkDialogRequest, WeekwalkVer2ChangeHeroGroupSelectRequest,
+    CmdId, ExploreInteractReply, ExploreInteractRequest, ExploreItemChangePush, ExploreItemNo,
+    ExploreMoveReply, ExploreMoveRequest, ExploreStep, ExploreStepPush, ExploreUseItemReply,
+    ExploreUseItemRequest, GetExploreInfoRequest, MarkPopDeepSettleRequest,
+    MarkPopShallowSettleRequest, MarkShowFinishedRequest, WeekwalkDialogHistoryRequest,
+    WeekwalkDialogRequest, WeekwalkVer2ChangeHeroGroupSelectRequest,
     WeekwalkVer2ChooseSkillRequest, WeekwalkVer2MarkShowFinishedRequest,
 };
+
+pub async fn on_interact(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let request = ExploreInteractRequest::decode(&req.data[..])?;
+    let outcome = ctx
+        .player()?
+        .exploration
+        .interact(
+            ctx.state.db,
+            request.id.ok_or(AppError::InvalidRequest)?,
+            request.params,
+        )
+        .await?;
+    match outcome.action {
+        logic::exploration::InteractAction::Transfer { x, y, direction } => {
+            ctx.notify(
+                CmdId::ExploreStepPushCmd,
+                ExploreStepPush {
+                    steps: vec![ExploreStep {
+                        param: Some(
+                            serde_json::json!({
+                                "stepType": 8,
+                                "x": x,
+                                "y": y,
+                                "triggerInteractId": outcome.id,
+                                "dir": direction,
+                            })
+                            .to_string(),
+                        ),
+                    }],
+                },
+            )
+            .await?;
+        }
+        logic::exploration::InteractAction::ItemChanged(item) => {
+            ctx.notify(
+                CmdId::ExploreItemChangePushCmd,
+                ExploreItemChangePush {
+                    explore_items: vec![ExploreItemNo {
+                        uid: Some(item.uid),
+                        item_id: Some(item.item_id),
+                        quantity: Some(item.quantity),
+                        status: Some(item.status),
+                    }],
+                },
+            )
+            .await?;
+        }
+    }
+    ctx.send_reply(
+        CmdId::ExploreInteractCmd,
+        ExploreInteractReply {
+            id: Some(outcome.id),
+            params: Some(String::new()),
+        },
+        0,
+        req.up_tag,
+    )
+    .await
+}
 
 pub async fn on_use_item(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
     let request = ExploreUseItemRequest::decode(&req.data[..])?;

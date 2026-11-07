@@ -457,6 +457,7 @@ async fn dispatch_registered_command(
         CmdId::ChangeMapCmd => exploration::on_change_map,
         CmdId::GetExploreInfoCmd => exploration::on_get_explore_info,
         CmdId::ExploreMoveCmd => exploration::on_move,
+        CmdId::ExploreInteractCmd => exploration::on_interact,
         CmdId::ExploreUseItemCmd => exploration::on_use_item,
         CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
         CmdId::BeforeStartWeekwalkBattleCmd => exploration::on_before_start_weekwalk_battle,
