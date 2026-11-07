@@ -39,6 +39,45 @@ fn configured_limit_counts_played_rounds() {
 }
 
 #[test]
+fn special_win_target_ends_the_battle_when_defeated() {
+    init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        team_type: Some(2),
+        current_hp: Some(100),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        battle_id: Some(1504),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 150401)],
+            sp_entitys: vec![entity(-4, 150404)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    assert_eq!(
+        battle_outcome(&fight, &pool, &managers),
+        BattleOutcome::Unfinished
+    );
+
+    managers.hp.lose(-4, 100, 0);
+
+    assert_eq!(
+        battle_outcome(&fight, &pool, &managers),
+        BattleOutcome::Victory
+    );
+}
+
+#[test]
 fn round_extensions_postpone_exhaustion() {
     init_config();
     let mut fight = Fight {

@@ -811,7 +811,10 @@ impl BattleCatalog {
             .get(battle_id)?
             .win_condition
             .split('#');
-        if parts.next().and_then(|value| value.parse::<i32>().ok()) != Some(3) {
+        if !matches!(
+            parts.next().and_then(|value| value.parse::<i32>().ok()),
+            Some(3 | 9)
+        ) {
             return None;
         }
         parts.next().and_then(|value| value.parse::<i32>().ok())
