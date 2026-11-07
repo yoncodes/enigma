@@ -5,11 +5,51 @@ use crate::{
 use prost::Message;
 use sonettobuf::{
     BeforeStartWeekwalkBattleRequest, ChangeMapRequest, ChangeWeekwalkHeroGroupSelectRequest,
-    CmdId, GetExploreInfoRequest, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
+    CmdId, ExploreMoveReply, ExploreMoveRequest, ExploreStep, ExploreStepPush,
+    GetExploreInfoRequest, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
     MarkShowFinishedRequest, WeekwalkDialogHistoryRequest, WeekwalkDialogRequest,
     WeekwalkVer2ChangeHeroGroupSelectRequest, WeekwalkVer2ChooseSkillRequest,
     WeekwalkVer2MarkShowFinishedRequest,
 };
+
+pub async fn on_move(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let request = ExploreMoveRequest::decode(&req.data[..])?;
+    let outcome = ctx
+        .player()?
+        .exploration
+        .move_to(
+            ctx.state.db,
+            request.posx.ok_or(AppError::InvalidRequest)?,
+            request.posy.ok_or(AppError::InvalidRequest)?,
+            request.interact_id,
+        )
+        .await?;
+    if !outcome.steps.is_empty() {
+        ctx.notify(
+            CmdId::ExploreStepPushCmd,
+            ExploreStepPush {
+                steps: outcome
+                    .steps
+                    .into_iter()
+                    .map(|step| ExploreStep {
+                        param: Some(
+                            serde_json::json!({
+                                "stepType": 1,
+                                "x": step.x,
+                                "y": step.y,
+                                "direction": step.direction,
+                            })
+                            .to_string(),
+                        ),
+                    })
+                    .collect(),
+            },
+        )
+        .await?;
+    }
+    ctx.send_reply(CmdId::ExploreMoveCmd, ExploreMoveReply {}, 0, req.up_tag)
+        .await
+}
 
 pub async fn on_change_map(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
     let request = ChangeMapRequest::decode(&req.data[..])?;

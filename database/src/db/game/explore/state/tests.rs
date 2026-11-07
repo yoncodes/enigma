@@ -1,5 +1,5 @@
 use crate::{
-    db::game::explore::state::{insert, last_map, load, select},
+    db::game::explore::state::{insert, last_map, load, select, update},
     models::game::explore::state::{InteractState, MapState},
 };
 use anyhow::Result;
@@ -43,6 +43,11 @@ async fn snapshots_preserve_progress_and_selection_preserves_bag() -> Result<()>
         load(&mut conn, 1, progressed.map_id).await?,
         Some(progressed.clone())
     );
+    let mut moved = progressed.clone();
+    moved.posx = 9;
+    assert!(update(&mut conn, 1, &moved).await?);
+    assert_eq!(load(&mut conn, 1, moved.map_id).await?, Some(moved.clone()));
+    assert!(!update(&mut conn, 2, &progressed).await?);
 
     let initial = MapState {
         map_id: progressed.map_id,
@@ -55,10 +60,7 @@ async fn snapshots_preserve_progress_and_selection_preserves_bag() -> Result<()>
         move_nodes: String::new(),
     };
     assert!(!insert(&mut conn, 1, &initial).await?);
-    assert_eq!(
-        load(&mut conn, 1, progressed.map_id).await?,
-        Some(progressed.clone())
-    );
+    assert_eq!(load(&mut conn, 1, progressed.map_id).await?, Some(moved));
 
     assert_eq!(last_map(&mut conn, 1).await?, None);
     select(&mut conn, 1, progressed.map_id).await?;

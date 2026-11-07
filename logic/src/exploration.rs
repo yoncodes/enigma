@@ -4,8 +4,11 @@ use sonettobuf::{GetExploreSimpleInfoReply, WeekwalkVer2GetInfoReply};
 use sqlx::SqlitePool;
 
 mod entry;
+mod movement;
 mod snapshot;
 mod weekwalk_v2;
+
+pub use movement::{MoveOutcome, RoleMove};
 
 #[cfg(test)]
 mod tests;
@@ -56,6 +59,16 @@ impl ExplorationManager {
         skill_ids: Vec<i32>,
     ) -> Result<sonettobuf::WeekwalkVer2ChooseSkillReply, AppError> {
         weekwalk_v2::choose_skill(db, self.player_id, no, skill_ids).await
+    }
+
+    pub async fn move_to(
+        self,
+        db: &SqlitePool,
+        posx: i32,
+        posy: i32,
+        interact_id: Option<i32>,
+    ) -> Result<MoveOutcome, AppError> {
+        movement::move_to(db, self.player_id, posx, posy, interact_id).await
     }
 }
 
