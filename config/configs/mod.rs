@@ -162,6 +162,7 @@ pub mod activity226_task;
 pub mod activity228;
 pub mod activity229_const;
 pub mod activity229_episode;
+pub mod activity229_skill;
 pub mod activity229_task;
 pub mod activity233_bp;
 pub mod activity233_lv_bonus;
@@ -172,6 +173,8 @@ pub mod activity239;
 pub mod activity240;
 pub mod activity240_backdate;
 pub mod activity240_task;
+pub mod activity243_const;
+pub mod activity243_episode;
 pub mod actvity186_like;
 pub mod actvity186_mini_game;
 pub mod actvity186_stage;
@@ -424,6 +427,8 @@ pub mod trigger_action;
 pub mod turnback;
 pub mod turnback_daily_bonus;
 pub mod turnback_drop;
+pub mod turnback_return_range;
+pub mod turnback_return_reward;
 pub mod turnback_sign_in;
 pub mod turnback_task;
 pub mod turnback_task_bonus;
@@ -601,6 +606,7 @@ pub struct GameDB {
     pub activity228: activity228::Activity228Table,
     pub activity229_const: activity229_const::Activity229ConstTable,
     pub activity229_episode: activity229_episode::Activity229EpisodeTable,
+    pub activity229_skill: activity229_skill::Activity229SkillTable,
     pub activity229_task: activity229_task::Activity229TaskTable,
     pub activity233_bp: activity233_bp::Activity233BpTable,
     pub activity233_lv_bonus: activity233_lv_bonus::Activity233LvBonusTable,
@@ -611,6 +617,8 @@ pub struct GameDB {
     pub activity240: activity240::Activity240Table,
     pub activity240_backdate: activity240_backdate::Activity240BackdateTable,
     pub activity240_task: activity240_task::Activity240TaskTable,
+    pub activity243_const: activity243_const::Activity243ConstTable,
+    pub activity243_episode: activity243_episode::Activity243EpisodeTable,
     pub actvity186_like: actvity186_like::Actvity186LikeTable,
     pub actvity186_mini_game: actvity186_mini_game::Actvity186MiniGameTable,
     pub actvity186_stage: actvity186_stage::Actvity186StageTable,
@@ -863,6 +871,8 @@ pub struct GameDB {
     pub turnback: turnback::TurnbackTable,
     pub turnback_daily_bonus: turnback_daily_bonus::TurnbackDailyBonusTable,
     pub turnback_drop: turnback_drop::TurnbackDropTable,
+    pub turnback_return_range: turnback_return_range::TurnbackReturnRangeTable,
+    pub turnback_return_reward: turnback_return_reward::TurnbackReturnRewardTable,
     pub turnback_sign_in: turnback_sign_in::TurnbackSignInTable,
     pub turnback_task: turnback_task::TurnbackTaskTable,
     pub turnback_task_bonus: turnback_task_bonus::TurnbackTaskBonusTable,
@@ -1365,6 +1375,9 @@ impl GameDB {
         let activity229_episode = activity229_episode::Activity229EpisodeTable::load(
             &format!("{}/activity229_episode.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity229_episode.json: {}", e))?;
+        let activity229_skill = activity229_skill::Activity229SkillTable::load(
+            &format!("{}/activity229_skill.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity229_skill.json: {}", e))?;
         let activity229_task = activity229_task::Activity229TaskTable::load(
             &format!("{}/activity229_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity229_task.json: {}", e))?;
@@ -1395,6 +1408,12 @@ impl GameDB {
         let activity240_task = activity240_task::Activity240TaskTable::load(
             &format!("{}/activity240_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity240_task.json: {}", e))?;
+        let activity243_const = activity243_const::Activity243ConstTable::load(
+            &format!("{}/243_const.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load 243_const.json: {}", e))?;
+        let activity243_episode = activity243_episode::Activity243EpisodeTable::load(
+            &format!("{}/243_episode.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load 243_episode.json: {}", e))?;
         let actvity186_like = actvity186_like::Actvity186LikeTable::load(
             &format!("{}/actvity186_like.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load actvity186_like.json: {}", e))?;
@@ -2151,6 +2170,12 @@ impl GameDB {
         let turnback_drop = turnback_drop::TurnbackDropTable::load(
             &format!("{}/turnback_drop.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load turnback_drop.json: {}", e))?;
+        let turnback_return_range = turnback_return_range::TurnbackReturnRangeTable::load(
+            &format!("{}/turnback_return_range.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load turnback_return_range.json: {}", e))?;
+        let turnback_return_reward = turnback_return_reward::TurnbackReturnRewardTable::load(
+            &format!("{}/turnback_return_reward.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load turnback_return_reward.json: {}", e))?;
         let turnback_sign_in = turnback_sign_in::TurnbackSignInTable::load(
             &format!("{}/turnback_sign_in.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load turnback_sign_in.json: {}", e))?;
@@ -2349,6 +2374,7 @@ impl GameDB {
             activity228,
             activity229_const,
             activity229_episode,
+            activity229_skill,
             activity229_task,
             activity233_bp,
             activity233_lv_bonus,
@@ -2359,6 +2385,8 @@ impl GameDB {
             activity240,
             activity240_backdate,
             activity240_task,
+            activity243_const,
+            activity243_episode,
             actvity186_like,
             actvity186_mini_game,
             actvity186_stage,
@@ -2611,6 +2639,8 @@ impl GameDB {
             turnback,
             turnback_daily_bonus,
             turnback_drop,
+            turnback_return_range,
+            turnback_return_reward,
             turnback_sign_in,
             turnback_task,
             turnback_task_bonus,

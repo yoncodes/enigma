@@ -7,6 +7,14 @@ use crate::excel_confgen::{
     emit_file::emit_table_file, emit_root::emit_root_module, tables::FILTER_TABLES,
 };
 
+fn rust_table_name(source: &str) -> String {
+    if source.starts_with(char::is_numeric) {
+        format!("activity{source}")
+    } else {
+        source.to_owned()
+    }
+}
+
 fn write_if_changed(path: &Path, content: &str) -> Result<()> {
     if let Ok(existing) = fs::read_to_string(path)
         && existing == content
@@ -66,29 +74,35 @@ pub fn generate_rust_modules(json_dir: &str, output_dir: &str) -> Result<()> {
             continue;
         }
 
-        let snake = raw.to_string();
-        tables.push(snake.clone());
+        let rust_name = rust_table_name(raw);
+        tables.push((raw.to_string(), rust_name.clone()));
 
         let json = fs::read_to_string(entry.path())
             .with_context(|| format!("read {}", entry.path().display()))?;
         let data: Value = serde_json::from_str(&json)?;
 
-        let (table, records) = match data {
-            Value::Array(ref a) if a.len() == 2 => (
-                a[0].as_str().unwrap_or(raw).to_string(),
-                a[1].as_array().cloned().unwrap_or_default(),
-            ),
-            Value::Array(a) => (raw.to_string(), a),
-            _ => (raw.to_string(), vec![data]),
+        let records = match data {
+            Value::Array(ref a) if a.len() == 2 => a[1].as_array().cloned().unwrap_or_default(),
+            Value::Array(a) => a,
+            _ => vec![data],
         };
 
-        let out_file = output.join(format!("{}.rs", snake));
-        let content = emit_table_file(&table, &records);
+        let out_file = output.join(format!("{rust_name}.rs"));
+        if records.is_empty() && out_file.exists() {
+            continue;
+        }
+        let content = emit_table_file(&rust_name, &records);
         write_if_changed(&out_file, &content)?;
     }
 
-    tables.sort();
-    remove_stale_modules(output, &tables.iter().map(String::as_str).collect())?;
+    tables.sort_by(|left, right| left.1.cmp(&right.1));
+    remove_stale_modules(
+        output,
+        &tables
+            .iter()
+            .map(|(_, rust_name)| rust_name.as_str())
+            .collect(),
+    )?;
     let mod_file = output.join("mod.rs");
     let mod_content = emit_root_module(&tables);
     write_if_changed(&mod_file, &mod_content)?;
@@ -96,37 +110,5 @@ pub fn generate_rust_modules(json_dir: &str, output_dir: &str) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    #[test]
-    fn removes_only_stale_generated_modules() {
-        let root = std::env::temp_dir().join(format!(
-            "enigma_config_codegen_{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let input = root.join("input");
-        let output = root.join("output");
-        fs::create_dir_all(&input).unwrap();
-        fs::create_dir_all(&output).unwrap();
-        fs::write(input.join("character.json"), "[\"character\",[]]").unwrap();
-        fs::write(
-            output.join("stale.rs"),
-            "// Auto-generated from JSON data\r\n// Do not edit manually\r\n",
-        )
-        .unwrap();
-        fs::write(output.join("manual.rs"), "// maintained by hand\n").unwrap();
-
-        generate_rust_modules(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
-
-        assert!(!output.join("stale.rs").exists());
-        assert!(output.join("manual.rs").exists());
-        assert!(output.join("character.rs").exists());
-        fs::remove_dir_all(root).unwrap();
-    }
-}
+#[path = "pipeline/tests.rs"]
+mod tests;

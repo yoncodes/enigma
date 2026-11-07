@@ -11,6 +11,8 @@ pub struct Activity229Episode {
     pub career_prefer: String,
     #[serde(rename = "episodeId")]
     pub episode_id: i32,
+    #[serde(rename = "optionalSkills")]
+    pub optional_skills: String,
     pub stage: i32,
     #[serde(rename = "teamRecommend")]
     pub team_recommend: String,

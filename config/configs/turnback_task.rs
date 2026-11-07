@@ -16,6 +16,8 @@ pub struct TurnbackTask {
     pub is_online_time_task: bool,
     #[serde(rename = "jumpId")]
     pub jump_id: i32,
+    #[serde(rename = "jumpUi")]
+    pub jump_ui: String,
     #[serde(rename = "listenerParam")]
     pub listener_param: String,
     #[serde(rename = "listenerType")]
@@ -31,12 +33,16 @@ pub struct TurnbackTask {
     pub open_limit: String,
     pub params: String,
     pub prepose: String,
+    #[serde(rename = "randomPriority")]
+    pub random_priority: i32,
     #[serde(rename = "showDay")]
     pub show_day: i32,
     #[serde(rename = "sortId")]
     pub sort_id: i32,
     #[serde(rename = "turnbackId")]
     pub turnback_id: i32,
+    #[serde(rename = "turnbackTaskType")]
+    pub turnback_task_type: i32,
     #[serde(rename = "type")]
     pub r#type: i32,
     #[serde(rename = "unlockDay")]
