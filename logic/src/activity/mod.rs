@@ -17,16 +17,17 @@ use sonettobuf::{
     Act228GetFinalBonusReply, Act228Info, Act229BattleFinishPush, Act229HeroNo,
     Act229ModifySkillReply, Act229ModifyStageSubIdReply, Act229ResetStageReply,
     Act229StageTeamSubIdNo, Act229StageTeamSubIdPush, Act239BonusNo, Act239BonusReply,
-    ActivityInfo, ActivityNewStageReadReply, BuildTrapReply, EndingInfo, FinishAct125EpisodeReply,
-    FinishAct146EpisodeReply, FinishAllAct186TaskReply, Get101BonusListReply, Get101BonusReply,
-    Get101InfosReply, Get101SpBonusReply, Get104InfosReply, Get116InfosReply, Get123InfosReply,
-    Get128InfosReply, Get136InfoReply, Get152InfoReply, Get153InfosReply, Get154InfosReply,
-    Get158InfosReply, Get166InfosReply, Get196InfoReply, Get197InfoReply, Get199InfoReply,
-    Get217InfosReply, Get218InfoReply, Get221InfoReply, GetAct125InfosReply, GetAct146InfosReply,
-    GetAct172InfoReply, GetAct186InfoReply, GetAct186SpBonusInfoReply, GetAct189InfoReply,
-    GetAct189OnceBonusReply, GetAct208InfoReply, GetAct209InfoReply, GetAct212InfoReply,
-    GetAct216InfoReply, GetAct225InfoReply, GetAct228InfoReply, GetAct229InfoReply,
-    GetAct236InfoReply, GetAct239InfoReply, GetActivityInfosReply, GetActivityInfosWithParamReply,
+    Act243InfoPush, ActivityInfo, ActivityNewStageReadReply, BuildTrapReply, EndingInfo,
+    FinishAct125EpisodeReply, FinishAct146EpisodeReply, FinishAllAct186TaskReply,
+    Get101BonusListReply, Get101BonusReply, Get101InfosReply, Get101SpBonusReply, Get104InfosReply,
+    Get116InfosReply, Get123InfosReply, Get128InfosReply, Get136InfoReply, Get152InfoReply,
+    Get153InfosReply, Get154InfosReply, Get158InfosReply, Get166InfosReply, Get196InfoReply,
+    Get197InfoReply, Get199InfoReply, Get217InfosReply, Get218InfoReply, Get221InfoReply,
+    GetAct125InfosReply, GetAct146InfosReply, GetAct172InfoReply, GetAct186InfoReply,
+    GetAct186SpBonusInfoReply, GetAct189InfoReply, GetAct189OnceBonusReply, GetAct208InfoReply,
+    GetAct209InfoReply, GetAct212InfoReply, GetAct216InfoReply, GetAct225InfoReply,
+    GetAct228InfoReply, GetAct229InfoReply, GetAct236InfoReply, GetAct239InfoReply,
+    GetAct243InfoReply, GetActivityInfosReply, GetActivityInfosWithParamReply,
     MarkActivity104StoryReply, MarkEpisodeAfterStoryReply, MarkPopSummaryReply, PutTrapReply,
     StepInfo, UnlockPermanentReply, UpgradeElementReply,
 };
@@ -73,6 +74,7 @@ mod act228;
 mod act229;
 mod act236;
 mod act239;
+mod act243;
 mod dice_hero;
 
 use act101::{get101_bonus, get101_bonus_list, get101_infos, get101_sp_bonus};
@@ -124,4 +126,5 @@ pub(crate) use act236::{act236_charge_update, active_act236_activity_id_at};
 use act236::{act236_get_auto_gain_reward, act236_info};
 pub(crate) use act239::act239_red_dot_entries;
 use act239::{act239_bonus, act239_info};
+use act243::{info as act243_info, info_push as act243_info_push};
 use catalog::*;

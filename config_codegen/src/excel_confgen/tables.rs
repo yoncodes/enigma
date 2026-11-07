@@ -352,6 +352,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "243_episode",
     "racing_gift",
     "racing_racer",
+    "racing_reward",
     "toughnessskill",
     "actvity204_task",
     "assassin_task",

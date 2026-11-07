@@ -310,4 +310,61 @@ impl ActivityManager {
     ) -> Result<Option<Act229StageTeamSubIdPush>, AppError> {
         touch_act229_stage_teams(tx, self.player_id, snapshot_id, sub_ids).await
     }
+
+    pub async fn act243_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+    ) -> Result<GetAct243InfoReply, AppError> {
+        act243_info(db, self.player_id, activity_id).await
+    }
+
+    pub async fn act243_info_push(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+    ) -> Result<Act243InfoPush, AppError> {
+        act243_info_push(db, self.player_id, activity_id).await
+    }
+
+    pub async fn report_act243_episode(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        episode_id: i32,
+        score: i32,
+        star: i32,
+        time_ms: i32,
+        record: String,
+    ) -> Result<act243::Act243Report, AppError> {
+        act243::report_episode(
+            db,
+            self.player_id,
+            activity_id,
+            episode_id,
+            score,
+            star,
+            time_ms,
+            record,
+        )
+        .await
+    }
+
+    pub async fn upgrade_act243_gift(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        gift_point: i32,
+    ) -> Result<act243::Act243Cost<sonettobuf::Act243UpgradeGiftReply>, AppError> {
+        act243::upgrade_gift(db, self.player_id, activity_id, gift_point).await
+    }
+
+    pub async fn unlock_act243_racer(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        racer_id: i32,
+    ) -> Result<act243::Act243Cost<sonettobuf::Act243UnlockRacerReply>, AppError> {
+        act243::unlock_racer(db, self.player_id, activity_id, racer_id).await
+    }
 }
