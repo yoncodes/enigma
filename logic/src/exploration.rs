@@ -1,10 +1,11 @@
 use crate::error::AppError;
-use database::db::game::{explore, weekwalk_v2};
+use database::db::game::explore;
 use sonettobuf::{GetExploreSimpleInfoReply, WeekwalkVer2GetInfoReply};
 use sqlx::SqlitePool;
 
 mod entry;
 mod snapshot;
+mod weekwalk_v2;
 
 #[cfg(test)]
 mod tests;
@@ -27,7 +28,7 @@ impl ExplorationManager {
         self,
         db: &SqlitePool,
     ) -> Result<WeekwalkVer2GetInfoReply, AppError> {
-        weekwalk_v2_info(db, self.player_id).await
+        weekwalk_v2::info(db, self.player_id).await
     }
 }
 
@@ -46,14 +47,5 @@ async fn explore_simple_info(
         map_simple: maps.into_iter().map(Into::into).collect(),
         unlock_map_ids,
         is_show_bag: Some(info.is_show_bag),
-    })
-}
-
-async fn weekwalk_v2_info(
-    db: &SqlitePool,
-    player_id: i64,
-) -> Result<WeekwalkVer2GetInfoReply, AppError> {
-    Ok(WeekwalkVer2GetInfoReply {
-        info: Some(weekwalk_v2::get_weekwalk_v2_info(db, player_id).await?),
     })
 }
