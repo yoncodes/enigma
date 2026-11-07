@@ -33,6 +33,13 @@ pub struct AlchemyApply {
     pub achievements: Vec<Achievement>,
 }
 
+pub struct GeniusActivation<'a> {
+    pub expected_state: i32,
+    pub expected_ids: &'a str,
+    pub genius_ids: &'a str,
+    pub point_cost: i32,
+}
+
 #[derive(Clone, Copy)]
 pub enum Rouge2UnlockKind {
     Relic,
@@ -267,6 +274,29 @@ pub async fn apply_alchemy(
         materials,
         achievements,
     }))
+}
+
+pub async fn activate_genius(
+    pool: &SqlitePool,
+    user_id: i64,
+    activation: GeniusActivation<'_>,
+) -> Result<Option<i32>> {
+    let now = common::time::ServerTime::now_ms();
+    Ok(sqlx::query_scalar(
+        "UPDATE user_rouge2_state
+         SET genius_point = genius_point - ?, genius_ids = ?, updated_at = ?
+         WHERE user_id = ? AND state = ? AND genius_ids = ? AND genius_point >= ?
+         RETURNING genius_point",
+    )
+    .bind(activation.point_cost)
+    .bind(activation.genius_ids)
+    .bind(now)
+    .bind(user_id)
+    .bind(activation.expected_state)
+    .bind(activation.expected_ids)
+    .bind(activation.point_cost)
+    .fetch_optional(pool)
+    .await?)
 }
 
 pub async fn get_or_create_unlock_ids(

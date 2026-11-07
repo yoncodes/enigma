@@ -220,6 +220,82 @@ async fn difficulty_rejects_locked_or_active_run_without_mutation() {
     assert_eq!(manager.info(&pool).await.unwrap(), before);
 }
 
+#[tokio::test]
+async fn genius_activation_follows_the_common_tree_and_spends_points() {
+    let pool = test_pool().await;
+    let manager = RougeManager::new(1);
+    sqlx::query("UPDATE user_rouge2_state SET state = 1, genius_point = 2 WHERE user_id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let difficulty = genius_snapshot(&pool).await;
+    assert!(matches!(
+        manager.activate_genius(&pool, 10009).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert_eq!(genius_snapshot(&pool).await, difficulty);
+    sqlx::query("UPDATE user_rouge2_state SET state = 2 WHERE user_id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let active = genius_snapshot(&pool).await;
+    assert!(matches!(
+        manager.activate_genius(&pool, 10009).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert_eq!(genius_snapshot(&pool).await, active);
+    sqlx::query("UPDATE user_rouge2_state SET state = 0 WHERE user_id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        manager.activate_genius(&pool, 10010).await,
+        Err(AppError::InvalidRequest)
+    ));
+    let first = manager.activate_genius(&pool, 10009).await.unwrap();
+    assert_eq!(first.genius_point, 1);
+    assert_eq!(first.reply.genius_id, Some(10009));
+    assert_eq!(first.reply.genius_ids, vec![10009]);
+    assert!(matches!(
+        manager.activate_genius(&pool, 10009).await,
+        Err(AppError::InvalidRequest)
+    ));
+
+    let second = manager.activate_genius(&pool, 10010).await.unwrap();
+    assert_eq!(second.genius_point, 0);
+    assert_eq!(second.reply.genius_ids, vec![10009, 10010]);
+    let exhausted = genius_snapshot(&pool).await;
+    assert!(matches!(
+        manager.activate_genius(&pool, 10013).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert_eq!(genius_snapshot(&pool).await, exhausted);
+    assert!(matches!(
+        manager.activate_genius(&pool, 2000).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert_eq!(
+        sqlx::query_as::<_, (i32, String)>(
+            "SELECT genius_point, genius_ids FROM user_rouge2_state WHERE user_id = 1"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        (0, "[10009,10010]".into())
+    );
+}
+
+async fn genius_snapshot(pool: &SqlitePool) -> (i32, i32, String) {
+    sqlx::query_as(
+        "SELECT state, genius_point, genius_ids FROM user_rouge2_state WHERE user_id = 1",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
 async fn seed_materials(pool: &SqlitePool) {
     for (material_id, num) in [(1008, 1), (1000, 4), (1001, 1), (1101, 1), (1103, 0)] {
         sqlx::query(

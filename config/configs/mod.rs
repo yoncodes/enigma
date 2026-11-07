@@ -347,6 +347,8 @@ pub mod rouge2_buff;
 pub mod rouge2_career;
 pub mod rouge2_difficulty;
 pub mod rouge2_formula;
+pub mod rouge2_genius;
+pub mod rouge2_genius_type;
 pub mod rouge2_material;
 pub mod rouge2_outside_const;
 pub mod rouge2_relics;
@@ -805,6 +807,8 @@ pub struct GameDB {
     pub rouge2_career: rouge2_career::Rouge2CareerTable,
     pub rouge2_difficulty: rouge2_difficulty::Rouge2DifficultyTable,
     pub rouge2_formula: rouge2_formula::Rouge2FormulaTable,
+    pub rouge2_genius: rouge2_genius::Rouge2GeniusTable,
+    pub rouge2_genius_type: rouge2_genius_type::Rouge2GeniusTypeTable,
     pub rouge2_material: rouge2_material::Rouge2MaterialTable,
     pub rouge2_outside_const: rouge2_outside_const::Rouge2OutsideConstTable,
     pub rouge2_relics: rouge2_relics::Rouge2RelicsTable,
@@ -1958,6 +1962,12 @@ impl GameDB {
         let rouge2_formula = rouge2_formula::Rouge2FormulaTable::load(
             &format!("{}/rouge2_formula.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_formula.json: {}", e))?;
+        let rouge2_genius = rouge2_genius::Rouge2GeniusTable::load(
+            &format!("{}/rouge2_genius.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_genius.json: {}", e))?;
+        let rouge2_genius_type = rouge2_genius_type::Rouge2GeniusTypeTable::load(
+            &format!("{}/rouge2_genius_type.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_genius_type.json: {}", e))?;
         let rouge2_material = rouge2_material::Rouge2MaterialTable::load(
             &format!("{}/rouge2_material.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_material.json: {}", e))?;
@@ -2629,6 +2639,8 @@ impl GameDB {
             rouge2_career,
             rouge2_difficulty,
             rouge2_formula,
+            rouge2_genius,
+            rouge2_genius_type,
             rouge2_material,
             rouge2_outside_const,
             rouge2_relics,

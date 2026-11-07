@@ -553,6 +553,7 @@ async fn dispatch_registered_command(
         CmdId::GetRouge2OutsideInfoCmd => rouge::on_get_rouge2_outside_info,
         CmdId::GetRouge2InfoCmd => rouge::on_get_rouge2_info,
         CmdId::EnterRouge2SelectDifficultyCmd => rouge::on_enter_rouge2_select_difficulty,
+        CmdId::Rouge2ActiveGeniusCmd => rouge::on_rouge2_active_genius,
         CmdId::Rouge2AlchemyCmd => rouge::on_rouge2_alchemy,
         CmdId::Rouge2GetUnlockCollectionsCmd => rouge::on_rouge2_get_unlock_collections,
         CmdId::SurvivalOutSideGetInfoCmd => survival::on_get_outside_info,

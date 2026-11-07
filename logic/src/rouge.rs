@@ -13,6 +13,8 @@ mod alchemy;
 pub use alchemy::AlchemyResult;
 mod difficulty;
 pub use difficulty::DifficultyResult;
+mod genius;
+pub use genius::GeniusResult;
 
 #[derive(Clone, Copy, Debug)]
 pub struct RougeManager {

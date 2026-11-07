@@ -1,11 +1,106 @@
 use super::*;
 use sonettobuf::{
-    EnterRouge2SelectDifficultyReply, EnterRouge2SelectDifficultyRequest, Rouge2AlchemyReply,
-    Rouge2AlchemyRequest, Rouge2Attr, Rouge2AttrInfo, Rouge2AttrUpdatePush, Rouge2Bag,
-    Rouge2BagInfo, Rouge2CurAlchemyInfo, Rouge2GameCurAlchemyInfo, Rouge2Info, Rouge2LeaderInfo,
-    Rouge2UpdateGeniusPointPush, UpdateAchievementPush,
+    EnterRouge2SelectDifficultyReply, EnterRouge2SelectDifficultyRequest, Rouge2ActiveGeniusReply,
+    Rouge2ActiveGeniusRequest, Rouge2AlchemyReply, Rouge2AlchemyRequest, Rouge2Attr,
+    Rouge2AttrInfo, Rouge2AttrUpdatePush, Rouge2Bag, Rouge2BagInfo, Rouge2CurAlchemyInfo,
+    Rouge2GameCurAlchemyInfo, Rouge2Info, Rouge2LeaderInfo, Rouge2UpdateGeniusPointPush,
+    UpdateAchievementPush,
 };
 use sqlx::sqlite::SqlitePoolOptions;
+
+#[tokio::test]
+async fn active_genius_command_updates_points_before_reply() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 539;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'rouge2-genius-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    database::db::game::rouge::get_or_create_rouge2_outside(&pool, player_id, configs::get())
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE user_rouge2_state
+         SET genius_point = 1, genius_ids = '[10009]'
+         WHERE user_id = ?",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(2);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    let mut data = Vec::new();
+    Rouge2ActiveGeniusRequest {
+        genius_id: Some(10010),
+    }
+    .encode(&mut data)
+    .unwrap();
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Rouge2ActiveGeniusCmd as i16,
+            up_tag: 57,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Push {
+        cmd_id: CmdId::Rouge2UpdateGeniusPointPushCmd,
+        body,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("Rouge2 talent activation did not update genius points first");
+    };
+    assert_eq!(
+        Rouge2UpdateGeniusPointPush::decode(&*body).unwrap(),
+        Rouge2UpdateGeniusPointPush {
+            genius_point: Some(0)
+        }
+    );
+
+    let CommandPacket::Reply {
+        cmd_id: CmdId::Rouge2ActiveGeniusCmd,
+        body,
+        result_code: 0,
+        up_tag: 57,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("Rouge2 talent activation did not finish with its reply");
+    };
+    assert_eq!(
+        Rouge2ActiveGeniusReply::decode(&*body).unwrap(),
+        Rouge2ActiveGeniusReply {
+            genius_id: Some(10010),
+            genius_ids: vec![10009, 10010],
+        }
+    );
+    assert!(packets.try_recv().is_err());
+}
 
 #[tokio::test]
 async fn alchemy_command_emits_captured_push_order_and_reply() {

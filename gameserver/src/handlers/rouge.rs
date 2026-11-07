@@ -6,8 +6,8 @@ use crate::{
 use prost::Message;
 use sonettobuf::{
     CmdId, EnterRouge2SelectDifficultyRequest, GetRouge2InfoRequest, GetRouge2OutsideInfoRequest,
-    GetRougeOutsideInfoRequest, Rouge2AlchemyRequest, Rouge2AttrUpdatePush,
-    Rouge2GetUnlockCollectionsRequest, Rouge2UpdateGeniusPointPush,
+    GetRougeOutsideInfoRequest, Rouge2ActiveGeniusRequest, Rouge2AlchemyRequest,
+    Rouge2AttrUpdatePush, Rouge2GetUnlockCollectionsRequest, Rouge2UpdateGeniusPointPush,
 };
 
 pub async fn on_get_rouge_outside_info(
@@ -77,6 +77,28 @@ pub async fn on_rouge2_get_unlock_collections(
     let _ = Rouge2GetUnlockCollectionsRequest::decode(&req.data[..])?;
     let reply = ctx.player()?.rouge.unlock_collections(ctx.state.db).await?;
     ctx.send_reply(CmdId::Rouge2GetUnlockCollectionsCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_rouge2_active_genius(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = Rouge2ActiveGeniusRequest::decode(&req.data[..])?;
+    let result = ctx
+        .player()?
+        .rouge
+        .activate_genius(ctx.state.db, msg.genius_id.ok_or(AppError::InvalidRequest)?)
+        .await?;
+
+    ctx.notify(
+        CmdId::Rouge2UpdateGeniusPointPushCmd,
+        Rouge2UpdateGeniusPointPush {
+            genius_point: Some(result.genius_point),
+        },
+    )
+    .await?;
+    ctx.send_reply(CmdId::Rouge2ActiveGeniusCmd, result.reply, 0, req.up_tag)
         .await
 }
 
