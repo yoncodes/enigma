@@ -49,3 +49,11 @@ pub struct Rouge2MaterialState {
     pub is_seen: bool,
     pub updated_at: i64,
 }
+
+#[derive(Debug, Clone, FromRow)]
+pub struct Rouge2AttrState {
+    pub user_id: i64,
+    pub attr_id: i32,
+    pub final_val: i32,
+    pub updated_at: i64,
+}

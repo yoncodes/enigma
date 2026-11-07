@@ -15,6 +15,8 @@ pub struct ServerConfig {
     pub summon: SummonConfig,
     #[serde(default = "default_weekwalk_v2_config")]
     pub weekwalk_v2: WeekwalkV2Config,
+    #[serde(default = "default_rouge2_config")]
+    pub rouge2: Rouge2Config,
     pub activity: ActivityConfig,
 }
 
@@ -53,6 +55,29 @@ fn default_weekwalk_v2_config() -> WeekwalkV2Config {
     toml::from_str::<Template>(CONFIG_TEMPLATE)
         .expect("embedded Weekwalk v2 schedule must be valid")
         .weekwalk_v2
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Rouge2Config {
+    pub initial_attributes: Vec<Rouge2InitialAttribute>,
+    pub initial_update_order: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Rouge2InitialAttribute {
+    pub id: i32,
+    pub value: i32,
+}
+
+fn default_rouge2_config() -> Rouge2Config {
+    #[derive(Deserialize)]
+    struct Template {
+        rouge2: Rouge2Config,
+    }
+
+    toml::from_str::<Template>(CONFIG_TEMPLATE)
+        .expect("embedded Rouge2 initialization must be valid")
+        .rouge2
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -207,6 +232,35 @@ impl ServerConfig {
         {
             anyhow::bail!("Weekwalk v2 schedule IDs must be sorted and unique");
         }
+
+        let rouge2_attribute_ids = self
+            .rouge2
+            .initial_attributes
+            .iter()
+            .map(|attribute| attribute.id)
+            .collect::<std::collections::HashSet<_>>();
+        if rouge2_attribute_ids.len() != self.rouge2.initial_attributes.len()
+            || self
+                .rouge2
+                .initial_attributes
+                .iter()
+                .any(|attribute| attribute.id <= 0 || attribute.value < 0)
+        {
+            anyhow::bail!(
+                "Rouge2 initial attributes must have unique positive IDs and nonnegative values"
+            );
+        }
+        let rouge2_update_ids = self
+            .rouge2
+            .initial_update_order
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        if rouge2_update_ids.len() != self.rouge2.initial_update_order.len()
+            || !rouge2_update_ids.is_subset(&rouge2_attribute_ids)
+        {
+            anyhow::bail!("Rouge2 initial update IDs must be unique configured attributes");
+        }
         for row in &self.weekwalk_v2.schedule {
             if row.time_id <= 0 || row.start_time >= row.end_time || row.layers.is_empty() {
                 anyhow::bail!("invalid Weekwalk v2 schedule row {}", row.time_id);
@@ -289,6 +343,8 @@ mod tests {
         assert_eq!(cfg.summon.permanent_pool_ids, [2]);
         assert_eq!(cfg.weekwalk_v2.schedule[0].time_id, 21);
         assert_eq!(cfg.weekwalk_v2.schedule[0].layers[0].layer_id, 1069);
+        assert_eq!(cfg.rouge2.initial_attributes.len(), 61);
+        assert_eq!(cfg.rouge2.initial_update_order.len(), 16);
         assert!(cfg.activity.schedule.iter().any(|row| row.id == 13930));
         assert_eq!(cfg.activity.hero_story_schedule.len(), 33);
 
@@ -302,6 +358,40 @@ mod tests {
 
         let config: ServerConfig = template.try_into().unwrap();
         assert_eq!(config.weekwalk_v2.schedule[0].time_id, 21);
+    }
+
+    #[test]
+    fn missing_rouge2_initialization_uses_embedded_default() {
+        let mut template: toml::Value = toml::from_str(CONFIG_TEMPLATE).unwrap();
+        template.as_table_mut().unwrap().remove("rouge2");
+
+        let config: ServerConfig = template.try_into().unwrap();
+        assert_eq!(config.rouge2.initial_attributes.len(), 61);
+        assert_eq!(config.rouge2.initial_update_order[0], 320);
+    }
+
+    #[test]
+    fn invalid_rouge2_initialization_is_rejected() {
+        let validate = |mut config: ServerConfig| {
+            config.paths.excel_data = std::env::temp_dir();
+            config.database.path = std::env::temp_dir().join("enigma-config-test.db");
+            config.validate_paths()
+        };
+
+        let mut duplicate = ServerConfig::template();
+        duplicate
+            .rouge2
+            .initial_attributes
+            .push(duplicate.rouge2.initial_attributes[0].clone());
+        assert!(validate(duplicate).is_err());
+
+        let mut unknown_update = ServerConfig::template();
+        unknown_update.rouge2.initial_update_order.push(999);
+        assert!(validate(unknown_update).is_err());
+
+        let mut negative_value = ServerConfig::template();
+        negative_value.rouge2.initial_attributes[0].value = -1;
+        assert!(validate(negative_value).is_err());
     }
 
     #[test]

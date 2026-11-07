@@ -5,8 +5,9 @@ use crate::{
 };
 use prost::Message;
 use sonettobuf::{
-    CmdId, GetRouge2InfoRequest, GetRouge2OutsideInfoRequest, GetRougeOutsideInfoRequest,
-    Rouge2AlchemyRequest, Rouge2GetUnlockCollectionsRequest, Rouge2UpdateGeniusPointPush,
+    CmdId, EnterRouge2SelectDifficultyRequest, GetRouge2InfoRequest, GetRouge2OutsideInfoRequest,
+    GetRougeOutsideInfoRequest, Rouge2AlchemyRequest, Rouge2AttrUpdatePush,
+    Rouge2GetUnlockCollectionsRequest, Rouge2UpdateGeniusPointPush,
 };
 
 pub async fn on_get_rouge_outside_info(
@@ -37,6 +38,36 @@ pub async fn on_get_rouge2_info(
     let reply = ctx.player()?.rouge.info(ctx.state.db).await?;
     ctx.send_reply(CmdId::GetRouge2InfoCmd, reply, 0, req.up_tag)
         .await
+}
+
+pub async fn on_enter_rouge2_select_difficulty(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = EnterRouge2SelectDifficultyRequest::decode(&req.data[..])?;
+    let result = ctx
+        .player()?
+        .rouge
+        .select_difficulty(
+            ctx.state.db,
+            msg.difficulty.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+
+    ctx.notify(
+        CmdId::Rouge2AttrUpdatePushCmd,
+        Rouge2AttrUpdatePush {
+            updates: result.updates,
+        },
+    )
+    .await?;
+    ctx.send_reply(
+        CmdId::EnterRouge2SelectDifficultyCmd,
+        result.reply,
+        0,
+        req.up_tag,
+    )
+    .await
 }
 
 pub async fn on_rouge2_get_unlock_collections(

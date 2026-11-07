@@ -342,8 +342,10 @@ pub mod room_order_refresh;
 pub mod room_skin;
 pub mod room_theme;
 pub mod rouge2_active_skill;
+pub mod rouge2_attribute;
 pub mod rouge2_buff;
 pub mod rouge2_career;
+pub mod rouge2_difficulty;
 pub mod rouge2_formula;
 pub mod rouge2_material;
 pub mod rouge2_outside_const;
@@ -798,8 +800,10 @@ pub struct GameDB {
     pub room_skin: room_skin::RoomSkinTable,
     pub room_theme: room_theme::RoomThemeTable,
     pub rouge2_active_skill: rouge2_active_skill::Rouge2ActiveSkillTable,
+    pub rouge2_attribute: rouge2_attribute::Rouge2AttributeTable,
     pub rouge2_buff: rouge2_buff::Rouge2BuffTable,
     pub rouge2_career: rouge2_career::Rouge2CareerTable,
+    pub rouge2_difficulty: rouge2_difficulty::Rouge2DifficultyTable,
     pub rouge2_formula: rouge2_formula::Rouge2FormulaTable,
     pub rouge2_material: rouge2_material::Rouge2MaterialTable,
     pub rouge2_outside_const: rouge2_outside_const::Rouge2OutsideConstTable,
@@ -1939,12 +1943,18 @@ impl GameDB {
         let rouge2_active_skill = rouge2_active_skill::Rouge2ActiveSkillTable::load(
             &format!("{}/rouge2_active_skill.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_active_skill.json: {}", e))?;
+        let rouge2_attribute = rouge2_attribute::Rouge2AttributeTable::load(
+            &format!("{}/rouge2_attribute.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_attribute.json: {}", e))?;
         let rouge2_buff = rouge2_buff::Rouge2BuffTable::load(
             &format!("{}/rouge2_buff.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_buff.json: {}", e))?;
         let rouge2_career = rouge2_career::Rouge2CareerTable::load(
             &format!("{}/rouge2_career.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_career.json: {}", e))?;
+        let rouge2_difficulty = rouge2_difficulty::Rouge2DifficultyTable::load(
+            &format!("{}/rouge2_difficulty.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_difficulty.json: {}", e))?;
         let rouge2_formula = rouge2_formula::Rouge2FormulaTable::load(
             &format!("{}/rouge2_formula.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_formula.json: {}", e))?;
@@ -2614,8 +2624,10 @@ impl GameDB {
             room_skin,
             room_theme,
             rouge2_active_skill,
+            rouge2_attribute,
             rouge2_buff,
             rouge2_career,
+            rouge2_difficulty,
             rouge2_formula,
             rouge2_material,
             rouge2_outside_const,

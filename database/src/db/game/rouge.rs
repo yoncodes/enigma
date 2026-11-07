@@ -1,5 +1,5 @@
 use crate::models::game::rouge::{
-    Rouge2CareerLevel, Rouge2MaterialState, Rouge2RewardState, Rouge2State,
+    Rouge2AttrState, Rouge2CareerLevel, Rouge2MaterialState, Rouge2RewardState, Rouge2State,
 };
 use crate::{db::game::tasks::TaskEvent, models::game::achievements::Achievement};
 use anyhow::Result;
@@ -7,9 +7,15 @@ use sqlx::SqlitePool;
 
 pub struct Rouge2OutsideState {
     pub state: Rouge2State,
+    pub attrs: Vec<Rouge2AttrState>,
     pub career_levels: Vec<Rouge2CareerLevel>,
     pub rewards: Vec<Rouge2RewardState>,
     pub materials: Vec<Rouge2MaterialState>,
+}
+
+pub struct DifficultyUpdate<'a> {
+    pub difficulty: i32,
+    pub attrs: &'a [(i32, i32)],
 }
 
 pub struct AlchemyUpdate<'a> {
@@ -110,6 +116,16 @@ pub async fn get_or_create_rouge2_outside(
     .fetch_all(pool)
     .await?;
 
+    let attrs = sqlx::query_as::<_, Rouge2AttrState>(
+        "SELECT user_id, attr_id, final_val, updated_at
+         FROM user_rouge2_attrs
+         WHERE user_id = ?
+         ORDER BY rowid",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
     let rewards = sqlx::query_as::<_, Rouge2RewardState>(
         "SELECT user_id, reward_id, buy_count, updated_at
          FROM user_rouge2_rewards
@@ -132,10 +148,55 @@ pub async fn get_or_create_rouge2_outside(
 
     Ok(Rouge2OutsideState {
         state,
+        attrs,
         career_levels,
         rewards,
         materials,
     })
+}
+
+pub async fn apply_difficulty(
+    pool: &SqlitePool,
+    user_id: i64,
+    update: DifficultyUpdate<'_>,
+) -> Result<bool> {
+    let now = common::time::ServerTime::now_ms();
+    let mut tx = pool.begin().await?;
+    let changed = sqlx::query(
+        "UPDATE user_rouge2_state
+         SET state = 1, difficulty = ?, coin = 0, end_id = 0,
+             game_num = game_num + 1, updated_at = ?
+         WHERE user_id = ? AND state = 0",
+    )
+    .bind(update.difficulty)
+    .bind(now)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    if changed.rows_affected() != 1 {
+        return Ok(false);
+    }
+
+    sqlx::query("DELETE FROM user_rouge2_attrs WHERE user_id = ?")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    for &(attr_id, final_val) in update.attrs {
+        sqlx::query(
+            "INSERT INTO user_rouge2_attrs
+             (user_id, attr_id, final_val, updated_at)
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(user_id)
+        .bind(attr_id)
+        .bind(final_val)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+    Ok(true)
 }
 
 pub async fn apply_alchemy(

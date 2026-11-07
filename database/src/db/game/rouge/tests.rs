@@ -1,6 +1,8 @@
 use sqlx::sqlite::SqlitePoolOptions;
 
-use super::{AlchemyUpdate, apply_alchemy, get_or_create_rouge2_outside};
+use super::{
+    AlchemyUpdate, DifficultyUpdate, apply_alchemy, apply_difficulty, get_or_create_rouge2_outside,
+};
 
 async fn test_pool() -> sqlx::SqlitePool {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
@@ -148,5 +150,102 @@ async fn migration_preserves_old_rows_and_backfills_visibility() {
         .await
         .unwrap(),
         vec![(1000, true), (1101, false)]
+    );
+}
+
+#[tokio::test]
+async fn difficulty_transition_rolls_back_state_and_attributes_together() {
+    let pool = test_pool().await;
+    sqlx::query(
+        "INSERT INTO user_rouge2_attrs
+         (user_id, attr_id, final_val, updated_at) VALUES (1, 99, 9, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let result = apply_difficulty(
+        &pool,
+        1,
+        DifficultyUpdate {
+            difficulty: 1,
+            attrs: &[(101, 1), (101, 2)],
+        },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        sqlx::query_as::<_, (i32, i32, i32)>(
+            "SELECT state, difficulty, game_num FROM user_rouge2_state WHERE user_id = 1"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        (0, 0, 0)
+    );
+    assert_eq!(
+        sqlx::query_as::<_, (i32, i32)>(
+            "SELECT attr_id, final_val FROM user_rouge2_attrs WHERE user_id = 1"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap(),
+        vec![(99, 9)]
+    );
+}
+
+#[tokio::test]
+async fn run_attribute_migration_preserves_existing_rouge_state() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::raw_sql(
+        "CREATE TABLE users (id INTEGER PRIMARY KEY);
+         CREATE TABLE user_rouge2_state (
+            user_id INTEGER PRIMARY KEY,
+            state INTEGER NOT NULL DEFAULT 0,
+            game_num INTEGER NOT NULL DEFAULT 0
+         );
+         INSERT INTO users (id) VALUES (1);
+         INSERT INTO user_rouge2_state (user_id, state, game_num) VALUES (1, 3, 7);",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::raw_sql(include_str!(
+        "../../../../migrations/104_rouge2_run_attributes.sql"
+    ))
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO user_rouge2_attrs
+         (user_id, attr_id, final_val, updated_at) VALUES (1, 320, 1, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        sqlx::query_as::<_, (i32, i32)>(
+            "SELECT state, game_num FROM user_rouge2_state WHERE user_id = 1"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        (3, 7)
+    );
+    assert_eq!(
+        sqlx::query_as::<_, (i32, i32)>(
+            "SELECT attr_id, final_val FROM user_rouge2_attrs WHERE user_id = 1"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        (320, 1)
     );
 }

@@ -11,6 +11,8 @@ use sqlx::SqlitePool;
 
 mod alchemy;
 pub use alchemy::AlchemyResult;
+mod difficulty;
+pub use difficulty::DifficultyResult;
 
 #[derive(Clone, Copy, Debug)]
 pub struct RougeManager {
@@ -132,17 +134,38 @@ async fn rouge2_info(db: &SqlitePool, user_id: i64) -> Result<GetRouge2InfoReply
     let rows = rouge::get_or_create_rouge2_outside(db, user_id, config::configs::get()).await?;
     let state = rows.state;
 
+    if state.state == difficulty::EMPTY_STATE {
+        return Ok(GetRouge2InfoReply {
+            rouge2_info: Some(Rouge2Info::default()),
+        });
+    }
+
+    let difficulty_selected = state.state == difficulty::DIFFICULTY_STATE;
+
     Ok(GetRouge2InfoReply {
         rouge2_info: Some(Rouge2Info {
             state: Some(state.state),
             difficulty: Some(state.difficulty),
             coin: Some(state.coin),
             map_info: None,
-            bag_info: Some(Rouge2BagInfo { bags: Vec::new() }),
+            bag_info: Some(if difficulty_selected {
+                difficulty::initial_bag_info()
+            } else {
+                Rouge2BagInfo { bags: Vec::new() }
+            }),
             end_id: Some(state.end_id),
             game_num: Some(state.game_num),
-            leader_info: None,
-            attr_info: Some(Rouge2AttrInfo { attr: Vec::new() }),
+            leader_info: difficulty_selected.then(difficulty::initial_leader_info),
+            attr_info: Some(Rouge2AttrInfo {
+                attr: rows
+                    .attrs
+                    .into_iter()
+                    .map(|attribute| sonettobuf::Rouge2Attr {
+                        attr_id: Some(attribute.attr_id),
+                        final_val: Some(attribute.final_val),
+                    })
+                    .collect(),
+            }),
             alchemy_info: current_game_alchemy(&state)?,
         }),
     })
