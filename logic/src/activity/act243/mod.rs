@@ -52,6 +52,23 @@ pub async fn info(
     })
 }
 
+pub async fn total_stars(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: i32,
+) -> Result<i32, AppError> {
+    validate_activity(activity_id)?;
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(best_star), 0) FROM user_activity243_episodes
+         WHERE user_id = ? AND activity_id = ?",
+    )
+    .bind(player_id)
+    .bind(activity_id)
+    .fetch_one(db)
+    .await?;
+    i32::try_from(total).map_err(|_| AppError::InvalidRequest)
+}
+
 pub async fn info_push(
     db: &SqlitePool,
     player_id: i64,

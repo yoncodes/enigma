@@ -77,6 +77,8 @@ mod act239;
 mod act243;
 mod dice_hero;
 
+pub use act243::total_stars as activity243_total_stars;
+
 use act101::{get101_bonus, get101_bonus_list, get101_infos, get101_sp_bonus};
 use act104::{act104_infos, mark_activity104_story, mark_episode_after_story, mark_pop_summary};
 use act116::{build_trap, info as act116_info, put_trap, upgrade_element};

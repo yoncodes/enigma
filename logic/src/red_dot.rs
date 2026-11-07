@@ -235,6 +235,9 @@ async fn apply_dynamic_red_dots(
                 }
             }
             RedDotId::V3a7Anniversary3ActBpSubTask | RedDotId::V3a7Anniversary3ActBpBonus => {}
+            RedDotId::V3a9BossRushAct
+            | RedDotId::V3a9RacingCarReward
+            | RedDotId::SP02AtomicReward => {}
             RedDotId::BattlePassBonus | RedDotId::BattlePassSpBonus => {}
             RedDotId::BattlePassTask => {
                 apply_bp_task_red_dot(reply, db, player_id, bp.map(|bp| bp.bp_id)).await?

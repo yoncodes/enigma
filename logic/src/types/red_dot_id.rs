@@ -6,6 +6,8 @@ pub enum RedDotId {
     Activity239Bonus,
     V3a7Anniversary3ActBpSubTask,
     V3a7Anniversary3ActBpBonus,
+    V3a9BossRushAct,
+    V3a9RacingCarReward,
     BattlePassBonus,
     BattlePassSpBonus,
     BattlePassTask,
@@ -24,6 +26,7 @@ pub enum RedDotId {
     StoreChargeGoodsRead,
     StoreGoodsRead,
     StoreTab,
+    SP02AtomicReward,
     TeachingSystem,
     TradeOrderFulfillable,
     TurnbackBattlePassBonus,
@@ -45,6 +48,8 @@ impl RedDotId {
             Self::Activity239Bonus => 38507,
             Self::V3a7Anniversary3ActBpSubTask => 3705,
             Self::V3a7Anniversary3ActBpBonus => 3708,
+            Self::V3a9BossRushAct => 3922,
+            Self::V3a9RacingCarReward => 3924,
             Self::BattlePassBonus => 1047,
             Self::BattlePassSpBonus => 2204,
             Self::BattlePassTask => 1027,
@@ -63,6 +68,7 @@ impl RedDotId {
             Self::StoreChargeGoodsRead => 1044,
             Self::StoreGoodsRead => 1043,
             Self::StoreTab => 1003,
+            Self::SP02AtomicReward => 38511,
             Self::TeachingSystem => 3712,
             Self::TradeOrderFulfillable => 2240,
             Self::TurnbackBattlePassBonus => 3223,
@@ -83,6 +89,8 @@ impl RedDotId {
             38507 => Some(Self::Activity239Bonus),
             3705 => Some(Self::V3a7Anniversary3ActBpSubTask),
             3708 => Some(Self::V3a7Anniversary3ActBpBonus),
+            3922 => Some(Self::V3a9BossRushAct),
+            3924 => Some(Self::V3a9RacingCarReward),
             1047 => Some(Self::BattlePassBonus),
             2204 => Some(Self::BattlePassSpBonus),
             1027 => Some(Self::BattlePassTask),
@@ -101,6 +109,7 @@ impl RedDotId {
             1044 => Some(Self::StoreChargeGoodsRead),
             1043 => Some(Self::StoreGoodsRead),
             1003 => Some(Self::StoreTab),
+            38511 => Some(Self::SP02AtomicReward),
             3712 => Some(Self::TeachingSystem),
             2240 => Some(Self::TradeOrderFulfillable),
             3223 => Some(Self::TurnbackBattlePassBonus),
@@ -129,5 +138,12 @@ mod tests {
     fn activity239_bonus_uses_the_captured_red_dot_id() {
         assert_eq!(RedDotId::Activity239Bonus.id(), 38507);
         assert_eq!(RedDotId::from_id(38507), Some(RedDotId::Activity239Bonus));
+    }
+
+    #[test]
+    fn milestone_bonus_clears_the_captured_nodes() {
+        assert_eq!(RedDotId::V3a9BossRushAct.id(), 3922);
+        assert_eq!(RedDotId::V3a9RacingCarReward.id(), 3924);
+        assert_eq!(RedDotId::SP02AtomicReward.id(), 38511);
     }
 }

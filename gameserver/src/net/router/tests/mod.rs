@@ -58,6 +58,7 @@ mod activity_pass;
 mod activity_rewards;
 mod arcade;
 mod exploration;
+mod milestone;
 mod progression;
 mod social;
 mod story;

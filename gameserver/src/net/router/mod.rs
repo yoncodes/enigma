@@ -195,6 +195,7 @@ async fn dispatch_registered_command(
         CmdId::DebugLogoutCmd => user::on_debug_logout,
         CmdId::GetAllMailsCmd => mail::on_get_all_mails,
         CmdId::GetMilestoneInfoCmd => milestone::on_get_info,
+        CmdId::GetMilestoneBonusCmd => milestone::on_get_bonus,
         CmdId::ReadMailCmd => mail::on_read_mail,
         CmdId::ReadMailBatchCmd => mail::on_read_mail_batch,
         CmdId::MailLockCmd => mail::on_mail_lock,
