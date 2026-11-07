@@ -30,6 +30,14 @@ impl ExplorationManager {
     ) -> Result<WeekwalkVer2GetInfoReply, AppError> {
         weekwalk_v2::info(db, self.player_id).await
     }
+
+    pub async fn mark_weekwalk_v2_finished_shown(
+        self,
+        db: &SqlitePool,
+        layer_id: i32,
+    ) -> Result<sonettobuf::WeekwalkVer2MarkShowFinishedReply, AppError> {
+        weekwalk_v2::mark_finished_shown(db, self.player_id, layer_id).await
+    }
 }
 
 async fn explore_simple_info(

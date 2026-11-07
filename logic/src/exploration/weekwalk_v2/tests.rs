@@ -113,3 +113,38 @@ async fn info_seeds_captured_season_and_preserves_progress() {
         .unwrap();
     assert_eq!(reloaded.layer_infos[0].show_finished, Some(true));
 }
+
+#[tokio::test]
+async fn mark_finished_shown_persists_the_captured_layer_flag() {
+    let db = test_db().await;
+    let schedule = &common::config().weekwalk_v2.schedule[0];
+
+    assert!(
+        mark_finished_shown_at(&db, 1, 1069, schedule.start_time)
+            .await
+            .is_err()
+    );
+    sqlx::query(
+        "UPDATE user_weekwalk_v2_layers SET all_pass = 1, finished = 1
+         WHERE user_id = 1 AND layer_id = 1069",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    let reply = mark_finished_shown_at(&db, 1, 1069, schedule.start_time)
+        .await
+        .unwrap();
+    assert_eq!(reply.layer_id, Some(1069));
+    let info = info_at(&db, 1, schedule.start_time)
+        .await
+        .unwrap()
+        .info
+        .unwrap();
+    assert_eq!(info.layer_infos[0].show_finished, Some(true));
+
+    assert!(
+        mark_finished_shown_at(&db, 1, 9999, schedule.start_time)
+            .await
+            .is_err()
+    );
+}

@@ -10,6 +10,7 @@ mod tests;
 
 pub use state::{
     WeekwalkV2BattleSeed, WeekwalkV2LayerSeed, WeekwalkV2Seed, ensure_weekwalk_v2_state,
+    mark_layer_finished_shown,
 };
 
 pub async fn get_weekwalk_v2_info(

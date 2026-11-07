@@ -141,3 +141,19 @@ pub async fn ensure_weekwalk_v2_state(
     tx.commit().await?;
     Ok(())
 }
+
+pub async fn mark_layer_finished_shown(
+    pool: &SqlitePool,
+    user_id: i64,
+    layer_id: i32,
+) -> Result<bool> {
+    let result = sqlx::query(
+        "UPDATE user_weekwalk_v2_layers SET show_finished = 1
+         WHERE user_id = ? AND layer_id = ? AND all_pass = 1",
+    )
+    .bind(user_id)
+    .bind(layer_id)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}

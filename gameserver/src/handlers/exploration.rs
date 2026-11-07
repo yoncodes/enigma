@@ -7,6 +7,7 @@ use sonettobuf::{
     BeforeStartWeekwalkBattleRequest, ChangeMapRequest, ChangeWeekwalkHeroGroupSelectRequest,
     CmdId, GetExploreInfoRequest, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
     MarkShowFinishedRequest, WeekwalkDialogHistoryRequest, WeekwalkDialogRequest,
+    WeekwalkVer2MarkShowFinishedRequest,
 };
 
 pub async fn on_change_map(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
@@ -188,5 +189,22 @@ pub async fn on_weekwalk_ver2_get_info(
         .weekwalk_v2_info(ctx.state.db)
         .await?;
     ctx.send_reply(CmdId::WeekwalkVer2GetInfoCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_weekwalk_ver2_mark_show_finished(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = WeekwalkVer2MarkShowFinishedRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .exploration
+        .mark_weekwalk_v2_finished_shown(
+            ctx.state.db,
+            request.layer_id.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.send_reply(CmdId::WeekwalkVer2MarkShowFinishedCmd, reply, 0, req.up_tag)
         .await
 }

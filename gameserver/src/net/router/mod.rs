@@ -463,6 +463,9 @@ async fn dispatch_registered_command(
         CmdId::MarkPopDeepSettleCmd => exploration::on_mark_pop_deep_settle,
         CmdId::MarkShowFinishedCmd => exploration::on_mark_show_finished,
         CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,
+        CmdId::WeekwalkVer2MarkShowFinishedCmd => {
+            exploration::on_weekwalk_ver2_mark_show_finished
+        },
         CmdId::GetTowerInfoCmd => tower::on_get_info,
         CmdId::TowerMopUpCmd => tower::on_mop_up,
         CmdId::TowerResetSubEpisodeCmd => tower::on_reset_sub_episode,
