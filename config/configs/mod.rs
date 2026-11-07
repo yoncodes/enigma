@@ -319,6 +319,8 @@ pub mod power_item;
 pub mod production_line;
 pub mod production_line_level;
 pub mod push_box_task;
+pub mod racing_gift;
+pub mod racing_racer;
 pub mod reddot;
 pub mod resistances_attribute;
 pub mod resistances_const;
@@ -763,6 +765,8 @@ pub struct GameDB {
     pub production_line: production_line::ProductionLineTable,
     pub production_line_level: production_line_level::ProductionLineLevelTable,
     pub push_box_task: push_box_task::PushBoxTaskTable,
+    pub racing_gift: racing_gift::RacingGiftTable,
+    pub racing_racer: racing_racer::RacingRacerTable,
     pub reddot: reddot::ReddotTable,
     pub resistances_attribute: resistances_attribute::ResistancesAttributeTable,
     pub resistances_const: resistances_const::ResistancesConstTable,
@@ -1846,6 +1850,12 @@ impl GameDB {
         let push_box_task = push_box_task::PushBoxTaskTable::load(
             &format!("{}/push_box_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load push_box_task.json: {}", e))?;
+        let racing_gift = racing_gift::RacingGiftTable::load(
+            &format!("{}/racing_gift.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load racing_gift.json: {}", e))?;
+        let racing_racer = racing_racer::RacingRacerTable::load(
+            &format!("{}/racing_racer.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load racing_racer.json: {}", e))?;
         let reddot = reddot::ReddotTable::load(
             &format!("{}/reddot.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load reddot.json: {}", e))?;
@@ -2531,6 +2541,8 @@ impl GameDB {
             production_line,
             production_line_level,
             push_box_task,
+            racing_gift,
+            racing_racer,
             reddot,
             resistances_attribute,
             resistances_const,
