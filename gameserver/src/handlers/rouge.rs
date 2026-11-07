@@ -2,12 +2,15 @@ use crate::{
     error::AppError,
     logic::rouge,
     net::{context::ConnectionContext, packet::ClientPacket},
+    types::material_get_approach::MaterialGetApproach,
+    util::push,
 };
 use prost::Message;
 use sonettobuf::{
     CmdId, EnterRouge2SelectDifficultyRequest, GetRouge2InfoRequest, GetRouge2OutsideInfoRequest,
     GetRougeOutsideInfoRequest, Rouge2ActiveGeniusRequest, Rouge2AlchemyRequest,
-    Rouge2AttrUpdatePush, Rouge2GetUnlockCollectionsRequest, Rouge2UpdateGeniusPointPush,
+    Rouge2AttrUpdatePush, Rouge2GetUnlockCollectionsRequest, Rouge2RewardRequest,
+    Rouge2UpdateGeniusPointPush,
 };
 
 pub async fn on_get_rouge_outside_info(
@@ -99,6 +102,34 @@ pub async fn on_rouge2_active_genius(
     )
     .await?;
     ctx.send_reply(CmdId::Rouge2ActiveGeniusCmd, result.reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_rouge2_reward(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
+    let msg = Rouge2RewardRequest::decode(&req.data[..])?;
+    let result = ctx
+        .player()?
+        .rouge
+        .buy_reward(
+            ctx.state.db,
+            msg.id.ok_or(AppError::InvalidRequest)?,
+            msg.num.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+
+    push::send_rouge2_store_reward_pushes(
+        ctx,
+        player_id,
+        result.rewards,
+        result.material_changes,
+        Some(MaterialGetApproach::Activity),
+    )
+    .await?;
+    ctx.send_reply(CmdId::Rouge2RewardCmd, result.reply, 0, req.up_tag)
         .await
 }
 

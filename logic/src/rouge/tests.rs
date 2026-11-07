@@ -296,6 +296,233 @@ async fn genius_snapshot(pool: &SqlitePool) -> (i32, i32, String) {
     .unwrap()
 }
 
+#[tokio::test]
+async fn reward_store_spends_currency_and_enforces_schedule_and_limits() {
+    let pool = test_pool().await;
+    let manager = RougeManager::new(1);
+    let currency_id = common::config().rouge2.store_currency_id;
+    database::db::game::currencies::add_currency(&pool, 1, currency_id, 8960)
+        .await
+        .unwrap();
+    let now =
+        i64::from(common::time::ServerTime::config_datetime_sec("2026-11-07 10:38:49").unwrap());
+
+    let expired = store_snapshot(&pool, 3003, 133136).await;
+    assert!(matches!(
+        manager.buy_reward_at(&pool, 3003, 1, now).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert_eq!(store_snapshot(&pool, 3003, 133136).await, expired);
+
+    let result = manager.buy_reward_at(&pool, 3002, 4, now).await.unwrap();
+    assert_eq!(result.reply.num, Some(4));
+    assert_eq!(result.reply.goods_info.unwrap().buy_count, Some(4));
+    assert_eq!(result.material_changes, vec![(1, 133136, 4)]);
+    assert_eq!(result.rewards.currency_ids, vec![(currency_id, -8000)]);
+    assert_eq!(store_snapshot(&pool, 3002, 133136).await, (960, 4, 4));
+
+    let limited = store_snapshot(&pool, 3002, 133136).await;
+    assert!(matches!(
+        manager.buy_reward_at(&pool, 3002, 2, now).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert_eq!(store_snapshot(&pool, 3002, 133136).await, limited);
+    assert!(matches!(
+        manager.buy_reward_at(&pool, 3002, 1, now).await,
+        Err(AppError::InsufficientCurrency)
+    ));
+    assert_eq!(store_snapshot(&pool, 3002, 133136).await, limited);
+}
+
+#[tokio::test]
+async fn reward_store_rejections_do_not_initialize_or_overflow_state() {
+    let pool = test_pool().await;
+    let currency_id = common::config().rouge2.store_currency_id;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (2, 'rouge2-rejected-store', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    database::db::game::currencies::add_currency(&pool, 2, currency_id, i32::MAX)
+        .await
+        .unwrap();
+    let manager = RougeManager::new(2);
+    let now =
+        i64::from(common::time::ServerTime::config_datetime_sec("2026-11-07 10:38:49").unwrap());
+
+    assert!(matches!(
+        manager.buy_reward_at(&pool, -1, 1, now).await,
+        Err(AppError::InvalidRequest)
+    ));
+    let initialized: i32 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM user_rouge2_state WHERE user_id = 2")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let reward_rows: i32 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM user_rouge2_rewards WHERE user_id = 2")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((initialized, reward_rows), (0, 0));
+
+    RougeManager::new(2).outside_info(&pool).await.unwrap();
+    assert!(matches!(
+        manager.buy_reward_at(&pool, 4011, 1, now).await,
+        Err(AppError::InvalidRequest)
+    ));
+    for goods in config::configs::get()
+        .rouge2_reward
+        .iter()
+        .filter(|goods| goods.stage == 4 && goods.reward_score == 0 && goods.max_buy_count > 0)
+    {
+        sqlx::query(
+            "UPDATE user_rouge2_rewards SET buy_count = ?
+             WHERE user_id = 2 AND reward_id = ?",
+        )
+        .bind(goods.max_buy_count)
+        .bind(goods.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let before = store_currency_snapshot(&pool, 2, 4011, currency_id, 3).await;
+    assert!(matches!(
+        manager.buy_reward_at(&pool, 4011, 300_000_000, now).await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert_eq!(
+        store_currency_snapshot(&pool, 2, 4011, currency_id, 3).await,
+        before
+    );
+
+    manager.buy_reward_at(&pool, 4011, 1, now).await.unwrap();
+    assert_eq!(
+        store_currency_snapshot(&pool, 2, 4011, currency_id, 3).await,
+        (i32::MAX - 5, 1, 10)
+    );
+}
+
+#[tokio::test]
+async fn reward_store_uses_the_lua_normalized_schedule_end() {
+    let pool = test_pool().await;
+    let currency_id = common::config().rouge2.store_currency_id;
+    database::db::game::currencies::add_currency(&pool, 1, currency_id, 18_000)
+        .await
+        .unwrap();
+    let end = super::store::shop_time("2038-00-00 00:00:00").unwrap();
+    assert_eq!(
+        end,
+        i64::from(common::time::ServerTime::config_datetime_sec("2037-11-30 00:00:00").unwrap())
+    );
+    RougeManager::new(1)
+        .buy_reward_at(&pool, 3000, 1, end - 1)
+        .await
+        .unwrap();
+    let before = store_snapshot(&pool, 3001, 0).await;
+    assert!(matches!(
+        RougeManager::new(1)
+            .buy_reward_at(&pool, 3001, 1, end)
+            .await,
+        Err(AppError::InvalidRequest)
+    ));
+    assert_eq!(store_snapshot(&pool, 3001, 0).await, before);
+}
+
+#[tokio::test]
+async fn concurrent_reward_purchases_do_not_oversell() {
+    crate::init_test_server_config();
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let url = format!(
+        "sqlite:file:rouge2-reward-{}?mode=memory&cache=shared",
+        common::time::ServerTime::now_ms()
+    );
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect(&url)
+        .await
+        .unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (3, 'rouge2-concurrent-store', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    RougeManager::new(3).outside_info(&pool).await.unwrap();
+    let currency_id = common::config().rouge2.store_currency_id;
+    database::db::game::currencies::add_currency(&pool, 3, currency_id, 20_000)
+        .await
+        .unwrap();
+    let now =
+        i64::from(common::time::ServerTime::config_datetime_sec("2026-11-07 10:38:49").unwrap());
+    let manager = RougeManager::new(3);
+
+    let (left, right) = tokio::join!(
+        manager.buy_reward_at(&pool, 3002, 5, now),
+        manager.buy_reward_at(&pool, 3002, 5, now)
+    );
+    assert_eq!(usize::from(left.is_ok()) + usize::from(right.is_ok()), 1);
+    assert_eq!(
+        store_currency_snapshot(&pool, 3, 3002, currency_id, 0).await,
+        (10_000, 5, 0)
+    );
+    let items: i32 =
+        sqlx::query_scalar("SELECT quantity FROM items WHERE user_id = 3 AND item_id = 133136")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(items, 5);
+}
+
+async fn store_snapshot(pool: &SqlitePool, reward_id: i32, item_id: i32) -> (i32, i32, i32) {
+    let currency_id = common::config().rouge2.store_currency_id;
+    sqlx::query_as(
+        "SELECT
+            COALESCE((SELECT quantity FROM currencies WHERE user_id = 1 AND currency_id = ?), 0),
+            COALESCE((SELECT buy_count FROM user_rouge2_rewards
+                      WHERE user_id = 1 AND reward_id = ?), 0),
+            COALESCE((SELECT quantity FROM items WHERE user_id = 1 AND item_id = ?), 0)",
+    )
+    .bind(currency_id)
+    .bind(reward_id)
+    .bind(item_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn store_currency_snapshot(
+    pool: &SqlitePool,
+    user_id: i64,
+    reward_id: i32,
+    store_currency_id: i32,
+    reward_currency_id: i32,
+) -> (i32, i32, i32) {
+    sqlx::query_as(
+        "SELECT
+            COALESCE((SELECT quantity FROM currencies
+                      WHERE user_id = ? AND currency_id = ?), 0),
+            COALESCE((SELECT buy_count FROM user_rouge2_rewards
+                      WHERE user_id = ? AND reward_id = ?), 0),
+            COALESCE((SELECT quantity FROM currencies
+                      WHERE user_id = ? AND currency_id = ?), 0)",
+    )
+    .bind(user_id)
+    .bind(store_currency_id)
+    .bind(user_id)
+    .bind(reward_id)
+    .bind(user_id)
+    .bind(reward_currency_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
 async fn seed_materials(pool: &SqlitePool) {
     for (material_id, num) in [(1008, 1), (1000, 4), (1001, 1), (1101, 1), (1103, 0)] {
         sqlx::query(

@@ -1,10 +1,11 @@
 use super::*;
 use sonettobuf::{
-    EnterRouge2SelectDifficultyReply, EnterRouge2SelectDifficultyRequest, Rouge2ActiveGeniusReply,
+    CurrencyChangePush, EnterRouge2SelectDifficultyReply, EnterRouge2SelectDifficultyRequest,
+    HeroGainPush, HeroUpdatePush, ItemChangePush, MaterialChangePush, Rouge2ActiveGeniusReply,
     Rouge2ActiveGeniusRequest, Rouge2AlchemyReply, Rouge2AlchemyRequest, Rouge2Attr,
     Rouge2AttrInfo, Rouge2AttrUpdatePush, Rouge2Bag, Rouge2BagInfo, Rouge2CurAlchemyInfo,
-    Rouge2GameCurAlchemyInfo, Rouge2Info, Rouge2LeaderInfo, Rouge2UpdateGeniusPointPush,
-    UpdateAchievementPush,
+    Rouge2GameCurAlchemyInfo, Rouge2Info, Rouge2LeaderInfo, Rouge2RewardReply, Rouge2RewardRequest,
+    Rouge2UpdateGeniusPointPush, UpdateAchievementPush, UpdateRedDotPush,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -98,6 +99,304 @@ async fn active_genius_command_updates_points_before_reply() {
             genius_id: Some(10010),
             genius_ids: vec![10009, 10010],
         }
+    );
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn reward_command_emits_captured_purchase_push_order() {
+    crate::net::app::init_test_server_config();
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 540;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'rouge2-reward-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    database::db::game::rouge::get_or_create_rouge2_outside(&pool, player_id, configs::get())
+        .await
+        .unwrap();
+    database::db::game::currencies::add_currency(&pool, player_id, 3201, 8960)
+        .await
+        .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(5);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    let mut data = Vec::new();
+    Rouge2RewardRequest {
+        id: Some(3002),
+        num: Some(4),
+    }
+    .encode(&mut data)
+    .unwrap();
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Rouge2RewardCmd as i16,
+            up_tag: 58,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Rouge2 reward did not emit currency first");
+    };
+    assert_eq!(cmd_id, CmdId::CurrencyChangePushCmd);
+    let currency = CurrencyChangePush::decode(&*body).unwrap();
+    assert_eq!(currency.change_currency[0].currency_id, Some(3201));
+    assert_eq!(currency.change_currency[0].quantity, Some(960));
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Rouge2 reward did not emit item state second");
+    };
+    assert_eq!(cmd_id, CmdId::ItemChangePushCmd);
+    let items = ItemChangePush::decode(&*body).unwrap();
+    let item = &items.items[0];
+    assert_eq!((item.item_id, item.quantity), (Some(133136), Some(4)));
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Rouge2 reward did not emit the trade-order red dot third");
+    };
+    assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+    let red_dot = UpdateRedDotPush::decode(&*body).unwrap();
+    assert_eq!(
+        red_dot.red_dot_infos[0].define_id,
+        crate::types::red_dot_id::RedDotId::TradeOrderFulfillable.id()
+    );
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Rouge2 reward did not emit material state fourth");
+    };
+    assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+    let material = MaterialChangePush::decode(&*body).unwrap();
+    assert_eq!(
+        material.get_approach,
+        Some(crate::types::material_get_approach::MaterialGetApproach::Activity.id())
+    );
+    assert_eq!(
+        material
+            .data_list
+            .iter()
+            .map(|entry| (entry.materil_type, entry.materil_id, entry.quantity))
+            .collect::<Vec<_>>(),
+        vec![(Some(1), Some(133136), Some(4))]
+    );
+
+    let CommandPacket::Reply {
+        cmd_id: CmdId::Rouge2RewardCmd,
+        body,
+        result_code: 0,
+        up_tag: 58,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("Rouge2 reward did not finish with its reply");
+    };
+    let reply = Rouge2RewardReply::decode(&*body).unwrap();
+    assert_eq!(reply.num, Some(4));
+    assert_eq!(reply.goods_info.unwrap().buy_count, Some(4));
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn reward_command_emits_captured_equip_and_hero_pushes() {
+    crate::net::app::init_test_server_config();
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 541;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'rouge2-reward-projections', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    database::db::game::player_infos::create_player_info(&pool, player_id, 0)
+        .await
+        .unwrap();
+    database::db::game::rouge::get_or_create_rouge2_outside(&pool, player_id, configs::get())
+        .await
+        .unwrap();
+    let currency_id = ::common::config().rouge2.store_currency_id;
+    database::db::game::currencies::add_currency(&pool, player_id, currency_id, 18_000)
+        .await
+        .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(16);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+
+    let mut data = Vec::new();
+    Rouge2RewardRequest {
+        id: Some(3000),
+        num: Some(1),
+    }
+    .encode(&mut data)
+    .unwrap();
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Rouge2RewardCmd as i16,
+            up_tag: 59,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let equip_packets = (0..4)
+        .map(|_| packets.try_recv().unwrap())
+        .collect::<Vec<_>>();
+    assert!(matches!(
+        &equip_packets[0],
+        CommandPacket::Push {
+            cmd_id: CmdId::CurrencyChangePushCmd,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &equip_packets[1],
+        CommandPacket::Push {
+            cmd_id: CmdId::EquipUpdatePushCmd,
+            ..
+        }
+    ));
+    let CommandPacket::Push { body, .. } = &equip_packets[2] else {
+        panic!("Rouge2 equipment reward did not emit material state third");
+    };
+    let material = MaterialChangePush::decode(&**body).unwrap();
+    assert_eq!(
+        material
+            .data_list
+            .iter()
+            .map(|entry| (entry.materil_type, entry.materil_id, entry.quantity))
+            .collect::<Vec<_>>(),
+        vec![(Some(9), Some(1570), Some(1))]
+    );
+    assert!(matches!(
+        &equip_packets[3],
+        CommandPacket::Reply {
+            cmd_id: CmdId::Rouge2RewardCmd,
+            result_code: 0,
+            up_tag: 59,
+            ..
+        }
+    ));
+
+    let mut data = Vec::new();
+    Rouge2RewardRequest {
+        id: Some(3001),
+        num: Some(1),
+    }
+    .encode(&mut data)
+    .unwrap();
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 2,
+            cmd_id: CmdId::Rouge2RewardCmd as i16,
+            up_tag: 60,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+    let mut hero_packets = Vec::new();
+    while let Ok(packet) = packets.try_recv() {
+        hero_packets.push(packet);
+    }
+    let expected = [
+        CmdId::CurrencyChangePushCmd,
+        CmdId::HeroHeroUpdatePushCmd,
+        CmdId::PlayerInfoPushCmd,
+        CmdId::PlayerCardInfoPushCmd,
+        CmdId::PlayerCardInfoPushCmd,
+        CmdId::HeroHeroUpdatePushCmd,
+        CmdId::HeroGainPushCmd,
+        CmdId::MaterialChangePushCmd,
+        CmdId::Rouge2RewardCmd,
+    ];
+    assert_eq!(
+        hero_packets
+            .iter()
+            .map(|packet| match packet {
+                CommandPacket::Push { cmd_id, .. } | CommandPacket::Reply { cmd_id, .. } => *cmd_id,
+            })
+            .collect::<Vec<_>>(),
+        expected
+    );
+    let CommandPacket::Push { body, .. } = &hero_packets[1] else {
+        panic!("Rouge2 hero reward did not emit the initial hero state");
+    };
+    let initial = HeroUpdatePush::decode(&**body).unwrap();
+    let CommandPacket::Push { body, .. } = &hero_packets[5] else {
+        panic!("Rouge2 hero reward did not emit the voice-unlocked hero state");
+    };
+    let final_state = HeroUpdatePush::decode(&**body).unwrap();
+    assert_eq!(initial.hero_updates[0].voice, Vec::<i32>::new());
+    assert_eq!(final_state.hero_updates[0].voice, vec![1_313_601]);
+    let mut expected_initial = final_state.hero_updates[0].clone();
+    expected_initial.voice.clear();
+    assert_eq!(initial.hero_updates[0], expected_initial);
+    let CommandPacket::Push { body, .. } = &hero_packets[6] else {
+        panic!("Rouge2 hero reward did not emit HeroGainPush");
+    };
+    let gain = HeroGainPush::decode(&**body).unwrap();
+    assert_eq!(
+        (gain.hero_id, gain.is_first, gain.duplicate_count),
+        (Some(3136), Some(true), Some(0))
+    );
+    assert_eq!(
+        gain.items
+            .iter()
+            .map(|entry| (entry.materil_type, entry.materil_id, entry.quantity))
+            .collect::<Vec<_>>(),
+        vec![(Some(4), Some(3136), Some(1))]
+    );
+    let CommandPacket::Push { body, .. } = &hero_packets[7] else {
+        panic!("Rouge2 hero reward did not emit material state");
+    };
+    let material = MaterialChangePush::decode(&**body).unwrap();
+    assert_eq!(
+        material
+            .data_list
+            .iter()
+            .map(|entry| (entry.materil_type, entry.materil_id, entry.quantity))
+            .collect::<Vec<_>>(),
+        vec![(Some(4), Some(3136), Some(1))]
     );
     assert!(packets.try_recv().is_err());
 }

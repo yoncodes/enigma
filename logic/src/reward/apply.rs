@@ -61,11 +61,18 @@ pub(crate) async fn apply_in_transaction(
 
     let heroes = UserHeroModel::new(player_id, db.clone());
     let mut hero_ids = Vec::new();
+    let mut hero_gains = Vec::new();
     let mut pending_heroes = std::collections::VecDeque::from(std::mem::take(&mut rewards.heroes));
     while let Some((hero_id, count)) = pending_heroes.pop_front() {
         for _ in 0..count {
             let grant = heroes.grant_hero_in_transaction(tx, hero_id).await?;
             hero_ids.push(hero_id);
+            hero_gains.push(HeroGain {
+                hero_id,
+                is_first: grant.is_new,
+                duplicate_count: grant.duplicate_count,
+                initial_voice_ids: grant.initial_voice_ids,
+            });
             if !grant.is_new && grant.duplicate_count > 0 {
                 let mut duplicate = hero_duplicate_rewards(hero_id, grant.duplicate_count)?;
                 validate_grants(&duplicate)?;
@@ -170,6 +177,7 @@ pub(crate) async fn apply_in_transaction(
         item_ids,
         currency_ids,
         hero_ids,
+        hero_gains,
         skin_gains,
         cloth_updates,
         equip_uids,

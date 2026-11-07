@@ -37,6 +37,7 @@ schedule = [
 ]
 
 [rouge2]
+store_currency_id = 3201
 initial_update_order = [320, 321, 326, 202, 204, 205, 310, 311, 312, 313, 314, 315, 316, 317, 318, 319]
 initial_attributes = [
   { id = 513, value = 0 },

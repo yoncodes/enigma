@@ -353,6 +353,7 @@ pub mod rouge2_material;
 pub mod rouge2_outside_const;
 pub mod rouge2_relics;
 pub mod rouge2_reward;
+pub mod rouge2_shop_date;
 pub mod rule;
 pub mod same_currency_exchange;
 pub mod scene_switch;
@@ -813,6 +814,7 @@ pub struct GameDB {
     pub rouge2_outside_const: rouge2_outside_const::Rouge2OutsideConstTable,
     pub rouge2_relics: rouge2_relics::Rouge2RelicsTable,
     pub rouge2_reward: rouge2_reward::Rouge2RewardTable,
+    pub rouge2_shop_date: rouge2_shop_date::Rouge2ShopDateTable,
     pub rule: rule::RuleTable,
     pub same_currency_exchange: same_currency_exchange::SameCurrencyExchangeTable,
     pub scene_switch: scene_switch::SceneSwitchTable,
@@ -1980,6 +1982,9 @@ impl GameDB {
         let rouge2_reward = rouge2_reward::Rouge2RewardTable::load(
             &format!("{}/rouge2_reward.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_reward.json: {}", e))?;
+        let rouge2_shop_date = rouge2_shop_date::Rouge2ShopDateTable::load(
+            &format!("{}/rouge2_shop_date.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_shop_date.json: {}", e))?;
         let rule = rule::RuleTable::load(
             &format!("{}/rule.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rule.json: {}", e))?;
@@ -2645,6 +2650,7 @@ impl GameDB {
             rouge2_outside_const,
             rouge2_relics,
             rouge2_reward,
+            rouge2_shop_date,
             rule,
             same_currency_exchange,
             scene_switch,

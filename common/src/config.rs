@@ -59,8 +59,26 @@ fn default_weekwalk_v2_config() -> WeekwalkV2Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rouge2Config {
+    #[serde(default = "default_rouge2_store_currency_id")]
+    pub store_currency_id: i32,
     pub initial_attributes: Vec<Rouge2InitialAttribute>,
     pub initial_update_order: Vec<i32>,
+}
+
+fn default_rouge2_store_currency_id() -> i32 {
+    #[derive(Deserialize)]
+    struct Template {
+        rouge2: Store,
+    }
+    #[derive(Deserialize)]
+    struct Store {
+        store_currency_id: i32,
+    }
+
+    toml::from_str::<Template>(CONFIG_TEMPLATE)
+        .expect("embedded Rouge2 store currency must be valid")
+        .rouge2
+        .store_currency_id
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,6 +251,9 @@ impl ServerConfig {
             anyhow::bail!("Weekwalk v2 schedule IDs must be sorted and unique");
         }
 
+        if self.rouge2.store_currency_id <= 0 {
+            anyhow::bail!("Rouge2 store currency ID must be positive");
+        }
         let rouge2_attribute_ids = self
             .rouge2
             .initial_attributes
@@ -368,6 +389,18 @@ mod tests {
         let config: ServerConfig = template.try_into().unwrap();
         assert_eq!(config.rouge2.initial_attributes.len(), 61);
         assert_eq!(config.rouge2.initial_update_order[0], 320);
+    }
+
+    #[test]
+    fn missing_rouge2_store_currency_uses_embedded_default() {
+        let mut template: toml::Value = toml::from_str(CONFIG_TEMPLATE).unwrap();
+        template["rouge2"]
+            .as_table_mut()
+            .unwrap()
+            .remove("store_currency_id");
+
+        let config: ServerConfig = template.try_into().unwrap();
+        assert_eq!(config.rouge2.store_currency_id, 3201);
     }
 
     #[test]

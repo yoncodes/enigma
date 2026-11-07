@@ -3,7 +3,7 @@ use crate::models::game::rouge::{
 };
 use crate::{db::game::tasks::TaskEvent, models::game::achievements::Achievement};
 use anyhow::Result;
-use sqlx::SqlitePool;
+use sqlx::{Sqlite, SqlitePool, Transaction};
 
 pub struct Rouge2OutsideState {
     pub state: Rouge2State,
@@ -296,6 +296,58 @@ pub async fn activate_genius(
     .bind(activation.expected_ids)
     .bind(activation.point_cost)
     .fetch_optional(pool)
+    .await?)
+}
+
+pub async fn ensure_reward_buy_count(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    reward_id: i32,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT OR IGNORE INTO user_rouge2_rewards
+         (user_id, reward_id, buy_count, updated_at) VALUES (?, ?, 0, ?)",
+    )
+    .bind(user_id)
+    .bind(reward_id)
+    .bind(common::time::ServerTime::now_ms())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+pub async fn reward_buy_counts(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+) -> Result<Vec<(i32, i32)>> {
+    Ok(
+        sqlx::query_as("SELECT reward_id, buy_count FROM user_rouge2_rewards WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_all(&mut **tx)
+            .await?,
+    )
+}
+
+pub async fn add_reward_buy_count(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    reward_id: i32,
+    expected_count: i32,
+    amount: i32,
+) -> Result<Option<i32>> {
+    let now = common::time::ServerTime::now_ms();
+    Ok(sqlx::query_scalar(
+        "UPDATE user_rouge2_rewards
+         SET buy_count = buy_count + ?, updated_at = ?
+         WHERE user_id = ? AND reward_id = ? AND buy_count = ?
+         RETURNING buy_count",
+    )
+    .bind(amount)
+    .bind(now)
+    .bind(user_id)
+    .bind(reward_id)
+    .bind(expected_count)
+    .fetch_optional(&mut **tx)
     .await?)
 }
 

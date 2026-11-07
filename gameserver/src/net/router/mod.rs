@@ -556,6 +556,7 @@ async fn dispatch_registered_command(
         CmdId::Rouge2ActiveGeniusCmd => rouge::on_rouge2_active_genius,
         CmdId::Rouge2AlchemyCmd => rouge::on_rouge2_alchemy,
         CmdId::Rouge2GetUnlockCollectionsCmd => rouge::on_rouge2_get_unlock_collections,
+        CmdId::Rouge2RewardCmd => rouge::on_rouge2_reward,
         CmdId::SurvivalOutSideGetInfoCmd => survival::on_get_outside_info,
         CmdId::OdysseyGetInfoCmd => odyssey::on_odyssey_get_info,
         CmdId::DiceHeroGetInfoCmd => dice_hero::on_dice_hero_get_info,

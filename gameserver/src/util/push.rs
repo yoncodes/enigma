@@ -6,9 +6,9 @@ use logic::task::TaskEvent;
 use sonettobuf::{
     AntiqueInfo, AntiqueUpdatePush, BlockPackageGainPush, BpScoreUpdatePush, BuildingGainPush,
     ChapterMapElementUpdatePush, ChapterMapUpdatePush, ClothUpdatePush, CmdId, CurrencyChangePush,
-    EndFightPush, EquipUpdatePush, GainSpecialBlockPush, HeroSkinGainPush, HeroUpdatePush,
-    ItemChangePush, MaterialChangePush, MaterialData, PlayerCardInfoPush, PlayerCloth,
-    PlayerClothInfo, RedDotGroup, RedDotInfo, UpdateRedDotPush,
+    EndFightPush, EquipUpdatePush, GainSpecialBlockPush, HeroGainPush, HeroSkinGainPush,
+    HeroUpdatePush, ItemChangePush, MaterialChangePush, MaterialData, PlayerCardInfoPush,
+    PlayerCloth, PlayerClothInfo, RedDotGroup, RedDotInfo, UpdateRedDotPush,
 };
 use std::collections::HashMap;
 
@@ -164,6 +164,24 @@ pub async fn send_applied_reward_pushes(
     .await
 }
 
+pub async fn send_rouge2_store_reward_pushes(
+    ctx: &mut ConnectionContext,
+    player_id: i64,
+    rewards: AppliedRewards,
+    material_changes: Vec<(u32, u32, i32)>,
+    get_approach: Option<MaterialGetApproach>,
+) -> Result<(), AppError> {
+    send_reward_pushes(
+        ctx,
+        player_id,
+        rewards,
+        material_changes,
+        get_approach,
+        RewardFlow::Rouge2Store,
+    )
+    .await
+}
+
 pub async fn send_item_first_applied_reward_pushes(
     ctx: &mut ConnectionContext,
     player_id: i64,
@@ -203,6 +221,7 @@ enum RewardFlow {
     Claim,
     DungeonCompletion,
     ItemFirst,
+    Rouge2Store,
 }
 
 async fn send_reward_pushes(
@@ -218,7 +237,7 @@ async fn send_reward_pushes(
         || !rewards.insight_item_ids.is_empty();
     send_room_reward_pushes(ctx, &rewards).await?;
     match flow {
-        RewardFlow::Claim => {
+        RewardFlow::Claim | RewardFlow::Rouge2Store => {
             send_currency_change_push(ctx, player_id, rewards.currency_ids).await?;
             send_equip_update_push(ctx, player_id, rewards.equip_uids).await?;
         }
@@ -255,21 +274,75 @@ async fn send_reward_pushes(
             send_trade_order_red_dot(ctx).await?;
         }
     }
-    send_hero_update_push(ctx, player_id, rewards.hero_ids).await?;
+    let rouge_hero_flow = matches!(flow, RewardFlow::Rouge2Store) && !rewards.hero_gains.is_empty();
+    if rouge_hero_flow {
+        send_rouge2_hero_gains(ctx, player_id, rewards.hero_ids, rewards.hero_gains).await?;
+    } else {
+        send_hero_update_push(ctx, player_id, rewards.hero_ids).await?;
+    }
     send_antique_update_push(ctx, rewards.antiques).await?;
     send_skin_gain_pushes(ctx, &rewards.skin_gains, get_approach).await?;
     send_cloth_update_push(ctx, rewards.cloth_updates).await?;
     send_bp_score_update_pushes(ctx, &rewards.bp_scores).await?;
-    if rewards.player_info_changed {
-        ctx.notify(
-            CmdId::PlayerInfoPushCmd,
-            crate::logic::profile::ProfileManager::new(player_id)
-                .snapshot(ctx.state.db)
-                .await?,
-        )
-        .await?;
+    if rewards.player_info_changed && !rouge_hero_flow {
+        send_player_info_push(ctx, player_id).await?;
     }
     send_material_change_push(ctx, material_changes, get_approach).await
+}
+
+async fn send_player_info_push(
+    ctx: &mut ConnectionContext,
+    player_id: i64,
+) -> Result<(), AppError> {
+    let push = crate::logic::profile::ProfileManager::new(player_id)
+        .snapshot(ctx.state.db)
+        .await?;
+    ctx.notify(CmdId::PlayerInfoPushCmd, push).await
+}
+
+async fn send_rouge2_hero_gains(
+    ctx: &mut ConnectionContext,
+    player_id: i64,
+    hero_ids: Vec<i32>,
+    gains: Vec<crate::logic::reward::HeroGain>,
+) -> Result<(), AppError> {
+    for event in
+        crate::logic::rouge::hero_reward_events(ctx.state.db, player_id, hero_ids, gains).await?
+    {
+        match event {
+            crate::logic::rouge::HeroRewardEvent::HeroChanged(hero_updates) => {
+                ctx.notify(
+                    CmdId::HeroHeroUpdatePushCmd,
+                    HeroUpdatePush { hero_updates },
+                )
+                .await?;
+            }
+            crate::logic::rouge::HeroRewardEvent::PlayerInfoChanged => {
+                send_player_info_push(ctx, player_id).await?;
+            }
+            crate::logic::rouge::HeroRewardEvent::PlayerCardProfileChanged
+            | crate::logic::rouge::HeroRewardEvent::PlayerCardHeroChanged => {
+                send_player_card_info_push(ctx, player_id).await?;
+            }
+            crate::logic::rouge::HeroRewardEvent::HeroGained(gain) => {
+                ctx.notify(
+                    CmdId::HeroGainPushCmd,
+                    HeroGainPush {
+                        hero_id: Some(gain.hero_id),
+                        is_first: Some(gain.is_first),
+                        duplicate_count: Some(gain.duplicate_count),
+                        items: vec![MaterialData {
+                            materil_type: Some(crate::logic::reward::RewardMaterialType::Hero.id()),
+                            materil_id: Some(gain.hero_id as u32),
+                            quantity: Some(1),
+                        }],
+                    },
+                )
+                .await?;
+            }
+        }
+    }
+    Ok(())
 }
 
 pub async fn send_trade_order_red_dot(ctx: &mut ConnectionContext) -> Result<(), AppError> {
