@@ -29,6 +29,13 @@ fn all_snapshot_request_overlays_saved_data_on_the_protocol_catalog() {
 
     assert_eq!(snapshots.len(), HeroGroupSnapshotType::ALL_DESCENDING.len());
     assert_eq!(snapshots[0].snapshot_id, HeroGroupSnapshotType::Abyss.id());
+    assert_eq!(
+        &snapshots[..5]
+            .iter()
+            .map(|snapshot| snapshot.snapshot_id)
+            .collect::<Vec<_>>(),
+        &[23, 22, 21, 20, 19]
+    );
     assert_eq!(snapshots.last().unwrap().snapshot_id, COMMON_SNAPSHOT_ID);
     assert_eq!(
         snapshots
