@@ -1,10 +1,21 @@
 use crate::error::AppError;
+use crate::types::hero_group_snapshot_type::HeroGroupSnapshotType;
 use common::time::ServerTime;
 use sonettobuf::{
-    Act229BattleFinishPush, Act229HeroNo, Act229ModifySkillReply, Act229ResetStageReply,
-    Act229StageNo, GetAct229InfoReply,
+    Act229BattleFinishPush, Act229HeroNo, Act229ModifySkillReply, Act229ModifyStageSubIdReply,
+    Act229ResetStageReply, Act229StageNo, Act229StageTeamSubIdNo, Act229StageTeamSubIdPush,
+    GetAct229InfoReply,
 };
-use sqlx::SqlitePool;
+use sqlx::{Sqlite, SqlitePool, Transaction};
+use std::collections::{HashMap, HashSet};
+
+fn current_activity_id() -> Result<i32, AppError> {
+    config::configs::get()
+        .activity229_const
+        .get(2)
+        .and_then(|row| row.value.parse().ok())
+        .ok_or(AppError::InvalidRequest)
+}
 
 pub async fn act229_info(
     db: &SqlitePool,
@@ -12,16 +23,10 @@ pub async fn act229_info(
     activity_id: Option<i32>,
 ) -> Result<GetAct229InfoReply, AppError> {
     let tables = config::configs::get();
-    let activity_id = activity_id
-        .or_else(|| {
-            tables
-                .activity229_const
-                .get(2)
-                .and_then(|row| row.value.parse().ok())
-        })
-        .ok_or(AppError::InvalidRequest)?;
-    let saved = sqlx::query_as::<_, (i32, i32, i32, i32, i32, String, i32)>(
-        "SELECT stage_id, star, max_star, round, min_round, heroes_json, skill_id
+    let activity_id = activity_id.map_or_else(current_activity_id, Ok)?;
+    let saved = sqlx::query_as::<_, (i32, i32, i32, i32, i32, String, i32, i32, i64)>(
+        "SELECT stage_id, star, max_star, round, min_round, heroes_json, skill_id,
+                hero_group_sub_id, last_update_team_time
          FROM user_activity229_stages
          WHERE user_id = ? AND activity_id = ?",
     )
@@ -48,11 +53,18 @@ pub async fn act229_info(
                 round: Some(state.map(|state| state.3).unwrap_or_default()),
                 min_round: Some(state.map(|state| state.4).unwrap_or_default()),
                 heros: heroes,
-                hero_group_sub_id: None,
+                hero_group_sub_id: Some(
+                    state
+                        .map(|state| state.7)
+                        .filter(|sub_id| *sub_id > 0)
+                        .unwrap_or(row.stage),
+                ),
                 skill_ids: state
                     .and_then(|state| (state.6 != 0).then_some(vec![state.6]))
                     .unwrap_or_default(),
-                last_update_team_time: None,
+                last_update_team_time: state
+                    .map(|state| state.8)
+                    .filter(|updated_at| *updated_at > 0),
             })
         })
         .collect::<Result<Vec<_>, AppError>>()?;
@@ -142,6 +154,216 @@ pub async fn modify_act229_skill(
         stage_id: Some(stage_id),
         skill_ids,
     })
+}
+
+pub async fn modify_act229_stage_sub_ids(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: i32,
+    stage_sub_ids: Vec<Act229StageTeamSubIdNo>,
+) -> Result<Act229ModifyStageSubIdReply, AppError> {
+    if stage_sub_ids.is_empty() {
+        return Err(AppError::InvalidRequest);
+    }
+    let configured = config::configs::get()
+        .activity229_episode
+        .iter()
+        .filter(|row| row.activity_id == activity_id)
+        .map(|row| row.stage)
+        .collect::<HashSet<_>>();
+    if configured.is_empty() {
+        return Err(AppError::InvalidRequest);
+    }
+    let saved = sqlx::query_as::<_, (i32, String, i32, i64)>(
+        "SELECT stage_id, heroes_json, hero_group_sub_id, last_update_team_time
+         FROM user_activity229_stages
+         WHERE user_id = ? AND activity_id = ?",
+    )
+    .bind(player_id)
+    .bind(activity_id)
+    .fetch_all(db)
+    .await?;
+    let saved = saved
+        .into_iter()
+        .map(|(stage_id, heroes, sub_id, updated_at)| {
+            Ok((
+                stage_id,
+                (
+                    if sub_id > 0 { sub_id } else { stage_id },
+                    updated_at,
+                    !self::heroes(&heroes)?.is_empty(),
+                ),
+            ))
+        })
+        .collect::<Result<HashMap<_, _>, AppError>>()?;
+    let mut mappings = configured
+        .iter()
+        .map(|stage_id| {
+            let state = saved
+                .get(stage_id)
+                .copied()
+                .unwrap_or((*stage_id, 0, false));
+            (*stage_id, state)
+        })
+        .collect::<HashMap<_, _>>();
+    let original_times = mappings
+        .values()
+        .map(|(sub_id, updated_at, _)| (*sub_id, *updated_at))
+        .collect::<HashMap<_, _>>();
+    if original_times.len() != mappings.len() {
+        return Err(AppError::InvalidRequest);
+    }
+    let selected = &stage_sub_ids[0];
+    let selected_stage_id = selected.stage_id.ok_or(AppError::InvalidRequest)?;
+    let selected_sub_id = selected.hero_group_sub_id.ok_or(AppError::InvalidRequest)?;
+    let selected_state = mappings
+        .get(&selected_stage_id)
+        .copied()
+        .ok_or(AppError::InvalidRequest)?;
+    if selected_sub_id <= 0 || selected_state.0 == selected_sub_id || selected_state.2 {
+        return Err(AppError::InvalidRequest);
+    }
+    let displaced_stage = mappings.iter().find_map(|(stage_id, (sub_id, _, _))| {
+        (*stage_id != selected_stage_id && *sub_id == selected_sub_id).then_some(*stage_id)
+    });
+    let mut expected = mappings
+        .iter()
+        .map(|(stage_id, (sub_id, _, _))| (*stage_id, *sub_id))
+        .collect::<HashMap<_, _>>();
+    expected.insert(selected_stage_id, selected_sub_id);
+    if let Some(displaced_stage) = displaced_stage {
+        if stage_sub_ids.len() != mappings.len() {
+            return Err(AppError::InvalidRequest);
+        }
+        expected.insert(displaced_stage, selected_state.0);
+    } else if stage_sub_ids.len() != 1 {
+        return Err(AppError::InvalidRequest);
+    }
+
+    let mut requested = HashSet::new();
+    for stage in &stage_sub_ids {
+        let stage_id = stage.stage_id.ok_or(AppError::InvalidRequest)?;
+        let sub_id = stage.hero_group_sub_id.ok_or(AppError::InvalidRequest)?;
+        if !requested.insert(stage_id) || expected.get(&stage_id) != Some(&sub_id) {
+            return Err(AppError::InvalidRequest);
+        }
+        let state = mappings
+            .get_mut(&stage_id)
+            .ok_or(AppError::InvalidRequest)?;
+        state.0 = sub_id;
+        state.1 = original_times.get(&sub_id).copied().unwrap_or_default();
+    }
+    let unique_groups = mappings
+        .values()
+        .map(|(sub_id, _, _)| *sub_id)
+        .collect::<HashSet<_>>();
+    if unique_groups.len() != mappings.len() {
+        return Err(AppError::InvalidRequest);
+    }
+
+    let mut tx = db.begin().await?;
+    for stage_id in requested {
+        let (sub_id, updated_at, _) = mappings[&stage_id];
+        sqlx::query(
+            "INSERT INTO user_activity229_stages
+                (user_id, activity_id, stage_id, hero_group_sub_id, last_update_team_time,
+                 updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(user_id, activity_id, stage_id) DO UPDATE SET
+                hero_group_sub_id = excluded.hero_group_sub_id,
+                last_update_team_time = excluded.last_update_team_time,
+                updated_at = excluded.updated_at",
+        )
+        .bind(player_id)
+        .bind(activity_id)
+        .bind(stage_id)
+        .bind(sub_id)
+        .bind(updated_at)
+        .bind(ServerTime::now_ms())
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+
+    Ok(Act229ModifyStageSubIdReply {
+        activity_id: Some(activity_id),
+        stages: act229_info(db, player_id, Some(activity_id)).await?.stages,
+    })
+}
+
+pub async fn touch_act229_stage_teams(
+    tx: &mut Transaction<'_, Sqlite>,
+    player_id: i64,
+    snapshot_id: i32,
+    sub_ids: &[i32],
+) -> Result<Option<Act229StageTeamSubIdPush>, AppError> {
+    if snapshot_id != HeroGroupSnapshotType::Abyss.id() || sub_ids.is_empty() {
+        return Ok(None);
+    }
+    let activity_id = current_activity_id()?;
+    let saved = sqlx::query_as::<_, (i32, i32)>(
+        "SELECT stage_id, hero_group_sub_id
+         FROM user_activity229_stages
+         WHERE user_id = ? AND activity_id = ?",
+    )
+    .bind(player_id)
+    .bind(activity_id)
+    .fetch_all(&mut **tx)
+    .await?
+    .into_iter()
+    .collect::<HashMap<_, _>>();
+    let sub_ids = sub_ids.iter().copied().collect::<HashSet<_>>();
+    let updated_at = ServerTime::now_ms();
+    let mut stages = config::configs::get()
+        .activity229_episode
+        .iter()
+        .filter(|row| row.activity_id == activity_id)
+        .filter_map(|row| {
+            let sub_id = saved
+                .get(&row.stage)
+                .copied()
+                .filter(|sub_id| *sub_id > 0)
+                .unwrap_or(row.stage);
+            sub_ids.contains(&sub_id).then_some((row.stage, sub_id))
+        })
+        .collect::<Vec<_>>();
+    if stages.is_empty() {
+        return Ok(None);
+    }
+    stages.sort_unstable();
+
+    for (stage_id, sub_id) in &stages {
+        sqlx::query(
+            "INSERT INTO user_activity229_stages
+                (user_id, activity_id, stage_id, hero_group_sub_id, last_update_team_time,
+                 updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(user_id, activity_id, stage_id) DO UPDATE SET
+                hero_group_sub_id = excluded.hero_group_sub_id,
+                last_update_team_time = excluded.last_update_team_time,
+                updated_at = excluded.updated_at",
+        )
+        .bind(player_id)
+        .bind(activity_id)
+        .bind(stage_id)
+        .bind(sub_id)
+        .bind(updated_at)
+        .bind(updated_at)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    Ok(Some(Act229StageTeamSubIdPush {
+        activity_id: Some(activity_id),
+        stage_sub_ids: stages
+            .into_iter()
+            .map(|(stage_id, hero_group_sub_id)| Act229StageTeamSubIdNo {
+                stage_id: Some(stage_id),
+                hero_group_sub_id: Some(hero_group_sub_id),
+                last_update_team_time: Some(updated_at),
+            })
+            .collect(),
+    }))
 }
 
 pub async fn act229_heroes_available(

@@ -292,4 +292,22 @@ impl ActivityManager {
     ) -> Result<Act229ModifySkillReply, AppError> {
         modify_act229_skill(db, self.player_id, activity_id, stage_id, skill_ids).await
     }
+
+    pub async fn modify_act229_stage_sub_ids(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        stage_sub_ids: Vec<Act229StageTeamSubIdNo>,
+    ) -> Result<Act229ModifyStageSubIdReply, AppError> {
+        modify_act229_stage_sub_ids(db, self.player_id, activity_id, stage_sub_ids).await
+    }
+
+    pub async fn touch_act229_stage_teams(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        snapshot_id: i32,
+        sub_ids: &[i32],
+    ) -> Result<Option<Act229StageTeamSubIdPush>, AppError> {
+        touch_act229_stage_teams(tx, self.player_id, snapshot_id, sub_ids).await
+    }
 }

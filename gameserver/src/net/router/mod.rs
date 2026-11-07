@@ -365,6 +365,7 @@ async fn dispatch_registered_command(
         CmdId::StartAct229BattleCmd => activity::on_start_act229_battle,
         CmdId::Act229ResetStageCmd => activity::on_reset_act229_stage,
         CmdId::Act229ModifySkillCmd => activity::on_modify_act229_skill,
+        CmdId::Act229ModifyStageSubIdCmd => activity::on_modify_act229_stage_sub_id,
         CmdId::GetAct231InfoCmd => activity::on_get_act231_info,
         CmdId::GetAct235InfoCmd => activity::on_get_act235_info,
         CmdId::GetAct236InfoCmd => activity::on_get_act236_info,

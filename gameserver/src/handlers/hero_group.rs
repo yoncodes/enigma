@@ -142,12 +142,23 @@ pub async fn on_set_hero_group_snapshot(
     let snapshot_id = msg.snapshot_id.ok_or(AppError::InvalidRequest)?;
     let snapshot_sub_id = msg.snapshot_sub_id.unwrap_or_default();
     let fight_group = msg.fight_group.ok_or(AppError::InvalidRequest)?;
+    let mut tx = ctx.state.db.begin().await?;
     let reply = heroes
-        .set_group_snapshot(ctx.state.db, snapshot_id, snapshot_sub_id, fight_group)
+        .set_group_snapshot_in_transaction(&mut tx, snapshot_id, snapshot_sub_id, fight_group)
         .await?;
+    let stage_push = ctx
+        .player()?
+        .activity
+        .touch_act229_stage_teams(&mut tx, snapshot_id, &[snapshot_sub_id])
+        .await?;
+    tx.commit().await?;
 
     ctx.send_reply(CmdId::SetHeroGroupSnapshotCmd, reply, 0, req.up_tag)
-        .await
+        .await?;
+    if let Some(push) = stage_push {
+        ctx.notify(CmdId::Act229StageTeamSubIdPushCmd, push).await?;
+    }
+    Ok(())
 }
 
 pub async fn on_set_hero_group_snapshot_batch(
@@ -156,16 +167,29 @@ pub async fn on_set_hero_group_snapshot_batch(
 ) -> Result<(), AppError> {
     let heroes = ctx.player()?.hero;
     let msg = SetHeroGroupSnapshotBatchRequest::decode(&req.data[..])?;
+    let snapshot_id = msg.snapshot_id.ok_or(AppError::InvalidRequest)?;
+    let mut tx = ctx.state.db.begin().await?;
     let reply = heroes
-        .set_group_snapshot_batch(
-            ctx.state.db,
-            msg.snapshot_id.ok_or(AppError::InvalidRequest)?,
-            msg.fight_groups,
-        )
+        .set_group_snapshot_batch_in_transaction(&mut tx, snapshot_id, msg.fight_groups)
         .await?;
+    let sub_ids = reply
+        .group_infos
+        .iter()
+        .filter_map(|group| group.snapshot_sub_id)
+        .collect::<Vec<_>>();
+    let stage_push = ctx
+        .player()?
+        .activity
+        .touch_act229_stage_teams(&mut tx, snapshot_id, &sub_ids)
+        .await?;
+    tx.commit().await?;
 
     ctx.send_reply(CmdId::SetHeroGroupSnapshotBatchCmd, reply, 0, req.up_tag)
-        .await
+        .await?;
+    if let Some(push) = stage_push {
+        ctx.notify(CmdId::Act229StageTeamSubIdPushCmd, push).await?;
+    }
+    Ok(())
 }
 
 pub async fn on_change_hero_group_select(

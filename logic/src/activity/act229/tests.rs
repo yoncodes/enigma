@@ -142,3 +142,178 @@ async fn skill_selection_is_configured_persisted_and_locked_after_challenge() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn snapshot_updates_touch_the_mapped_stage_team() {
+    let db = database(56, "act229-team-touch").await;
+    let activity_id = current_activity_id().unwrap();
+
+    let mut tx = db.begin().await.unwrap();
+    assert!(
+        touch_act229_stage_teams(&mut tx, 56, HeroGroupSnapshotType::AbyssPreset.id(), &[1])
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let push = touch_act229_stage_teams(&mut tx, 56, HeroGroupSnapshotType::Abyss.id(), &[1])
+        .await
+        .unwrap()
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(push.activity_id, Some(activity_id));
+    assert_eq!(push.stage_sub_ids.len(), 1);
+    let stage = &push.stage_sub_ids[0];
+    assert_eq!(stage.stage_id, Some(1));
+    assert_eq!(stage.hero_group_sub_id, Some(1));
+    assert!(stage.last_update_team_time.is_some_and(|time| time > 0));
+
+    let saved = act229_info(&db, 56, Some(activity_id))
+        .await
+        .unwrap()
+        .stages
+        .into_iter()
+        .find(|stage| stage.stage_id == Some(1))
+        .unwrap();
+    assert_eq!(saved.hero_group_sub_id, stage.hero_group_sub_id);
+    assert_eq!(saved.last_update_team_time, stage.last_update_team_time);
+}
+
+#[tokio::test]
+async fn stage_team_swap_moves_each_groups_update_time() {
+    let db = database(57, "act229-team-swap").await;
+    let activity_id = current_activity_id().unwrap();
+    for (stage_id, updated_at) in [(1, 11), (2, 22)] {
+        sqlx::query(
+            "INSERT INTO user_activity229_stages
+                (user_id, activity_id, stage_id, hero_group_sub_id, last_update_team_time)
+             VALUES (57, ?, ?, ?, ?)",
+        )
+        .bind(activity_id)
+        .bind(stage_id)
+        .bind(stage_id)
+        .bind(updated_at)
+        .execute(&db)
+        .await
+        .unwrap();
+    }
+    sqlx::query(
+        "UPDATE user_activity229_stages
+         SET heroes_json = '[{\"heroId\":3143,\"equipUids\":[]}]'
+         WHERE user_id = 57 AND activity_id = ? AND stage_id = 2",
+    )
+    .bind(activity_id)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let reply = modify_act229_stage_sub_ids(
+        &db,
+        57,
+        activity_id,
+        vec![
+            Act229StageTeamSubIdNo {
+                stage_id: Some(1),
+                hero_group_sub_id: Some(2),
+                last_update_team_time: None,
+            },
+            Act229StageTeamSubIdNo {
+                stage_id: Some(2),
+                hero_group_sub_id: Some(1),
+                last_update_team_time: None,
+            },
+            Act229StageTeamSubIdNo {
+                stage_id: Some(3),
+                hero_group_sub_id: Some(3),
+                last_update_team_time: None,
+            },
+        ],
+    )
+    .await
+    .unwrap();
+    let stages = reply
+        .stages
+        .into_iter()
+        .map(|stage| (stage.stage_id.unwrap(), stage))
+        .collect::<HashMap<_, _>>();
+    assert_eq!(stages[&1].hero_group_sub_id, Some(2));
+    assert_eq!(stages[&1].last_update_team_time, Some(22));
+    assert_eq!(stages[&2].hero_group_sub_id, Some(1));
+    assert_eq!(stages[&2].last_update_team_time, Some(11));
+
+    assert!(
+        modify_act229_stage_sub_ids(
+            &db,
+            57,
+            activity_id,
+            vec![
+                Act229StageTeamSubIdNo {
+                    stage_id: Some(1),
+                    hero_group_sub_id: Some(2),
+                    last_update_team_time: None,
+                },
+                Act229StageTeamSubIdNo {
+                    stage_id: Some(2),
+                    hero_group_sub_id: Some(3),
+                    last_update_team_time: None,
+                },
+                Act229StageTeamSubIdNo {
+                    stage_id: Some(3),
+                    hero_group_sub_id: Some(1),
+                    last_update_team_time: None,
+                },
+            ],
+        )
+        .await
+        .is_err()
+    );
+
+    assert!(
+        modify_act229_stage_sub_ids(
+            &db,
+            57,
+            activity_id,
+            vec![
+                Act229StageTeamSubIdNo {
+                    stage_id: Some(2),
+                    hero_group_sub_id: Some(3),
+                    last_update_team_time: None,
+                },
+                Act229StageTeamSubIdNo {
+                    stage_id: Some(3),
+                    hero_group_sub_id: Some(1),
+                    last_update_team_time: None,
+                },
+                Act229StageTeamSubIdNo {
+                    stage_id: Some(1),
+                    hero_group_sub_id: Some(2),
+                    last_update_team_time: None,
+                },
+            ],
+        )
+        .await
+        .is_err()
+    );
+
+    let reply = modify_act229_stage_sub_ids(
+        &db,
+        57,
+        activity_id,
+        vec![Act229StageTeamSubIdNo {
+            stage_id: Some(1),
+            hero_group_sub_id: Some(4),
+            last_update_team_time: None,
+        }],
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        reply
+            .stages
+            .into_iter()
+            .find(|stage| stage.stage_id == Some(1))
+            .unwrap()
+            .hero_group_sub_id,
+        Some(4)
+    );
+}

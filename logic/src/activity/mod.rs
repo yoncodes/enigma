@@ -15,8 +15,9 @@ use sonettobuf::{
     Act206GetInfoReply, Act208BonusNo, Act208ReceiveBonusReply, Act212BonusNo, Act212InfoNo,
     Act212ReceiveBonusReply, Act218FinishGameReply, Act221SummonReply, Act228FlipGridGridReply,
     Act228GetFinalBonusReply, Act228Info, Act229BattleFinishPush, Act229HeroNo,
-    Act229ModifySkillReply, Act229ResetStageReply, Act239BonusNo, Act239BonusReply, ActivityInfo,
-    ActivityNewStageReadReply, BuildTrapReply, EndingInfo, FinishAct125EpisodeReply,
+    Act229ModifySkillReply, Act229ModifyStageSubIdReply, Act229ResetStageReply,
+    Act229StageTeamSubIdNo, Act229StageTeamSubIdPush, Act239BonusNo, Act239BonusReply,
+    ActivityInfo, ActivityNewStageReadReply, BuildTrapReply, EndingInfo, FinishAct125EpisodeReply,
     FinishAct146EpisodeReply, FinishAllAct186TaskReply, Get101BonusListReply, Get101BonusReply,
     Get101InfosReply, Get101SpBonusReply, Get104InfosReply, Get116InfosReply, Get123InfosReply,
     Get128InfosReply, Get136InfoReply, Get152InfoReply, Get153InfosReply, Get154InfosReply,
@@ -116,7 +117,7 @@ use act225::act225_info;
 use act228::{act228_flip_grid, act228_get_final_bonus, act228_info};
 use act229::{
     act229_battle_episode, act229_heroes_available, act229_info, finish_act229_battle,
-    modify_act229_skill, reset_act229_stage,
+    modify_act229_skill, modify_act229_stage_sub_ids, reset_act229_stage, touch_act229_stage_teams,
 };
 pub use act236::Act236ChargeUpdate;
 pub(crate) use act236::{act236_charge_update, active_act236_activity_id_at};
