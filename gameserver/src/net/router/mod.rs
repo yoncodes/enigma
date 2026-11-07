@@ -244,6 +244,7 @@ async fn dispatch_registered_command(
         CmdId::GetAct186InfoCmd => activity::on_get_act186_info,
         CmdId::GetAct186SpBonusInfoCmd => activity::on_get_act186_sp_bonus_info,
         CmdId::AcceptAct186SpBonusCmd => activity::on_accept_act186_sp_bonus,
+        CmdId::FinishAllAct186TaskCmd => activity::on_finish_all_act186_tasks,
         CmdId::GetAct189InfoCmd => activity::on_get_act189_info,
         CmdId::GetAct189OnceBonusCmd => activity::on_get_act189_once_bonus,
         CmdId::Get199InfoCmd => activity::on_get_199_info,

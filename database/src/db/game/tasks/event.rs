@@ -164,6 +164,11 @@ impl TaskEvent {
         }
     }
 
+    pub fn progress(self, listener_type: &str, listener_param: &str) -> Option<i32> {
+        self.matches(listener_type, listener_param)
+            .then(|| self.count())
+    }
+
     pub(crate) fn achievement_increment(
         self,
         listener_type: &str,

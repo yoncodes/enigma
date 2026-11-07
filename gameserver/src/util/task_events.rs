@@ -134,6 +134,11 @@ pub async fn notify(
 ) -> Result<(), AppError> {
     let db = ctx.state.db;
     let updated_tasks = ctx.player_mut()?.tasks.sync_event(db, event).await?;
+    let act186_pushes = ctx
+        .player_mut()?
+        .activity
+        .sync_act186_tasks(db, event)
+        .await?;
     let updated_achievements = ctx
         .player_mut()?
         .collection
@@ -141,6 +146,9 @@ pub async fn notify(
         .await?;
 
     notify_tasks(ctx, updated_tasks).await?;
+    for push in act186_pushes {
+        ctx.notify(CmdId::Act186TaskPushCmd, push).await?;
+    }
 
     if !updated_achievements.is_empty() {
         ctx.notify(

@@ -11,12 +11,13 @@ use sonettobuf::{
     Act160GetInfoReply, Act160MissionInfo, Act165GainMilestoneRewardReply,
     Act165GenerateEndingReply, Act165GetInfoReply, Act165ModifyKeywordReply, Act165RestartReply,
     Act165StoryInfo, Act172Info, Act186GameInfo, Act186Info, Act186LikeInfo, Act186TaskInfo,
-    Act205GetGameInfoReply, Act205GetInfoReply, Act206ChooseDirectionReply, Act206GetInfoReply,
-    Act208BonusNo, Act208ReceiveBonusReply, Act212BonusNo, Act212InfoNo, Act212ReceiveBonusReply,
-    Act218FinishGameReply, Act221SummonReply, Act228FlipGridGridReply, Act228GetFinalBonusReply,
-    Act228Info, Act229BattleFinishPush, Act229HeroNo, Act229ResetStageReply, Act239BonusNo,
-    Act239BonusReply, ActivityInfo, ActivityNewStageReadReply, BuildTrapReply, EndingInfo,
-    FinishAct125EpisodeReply, FinishAct146EpisodeReply, Get101BonusListReply, Get101BonusReply,
+    Act186TaskPush, Act205GetGameInfoReply, Act205GetInfoReply, Act206ChooseDirectionReply,
+    Act206GetInfoReply, Act208BonusNo, Act208ReceiveBonusReply, Act212BonusNo, Act212InfoNo,
+    Act212ReceiveBonusReply, Act218FinishGameReply, Act221SummonReply, Act228FlipGridGridReply,
+    Act228GetFinalBonusReply, Act228Info, Act229BattleFinishPush, Act229HeroNo,
+    Act229ResetStageReply, Act239BonusNo, Act239BonusReply, ActivityInfo,
+    ActivityNewStageReadReply, BuildTrapReply, EndingInfo, FinishAct125EpisodeReply,
+    FinishAct146EpisodeReply, FinishAllAct186TaskReply, Get101BonusListReply, Get101BonusReply,
     Get101InfosReply, Get101SpBonusReply, Get104InfosReply, Get116InfosReply, Get123InfosReply,
     Get128InfosReply, Get136InfoReply, Get152InfoReply, Get153InfosReply, Get154InfosReply,
     Get158InfosReply, Get166InfosReply, Get196InfoReply, Get197InfoReply, Get199InfoReply,
@@ -95,7 +96,8 @@ use act165::{
 };
 use act166::act166_infos;
 use act172::act172_info;
-use act186::{accept_act186_sp_bonus, act186_info, get_act186_sp_bonus_info};
+pub use act186::Act186TaskClaim;
+use act186::{accept_act186_sp_bonus, act186_info, finish_all, get_act186_sp_bonus_info};
 use act189::{act189_info, get_act189_once_bonus};
 use act196::{act196_gain, act196_info};
 use act197::{act197_explore, act197_info, act197_rummage};

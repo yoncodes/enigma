@@ -1,6 +1,10 @@
 use super::*;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 
+mod tasks;
+pub use tasks::Act186TaskClaim;
+pub(super) use tasks::{finish_all, sync as sync_tasks, sync_login};
+
 #[repr(i32)]
 enum Act186ConstId {
     MilestoneCurrency = 1,
@@ -23,6 +27,8 @@ pub async fn act186_info(
         .ok_or(AppError::InvalidRequest)?;
     let task_states =
         activity_state::get(db, player_id, activity_id, ActivityStateKind::Act186Task).await?;
+    let like_states =
+        activity_state::get(db, player_id, activity_id, ActivityStateKind::Act186Like).await?;
     let now = common::time::ServerTime::now_ms();
     let activity_end = tables
         .actvity186_stage
@@ -69,7 +75,12 @@ pub async fn act186_info(
         .filter(|row| row.activity_id == activity_id)
         .map(|row| Act186LikeInfo {
             like_type: Some(row.r#type),
-            value: Some(0),
+            value: Some(
+                like_states
+                    .get(&row.r#type)
+                    .map(|(state, _, _)| *state)
+                    .unwrap_or_default(),
+            ),
         })
         .collect::<Vec<_>>();
     like_infos.sort_by_key(|like| like.like_type.unwrap_or_default());
@@ -210,23 +221,4 @@ pub async fn accept_act186_sp_bonus(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_act186_weighted_game_type() {
-        assert_eq!(first_weighted_id("1#500|2#500"), Some(1));
-        assert_eq!(first_weighted_id(""), None);
-    }
-
-    #[test]
-    fn act186_expiry_uses_task_loop_and_server_time() {
-        let now = 1_784_829_600_000;
-        let activity_end = parse_time_millis("2026-08-13 04:59:59");
-
-        assert_eq!(activity_end, 1_786_615_199_000);
-        assert_eq!(task_expire_time(1, activity_end, now), 1_784_887_200_000);
-        assert_eq!(task_expire_time(2, activity_end, now), 1_785_146_400_000);
-        assert_eq!(task_expire_time(3, activity_end, now), activity_end);
-    }
-}
+mod tests;
