@@ -80,3 +80,44 @@ async fn profile_edits_follow_lua_limits_and_item_ownership() {
         .into();
     assert_eq!(wire.character_age, vec![3, 1]);
 }
+
+#[tokio::test]
+async fn player_info_repairs_chained_episode_unlocks() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (22, 'bgm-profile', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    player_infos::create_player_info(&pool, 22, 0)
+        .await
+        .unwrap();
+    database::db::game::dungeons::update_dungeon_progress(&pool, 22, 105, 10505, 1)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE user_open_infos SET is_open = 0 WHERE user_id = 22 AND open_id = 76")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let reply = ProfileManager::new(22)
+        .get_player_info(&pool)
+        .await
+        .unwrap();
+
+    assert!(
+        reply
+            .openinfos
+            .iter()
+            .any(|info| info.id == 76 && info.is_open)
+    );
+}
