@@ -48,6 +48,15 @@ impl ExplorationManager {
     ) -> Result<sonettobuf::WeekwalkVer2ChangeHeroGroupSelectReply, AppError> {
         weekwalk_v2::change_group(db, self.player_id, layer_id, battle_id, select).await
     }
+
+    pub async fn choose_weekwalk_v2_skill(
+        self,
+        db: &SqlitePool,
+        no: i32,
+        skill_ids: Vec<i32>,
+    ) -> Result<sonettobuf::WeekwalkVer2ChooseSkillReply, AppError> {
+        weekwalk_v2::choose_skill(db, self.player_id, no, skill_ids).await
+    }
 }
 
 async fn explore_simple_info(

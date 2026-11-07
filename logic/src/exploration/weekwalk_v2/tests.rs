@@ -224,3 +224,67 @@ async fn change_group_persists_an_owned_group_for_the_captured_battle() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn choose_skill_persists_one_unlocked_skill_for_an_owned_group() {
+    let db = test_db().await;
+    let schedule = &common::config().weekwalk_v2.schedule[0];
+    sqlx::query(
+        "INSERT INTO hero_groups_common
+         (user_id, group_id, created_at, updated_at) VALUES (1, 3, 0, 0)",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let reply = choose_skill_at(&db, 1, 3, vec![2017], schedule.start_time)
+        .await
+        .unwrap();
+    assert_eq!(reply.no, Some(3));
+    assert_eq!(reply.skill_ids, [2017]);
+    let info = info_at(&db, 1, schedule.start_time)
+        .await
+        .unwrap()
+        .info
+        .unwrap();
+    assert_eq!(info.snapshot_infos[0].no, Some(3));
+    assert_eq!(info.snapshot_infos[0].skill_ids, [2017]);
+
+    assert!(
+        choose_skill_at(&db, 1, 3, vec![2033], schedule.start_time)
+            .await
+            .is_err()
+    );
+    assert!(
+        choose_skill_at(&db, 1, 3, vec![2017, 2019], schedule.start_time)
+            .await
+            .is_err()
+    );
+    assert!(
+        choose_skill_at(&db, 1, 4, vec![2017], schedule.start_time)
+            .await
+            .is_err()
+    );
+    sqlx::query(
+        "UPDATE user_weekwalk_v2_layers SET unlock = 1
+         WHERE user_id = 1 AND layer_id = 1071",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    let later = choose_skill_at(&db, 1, 3, vec![2033], schedule.start_time)
+        .await
+        .unwrap();
+    assert_eq!(later.skill_ids, [2033]);
+
+    let cleared = choose_skill_at(&db, 1, 3, vec![], schedule.start_time)
+        .await
+        .unwrap();
+    assert!(cleared.skill_ids.is_empty());
+    let info = info_at(&db, 1, schedule.start_time)
+        .await
+        .unwrap()
+        .info
+        .unwrap();
+    assert!(info.snapshot_infos[0].skill_ids.is_empty());
+}

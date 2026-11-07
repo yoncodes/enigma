@@ -469,6 +469,7 @@ async fn dispatch_registered_command(
         CmdId::WeekwalkVer2ChangeHeroGroupSelectCmd => {
             exploration::on_weekwalk_ver2_change_hero_group_select
         },
+        CmdId::WeekwalkVer2ChooseSkillCmd => exploration::on_weekwalk_ver2_choose_skill,
         CmdId::GetTowerInfoCmd => tower::on_get_info,
         CmdId::TowerMopUpCmd => tower::on_mop_up,
         CmdId::TowerResetSubEpisodeCmd => tower::on_reset_sub_episode,

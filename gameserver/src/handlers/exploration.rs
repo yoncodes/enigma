@@ -7,7 +7,8 @@ use sonettobuf::{
     BeforeStartWeekwalkBattleRequest, ChangeMapRequest, ChangeWeekwalkHeroGroupSelectRequest,
     CmdId, GetExploreInfoRequest, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
     MarkShowFinishedRequest, WeekwalkDialogHistoryRequest, WeekwalkDialogRequest,
-    WeekwalkVer2ChangeHeroGroupSelectRequest, WeekwalkVer2MarkShowFinishedRequest,
+    WeekwalkVer2ChangeHeroGroupSelectRequest, WeekwalkVer2ChooseSkillRequest,
+    WeekwalkVer2MarkShowFinishedRequest,
 };
 
 pub async fn on_change_map(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
@@ -231,4 +232,22 @@ pub async fn on_weekwalk_ver2_change_hero_group_select(
         req.up_tag,
     )
     .await
+}
+
+pub async fn on_weekwalk_ver2_choose_skill(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = WeekwalkVer2ChooseSkillRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .exploration
+        .choose_weekwalk_v2_skill(
+            ctx.state.db,
+            request.no.ok_or(AppError::InvalidRequest)?,
+            request.skill_ids,
+        )
+        .await?;
+    ctx.send_reply(CmdId::WeekwalkVer2ChooseSkillCmd, reply, 0, req.up_tag)
+        .await
 }

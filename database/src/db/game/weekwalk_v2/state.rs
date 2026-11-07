@@ -190,3 +190,50 @@ pub async fn set_battle_group(
     .await?;
     Ok(result.rows_affected() == 1)
 }
+
+pub async fn unlocked_layer_ids(pool: &SqlitePool, user_id: i64) -> Result<Vec<i32>> {
+    Ok(sqlx::query_scalar(
+        "SELECT layer_id FROM user_weekwalk_v2_layers
+         WHERE user_id = ? AND unlock = 1",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?)
+}
+
+pub async fn replace_snapshot_skills(
+    pool: &SqlitePool,
+    user_id: i64,
+    snapshot_no: i32,
+    skill_ids: &[i32],
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO user_weekwalk_v2_snapshots (user_id, snapshot_no) VALUES (?, ?)
+         ON CONFLICT(user_id, snapshot_no) DO NOTHING",
+    )
+    .bind(user_id)
+    .bind(snapshot_no)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "DELETE FROM user_weekwalk_v2_snapshot_skills WHERE user_id = ? AND snapshot_no = ?",
+    )
+    .bind(user_id)
+    .bind(snapshot_no)
+    .execute(&mut *tx)
+    .await?;
+    for skill_id in skill_ids {
+        sqlx::query(
+            "INSERT INTO user_weekwalk_v2_snapshot_skills (user_id, snapshot_no, skill_id)
+             VALUES (?, ?, ?)",
+        )
+        .bind(user_id)
+        .bind(snapshot_no)
+        .bind(skill_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}

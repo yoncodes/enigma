@@ -5,7 +5,7 @@ use database::db::game::{
     weekwalk_v2::{self, WeekwalkV2BattleSeed, WeekwalkV2LayerSeed, WeekwalkV2Seed},
 };
 use sonettobuf::{
-    WeekwalkVer2ChangeHeroGroupSelectReply, WeekwalkVer2GetInfoReply,
+    WeekwalkVer2ChangeHeroGroupSelectReply, WeekwalkVer2ChooseSkillReply, WeekwalkVer2GetInfoReply,
     WeekwalkVer2MarkShowFinishedReply,
 };
 use sqlx::SqlitePool;
@@ -44,6 +44,15 @@ pub(super) async fn change_group(
         ServerTime::now_ms(),
     )
     .await
+}
+
+pub(super) async fn choose_skill(
+    db: &SqlitePool,
+    player_id: i64,
+    no: i32,
+    skill_ids: Vec<i32>,
+) -> Result<WeekwalkVer2ChooseSkillReply, AppError> {
+    choose_skill_at(db, player_id, no, skill_ids, ServerTime::now_ms()).await
 }
 
 async fn info_at(
@@ -95,6 +104,60 @@ async fn change_group_at(
         layer_id: Some(layer_id),
         battle_id: Some(battle_id),
         select: Some(select),
+    })
+}
+
+async fn choose_skill_at(
+    db: &SqlitePool,
+    player_id: i64,
+    no: i32,
+    skill_ids: Vec<i32>,
+    now_ms: i64,
+) -> Result<WeekwalkVer2ChooseSkillReply, AppError> {
+    ensure_at(db, player_id, now_ms).await?;
+    if no <= 0
+        || hero_groups::get_hero_group(db, player_id, no)
+            .await?
+            .is_none()
+    {
+        return Err(AppError::InvalidRequest);
+    }
+    let skill_id = match skill_ids.as_slice() {
+        [] => None,
+        [skill_id] => Some(*skill_id),
+        _ => return Err(AppError::InvalidRequest),
+    };
+    if let Some(skill_id) = skill_id {
+        let seed = seed_at(now_ms)?;
+        let game = config::get();
+        let unlocked = weekwalk_v2::unlocked_layer_ids(db, player_id).await?;
+        let available = seed
+            .layers
+            .iter()
+            .filter(|layer| unlocked.contains(&layer.layer_id))
+            .filter_map(|layer| game.weekwalk_ver2.get(layer.layer_id))
+            .max_by_key(|layer| layer.layer)
+            .ok_or(AppError::InvalidRequest)?
+            .choose_skill_num;
+        let time = game
+            .weekwalk_ver2_time
+            .iter()
+            .find(|time| time.time_id == seed.time_id)
+            .ok_or(AppError::InvalidRequest)?;
+        let allowed = time
+            .optional_skills
+            .split('#')
+            .take(usize::try_from(available).map_err(|_| AppError::InvalidRequest)?)
+            .map(|id| id.parse::<i32>().map_err(|_| AppError::InvalidRequest))
+            .collect::<Result<Vec<_>, _>>()?;
+        if !allowed.contains(&skill_id) || game.weekwalk_ver2_skill.get(skill_id).is_none() {
+            return Err(AppError::InvalidRequest);
+        }
+    }
+    weekwalk_v2::replace_snapshot_skills(db, player_id, no, &skill_ids).await?;
+    Ok(WeekwalkVer2ChooseSkillReply {
+        no: Some(no),
+        skill_ids,
     })
 }
 
