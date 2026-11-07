@@ -5,12 +5,65 @@ use crate::{
 use prost::Message;
 use sonettobuf::{
     BeforeStartWeekwalkBattleRequest, ChangeMapRequest, ChangeWeekwalkHeroGroupSelectRequest,
-    CmdId, ExploreMoveReply, ExploreMoveRequest, ExploreStep, ExploreStepPush,
-    GetExploreInfoRequest, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
-    MarkShowFinishedRequest, WeekwalkDialogHistoryRequest, WeekwalkDialogRequest,
-    WeekwalkVer2ChangeHeroGroupSelectRequest, WeekwalkVer2ChooseSkillRequest,
-    WeekwalkVer2MarkShowFinishedRequest,
+    CmdId, ExploreItemChangePush, ExploreItemNo, ExploreMoveReply, ExploreMoveRequest, ExploreStep,
+    ExploreStepPush, ExploreUseItemReply, ExploreUseItemRequest, GetExploreInfoRequest,
+    MarkPopDeepSettleRequest, MarkPopShallowSettleRequest, MarkShowFinishedRequest,
+    WeekwalkDialogHistoryRequest, WeekwalkDialogRequest, WeekwalkVer2ChangeHeroGroupSelectRequest,
+    WeekwalkVer2ChooseSkillRequest, WeekwalkVer2MarkShowFinishedRequest,
 };
+
+pub async fn on_use_item(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let request = ExploreUseItemRequest::decode(&req.data[..])?;
+    let outcome = ctx
+        .player()?
+        .exploration
+        .use_item(
+            ctx.state.db,
+            request.uid.ok_or(AppError::InvalidRequest)?,
+            request.posx.ok_or(AppError::InvalidRequest)?,
+            request.posy.ok_or(AppError::InvalidRequest)?,
+            request.interact_id,
+        )
+        .await?;
+    if let Some(item) = outcome.deselected_item {
+        ctx.notify(
+            CmdId::ExploreItemChangePushCmd,
+            ExploreItemChangePush {
+                explore_items: vec![ExploreItemNo {
+                    uid: Some(item.uid),
+                    item_id: Some(item.item_id),
+                    quantity: Some(item.quantity),
+                    status: Some(item.status),
+                }],
+            },
+        )
+        .await?;
+    }
+    ctx.notify(
+        CmdId::ExploreStepPushCmd,
+        ExploreStepPush {
+            steps: vec![ExploreStep {
+                param: Some(
+                    serde_json::json!({
+                        "stepType": 10,
+                        "itemUid": outcome.selected_uid,
+                    })
+                    .to_string(),
+                ),
+            }],
+        },
+    )
+    .await?;
+    ctx.send_reply(
+        CmdId::ExploreUseItemCmd,
+        ExploreUseItemReply {
+            uid: Some(outcome.uid),
+        },
+        0,
+        req.up_tag,
+    )
+    .await
+}
 
 pub async fn on_move(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
     let request = ExploreMoveRequest::decode(&req.data[..])?;

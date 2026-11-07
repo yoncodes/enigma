@@ -1,6 +1,9 @@
 use super::*;
 use sonettobuf::{ChangeMapReply, ChangeMapRequest, GetExploreInfoReply, GetExploreInfoRequest};
-use sonettobuf::{ExploreMoveReply, ExploreMoveRequest, ExploreStepPush};
+use sonettobuf::{
+    ExploreItemChangePush, ExploreMoveReply, ExploreMoveRequest, ExploreStepPush,
+    ExploreUseItemReply, ExploreUseItemRequest,
+};
 
 #[tokio::test]
 async fn exploration_routes_entry_and_resume() {
@@ -119,6 +122,8 @@ async fn exploration_move_pushes_committed_steps_before_reply() {
             .collect(),
         area_ids: vec![1],
         move_nodes: "1#6|48#23".into(),
+        items: vec![],
+        use_item_uid: 0,
     };
     let mut conn = pool.acquire().await.unwrap();
     database::db::game::explore::state::insert(&mut conn, player_id, &saved)
@@ -186,5 +191,134 @@ async fn exploration_move_pushes_committed_steps_before_reply() {
     assert_eq!(up_tag, 24);
     assert_eq!(result_code, 0);
     ExploreMoveReply::decode(&*body).unwrap();
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn exploration_item_selection_matches_captured_push_order() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 583;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'explore-item-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let saved = database::models::game::explore::state::MapState {
+        map_id: 101,
+        posx: 1,
+        posy: 6,
+        dir: 180,
+        challenge_count: 0,
+        interacts: vec![],
+        area_ids: vec![1],
+        move_nodes: "1#6".into(),
+        items: vec![database::models::game::explore::state::ItemState {
+            uid: 77,
+            item_id: 150002,
+            quantity: 1,
+            status: 0,
+        }],
+        use_item_uid: 0,
+    };
+    let mut conn = pool.acquire().await.unwrap();
+    database::db::game::explore::state::insert(&mut conn, player_id, &saved)
+        .await
+        .unwrap();
+    database::db::game::explore::state::select(&mut conn, player_id, 101)
+        .await
+        .unwrap();
+    drop(conn);
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(6);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    for (sequence, up_tag) in [(1, 25), (2, 26)] {
+        let mut data = Vec::new();
+        ExploreUseItemRequest {
+            uid: Some(77),
+            posx: Some(0),
+            posy: Some(0),
+            interact_id: None,
+        }
+        .encode(&mut data)
+        .unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence,
+                cmd_id: CmdId::ExploreUseItemCmd as i16,
+                up_tag,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+    }
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("item selection did not push the selected UID first");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreStepPushCmd);
+    assert_eq!(
+        ExploreStepPush::decode(&*body).unwrap().steps[0].param,
+        Some(r#"{"itemUid":77,"stepType":10}"#.into())
+    );
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        up_tag,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("item selection did not reply after its step");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreUseItemCmd);
+    assert_eq!(up_tag, 25);
+    assert_eq!(ExploreUseItemReply::decode(&*body).unwrap().uid, Some(77));
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("item deselection did not refresh the item first");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreItemChangePushCmd);
+    assert_eq!(
+        ExploreItemChangePush::decode(&*body).unwrap().explore_items[0],
+        sonettobuf::ExploreItemNo {
+            uid: Some(77),
+            item_id: Some(150002),
+            quantity: Some(1),
+            status: Some(0),
+        }
+    );
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("item deselection did not push the cleared UID");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreStepPushCmd);
+    assert_eq!(
+        ExploreStepPush::decode(&*body).unwrap().steps[0].param,
+        Some(r#"{"itemUid":0,"stepType":10}"#.into())
+    );
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        up_tag,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("item deselection did not reply last");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreUseItemCmd);
+    assert_eq!(up_tag, 26);
+    assert_eq!(ExploreUseItemReply::decode(&*body).unwrap().uid, Some(77));
     assert!(packets.try_recv().is_err());
 }

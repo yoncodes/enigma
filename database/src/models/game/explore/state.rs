@@ -10,6 +10,18 @@ pub struct MapState {
     pub interacts: Vec<InteractState>,
     pub area_ids: Vec<i32>,
     pub move_nodes: String,
+    #[serde(default)]
+    pub items: Vec<ItemState>,
+    #[serde(default)]
+    pub use_item_uid: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemState {
+    pub uid: i64,
+    pub item_id: i32,
+    pub quantity: i32,
+    pub status: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
