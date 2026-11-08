@@ -94,7 +94,7 @@
       <span id="server">server: checking</span>
       <span id="players">players: checking</span>
     </div>
-    <pre id="out">commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level &lt;hero id&gt; &lt;level&gt;, hero portrait &lt;hero id&gt; &lt;1-5&gt;, hero portrait all, hero upgrade materials &lt;hero id&gt; &lt;1-180&gt; &lt;resonance 1-15&gt; [destiny rank] [destiny stone id], psychube max &lt;uid&gt;, dungeon unlock &lt;stage|chapter&gt; &lt;id&gt;, material &lt;type&gt; &lt;id&gt; &lt;amount&gt;</pre>
+    <pre id="out">commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level &lt;hero id&gt; &lt;level&gt;, hero resonance &lt;hero id&gt; &lt;level&gt;, hero portrait &lt;hero id&gt; &lt;1-5&gt;, hero portrait all, hero upgrade materials &lt;hero id&gt; &lt;1-180&gt; &lt;resonance 1-15&gt; [destiny rank] [destiny stone id], psychube max &lt;uid&gt;, dungeon unlock &lt;stage|chapter&gt; &lt;id&gt;, material &lt;type&gt; &lt;id&gt; &lt;amount&gt;</pre>
     <dialog id="heroUpgradeDialog">
       <div class="dialog-head">
         <h2>Hero editor</h2>
@@ -106,7 +106,8 @@
           <p id="heroUpgradeCurrent" class="current-hero wide"></p>
           <label>Target rank<select id="heroUpgradeRank"></select></label>
           <label>Target level<select id="heroUpgradeLevel"></select></label>
-          <label>Target Resonance<select id="heroUpgradeResonance"></select></label>
+          <label>Material target Resonance<select id="heroUpgradeResonance"></select></label>
+          <label>Editable Resonance<select id="heroEditResonance"></select></label>
           <label>Target Portrait<select id="heroUpgradePortrait"></select></label>
           <div id="heroUpgradeDestiny" class="destiny wide" hidden>
             <label>Target Destiny rank<select id="heroUpgradeDestinyRank"></select></label>
@@ -117,6 +118,7 @@
           <button type="button" onclick="closeHeroUpgrade()">Cancel</button>
           <button type="button" onclick="grantHeroUpgradeMaterials()">Grant missing materials</button>
           <button type="button" onclick="setHeroLevel()">Set hero level</button>
+          <button type="button" onclick="setHeroResonance()">Set Resonance</button>
           <button type="button" onclick="setHeroPortrait()">Set Portrait level</button>
         </div>
       </div>
@@ -335,6 +337,11 @@
         (_, index) => hero.resonance + index
       ).map(level => `<option value="${level}"${level === hero.maxResonance ? ' selected' : ''}>${level}</option>`)
         .join('');
+      document.getElementById('heroEditResonance').innerHTML = Array.from(
+        { length: hero.maxEditableResonance - hero.resonance + 1 },
+        (_, index) => hero.resonance + index
+      ).map(level => `<option value="${level}"${level === hero.maxEditableResonance ? ' selected' : ''}>${level}</option>`)
+        .join('');
       document.getElementById('heroUpgradePortrait').innerHTML = Array.from(
         { length: 5 - hero.portraitLevel + 1 },
         (_, index) => hero.portraitLevel + index
@@ -399,6 +406,14 @@
       if (!hero) return;
       const level = Number(document.getElementById('heroUpgradePortrait').value);
       document.getElementById('command').value = `hero portrait ${hero.id} ${level}`;
+      closeHeroUpgrade();
+      await run();
+    }
+    async function setHeroResonance() {
+      const hero = selectedUpgradeHero();
+      if (!hero) return;
+      const resonance = Number(document.getElementById('heroEditResonance').value);
+      document.getElementById('command').value = `hero resonance ${hero.id} ${resonance}`;
       closeHeroUpgrade();
       await run();
     }

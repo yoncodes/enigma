@@ -192,8 +192,22 @@ pub(super) async fn hero(
                 data,
             ))
         }
+        [resonance, hero_id, target] if resonance.eq_ignore_ascii_case("resonance") => {
+            let hero_id = parse_positive(hero_id, "hero id")?;
+            let target = parse_positive(target, "resonance")?;
+            let update = HeroManager::new(player_id)
+                .set_resonance(state.db, hero_id, target)
+                .await?;
+            let mut data = GrantData::empty(player_id);
+            data.changed_hero_ids.push(hero_id);
+            send_snapshot_pushes(state, &data).await?;
+            Ok(GmResponse::ok_data(
+                format!("set hero {hero_id} resonance to {target}"),
+                update,
+            ))
+        }
         _ => anyhow::bail!(
-            "usage: hero level <hero id> <level> or hero portrait <hero id> <1-5> or hero portrait all"
+            "usage: hero level <hero id> <level>, hero resonance <hero id> <level>, hero portrait <hero id> <1-5>, or hero portrait all"
         ),
     }
 }

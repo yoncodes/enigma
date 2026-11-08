@@ -293,7 +293,7 @@ async fn gm_handler(
             return (
                 StatusCode::OK,
                 Json(GmResponse::ok(
-                    "commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level <hero id> <level>, hero portrait <hero id> <1-5>, hero portrait all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], psychube max <uid>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>",
+                    "commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level <hero id> <level>, hero resonance <hero id> <level>, hero portrait <hero id> <1-5>, hero portrait all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], psychube max <uid>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>",
                 )),
             )
                 .into_response();

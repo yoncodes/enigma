@@ -357,6 +357,39 @@ impl HeroManager {
         })
     }
 
+    pub async fn set_resonance(
+        self,
+        db: &SqlitePool,
+        hero_id: i32,
+        target: i32,
+    ) -> Result<HeroInfo, AppError> {
+        let heroes = UserHeroModel::new(self.player_id, db.clone());
+        let current = heroes
+            .get_hero(hero_id)
+            .await
+            .map_err(|_| AppError::InvalidRequest)?;
+        if target < current.record.talent {
+            return Err(AppError::InvalidRequest);
+        }
+        let talent = config::configs::get()
+            .character_talent(hero_id, target)
+            .ok_or(AppError::InvalidRequest)?;
+        if current.record.rank < talent.requirement {
+            return Err(AppError::InvalidRequest);
+        }
+        if target != current.record.talent {
+            let mut tx = db.begin().await?;
+            if !heroes
+                .update_talent(&mut tx, hero_id, current.record.talent, target)
+                .await?
+            {
+                return Err(AppError::InvalidRequest);
+            }
+            tx.commit().await?;
+        }
+        snapshot(db, heroes.get_hero(hero_id).await?).await
+    }
+
     pub async fn set_all_portrait_levels(
         self,
         db: &SqlitePool,

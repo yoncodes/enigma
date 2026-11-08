@@ -298,7 +298,7 @@ async fn run_command(
         "players" | "list" | "listplayers" | "list_players" => return Ok(list_players(state)),
         "help" | "?" => {
             return Ok(GmResponse::ok(
-                "commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level <hero id> <level>, hero portrait <hero id> <1-5>, hero portrait all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], psychube max <uid>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>",
+                "commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level <hero id> <level>, hero resonance <hero id> <level>, hero portrait <hero id> <1-5>, hero portrait all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], psychube max <uid>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>",
             ));
         }
         _ => anyhow::bail!("unknown command '{}'", first),
@@ -1157,6 +1157,7 @@ struct HeroUpgradeEntry {
     resonance: i32,
     portrait_level: i32,
     max_resonance: i32,
+    max_editable_resonance: i32,
     ranks: Vec<HeroUpgradeRank>,
     destiny_rank: i32,
     destiny_level: i32,
@@ -1238,6 +1239,14 @@ async fn build_hero_upgrade_catalog(
             .map(|row| row.talent_id)
             .max()
             .ok_or_else(|| anyhow::anyhow!("hero {hero_id} has no character_talent config"))?;
+        let max_editable_resonance = tables
+            .character_talent
+            .iter()
+            .filter(|row| row.hero_id == hero_id && row.requirement <= hero.record.rank)
+            .map(|row| row.talent_id)
+            .max()
+            .unwrap_or(hero.record.talent)
+            .max(hero.record.talent);
         let raw_name = if character.name_eng.is_empty() {
             &character.name
         } else {
@@ -1281,6 +1290,7 @@ async fn build_hero_upgrade_catalog(
             resonance: hero.record.talent,
             portrait_level: hero.record.ex_skill_level,
             max_resonance,
+            max_editable_resonance,
             ranks,
             destiny_rank: hero.record.destiny_rank,
             destiny_level: hero.record.destiny_level,
@@ -1668,6 +1678,18 @@ mod tests {
             (hero.id, hero.rank, hero.level, hero.resonance),
             (3003, 2, 5, 5)
         );
+        assert_eq!(
+            hero.max_editable_resonance,
+            state
+                .tables
+                .character_talent
+                .iter()
+                .filter(|talent| talent.hero_id == 3003 && talent.requirement <= 3)
+                .map(|talent| talent.talent_id)
+                .max()
+                .unwrap()
+        );
+        assert!(hero.max_editable_resonance <= hero.max_resonance);
         assert_eq!(
             hero.ranks
                 .iter()

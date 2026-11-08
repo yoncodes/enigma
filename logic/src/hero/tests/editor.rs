@@ -64,6 +64,42 @@ async fn hero_editor_sets_configured_rank_and_level() {
 }
 
 #[tokio::test]
+async fn hero_editor_sets_configured_resonance_without_materials() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (45, 'resonance-editor', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let heroes = UserHeroModel::new(45, pool.clone());
+    heroes.create_hero(3003).await.unwrap();
+    HeroManager::new(45)
+        .set_level(&pool, 3003, 75)
+        .await
+        .unwrap();
+    let rank = heroes.get_hero(3003).await.unwrap().record.rank;
+    let target = config::configs::get()
+        .character_talent
+        .iter()
+        .filter(|talent| talent.hero_id == 3003 && talent.requirement <= rank)
+        .map(|talent| talent.talent_id)
+        .max()
+        .unwrap();
+
+    let update = HeroManager::new(45)
+        .set_resonance(&pool, 3003, target)
+        .await
+        .unwrap();
+
+    assert_eq!(update.talent, Some(target));
+}
+
+#[tokio::test]
 async fn bulk_portrait_upgrade_rolls_back_when_any_hero_has_no_config() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
