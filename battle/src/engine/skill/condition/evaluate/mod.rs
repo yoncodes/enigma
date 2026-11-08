@@ -1474,13 +1474,7 @@ fn specific_skill_matches(
 }
 
 fn has_master_halo(uid: i64, managers: Option<&BattleManagers>) -> bool {
-    managers.is_some_and(|managers| {
-        managers
-            .buff
-            .active_for(uid)
-            .filter_map(|buff| buff.buff_id)
-            .any(|buff_id| managers.catalog().buff_has_master_halo(buff_id))
-    })
+    managers.is_some_and(|managers| managers.buff.has_force_field(uid))
 }
 
 fn extra_action_kind_matches(actual: i32, expected: &[i32]) -> bool {

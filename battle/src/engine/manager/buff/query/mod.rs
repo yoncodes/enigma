@@ -48,6 +48,15 @@ pub struct SpecialCountOutput {
 }
 
 impl BuffManager {
+    pub(crate) fn has_force_field(&self, owner_uid: i64) -> bool {
+        self.buffs
+            .iter()
+            .filter(|active| active.effective && active.owner_uid == owner_uid)
+            .filter(|active| !super::is_layer_halo_slave(&active.buff))
+            .filter_map(|active| active.buff.buff_id)
+            .any(|buff_id| crate::engine::buff::halo::has_layer_master(self.catalog(), buff_id))
+    }
+
     pub fn buff_act_state(&self, owner_uid: i64, kind: BuffActKind) -> Option<(i32, &str)> {
         self.buffs
             .iter()

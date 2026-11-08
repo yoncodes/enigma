@@ -381,9 +381,6 @@ fn normalizes_buff_feature_tokens_and_registry_identity() {
     crate::test_support::init_config();
     let catalog = BattleCatalog::new(crate::test_support::game_data());
 
-    assert!(catalog.buff_has_master_halo(30860161));
-    assert!(!catalog.buff_has_master_halo(-1));
-
     assert_eq!(
         catalog.buff_feature_tokens(109320111),
         vec!["704#1#0", "100#211#50", "100#214#50", "100#206#50",]

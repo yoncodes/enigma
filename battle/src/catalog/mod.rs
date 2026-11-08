@@ -304,18 +304,6 @@ impl BattleCatalog {
             .collect()
     }
 
-    pub(crate) fn buff_has_master_halo(self, buff_id: i32) -> bool {
-        self.buff_feature_rows(buff_id).into_iter().any(|feature| {
-            matches!(
-                feature
-                    .split('#')
-                    .next()
-                    .and_then(|value| value.parse().ok()),
-                Some(771 | 772 | 822)
-            )
-        })
-    }
-
     pub(crate) fn buff_pool(self, buff_id: i32) -> Option<Vec<i32>> {
         self.game_data.skill_buff.get(buff_id).map(|row| {
             row.features
