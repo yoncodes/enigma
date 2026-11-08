@@ -393,6 +393,19 @@ pub(crate) struct BuffPlan {
 }
 
 impl BuffPlan {
+    fn pre_add_refreshes(&self) -> usize {
+        let plan = match &self.action {
+            BuffPlanAction::Grant(plan)
+            | BuffPlanAction::GrantInternalChild(plan)
+            | BuffPlanAction::Accumulate(plan) => plan.as_ref(),
+            _ => return 0,
+        };
+        plan.stack_trim
+            .iter()
+            .filter(|action| matches!(action, ConsumeAction::Update { .. }))
+            .count()
+    }
+
     pub(crate) fn fanout_source_uids(&self) -> Vec<i64> {
         match &self.action {
             BuffPlanAction::Grant(plan) => plan
@@ -803,6 +816,7 @@ pub(super) struct GrantPlan {
     excluded_uids: Vec<i64>,
     replacement_uids: Vec<i64>,
     capacity_eviction_uids: Vec<i64>,
+    stack_trim: Vec<ConsumeAction>,
     pre_add_uids: Vec<UidAllocationPlan>,
     uid: Option<UidAllocationPlan>,
     refresh_uids: Vec<UidAllocationPlan>,

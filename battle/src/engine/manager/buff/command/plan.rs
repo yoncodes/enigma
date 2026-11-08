@@ -1028,6 +1028,40 @@ impl BuffManager {
         let layer_refresh = (action == GrantAction::RefreshLayer)
             .then(|| self.plan_layer_refresh(route, &definition, &policy, args))
             .flatten();
+        let stack_trim = if definition.trims_timed_stack_cap()
+            && matches!(action, GrantAction::Add | GrantAction::RefreshLayer)
+        {
+            let incoming = definition.raw_layer(args.layer, args.layer_specified, args.count);
+            let mut overflow =
+                self.grant_overflow(route.source_uid, route.target_uid, route.buff_id, incoming);
+            self.buffs
+                .iter()
+                .filter(|active| {
+                    active.effective
+                        && active.owner_uid == route.target_uid
+                        && active.buff.buff_id == Some(route.buff_id)
+                        && !(action == GrantAction::RefreshLayer && policy.matches(active, route))
+                })
+                .filter_map(|active| {
+                    if overflow <= 0 {
+                        return None;
+                    }
+                    let amount = overflow.min(super::count_or_layer_from(
+                        &active.buff,
+                        active.definition.as_ref(),
+                    ));
+                    overflow -= amount;
+                    Some(Self::resolve_active_consume_action(
+                        active,
+                        amount,
+                        DepletedBuff::Remove,
+                        ConsumeField::Configured,
+                    ))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let partially_capped_layer_refresh = layer_refresh.is_some_and(|refresh| {
             self.partially_caps_layer_refresh(route, &definition, &policy, args, refresh)
         });
@@ -1244,6 +1278,7 @@ impl BuffManager {
             excluded_uids,
             replacement_uids,
             capacity_eviction_uids,
+            stack_trim,
             pre_add_uids,
             uid,
             refresh_uids,

@@ -809,6 +809,10 @@ impl BuffDefinition {
         self.duration > 0 && self.has_include_type(BuffIncludeType::Stacked)
     }
 
+    pub(super) fn trims_timed_stack_cap(&self) -> bool {
+        self.duration > 0 && self.has_include_type(BuffIncludeType::TimedIndependentStacks)
+    }
+
     pub(super) fn reserves_child_on_layer_refresh(&self) -> bool {
         self.status != BuffStatus::Special
             || self.is_layer_type()

@@ -112,6 +112,10 @@ impl EffectPacket {
                 effects.push(Self::shield_delete(shield.target_uid, shield.value));
             }
         }
+        effects.extend(Self::recorded_buff_refreshes(
+            changes,
+            0..changes.pre_add_refreshes,
+        ));
         if let Some(added) = &change.added {
             effects.extend(if changes.pre_add_markers_before_remove {
                 Self::buff_add_body(added)
@@ -125,7 +129,20 @@ impl EffectPacket {
                 .iter()
                 .map(Self::buff_act_info_marker),
         );
-        for (index, refreshed) in change.refreshed.iter().enumerate() {
+        effects.extend(Self::recorded_buff_refreshes(
+            changes,
+            changes.pre_add_refreshes..change.refreshed.len(),
+        ));
+        effects
+    }
+
+    fn recorded_buff_refreshes(
+        changes: &crate::engine::manager::buff::BuffChanges,
+        range: std::ops::Range<usize>,
+    ) -> Vec<ActEffect> {
+        let mut effects = Vec::new();
+        for index in range {
+            let refreshed = &changes.change.refreshed[index];
             let snapshot_markers = changes
                 .state_snapshot_wire
                 .iter()

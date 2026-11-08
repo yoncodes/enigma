@@ -8,6 +8,7 @@ pub struct BuffChanges {
     pub origin: CommandOrigin,
     pub change: BuffReplaceResult,
     pub lifecycle_transitions: Vec<BuffLifecycleTransition>,
+    pub pre_add_refreshes: usize,
     pub fanout: Vec<BuffFanoutResult>,
     pub pre_add_markers_before_remove: bool,
     pub refresh_wire: Vec<BuffRefreshWire>,
@@ -166,6 +167,7 @@ impl BuffChanges {
             origin,
             change,
             lifecycle_transitions: Vec::new(),
+            pre_add_refreshes: 0,
             fanout,
             pre_add_markers_before_remove,
             refresh_wire,
@@ -183,6 +185,11 @@ impl BuffChanges {
         transitions: Vec<BuffLifecycleTransition>,
     ) -> Self {
         self.lifecycle_transitions = transitions;
+        self
+    }
+
+    pub(super) fn with_pre_add_refreshes(mut self, count: usize) -> Self {
+        self.pre_add_refreshes = count.min(self.change.refreshed.len());
         self
     }
 
@@ -253,7 +260,8 @@ impl BuffChanges {
             return Vec::new();
         }
         let mut events = if self.lifecycle_transitions.is_empty() {
-            self.change.events()
+            self.change
+                .events_with_pre_add_refreshes(self.pre_add_refreshes)
         } else {
             self.lifecycle_transitions
                 .iter()
