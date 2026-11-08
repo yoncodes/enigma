@@ -9,9 +9,10 @@ async fn psychube_editor_uses_configured_maximum_progression() {
     let config = tables
         .equip
         .iter()
-        .find(|equip| tables.is_normal_equipment(equip))
+        .find(|equip| tables.equip_refine_cap(equip).is_some())
         .unwrap();
     let maximum = tables.max_equip_progression(config.rare).unwrap();
+    let max_refine = tables.equip_refine_cap(config).unwrap();
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     database::run_migrations(&pool).await.unwrap();
     sqlx::query(
@@ -29,4 +30,5 @@ async fn psychube_editor_uses_configured_maximum_progression() {
 
     assert_eq!(updated.level, Some(maximum.level));
     assert_eq!(updated.break_lv, Some(maximum.break_level));
+    assert_eq!(updated.refine_lv, Some(max_refine));
 }

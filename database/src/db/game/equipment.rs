@@ -72,14 +72,16 @@ pub async fn set_progression(
     uid: i64,
     level: i32,
     break_level: i32,
+    refine_level: i32,
 ) -> Result<bool> {
     Ok(sqlx::query(
         "UPDATE equipment
-         SET level = ?, exp = 0, break_lv = ?, updated_at = ?
+         SET level = ?, exp = 0, break_lv = ?, refine_lv = ?, updated_at = ?
          WHERE user_id = ? AND uid = ? AND count > 0",
     )
     .bind(level)
     .bind(break_level)
+    .bind(refine_level)
     .bind(common::time::ServerTime::now_ms())
     .bind(user_id)
     .bind(uid)

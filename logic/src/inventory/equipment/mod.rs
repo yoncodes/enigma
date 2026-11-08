@@ -47,12 +47,14 @@ pub(super) async fn max_equip(
     let maximum = tables
         .max_equip_progression(equip.rare)
         .ok_or(AppError::InvalidRequest)?;
+    let refine_level = tables.equip_refine_cap(equip).unwrap_or(owned.refine_lv);
     if !equipment::set_progression(
         db,
         player_id,
         target_uid,
         maximum.level,
         maximum.break_level,
+        refine_level,
     )
     .await?
     {
@@ -400,23 +402,15 @@ pub(super) async fn refine(
         .equip
         .get(target.equip_id)
         .ok_or(AppError::InvalidRequest)?;
+    let max_level = tables
+        .equip_refine_cap(target_config)
+        .ok_or(AppError::InvalidRequest)?;
+    if target.refine_lv >= max_level {
+        return Err(AppError::InvalidRequest);
+    }
     let universal_id = tables
         .equip_universal_refine_id()
         .ok_or(AppError::InvalidRequest)?;
-    let max_level = tables
-        .equip_max_refine_level()
-        .ok_or(AppError::InvalidRequest)?;
-    let rarity_threshold = tables
-        .equip_refine_rarity_threshold()
-        .ok_or(AppError::InvalidRequest)?;
-    if target_config.is_exp_equip == 1
-        || target.equip_id == universal_id
-        || target_config.is_sp_refine == 1
-        || target_config.rare <= rarity_threshold
-        || target.refine_lv >= max_level
-    {
-        return Err(AppError::InvalidRequest);
-    }
     let special_ids = target_config
         .use_sp_refine
         .split('#')

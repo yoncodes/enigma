@@ -133,7 +133,7 @@
         </div>
         <div class="dialog-actions">
           <button type="button" onclick="closePsychubeEditor()">Cancel</button>
-          <button type="button" onclick="maxPsychube()">Max level and limit break</button>
+          <button type="button" onclick="maxPsychube()">Max level, limit break, and engraving</button>
         </div>
       </div>
     </dialog>
@@ -440,7 +440,7 @@
       if (!equip) return;
       const owner = equip.heroName ? `${equip.heroName} (${equip.heroId})` : 'Unequipped';
       document.getElementById('psychubeCurrent').textContent =
-        `Current: Lv${equip.level}/${equip.maxLevel} · Limit break ${equip.breakLevel}/${equip.maxBreakLevel} · ${owner}`;
+        `Current: Lv${equip.level}/${equip.maxLevel} · Limit break ${equip.breakLevel}/${equip.maxBreakLevel} · Engraving ${equip.refineLevel}/${equip.maxRefineLevel} · ${owner}`;
     }
     async function maxPsychube() {
       const equip = selectedPsychube();

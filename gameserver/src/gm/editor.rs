@@ -267,6 +267,10 @@ pub(super) async fn equipment_catalog(
         let Some(maximum) = state.tables.max_equip_progression(config.rare) else {
             continue;
         };
+        let max_refine_level = state
+            .tables
+            .equip_refine_cap(config)
+            .unwrap_or(owned.refine_lv);
         let (hero_id, hero_name) = equipped
             .get(&owned.uid)
             .cloned()
@@ -286,6 +290,8 @@ pub(super) async fn equipment_catalog(
             max_level: maximum.level,
             break_level: owned.break_lv,
             max_break_level: maximum.break_level,
+            refine_level: owned.refine_lv,
+            max_refine_level,
             hero_id,
             hero_name,
         });
@@ -486,6 +492,8 @@ struct EquipmentEntry {
     max_level: i32,
     break_level: i32,
     max_break_level: i32,
+    refine_level: i32,
+    max_refine_level: i32,
     hero_id: Option<i32>,
     hero_name: Option<String>,
 }
