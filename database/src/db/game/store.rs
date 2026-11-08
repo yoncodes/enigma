@@ -53,8 +53,11 @@ pub async fn add_buy_count_in_transaction(
 ) -> sqlx::Result<Option<i32>> {
     let result = if expected_count == 0 {
         sqlx::query(
-            "INSERT OR IGNORE INTO user_store_goods (user_id, goods_id, buy_count)
-             VALUES (?, ?, ?)",
+            "INSERT INTO user_store_goods (user_id, goods_id, buy_count)
+             VALUES (?, ?, ?)
+             ON CONFLICT(user_id, goods_id) DO UPDATE SET
+                 buy_count = user_store_goods.buy_count + excluded.buy_count
+             WHERE user_store_goods.buy_count = 0",
         )
         .bind(user_id)
         .bind(goods_id)
@@ -78,3 +81,6 @@ pub async fn add_buy_count_in_transaction(
     }
     Ok(Some(expected_count + count))
 }
+
+#[cfg(test)]
+mod tests;
