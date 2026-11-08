@@ -395,6 +395,19 @@ impl BuffManager {
                     removed
                 }),
         );
+        for fanout in &plan.fanout {
+            let Some(uid) = fanout.replacement_uid else {
+                continue;
+            };
+            planned_removed.extend(
+                self.delete(fanout.spec.route.target_uid, uid)
+                    .into_iter()
+                    .map(|mut removed| {
+                        removed.buff.duration = Some(0);
+                        removed
+                    }),
+            );
+        }
         for uid in &plan.capacity_eviction_uids {
             planned_removed.extend(self.delete(plan.route.target_uid, *uid).into_iter().map(
                 |mut removed| {

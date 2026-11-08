@@ -50,12 +50,14 @@ pub(super) struct FanoutSpec {
     pub(super) duration: i32,
     pub(super) rule: crate::engine::skill::rule::DefinitionKey,
     pub(super) source_attack: Option<i32>,
+    pub(super) initial_act_info: Vec<sonettobuf::BuffActInfo>,
 }
 
 #[derive(Debug, Clone)]
 pub(super) struct PlannedFanout {
     pub(super) spec: FanoutSpec,
     pub(super) uid: UidAllocationPlan,
+    pub(super) replacement_uid: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -204,8 +206,10 @@ impl BuffManager {
                             duration,
                             rule,
                             source_attack: None,
+                            initial_act_info: Vec::new(),
                         },
                         uid,
+                        replacement_uid: None,
                     },
                 });
             }
@@ -493,7 +497,8 @@ impl BuffManager {
         route: BuffRoute,
         args: BuffAddArgs,
         duration: i32,
-    ) -> Vec<FanoutSpec> {
+        replace_existing: bool,
+    ) -> Vec<(FanoutSpec, Option<i64>)> {
         let BuffRoute {
             source_uid,
             target_uid: emitter_uid,
@@ -523,25 +528,41 @@ impl BuffManager {
                 .filter(|entity| carrier.kind == HaloKind::Base || hp.current(entity.uid) > 0)
                 .filter(|entity| include_owner || entity.uid != emitter_uid)
             {
-                if self.has_fanout_buff(target.uid, fanout_buff_id, emitter_uid) {
+                let replacement_uid = replace_existing
+                    .then(|| {
+                        self.fanout_replacement_uid(
+                            target.uid,
+                            emitter_uid,
+                            BuffRoute::new(source_uid, target.uid, fanout_buff_id),
+                            &definition,
+                        )
+                    })
+                    .flatten();
+                if replacement_uid.is_none()
+                    && self.has_fanout_buff(target.uid, fanout_buff_id, emitter_uid)
+                {
                     continue;
                 }
-                specs.push(FanoutSpec {
-                    emitter_uid,
-                    route: BuffRoute::new(source_uid, target.uid, fanout_buff_id),
-                    definition: definition.clone(),
-                    args: BuffAddArgs {
-                        layer: args.layer,
-                        count: args.count,
-                        layer_specified: true,
+                specs.push((
+                    FanoutSpec {
+                        emitter_uid,
+                        route: BuffRoute::new(source_uid, target.uid, fanout_buff_id),
+                        definition: definition.clone(),
+                        args: BuffAddArgs {
+                            layer: args.layer,
+                            count: args.count,
+                            layer_specified: true,
+                        },
+                        duration,
+                        rule: crate::engine::skill::rule::DefinitionKey::new(
+                            carrier.opcode,
+                            carrier.type_name,
+                        ),
+                        source_attack: None,
+                        initial_act_info: Vec::new(),
                     },
-                    duration,
-                    rule: crate::engine::skill::rule::DefinitionKey::new(
-                        carrier.opcode,
-                        carrier.type_name,
-                    ),
-                    source_attack: None,
-                });
+                    replacement_uid,
+                ));
             }
         }
         specs
@@ -611,6 +632,7 @@ impl BuffManager {
                         duration,
                         rule,
                         source_attack: None,
+                        initial_act_info: Vec::new(),
                     },
                     buff_uid,
                     carrier_buff_uid,
@@ -630,6 +652,26 @@ impl BuffManager {
                     .fanout_emitter_uid
                     .unwrap_or_else(|| active.buff.from_uid.unwrap_or(active.owner_uid))
                     == emitter_uid
+        })
+    }
+
+    fn fanout_replacement_uid(
+        &self,
+        owner_uid: i64,
+        emitter_uid: i64,
+        route: BuffRoute,
+        definition: &BuffDefinition,
+    ) -> Option<i64> {
+        let policy = BuffPolicy::from_definition(definition);
+        self.buffs.iter().find_map(|active| {
+            (active.owner_uid == owner_uid
+                && active
+                    .fanout_emitter_uid
+                    .unwrap_or_else(|| active.buff.from_uid.unwrap_or(active.owner_uid))
+                    == emitter_uid
+                && policy.matches(active, route))
+            .then_some(active.buff.uid)
+            .flatten()
         })
     }
 }

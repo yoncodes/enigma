@@ -974,6 +974,7 @@ impl BuffManager {
                     layer_specified: true,
                 },
                 policy.lifetime.duration,
+                action == GrantAction::ReplaceExisting,
             )
         } else {
             Vec::new()
@@ -992,7 +993,11 @@ impl BuffManager {
         let fanout = fanout_specs
             .into_iter()
             .zip(fanout_uids)
-            .map(|(spec, uid)| PlannedFanout { spec, uid })
+            .map(|((spec, replacement_uid), uid)| PlannedFanout {
+                spec,
+                uid,
+                replacement_uid,
+            })
             .collect::<Vec<_>>();
         let refresh_uids = match action {
             GrantAction::RefreshCount if definition.reserves_normal_uid_on_count_refresh() => {
