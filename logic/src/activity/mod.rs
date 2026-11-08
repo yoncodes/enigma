@@ -31,7 +31,10 @@ use sonettobuf::{
     GetPartyOutSideInfoReply, MarkActivity104StoryReply, MarkEpisodeAfterStoryReply,
     MarkPopSummaryReply, PutTrapReply, StepInfo, UnlockPermanentReply, UpgradeElementReply,
 };
-use sonettobuf::{Act107GoodsInfo, Get107GoodsInfoReply};
+use sonettobuf::{
+    Act107GoodsInfo, Act220EpisodePush, Act220EpisodeRecord, Act220FinishEpisodeReply,
+    Get107GoodsInfoReply, GetAct220InfoReply,
+};
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
 
@@ -70,6 +73,7 @@ mod act212;
 mod act216;
 mod act217;
 mod act218;
+mod act220;
 mod act221;
 mod act225;
 mod act228;
@@ -120,6 +124,7 @@ use act212::{act212_info, receive_act212_bonus};
 use act216::{act216_info, finish_act216_task, get_act216_once_bonus};
 use act217::act217_infos;
 use act218::{accept_act218_reward, act218_info, finish_act218_game};
+use act220::{act220_info, finish_act220_episode};
 use act221::{act221_info, act221_select, act221_summon};
 use act225::act225_info;
 use act228::{act228_flip_grid, act228_get_final_bonus, act228_info};

@@ -60,6 +60,7 @@ pub enum ActivityStateKind {
     Act128ModeTeam,
     PartyGameExtraBonus,
     Act107Goods,
+    Act220Episode,
 }
 
 impl ActivityStateKind {
@@ -111,6 +112,7 @@ impl ActivityStateKind {
             Self::Act128ModeTeam => 44,
             Self::PartyGameExtraBonus => 45,
             Self::Act107Goods => 46,
+            Self::Act220Episode => 47,
         }
     }
 }
@@ -168,6 +170,33 @@ pub async fn set(
     .await?;
 
     Ok(())
+}
+
+pub async fn insert_in_transaction(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    user_id: i64,
+    activity_id: i32,
+    state: ActivityStateSet<'_>,
+) -> Result<bool> {
+    let now = common::time::ServerTime::now_ms();
+    let inserted = sqlx::query(
+        "INSERT INTO user_activity_state
+            (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, activity_id, kind, entry_id) DO NOTHING",
+    )
+    .bind(user_id)
+    .bind(activity_id)
+    .bind(state.kind.id())
+    .bind(state.entry_id)
+    .bind(state.state)
+    .bind(state.progress)
+    .bind(state.ext)
+    .bind(now)
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(inserted.rows_affected() == 1)
 }
 
 pub async fn transition_in_transaction(

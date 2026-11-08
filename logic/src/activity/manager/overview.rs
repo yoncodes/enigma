@@ -1,6 +1,24 @@
 use super::*;
 
 impl ActivityManager {
+    pub async fn act220_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<GetAct220InfoReply, AppError> {
+        act220_info(db, self.player_id, activity_id).await
+    }
+
+    pub async fn finish_act220_episode(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        episode_id: Option<i32>,
+        progress: Option<String>,
+    ) -> Result<act220::Act220Finish, AppError> {
+        finish_act220_episode(db, self.player_id, activity_id, episode_id, progress).await
+    }
+
     pub async fn act107_goods_info(
         &self,
         db: &SqlitePool,

@@ -347,6 +347,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "activity221_game",
     "activity221_map",
     "activity221_skill",
+    "activity220_episode",
     "activity220_task",
     "activity223_task",
     "activity225_answer",

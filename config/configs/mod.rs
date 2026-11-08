@@ -144,6 +144,7 @@ pub mod activity217_control;
 pub mod activity218_control;
 pub mod activity218_dailydifficultly;
 pub mod activity218_milestone_bonus;
+pub mod activity220_episode;
 pub mod activity220_task;
 pub mod activity221;
 pub mod activity221_ball;
@@ -607,6 +608,7 @@ pub struct GameDB {
     pub activity218_control: activity218_control::Activity218ControlTable,
     pub activity218_dailydifficultly: activity218_dailydifficultly::Activity218DailydifficultlyTable,
     pub activity218_milestone_bonus: activity218_milestone_bonus::Activity218MilestoneBonusTable,
+    pub activity220_episode: activity220_episode::Activity220EpisodeTable,
     pub activity220_task: activity220_task::Activity220TaskTable,
     pub activity221: activity221::Activity221Table,
     pub activity221_ball: activity221_ball::Activity221BallTable,
@@ -1359,6 +1361,9 @@ impl GameDB {
         let activity218_milestone_bonus = activity218_milestone_bonus::Activity218MilestoneBonusTable::load(
             &format!("{}/activity218_milestone_bonus.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity218_milestone_bonus.json: {}", e))?;
+        let activity220_episode = activity220_episode::Activity220EpisodeTable::load(
+            &format!("{}/activity220_episode.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity220_episode.json: {}", e))?;
         let activity220_task = activity220_task::Activity220TaskTable::load(
             &format!("{}/activity220_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity220_task.json: {}", e))?;
@@ -2451,6 +2456,7 @@ impl GameDB {
             activity218_control,
             activity218_dailydifficultly,
             activity218_milestone_bonus,
+            activity220_episode,
             activity220_task,
             activity221,
             activity221_ball,

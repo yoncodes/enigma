@@ -1221,6 +1221,24 @@ pub async fn claimable_expiry(
     )
 }
 
+pub async fn has_claimable_activity(
+    pool: &SqlitePool,
+    user_id: i64,
+    task_type: TaskType,
+    activity_id: i32,
+) -> sqlx::Result<bool> {
+    Ok(!claimable_tasks(
+        pool,
+        user_id,
+        task_type.id(),
+        None,
+        Some(activity_id),
+        Vec::new(),
+    )
+    .await?
+    .is_empty())
+}
+
 fn login_task_targets(bp_id: Option<i32>) -> Vec<LoginTaskTarget> {
     let tables = config::configs::get();
     let mut targets = Vec::new();

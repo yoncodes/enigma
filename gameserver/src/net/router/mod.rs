@@ -356,6 +356,7 @@ async fn dispatch_registered_command(
         CmdId::Act218FinishGameCmd => activity::on_act218_finish_game,
         CmdId::Act218AcceptRewardCmd => activity::on_act218_accept_reward,
         CmdId::GetAct220InfoCmd => activity::on_get_act220_info,
+        CmdId::Act220FinishEpisodeCmd => activity::on_finish_act220_episode,
         CmdId::Get221InfoCmd => activity::on_get_221_info,
         CmdId::Act221SummonCmd => activity::on_act221_summon,
         CmdId::Act221SelectCmd => activity::on_act221_select,
