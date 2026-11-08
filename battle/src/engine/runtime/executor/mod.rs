@@ -22,6 +22,7 @@ use crate::engine::{
         buff_precast::{BuffPrecastChanges, BuffPrecastError},
         field_transfer::{FieldTransferChanges, FieldTransferError},
         focus_all_entity_buff::{FocusAllEntityBuffChanges, FocusAllEntityBuffError},
+        hedone_starting_charge::{HedoneStartingChargeChanges, HedoneStartingChargeError},
         magic_circle_level::{MagicCircleLevelChanges, MagicCircleLevelError},
         monster_change::{MonsterChangeChanges, MonsterChangeError},
         shell::{ShellChanges, ShellError},
@@ -78,6 +79,7 @@ pub(crate) enum RuleOutcome {
     MonsterChange(Box<MonsterChangeChanges>),
     Card(Box<CardChanges>),
     BuffPrecast(Box<BuffPrecastChanges>),
+    HedoneStartingCharge(Box<HedoneStartingChargeChanges>),
     Conduit(ConduitChange),
     Contract(ContractChange),
     Field(FieldChange),
@@ -353,6 +355,11 @@ impl RuleOutcome {
                 BattleChange::Buff(Box::new(changes.buff.clone())),
                 BattleChange::Card(Box::new(changes.card.clone())),
             ],
+            Self::HedoneStartingCharge(changes) => vec![
+                BattleChange::Card(Box::new(changes.card.clone())),
+                BattleChange::Buff(Box::new(changes.buff.clone())),
+                BattleChange::BuffActInfoMarker(changes.marker.clone()),
+            ],
             Self::Conduit(change) => vec![BattleChange::Conduit(change.clone())],
             Self::Contract(change) => vec![BattleChange::Contract(change.clone())],
             Self::Field(change) => vec![BattleChange::Field(*change)],
@@ -431,6 +438,7 @@ pub(crate) enum RuleExecutionError {
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaError),
     Card(CardCommandError),
     BuffPrecast(BuffPrecastError),
+    HedoneStartingCharge(HedoneStartingChargeError),
     Conduit(ConduitError),
     Contract(ContractError),
     Field(FieldCommandError),
@@ -512,6 +520,12 @@ impl From<CardCommandError> for RuleExecutionError {
 impl From<BuffPrecastError> for RuleExecutionError {
     fn from(value: BuffPrecastError) -> Self {
         Self::BuffPrecast(value)
+    }
+}
+
+impl From<HedoneStartingChargeError> for RuleExecutionError {
+    fn from(value: HedoneStartingChargeError) -> Self {
+        Self::HedoneStartingCharge(value)
     }
 }
 
@@ -951,6 +965,19 @@ pub(crate) fn execute_rule_op_with(
                 events.push(event);
             }
             Ok(RuleOutcome::BuffPrecast(Box::new(changes)))
+        }
+        RuleOp::Command(BattleCommand::HedoneStartingCharge(command)) => {
+            let changes =
+                crate::engine::mechanic::hedone_starting_charge::execute(managers, command)?;
+            for event in changes
+                .card
+                .events()
+                .into_iter()
+                .chain(changes.buff.events())
+            {
+                events.push(event);
+            }
+            Ok(RuleOutcome::HedoneStartingCharge(Box::new(changes)))
         }
         RuleOp::Command(BattleCommand::Conduit(command)) => {
             let change = managers.conduit.execute(command)?;

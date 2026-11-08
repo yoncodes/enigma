@@ -6,6 +6,7 @@ pub mod field_transfer;
 pub mod focus_all_entity_buff;
 pub mod heat_scale;
 pub mod hedone_energy;
+pub mod hedone_starting_charge;
 pub mod impromptu;
 pub mod lingering_glow;
 pub mod magic_circle;

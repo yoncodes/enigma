@@ -149,6 +149,8 @@ fn round_end_absorbs_normal_energy_through_the_registry() {
         Some(HedoneCardState {
             owner_uid: -4,
             buff_uid: 1108,
+            act_id: 1159,
+            team_type: 1,
             stored: 6,
             maximum: 10,
             unlocked: true,

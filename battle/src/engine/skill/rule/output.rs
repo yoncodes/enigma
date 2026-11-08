@@ -25,6 +25,7 @@ use crate::engine::{
     mechanic::{
         buff_precast::BuffPrecastCommand, field_transfer::FieldTransferCommand,
         focus_all_entity_buff::FocusAllEntityBuffCommand,
+        hedone_starting_charge::HedoneStartingChargeCommand,
         magic_circle_level::MagicCircleLevelCommand, monster_change::MonsterChangeCommand,
         nuo_di_ka::NuoDiKaCommand, shell::ShellCommand,
     },
@@ -88,6 +89,7 @@ pub enum BattleCommand {
     EntitySkill(EntitySkillCommand),
     Card(CardCommand),
     BuffPrecast(BuffPrecastCommand),
+    HedoneStartingCharge(HedoneStartingChargeCommand),
     Conduit(ConduitCommand),
     Contract(ContractCommand),
     Field(FieldCommand),

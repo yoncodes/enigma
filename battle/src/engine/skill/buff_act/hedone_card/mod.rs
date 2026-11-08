@@ -34,6 +34,8 @@ pub struct HedoneCardConfig {
 pub struct HedoneCardState {
     pub owner_uid: i64,
     pub buff_uid: i64,
+    pub act_id: i32,
+    pub team_type: i32,
     pub stored: i32,
     pub maximum: i32,
     pub unlocked: bool,
@@ -143,6 +145,8 @@ fn state(
     Ok(HedoneCardState {
         owner_uid: subscriber.owner_uid,
         buff_uid: subscriber.buff_uid,
+        act_id: subscriber.key.definition.opcode,
+        team_type: subscriber.team_type,
         stored: *stored,
         maximum: *maximum,
         unlocked: *unlocked == 1,
