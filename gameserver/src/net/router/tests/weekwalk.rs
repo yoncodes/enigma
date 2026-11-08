@@ -105,7 +105,15 @@ async fn weekwalk_info_routes_into_a_valid_prebattle_selection() {
         panic!("Weekwalk info did not reach its handler");
     };
     let info = GetWeekwalkInfoReply::decode(&*body).unwrap().info.unwrap();
-    assert_eq!(info.issue_id, Some(59));
+    assert_eq!(
+        info.issue_id,
+        configs::get()
+            .weekwalk
+            .iter()
+            .filter(|map| map.issue_id > 0 && map.fight_id_front > 0 && map.fight_id_rear > 0)
+            .map(|map| map.issue_id)
+            .max()
+    );
     assert_eq!(info.max_layer, Some(1));
     assert_eq!(
         info.end_time.unwrap() - info.time.unwrap(),
