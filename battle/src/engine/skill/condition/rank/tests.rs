@@ -3,13 +3,28 @@ use crate::engine::{
     runtime::{determinism::RoundDeterminism, drain},
     skill::{
         action::{SkillInvocation, SkillRequest, SkillTarget},
-        condition::registry,
+        condition::registry::{self, ConditionRole},
         effect::SkillEffectCatalog,
-        rule::output::RuleOp,
+        rule::{SetupStage, output::RuleOp},
         target::{TargetContext, TargetPool},
     },
 };
 use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute};
+
+#[test]
+fn hedone_opening_rank_keeps_its_after_round_start_owner() {
+    assert_eq!(
+        registry::parse(789105, "Rank", &["2".into()]),
+        Some(crate::engine::skill::condition::parse::ParsedConditionKind::RankAtLeast(2))
+    );
+    assert_eq!(
+        registry::find_key(789105, "Rank").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::AfterRoundStart,
+            priority: 0,
+        })
+    );
+}
 
 #[test]
 fn unlock_reward_uses_insight() {
