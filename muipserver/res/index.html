@@ -12,7 +12,7 @@
     .grid { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
     .grant { margin-top: 14px; display: grid; gap: 10px; grid-template-columns: 150px minmax(130px, .8fr) minmax(180px, 1.2fr) 90px auto; }
     .dungeon { margin-top: 10px; display: grid; gap: 10px; grid-template-columns: minmax(150px, 1fr) 110px minmax(180px, 1.4fr) auto; }
-    .actions { margin-top: 10px; display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .actions { margin-top: 10px; display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .grant > *, .dungeon > *, .actions > *, .grid > *, .cmd > * { min-width: 0; }
     select { min-width: 0; max-width: 100%; font: inherit; border: 1px solid #393d46; background: #1c2028; color: #ece7de; padding: 10px 12px; box-sizing: border-box; text-overflow: ellipsis; }
     .cmd { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
@@ -24,17 +24,23 @@
     .status { margin: 14px 0; display: flex; gap: 12px; flex-wrap: wrap; color: #aeb6c4; }
     .status span { border: 1px solid #393d46; background: #181b22; padding: 6px 10px; }
     dialog { width: min(560px, calc(100% - 32px)); color: #ece7de; background: #181b22; border: 1px solid #4b5260; padding: 0; }
+    dialog.wide-dialog { width: min(1100px, calc(100% - 32px)); }
     dialog::backdrop { background: rgb(0 0 0 / 70%); }
     .dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid #393d46; }
     .dialog-head h2 { margin: 0; font-size: 20px; }
     .dialog-head button { padding: 6px 10px; }
     .dialog-body { padding: 18px; }
+    .event-list { max-height: 65vh; overflow: auto; }
+    .event-list table { width: 100%; border-collapse: collapse; }
+    .event-list th, .event-list td { padding: 8px; border-bottom: 1px solid #393d46; text-align: left; vertical-align: middle; }
+    .event-list input[type="datetime-local"] { width: 190px; }
+    .event-list input[type="checkbox"] { min-width: auto; }
     .dialog-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
     .dialog-grid label { display: grid; gap: 6px; color: #aeb6c4; }
     .dialog-grid .wide { grid-column: 1 / -1; }
     .current-hero { margin: 0; padding: 10px 12px; color: #aeb6c4; background: #111318; border: 1px solid #393d46; }
     .destiny { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 6px; border-top: 1px solid #393d46; }
-    .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
     [hidden] { display: none !important; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #1c2028; border: 1px solid #393d46; padding: 16px; min-height: 180px; }
     @media (max-width: 640px) { .top { align-items: flex-start; flex-direction: column; } .grid, .cmd, .grant, .dungeon, .actions, .dialog-grid, .destiny { display: block; } input, button, select { width: 100%; box-sizing: border-box; margin: 0 0 10px; } .dialog-head button { width: auto; margin: 0; } }
@@ -50,7 +56,7 @@
       </div>
     </div>
     <div class="grid">
-      <input id="token" placeholder="admin token" value="__MUIP_TOKEN__">
+      <input id="token" type="password" autocomplete="current-password" placeholder="admin token">
       <input id="uid" placeholder="player uid (blank = online)">
       <div class="cmd">
         <input id="command" placeholder="material 2 4 1000">
@@ -75,17 +81,23 @@
     </div>
     <div class="actions">
       <button type="button" onclick="completeGuides()">Complete all guides</button>
+      <button type="button" onclick="unlockAchievements()">Unlock all Achievements</button>
       <button type="button" onclick="unlockBgms()">Unlock all BGM</button>
-      <button type="button" onclick="openHeroUpgrade()">Hero upgrade materials</button>
+      <button type="button" onclick="unlockBackgrounds()">Unlock all Backgrounds</button>
+      <button type="button" onclick="unlockPortraits()">Unlock all Portraits</button>
+      <button type="button" onclick="unlockGarments()">Unlock all Garments</button>
+      <button type="button" onclick="openHeroUpgrade()">Hero editor</button>
+      <button type="button" onclick="openPsychubeEditor()">Psychube Upgrade</button>
+      <button type="button" onclick="openEventSchedule()">Event Schedule</button>
     </div>
     <div class="status">
       <span id="server">server: checking</span>
       <span id="players">players: checking</span>
     </div>
-    <pre id="out">commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials &lt;hero id&gt; &lt;1-180&gt; &lt;resonance 1-15&gt; [destiny rank] [destiny stone id], dungeon unlock &lt;stage|chapter&gt; &lt;id&gt;, material &lt;type&gt; &lt;id&gt; &lt;amount&gt;</pre>
+    <pre id="out">commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level &lt;hero id&gt; &lt;level&gt;, hero portrait &lt;hero id&gt; &lt;1-5&gt;, hero portrait all, hero upgrade materials &lt;hero id&gt; &lt;1-180&gt; &lt;resonance 1-15&gt; [destiny rank] [destiny stone id], psychube max &lt;uid&gt;, dungeon unlock &lt;stage|chapter&gt; &lt;id&gt;, material &lt;type&gt; &lt;id&gt; &lt;amount&gt;</pre>
     <dialog id="heroUpgradeDialog">
       <div class="dialog-head">
-        <h2>Hero upgrade materials</h2>
+        <h2>Hero editor</h2>
         <button type="button" aria-label="Close" onclick="closeHeroUpgrade()">×</button>
       </div>
       <div class="dialog-body">
@@ -95,6 +107,7 @@
           <label>Target rank<select id="heroUpgradeRank"></select></label>
           <label>Target level<select id="heroUpgradeLevel"></select></label>
           <label>Target Resonance<select id="heroUpgradeResonance"></select></label>
+          <label>Target Portrait<select id="heroUpgradePortrait"></select></label>
           <div id="heroUpgradeDestiny" class="destiny wide" hidden>
             <label>Target Destiny rank<select id="heroUpgradeDestinyRank"></select></label>
             <label>Destiny stone<select id="heroUpgradeDestinyStone"></select></label>
@@ -103,16 +116,50 @@
         <div class="dialog-actions">
           <button type="button" onclick="closeHeroUpgrade()">Cancel</button>
           <button type="button" onclick="grantHeroUpgradeMaterials()">Grant missing materials</button>
+          <button type="button" onclick="setHeroLevel()">Set hero level</button>
+          <button type="button" onclick="setHeroPortrait()">Set Portrait level</button>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="psychubeDialog">
+      <div class="dialog-head">
+        <h2>Psychube Upgrade</h2>
+        <button type="button" aria-label="Close" onclick="closePsychubeEditor()">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="dialog-grid">
+          <label class="wide">Owned Psychube<select id="psychubeSelect"></select></label>
+          <p id="psychubeCurrent" class="current-hero wide"></p>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" onclick="closePsychubeEditor()">Cancel</button>
+          <button type="button" onclick="maxPsychube()">Max level and limit break</button>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="eventScheduleDialog" class="wide-dialog">
+      <div class="dialog-head">
+        <h2>Event Schedule</h2>
+        <button type="button" aria-label="Close" onclick="closeEventSchedule()">×</button>
+      </div>
+      <div class="dialog-body">
+        <p class="current-hero">Times are shown in your local timezone. Saving converts them to the millisecond timestamps used by Config.toml. Restart the servers to apply changes.</p>
+        <div class="event-list">
+          <table>
+            <thead><tr><th>Enabled</th><th>Event</th><th>Starts</th><th>Ends</th><th></th></tr></thead>
+            <tbody id="eventScheduleRows"></tbody>
+          </table>
         </div>
       </div>
     </dialog>
   </main>
   <script>
-    document.getElementById('token').value = localStorage.getItem('enigmaMuipToken') || '__MUIP_TOKEN__';
+    document.getElementById('token').value = localStorage.getItem('enigmaMuipToken') || '';
     let statusTimer = 0;
     const catalog = { types: [], items: [] };
     const dungeonCatalog = { chapters: [], episodes: [] };
     const heroCatalog = { heroes: [] };
+    const equipmentCatalog = { equipment: [] };
     const out = document.getElementById('out');
     async function refreshStatus() {
       try {
@@ -228,8 +275,24 @@
       document.getElementById('command').value = 'guide complete all';
       await run();
     }
+    async function unlockAchievements() {
+      document.getElementById('command').value = 'achievement unlock all';
+      await run();
+    }
     async function unlockBgms() {
       document.getElementById('command').value = 'bgm unlock all';
+      await run();
+    }
+    async function unlockBackgrounds() {
+      document.getElementById('command').value = 'background unlock all';
+      await run();
+    }
+    async function unlockPortraits() {
+      document.getElementById('command').value = 'hero portrait all';
+      await run();
+    }
+    async function unlockGarments() {
+      document.getElementById('command').value = 'garment unlock all';
       await run();
     }
     async function openHeroUpgrade() {
@@ -262,7 +325,7 @@
       const hero = selectedUpgradeHero();
       if (!hero) return;
       document.getElementById('heroUpgradeCurrent').textContent =
-        `Current: R${hero.rank} Lv${hero.level} · Resonance ${hero.resonance}`;
+        `Current: R${hero.rank} Lv${hero.level} · Resonance ${hero.resonance} · Portrait ${hero.portraitLevel}`;
       const ranks = hero.ranks.filter(rank => rank.rank >= hero.rank);
       document.getElementById('heroUpgradeRank').innerHTML = ranks
         .map((rank, index) => `<option value="${rank.rank}"${index === ranks.length - 1 ? ' selected' : ''}>R${rank.rank}</option>`)
@@ -271,6 +334,11 @@
         { length: hero.maxResonance - hero.resonance + 1 },
         (_, index) => hero.resonance + index
       ).map(level => `<option value="${level}"${level === hero.maxResonance ? ' selected' : ''}>${level}</option>`)
+        .join('');
+      document.getElementById('heroUpgradePortrait').innerHTML = Array.from(
+        { length: 5 - hero.portraitLevel + 1 },
+        (_, index) => hero.portraitLevel + index
+      ).map(level => `<option value="${level}"${level === 5 ? ' selected' : ''}>Portrait ${level}</option>`)
         .join('');
       const destiny = document.getElementById('heroUpgradeDestiny');
       const stones = hero.destinyStones || [];
@@ -315,9 +383,129 @@
       closeHeroUpgrade();
       await run();
     }
+    async function setHeroLevel() {
+      const hero = selectedUpgradeHero();
+      const rankId = Number(document.getElementById('heroUpgradeRank').value);
+      const rank = hero?.ranks.find(entry => entry.rank === rankId);
+      if (!hero || !rank) return;
+      const level = Number(document.getElementById('heroUpgradeLevel').value);
+      document.getElementById('command').value =
+        `hero level ${hero.id} ${rank.levelOffset + level}`;
+      closeHeroUpgrade();
+      await run();
+    }
+    async function setHeroPortrait() {
+      const hero = selectedUpgradeHero();
+      if (!hero) return;
+      const level = Number(document.getElementById('heroUpgradePortrait').value);
+      document.getElementById('command').value = `hero portrait ${hero.id} ${level}`;
+      closeHeroUpgrade();
+      await run();
+    }
     function updateHeroDestinyTarget() {
       document.getElementById('heroUpgradeDestinyRank').disabled =
         Number(document.getElementById('heroUpgradeDestinyStone').value) === 0;
+    }
+    async function openPsychubeEditor() {
+      try {
+        const uid = document.getElementById('uid').value.trim();
+        if (!/^\d+$/.test(uid)) throw new Error('Enter a player uid first.');
+        const token = document.getElementById('token').value;
+        const res = await fetch('/api/equipment?' + new URLSearchParams({ token, player_uid: uid }), { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Psychube list failed: ${res.status}`);
+        equipmentCatalog.equipment = data.equipment || [];
+        if (equipmentCatalog.equipment.length === 0) throw new Error('This player has no owned Psychubes.');
+        document.getElementById('psychubeSelect').innerHTML = equipmentCatalog.equipment
+          .map(equip => {
+            const owner = equip.heroName ? ` · ${escapeHtml(equip.heroName)} (${equip.heroId})` : ' · Unequipped';
+            return `<option value="${equip.uid}">${equip.id} - ${escapeHtml(equip.name)}${owner}</option>`;
+          })
+          .join('');
+        updatePsychube();
+        document.getElementById('psychubeDialog').showModal();
+      } catch (err) {
+        out.textContent = `Unable to load owned Psychubes: ${err.message}`;
+      }
+    }
+    function closePsychubeEditor() {
+      document.getElementById('psychubeDialog').close();
+    }
+    function selectedPsychube() {
+      const uid = Number(document.getElementById('psychubeSelect').value);
+      return equipmentCatalog.equipment.find(equip => equip.uid === uid);
+    }
+    function updatePsychube() {
+      const equip = selectedPsychube();
+      if (!equip) return;
+      const owner = equip.heroName ? `${equip.heroName} (${equip.heroId})` : 'Unequipped';
+      document.getElementById('psychubeCurrent').textContent =
+        `Current: Lv${equip.level}/${equip.maxLevel} · Limit break ${equip.breakLevel}/${equip.maxBreakLevel} · ${owner}`;
+    }
+    async function maxPsychube() {
+      const equip = selectedPsychube();
+      if (!equip) return;
+      document.getElementById('command').value = `psychube max ${equip.uid}`;
+      closePsychubeEditor();
+      await run();
+    }
+    async function openEventSchedule() {
+      try {
+        const token = document.getElementById('token').value;
+        const res = await fetch('/api/events?' + new URLSearchParams({ token }), { cache: 'no-store' });
+        const response = await res.json();
+        if (!res.ok || response.retcode !== 0) throw new Error(response.message || `event list failed: ${res.status}`);
+        const events = response.data?.events || [];
+        document.getElementById('eventScheduleRows').innerHTML = events.map(event => `
+          <tr data-event-id="${event.id}">
+            <td><input class="event-enabled" type="checkbox"${event.enabled ? ' checked' : ''}></td>
+            <td>${event.id} - ${escapeHtml(event.name)}</td>
+            <td><input class="event-start" type="datetime-local" step="0.001" value="${localDateTime(event.startTime)}"></td>
+            <td><input class="event-end" type="datetime-local" step="0.001" value="${localDateTime(event.endTime)}"></td>
+            <td><button type="button" onclick="saveEvent(${event.id})">Save</button></td>
+          </tr>`).join('');
+        document.getElementById('eventScheduleDialog').showModal();
+      } catch (err) {
+        out.textContent = `Unable to load events: ${err.message}`;
+      }
+    }
+    function closeEventSchedule() {
+      document.getElementById('eventScheduleDialog').close();
+    }
+    function localDateTime(timestamp) {
+      const date = new Date(Number(timestamp));
+      const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      return local.toISOString().slice(0, 23);
+    }
+    const dateTimeRoundTrip = 1705322099123;
+    if (new Date(localDateTime(dateTimeRoundTrip)).getTime() !== dateTimeRoundTrip) {
+      throw new Error('datetime-local does not preserve millisecond timestamps');
+    }
+    async function saveEvent(id) {
+      try {
+        const row = document.querySelector(`[data-event-id="${id}"]`);
+        const start = new Date(row.querySelector('.event-start').value).getTime();
+        const end = new Date(row.querySelector('.event-end').value).getTime();
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
+          throw new Error('Start time must be before end time.');
+        }
+        const res = await fetch('/api/events', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            token: document.getElementById('token').value,
+            id,
+            enabled: row.querySelector('.event-enabled').checked,
+            start_time: start,
+            end_time: end
+          })
+        });
+        const response = await res.json();
+        if (!res.ok || response.retcode !== 0) throw new Error(response.message || `event update failed: ${res.status}`);
+        out.textContent = JSON.stringify(response, null, 2);
+      } catch (err) {
+        out.textContent = `Unable to update event: ${err.message}`;
+      }
     }
     function selectedMaterial() {
       const id = Number(document.getElementById('material').value || 0);
@@ -378,6 +566,7 @@
     document.getElementById('heroUpgradeHero').addEventListener('change', updateHeroUpgradeTargets);
     document.getElementById('heroUpgradeRank').addEventListener('change', updateHeroUpgradeLevels);
     document.getElementById('heroUpgradeDestinyStone').addEventListener('change', updateHeroDestinyTarget);
+    document.getElementById('psychubeSelect').addEventListener('change', updatePsychube);
     loadTypes();
     loadDungeons();
     refreshStatus();

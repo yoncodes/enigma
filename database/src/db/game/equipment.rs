@@ -66,6 +66,29 @@ pub async fn get_equipment_by_uid(
     Ok(equip)
 }
 
+pub async fn set_progression(
+    pool: &SqlitePool,
+    user_id: i64,
+    uid: i64,
+    level: i32,
+    break_level: i32,
+) -> Result<bool> {
+    Ok(sqlx::query(
+        "UPDATE equipment
+         SET level = ?, exp = 0, break_lv = ?, updated_at = ?
+         WHERE user_id = ? AND uid = ? AND count > 0",
+    )
+    .bind(level)
+    .bind(break_level)
+    .bind(common::time::ServerTime::now_ms())
+    .bind(user_id)
+    .bind(uid)
+    .execute(pool)
+    .await?
+    .rows_affected()
+        == 1)
+}
+
 pub struct StrengthenConsume {
     pub uid: i64,
     pub count: i32,

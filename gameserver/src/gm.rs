@@ -24,6 +24,8 @@ use crate::{
     net::{app::AppState, outbound::CommandPacket},
 };
 
+mod editor;
+
 pub async fn run_gm_listener(addr: String, state: &'static AppState) -> std::io::Result<()> {
     let listener = TcpListener::bind(&addr).await?;
     info!("MUIP GM bridge listening on {}", listener.local_addr()?);
@@ -67,8 +69,30 @@ async fn handle_connection(stream: TcpStream, state: &'static AppState) -> std::
         GmRequest::Status => status(state).await,
         GmRequest::ListPlayers => list_players(state),
         GmRequest::Dungeons => dungeon_catalog(),
+        GmRequest::Events => match editor::event_catalog(state) {
+            Ok(catalog) => GmResponse::ok_data("events", catalog),
+            Err(err) => GmResponse::err(400, err.to_string()),
+        },
         GmRequest::Heroes { player_uid } => hero_upgrade_catalog(state, player_uid).await,
+        GmRequest::Equipment { player_uid } => {
+            match editor::equipment_catalog(state, player_uid).await {
+                Ok(catalog) => GmResponse::ok_data("equipment", catalog),
+                Err(err) => GmResponse::err(400, err.to_string()),
+            }
+        }
         GmRequest::Materials { query } => materials(state, query).await,
+        GmRequest::UpdateEvent {
+            id,
+            enabled,
+            start_time,
+            end_time,
+        } => match editor::update_event(state, id, enabled, start_time, end_time) {
+            Ok(event) => GmResponse::ok_data(
+                "updated event schedule; restart the servers to apply it",
+                event,
+            ),
+            Err(err) => GmResponse::err(400, err.to_string()),
+        },
         GmRequest::Execute {
             player_uid,
             command,
@@ -245,8 +269,17 @@ async fn run_command(
     };
 
     let args = match first.to_ascii_lowercase().as_str() {
+        "achievement" | "achievements" => {
+            return editor::achievements(state, player_id, &parts[1..]).await;
+        }
+        "background" | "backgrounds" => {
+            return editor::backgrounds(state, player_id, &parts[1..]).await;
+        }
         "bgm" => return unlock_bgms(state, player_id, &parts[1..]).await,
         "dungeon" => return unlock_dungeon(state, player_id, &parts[1..]).await,
+        "garment" | "garments" => {
+            return editor::garments(state, player_id, &parts[1..]).await;
+        }
         "guide" | "guides" => return complete_guides(state, player_id, &parts[1..]).await,
         "hero"
             if parts
@@ -255,13 +288,17 @@ async fn run_command(
         {
             return grant_hero_upgrade_materials(state, player_id, &parts[1..]).await;
         }
+        "hero" => return editor::hero(state, player_id, &parts[1..]).await,
+        "psychube" | "psychubes" => {
+            return editor::psychube(state, player_id, &parts[1..]).await;
+        }
         "material" | "reward" | "give" | "add" => &parts[1..],
         kind if MaterialKind::parse(kind).is_some() => &parts[..],
         "status" => return Ok(status(state).await),
         "players" | "list" | "listplayers" | "list_players" => return Ok(list_players(state)),
         "help" | "?" => {
             return Ok(GmResponse::ok(
-                "commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
+                "commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level <hero id> <level>, hero portrait <hero id> <1-5>, hero portrait all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], psychube max <uid>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>",
             ));
         }
         _ => anyhow::bail!("unknown command '{}'", first),
@@ -1001,6 +1038,22 @@ struct GrantData {
 }
 
 impl GrantData {
+    fn empty(user_id: i64) -> Self {
+        Self {
+            user_id,
+            rewards: Vec::new(),
+            changed_item_ids: Vec::new(),
+            changed_power_item_ids: Vec::new(),
+            changed_insight_item_ids: Vec::new(),
+            changed_currency_ids: Vec::new(),
+            changed_hero_ids: Vec::new(),
+            changed_skin_ids: Vec::new(),
+            changed_equip_ids: Vec::new(),
+            cloth_updates: Vec::new(),
+            player_info_changed: false,
+        }
+    }
+
     fn merge_rewards(&mut self, rewards: reward::AppliedRewards) {
         self.player_info_changed |= rewards.player_info_changed;
         self.changed_item_ids
@@ -1102,6 +1155,7 @@ struct HeroUpgradeEntry {
     rank: i32,
     level: i32,
     resonance: i32,
+    portrait_level: i32,
     max_resonance: i32,
     ranks: Vec<HeroUpgradeRank>,
     destiny_rank: i32,
@@ -1225,6 +1279,7 @@ async fn build_hero_upgrade_catalog(
             rank,
             level: (hero.record.level - current_offset).max(1),
             resonance: hero.record.talent,
+            portrait_level: hero.record.ex_skill_level,
             max_resonance,
             ranks,
             destiny_rank: hero.record.destiny_rank,

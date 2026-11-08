@@ -30,6 +30,40 @@ pub(super) async fn equip_info(
     })
 }
 
+pub(super) async fn max_equip(
+    db: &SqlitePool,
+    player_id: i64,
+    target_uid: i64,
+) -> Result<sonettobuf::Equip, AppError> {
+    let tables = config::configs::get();
+    let owned = equipment::get_equipment_by_uid(db, player_id, target_uid)
+        .await
+        .map_err(|_| AppError::InvalidRequest)?;
+    let equip = tables
+        .equip
+        .get(owned.equip_id)
+        .filter(|equip| tables.is_normal_equipment(equip))
+        .ok_or(AppError::InvalidRequest)?;
+    let maximum = tables
+        .max_equip_progression(equip.rare)
+        .ok_or(AppError::InvalidRequest)?;
+    if !equipment::set_progression(
+        db,
+        player_id,
+        target_uid,
+        maximum.level,
+        maximum.break_level,
+    )
+    .await?
+    {
+        return Err(AppError::InvalidRequest);
+    }
+
+    Ok(equipment::get_equipment_by_uid(db, player_id, target_uid)
+        .await?
+        .into())
+}
+
 pub(super) async fn equip_lock(
     db: &SqlitePool,
     player_id: i64,

@@ -2,7 +2,7 @@ use crate::{
     error::AppError,
     reward::{self, ConsumedRewards},
 };
-use database::db::game::player_infos;
+use database::db::game::{items, player_infos};
 use database::models::game::heros::{HeroData, HeroModel, UserHeroModel};
 use sonettobuf::{
     CancelHero3124TalentTreeReply, ChoiceHero3123WeaponReply, ChoiceHero3124TalentTreeReply,
@@ -40,6 +40,23 @@ pub struct HeroManager {
 pub struct DestinyMaterialTarget {
     pub rank: i32,
     pub stone_id: i32,
+}
+
+pub struct PortraitUpdate {
+    pub hero: HeroInfo,
+    pub item_id: u32,
+    pub granted: i32,
+}
+
+pub struct PortraitBulkUpdate {
+    pub hero_ids: Vec<i32>,
+    pub item_ids: Vec<u32>,
+    pub granted: i32,
+}
+
+pub struct LevelUpdate {
+    pub hero: HeroInfo,
+    pub skin_id: Option<i32>,
 }
 
 impl HeroManager {

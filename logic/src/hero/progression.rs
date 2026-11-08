@@ -276,6 +276,173 @@ impl HeroManager {
 
         Ok((HeroUpgradeSkillReply {}, updated, consumed_item_id))
     }
+
+    pub async fn set_level(
+        self,
+        db: &SqlitePool,
+        hero_id: i32,
+        target_level: i32,
+    ) -> Result<LevelUpdate, AppError> {
+        let tables = config::configs::get();
+        let heroes = UserHeroModel::new(self.player_id, db.clone());
+        let current = heroes
+            .get_hero(hero_id)
+            .await
+            .map_err(|_| AppError::InvalidRequest)?;
+        if target_level < current.record.level {
+            return Err(AppError::InvalidRequest);
+        }
+        let target_rank = tables
+            .character_rank
+            .iter()
+            .filter(|row| row.hero_id == hero_id)
+            .filter_map(|row| {
+                tables
+                    .character_rank_level_limit(hero_id, row.rank)
+                    .map(|limit| (row.rank, limit))
+            })
+            .filter(|(_, limit)| target_level <= *limit)
+            .min_by_key(|(_, limit)| *limit)
+            .map(|(rank, _)| rank)
+            .ok_or(AppError::InvalidRequest)?;
+
+        let skin_id = tables
+            .skin
+            .iter()
+            .find(|skin| {
+                target_rank >= 3
+                    && skin.character_id == hero_id
+                    && skin.id % 100 == 2
+                    && skin.gain_approach == 1
+            })
+            .map(|skin| skin.id);
+        let mut tx = db.begin().await?;
+        heroes
+            .set_rank_and_level_in_transaction(&mut tx, hero_id, target_rank, target_level)
+            .await?;
+        let skin_id = match skin_id {
+            Some(skin_id) if heroes.unlock_skin_in_transaction(&mut tx, skin_id).await? => {
+                Some(skin_id)
+            }
+            _ => None,
+        };
+        tx.commit().await?;
+
+        Ok(LevelUpdate {
+            hero: snapshot(db, heroes.get_hero(hero_id).await?).await?,
+            skin_id,
+        })
+    }
+
+    pub async fn set_portrait_level(
+        self,
+        db: &SqlitePool,
+        hero_id: i32,
+        target_level: i32,
+    ) -> Result<PortraitUpdate, AppError> {
+        if !(1..=5).contains(&target_level) {
+            return Err(AppError::InvalidRequest);
+        }
+        let heroes = UserHeroModel::new(self.player_id, db.clone());
+        let mut tx = db.begin().await?;
+        let (item_id, granted) = self
+            .set_portrait_level_in_transaction(&heroes, &mut tx, hero_id, target_level)
+            .await?;
+        tx.commit().await?;
+
+        Ok(PortraitUpdate {
+            hero: snapshot(db, heroes.get_hero(hero_id).await?).await?,
+            item_id,
+            granted,
+        })
+    }
+
+    pub async fn set_all_portrait_levels(
+        self,
+        db: &SqlitePool,
+        target_level: i32,
+    ) -> Result<PortraitBulkUpdate, AppError> {
+        if !(1..=5).contains(&target_level) {
+            return Err(AppError::InvalidRequest);
+        }
+        let heroes = UserHeroModel::new(self.player_id, db.clone());
+        let mut tx = db.begin().await?;
+        let hero_ids = sqlx::query_scalar::<_, i32>(
+            "SELECT hero_id FROM heroes WHERE user_id = ? ORDER BY hero_id",
+        )
+        .bind(self.player_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut item_ids = Vec::with_capacity(hero_ids.len());
+        let mut granted = 0;
+        for &hero_id in &hero_ids {
+            let (item_id, added) = self
+                .set_portrait_level_in_transaction(&heroes, &mut tx, hero_id, target_level)
+                .await?;
+            item_ids.push(item_id);
+            granted += added;
+        }
+        tx.commit().await?;
+        Ok(PortraitBulkUpdate {
+            hero_ids,
+            item_ids,
+            granted,
+        })
+    }
+
+    async fn set_portrait_level_in_transaction(
+        self,
+        heroes: &UserHeroModel,
+        tx: &mut Transaction<'_, Sqlite>,
+        hero_id: i32,
+        target_level: i32,
+    ) -> Result<(u32, i32), AppError> {
+        let current = sqlx::query_scalar::<_, i32>(
+            "SELECT ex_skill_level FROM heroes WHERE user_id = ? AND hero_id = ?",
+        )
+        .bind(self.player_id)
+        .bind(hero_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(AppError::InvalidRequest)?;
+        if target_level < current {
+            return Err(AppError::InvalidRequest);
+        }
+        let item_id = duplicate_item_id(hero_id)?;
+        let needed = target_level - current;
+        if needed == 0 {
+            return Ok((item_id, 0));
+        }
+
+        let owned = sqlx::query_scalar::<_, i32>(
+            "SELECT COALESCE(quantity, 0) FROM items WHERE user_id = ? AND item_id = ?",
+        )
+        .bind(self.player_id)
+        .bind(item_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .unwrap_or_default();
+        let granted = needed.saturating_sub(owned);
+        if granted > 0 {
+            items::add_item_quantity_in_transaction(tx, self.player_id, item_id, granted).await?;
+        }
+        reward::consume(
+            tx,
+            self.player_id,
+            &reward::RewardSet {
+                items: vec![(item_id, needed)],
+                ..Default::default()
+            },
+        )
+        .await?;
+        if !heroes
+            .upgrade_ex_skill_in_transaction(tx, hero_id, current, needed)
+            .await?
+        {
+            return Err(AppError::InvalidRequest);
+        }
+        Ok((item_id, granted))
+    }
 }
 
 fn add_material_costs(

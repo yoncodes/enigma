@@ -97,7 +97,7 @@ pub fn load_config() -> anyhow::Result<config::ServerConfig> {
     Ok(cfg)
 }
 
-fn config_path() -> PathBuf {
+pub fn config_path() -> PathBuf {
     if let Ok(path) = std::env::var("ENIGMA_CONFIG") {
         return PathBuf::from(path);
     }

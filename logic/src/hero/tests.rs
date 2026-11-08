@@ -1,5 +1,7 @@
 use super::*;
 
+mod editor;
+
 #[test]
 fn talent_choices_light_whole_branches_like_the_captured_requests() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));

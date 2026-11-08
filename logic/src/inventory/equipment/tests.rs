@@ -6,6 +6,8 @@ use database::models::game::equipment::Equipment;
 use sonettobuf::EatEquip;
 use sqlx::SqlitePool;
 
+mod editor;
+
 #[tokio::test]
 async fn lock_rejects_special_refine_equipment() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));

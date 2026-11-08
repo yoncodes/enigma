@@ -7,6 +7,7 @@ pub(super) fn get(id: i32) -> Option<&'static ActivitySchedule> {
         .binary_search_by_key(&id, |row| row.id)
         .ok()
         .map(|index| &common::activity_schedule()[index])
+        .filter(|row| row.enabled)
 }
 
 #[cfg(test)]

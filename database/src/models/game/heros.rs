@@ -586,6 +586,46 @@ impl UserHeroModel {
         Ok(unlocked)
     }
 
+    pub async fn unlock_skins_without_equipping(&self, skin_ids: &[i32]) -> Result<Vec<i32>> {
+        let mut tx = self.pool.begin().await?;
+        let mut unlocked = Vec::new();
+        for &skin_id in skin_ids {
+            let skin = config::configs::get()
+                .skin
+                .get(skin_id)
+                .ok_or_else(|| anyhow!("skin {} not found", skin_id))?;
+            let inserted = sqlx::query(
+                "INSERT OR IGNORE INTO hero_all_skins (user_id, skin_id) VALUES (?, ?)",
+            )
+            .bind(self.user_id)
+            .bind(skin_id)
+            .execute(&mut *tx)
+            .await?;
+            if inserted.rows_affected() == 0 {
+                continue;
+            }
+
+            let hero_uid: Option<i64> =
+                sqlx::query_scalar("SELECT uid FROM heroes WHERE user_id = ? AND hero_id = ?")
+                    .bind(self.user_id)
+                    .bind(skin.character_id)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            if let Some(hero_uid) = hero_uid {
+                sqlx::query(
+                    "INSERT OR IGNORE INTO hero_skins (hero_uid, skin, expire_sec) VALUES (?, ?, 0)",
+                )
+                .bind(hero_uid)
+                .bind(skin_id)
+                .execute(&mut *tx)
+                .await?;
+            }
+            unlocked.push(skin_id);
+        }
+        tx.commit().await?;
+        Ok(unlocked)
+    }
+
     pub async fn unlock_skin_in_transaction(
         &self,
         tx: &mut Transaction<'_, Sqlite>,
@@ -668,12 +708,26 @@ impl UserHeroModel {
     }
 
     pub async fn set_rank_and_level(&self, hero_id: i32, rank: i32, level: i32) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        self.set_rank_and_level_in_transaction(&mut tx, hero_id, rank, level)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn set_rank_and_level_in_transaction(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        hero_id: i32,
+        rank: i32,
+        level: i32,
+    ) -> Result<()> {
         sqlx::query("UPDATE heroes SET rank = ?, level = ? WHERE user_id = ? AND hero_id = ?")
             .bind(rank)
             .bind(level)
             .bind(self.user_id)
             .bind(hero_id)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await?;
         Ok(())
     }

@@ -43,6 +43,20 @@ struct HeroQuery {
     player_uid: i64,
 }
 
+#[derive(Debug, Deserialize)]
+struct TokenQuery {
+    token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct EventBody {
+    token: String,
+    id: i32,
+    enabled: bool,
+    start_time: u64,
+    end_time: u64,
+}
+
 pub fn router(token: String, gm_addr: String) -> Router {
     let state = AppState {
         token: Arc::from(token),
@@ -57,7 +71,12 @@ pub fn router(token: String, gm_addr: String) -> Router {
         .route("/api/players", get(players_handler))
         .route("/api/sessions", get(players_handler))
         .route("/api/dungeons", get(dungeons_handler))
+        .route(
+            "/api/events",
+            get(events_handler).post(update_event_handler),
+        )
         .route("/api/heroes", get(heroes_handler))
+        .route("/api/equipment", get(equipment_handler))
         .route("/api/materials", get(materials_handler))
         .route("/muip/gm", get(gm_query_handler))
         .route("/api/run_gm_cmd", post(gm_body_handler))
@@ -68,12 +87,8 @@ async fn root_head() -> StatusCode {
     StatusCode::OK
 }
 
-async fn panel_handler(State(state): State<AppState>) -> Html<String> {
-    Html(
-        PANEL_HTML
-            .replace("__MUIP_TOKEN__", &state.token)
-            .replace("__GM_ADDR__", &state.gm_addr),
-    )
+async fn panel_handler() -> Html<&'static str> {
+    Html(PANEL_HTML)
 }
 
 async fn status_handler(State(state): State<AppState>) -> Response {
@@ -104,6 +119,43 @@ async fn dungeons_handler(State(state): State<AppState>) -> Response {
                 .into_response()
         }
     }
+}
+
+async fn events_handler(
+    State(state): State<AppState>,
+    Query(query): Query<TokenQuery>,
+) -> Response {
+    if query.token != *state.token {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "events": [], "error": "invalid MUIP token" })),
+        )
+            .into_response();
+    }
+    forward_response(&state.gm_addr, GmRequest::Events).await
+}
+
+async fn update_event_handler(
+    State(state): State<AppState>,
+    Json(body): Json<EventBody>,
+) -> Response {
+    if body.token != *state.token {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(GmResponse::err(401, "invalid MUIP token")),
+        )
+            .into_response();
+    }
+    forward_response(
+        &state.gm_addr,
+        GmRequest::UpdateEvent {
+            id: body.id,
+            enabled: body.enabled,
+            start_time: body.start_time,
+            end_time: body.end_time,
+        },
+    )
+    .await
 }
 
 async fn heroes_handler(State(state): State<AppState>, Query(query): Query<HeroQuery>) -> Response {
@@ -138,6 +190,49 @@ async fn heroes_handler(State(state): State<AppState>, Query(query): Query<HeroQ
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({
                     "heroes": [],
+                    "error": format!("GM bridge unavailable: {err}")
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn equipment_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HeroQuery>,
+) -> Response {
+    if query.token != *state.token {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "equipment": [], "error": "invalid MUIP token" })),
+        )
+            .into_response();
+    }
+    match send_gm(
+        &state.gm_addr,
+        GmRequest::Equipment {
+            player_uid: query.player_uid,
+        },
+    )
+    .await
+    {
+        Ok(response) if response.retcode == 0 => (
+            StatusCode::OK,
+            Json(response.data.unwrap_or_else(|| serde_json::json!({}))),
+        )
+            .into_response(),
+        Ok(response) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "equipment": [], "error": response.message })),
+        )
+            .into_response(),
+        Err(err) => {
+            error!("GM forwarding failed: {err}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "equipment": [],
                     "error": format!("GM bridge unavailable: {err}")
                 })),
             )
@@ -198,7 +293,7 @@ async fn gm_handler(
             return (
                 StatusCode::OK,
                 Json(GmResponse::ok(
-                    "commands: help, status, players, bgm unlock all, guide complete all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>, give <item|currency|hero|skin|equip|power|insight> <id> <amount>",
+                    "commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level <hero id> <level>, hero portrait <hero id> <1-5>, hero portrait all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], psychube max <uid>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>",
                 )),
             )
                 .into_response();
