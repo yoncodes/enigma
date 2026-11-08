@@ -8,6 +8,7 @@ pub mod deck;
 pub mod draw;
 pub mod enchant;
 pub mod energy;
+mod hedone_card;
 pub mod op;
 mod permissions;
 pub mod pool;
@@ -22,16 +23,17 @@ pub mod types;
 pub use change::CardChange;
 pub use command::{
     CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardActionQueue, CardAddCrystal, CardAddGenerated,
-    CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
-    CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardConsumptionKind,
-    CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange,
-    CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign, CardInvalidateAiOwner,
-    CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval,
-    CardPersistTemporary, CardPlay, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
-    CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
-    CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability,
-    CardSetup, CardUnlockHedone, CardUseUniversal, HandCardRankUp, QueuedCardRankChange,
-    QueuedCardRankUp, QueuedUseCard, SovereignBoostChange, TemporaryCardKind,
+    CardAddHedone, CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind,
+    CardChangeToTemporary, CardChanges, CardCommand, CardCommandError, CardConsumeForEffect,
+    CardConsumptionKind, CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation,
+    CardEnergyChange, CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign,
+    CardInvalidateAiOwner, CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary,
+    CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary, CardPlay, CardQueueUse,
+    CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks,
+    CardRefillOne, CardRefreshAiQueue, CardRemoveOwner, CardReplaceOwnerSkills, CardSetAiQueue,
+    CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUnlockHedone, CardUseUniversal,
+    HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard, SovereignBoostChange,
+    TemporaryCardKind,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;

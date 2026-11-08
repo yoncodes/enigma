@@ -1129,6 +1129,24 @@ fn project_change(
                 .into_iter()
                 .collect()
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::HedoneAdded => {
+            let operation = changes
+                .operation
+                .clone()
+                .expect("Hedone card commits retain their exact operation");
+            let crate::engine::manager::card::CardChange::HedoneAdd {
+                card,
+                index,
+                team_type,
+            } = operation.clone()
+            else {
+                panic!("Hedone card commits use HedoneAdd operations")
+            };
+            vec![
+                CardPacket::from_change(operation),
+                CardPacket::update_data(index, card, team_type),
+            ]
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::UniversalAdded => changes
             .after
             .iter()

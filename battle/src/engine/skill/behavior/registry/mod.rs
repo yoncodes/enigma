@@ -863,6 +863,7 @@ behavior_definitions! {
     [60310] "LostLife" => crate::engine::damage::handler::Handler, ToughnessOverflowDamage, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
     [60331] "ClearHedoneCounter" => super::hedone::ClearHandler, ClearHedoneCounter, Immediate, destination;
     [60332] "HedoneHurt" => super::hedone::Handler, HedoneHurt, Immediate, destination;
+    [60333] "HedoneAddCard" => super::hedone_card::Handler, HedoneAddCard, Immediate, destination;
     [60212] "LostAllLifeByAttr" => crate::engine::damage::handler::Handler, LostAllLifeByAttr, Immediate, destination, crate::engine::damage::handler::supports_lost_all_life_by_attr;
     [60216] "DamageRealLostLife" => crate::engine::damage::handler::Handler, DamageRealLostLife, Immediate, destination, crate::engine::damage::handler::supports_damage_real_lost_life;
     [60038] "OriginDamageFromInjuryBankBuff" => super::injury_bank::Handler, OriginDamageFromInjuryBankBuff, AfterDamage, destination;

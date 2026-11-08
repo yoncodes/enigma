@@ -196,6 +196,7 @@ pub enum BehaviorKind {
     OriginDamageFromInjuryBankBuff,
     ClearHedoneCounter,
     HedoneHurt,
+    HedoneAddCard,
     RealDamageSelfAndAddBuffToTarget,
     ClearInjuryBankBuffOriginDamage,
     CatapultBuff,

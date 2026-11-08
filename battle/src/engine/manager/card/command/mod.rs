@@ -55,6 +55,15 @@ pub struct CardAddGenerated {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardAddHedone {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+    pub skill_id: i32,
+    pub hero_id: i32,
+    pub team_type: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CardInsertSovereign {
     pub origin: CommandOrigin,
     pub target_uid: i64,
@@ -411,6 +420,7 @@ pub enum CardCommand {
         card_index: usize,
     },
     AddGenerated(CardAddGenerated),
+    AddHedone(CardAddHedone),
     InsertSovereign(CardInsertSovereign),
     InitialSovereignBoost(CardInitialSovereignBoost),
     UnlockSovereign {
@@ -526,6 +536,7 @@ pub enum CardChangeKind {
     Dissolved,
     GeneratedAdded,
     OwnedGeneratedAdded,
+    HedoneAdded,
     UniversalAdded,
     RedealtKeepRanks,
     GenericTemporaryAdded,
@@ -889,6 +900,21 @@ pub(super) fn execute(
                     CardChangeKind::GeneratedAdded
                 },
                 Some(card),
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::AddHedone(add) => {
+            operation = Some(manager.add_hedone(add)?);
+            let card = operation.as_ref().and_then(|operation| match operation {
+                CardChange::HedoneAdd { card, .. } => Some(card.clone()),
+                _ => None,
+            });
+            (
+                Some(add.origin),
+                CardChangeKind::HedoneAdded,
+                card,
                 None,
                 Vec::new(),
                 Vec::new(),

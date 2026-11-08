@@ -70,6 +70,9 @@ impl CardPacket {
             CardChange::OwnedAddHand { card, team_type } => {
                 Self::configured_skill3_card(card, team_type)
             }
+            CardChange::HedoneAdd {
+                card, team_type, ..
+            } => Self::hedone_card(card, team_type),
             CardChange::SpCardAdd {
                 target_uid,
                 skill_id,
@@ -200,6 +203,12 @@ impl CardPacket {
             effect_num1: Some(0),
             ..Default::default()
         }
+    }
+
+    pub fn hedone_card(card: CardInfo, team_type: i32) -> ActEffect {
+        let mut effect = Self::configured_skill3_card(card, team_type);
+        effect.effect_num = Some(1);
+        effect
     }
 
     pub fn convert_owner_skill_card(

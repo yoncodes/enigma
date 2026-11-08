@@ -38,6 +38,11 @@ pub enum CardChange {
         card: CardInfo,
         team_type: i32,
     },
+    HedoneAdd {
+        card: CardInfo,
+        index: usize,
+        team_type: i32,
+    },
     SpCardAdd {
         target_uid: i64,
         skill_id: i32,

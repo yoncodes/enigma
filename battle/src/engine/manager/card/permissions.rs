@@ -16,14 +16,6 @@ pub(super) fn permits(card: &CardInfo, restriction: i32) -> bool {
         .any(|info| info.key == Some(restriction))
 }
 
-const HEDONE_CARD_TAG: &str = "HedoneCard";
-
-fn tagged(card: &CardInfo, key: i32, tag: &str) -> bool {
-    card.extra_infos
-        .iter()
-        .any(|info| info.key == Some(key) && info.values.iter().any(|value| value == tag))
-}
-
 impl CardManager {
     pub(crate) fn can_use_card(&self, card: &CardInfo) -> bool {
         permits(card, NOT_USE) && sovereign::is_locked(card).is_ok_and(|locked| !locked)
@@ -57,12 +49,12 @@ impl CardManager {
         let mut matches = self.hand().iter().enumerate().filter(|(_, card)| {
             card.uid == Some(command.owner_uid)
                 && card.skill_id == Some(command.skill_id)
-                && tagged(card, NOT_USE_ACTION_POINT, HEDONE_CARD_TAG)
+                && super::hedone_card::tagged(card, NOT_USE_ACTION_POINT)
         });
         let Some((index, card)) = matches.next() else {
             return Err(CardCommandError::InvalidCommand);
         };
-        if matches.next().is_some() || !tagged(card, NOT_USE, HEDONE_CARD_TAG) {
+        if matches.next().is_some() || !super::hedone_card::tagged(card, NOT_USE) {
             return Err(CardCommandError::InvalidCommand);
         }
         let mut card = card.clone();
@@ -70,7 +62,7 @@ impl CardManager {
             if info.key != Some(NOT_USE) {
                 return true;
             }
-            info.values.retain(|value| value != HEDONE_CARD_TAG);
+            info.values.retain(|value| value != super::hedone_card::TAG);
             !info.values.is_empty()
         });
         self.deck.hand_mut()[index] = card.clone();
