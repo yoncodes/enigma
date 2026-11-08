@@ -2,6 +2,8 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::engine::skill::rule::CommandOrigin;
 
+use super::{BattleManagers, HpExecution};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HedoneCounterRecord {
     pub origin: CommandOrigin,
@@ -26,6 +28,37 @@ pub enum HedoneCounterCommand {
         origin: CommandOrigin,
         buff_uid: i64,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HedoneDamageCommand {
+    pub origin: CommandOrigin,
+    pub source_uid: i64,
+    pub target_uid: i64,
+    pub rate: i32,
+    pub config_effect: i32,
+    pub skill_id: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HedoneDamageError {
+    MissingCarrier,
+    MultipleCarriers,
+    InvalidCarrier,
+    Counter(HedoneCounterError),
+    Hp(super::hp::HpCommandError),
+}
+
+impl From<HedoneCounterError> for HedoneDamageError {
+    fn from(value: HedoneCounterError) -> Self {
+        Self::Counter(value)
+    }
+}
+
+impl From<super::hp::HpCommandError> for HedoneDamageError {
+    fn from(value: super::hp::HpCommandError) -> Self {
+        Self::Hp(value)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,6 +150,58 @@ static EMPTY: CounterState = CounterState {
     completed: VecDeque::new(),
     current: 0,
 };
+
+pub(crate) fn damage(
+    managers: &mut BattleManagers,
+    command: HedoneDamageCommand,
+) -> Result<Option<HpExecution>, HedoneDamageError> {
+    let mut carriers = managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .filter(|feature| {
+            feature.owner_uid == command.source_uid
+                && crate::engine::skill::buff_act::is_kind(
+                    feature,
+                    crate::engine::skill::buff_act::registry::BuffActKind::HedoneHurtCounter,
+                )
+        });
+    let carrier = carriers.next().ok_or(HedoneDamageError::MissingCarrier)?;
+    if carriers.next().is_some() {
+        return Err(HedoneDamageError::MultipleCarriers);
+    }
+    let act_id = carrier.act_id().ok_or(HedoneDamageError::InvalidCarrier)?;
+    let visible = managers.buff.act_value(carrier.buff_uid, act_id);
+    let recorded = managers.hedone_counter.value(carrier.buff_uid, visible)?;
+    let amount = crate::engine::damage::scale_permille(recorded, command.rate);
+    if amount <= 0 {
+        return Ok(None);
+    }
+    let hurt = super::hp::HurtInfoData {
+        from_uid: command.source_uid,
+        is_crit: false,
+        career_restraint: false,
+        reduce_hp: 0,
+        effect_id: command.skill_id,
+        skill_id: command.skill_id,
+        damage_from: super::hp::HurtDamageFromType::SkillEffect,
+        buff_act_id: 0,
+        buff_uid: 0,
+        hurt_effect_type: sonettobuf::effect_type_enum::EffectType::Origindamage as i32,
+        display_amount: None,
+    };
+    managers
+        .execute_rule_hp(super::hp::HpCommand::Lose(super::hp::HpLoss {
+            origin: command.origin,
+            source_uid: command.source_uid,
+            target_uid: command.target_uid,
+            amount,
+            config_effect: command.config_effect,
+            hurt: Some(hurt),
+        }))
+        .map(Some)
+        .map_err(Into::into)
+}
 
 #[cfg(test)]
 mod tests;

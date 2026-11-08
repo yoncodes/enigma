@@ -436,6 +436,7 @@ pub(crate) enum RuleExecutionError {
     Field(FieldCommandError),
     FightProgress(FightProgressError),
     HedoneCounter(crate::engine::manager::hedone_counter::HedoneCounterError),
+    HedoneDamage(crate::engine::manager::hedone_counter::HedoneDamageError),
     FieldTransfer(FieldTransferError),
     MagicCircleLevel(MagicCircleLevelError),
     FocusAllEntityBuff(FocusAllEntityBuffError),
@@ -540,6 +541,12 @@ impl From<FightProgressError> for RuleExecutionError {
 impl From<crate::engine::manager::hedone_counter::HedoneCounterError> for RuleExecutionError {
     fn from(value: crate::engine::manager::hedone_counter::HedoneCounterError) -> Self {
         Self::HedoneCounter(value)
+    }
+}
+
+impl From<crate::engine::manager::hedone_counter::HedoneDamageError> for RuleExecutionError {
+    fn from(value: crate::engine::manager::hedone_counter::HedoneDamageError) -> Self {
+        Self::HedoneDamage(value)
     }
 }
 
@@ -708,6 +715,17 @@ pub(crate) fn execute_rule_op_with(
         RuleOp::Command(BattleCommand::HedoneCounter(command)) => {
             managers.hedone_counter.execute(command)?;
             Ok(RuleOutcome::StateChanged)
+        }
+        RuleOp::Command(BattleCommand::HedoneDamage(command)) => {
+            let Some(execution) =
+                crate::engine::manager::hedone_counter::damage(managers, command)?
+            else {
+                return Ok(RuleOutcome::StateChanged);
+            };
+            for event in execution.changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::Hp(Box::new(execution)))
         }
         RuleOp::Command(BattleCommand::Revive(command)) => {
             let changes = crate::engine::manager::revive::execute(managers, command)?;

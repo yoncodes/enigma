@@ -194,6 +194,7 @@ pub enum BehaviorKind {
     OriginDamageByAttrAndBuffGroupSize,
     ButterflyDamage,
     OriginDamageFromInjuryBankBuff,
+    HedoneHurt,
     RealDamageSelfAndAddBuffToTarget,
     ClearInjuryBankBuffOriginDamage,
     CatapultBuff,
