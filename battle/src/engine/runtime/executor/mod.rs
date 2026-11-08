@@ -22,6 +22,7 @@ use crate::engine::{
         buff_precast::{BuffPrecastChanges, BuffPrecastError},
         field_transfer::{FieldTransferChanges, FieldTransferError},
         focus_all_entity_buff::{FocusAllEntityBuffChanges, FocusAllEntityBuffError},
+        hedone_device_power::HedoneDevicePowerError,
         hedone_starting_charge::{HedoneStartingChargeChanges, HedoneStartingChargeError},
         magic_circle_level::{MagicCircleLevelChanges, MagicCircleLevelError},
         monster_change::{MonsterChangeChanges, MonsterChangeError},
@@ -438,6 +439,7 @@ pub(crate) enum RuleExecutionError {
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaError),
     Card(CardCommandError),
     BuffPrecast(BuffPrecastError),
+    HedoneDevicePower(HedoneDevicePowerError),
     HedoneStartingCharge(HedoneStartingChargeError),
     Conduit(ConduitError),
     Contract(ContractError),
@@ -520,6 +522,12 @@ impl From<CardCommandError> for RuleExecutionError {
 impl From<BuffPrecastError> for RuleExecutionError {
     fn from(value: BuffPrecastError) -> Self {
         Self::BuffPrecast(value)
+    }
+}
+
+impl From<HedoneDevicePowerError> for RuleExecutionError {
+    fn from(value: HedoneDevicePowerError) -> Self {
+        Self::HedoneDevicePower(value)
     }
 }
 
@@ -965,6 +973,13 @@ pub(crate) fn execute_rule_op_with(
                 events.push(event);
             }
             Ok(RuleOutcome::BuffPrecast(Box::new(changes)))
+        }
+        RuleOp::Command(BattleCommand::HedoneDevicePower(command)) => {
+            let change = crate::engine::mechanic::hedone_device_power::execute(managers, command)?;
+            for event in change.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::Conduit(change))
         }
         RuleOp::Command(BattleCommand::HedoneStartingCharge(command)) => {
             let changes =

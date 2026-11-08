@@ -21,6 +21,7 @@ pub mod general;
 pub mod heal_or_buff;
 pub mod hedone;
 pub mod hedone_card;
+pub mod hedone_device_power;
 pub mod injury_bank;
 pub mod kill;
 pub mod magic_circle;
