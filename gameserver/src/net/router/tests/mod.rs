@@ -28,6 +28,7 @@ use sonettobuf::{
     TeachingGetBonusRequest, TeachingGetInfoReply, TeachingGetInfoRequest, TriggerPartyResultReply,
     TriggerPartyResultRequest, UpdateRedDotPush, UpdateTaskPush,
 };
+use sonettobuf::{Get107GoodsInfoReply, Get107GoodsInfoRequest};
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 
@@ -56,6 +57,7 @@ async fn complete_teaching(pool: &SqlitePool, player_id: i64, teaching_id: i32) 
 mod activity_events;
 mod activity_pass;
 mod activity_rewards;
+mod activity_store;
 mod arcade;
 mod exploration;
 mod milestone;

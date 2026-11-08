@@ -1,6 +1,14 @@
 use super::*;
 
 impl ActivityManager {
+    pub async fn act107_goods_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<Get107GoodsInfoReply, AppError> {
+        act107_goods_info(db, self.player_id, activity_id).await
+    }
+
     pub async fn infos(&mut self, db: &SqlitePool) -> Result<GetActivityInfosReply, AppError> {
         let mut infos = catalog_infos();
         apply_bp_activity(&mut infos);

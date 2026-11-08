@@ -181,6 +181,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "activity104_retail",
     "activity104_special",
     "activity104_trial",
+    "activity107",
     "skill_behavior_condition",
     "rule",
     "monster_group",

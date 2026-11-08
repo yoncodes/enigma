@@ -16,6 +16,7 @@ pub mod activity104_retail;
 pub mod activity104_special;
 pub mod activity104_trial;
 pub mod activity106_task;
+pub mod activity107;
 pub mod activity109_task;
 pub mod activity112_task;
 pub mod activity113_task;
@@ -478,6 +479,7 @@ pub struct GameDB {
     pub activity104_special: activity104_special::Activity104SpecialTable,
     pub activity104_trial: activity104_trial::Activity104TrialTable,
     pub activity106_task: activity106_task::Activity106TaskTable,
+    pub activity107: activity107::Activity107Table,
     pub activity109_task: activity109_task::Activity109TaskTable,
     pub activity112_task: activity112_task::Activity112TaskTable,
     pub activity113_task: activity113_task::Activity113TaskTable,
@@ -973,6 +975,9 @@ impl GameDB {
         let activity106_task = activity106_task::Activity106TaskTable::load(
             &format!("{}/activity106_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity106_task.json: {}", e))?;
+        let activity107 = activity107::Activity107Table::load(
+            &format!("{}/activity107.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity107.json: {}", e))?;
         let activity109_task = activity109_task::Activity109TaskTable::load(
             &format!("{}/activity109_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity109_task.json: {}", e))?;
@@ -2318,6 +2323,7 @@ impl GameDB {
             activity104_special,
             activity104_trial,
             activity106_task,
+            activity107,
             activity109_task,
             activity112_task,
             activity113_task,
