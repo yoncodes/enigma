@@ -111,6 +111,8 @@ pub struct ExPointState {
     pub kind: i32,
     pub recent_decrement: i32,
     pub gains_card_play: bool,
+    pub gains_card_move: bool,
+    pub gains_card_composition: bool,
 }
 
 impl Default for ExPointState {
@@ -121,6 +123,8 @@ impl Default for ExPointState {
             kind: ExPointKind::Common.as_wire(),
             recent_decrement: 0,
             gains_card_play: true,
+            gains_card_move: true,
+            gains_card_composition: true,
         }
     }
 }
@@ -804,6 +808,10 @@ impl ExPointManager {
         let kind = ExPointKind::from_wire(entity.ex_point_type.unwrap_or_default());
         let gains_card_play =
             kind == ExPointKind::Common && base_max.unwrap_or_else(|| kind.default_max()) > 0;
+        let gains_card_move =
+            kind == ExPointKind::Common && base_max.unwrap_or_else(|| kind.default_max()) > 0;
+        let gains_card_composition =
+            kind == ExPointKind::Common && base_max.unwrap_or_else(|| kind.default_max()) > 0;
         let base_max = base_max
             .filter(|max| *max > 0)
             .unwrap_or_else(|| kind.default_max());
@@ -815,6 +823,8 @@ impl ExPointManager {
                 kind: kind.as_wire(),
                 recent_decrement: 0,
                 gains_card_play,
+                gains_card_move,
+                gains_card_composition,
             }),
         );
     }
@@ -854,13 +864,19 @@ impl ExPointManager {
     pub fn gains_composition_ex_point(&self, uid: i64) -> bool {
         self.states
             .get(&uid)
-            .is_some_and(|state| state.gains_card_play)
+            .is_some_and(|state| state.gains_card_composition)
     }
 
     pub fn gains_card_play_ex_point(&self, uid: i64) -> bool {
         self.states
             .get(&uid)
             .is_some_and(|state| state.gains_card_play)
+    }
+
+    pub fn gains_card_move_ex_point(&self, uid: i64) -> bool {
+        self.states
+            .get(&uid)
+            .is_some_and(|state| state.gains_card_move)
     }
 
     pub fn synchronization_definition(&self, uid: i64) -> Option<SynchronizationDefinition> {

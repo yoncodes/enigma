@@ -621,6 +621,7 @@ fn run_player_card_ops(
                 .get(*from_index)
                 .and_then(|card| card.uid)
                 .filter(|uid| managers.entity.team_type(*uid) == Some(team))
+                .filter(|uid| managers.ex_point.gains_card_move_ex_point(*uid))
                 .and_then(|owner_uid| {
                     let delta = 1_i32.saturating_add(managers.buff.buff_act_scalar(
                         owner_uid,

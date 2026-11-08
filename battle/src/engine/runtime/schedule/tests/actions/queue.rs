@@ -972,7 +972,7 @@ fn queued_move_projects_composition_reward_before_the_triggering_skill() {
 }
 
 #[test]
-fn queued_move_does_not_grant_composition_moxie_to_a_special_resource() {
+fn queued_move_does_not_grant_moxie_to_a_special_resource() {
     init_config();
     let entity = |uid, skills, ex_point_type| FightEntityInfo {
         uid: Some(uid),
@@ -1043,6 +1043,6 @@ fn queued_move_does_not_grant_composition_moxie_to_a_special_resource() {
     )
     .unwrap();
 
-    assert_eq!(managers.ex_point.get(20), 1);
+    assert_eq!(managers.ex_point.get(20), 0);
     assert_eq!(managers.card.hand()[1].skill_id, Some(201));
 }
