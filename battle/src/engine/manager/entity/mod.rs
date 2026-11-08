@@ -10,6 +10,8 @@ use crate::engine::{
     skill::{condition::extra::ExtraSkillKind, rule::CommandOrigin},
 };
 
+pub mod position;
+
 const SPECIAL_POSITION: i32 = 5;
 pub(crate) const MAX_COMBAT_POSITION: i32 = SPECIAL_POSITION - 1;
 

@@ -72,4 +72,5 @@ mod events;
 mod healing;
 mod lifecycle;
 mod planning;
+mod position;
 mod routing;

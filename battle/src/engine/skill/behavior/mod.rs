@@ -29,6 +29,7 @@ pub mod monster_change;
 pub mod nuo_di_ka;
 pub mod periodic;
 pub mod poison;
+pub mod position;
 pub mod power_queue_rank;
 pub mod precast;
 pub mod prepare_skill;

@@ -1409,6 +1409,7 @@ fn project_change(
                 )]
             }
         },
+        BattleChange::MoveFront(changes) => vec![EffectPacket::move_front(changes)],
         BattleChange::ToughnessReset(change) => {
             vec![EffectPacket::toughness_reset(*change)]
         }

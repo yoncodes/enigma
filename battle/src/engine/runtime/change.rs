@@ -38,6 +38,7 @@ pub enum BattleChange {
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaChange),
     Emitter(EmitterChange),
     Entity(Box<EntityChanges>),
+    MoveFront(crate::engine::manager::entity::position::MoveFrontChanges),
     Card(Box<CardChanges>),
     CardStateSnapshot(crate::engine::manager::card::CardStateSnapshot),
     Conduit(ConduitChange),

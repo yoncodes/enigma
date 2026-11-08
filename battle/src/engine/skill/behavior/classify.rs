@@ -179,6 +179,7 @@ pub enum BehaviorKind {
     ProgressInitNew,
     ProgressChangeNew,
     ChangeScene,
+    MoveFront,
     CareerRatioFix,
     ChangeCareer,
     ChangeAttackCareer,

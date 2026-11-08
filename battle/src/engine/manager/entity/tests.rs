@@ -22,6 +22,74 @@ fn configured_seed_preserves_defender_uid_reservations() {
 }
 
 #[test]
+fn move_front_reorders_only_the_target_team() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: (10..=12)
+                .enumerate()
+                .map(|(index, uid)| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    position: Some(index as i32 + 1),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                position: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = EntityManager::seed(&fight);
+
+    let changes = manager
+        .execute_move_front(position::MoveFrontCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60061, "MoveFront"),
+            },
+            target_uid: 12,
+            distance: 99,
+        })
+        .unwrap();
+
+    assert_eq!(
+        changes.target,
+        position::PositionChange {
+            uid: 12,
+            before: 3,
+            after: 1,
+        }
+    );
+    assert_eq!(
+        changes.displaced,
+        vec![
+            position::PositionChange {
+                uid: 11,
+                before: 2,
+                after: 3,
+            },
+            position::PositionChange {
+                uid: 10,
+                before: 1,
+                after: 2,
+            },
+        ]
+    );
+    assert_eq!(manager.snapshot(10).unwrap().position, Some(2));
+    assert_eq!(manager.snapshot(11).unwrap().position, Some(3));
+    assert_eq!(manager.snapshot(12).unwrap().position, Some(1));
+    assert_eq!(manager.snapshot(-1).unwrap().position, Some(1));
+}
+
+#[test]
 fn configured_seed_marks_entity_battle_rule_passives() {
     let fight = Fight {
         battle_id: Some(119_385_110),

@@ -7,6 +7,7 @@ use crate::engine::{
         conduit::{ConduitChange, ConduitError},
         contract::{ContractChange, ContractError},
         emitter::EmitterChange,
+        entity::position::{MoveFrontChanges, MoveFrontError},
         entity::{EntityChanges, EntityCommandError},
         eureka::{EurekaChanges, EurekaCommandError},
         ex_point::{ExPointChanges, ExPointCommandError},
@@ -77,6 +78,7 @@ pub(crate) enum RuleOutcome {
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaChange),
     Emitter(EmitterChange),
     Entity(Box<EntityChanges>),
+    MoveFront(MoveFrontChanges),
     MonsterChange(Box<MonsterChangeChanges>),
     Card(Box<CardChanges>),
     BuffPrecast(Box<BuffPrecastChanges>),
@@ -342,6 +344,7 @@ impl RuleOutcome {
             Self::NuoDiKa(change) => vec![BattleChange::NuoDiKa(*change)],
             Self::Emitter(change) => vec![BattleChange::Emitter(*change)],
             Self::Entity(change) => vec![BattleChange::Entity(change.clone())],
+            Self::MoveFront(change) => vec![BattleChange::MoveFront(change.clone())],
             Self::MonsterChange(changes) => {
                 vec![BattleChange::Entity(Box::new(changes.entity.clone()))]
             }
@@ -433,6 +436,7 @@ pub(crate) enum RuleExecutionError {
     ExPoint(ExPointCommandError),
     Eureka(EurekaCommandError),
     Entity(EntityCommandError),
+    MoveFront(MoveFrontError),
     MonsterChange(MonsterChangeError),
     Gauge(GaugeCommandError),
     BloodtitheSpend(crate::engine::mechanic::bloodtithe::spend::SpendError),
@@ -492,6 +496,12 @@ impl From<EurekaCommandError> for RuleExecutionError {
 impl From<EntityCommandError> for RuleExecutionError {
     fn from(value: EntityCommandError) -> Self {
         Self::Entity(value)
+    }
+}
+
+impl From<MoveFrontError> for RuleExecutionError {
+    fn from(value: MoveFrontError) -> Self {
+        Self::MoveFront(value)
     }
 }
 
@@ -892,6 +902,9 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::Entity(Box::new(changes)))
         }
+        RuleOp::Command(BattleCommand::MoveFront(command)) => Ok(RuleOutcome::MoveFront(
+            managers.execute_move_front(command)?,
+        )),
         RuleOp::Command(BattleCommand::MonsterChange(command)) => {
             let changes = crate::engine::mechanic::monster_change::execute(managers, command)?;
             for event in changes.entity.events() {

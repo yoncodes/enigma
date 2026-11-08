@@ -1,6 +1,26 @@
 use super::*;
 
 impl EffectPacket {
+    pub fn move_front(
+        changes: &crate::engine::manager::entity::position::MoveFrontChanges,
+    ) -> ActEffect {
+        ActEffect {
+            target_id: Some(changes.target.uid),
+            effect_type: Some(EffectType::Movefront as i32),
+            effect_num: Some(changes.target.after),
+            config_effect: Some(changes.origin.key.opcode),
+            reserve_str: Some(
+                changes
+                    .displaced
+                    .iter()
+                    .map(|change| format!("{}#{}", change.uid, change.after))
+                    .collect::<Vec<_>>()
+                    .join("|"),
+            ),
+            ..Default::default()
+        }
+    }
+
     pub fn fight_task_update(
         change: &crate::engine::manager::fight_task::FightTaskChange,
     ) -> ActEffect {

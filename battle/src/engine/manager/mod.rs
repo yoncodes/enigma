@@ -1222,6 +1222,13 @@ impl BattleManagers {
         self.entity.execute_skill_command(command)
     }
 
+    pub(crate) fn execute_move_front(
+        &mut self,
+        command: entity::position::MoveFrontCommand,
+    ) -> Result<entity::position::MoveFrontChanges, entity::position::MoveFrontError> {
+        self.entity.execute_move_front(command)
+    }
+
     pub(crate) fn first_open_combat_position(&self, source_uid: i64) -> Option<i32> {
         self.entity.first_open_combat_position(
             source_uid,
