@@ -341,6 +341,7 @@ fn moves_cards_before_playing() {
             card_index: 1,
             hand_index: Some(0),
             skill_id: 200,
+            uses_action_point: false,
             rank_change_pending: false,
             rewritten: false,
             card: card(11, 200),

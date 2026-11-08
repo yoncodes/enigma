@@ -14,7 +14,6 @@ use crate::engine::{
     round::{command::RoundCommand, state::RoundState},
     runtime::{determinism::RoundDeterminism, schedule::card_skill_is_blocked},
     skill::{
-        buff_act::action_point::skill_uses_action_point,
         effect::SkillEffectCatalog,
         target::{CardSelectionResolver, TargetContext, TargetPool, TargetRequest},
     },
@@ -776,13 +775,8 @@ fn action_point_cost(
     catalog: &SkillEffectCatalog,
 ) -> i32 {
     i32::from(
-        (!card.temp_card.unwrap_or_default()
-            || crate::engine::mechanic::card::CardMechanic.is_device_card(managers, card))
-            && skill_uses_action_point(
-                &managers.buff.active_features(&managers.hp),
-                source_uid,
-                catalog.is_big_skill(skill_id),
-            ),
+        crate::engine::mechanic::card::CardMechanic
+            .uses_action_point(card, source_uid, skill_id, managers, catalog),
     )
 }
 

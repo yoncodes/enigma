@@ -156,6 +156,7 @@ mod tests {
             card_index: 1,
             hand_index: None,
             skill_id,
+            uses_action_point: false,
             rank_change_pending: false,
             rewritten: false,
             target_uid: None,

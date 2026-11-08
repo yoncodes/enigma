@@ -16,6 +16,10 @@ pub(super) fn permits(card: &CardInfo, restriction: i32) -> bool {
         .any(|info| info.key == Some(restriction))
 }
 
+pub(crate) fn consumes_action_point(card: &CardInfo) -> bool {
+    permits(card, NOT_USE_ACTION_POINT)
+}
+
 impl CardManager {
     pub(crate) fn can_use_card(&self, card: &CardInfo) -> bool {
         permits(card, NOT_USE) && sovereign::is_locked(card).is_ok_and(|locked| !locked)

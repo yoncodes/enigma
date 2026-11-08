@@ -11,6 +11,7 @@ pub mod energy;
 mod hedone_card;
 pub mod op;
 mod permissions;
+pub(crate) use permissions::consumes_action_point;
 pub mod pool;
 pub(crate) mod prepared;
 mod sovereign;
@@ -570,6 +571,16 @@ impl CardManager {
 
     pub fn refilled(&self) -> &[CardInfo] {
         &self.refilled
+    }
+
+    pub(crate) fn record_action_point_use(&mut self, card_index: i32, used: bool) {
+        if let Some(played) = self
+            .played
+            .iter_mut()
+            .find(|played| played.card_index == card_index)
+        {
+            played.uses_action_point = used;
+        }
     }
 
     pub(crate) fn record_refill(&mut self, card: CardInfo) {
@@ -1315,6 +1326,7 @@ impl CardManager {
             card_index: action_index,
             hand_index,
             skill_id,
+            uses_action_point: false,
             rank_change_pending: false,
             rewritten: false,
             target_uid,

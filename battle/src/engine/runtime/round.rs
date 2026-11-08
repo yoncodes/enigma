@@ -346,9 +346,11 @@ impl BattleRuntime {
         let wave_defeated_after_attacker_settlement =
             crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         let runs_phase_two = !ended_after_attacker_settlement;
+        let post_action_hand_size =
+            schedule::post_action_target_hand_len(&self.managers, &pool, hand_size);
         let needs_refill = crate::engine::mechanic::card::CardMechanic
             .refill_hand_len(&self.managers, &pool)
-            < hand_size;
+            < post_action_hand_size;
         let phase_two_refill_deferred = needs_refill && !runs_phase_two;
         if needs_refill && runs_phase_two {
             self.round_state.before_cards2 = post_conduit_hand;
@@ -444,13 +446,13 @@ impl BattleRuntime {
             )?);
         }
         if needs_refill && runs_phase_two {
-            let refill = schedule::run_round_refill(
+            let refill = schedule::run_post_action_refill(
                 &mut self.managers,
                 &pool,
                 catalog,
                 &mut self.determinism,
                 context,
-                hand_size,
+                post_action_hand_size,
                 1,
             )
             .map_err(|error| format!("{error:?}"))?;

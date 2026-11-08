@@ -1,4 +1,11 @@
 use super::*;
+mod post_action;
+
+pub use post_action::{
+    replacement_count as post_action_replacement_count, run_post_action_refill,
+    target_hand_len as post_action_target_hand_len,
+};
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RefillStage {
     Opening,

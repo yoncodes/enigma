@@ -1232,6 +1232,24 @@ pub(super) fn run_active_action(
             current: current_resource,
         });
     }
+    if let Some(card) = managers
+        .card
+        .played()
+        .iter()
+        .find(|played| played.card_index == skill.card_index)
+        .map(|played| played.card.clone())
+    {
+        let uses_action_point = crate::engine::mechanic::card::CardMechanic.uses_action_point(
+            &card,
+            source_uid,
+            skill.plan.skill_id,
+            managers,
+            catalog,
+        );
+        managers
+            .card
+            .record_action_point_use(skill.card_index, uses_action_point);
+    }
     let resource_delta =
         card_play_resource_delta(managers, source_uid, grants_ex_point, is_ultimate);
     let ultimate_moxie = if boss_power.is_some() {

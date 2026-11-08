@@ -14,6 +14,23 @@ use crate::engine::{
 pub struct CardMechanic;
 
 impl CardMechanic {
+    pub(crate) fn uses_action_point(
+        &self,
+        card: &CardInfo,
+        owner_uid: i64,
+        skill_id: i32,
+        managers: &BattleManagers,
+        catalog: &crate::engine::skill::effect::catalog::SkillEffectCatalog,
+    ) -> bool {
+        (!card.temp_card.unwrap_or_default() || self.is_device_card(managers, card))
+            && crate::engine::manager::card::consumes_action_point(card)
+            && crate::engine::skill::buff_act::action_point::skill_uses_action_point(
+                &managers.buff.active_features(&managers.hp),
+                owner_uid,
+                catalog.is_big_skill(skill_id),
+            )
+    }
+
     pub fn boss_ultimate_power(
         &self,
         managers: &BattleManagers,
