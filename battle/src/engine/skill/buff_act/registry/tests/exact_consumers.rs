@@ -565,9 +565,10 @@ fn hedone_counter_keeps_its_exact_hit_and_round_routes() {
     let definition = find(1158, "HedoneHurtCounter").unwrap();
 
     assert_eq!(definition.kind, BuffActKind::HedoneHurtCounter);
+    assert_eq!(definition.state.initial, None);
     assert_eq!(
-        definition.state.initial,
-        Some(BuffActInitialStateRule::ZeroInteger)
+        definition.setup.routes,
+        &[(SetupStage::EnterBattleStatic, 0)]
     );
     assert!(definition.state.consumer);
     assert!(subscribes_to_event(

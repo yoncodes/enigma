@@ -1,9 +1,11 @@
 use crate::engine::{
     event::subscription::SubscriptionKey,
     manager::hp::HurtDamageFromType,
+    runtime::{determinism::RoundDeterminism, drain, executor::RuleOutcome},
     skill::{
+        effect::SkillEffectCatalog,
         rule::{CommandOrigin, DefinitionKey, RuleDomain},
-        target::TargetPool,
+        target::{TargetContext, TargetPool},
     },
 };
 use sonettobuf::{BuffActInfo, BuffInfo, Fight, FightEntityInfo, FightTeam};
@@ -99,6 +101,66 @@ fn hit(source_uid: i64, damage: i32) -> BattleEvent {
         assassinate: false,
         ignore_riposte: false,
     })
+}
+
+#[test]
+fn initializes_the_counter_at_enter_battle_static() {
+    let (mut managers, pool, _) = setup(false);
+    let origin = CommandOrigin {
+        domain: RuleDomain::BuffAct,
+        key: DefinitionKey::new(1158, "HedoneHurtCounter"),
+    };
+    let plan = managers
+        .plan_buff(BuffCommand::SetInternalState(BuffSetState {
+            origin,
+            target_uid: -4,
+            buff_uid: 1070,
+            ex_info: None,
+            params: None,
+            act_info: Some(Vec::new()),
+        }))
+        .unwrap();
+    managers.commit_buff(plan);
+    let feature = managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .find(|feature| feature.act_id() == Some(1158))
+        .unwrap();
+    let ops = setup_rule_ops(&managers, &feature, SetupStage::EnterBattleStatic).unwrap();
+    let result = drain::run_command_group(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        ops,
+    )
+    .unwrap();
+
+    assert_eq!(
+        managers
+            .buff
+            .snapshot(-4, 1070)
+            .unwrap()
+            .act_info
+            .as_slice(),
+        &[BuffActInfo {
+            act_id: Some(1158),
+            param: vec![0],
+            str_param: Some(String::new()),
+        }]
+    );
+    assert!(result.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        RuleOutcome::BuffActInfoMarker(marker)
+            if marker.buff_uid == 1070 && marker.act_id == 1158 && marker.params == [0]
+    )));
+    assert!(
+        setup_rule_ops(&managers, &feature, SetupStage::EnterBattleStatic)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

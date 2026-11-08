@@ -5,14 +5,17 @@ use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
     manager::{
         BattleManagers,
-        buff::{BuffCommand, BuffSetState},
+        buff::{ActiveBuffFeature, BuffActInfoMarkerResult, BuffCommand, BuffSetState},
         hedone_counter::{HedoneCounterCommand, HedoneCounterRecord, HedoneCounterSettle},
         hp::HurtDamageFromType,
     },
     skill::{
         buff_act::BuffActRuleOp,
         buff_act::registry::RuntimeContext,
-        rule::output::{BattleCommand, RuleOp},
+        rule::{
+            SetupStage,
+            output::{BattleCommand, RuleOp},
+        },
         subscriber::BuffActSubscriber,
         target::TargetPool,
     },
@@ -21,6 +24,51 @@ use crate::engine::{
 pub fn supports(args: &[i32]) -> bool {
     matches!(args, [base, scar_buff_id, extra, retained_rounds]
         if *base > 0 && *scar_buff_id > 0 && *extra >= 0 && *retained_rounds > 0)
+}
+
+pub fn setup_rule_ops(
+    managers: &BattleManagers,
+    feature: &ActiveBuffFeature,
+    stage: SetupStage,
+) -> Option<Vec<RuleOp>> {
+    if stage != SetupStage::EnterBattleStatic
+        || !super::is_kind(feature, super::registry::BuffActKind::HedoneHurtCounter)
+    {
+        return Some(Vec::new());
+    }
+    let act_id = feature.act_id()?;
+    let mut buff = managers
+        .buff
+        .snapshot(feature.owner_uid, feature.buff_uid)?;
+    if buff.act_info.iter().any(|info| info.act_id == Some(act_id)) {
+        return Some(Vec::new());
+    }
+    buff.act_info.push(BuffActInfo {
+        act_id: Some(act_id),
+        param: vec![0],
+        str_param: Some(String::new()),
+    });
+    let origin = super::feature_command_origin(feature)?;
+    Some(vec![
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::SetInternalState(
+            BuffSetState {
+                origin,
+                target_uid: feature.owner_uid,
+                buff_uid: feature.buff_uid,
+                ex_info: None,
+                params: None,
+                act_info: Some(buff.act_info),
+            },
+        ))),
+        RuleOp::BuffActInfoMarker(BuffActInfoMarkerResult {
+            target_uid: feature.owner_uid,
+            buff_uid: feature.buff_uid,
+            act_id,
+            params: vec![0],
+            str_param: Some(String::new()),
+            team_type: 0,
+        }),
+    ])
 }
 
 fn rule_ops(

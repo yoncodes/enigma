@@ -1422,9 +1422,11 @@ buff_act_definitions! {
         ).without_initial_state_marker());
     (1158, "HedoneHurtCounter") => HedoneHurtCounter, effect_time_subscription: false,
         events: [EventKind::TargetAttacked, EventKind::RoundEndAfterFinalSettlement],
+        setup: [EnterBattleStatic(0)],
         fallible_scoped_runtime: super::hedone_hurt_counter::scoped_rule_ops,
+        setup_handler: |context| super::hedone_hurt_counter::setup_rule_ops(context.managers, &context.subscriber.feature, context.subscriber.stage),
         supports: super::hedone_hurt_counter::supports,
-        state_consumer: true, initial_state: ZeroInteger,
+        state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1158, "HedoneHurtCounter"), &[]));
     (1159, "HedoneCard") => HedoneCard,
         fallible_scoped_runtime: super::hedone_card::scoped_rule_ops,
