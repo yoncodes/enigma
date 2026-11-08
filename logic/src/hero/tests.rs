@@ -197,6 +197,42 @@ fn destiny_progression_follows_the_configured_slot_order() {
 }
 
 #[tokio::test]
+async fn destiny_red_dot_reads_set_the_captured_bits() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (34, 'destiny-red-dot', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let heroes = UserHeroModel::new(34, pool.clone());
+    heroes.create_hero(3052).await.unwrap();
+    sqlx::query("UPDATE heroes SET red_dot = 1 WHERE user_id = 34 AND hero_id = 3052")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let manager = HeroManager::new(34);
+
+    let first = manager.read_red_dot(&pool, 3052, 1).await.unwrap();
+    assert_eq!(first.red_dot, Some(2));
+    sqlx::query("UPDATE heroes SET red_dot = 1 WHERE user_id = 34 AND hero_id = 3052")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let second = manager.read_red_dot(&pool, 3052, 2).await.unwrap();
+    assert_eq!(second.red_dot, Some(6));
+    assert_eq!(heroes.get(3052).await.unwrap().record.red_dot, 6);
+    assert!(matches!(
+        manager.read_red_dot(&pool, 3052, 3).await,
+        Err(AppError::InvalidRequest)
+    ));
+}
+
+#[tokio::test]
 async fn upgrade_materials_include_missing_destiny_slots_and_locked_stone() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);

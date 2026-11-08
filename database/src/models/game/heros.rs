@@ -34,7 +34,7 @@ pub trait HeroModel<T>: Send + Sync {
         current_level: i32,
         new_level: i32,
     ) -> Result<bool>;
-    async fn read_hero_red_dot(&self, hero_id: i32, red_dot: i32) -> Result<()>;
+    async fn read_hero_red_dot(&self, hero_id: i32, red_dot_type: i32) -> Result<i32>;
     async fn upgrade_ex_skill(&self, hero_id: i32, levels: i32) -> Result<()>;
     async fn set_favor(&self, hero_id: i32, is_favor: bool) -> Result<()>;
     async fn unmark_new(&self, hero_id: i32) -> Result<()>;
@@ -495,8 +495,8 @@ impl UserHeroModel {
         HeroModel::<HeroData>::unmark_new(self, hero_id).await
     }
 
-    pub async fn read_red_dot(&self, hero_id: i32, red_dot: i32) -> Result<()> {
-        HeroModel::<HeroData>::read_hero_red_dot(self, hero_id, red_dot).await
+    pub async fn read_red_dot(&self, hero_id: i32, red_dot_type: i32) -> Result<i32> {
+        HeroModel::<HeroData>::read_hero_red_dot(self, hero_id, red_dot_type).await
     }
 
     pub async fn unlock_voice(&self, hero_id: i32, voice_id: i32) -> Result<bool> {
@@ -1655,15 +1655,20 @@ impl HeroModel<HeroData> for UserHeroModel {
         Ok(updated.rows_affected() == 1)
     }
 
-    async fn read_hero_red_dot(&self, hero_id: i32, red_dot: i32) -> Result<()> {
+    async fn read_hero_red_dot(&self, hero_id: i32, red_dot_type: i32) -> Result<i32> {
         let hero_data = self.get(hero_id).await?;
-        sqlx::query("UPDATE heroes SET red_dot = ? WHERE uid = ? AND user_id = ?")
-            .bind(red_dot)
-            .bind(hero_data.record.uid)
-            .bind(self.user_id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
+        let red_dot = sqlx::query_scalar(
+            "UPDATE heroes
+             SET red_dot = (red_dot & ~1) | ((1 << (?1 + 1)) - 2)
+             WHERE uid = ?2 AND user_id = ?3
+             RETURNING red_dot",
+        )
+        .bind(red_dot_type)
+        .bind(hero_data.record.uid)
+        .bind(self.user_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(red_dot)
     }
 
     async fn upgrade_ex_skill(&self, hero_id: i32, levels: i32) -> Result<()> {

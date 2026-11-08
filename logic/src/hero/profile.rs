@@ -210,10 +210,13 @@ impl HeroManager {
         self,
         db: &SqlitePool,
         hero_id: i32,
-        red_dot: i32,
+        red_dot_type: i32,
     ) -> Result<HeroRedDotReadReply, AppError> {
-        UserHeroModel::new(self.player_id, db.clone())
-            .read_red_dot(hero_id, red_dot)
+        if !(1..=2).contains(&red_dot_type) {
+            return Err(AppError::InvalidRequest);
+        }
+        let red_dot = UserHeroModel::new(self.player_id, db.clone())
+            .read_red_dot(hero_id, red_dot_type)
             .await?;
 
         Ok(HeroRedDotReadReply {
