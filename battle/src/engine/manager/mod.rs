@@ -14,6 +14,7 @@ pub mod field;
 pub mod fight_progress;
 pub mod fight_task;
 pub mod gauge;
+pub mod hedone_counter;
 pub mod hp;
 pub mod indicator;
 pub mod injury;
@@ -75,6 +76,7 @@ pub struct BattleManagers {
     pub ex_point: ExPointManager,
     pub eureka: EurekaManager,
     pub gauge: gauge::GaugeManager,
+    pub hedone_counter: hedone_counter::HedoneCounterManager,
     pub nuo_di_ka: crate::engine::mechanic::nuo_di_ka::NuoDiKa,
     pub field: field::FieldManager,
     pub fight_progress: fight_progress::FightProgressManager,

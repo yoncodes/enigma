@@ -239,6 +239,7 @@ pub enum BuffActKind {
     FixElectricUpgrade,
     FixedHurt,
     FoundationCounter,
+    HedoneHurtCounter,
     FoundationShield,
     FixTempAttrByBuffLayer,
     MustCritAndFixTempAttr,
@@ -1410,6 +1411,12 @@ buff_act_definitions! {
             DefinitionKey::new(1147, "FoundationCounter"),
             &[],
         ).without_initial_state_marker());
+    (1158, "HedoneHurtCounter") => HedoneHurtCounter, effect_time_subscription: false,
+        events: [EventKind::TargetAttacked, EventKind::RoundEndAfterFinalSettlement],
+        fallible_scoped_runtime: super::hedone_hurt_counter::scoped_rule_ops,
+        supports: super::hedone_hurt_counter::supports,
+        state_consumer: true, initial_state: ZeroInteger,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1158, "HedoneHurtCounter"), &[]));
     (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,
         effect_time_subscription: false,
         supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,

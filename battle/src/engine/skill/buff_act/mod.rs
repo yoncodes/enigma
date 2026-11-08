@@ -101,6 +101,7 @@ pub mod frozen;
 pub mod guard_break_reward;
 pub mod heat_scale_tag;
 pub mod heat_scale_use_skill;
+pub mod hedone_hurt_counter;
 pub mod hurt_to_progress;
 pub mod injury_bank;
 pub mod life_attack_fix_rate;
@@ -629,12 +630,19 @@ pub enum BuffActRuleError {
     ChargeSovereignCard(charge_sovereign_card::ChargeError),
     UnlockSovereignCard(unlock_sovereign_card::UnlockError),
     CreateSovereignCard(create_sovereign_card::CreateSovereignCardError),
+    HedoneCounter(crate::engine::manager::hedone_counter::HedoneCounterError),
     RecordReplaceMagicCircle(record_replace_magic_circle::RecordReplaceMagicCircleError),
 }
 
 impl From<record_replace_magic_circle::RecordReplaceMagicCircleError> for BuffActRuleError {
     fn from(value: record_replace_magic_circle::RecordReplaceMagicCircleError) -> Self {
         Self::RecordReplaceMagicCircle(value)
+    }
+}
+
+impl From<crate::engine::manager::hedone_counter::HedoneCounterError> for BuffActRuleError {
+    fn from(value: crate::engine::manager::hedone_counter::HedoneCounterError) -> Self {
+        Self::HedoneCounter(value)
     }
 }
 
