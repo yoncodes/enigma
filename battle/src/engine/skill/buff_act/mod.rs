@@ -103,6 +103,7 @@ pub mod guard_break_reward;
 pub mod heat_scale_tag;
 pub mod heat_scale_use_skill;
 pub mod hedone_card;
+pub mod hedone_fix_attr;
 pub mod hedone_hurt_counter;
 pub mod hurt_to_progress;
 pub mod injury_bank;

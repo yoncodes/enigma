@@ -240,6 +240,7 @@ pub enum BuffActKind {
     FixElectricUpgrade,
     FixedHurt,
     FoundationCounter,
+    HedoneFixAttr,
     HedoneHurtCounter,
     HedoneCard,
     FoundationShield,
@@ -1432,6 +1433,9 @@ buff_act_definitions! {
         state_consumer: true,
         initial_state: HedoneEnergy,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1159, "HedoneCard"), &[]));
+    (1160, "HedoneFixAttr") => HedoneFixAttr, effect_time_subscription: false,
+        supports: super::hedone_fix_attr::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1160, "HedoneFixAttr"), &[]));
     (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,
         effect_time_subscription: false,
         supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,
