@@ -1060,6 +1060,18 @@ pub fn run_start(
                 priority,
             )?
         };
+        if dealt_cards.is_some() {
+            managers.card.record_opening_deal_additions(
+                stage_result
+                    .outcomes
+                    .iter()
+                    .filter_map(|outcome| match outcome {
+                        RuleOutcome::Card(changes) => changes.added.clone(),
+                        _ => None,
+                    })
+                    .collect(),
+            );
+        }
         if stage == SetupStage::RoundStart && priority == 2 {
             let settlement = opening_settlement
                 .get_or_insert_with(|| begin_round_phase(RoundPhase::RoundStartSettlement));

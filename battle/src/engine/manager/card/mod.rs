@@ -64,6 +64,7 @@ pub struct CardManager {
     played: Vec<PlayedCard>,
     committed_hand: Vec<CardInfo>,
     refilled: Vec<CardInfo>,
+    opening_deal_additions: Vec<CardInfo>,
     rank_up: HashMap<(i64, i32), i32>,
     queued_use_cards: Vec<QueuedUseCard>,
     cast_channels: HashMap<i64, CastChannelState>,
@@ -149,6 +150,7 @@ impl CardManager {
             played: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
+            opening_deal_additions: Vec::new(),
             rank_up: HashMap::new(),
             queued_use_cards: Vec::new(),
             cast_channels: HashMap::new(),
@@ -174,6 +176,7 @@ impl CardManager {
             played: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
+            opening_deal_additions: Vec::new(),
             rank_up: HashMap::new(),
             queued_use_cards: Vec::new(),
             cast_channels: HashMap::new(),
@@ -379,6 +382,7 @@ impl CardManager {
         self.played.clear();
         self.committed_hand.clear();
         self.refilled.clear();
+        self.opening_deal_additions.clear();
         self.queued_use_cards.clear();
         self.cast_channels.clear();
         self.played_history.clear();
@@ -570,6 +574,14 @@ impl CardManager {
 
     pub(crate) fn record_refill(&mut self, card: CardInfo) {
         self.refilled.push(card);
+    }
+
+    pub fn opening_deal_additions(&self) -> &[CardInfo] {
+        &self.opening_deal_additions
+    }
+
+    pub(crate) fn record_opening_deal_additions(&mut self, cards: Vec<CardInfo>) {
+        self.opening_deal_additions.extend(cards);
     }
 
     pub fn rank_up_played(&mut self, card_index: i32, levels: i32, rewritten: bool) -> Option<i32> {

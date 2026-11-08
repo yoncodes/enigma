@@ -273,17 +273,25 @@ impl BattleRuntime {
             .chain(self.managers.card.team_cards())
             .cloned()
             .collect::<Vec<_>>();
-        let deal_cards = self
+        let mut deal_cards = self
             .round
             .as_ref()
-            .map(|round| round.team_a_cards1.as_slice())
-            .unwrap_or(&cards)
-            .iter()
-            .map(|card| CardInfo {
-                energy: Some(0),
-                ..card.clone()
-            })
-            .collect();
+            .map(|round| round.team_a_cards1.clone())
+            .unwrap_or_else(|| cards.clone());
+        deal_cards.extend(
+            self.managers
+                .card
+                .opening_deal_additions()
+                .iter()
+                .cloned()
+                .map(|mut card| {
+                    card.extra_infos.clear();
+                    card
+                }),
+        );
+        for card in &mut deal_cards {
+            card.energy = Some(0);
+        }
         CardInfoPush {
             card_group: cards,
             act_point: Some(self.round_state.act_point),

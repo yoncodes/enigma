@@ -303,6 +303,50 @@ fn version_seven_opening_deals_before_composition_and_hands_after() {
 }
 
 #[test]
+fn opening_card_push_includes_post_deal_additions_without_changing_the_round_snapshot() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3156),
+                level: Some(60),
+                position: Some(1),
+                team_type: Some(1),
+                current_hp: Some(100),
+                passive_skill: vec![31560140],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(fight);
+
+    let round = runtime.start_round().unwrap();
+    let push = runtime.card_info_push();
+
+    assert!(
+        round
+            .team_a_cards1
+            .iter()
+            .all(|card| card.skill_id != Some(31560181))
+    );
+    let dealt = push
+        .deal_card_group
+        .iter()
+        .find(|card| card.skill_id == Some(31560181))
+        .unwrap();
+    assert!(dealt.extra_infos.is_empty());
+    assert!(
+        push.card_group
+            .iter()
+            .any(|card| card.skill_id == Some(31560181))
+    );
+}
+
+#[test]
 fn version_six_opening_keeps_the_legacy_deal_snapshot_after_composition() {
     crate::test_support::init_config();
     let fight = Fight {
