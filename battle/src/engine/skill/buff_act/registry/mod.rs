@@ -1437,7 +1437,10 @@ buff_act_definitions! {
         references: references_for_feature,
         state_consumer: true,
         initial_state: HedoneEnergy,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1159, "HedoneCard"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(
+            DefinitionKey::new(1159, "HedoneCard"),
+            &[EffectType::None as i32],
+        ));
     (1160, "HedoneFixAttr") => HedoneFixAttr, effect_time_subscription: false,
         supports: super::hedone_fix_attr::supports, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1160, "HedoneFixAttr"), &[]));

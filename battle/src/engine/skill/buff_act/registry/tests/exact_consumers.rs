@@ -610,6 +610,26 @@ fn hedone_counter_keeps_its_exact_hit_and_round_routes() {
 }
 
 #[test]
+fn hedone_card_marks_only_its_add() {
+    let definition = find(1159, "HedoneCard").unwrap();
+    let wire = definition.wire.unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::HedoneCard);
+    assert_eq!(
+        wire.markers(super::super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+}
+
+#[test]
 fn fixed_damage_accepts_zero_without_collapsing_identity() {
     let definition = find(511, "FixedHurt").unwrap();
 
