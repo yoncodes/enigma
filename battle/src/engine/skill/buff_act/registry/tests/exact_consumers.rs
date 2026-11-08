@@ -570,6 +570,19 @@ fn hedone_counter_keeps_its_exact_hit_and_round_routes() {
         definition.setup.routes,
         &[(SetupStage::EnterBattleStatic, 0)]
     );
+    let wire = definition.wire.unwrap();
+    assert_eq!(
+        wire.markers(super::super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
     assert!(definition.state.consumer);
     assert!(subscribes_to_event(
         1158,

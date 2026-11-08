@@ -1427,7 +1427,10 @@ buff_act_definitions! {
         setup_handler: |context| super::hedone_hurt_counter::setup_rule_ops(context.managers, &context.subscriber.feature, context.subscriber.stage),
         supports: super::hedone_hurt_counter::supports,
         state_consumer: true,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1158, "HedoneHurtCounter"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(
+            DefinitionKey::new(1158, "HedoneHurtCounter"),
+            &[EffectType::None as i32],
+        ));
     (1159, "HedoneCard") => HedoneCard,
         fallible_scoped_runtime: super::hedone_card::scoped_rule_ops,
         supports: super::hedone_card::supports,
