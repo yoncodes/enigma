@@ -570,6 +570,10 @@ fn hedone_counter_keeps_its_exact_hit_and_round_routes() {
         definition.setup.routes,
         &[(SetupStage::EnterBattleStatic, 0)]
     );
+    assert_eq!(
+        definition.setup_frame(SetupStage::EnterBattleStatic, 0),
+        (SetupFrameScope::SideSubscriberFrame, 0)
+    );
     let wire = definition.wire.unwrap();
     assert_eq!(
         wire.markers(super::super::super::wire::WirePhase::Add),

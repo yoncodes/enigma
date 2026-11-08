@@ -377,6 +377,7 @@ pub enum RuntimeFrameSource {
 pub enum SetupFrameScope {
     #[default]
     SubscriberFrame,
+    SideSubscriberFrame,
     MechanicFrame,
     RootMechanicFrame,
     IndependentStep,
@@ -439,6 +440,7 @@ pub struct BuffActRuntimeDefinition {
 #[derive(Debug, Clone, Copy)]
 pub struct BuffActSetupDefinition {
     pub routes: &'static [(SetupStage, i32)],
+    pub side_subscriber_steps: &'static [(SetupStage, i32)],
     pub mechanic_steps: &'static [(SetupStage, i32)],
     pub root_mechanic_steps: &'static [(SetupStage, i32)],
     pub independent_steps: &'static [(SetupStage, i32, i32)],
@@ -523,6 +525,13 @@ impl BuffActDefinition {
     }
 
     pub fn setup_frame(&self, stage: SetupStage, priority: i32) -> (SetupFrameScope, i32) {
+        if self
+            .setup
+            .side_subscriber_steps
+            .contains(&(stage, priority))
+        {
+            return (SetupFrameScope::SideSubscriberFrame, 0);
+        }
         if self.setup.root_mechanic_steps.contains(&(stage, priority)) {
             return (SetupFrameScope::RootMechanicFrame, 0);
         }
@@ -572,6 +581,7 @@ macro_rules! buff_act_definitions {
             $(, transactions: [$($transaction_events:expr),*])?
             $(, transaction_wire_markers: [$($transaction_wire_marker_events:expr),*])?
             $(, setup: [$($stage:ident($priority:expr)),*])?
+            $(, side_subscriber_setup: [$($side_subscriber_stage:ident($side_subscriber_priority:expr)),*])?
             $(, mechanic_setup: [$($mechanic_stage:ident($mechanic_priority:expr)),*])?
             $(, root_mechanic_setup: [$($root_mechanic_stage:ident($root_mechanic_priority:expr)),*])?
             $(, independent_setup: [$($independent_stage:ident($independent_priority:expr, $setup_order:expr)),*])?
@@ -632,6 +642,7 @@ macro_rules! buff_act_definitions {
                 },
                 setup: BuffActSetupDefinition {
                     routes: buff_act_definitions!(@setup [$($($stage($priority)),*)?]),
+                    side_subscriber_steps: &[$($((SetupStage::$side_subscriber_stage, $side_subscriber_priority)),*)?],
                     mechanic_steps: &[$($((SetupStage::$mechanic_stage, $mechanic_priority)),*)?],
                     root_mechanic_steps: &[$($((SetupStage::$root_mechanic_stage, $root_mechanic_priority)),*)?],
                     independent_steps: &[$($((SetupStage::$independent_stage, $independent_priority, $setup_order)),*)?],
@@ -1423,6 +1434,7 @@ buff_act_definitions! {
     (1158, "HedoneHurtCounter") => HedoneHurtCounter, effect_time_subscription: false,
         events: [EventKind::TargetAttacked, EventKind::RoundEndAfterFinalSettlement],
         setup: [EnterBattleStatic(0)],
+        side_subscriber_setup: [EnterBattleStatic(0)],
         fallible_scoped_runtime: super::hedone_hurt_counter::scoped_rule_ops,
         setup_handler: |context| super::hedone_hurt_counter::setup_rule_ops(context.managers, &context.subscriber.feature, context.subscriber.stage),
         supports: super::hedone_hurt_counter::supports,

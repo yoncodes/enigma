@@ -1,7 +1,12 @@
 use crate::engine::{
     event::subscription::SubscriptionKey,
     manager::hp::HurtDamageFromType,
-    runtime::{determinism::RoundDeterminism, drain, executor::RuleOutcome},
+    runtime::{
+        determinism::RoundDeterminism,
+        drain,
+        executor::RuleOutcome,
+        record::{FrameItem, FrameOwner, SetupSide},
+    },
     skill::{
         effect::SkillEffectCatalog,
         rule::{CommandOrigin, DefinitionKey, RuleDomain},
@@ -127,14 +132,14 @@ fn initializes_the_counter_at_enter_battle_static() {
         .into_iter()
         .find(|feature| feature.act_id() == Some(1158))
         .unwrap();
-    let ops = setup_rule_ops(&managers, &feature, SetupStage::EnterBattleStatic).unwrap();
-    let result = drain::run_command_group(
+    let result = drain::run_setup_stage(
         &mut managers,
         &pool,
         &SkillEffectCatalog::default(),
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        ops,
+        SetupStage::EnterBattleStatic,
+        0,
     )
     .unwrap();
 
@@ -156,6 +161,23 @@ fn initializes_the_counter_at_enter_battle_static() {
         RuleOutcome::BuffActInfoMarker(marker)
             if marker.buff_uid == 1070 && marker.act_id == 1158 && marker.params == [0]
     )));
+    let [side] = result.frames.as_slice() else {
+        panic!("expected one setup-side frame");
+    };
+    assert_eq!(side.owner, FrameOwner::SetupSide(SetupSide::Attacker));
+    let [FrameItem::Child(counter)] = side.items.as_slice() else {
+        panic!("expected the counter directly under its side");
+    };
+    assert!(matches!(
+        counter.owner,
+        FrameOwner::BuffAct {
+            owner_uid: -4,
+            buff_uid: 1070,
+            buff_id: 31560102,
+            key,
+            ..
+        } if key == DefinitionKey::new(1158, "HedoneHurtCounter")
+    ));
     assert!(
         setup_rule_ops(&managers, &feature, SetupStage::EnterBattleStatic)
             .unwrap()
