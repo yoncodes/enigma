@@ -862,7 +862,7 @@ behavior_definitions! {
     [60288] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
     [60310] "LostLife" => crate::engine::damage::handler::Handler, ToughnessOverflowDamage, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
     [60331] "ClearHedoneCounter" => super::hedone::ClearHandler, ClearHedoneCounter, Immediate, destination;
-    [60332] "HedoneHurt" => super::hedone::Handler, HedoneHurt, Immediate, destination;
+    [60332] "HedoneHurt" => super::hedone::Handler, HedoneHurt, AfterDamage, destination;
     [60333] "HedoneAddCard" => super::hedone_card::Handler, HedoneAddCard, Immediate, destination;
     [60334] "HedoneAddDevicePower" => super::hedone_device_power::Handler, HedoneAddDevicePower, Immediate, destination;
     [60212] "LostAllLifeByAttr" => crate::engine::damage::handler::Handler, LostAllLifeByAttr, Immediate, destination, crate::engine::damage::handler::supports_lost_all_life_by_attr;

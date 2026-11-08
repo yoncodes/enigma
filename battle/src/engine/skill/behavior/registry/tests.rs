@@ -36,6 +36,14 @@ fn lookup_requires_the_exact_opcode_type_pair() {
 }
 
 #[test]
+fn hedone_stored_damage_settles_after_the_active_hit() {
+    let definition = find_key(60332, "HedoneHurt").unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::HedoneHurt);
+    assert_eq!(definition.phase, BehaviorPhase::AfterDamage);
+}
+
+#[test]
 fn consume_ex_point_validates_its_semantic_argument_shape() {
     let definition = find_key(60174, "ConsumeExPointAddAttr").unwrap();
     let supports = definition.supports.unwrap();
