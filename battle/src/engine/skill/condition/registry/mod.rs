@@ -655,6 +655,7 @@ macro_rules! condition_definitions {
 condition_definitions! {
     [789208] "Rank" => rank::minimum, predicate(&[]);
     [789105] "Rank" => rank::minimum, setup_route(SetupStage::AfterRoundStart, 0, &[]);
+    [789210] "Rank" => rank::minimum, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [10500] "None" => sovereign_card::created, in_independent_frame(reaction_targets_owner(event_trigger(EventKind::SovereignCardCreated, None)));
     [0] "None" => none::always, predicate(&[]);
     [5] "EnterFight" => lifecycle::enter_fight, reactivates_on(in_event_sibling_frame(setup_route(SetupStage::EnterFight, 0, &[])), &[EventKind::EntityEntered, EventKind::EntityTransformed]);

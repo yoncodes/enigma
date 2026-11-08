@@ -1,7 +1,9 @@
 use crate::engine::{
+    event::kind::EventKind,
     manager::BattleManagers,
     runtime::{determinism::RoundDeterminism, drain},
     skill::{
+        action::SkillPhase,
         action::{SkillInvocation, SkillRequest, SkillTarget},
         condition::registry::{self, ConditionRole},
         effect::SkillEffectCatalog,
@@ -22,6 +24,21 @@ fn hedone_opening_rank_keeps_its_after_round_start_owner() {
         Some(ConditionRole::Setup {
             stage: SetupStage::AfterRoundStart,
             priority: 0,
+        })
+    );
+}
+
+#[test]
+fn hedone_ultimate_rank_keeps_its_after_hit_owner() {
+    assert_eq!(
+        registry::parse(789210, "Rank", &["2".into()]),
+        Some(crate::engine::skill::condition::parse::ParsedConditionKind::RankAtLeast(2))
+    );
+    assert_eq!(
+        registry::find_key(789210, "Rank").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterHit),
         })
     );
 }
