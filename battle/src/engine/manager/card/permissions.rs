@@ -1,16 +1,27 @@
 use sonettobuf::CardInfo;
 
-use super::{CardCommandError, CardManager, CardPlayChoice, sovereign};
+use super::{
+    CardChange, CardCommandError, CardManager, CardPlayChoice, command::CardUnlockHedone, sovereign,
+};
 
 pub(super) const NOT_COMPOSE: i32 = 1;
 pub(super) const NOT_MOVE: i32 = 4;
 pub(super) const NOT_USE: i32 = 5;
+pub(super) const NOT_USE_ACTION_POINT: i32 = 8;
 
 pub(super) fn permits(card: &CardInfo, restriction: i32) -> bool {
     !card
         .extra_infos
         .iter()
         .any(|info| info.key == Some(restriction))
+}
+
+const HEDONE_CARD_TAG: &str = "HedoneCard";
+
+fn tagged(card: &CardInfo, key: i32, tag: &str) -> bool {
+    card.extra_infos
+        .iter()
+        .any(|info| info.key == Some(key) && info.values.iter().any(|value| value == tag))
 }
 
 impl CardManager {
@@ -34,5 +45,39 @@ impl CardManager {
             return Err(CardCommandError::PlayForbidden);
         }
         Ok(())
+    }
+
+    pub(super) fn unlock_hedone(
+        &mut self,
+        command: CardUnlockHedone,
+    ) -> Result<CardChange, CardCommandError> {
+        if command.owner_uid == 0 || command.skill_id <= 0 || command.team_type != 1 {
+            return Err(CardCommandError::InvalidCommand);
+        }
+        let mut matches = self.hand().iter().enumerate().filter(|(_, card)| {
+            card.uid == Some(command.owner_uid)
+                && card.skill_id == Some(command.skill_id)
+                && tagged(card, NOT_USE_ACTION_POINT, HEDONE_CARD_TAG)
+        });
+        let Some((index, card)) = matches.next() else {
+            return Err(CardCommandError::InvalidCommand);
+        };
+        if matches.next().is_some() || !tagged(card, NOT_USE, HEDONE_CARD_TAG) {
+            return Err(CardCommandError::InvalidCommand);
+        }
+        let mut card = card.clone();
+        card.extra_infos.retain_mut(|info| {
+            if info.key != Some(NOT_USE) {
+                return true;
+            }
+            info.values.retain(|value| value != HEDONE_CARD_TAG);
+            !info.values.is_empty()
+        });
+        self.deck.hand_mut()[index] = card.clone();
+        Ok(CardChange::HedoneUnlocked {
+            card,
+            index,
+            team_type: command.team_type,
+        })
     }
 }

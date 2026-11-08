@@ -5,6 +5,7 @@ pub mod extra_round;
 pub mod field_transfer;
 pub mod focus_all_entity_buff;
 pub mod heat_scale;
+pub mod hedone_energy;
 pub mod impromptu;
 pub mod lingering_glow;
 pub mod magic_circle;

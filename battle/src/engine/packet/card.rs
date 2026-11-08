@@ -36,13 +36,18 @@ impl CardPacket {
     pub fn from_change(change: CardChange) -> ActEffect {
         match change {
             CardChange::SovereignUnlocked { card, team_type } => {
-                sovereign::data(0, card, team_type)
+                Self::update_data(0, card, team_type)
             }
             CardChange::SovereignCharged {
                 card,
                 index,
                 team_type,
-            } => sovereign::data(index, card, team_type),
+            }
+            | CardChange::HedoneUnlocked {
+                card,
+                index,
+                team_type,
+            } => Self::update_data(index, card, team_type),
             CardChange::InsertHand {
                 target_uid,
                 card,
@@ -87,6 +92,21 @@ impl CardPacket {
                 config_effect,
             } => Self::mark_temporary(indices, team_type, config_effect),
             CardChange::CardsCompose { cards, .. } => Self::cards_compose(cards),
+        }
+    }
+
+    pub(crate) fn update_data(index: usize, card: CardInfo, team_type: i32) -> ActEffect {
+        ActEffect {
+            target_id: Some(0),
+            effect_type: Some(EffectType::Updatecarddata as i32),
+            effect_num: Some(i32::try_from(index + 1).expect("committed card position")),
+            effect_num1: Some(0),
+            config_effect: Some(0),
+            buff_act_id: Some(0),
+            reserve_id: Some(0),
+            team_type: Some(team_type),
+            card_info: Some(wire_card(card)),
+            ..Default::default()
         }
     }
 

@@ -19,6 +19,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "equip_skill",
     "skill_passive_level",
     "skill",
+    "skill_energy",
     "skill_ex_level",
     "destiny_facets_ex_level",
     "talent_scheme",

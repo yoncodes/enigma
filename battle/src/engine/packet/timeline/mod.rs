@@ -935,6 +935,13 @@ fn project_change(
                 .ok_or(ProjectionError::Card(changes.kind))?;
             vec![CardPacket::from_change(change)]
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::HedoneUnlocked => {
+            let change = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(change)]
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignCharged => {
             let change = changes
                 .operation
@@ -1100,6 +1107,9 @@ fn project_change(
                             .ok_or(ProjectionError::Card(changes.kind))?,
                         &changes.consumed_indices,
                     )
+                }
+                Some(crate::engine::manager::card::CardConsumptionKind::Hedone) => {
+                    vec![EffectPacket::hedone_card_remove(&changes.consumed_indices)]
                 }
                 _ => vec![EffectPacket::card_remove(&changes.consumed_indices)],
             }

@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 pub mod ai;
 pub mod change;
 mod command;
+mod conduit_energy;
 pub mod deck;
 pub mod draw;
 pub mod enchant;
@@ -29,8 +30,8 @@ pub use command::{
     CardPersistTemporary, CardPlay, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
     CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
     CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability,
-    CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp,
-    QueuedUseCard, SovereignBoostChange, TemporaryCardKind,
+    CardSetup, CardUnlockHedone, CardUseUniversal, HandCardRankUp, QueuedCardRankChange,
+    QueuedCardRankUp, QueuedUseCard, SovereignBoostChange, TemporaryCardKind,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;

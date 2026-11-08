@@ -382,6 +382,15 @@ pub enum CardConsumptionKind {
     #[default]
     Generic,
     PaperCircle,
+    Hedone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardUnlockHedone {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+    pub skill_id: i32,
+    pub team_type: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -409,6 +418,7 @@ pub enum CardCommand {
         owner_uid: i64,
         team_type: i32,
     },
+    UnlockHedone(CardUnlockHedone),
     ChargeSovereign {
         origin: CommandOrigin,
         owner_uid: i64,
@@ -507,6 +517,7 @@ impl CardCommand {
 pub enum CardChangeKind {
     SovereignCharged,
     SovereignUnlocked,
+    HedoneUnlocked,
     InitialSovereignBoost,
     SovereignInserted,
     Setup,
@@ -704,7 +715,13 @@ pub(super) fn execute(
             )
         }
         CardCommand::ConsumeForEffect(consume) => {
-            if !manager.consume_for_effect(consume.owner_uid, &consume.indices) {
+            let consumed = match consume.kind {
+                CardConsumptionKind::Hedone => manager.consume_conduit_energy(&consume.indices),
+                CardConsumptionKind::Generic | CardConsumptionKind::PaperCircle => {
+                    manager.consume_for_effect(consume.owner_uid, &consume.indices)
+                }
+            };
+            if !consumed {
                 return Err(CardCommandError::InvalidCommand);
             }
             consumed_indices = consume.indices;
@@ -786,6 +803,17 @@ pub(super) fn execute(
             (
                 Some(origin),
                 CardChangeKind::SovereignUnlocked,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::UnlockHedone(unlock) => {
+            operation = Some(manager.unlock_hedone(unlock)?);
+            (
+                Some(unlock.origin),
+                CardChangeKind::HedoneUnlocked,
                 None,
                 None,
                 Vec::new(),

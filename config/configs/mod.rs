@@ -370,6 +370,7 @@ pub mod skill_behavior_condition;
 pub mod skill_buff;
 pub mod skill_bufftype;
 pub mod skill_effect;
+pub mod skill_energy;
 pub mod skill_ex_level;
 pub mod skill_next;
 pub mod skill_passive_level;
@@ -834,6 +835,7 @@ pub struct GameDB {
     pub skill_buff: skill_buff::SkillBuffTable,
     pub skill_bufftype: skill_bufftype::SkillBufftypeTable,
     pub skill_effect: skill_effect::SkillEffectTable,
+    pub skill_energy: skill_energy::SkillEnergyTable,
     pub skill_ex_level: skill_ex_level::SkillExLevelTable,
     pub skill_next: skill_next::SkillNextTable,
     pub skill_passive_level: skill_passive_level::SkillPassiveLevelTable,
@@ -2039,6 +2041,9 @@ impl GameDB {
         let skill_effect = skill_effect::SkillEffectTable::load(
             &format!("{}/skill_effect.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill_effect.json: {}", e))?;
+        let skill_energy = skill_energy::SkillEnergyTable::load(
+            &format!("{}/skill_energy.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load skill_energy.json: {}", e))?;
         let skill_ex_level = skill_ex_level::SkillExLevelTable::load(
             &format!("{}/skill_ex_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill_ex_level.json: {}", e))?;
@@ -2682,6 +2687,7 @@ impl GameDB {
             skill_buff,
             skill_bufftype,
             skill_effect,
+            skill_energy,
             skill_ex_level,
             skill_next,
             skill_passive_level,

@@ -240,6 +240,7 @@ pub enum BuffActKind {
     FixedHurt,
     FoundationCounter,
     HedoneHurtCounter,
+    HedoneCard,
     FoundationShield,
     FixTempAttrByBuffLayer,
     MustCritAndFixTempAttr,
@@ -1417,6 +1418,12 @@ buff_act_definitions! {
         supports: super::hedone_hurt_counter::supports,
         state_consumer: true, initial_state: ZeroInteger,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1158, "HedoneHurtCounter"), &[]));
+    (1159, "HedoneCard") => HedoneCard,
+        fallible_scoped_runtime: super::hedone_card::scoped_rule_ops,
+        supports: super::hedone_card::supports,
+        references: references_for_feature,
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1159, "HedoneCard"), &[]));
     (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,
         effect_time_subscription: false,
         supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,
@@ -1677,6 +1684,12 @@ fn references_for_feature(
     match feature.kind {
         Some(BuffActKind::GuardBreakReward) => {
             add_buff(&mut references, feature.args.first().copied());
+        }
+        Some(BuffActKind::HedoneCard) => {
+            add_skill(&mut references, feature.args.first().copied());
+            if feature.args.get(3) == Some(&1) {
+                add_buff(&mut references, feature.args.get(2).copied());
+            }
         }
         Some(BuffActKind::SovereignCardUnlock) => {
             add_skill(&mut references, feature.args.first().copied());
