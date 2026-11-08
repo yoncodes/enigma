@@ -162,15 +162,16 @@ fn master_halo_requires_active_state_not_an_owned_passive_definition() {
         }),
         ..Default::default()
     };
-    let matches = |fight: &Fight, kind| {
+    let condition = ParsedCondition {
+        opcode: 701201,
+        type_name: "HasMasterHalo".into(),
+        kind: ParsedConditionKind::MasterHalo,
+        raw_args: Vec::new(),
+    };
+    let matches = |fight: &Fight| {
         let managers = BattleManagers::seeded(fight);
         conditions_match(
-            &[ParsedCondition {
-                opcode: 701201,
-                type_name: "HasMasterHalo".into(),
-                kind,
-                raw_args: Vec::new(),
-            }],
+            std::slice::from_ref(&condition),
             10,
             &[10],
             Some(&managers),
@@ -179,19 +180,11 @@ fn master_halo_requires_active_state_not_an_owned_passive_definition() {
         )
     };
 
-    for kind in [
-        ParsedConditionKind::MasterHalo,
-        ParsedConditionKind::HedoneMasterHalo,
-    ] {
-        assert!(!matches(&fight_with(Vec::new()), kind.clone()));
-        assert!(matches(
-            &fight_with(vec![BuffInfo {
-                buff_id: Some(30860161),
-                ..Default::default()
-            }]),
-            kind
-        ));
-    }
+    assert!(!matches(&fight_with(Vec::new())));
+    assert!(matches(&fight_with(vec![BuffInfo {
+        buff_id: Some(30860161),
+        ..Default::default()
+    }])));
 }
 
 #[test]

@@ -991,7 +991,7 @@ fn force_field_condition_keeps_its_exact_psychube_route() {
     );
     assert_eq!(
         parse(701212, "HasMasterHalo", &[]),
-        Some(ParsedConditionKind::HedoneMasterHalo)
+        Some(ParsedConditionKind::MasterHalo)
     );
     assert_eq!(parse(701212, "HasMasterHalo", &["1".into()]), None);
     let definition = find_key(701212, "HasMasterHalo").unwrap();
