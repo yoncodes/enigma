@@ -660,6 +660,141 @@ fn capture_timeline_supplies_missing_battle_roster() {
 }
 
 #[test]
+fn capture_timeline_supplies_selected_assist_build_metadata() {
+    crate::init_test_config();
+    let directory = test_directory("capture-assist");
+    let common = directory.join("decoded/common");
+    let battle = directory.join("decoded/Dungeon/Battle1");
+    fs::create_dir_all(&common).unwrap();
+    fs::create_dir_all(&battle).unwrap();
+    fs::write(
+        common.join("capture_000001_HeroInfoListReply.json"),
+        serde_json::to_vec(&HeroInfoListReply {
+            heros: vec![hero(42)],
+            ..Default::default()
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let selected_uid = 99;
+    let unselected_uid = 100;
+    let assist = |uid, user_id, style, cube_id| sonettobuf::AssistHeroInfo {
+        hero_uid: Some(uid),
+        user_id: Some(user_id),
+        hero_id: Some(3146),
+        level: Some(180),
+        rank: Some(4),
+        talent: Some(15),
+        talent_cube_infos: vec![TalentCubeInfo {
+            cube_id: Some(cube_id),
+            ..Default::default()
+        }],
+        style: Some(style),
+        ..Default::default()
+    };
+    let write_assist_roster = |name, assist_hero_infos| {
+        fs::write(
+            common.join(name),
+            serde_json::to_vec(&sonettobuf::RefreshAssistReply {
+                assist_hero_careers: vec![sonettobuf::AssistHeroCareerNo {
+                    assist_hero_infos,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    };
+    write_assist_roster(
+        "capture_000002_RefreshAssistReply.json",
+        vec![
+            assist(selected_uid, 8, 1, 61),
+            assist(selected_uid, 7, 2, 64),
+            assist(unselected_uid, 8, 1, 61),
+        ],
+    );
+    fs::write(
+        common.join("capture_000004_StartDungeonReply.json"),
+        b"captured battle",
+    )
+    .unwrap();
+    let battle_path = battle.join("StartDungeonReply.json");
+    fs::write(&battle_path, b"captured battle").unwrap();
+    let request_path = battle.join("StartDungeonRequest.json");
+    let write_assist_request = |hero_uid, user_id| {
+        fs::write(
+            &request_path,
+            serde_json::to_vec(&sonettobuf::StartDungeonRequest {
+                fight_group: Some(sonettobuf::FightGroup {
+                    assist_hero_uid: Some(hero_uid),
+                    assist_user_id: Some(user_id),
+                    ..Default::default()
+                }),
+                is_balance: Some(false),
+                ..Default::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    };
+    write_assist_request(selected_uid, 7);
+    let mut fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(selected_uid),
+                model_id: Some(3146),
+                level: Some(180),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    assert_eq!(preview_attributes(&fight, &battle_path).unwrap().0.len(), 1);
+    fight.attacker.as_mut().unwrap().entitys[0].uid = Some(unselected_uid);
+    assert!(
+        preview_attributes(&fight, &battle_path)
+            .unwrap_err()
+            .to_string()
+            .contains("missing build metadata")
+    );
+    fight.attacker.as_mut().unwrap().entitys[0].uid = Some(selected_uid);
+    write_assist_request(selected_uid, 9);
+    assert!(
+        preview_attributes(&fight, &battle_path)
+            .unwrap_err()
+            .to_string()
+            .contains("user mismatch")
+    );
+    write_assist_request(selected_uid, 7);
+    write_assist_roster(
+        "capture_000003_RefreshAssistReply.json",
+        vec![assist(unselected_uid, 8, 1, 61)],
+    );
+    assert!(
+        preview_attributes(&fight, &battle_path)
+            .unwrap_err()
+            .to_string()
+            .contains("missing from the captured assist roster")
+    );
+    write_assist_request(42, 7);
+    fight.attacker.as_mut().unwrap().entitys[0].uid = Some(42);
+    write_assist_roster(
+        "capture_000003_RefreshAssistReply.json",
+        vec![assist(42, 7, 2, 64)],
+    );
+    assert!(
+        preview_attributes(&fight, &battle_path)
+            .unwrap_err()
+            .to_string()
+            .contains("conflicts with owned roster")
+    );
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn capture_timeline_supplies_missing_fight_equipment_records() {
     crate::init_test_config();
     let directory = test_directory("capture-equipment");

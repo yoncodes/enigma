@@ -9,13 +9,20 @@ use battle::tooling::{
     entity::{BattleBalance, EntityBuilder, EquipmentBuildInput, HeroBuildInput, Stats},
 };
 use sonettobuf::{
-    Equip, EquipDeletePush, EquipUpdatePush, Fight, FightEntityInfo, GetEquipInfoReply,
-    HeroExAttribute, HeroInfo, HeroInfoListReply, HeroSpAttribute, HeroUpdatePush,
+    AssistHeroInfo, Equip, EquipDeletePush, EquipUpdatePush, Fight, FightEntityInfo,
+    GetEquipInfoReply, HeroExAttribute, HeroInfo, HeroInfoListReply, HeroSpAttribute,
+    HeroUpdatePush, RefreshAssistReply,
 };
 
 use crate::normalize_live_json;
 
 type PreviewAttributes = (Vec<(i64, HeroExAttribute)>, Vec<(i64, HeroSpAttribute)>);
+
+#[derive(Default)]
+struct BuildMetadata {
+    heroes: HashMap<i64, HeroInfo>,
+    talent_styles: HashMap<i64, i32>,
+}
 
 pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<PreviewAttributes> {
     preview_attributes_with_request(
@@ -31,11 +38,11 @@ pub fn preview_attributes_with_request(
     battle_path: &Path,
     request_path: Option<&Path>,
 ) -> anyhow::Result<PreviewAttributes> {
-    let metadata = battle_build_metadata(battle_path)?;
     let request = request_path
         .map(request_metadata)
         .transpose()?
         .unwrap_or_default();
+    let metadata = resolve_build_metadata(battle_path, request.selected_assist)?.0;
     let battle_balance = request_battle_balance(fight, request.is_balance)?;
     let needs_captured_equipment = fight.attacker.iter().any(|team| {
         team.entitys
@@ -76,10 +83,14 @@ pub fn preview_attributes_with_request(
             continue;
         }
 
-        let hero = metadata.get(&uid).ok_or_else(|| {
+        let hero = metadata.heroes.get(&uid).ok_or_else(|| {
             anyhow::anyhow!("attribute preview missing build metadata uid={uid} hero={model_id}")
         })?;
-        let build = preview_build_input(entity, hero)?;
+        let build = preview_build_input_with_style(
+            entity,
+            hero,
+            metadata.talent_styles.get(&uid).copied(),
+        )?;
         let equips = validated_equipment_loadout(
             entity,
             hero,
@@ -113,9 +124,9 @@ pub fn preview_attributes_with_request(
 /// Rebuilds each captured attacker from its build inputs and lists where the
 /// engine's loadout differs from the captured one.
 pub fn loadout_diffs(fight: &Fight, battle_path: &Path) -> anyhow::Result<Vec<String>> {
-    let metadata = battle_build_metadata(battle_path)?;
-    let battle_balance =
-        request_battle_balance(fight, battle_request_metadata(battle_path)?.is_balance)?;
+    let request = battle_request_metadata(battle_path)?;
+    let metadata = resolve_build_metadata(battle_path, request.selected_assist)?.0;
+    let battle_balance = request_battle_balance(fight, request.is_balance)?;
     let mut diffs = Vec::new();
     let teams = fight.attacker.iter().flat_map(|team| {
         team.entitys
@@ -130,10 +141,14 @@ pub fn loadout_diffs(fight: &Fight, battle_path: &Path) -> anyhow::Result<Vec<St
         let built = if let Some((trial, _)) = configured_trial(entity)? {
             trial
         } else {
-            let hero = metadata.get(&uid).ok_or_else(|| {
+            let hero = metadata.heroes.get(&uid).ok_or_else(|| {
                 anyhow::anyhow!("loadout preview missing build metadata uid={uid}")
             })?;
-            let build = preview_build_input(entity, hero)?;
+            let build = preview_build_input_with_style(
+                entity,
+                hero,
+                metadata.talent_styles.get(&uid).copied(),
+            )?;
             let mut builder = EntityBuilder::new(
                 build.clone(),
                 entity.position.unwrap_or_default(),
@@ -184,6 +199,13 @@ pub fn loadout_diffs(fight: &Fight, battle_path: &Path) -> anyhow::Result<Vec<St
 struct BattleRequestMetadata {
     is_balance: bool,
     selected_equips: HashMap<i64, i64>,
+    selected_assist: Option<SelectedAssist>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SelectedAssist {
+    hero_uid: i64,
+    user_id: i64,
 }
 
 fn folder_request_path(battle_path: &Path) -> Option<PathBuf> {
@@ -224,15 +246,17 @@ fn request_metadata(request_path: &Path) -> anyhow::Result<BattleRequestMetadata
         })
         .transpose()?
         .unwrap_or_default();
-    let selections = match request
+    let fight_group = request
         .get("fightGroup")
         .or_else(|| request.get("fight_group"))
-    {
-        Some(group) => match group
-            .as_object()
-            .ok_or_else(|| anyhow::anyhow!("invalid fight group"))?
-            .get("equips")
-        {
+        .map(|group| {
+            group
+                .as_object()
+                .ok_or_else(|| anyhow::anyhow!("invalid fight group"))
+        })
+        .transpose()?;
+    let selections = match fight_group {
+        Some(group) => match group.get("equips") {
             Some(equips) => equips
                 .as_array()
                 .ok_or_else(|| anyhow::anyhow!("invalid equipment selections"))?
@@ -286,9 +310,39 @@ fn request_metadata(request_path: &Path) -> anyhow::Result<BattleRequestMetadata
         }
         selected_equips.insert(hero_uid, equip_uid);
     }
+    let assist_hero_uid = fight_group
+        .and_then(|group| {
+            group
+                .get("assistHeroUid")
+                .or_else(|| group.get("assist_hero_uid"))
+        })
+        .filter(|value| !value.is_null())
+        .map(json_i64)
+        .transpose()?
+        .unwrap_or_default();
+    let assist_user_id = fight_group
+        .and_then(|group| {
+            group
+                .get("assistUserId")
+                .or_else(|| group.get("assist_user_id"))
+        })
+        .filter(|value| !value.is_null())
+        .map(json_i64)
+        .transpose()?
+        .unwrap_or_default();
+    let selected_assist = match (assist_hero_uid, assist_user_id) {
+        (0, 0) => None,
+        (hero_uid, user_id) if hero_uid > 0 && user_id > 0 => {
+            Some(SelectedAssist { hero_uid, user_id })
+        }
+        _ => anyhow::bail!(
+            "invalid assist selection hero_uid={assist_hero_uid} user_id={assist_user_id}"
+        ),
+    };
     Ok(BattleRequestMetadata {
         is_balance,
         selected_equips,
+        selected_assist,
     })
 }
 
@@ -473,15 +527,19 @@ fn validated_captured_equipment(equip: &Equip) -> Result<EquipmentBuildInput, ()
 /// next to the battle; or, lowest confidence, the whole session's rosters and
 /// updates (which may include changes made after the battle).
 pub fn build_metadata_source(battle_path: &Path) -> anyhow::Result<&'static str> {
-    Ok(resolve_build_metadata(battle_path)?.1)
+    Ok(resolve_build_metadata(battle_path, None)?.1)
 }
 
+#[cfg(test)]
 fn battle_build_metadata(path: &Path) -> anyhow::Result<HashMap<i64, HeroInfo>> {
-    Ok(resolve_build_metadata(path)?.0)
+    Ok(resolve_build_metadata(path, None)?.0.heroes)
 }
 
-fn resolve_build_metadata(path: &Path) -> anyhow::Result<(HashMap<i64, HeroInfo>, &'static str)> {
-    if let Some(captured) = capture_build_metadata(path)? {
+fn resolve_build_metadata(
+    path: &Path,
+    selected_assist: Option<SelectedAssist>,
+) -> anyhow::Result<(BuildMetadata, &'static str)> {
+    if let Some(captured) = capture_build_metadata(path, selected_assist)? {
         return Ok((captured, "timeline"));
     }
     let mut roster_files = Vec::new();
@@ -511,28 +569,41 @@ fn resolve_build_metadata(path: &Path) -> anyhow::Result<(HashMap<i64, HeroInfo>
         for file in update_files {
             apply_hero_update(&file, &mut heroes)?;
         }
-        return Ok((heroes, "local"));
+        return Ok((
+            BuildMetadata {
+                heroes,
+                ..Default::default()
+            },
+            "local",
+        ));
     }
     if let Some(files) = session_files(path)?
-        && let Some(heroes) = replay_rosters(files)?
+        && let Some(metadata) = replay_build_metadata(files, selected_assist)?
     {
-        return Ok((heroes, "session"));
+        return Ok((metadata, "session"));
     }
-    Ok((HashMap::new(), "none"))
+    Ok((BuildMetadata::default(), "none"))
 }
 
-fn capture_build_metadata(path: &Path) -> anyhow::Result<Option<HashMap<i64, HeroInfo>>> {
+fn capture_build_metadata(
+    path: &Path,
+    selected_assist: Option<SelectedAssist>,
+) -> anyhow::Result<Option<BuildMetadata>> {
     let Some(files) = capture_timeline_through(path)? else {
         return Ok(None);
     };
-    replay_rosters(files)?
+    replay_build_metadata(files, selected_assist)?
         .map(Some)
         .ok_or_else(|| anyhow::anyhow!("capture timeline has no hero roster before battle"))
 }
 
-/// Replays rosters and hero updates in timeline order; `None` without a roster.
-fn replay_rosters(files: Vec<PathBuf>) -> anyhow::Result<Option<HashMap<i64, HeroInfo>>> {
+/// Replays owned and assist build metadata in timeline order; `None` without a roster.
+fn replay_build_metadata(
+    files: Vec<PathBuf>,
+    selected_assist: Option<SelectedAssist>,
+) -> anyhow::Result<Option<BuildMetadata>> {
     let mut heroes = HashMap::new();
+    let mut assists = BuildMetadata::default();
     let mut saw_roster = false;
     for file in files {
         let Some(name) = file.file_name().and_then(|name| name.to_str()) else {
@@ -544,9 +615,50 @@ fn replay_rosters(files: Vec<PathBuf>) -> anyhow::Result<Option<HashMap<i64, Her
             apply_hero_roster(&file, &mut heroes)?;
         } else if name.ends_with("_HeroUpdatePush.json") {
             apply_hero_update(&file, &mut heroes)?;
+        } else if name.ends_with("_RefreshAssistReply.json") {
+            assists = assist_build_metadata(&file, selected_assist)?;
         }
     }
-    Ok(saw_roster.then_some(heroes))
+    if !saw_roster {
+        return Ok(None);
+    }
+    if let Some(selected) = selected_assist {
+        let hero = assists.heroes.remove(&selected.hero_uid).ok_or_else(|| {
+            anyhow::anyhow!(
+                "selected assist {} is missing from the captured assist roster",
+                selected.hero_uid
+            )
+        })?;
+        if hero.user_id != selected.user_id {
+            anyhow::bail!(
+                "selected assist {} user mismatch: request={} metadata={}",
+                selected.hero_uid,
+                selected.user_id,
+                hero.user_id,
+            );
+        }
+        if heroes.contains_key(&selected.hero_uid) {
+            anyhow::bail!(
+                "selected assist {} conflicts with owned roster",
+                selected.hero_uid
+            );
+        }
+        let style = assists
+            .talent_styles
+            .remove(&selected.hero_uid)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "selected assist {} is missing talent style",
+                    selected.hero_uid
+                )
+            })?;
+        heroes.insert(selected.hero_uid, hero);
+        assists.talent_styles.insert(selected.hero_uid, style);
+    }
+    Ok(Some(BuildMetadata {
+        heroes,
+        talent_styles: assists.talent_styles,
+    }))
 }
 
 fn captured_equipment_metadata(path: &Path) -> anyhow::Result<HashMap<i64, Equip>> {
@@ -774,9 +886,101 @@ fn apply_hero_update(path: &Path, heroes: &mut HashMap<i64, HeroInfo>) -> anyhow
     Ok(())
 }
 
+fn assist_build_metadata(
+    path: &Path,
+    selected_assist: Option<SelectedAssist>,
+) -> anyhow::Result<BuildMetadata> {
+    let Some(selected) = selected_assist else {
+        return Ok(BuildMetadata::default());
+    };
+    let reply: RefreshAssistReply = serde_json::from_value(read_capture_value(path)?)?;
+    let mut metadata = BuildMetadata::default();
+    let mut uid_match = false;
+    let mut selected_hero = None;
+    for assist in reply
+        .assist_hero_careers
+        .into_iter()
+        .flat_map(|career| career.assist_hero_infos)
+    {
+        if assist.hero_uid != Some(selected.hero_uid) {
+            continue;
+        }
+        uid_match = true;
+        if assist.user_id == Some(selected.user_id) && selected_hero.replace(assist).is_some() {
+            anyhow::bail!(
+                "selected assist {} has duplicate metadata for user {}",
+                selected.hero_uid,
+                selected.user_id,
+            );
+        }
+    }
+    let Some(assist) = selected_hero else {
+        if uid_match {
+            anyhow::bail!(
+                "selected assist {} user mismatch: request={}",
+                selected.hero_uid,
+                selected.user_id,
+            );
+        }
+        return Ok(metadata);
+    };
+    let (hero, style) = assist_hero_build(assist)?;
+    metadata.talent_styles.insert(hero.uid, style);
+    metadata.heroes.insert(hero.uid, hero);
+    Ok(metadata)
+}
+
+fn assist_hero_build(assist: AssistHeroInfo) -> anyhow::Result<(HeroInfo, i32)> {
+    let uid = assist
+        .hero_uid
+        .filter(|uid| *uid > 0)
+        .ok_or_else(|| anyhow::anyhow!("assist hero is missing a valid uid"))?;
+    let user_id = assist
+        .user_id
+        .filter(|user_id| *user_id > 0)
+        .ok_or_else(|| anyhow::anyhow!("assist hero {uid} is missing a valid user id"))?;
+    let hero_id = assist
+        .hero_id
+        .filter(|hero_id| *hero_id > 0)
+        .ok_or_else(|| anyhow::anyhow!("assist hero {uid} is missing a valid hero id"))?;
+    let style = assist
+        .style
+        .filter(|style| *style >= 0)
+        .ok_or_else(|| anyhow::anyhow!("assist hero {uid} is missing a valid talent style"))?;
+    Ok((
+        HeroInfo {
+            uid,
+            user_id,
+            hero_id,
+            level: assist.level,
+            rank: assist.rank,
+            skin: assist.skin,
+            passive_skill_level: assist.passive_skill_level,
+            ex_skill_level: assist.ex_skill_level,
+            talent: assist.talent,
+            talent_cube_infos: assist.talent_cube_infos,
+            destiny_rank: assist.destiny_rank,
+            destiny_level: assist.destiny_level,
+            destiny_stone: assist.destiny_stone,
+            extra_str: assist.extra_str,
+            ..Default::default()
+        },
+        style,
+    ))
+}
+
+#[cfg(test)]
 fn preview_build_input(
     entity: &FightEntityInfo,
     hero: &HeroInfo,
+) -> anyhow::Result<HeroBuildInput> {
+    preview_build_input_with_style(entity, hero, None)
+}
+
+fn preview_build_input_with_style(
+    entity: &FightEntityInfo,
+    hero: &HeroInfo,
+    talent_style: Option<i32>,
 ) -> anyhow::Result<HeroBuildInput> {
     let model_id = entity
         .model_id
@@ -839,8 +1043,8 @@ fn preview_build_input(
         rank,
         ex_skill_level: entity.ex_skill_level.unwrap_or_default(),
         talent,
-        talent_style: template
-            .and_then(|template| template.style)
+        talent_style: talent_style
+            .or_else(|| template.and_then(|template| template.style))
             .unwrap_or_default(),
         talent_placements,
         destiny_rank: entity
