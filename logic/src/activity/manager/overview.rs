@@ -1,6 +1,32 @@
 use super::*;
 
 impl ActivityManager {
+    pub async fn act220_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<GetAct220InfoReply, AppError> {
+        act220_info(db, self.player_id, activity_id).await
+    }
+
+    pub async fn finish_act220_episode(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        episode_id: Option<i32>,
+        progress: Option<String>,
+    ) -> Result<act220::Act220Finish, AppError> {
+        finish_act220_episode(db, self.player_id, activity_id, episode_id, progress).await
+    }
+
+    pub async fn act107_goods_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<Get107GoodsInfoReply, AppError> {
+        act107_goods_info(db, self.player_id, activity_id).await
+    }
+
     pub async fn infos(&mut self, db: &SqlitePool) -> Result<GetActivityInfosReply, AppError> {
         let mut infos = catalog_infos();
         apply_bp_activity(&mut infos);
@@ -133,6 +159,14 @@ impl ActivityManager {
         act239_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn party_outside_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<GetPartyOutSideInfoReply, AppError> {
+        party_outside_info(db, self.player_id, activity_id).await
+    }
+
     pub async fn act239_bonus(
         &self,
         db: &SqlitePool,
@@ -165,6 +199,45 @@ impl ActivityManager {
         activity_id: Option<i32>,
     ) -> Result<Get128InfosReply, AppError> {
         act128_info(db, self.player_id, activity_id).await
+    }
+
+    pub async fn change_act128_mode(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        open: bool,
+    ) -> Result<sonettobuf::Act128ChangeActModeReply, AppError> {
+        change_act_mode(db, self.player_id, activity_id, open).await
+    }
+
+    pub async fn set_act128_team(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        boss_id: i32,
+        front: Vec<sonettobuf::Act128ActModeHeroSlot>,
+        back: Vec<sonettobuf::Act128ActModeHeroSlot>,
+        add_bond_group_id: i32,
+    ) -> Result<sonettobuf::SetAct128TeamReply, AppError> {
+        set_act128_team(
+            db,
+            self.player_id,
+            activity_id,
+            boss_id,
+            front,
+            back,
+            add_bond_group_id,
+        )
+        .await
+    }
+
+    pub async fn reset_act128_team(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        boss_id: i32,
+    ) -> Result<sonettobuf::ResetAct128TeamReply, AppError> {
+        reset_act128_team(db, self.player_id, activity_id, boss_id).await
     }
 
     pub async fn act116_info(
@@ -272,5 +345,90 @@ impl ActivityManager {
         stage_id: i32,
     ) -> Result<Act229ResetStageReply, AppError> {
         reset_act229_stage(db, self.player_id, activity_id, stage_id).await
+    }
+
+    pub async fn modify_act229_skill(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        stage_id: i32,
+        skill_ids: Vec<i32>,
+    ) -> Result<Act229ModifySkillReply, AppError> {
+        modify_act229_skill(db, self.player_id, activity_id, stage_id, skill_ids).await
+    }
+
+    pub async fn modify_act229_stage_sub_ids(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        stage_sub_ids: Vec<Act229StageTeamSubIdNo>,
+    ) -> Result<Act229ModifyStageSubIdReply, AppError> {
+        modify_act229_stage_sub_ids(db, self.player_id, activity_id, stage_sub_ids).await
+    }
+
+    pub async fn touch_act229_stage_teams(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        snapshot_id: i32,
+        sub_ids: &[i32],
+    ) -> Result<Option<Act229StageTeamSubIdPush>, AppError> {
+        touch_act229_stage_teams(tx, self.player_id, snapshot_id, sub_ids).await
+    }
+
+    pub async fn act243_info(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+    ) -> Result<GetAct243InfoReply, AppError> {
+        act243_info(db, self.player_id, activity_id).await
+    }
+
+    pub async fn act243_info_push(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+    ) -> Result<Act243InfoPush, AppError> {
+        act243_info_push(db, self.player_id, activity_id).await
+    }
+
+    pub async fn report_act243_episode(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        episode_id: i32,
+        score: i32,
+        star: i32,
+        time_ms: i32,
+        record: String,
+    ) -> Result<act243::Act243Report, AppError> {
+        act243::report_episode(
+            db,
+            self.player_id,
+            activity_id,
+            episode_id,
+            score,
+            star,
+            time_ms,
+            record,
+        )
+        .await
+    }
+
+    pub async fn upgrade_act243_gift(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        gift_point: i32,
+    ) -> Result<act243::Act243Cost<sonettobuf::Act243UpgradeGiftReply>, AppError> {
+        act243::upgrade_gift(db, self.player_id, activity_id, gift_point).await
+    }
+
+    pub async fn unlock_act243_racer(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+        racer_id: i32,
+    ) -> Result<act243::Act243Cost<sonettobuf::Act243UnlockRacerReply>, AppError> {
+        act243::unlock_racer(db, self.player_id, activity_id, racer_id).await
     }
 }

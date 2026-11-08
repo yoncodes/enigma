@@ -561,6 +561,79 @@ fn foundation_counter_is_an_exact_snapshotted_state_consumer() {
 }
 
 #[test]
+fn hedone_counter_keeps_its_exact_hit_and_round_routes() {
+    let definition = find(1158, "HedoneHurtCounter").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::HedoneHurtCounter);
+    assert_eq!(definition.state.initial, None);
+    assert_eq!(
+        definition.setup.routes,
+        &[(SetupStage::EnterBattleStatic, 0)]
+    );
+    assert_eq!(
+        definition.setup_frame(SetupStage::EnterBattleStatic, 0),
+        (SetupFrameScope::SideSubscriberFrame, 0)
+    );
+    let wire = definition.wire.unwrap();
+    assert_eq!(
+        wire.markers(super::super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+    assert!(definition.state.consumer);
+    assert!(subscribes_to_event(
+        1158,
+        "HedoneHurtCounter",
+        0,
+        EventKind::TargetAttacked
+    ));
+    assert!(subscribes_to_event(
+        1158,
+        "HedoneHurtCounter",
+        0,
+        EventKind::RoundEndAfterFinalSettlement
+    ));
+    assert!(has_destination(
+        1158,
+        "HedoneHurtCounter",
+        &[100, 31560121, 100, 4]
+    ));
+    assert!(!has_destination(
+        1158,
+        "HedoneHurtCounter",
+        &[100, 31560121, 100]
+    ));
+    assert!(find(1158, "FoundationCounter").is_none());
+}
+
+#[test]
+fn hedone_card_marks_only_its_add() {
+    let definition = find(1159, "HedoneCard").unwrap();
+    let wire = definition.wire.unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::HedoneCard);
+    assert_eq!(
+        wire.markers(super::super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+}
+
+#[test]
 fn fixed_damage_accepts_zero_without_collapsing_identity() {
     let definition = find(511, "FixedHurt").unwrap();
 

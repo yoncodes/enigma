@@ -1,6 +1,30 @@
 use super::*;
 
 impl ActivityManager {
+    pub async fn sync_act186_login(
+        &mut self,
+        db: &SqlitePool,
+        new_day: bool,
+        new_week: bool,
+        now: i64,
+    ) -> Result<(), AppError> {
+        act186::sync_login(db, self.player_id, new_day, new_week, now).await?;
+        Ok(())
+    }
+
+    pub async fn sync_act186_tasks(
+        &mut self,
+        db: &SqlitePool,
+        event: crate::task::TaskEvent,
+    ) -> Result<Vec<Act186TaskPush>, AppError> {
+        let pushes = act186::sync_tasks(db, self.player_id, event).await?;
+        for activity_id in pushes.iter().filter_map(|push| push.activity_id) {
+            self.refresh_states(db, activity_id, ActivityStateKind::Act186Task)
+                .await?;
+        }
+        Ok(pushes)
+    }
+
     pub async fn sync_act101_login_progress(
         &self,
         db: &SqlitePool,
@@ -169,6 +193,21 @@ impl ActivityManager {
                 .await?;
         }
         Ok(reply)
+    }
+
+    pub async fn finish_all_act186_tasks(
+        &mut self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+    ) -> Result<Act186TaskClaim, AppError> {
+        let claim = finish_all(db, self.player_id, activity_id).await?;
+        if let Some(activity_id) = claim.reply.activity_id {
+            self.refresh_states(db, activity_id, ActivityStateKind::Act186Task)
+                .await?;
+            self.refresh_states(db, activity_id, ActivityStateKind::Act186Like)
+                .await?;
+        }
+        Ok(claim)
     }
 
     pub async fn accept_act186_sp_bonus(

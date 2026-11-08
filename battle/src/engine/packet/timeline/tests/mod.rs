@@ -8,7 +8,7 @@ use super::*;
 use crate::engine::{
     manager::{
         BattleManagers,
-        buff::BuffMarkerResult,
+        buff::{BuffCommand, BuffGrant, BuffMarkerResult},
         card::{CardAddTemporary, CardCommand, CardManager},
         entity::{EntityChanges, EntityOperation},
         ex_point::{ExPointApplyResult, ExPointChanges, ExPointKind},

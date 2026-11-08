@@ -394,7 +394,7 @@ pub async fn save_hero_group_snapshot(
     Ok(())
 }
 
-async fn save_hero_group_snapshot_in_transaction(
+pub async fn save_hero_group_snapshot_in_transaction(
     tx: &mut Transaction<'_, Sqlite>,
     user_id: i64,
     snapshot_id: i32,

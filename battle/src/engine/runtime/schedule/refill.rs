@@ -1,10 +1,10 @@
 use super::*;
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RefillStage {
-    Opening,
-    AfterActions,
-    RoundStart,
-}
+mod post_action;
+
+pub use post_action::{
+    replacement_count as post_action_replacement_count, run_post_action_refill,
+    target_hand_len as post_action_target_hand_len,
+};
 
 pub(super) struct OpeningRefillSeed {
     pub(super) draws: Vec<sonettobuf::CardInfo>,
@@ -91,7 +91,7 @@ pub fn run_round_refill(
         context,
         hand_size,
         team_type,
-        RefillStage::AfterActions,
+        CardRefillStage::AfterActions,
         Vec::new(),
     )
 }
@@ -113,7 +113,7 @@ pub(super) fn run_round_start_refill(
         context,
         hand_size,
         team_type,
-        RefillStage::RoundStart,
+        CardRefillStage::RoundStart,
         Vec::new(),
     )
 }
@@ -135,7 +135,7 @@ pub(super) fn run_opening_hand_refill(
         context,
         hand_size,
         1,
-        RefillStage::Opening,
+        CardRefillStage::Opening,
         seed.draws,
     )
 }
@@ -149,7 +149,7 @@ fn run_card_refill(
     context: TargetContext,
     hand_size: usize,
     team_type: i32,
-    stage: RefillStage,
+    stage: CardRefillStage,
     opening_draws: Vec<sonettobuf::CardInfo>,
 ) -> Result<DrainResult, DrainError> {
     let mut opening_draws = opening_draws.into_iter();
@@ -158,6 +158,21 @@ fn run_card_refill(
         domain: RuleDomain::Lifecycle,
         key: DefinitionKey::new(0, "RoundRefill"),
     };
+    if stage == CardRefillStage::AfterActions {
+        append_round_phase(
+            &mut result,
+            drain::run(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                [RuleOp::Command(BattleCommand::Card(
+                    CardCommand::BeginPostActionRefill { origin },
+                ))],
+            )?,
+        );
+    }
     let composition = drain::run(
         managers,
         pool,
@@ -194,20 +209,20 @@ fn run_card_refill(
     append_round_phase(&mut result, composition);
     loop {
         let needs_normal_card = match stage {
-            RefillStage::Opening => managers.card.hand().len() < hand_size,
-            RefillStage::AfterActions | RefillStage::RoundStart => {
+            CardRefillStage::Opening => managers.card.hand().len() < hand_size,
+            CardRefillStage::AfterActions | CardRefillStage::RoundStart => {
                 crate::engine::mechanic::card::CardMechanic.refill_hand_len(managers, pool)
                     < hand_size
             }
         };
-        let ready_normal = if stage == RefillStage::Opening {
+        let ready_normal = if stage == CardRefillStage::Opening {
             Vec::new()
         } else if needs_normal_card {
             crate::engine::mechanic::card::CardMechanic.normal_ultimate_cards(pool, managers)
         } else {
             Vec::new()
         };
-        let ready_special = if stage == RefillStage::AfterActions {
+        let ready_special = if stage == CardRefillStage::AfterActions {
             crate::engine::mechanic::card::CardMechanic
                 .special_team_cards(pool, managers, managers.card.hand())
                 .into_iter()
@@ -315,6 +330,7 @@ fn run_card_refill(
                 CardCommand::RefillOne(CardRefillOne {
                     origin,
                     card,
+                    stage,
                     consume_draw_pile: !configured_opening && !is_ultimate && !is_device,
                     consume_deck: !configured_opening
                         && !is_ultimate
@@ -361,7 +377,7 @@ fn run_card_refill(
             append_round_phase(&mut result, cues);
         }
     }
-    if stage == RefillStage::AfterActions {
+    if stage == CardRefillStage::AfterActions {
         let mut summary = DrainResult::default();
         push_cues(
             &mut summary.frames,

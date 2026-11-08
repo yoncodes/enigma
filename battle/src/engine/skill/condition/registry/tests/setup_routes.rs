@@ -989,6 +989,14 @@ fn force_field_condition_keeps_its_exact_psychube_route() {
         parse(701210, "HasMasterHalo", &[]),
         Some(ParsedConditionKind::MasterHalo)
     );
+    assert_eq!(
+        parse(701212, "HasMasterHalo", &[]),
+        Some(ParsedConditionKind::MasterHalo)
+    );
+    assert_eq!(parse(701212, "HasMasterHalo", &["1".into()]), None);
+    let definition = find_key(701212, "HasMasterHalo").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::BuffChanged]);
     assert!(find_key(701211, "HasMasterHalo").is_none());
 }
 

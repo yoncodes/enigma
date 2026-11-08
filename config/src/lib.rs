@@ -28,11 +28,13 @@ pub(crate) fn init_test_config() {
 
 // Handwritten semantic queries belong here, not in generated table files or callers.
 mod activity_query;
+pub use activity_query::{Activity128BondGroup, Activity128BondHero};
 mod battle_pass;
 mod dungeon;
 mod equipment;
 pub mod exploration;
 mod hero;
+pub use hero::CharacterVoiceType;
 mod player;
 mod reward_query;
 mod room;

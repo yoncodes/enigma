@@ -120,6 +120,11 @@ pub fn opening_hand_size(fight: &sonettobuf::Fight) -> usize {
     crate::engine::manager::card::hand_size(fight)
 }
 
+pub fn configured_opening_cards(game_data: &config::GameDB, episode_id: i32) -> Option<String> {
+    crate::catalog::configured_teaching_cards(game_data, episode_id)
+        .map(|cards| cards.opening_cards)
+}
+
 pub fn moxie_down_resistance_attribute_id() -> i32 {
     crate::engine::entity::attr::AttrId::MoxieDownResistance.id()
 }

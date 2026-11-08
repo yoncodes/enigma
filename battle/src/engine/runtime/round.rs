@@ -6,10 +6,7 @@ use crate::engine::{
         command::{RoundCommand, commands_from_opers},
         outcome::{battle_ended, finish_if_battle_ended, round_limit_reached, should_advance_wave},
         power::ClothPower,
-        state::{
-            RoundCardSnapshotPolicy, RoundState, next_action_points, next_round_shell,
-            round_field_cards,
-        },
+        state::{RoundCardSnapshotPolicy, RoundState, next_action_points, next_round_shell},
     },
     skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
 };
@@ -150,8 +147,6 @@ impl BattleRuntime {
                 skill.cd = Some(skill.cd.unwrap_or_default().saturating_sub(1).max(0));
             }
         }
-        self.round_state.before_cards2.clear();
-        self.round_state.team_a_cards2.clear();
         // Next-round start mechanics ran at the end of the preceding command and already own
         // this round's reaction quotas. Reset the remaining per-action manager state here.
         self.managers.begin_action_round();
@@ -269,6 +264,15 @@ impl BattleRuntime {
             )
             .map_err(|error| format!("{error:?}"))?
         };
+        let action_phase_end = schedule::run_action_phase_end(
+            &mut self.managers,
+            &pool,
+            catalog,
+            &mut self.determinism,
+            conduit_context,
+            1,
+        )
+        .map_err(|error| format!("{error:?}"))?;
         let card_energy_clear = schedule::run_pending_card_energy_clear(
             &mut self.managers,
             &pool,
@@ -301,6 +305,11 @@ impl BattleRuntime {
         ai_turn.observe(&conduit);
         fight_steps.extend(project_result(
             conduit,
+            fight_version,
+            absorb_hurt_map_layout,
+        )?);
+        fight_steps.extend(project_result(
+            action_phase_end,
             fight_version,
             absorb_hurt_map_layout,
         )?);
@@ -345,13 +354,12 @@ impl BattleRuntime {
         let wave_defeated_after_attacker_settlement =
             crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         let runs_phase_two = !ended_after_attacker_settlement;
+        let post_action_hand_size =
+            schedule::post_action_target_hand_len(&self.managers, &pool, hand_size);
         let needs_refill = crate::engine::mechanic::card::CardMechanic
             .refill_hand_len(&self.managers, &pool)
-            < hand_size;
+            < post_action_hand_size;
         let phase_two_refill_deferred = needs_refill && !runs_phase_two;
-        if needs_refill && runs_phase_two {
-            self.round_state.before_cards2 = round_field_cards(self.managers.card.hand());
-        }
         if runs_phase_two {
             let refill_settlement = schedule::run_post_action_refill_settlement(
                 &mut self.managers,
@@ -443,13 +451,13 @@ impl BattleRuntime {
             )?);
         }
         if needs_refill && runs_phase_two {
-            let refill = schedule::run_round_refill(
+            let refill = schedule::run_post_action_refill(
                 &mut self.managers,
                 &pool,
                 catalog,
                 &mut self.determinism,
                 context,
-                hand_size,
+                post_action_hand_size,
                 1,
             )
             .map_err(|error| format!("{error:?}"))?;
@@ -460,7 +468,6 @@ impl BattleRuntime {
                 fight_version,
                 absorb_hurt_map_layout,
             )?);
-            self.round_state.team_a_cards2 = round_field_cards(self.managers.card.refilled());
         }
         if runs_phase_two {
             let wave_entry_condition_uids = std::mem::take(&mut self.wave_entry_condition_uids);
@@ -710,22 +717,36 @@ impl BattleRuntime {
         self.round_state.last_change_hero_uid = self.fight.last_change_hero_uid;
         self.fight.cur_round = Some(self.round_state.cur_round);
         self.fight.is_finish = Some(self.round_state.is_finish);
-        let (next_round_hand_snapshot, next_round_dealt_cards) =
+        let (next_round_hand_snapshot, next_round_dealt_cards, deferred_phase_two_cards) =
             if terminal_during_next_round_preparation {
                 let team_cards = self.managers.card.team_cards().to_vec();
-                if phase_two_refill_deferred {
-                    self.round_state.before_cards2 = next_round_hand_snapshot;
-                    self.round_state.team_a_cards2 = next_round_dealt_cards
+                let deferred_phase_two_cards = if phase_two_refill_deferred {
+                    let dealt_cards = next_round_dealt_cards
                         .strip_suffix(team_cards.as_slice())
                         .ok_or_else(|| {
                             "prepared team cards are not the dealt-card suffix".to_owned()
                         })?
                         .to_vec();
-                }
-                (self.managers.card.hand().to_vec(), team_cards)
+                    Some((next_round_hand_snapshot, dealt_cards))
+                } else {
+                    None
+                };
+                (
+                    self.managers.card.hand().to_vec(),
+                    team_cards,
+                    deferred_phase_two_cards,
+                )
             } else {
-                (next_round_hand_snapshot, next_round_dealt_cards)
+                (next_round_hand_snapshot, next_round_dealt_cards, None)
             };
+        let deferred_phase_two_cards = deferred_phase_two_cards
+            .as_ref()
+            .map(|(before, dealt)| (before.as_slice(), dealt.as_slice()));
+        let phase_two_cards = self
+            .managers
+            .card
+            .post_action_refill()
+            .or(deferred_phase_two_cards);
         let mut round = next_round_shell(
             &self.fight,
             &self.round_state,
@@ -736,6 +757,7 @@ impl BattleRuntime {
             },
             &next_round_hand_snapshot,
             &next_round_dealt_cards,
+            phase_two_cards,
             self.managers.card.ai_queue(),
         );
         if self.round_state.is_finish {

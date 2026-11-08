@@ -39,6 +39,8 @@ pub(super) fn initial(map: &Map) -> Result<MapState> {
             .collect(),
         area_ids: vec![born.area_id],
         move_nodes: String::new(),
+        items: Vec::new(),
+        use_item_uid: 0,
     })
 }
 
@@ -67,7 +69,16 @@ pub(super) fn info(map: MapState, first: bool) -> ExploreInfoNo {
             is_first_enter: Some(first),
             challenge_count: Some(map.challenge_count),
         }),
-        explore_items: Vec::new(),
-        use_item_uid: Some(0),
+        explore_items: map
+            .items
+            .into_iter()
+            .map(|item| sonettobuf::ExploreItemNo {
+                uid: Some(item.uid),
+                item_id: Some(item.item_id),
+                quantity: Some(item.quantity),
+                status: Some(item.status),
+            })
+            .collect(),
+        use_item_uid: Some(map.use_item_uid),
     }
 }

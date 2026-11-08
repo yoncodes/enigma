@@ -1,14 +1,19 @@
 use std::collections::{HashMap, HashSet};
 
+mod action_phase;
 pub mod ai;
 pub mod change;
 mod command;
+mod conduit_energy;
 pub mod deck;
 pub mod draw;
 pub mod enchant;
 pub mod energy;
+mod hedone_card;
 pub mod op;
+mod opening;
 mod permissions;
+pub(crate) use permissions::consumes_action_point;
 pub mod pool;
 pub(crate) mod prepared;
 mod sovereign;
@@ -21,16 +26,17 @@ pub mod types;
 pub use change::CardChange;
 pub use command::{
     CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardActionQueue, CardAddCrystal, CardAddGenerated,
-    CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
-    CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardConsumptionKind,
-    CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange,
-    CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign, CardInvalidateAiOwner,
-    CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval,
-    CardPersistTemporary, CardPlay, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
-    CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
-    CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability,
-    CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp,
-    QueuedUseCard, SovereignBoostChange, TemporaryCardKind,
+    CardAddHedone, CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind,
+    CardChangeToTemporary, CardChanges, CardCommand, CardCommandError, CardConsumeForEffect,
+    CardConsumptionKind, CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation,
+    CardEnergyChange, CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign,
+    CardInvalidateAiOwner, CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary,
+    CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary, CardPlay, CardQueueUse,
+    CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks,
+    CardRefillOne, CardRefillStage, CardRefreshAiQueue, CardRemoveOwner, CardReplaceOwnerSkills,
+    CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUnlockHedone,
+    CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard,
+    SovereignBoostChange, TemporaryCardKind,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;
@@ -61,6 +67,8 @@ pub struct CardManager {
     played: Vec<PlayedCard>,
     committed_hand: Vec<CardInfo>,
     refilled: Vec<CardInfo>,
+    action_phase: action_phase::ActionPhaseCards,
+    opening_deal: opening::OpeningDeal,
     rank_up: HashMap<(i64, i32), i32>,
     queued_use_cards: Vec<QueuedUseCard>,
     cast_channels: HashMap<i64, CastChannelState>,
@@ -146,6 +154,8 @@ impl CardManager {
             played: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
+            action_phase: action_phase::ActionPhaseCards::default(),
+            opening_deal: opening::OpeningDeal::default(),
             rank_up: HashMap::new(),
             queued_use_cards: Vec::new(),
             cast_channels: HashMap::new(),
@@ -171,6 +181,8 @@ impl CardManager {
             played: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
+            action_phase: action_phase::ActionPhaseCards::default(),
+            opening_deal: opening::OpeningDeal::default(),
             rank_up: HashMap::new(),
             queued_use_cards: Vec::new(),
             cast_channels: HashMap::new(),
@@ -376,6 +388,8 @@ impl CardManager {
         self.played.clear();
         self.committed_hand.clear();
         self.refilled.clear();
+        self.clear_action_phase();
+        self.clear_opening_deal();
         self.queued_use_cards.clear();
         self.cast_channels.clear();
         self.played_history.clear();
@@ -396,6 +410,8 @@ impl CardManager {
         self.played.clear();
         self.committed_hand.clear();
         self.refilled.clear();
+        self.clear_action_phase();
+        self.clear_opening_deal();
         self.queued_use_cards.clear();
         for card_id in std::mem::take(&mut self.pending_temporary) {
             if !self.expiring_temporary.contains(&card_id) {
@@ -563,6 +579,21 @@ impl CardManager {
 
     pub fn refilled(&self) -> &[CardInfo] {
         &self.refilled
+    }
+
+    pub(crate) fn record_action_point_use(&mut self, card_index: i32, used: bool) {
+        if let Some(played) = self
+            .played
+            .iter_mut()
+            .find(|played| played.card_index == card_index)
+        {
+            played.uses_action_point = used;
+        }
+    }
+
+    pub(crate) fn record_phase_refill(&mut self, stage: CardRefillStage, card: CardInfo) {
+        self.action_phase.record_refill(stage, &card);
+        self.record_refill(card);
     }
 
     pub(crate) fn record_refill(&mut self, card: CardInfo) {
@@ -1300,6 +1331,7 @@ impl CardManager {
             card_index: action_index,
             hand_index,
             skill_id,
+            uses_action_point: false,
             rank_change_pending: false,
             rewritten: false,
             target_uid,

@@ -11,6 +11,11 @@ pub enum CardChange {
         card: CardInfo,
         team_type: i32,
     },
+    HedoneUnlocked {
+        card: CardInfo,
+        index: usize,
+        team_type: i32,
+    },
     InsertHand {
         target_uid: i64,
         card: CardInfo,
@@ -31,6 +36,11 @@ pub enum CardChange {
     },
     OwnedAddHand {
         card: CardInfo,
+        team_type: i32,
+    },
+    HedoneAdd {
+        card: CardInfo,
+        index: usize,
         team_type: i32,
     },
     SpCardAdd {

@@ -38,6 +38,7 @@ pub enum MaterialGetApproach {
     PartyClothSummon = 158,
     CommandStationPaperReward = 169,
     Act236Reward = 171,
+    MilestoneBonus = 172,
     ActBp = 173,
     Act239Bonus = 177,
 }
@@ -55,6 +56,11 @@ mod tests {
     #[test]
     fn act_bp_uses_its_exact_client_approach() {
         assert_eq!(MaterialGetApproach::ActBp.id(), 173);
+    }
+
+    #[test]
+    fn milestone_bonus_uses_its_captured_approach() {
+        assert_eq!(MaterialGetApproach::MilestoneBonus.id(), 172);
     }
 
     #[test]

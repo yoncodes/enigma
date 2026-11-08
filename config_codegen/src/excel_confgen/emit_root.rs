@@ -1,13 +1,15 @@
 use crate::excel_confgen::rust_ident::{camel_to_snake, snake_to_pascal};
 
-pub fn emit_root_module(table_names: &[String]) -> String {
-    let exploration = table_names.iter().any(|name| name == "explore_scene");
+pub fn emit_root_module(table_names: &[(String, String)]) -> String {
+    let exploration = table_names
+        .iter()
+        .any(|(source, _)| source == "explore_scene");
     let mut lines = vec![
         "// Auto-generated module declarations".to_string(),
         "".to_string(),
     ];
 
-    for table_name in table_names {
+    for (_, table_name) in table_names {
         lines.push(format!("pub mod {};", camel_to_snake(table_name)));
     }
 
@@ -16,7 +18,7 @@ pub fn emit_root_module(table_names: &[String]) -> String {
     lines.push("".to_string());
     lines.push("pub struct GameDB {".to_string());
 
-    for table_name in table_names {
+    for (_, table_name) in table_names {
         let struct_name = snake_to_pascal(table_name);
         let ident = camel_to_snake(table_name);
         lines.push(format!(
@@ -33,7 +35,7 @@ pub fn emit_root_module(table_names: &[String]) -> String {
     lines.push("impl GameDB {".to_string());
     lines.push("    pub fn load(data_dir: &str) -> anyhow::Result<Self> {".to_string());
 
-    for table_name in table_names {
+    for (source_name, table_name) in table_names {
         let struct_name = snake_to_pascal(table_name);
         let ident = camel_to_snake(table_name);
         lines.push(format!(
@@ -42,11 +44,11 @@ pub fn emit_root_module(table_names: &[String]) -> String {
         ));
         lines.push(format!(
             "            &format!(\"{{}}/{}.json\", data_dir)",
-            table_name
+            source_name
         ));
         lines.push(format!(
             "        ).map_err(|e| anyhow::anyhow!(\"Failed to load {}.json: {{}}\", e))?;",
-            table_name
+            source_name
         ));
     }
 
@@ -55,7 +57,7 @@ pub fn emit_root_module(table_names: &[String]) -> String {
         lines.push("        let explore_map = crate::exploration::MapTable::load(data_dir, &explore_scene)?;".to_string());
     }
     lines.push("        Ok(Self {".to_string());
-    for table_name in table_names {
+    for (_, table_name) in table_names {
         lines.push(format!("            {},", camel_to_snake(table_name)));
     }
     if exploration {

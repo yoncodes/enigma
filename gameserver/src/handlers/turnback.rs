@@ -6,9 +6,10 @@ use crate::{
 };
 use prost::Message;
 use sonettobuf::{
-    AcceptAllTurnbackBonusPointRequest, BuyDoubleBonusRequest, CmdId, GetTurnbackDailyBonusRequest,
-    GetTurnbackInfoRequest, TurnbackBonusPointRequest, TurnbackFirstShowRequest,
-    TurnbackOnceBonusRequest, TurnbackSignInRequest,
+    AcceptAllTurnbackBonusPointRequest, AcceptAllTurnbackReturnRewardRequest,
+    BuyDoubleBonusRequest, CmdId, GetTurnbackDailyBonusRequest, GetTurnbackInfoRequest,
+    TurnbackBonusPointRequest, TurnbackFirstShowRequest, TurnbackOnceBonusRequest,
+    TurnbackReturnRewardRequest, TurnbackSignInRequest,
 };
 pub async fn on_get_turnback_info(
     ctx: &mut ConnectionContext,
@@ -172,6 +173,66 @@ pub async fn on_accept_all_turnback_bonus_point(
     .await?;
     ctx.send_reply(
         CmdId::AcceptAllTurnbackBonusPointCmd,
+        claim.reply,
+        0,
+        req.up_tag,
+    )
+    .await
+}
+
+pub async fn on_turnback_return_reward(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
+    let msg = TurnbackReturnRewardRequest::decode(&req.data[..])?;
+    let claim = ctx
+        .player()?
+        .turnback
+        .claim_return_reward(
+            ctx.state.db,
+            msg.id.ok_or(AppError::InvalidRequest)?,
+            msg.reward_id.ok_or(AppError::InvalidRequest)?,
+            ctx.state.tables,
+        )
+        .await?;
+    push::send_applied_reward_pushes(
+        ctx,
+        player_id,
+        claim.rewards,
+        claim.material_changes,
+        Some(MaterialGetApproach::Activity),
+    )
+    .await?;
+    ctx.send_reply(CmdId::TurnbackReturnRewardCmd, claim.reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_accept_all_turnback_return_reward(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
+    let msg = AcceptAllTurnbackReturnRewardRequest::decode(&req.data[..])?;
+    let claim = ctx
+        .player()?
+        .turnback
+        .claim_all_return_rewards(
+            ctx.state.db,
+            msg.id.ok_or(AppError::InvalidRequest)?,
+            ctx.state.tables,
+        )
+        .await?;
+    push::send_applied_reward_pushes(
+        ctx,
+        player_id,
+        claim.rewards,
+        claim.material_changes,
+        Some(MaterialGetApproach::Activity),
+    )
+    .await?;
+    ctx.send_reply(
+        CmdId::AcceptAllTurnbackReturnRewardCmd,
         claim.reply,
         0,
         req.up_tag,

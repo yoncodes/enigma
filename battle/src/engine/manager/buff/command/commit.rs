@@ -3,6 +3,7 @@ use super::*;
 impl BuffManager {
     /// Applies a validated `BuffPlan` exactly once without re-resolving its policies.
     pub(crate) fn commit(&mut self, hp: &HpManager, plan: BuffPlan) -> BuffChanges {
+        let pre_add_refreshes = plan.pre_add_refreshes();
         let origin = plan.origin;
         let catalog = self.catalog();
         let changes = match plan.action {
@@ -348,13 +349,13 @@ impl BuffManager {
             ),
         };
         self.reconcile_transition_progress();
-        changes
+        changes.with_pre_add_refreshes(pre_add_refreshes)
     }
 
     pub(in crate::engine::manager::buff) fn commit_grant_plan(
         &mut self,
         hp: &HpManager,
-        plan: GrantPlan,
+        mut plan: GrantPlan,
     ) -> BuffReplaceResult {
         if let Some(transition) = plan.transition {
             return self.commit_replace_plan(hp, *transition);
@@ -395,6 +396,19 @@ impl BuffManager {
                     removed
                 }),
         );
+        for fanout in &plan.fanout {
+            let Some(uid) = fanout.replacement_uid else {
+                continue;
+            };
+            planned_removed.extend(
+                self.delete(fanout.spec.route.target_uid, uid)
+                    .into_iter()
+                    .map(|mut removed| {
+                        removed.buff.duration = Some(0);
+                        removed
+                    }),
+            );
+        }
         for uid in &plan.capacity_eviction_uids {
             planned_removed.extend(self.delete(plan.route.target_uid, *uid).into_iter().map(
                 |mut removed| {
@@ -406,6 +420,15 @@ impl BuffManager {
             ));
         }
         planned_removed.append(&mut immunity_change.removed);
+        let mut stack_trim = std::mem::take(&mut plan.stack_trim).into_iter().fold(
+            BuffReplaceResult::default(),
+            |mut changes, action| {
+                let next = self.commit_consume_action(plan.route.target_uid, action);
+                changes.removed.extend(next.removed);
+                changes.refreshed.extend(next.refreshed);
+                changes
+            },
+        );
         for uid in &plan.pre_add_uids {
             super::uid_policy::commit(self, plan.route.target_uid, *uid);
         }
@@ -436,6 +459,10 @@ impl BuffManager {
         change
             .fanout
             .extend(self.commit_fanout_refreshes(&plan.fanout_refreshes));
+        change.removed.splice(0..0, stack_trim.removed.drain(..));
+        change
+            .refreshed
+            .splice(0..0, stack_trim.refreshed.drain(..));
         if records_transaction_stack_progress {
             self.record_transaction_stack_progress(plan.route.buff_id);
         }

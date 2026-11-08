@@ -14,6 +14,24 @@ fn hero_story_times_match_captured_schedule() {
         assert_eq!(time.start_time_resident, Some(row.start_time_resident));
         assert_eq!(time.end_time_resident, Some(row.end_time_resident));
     }
+    for (story_id, expected) in [
+        (32, (1790589600, 1791799199, 1793872800, 2145934800)),
+        (33, (1794564000, 1795773599, 1797501600, 2145934800)),
+    ] {
+        let time = times
+            .iter()
+            .find(|time| time.story_id == Some(story_id))
+            .unwrap();
+        assert_eq!(
+            (
+                time.start_time.unwrap(),
+                time.end_time.unwrap(),
+                time.start_time_resident.unwrap(),
+                time.end_time_resident.unwrap(),
+            ),
+            expected
+        );
+    }
 }
 
 #[test]

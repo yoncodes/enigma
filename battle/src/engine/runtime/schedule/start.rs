@@ -999,6 +999,7 @@ pub fn run_start(
                     )?,
                 );
             }
+            managers.card.begin_opening_deal();
             dealt_cards = Some(managers.card.hand().to_vec());
             push_cue(&mut result.frames, RoundCue::EnterFightDeal);
             let mut deck_counts = Vec::new();

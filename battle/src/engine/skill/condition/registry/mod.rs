@@ -654,6 +654,8 @@ macro_rules! condition_definitions {
 
 condition_definitions! {
     [789208] "Rank" => rank::minimum, predicate(&[]);
+    [789105] "Rank" => rank::minimum, setup_route(SetupStage::AfterRoundStart, 0, &[]);
+    [789210] "Rank" => rank::minimum, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [10500] "None" => sovereign_card::created, in_independent_frame(reaction_targets_owner(event_trigger(EventKind::SovereignCardCreated, None)));
     [0] "None" => none::always, predicate(&[]);
     [5] "EnterFight" => lifecycle::enter_fight, reactivates_on(in_event_sibling_frame(setup_route(SetupStage::EnterFight, 0, &[])), &[EventKind::EntityEntered, EventKind::EntityTransformed]);
@@ -830,12 +832,13 @@ condition_definitions! {
     [701201] "HasMasterHalo" => buff::master_halo, predicate(&[EventKind::BuffChanged]);
     [701203] "HasMasterHalo" => buff::master_halo, predicate(&[EventKind::BuffChanged]);
     [701210] "HasMasterHalo" => buff::master_halo, predicate(&[EventKind::BuffChanged]);
+    [701212] "HasMasterHalo" => buff::master_halo, predicate(&[EventKind::BuffChanged]);
     [501203] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [501201] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [501208] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [501209] "UseHurtSkill" => active_skill::hurt_skill, attacked_skills(once_per_action(event_target_observes(event_trigger(EventKind::TargetAttacked, None))));
     [501210] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
-    [501212] "UseHurtSkill" => active_skill::hurt_skill, predicate(&[]);
+    [501212] "UseHurtSkill" => active_skill::hurt_skill, reaction_targets_causing_frame(event_trigger(EventKind::AllyAction, None));
     [507201] "UseSkillId" => active_skill::skill_id, event_trigger(EventKind::SkillAction, None);
     [615201] "CanUseSkill" => active_skill::can_use_skill, predicate(&[]);
     [578] "TeamInjuryCountRound" => injury::round_count, predicate(&[EventKind::SkillAction]);
@@ -872,6 +875,7 @@ condition_definitions! {
     [1010004] "ProgressValue" => resource::progress_band, predicate(&[]);
     [790203] "UnnamedCardAnchor" => card::anchor_later, predicate(&[]);
     [790210] "UnnamedCardAnchor" => card::anchor_earlier, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
+    [708203] "HandCardHasSkillId" => card::hand_skill_presence_one, reads_action_start(predicate(&[]));
     [710301] "PerHandCardHasSkillId" => card::hand_skill_presence, event_trigger(EventKind::SmallRoundEnd, None);
     [622304] "RoundUseSkillLevel" => card::round_used_minimum_rank, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
     [745304] "ExPointMax" => resource::ex_point_full, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));

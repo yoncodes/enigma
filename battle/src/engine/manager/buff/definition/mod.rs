@@ -565,6 +565,12 @@ impl BuffDefinition {
                     BuffActInitialStateRule::StringCounter => (Vec::new(), "0".to_owned(), 0),
                     BuffActInitialStateRule::GrantValue => return None,
                     BuffActInitialStateRule::LostHpToFakeHp => return None,
+                    BuffActInitialStateRule::HedoneEnergy => {
+                        let config = crate::engine::skill::buff_act::hedone_card::parse(
+                            feature.values.get(1..)?,
+                        )?;
+                        (vec![0, config.storage_limit, 0], String::new(), 0)
+                    }
                 };
                 Some(super::BuffActInfoMarkerResult {
                     target_uid,
@@ -801,6 +807,10 @@ impl BuffDefinition {
 
     pub(super) fn shares_timed_stack_cap(&self) -> bool {
         self.duration > 0 && self.has_include_type(BuffIncludeType::Stacked)
+    }
+
+    pub(super) fn trims_timed_stack_cap(&self) -> bool {
+        self.duration > 0 && self.has_include_type(BuffIncludeType::TimedIndependentStacks)
     }
 
     pub(super) fn reserves_child_on_layer_refresh(&self) -> bool {

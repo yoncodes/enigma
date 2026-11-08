@@ -216,7 +216,7 @@ pub(super) fn coalesced_material_changes(rewards: &reward::RewardSet) -> Vec<(u3
         .collect()
 }
 
-async fn claim_turnback_bonus_ids(
+pub(super) async fn claim_turnback_bonus_ids(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     player_id: i64,
     turnback_id: i32,
@@ -293,7 +293,7 @@ fn turnback_task_bonus_rewards(
     rewards
 }
 
-async fn rewarded_reply_in_transaction<T>(
+pub(super) async fn rewarded_reply_in_transaction<T>(
     mut tx: sqlx::Transaction<'_, sqlx::Sqlite>,
     db: &SqlitePool,
     player_id: i64,
@@ -313,56 +313,4 @@ async fn rewarded_reply_in_transaction<T>(
         rewards,
         material_changes,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
-
-    #[tokio::test]
-    async fn malformed_claim_history_is_not_replaced() {
-        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
-        let _ = config::init(&data_dir);
-        let tables = config::configs::get();
-        let bonus = tables.turnback_task_bonus.iter().next().unwrap();
-        let db = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        database::run_migrations(&db).await.unwrap();
-        sqlx::query(
-            "INSERT INTO users (id, username, created_at, updated_at)
-             VALUES (41, 'turnback-corrupt', 0, 0)",
-        )
-        .execute(&db)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO user_turnback_state
-                (user_id, turnback_id, bonus_point, has_get_task_bonus)
-             VALUES (?, ?, ?, '{')",
-        )
-        .bind(41_i64)
-        .bind(bonus.turnback_id)
-        .bind(bonus.need_point)
-        .execute(&db)
-        .await
-        .unwrap();
-
-        let mut tx = db.begin().await.unwrap();
-        let result =
-            claim_turnback_bonus_ids(&mut tx, 41, bonus.turnback_id, [bonus.id], tables).await;
-        assert!(matches!(result, Err(AppError::Serde(_))));
-        tx.rollback().await.unwrap();
-
-        let stored: String = sqlx::query_scalar(
-            "SELECT has_get_task_bonus FROM user_turnback_state WHERE user_id = 41",
-        )
-        .fetch_one(&db)
-        .await
-        .unwrap();
-        assert_eq!(stored, "{");
-    }
 }

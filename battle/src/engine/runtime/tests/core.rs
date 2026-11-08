@@ -215,6 +215,7 @@ fn committed_cards_grant_cloth_power_without_waiting_for_execution() {
                 card_index,
                 hand_index: None,
                 skill_id: 100,
+                uses_action_point: false,
                 rank_change_pending: false,
                 rewritten: false,
                 target_uid: Some(-1),

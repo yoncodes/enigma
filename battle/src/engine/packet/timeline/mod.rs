@@ -869,7 +869,10 @@ fn project_change(
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,
-                CardChangeKind::Setup | CardChangeKind::AiSkillPrepared
+                CardChangeKind::Setup
+                    | CardChangeKind::AiSkillPrepared
+                    | CardChangeKind::ActionPhaseCompleted
+                    | CardChangeKind::PostActionRefillStarted
             ) =>
         {
             Vec::new()
@@ -929,6 +932,13 @@ fn project_change(
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Moved => Vec::new(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignUnlocked => {
+            let change = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(change)]
+        }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::HedoneUnlocked => {
             let change = changes
                 .operation
                 .clone()
@@ -1101,6 +1111,9 @@ fn project_change(
                         &changes.consumed_indices,
                     )
                 }
+                Some(crate::engine::manager::card::CardConsumptionKind::Hedone) => {
+                    vec![EffectPacket::hedone_card_remove(&changes.consumed_indices)]
+                }
                 _ => vec![EffectPacket::card_remove(&changes.consumed_indices)],
             }
         }
@@ -1118,6 +1131,24 @@ fn project_change(
                 .map(CardPacket::from_change)
                 .into_iter()
                 .collect()
+        }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::HedoneAdded => {
+            let operation = changes
+                .operation
+                .clone()
+                .expect("Hedone card commits retain their exact operation");
+            let crate::engine::manager::card::CardChange::HedoneAdd {
+                card,
+                index,
+                team_type,
+            } = operation.clone()
+            else {
+                panic!("Hedone card commits use HedoneAdd operations")
+            };
+            vec![
+                CardPacket::from_change(operation),
+                CardPacket::update_data(index, card, team_type),
+            ]
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::UniversalAdded => changes
             .after

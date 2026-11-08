@@ -55,6 +55,15 @@ pub struct CardAddGenerated {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardAddHedone {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+    pub skill_id: i32,
+    pub hero_id: i32,
+    pub team_type: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CardInsertSovereign {
     pub origin: CommandOrigin,
     pub target_uid: i64,
@@ -211,8 +220,16 @@ pub struct CardOpeningDraw {
 pub struct CardRefillOne {
     pub origin: CommandOrigin,
     pub card: CardInfo,
+    pub stage: CardRefillStage,
     pub consume_draw_pile: bool,
     pub consume_deck: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardRefillStage {
+    Opening,
+    AfterActions,
+    RoundStart,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -382,6 +399,15 @@ pub enum CardConsumptionKind {
     #[default]
     Generic,
     PaperCircle,
+    Hedone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardUnlockHedone {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+    pub skill_id: i32,
+    pub team_type: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -402,6 +428,7 @@ pub enum CardCommand {
         card_index: usize,
     },
     AddGenerated(CardAddGenerated),
+    AddHedone(CardAddHedone),
     InsertSovereign(CardInsertSovereign),
     InitialSovereignBoost(CardInitialSovereignBoost),
     UnlockSovereign {
@@ -409,6 +436,7 @@ pub enum CardCommand {
         owner_uid: i64,
         team_type: i32,
     },
+    UnlockHedone(CardUnlockHedone),
     ChargeSovereign {
         origin: CommandOrigin,
         owner_uid: i64,
@@ -482,6 +510,12 @@ pub enum CardCommand {
         emitter_uid: i64,
         include_device_action: bool,
     },
+    CompleteActionPhase {
+        origin: CommandOrigin,
+    },
+    BeginPostActionRefill {
+        origin: CommandOrigin,
+    },
     ResolvePlayedRanks {
         origin: CommandOrigin,
     },
@@ -507,6 +541,7 @@ impl CardCommand {
 pub enum CardChangeKind {
     SovereignCharged,
     SovereignUnlocked,
+    HedoneUnlocked,
     InitialSovereignBoost,
     SovereignInserted,
     Setup,
@@ -515,6 +550,7 @@ pub enum CardChangeKind {
     Dissolved,
     GeneratedAdded,
     OwnedGeneratedAdded,
+    HedoneAdded,
     UniversalAdded,
     RedealtKeepRanks,
     GenericTemporaryAdded,
@@ -552,6 +588,8 @@ pub enum CardChangeKind {
     HandRankChanged,
     DeckTopRanksChanged,
     ActionQueueCommitted,
+    ActionPhaseCompleted,
+    PostActionRefillStarted,
     PlayedRanksResolved,
     CastChannelRecorded,
     CastChannelResolved,
@@ -704,7 +742,13 @@ pub(super) fn execute(
             )
         }
         CardCommand::ConsumeForEffect(consume) => {
-            if !manager.consume_for_effect(consume.owner_uid, &consume.indices) {
+            let consumed = match consume.kind {
+                CardConsumptionKind::Hedone => manager.consume_conduit_energy(&consume.indices),
+                CardConsumptionKind::Generic | CardConsumptionKind::PaperCircle => {
+                    manager.consume_for_effect(consume.owner_uid, &consume.indices)
+                }
+            };
+            if !consumed {
                 return Err(CardCommandError::InvalidCommand);
             }
             consumed_indices = consume.indices;
@@ -792,6 +836,17 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
+        CardCommand::UnlockHedone(unlock) => {
+            operation = Some(manager.unlock_hedone(unlock)?);
+            (
+                Some(unlock.origin),
+                CardChangeKind::HedoneUnlocked,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
         CardCommand::ChargeSovereign {
             origin,
             owner_uid,
@@ -861,6 +916,21 @@ pub(super) fn execute(
                     CardChangeKind::GeneratedAdded
                 },
                 Some(card),
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::AddHedone(add) => {
+            operation = Some(manager.add_hedone(add)?);
+            let card = operation.as_ref().and_then(|operation| match operation {
+                CardChange::HedoneAdd { card, .. } => Some(card.clone()),
+                _ => None,
+            });
+            (
+                Some(add.origin),
+                CardChangeKind::HedoneAdded,
+                card,
                 None,
                 Vec::new(),
                 Vec::new(),
@@ -1174,7 +1244,7 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             manager.add_to_hand(refill.card.clone());
-            manager.record_refill(refill.card.clone());
+            manager.record_phase_refill(refill.stage, refill.card.clone());
             let owners = manager.compose_adjacent();
             if refill.consume_deck {
                 manager.set_deck_num(manager.deck_num().saturating_sub(1));
@@ -1564,6 +1634,28 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
+        CardCommand::CompleteActionPhase { origin } => {
+            manager.complete_action_phase();
+            (
+                Some(origin),
+                CardChangeKind::ActionPhaseCompleted,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::BeginPostActionRefill { origin } => {
+            manager.begin_post_action_refill();
+            (
+                Some(origin),
+                CardChangeKind::PostActionRefillStarted,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
         CardCommand::ResolvePlayedRanks { origin } => {
             rank_results.extend(
                 manager
@@ -1650,6 +1742,7 @@ pub(super) fn execute(
     if kind == CardChangeKind::ActionQueueCommitted {
         after.extend_from_slice(manager.team_cards());
     }
+    manager.record_opening_deal_change(kind, &before, &after, added.as_ref(), &drawn);
     Ok(CardChanges {
         origin,
         kind,

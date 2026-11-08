@@ -312,6 +312,23 @@ fn conduit_selection_initial_state_advertises_configured_options() {
 }
 
 #[test]
+fn hedone_energy_initial_state_uses_its_carrier_limit() {
+    crate::test_support::init_config();
+
+    for (buff_id, maximum) in [(31560181, 7), (31560185, 10), (31560187, 12)] {
+        let markers = BuffDefinition::get(buff_id)
+            .unwrap()
+            .initial_wire_states(-4, 1108, 1, 1000);
+
+        assert_eq!(markers.len(), 1);
+        assert_eq!(markers[0].act_id, 1159);
+        assert_eq!(markers[0].params, [0, maximum, 0]);
+        assert_eq!(markers[0].str_param.as_deref(), Some(""));
+        assert_eq!(markers[0].team_type, 0);
+    }
+}
+
+#[test]
 fn butterfly_record_initial_state_advertises_configured_skill_kinds() {
     crate::test_support::init_config();
 

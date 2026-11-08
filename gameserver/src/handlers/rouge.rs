@@ -2,11 +2,15 @@ use crate::{
     error::AppError,
     logic::rouge,
     net::{context::ConnectionContext, packet::ClientPacket},
+    types::material_get_approach::MaterialGetApproach,
+    util::push,
 };
 use prost::Message;
 use sonettobuf::{
-    CmdId, GetRouge2InfoRequest, GetRouge2OutsideInfoRequest, GetRougeOutsideInfoRequest,
-    Rouge2GetUnlockCollectionsRequest,
+    CmdId, EnterRouge2SelectDifficultyRequest, GetRouge2InfoRequest, GetRouge2OutsideInfoRequest,
+    GetRougeOutsideInfoRequest, Rouge2ActiveGeniusRequest, Rouge2AlchemyRequest,
+    Rouge2AttrUpdatePush, Rouge2GetUnlockCollectionsRequest, Rouge2RewardRequest,
+    Rouge2SetSystemIdRequest, Rouge2UpdateGeniusPointPush,
 };
 
 pub async fn on_get_rouge_outside_info(
@@ -39,6 +43,36 @@ pub async fn on_get_rouge2_info(
         .await
 }
 
+pub async fn on_enter_rouge2_select_difficulty(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = EnterRouge2SelectDifficultyRequest::decode(&req.data[..])?;
+    let result = ctx
+        .player()?
+        .rouge
+        .select_difficulty(
+            ctx.state.db,
+            msg.difficulty.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+
+    ctx.notify(
+        CmdId::Rouge2AttrUpdatePushCmd,
+        Rouge2AttrUpdatePush {
+            updates: result.updates,
+        },
+    )
+    .await?;
+    ctx.send_reply(
+        CmdId::EnterRouge2SelectDifficultyCmd,
+        result.reply,
+        0,
+        req.up_tag,
+    )
+    .await
+}
+
 pub async fn on_rouge2_get_unlock_collections(
     ctx: &mut ConnectionContext,
     req: ClientPacket,
@@ -46,5 +80,99 @@ pub async fn on_rouge2_get_unlock_collections(
     let _ = Rouge2GetUnlockCollectionsRequest::decode(&req.data[..])?;
     let reply = ctx.player()?.rouge.unlock_collections(ctx.state.db).await?;
     ctx.send_reply(CmdId::Rouge2GetUnlockCollectionsCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_rouge2_active_genius(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = Rouge2ActiveGeniusRequest::decode(&req.data[..])?;
+    let result = ctx
+        .player()?
+        .rouge
+        .activate_genius(ctx.state.db, msg.genius_id.ok_or(AppError::InvalidRequest)?)
+        .await?;
+
+    ctx.notify(
+        CmdId::Rouge2UpdateGeniusPointPushCmd,
+        Rouge2UpdateGeniusPointPush {
+            genius_point: Some(result.genius_point),
+        },
+    )
+    .await?;
+    ctx.send_reply(CmdId::Rouge2ActiveGeniusCmd, result.reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_rouge2_reward(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let player_id = ctx.player()?.id;
+    let msg = Rouge2RewardRequest::decode(&req.data[..])?;
+    let result = ctx
+        .player()?
+        .rouge
+        .buy_reward(
+            ctx.state.db,
+            msg.id.ok_or(AppError::InvalidRequest)?,
+            msg.num.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+
+    push::send_rouge2_store_reward_pushes(
+        ctx,
+        player_id,
+        result.rewards,
+        result.material_changes,
+        Some(MaterialGetApproach::Activity),
+    )
+    .await?;
+    ctx.send_reply(CmdId::Rouge2RewardCmd, result.reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_rouge2_set_system_id(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = Rouge2SetSystemIdRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .rouge
+        .set_system_id(ctx.state.db, msg.system_id.ok_or(AppError::InvalidRequest)?)
+        .await?;
+    ctx.send_reply(CmdId::Rouge2SetSystemIdCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_rouge2_alchemy(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = Rouge2AlchemyRequest::decode(&req.data[..])?;
+    let formula = msg.formula.ok_or(AppError::InvalidRequest)?;
+    let result = ctx
+        .player()?
+        .rouge
+        .alchemy(ctx.state.db, formula, msg.sub_material)
+        .await?;
+    let achievement_push = ctx
+        .player_mut()?
+        .collection
+        .record_updates(result.achievements);
+
+    ctx.notify(
+        CmdId::Rouge2UpdateGeniusPointPushCmd,
+        Rouge2UpdateGeniusPointPush {
+            genius_point: Some(result.genius_point),
+        },
+    )
+    .await?;
+    if let Some(push) = achievement_push {
+        ctx.notify(CmdId::UpdateAchievementPushCmd, push).await?;
+    }
+    ctx.send_reply(CmdId::Rouge2AlchemyCmd, result.reply, 0, req.up_tag)
         .await
 }

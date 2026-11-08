@@ -1,5 +1,47 @@
 use super::*;
 use sonettobuf::{ChangeMapReply, ChangeMapRequest, GetExploreInfoReply, GetExploreInfoRequest};
+use sonettobuf::{
+    ExploreInteractReply, ExploreInteractRequest, ExploreItemChangePush, ExploreMoveReply,
+    ExploreMoveRequest, ExploreStepPush, ExploreUseItemReply, ExploreUseItemRequest,
+};
+
+fn exploration_state(
+    map: &config::exploration::Map,
+) -> database::models::game::explore::state::MapState {
+    let born = map
+        .areas
+        .values()
+        .flat_map(|area| &area.units)
+        .find(|unit| unit.kind == 0)
+        .unwrap();
+    database::models::game::explore::state::MapState {
+        map_id: map.id,
+        posx: born.node_pos[0],
+        posy: born.node_pos[1],
+        dir: born.unit_dir,
+        challenge_count: 0,
+        interacts: map
+            .areas
+            .values()
+            .flat_map(|area| &area.units)
+            .map(
+                |unit| database::models::game::explore::state::InteractState {
+                    id: unit.id,
+                    kind: unit.kind,
+                    status: unit.interact,
+                    status2: String::new(),
+                    posx: unit.node_pos[0],
+                    posy: unit.node_pos[1],
+                    dir: unit.unit_dir,
+                },
+            )
+            .collect(),
+        area_ids: vec![born.area_id],
+        move_nodes: String::new(),
+        items: vec![],
+        use_item_uid: 0,
+    }
+}
 
 #[tokio::test]
 async fn exploration_routes_entry_and_resume() {
@@ -71,4 +113,429 @@ async fn exploration_routes_entry_and_resume() {
         assert_eq!(info.explore_map.unwrap().map_id, Some(101));
         assert!(packets.try_recv().is_err());
     }
+}
+
+#[tokio::test]
+async fn exploration_move_pushes_committed_steps_before_reply() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 582;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'explore-move-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let saved = database::models::game::explore::state::MapState {
+        map_id: 101,
+        posx: 48,
+        posy: 23,
+        dir: 270,
+        challenge_count: 0,
+        interacts: configs::get()
+            .explore_map
+            .get(101)
+            .unwrap()
+            .areas
+            .values()
+            .flat_map(|area| &area.units)
+            .map(
+                |unit| database::models::game::explore::state::InteractState {
+                    id: unit.id,
+                    kind: unit.kind,
+                    status: unit.interact,
+                    status2: String::new(),
+                    posx: unit.node_pos[0],
+                    posy: unit.node_pos[1],
+                    dir: unit.unit_dir,
+                },
+            )
+            .collect(),
+        area_ids: vec![1],
+        move_nodes: "1#6|48#23".into(),
+        items: vec![],
+        use_item_uid: 0,
+    };
+    let mut conn = pool.acquire().await.unwrap();
+    database::db::game::explore::state::insert(&mut conn, player_id, &saved)
+        .await
+        .unwrap();
+    database::db::game::explore::state::select(&mut conn, player_id, 101)
+        .await
+        .unwrap();
+    drop(conn);
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(3);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    let mut data = Vec::new();
+    ExploreMoveRequest {
+        posx: Some(52),
+        posy: Some(23),
+        interact_id: None,
+    }
+    .encode(&mut data)
+    .unwrap();
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::ExploreMoveCmd as i16,
+            up_tag: 24,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("exploration move did not push committed steps first");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreStepPushCmd);
+    assert_eq!(
+        ExploreStepPush::decode(&*body)
+            .unwrap()
+            .steps
+            .into_iter()
+            .map(|step| step.param.unwrap())
+            .collect::<Vec<_>>(),
+        [
+            r#"{"direction":90,"stepType":1,"x":49,"y":23}"#,
+            r#"{"direction":90,"stepType":1,"x":50,"y":23}"#,
+            r#"{"direction":90,"stepType":1,"x":51,"y":23}"#,
+            r#"{"direction":90,"stepType":1,"x":52,"y":23}"#,
+        ]
+    );
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        up_tag,
+        result_code,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("exploration move did not reply last");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreMoveCmd);
+    assert_eq!(up_tag, 24);
+    assert_eq!(result_code, 0);
+    ExploreMoveReply::decode(&*body).unwrap();
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn exploration_item_selection_matches_captured_push_order() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 583;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'explore-item-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let saved = database::models::game::explore::state::MapState {
+        map_id: 101,
+        posx: 1,
+        posy: 6,
+        dir: 180,
+        challenge_count: 0,
+        interacts: vec![],
+        area_ids: vec![1],
+        move_nodes: "1#6".into(),
+        items: vec![database::models::game::explore::state::ItemState {
+            uid: 77,
+            item_id: 150002,
+            quantity: 1,
+            status: 0,
+        }],
+        use_item_uid: 0,
+    };
+    let mut conn = pool.acquire().await.unwrap();
+    database::db::game::explore::state::insert(&mut conn, player_id, &saved)
+        .await
+        .unwrap();
+    database::db::game::explore::state::select(&mut conn, player_id, 101)
+        .await
+        .unwrap();
+    drop(conn);
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(6);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    for (sequence, up_tag) in [(1, 25), (2, 26)] {
+        let mut data = Vec::new();
+        ExploreUseItemRequest {
+            uid: Some(77),
+            posx: Some(0),
+            posy: Some(0),
+            interact_id: None,
+        }
+        .encode(&mut data)
+        .unwrap();
+        dispatch_command(
+            &mut ctx,
+            ClientPacket {
+                sequence,
+                cmd_id: CmdId::ExploreUseItemCmd as i16,
+                up_tag,
+                data,
+            }
+            .encode(),
+        )
+        .await
+        .unwrap();
+    }
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("item selection did not push the selected UID first");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreStepPushCmd);
+    assert_eq!(
+        ExploreStepPush::decode(&*body).unwrap().steps[0].param,
+        Some(r#"{"itemUid":77,"stepType":10}"#.into())
+    );
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        up_tag,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("item selection did not reply after its step");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreUseItemCmd);
+    assert_eq!(up_tag, 25);
+    assert_eq!(ExploreUseItemReply::decode(&*body).unwrap().uid, Some(77));
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("item deselection did not refresh the item first");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreItemChangePushCmd);
+    assert_eq!(
+        ExploreItemChangePush::decode(&*body).unwrap().explore_items[0],
+        sonettobuf::ExploreItemNo {
+            uid: Some(77),
+            item_id: Some(150002),
+            quantity: Some(1),
+            status: Some(0),
+        }
+    );
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("item deselection did not push the cleared UID");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreStepPushCmd);
+    assert_eq!(
+        ExploreStepPush::decode(&*body).unwrap().steps[0].param,
+        Some(r#"{"itemUid":0,"stepType":10}"#.into())
+    );
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        up_tag,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("item deselection did not reply last");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreUseItemCmd);
+    assert_eq!(up_tag, 26);
+    assert_eq!(ExploreUseItemReply::decode(&*body).unwrap().uid, Some(77));
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn exploration_teleport_pushes_transfer_before_reply() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 584;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'explore-interact-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let mut saved = exploration_state(configs::get().explore_map.get(101).unwrap());
+    saved.posx = 41;
+    saved.posy = 27;
+    saved.move_nodes = "41#27".into();
+    let mut conn = pool.acquire().await.unwrap();
+    database::db::game::explore::state::insert(&mut conn, player_id, &saved)
+        .await
+        .unwrap();
+    database::db::game::explore::state::select(&mut conn, player_id, 101)
+        .await
+        .unwrap();
+    drop(conn);
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(3);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::ExploreInteractCmd as i16,
+            up_tag: 27,
+            data: ExploreInteractRequest {
+                id: Some(440),
+                params: None,
+            }
+            .encode_to_vec(),
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("teleport step missing");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreStepPushCmd);
+    assert_eq!(
+        ExploreStepPush::decode(&*body).unwrap().steps[0].param,
+        Some(r#"{"dir":0,"stepType":8,"triggerInteractId":440,"x":41,"y":39}"#.into())
+    );
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        up_tag,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("teleport reply missing");
+    };
+    assert_eq!((cmd_id, up_tag), (CmdId::ExploreInteractCmd, 27));
+    assert_eq!(
+        ExploreInteractReply::decode(&*body).unwrap(),
+        ExploreInteractReply {
+            id: Some(440),
+            params: Some(String::new()),
+        }
+    );
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn exploration_rune_pushes_item_change_before_reply() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 585;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'explore-rune-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let mut saved = exploration_state(configs::get().explore_map.get(101).unwrap());
+    saved.posx = 32;
+    saved.posy = 17;
+    saved
+        .interacts
+        .iter_mut()
+        .find(|state| state.id == 209)
+        .unwrap()
+        .status = 7;
+    saved
+        .items
+        .push(database::models::game::explore::state::ItemState {
+            uid: 77,
+            item_id: 150002,
+            quantity: 1,
+            status: 0,
+        });
+    saved.use_item_uid = 77;
+    let mut conn = pool.acquire().await.unwrap();
+    database::db::game::explore::state::insert(&mut conn, player_id, &saved)
+        .await
+        .unwrap();
+    database::db::game::explore::state::select(&mut conn, player_id, 101)
+        .await
+        .unwrap();
+    drop(conn);
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(3);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::ExploreInteractCmd as i16,
+            up_tag: 28,
+            data: ExploreInteractRequest {
+                id: Some(209),
+                params: None,
+            }
+            .encode_to_vec(),
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("rune item change missing");
+    };
+    assert_eq!(cmd_id, CmdId::ExploreItemChangePushCmd);
+    assert_eq!(
+        ExploreItemChangePush::decode(&*body).unwrap().explore_items,
+        [sonettobuf::ExploreItemNo {
+            uid: Some(77),
+            item_id: Some(150002),
+            quantity: Some(1),
+            status: Some(1),
+        }]
+    );
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        up_tag,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("rune reply missing");
+    };
+    assert_eq!((cmd_id, up_tag), (CmdId::ExploreInteractCmd, 28));
+    assert_eq!(
+        ExploreInteractReply::decode(&*body).unwrap(),
+        ExploreInteractReply {
+            id: Some(209),
+            params: Some(String::new()),
+        }
+    );
+    assert!(packets.try_recv().is_err());
 }

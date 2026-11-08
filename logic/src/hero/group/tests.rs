@@ -4,7 +4,7 @@ use super::{
 };
 use crate::types::hero_group_snapshot_type::HeroGroupSnapshotType;
 use database::models::game::hero_group_snapshots::HeroGroupSnapshotInfo;
-use sonettobuf::{FightEquip, FightGroup, HeroGroupEquip};
+use sonettobuf::{FightEquip, FightGroup, HeroGroupEquip, HeroGroupSnapshotFightGroupNo};
 use sqlx::SqlitePool;
 
 const COMMON_SNAPSHOT_ID: i32 = HeroGroupSnapshotType::Common.id();
@@ -29,6 +29,13 @@ fn all_snapshot_request_overlays_saved_data_on_the_protocol_catalog() {
 
     assert_eq!(snapshots.len(), HeroGroupSnapshotType::ALL_DESCENDING.len());
     assert_eq!(snapshots[0].snapshot_id, HeroGroupSnapshotType::Abyss.id());
+    assert_eq!(
+        &snapshots[..5]
+            .iter()
+            .map(|snapshot| snapshot.snapshot_id)
+            .collect::<Vec<_>>(),
+        &[23, 22, 21, 20, 19]
+    );
     assert_eq!(snapshots.last().unwrap().snapshot_id, COMMON_SNAPSHOT_ID);
     assert_eq!(
         snapshots
@@ -67,6 +74,103 @@ fn snapshot_preserves_slot_placeholders() {
     assert_eq!(group.activity104_equips[0].equip_uids, [0, 0]);
     let proto: sonettobuf::HeroGroupInfo = group.into();
     assert_eq!(proto.activity104_equips.len(), 5);
+}
+
+#[tokio::test]
+async fn batch_snapshot_saves_each_group_atomically() {
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (21, 'snapshot-batch', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let snapshot_id = HeroGroupSnapshotType::Abyss.id();
+    hero_group_snapshots::save_hero_group_snapshot(
+        &pool,
+        21,
+        snapshot_id,
+        vec![model::HeroGroupInfo {
+            group_id: 2,
+            hero_list: vec![22],
+            name: String::new(),
+            cloth_id: 1,
+            equips: Vec::new(),
+            activity104_equips: Vec::new(),
+            assist_boss_id: 0,
+            params: String::new(),
+        }],
+        vec![2],
+    )
+    .await
+    .unwrap();
+    let request = vec![
+        HeroGroupSnapshotFightGroupNo {
+            snapshot_sub_id: Some(3),
+            fight_group: Some(FightGroup {
+                hero_list: vec![31, 0],
+                cloth_id: Some(1),
+                ..Default::default()
+            }),
+        },
+        HeroGroupSnapshotFightGroupNo {
+            snapshot_sub_id: Some(1),
+            fight_group: Some(FightGroup {
+                hero_list: vec![0, 11],
+                cloth_id: Some(2),
+                ..Default::default()
+            }),
+        },
+    ];
+
+    let reply = HeroManager::new(21)
+        .set_group_snapshot_batch(&pool, snapshot_id, request)
+        .await
+        .unwrap();
+    assert_eq!(reply.snapshot_id, Some(snapshot_id));
+    assert_eq!(
+        reply
+            .group_infos
+            .iter()
+            .map(|group| group.snapshot_sub_id)
+            .collect::<Vec<_>>(),
+        [Some(3), Some(1)]
+    );
+    let saved = hero_group_snapshots::get_hero_group_snapshot(&pool, 21, snapshot_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(saved.sort_sub_ids, [2, 3, 1]);
+    assert_eq!(
+        saved
+            .hero_group_snapshots
+            .iter()
+            .map(|group| (group.group_id, group.hero_list.clone()))
+            .collect::<Vec<_>>(),
+        [(1, vec![0, 11]), (2, vec![22]), (3, vec![31, 0])]
+    );
+
+    assert!(
+        HeroManager::new(21)
+            .set_group_snapshot_batch(
+                &pool,
+                snapshot_id,
+                vec![
+                    HeroGroupSnapshotFightGroupNo {
+                        snapshot_sub_id: Some(2),
+                        fight_group: Some(FightGroup::default()),
+                    },
+                    HeroGroupSnapshotFightGroupNo {
+                        snapshot_sub_id: Some(2),
+                        fight_group: Some(FightGroup::default()),
+                    },
+                ],
+            )
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]

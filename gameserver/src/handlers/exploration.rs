@@ -5,9 +5,164 @@ use crate::{
 use prost::Message;
 use sonettobuf::{
     BeforeStartWeekwalkBattleRequest, ChangeMapRequest, ChangeWeekwalkHeroGroupSelectRequest,
-    CmdId, GetExploreInfoRequest, MarkPopDeepSettleRequest, MarkPopShallowSettleRequest,
-    WeekwalkDialogHistoryRequest, WeekwalkDialogRequest,
+    CmdId, ExploreInteractReply, ExploreInteractRequest, ExploreItemChangePush, ExploreItemNo,
+    ExploreMoveReply, ExploreMoveRequest, ExploreStep, ExploreStepPush, ExploreUseItemReply,
+    ExploreUseItemRequest, GetExploreInfoRequest, MarkPopDeepSettleRequest,
+    MarkPopShallowSettleRequest, MarkShowFinishedRequest, WeekwalkDialogHistoryRequest,
+    WeekwalkDialogRequest, WeekwalkVer2ChangeHeroGroupSelectRequest,
+    WeekwalkVer2ChooseSkillRequest, WeekwalkVer2MarkShowFinishedRequest,
 };
+
+pub async fn on_interact(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let request = ExploreInteractRequest::decode(&req.data[..])?;
+    let outcome = ctx
+        .player()?
+        .exploration
+        .interact(
+            ctx.state.db,
+            request.id.ok_or(AppError::InvalidRequest)?,
+            request.params,
+        )
+        .await?;
+    match outcome.action {
+        logic::exploration::InteractAction::Transfer { x, y, direction } => {
+            ctx.notify(
+                CmdId::ExploreStepPushCmd,
+                ExploreStepPush {
+                    steps: vec![ExploreStep {
+                        param: Some(
+                            serde_json::json!({
+                                "stepType": 8,
+                                "x": x,
+                                "y": y,
+                                "triggerInteractId": outcome.id,
+                                "dir": direction,
+                            })
+                            .to_string(),
+                        ),
+                    }],
+                },
+            )
+            .await?;
+        }
+        logic::exploration::InteractAction::ItemChanged(item) => {
+            ctx.notify(
+                CmdId::ExploreItemChangePushCmd,
+                ExploreItemChangePush {
+                    explore_items: vec![ExploreItemNo {
+                        uid: Some(item.uid),
+                        item_id: Some(item.item_id),
+                        quantity: Some(item.quantity),
+                        status: Some(item.status),
+                    }],
+                },
+            )
+            .await?;
+        }
+    }
+    ctx.send_reply(
+        CmdId::ExploreInteractCmd,
+        ExploreInteractReply {
+            id: Some(outcome.id),
+            params: Some(String::new()),
+        },
+        0,
+        req.up_tag,
+    )
+    .await
+}
+
+pub async fn on_use_item(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let request = ExploreUseItemRequest::decode(&req.data[..])?;
+    let outcome = ctx
+        .player()?
+        .exploration
+        .use_item(
+            ctx.state.db,
+            request.uid.ok_or(AppError::InvalidRequest)?,
+            request.posx.ok_or(AppError::InvalidRequest)?,
+            request.posy.ok_or(AppError::InvalidRequest)?,
+            request.interact_id,
+        )
+        .await?;
+    if let Some(item) = outcome.deselected_item {
+        ctx.notify(
+            CmdId::ExploreItemChangePushCmd,
+            ExploreItemChangePush {
+                explore_items: vec![ExploreItemNo {
+                    uid: Some(item.uid),
+                    item_id: Some(item.item_id),
+                    quantity: Some(item.quantity),
+                    status: Some(item.status),
+                }],
+            },
+        )
+        .await?;
+    }
+    ctx.notify(
+        CmdId::ExploreStepPushCmd,
+        ExploreStepPush {
+            steps: vec![ExploreStep {
+                param: Some(
+                    serde_json::json!({
+                        "stepType": 10,
+                        "itemUid": outcome.selected_uid,
+                    })
+                    .to_string(),
+                ),
+            }],
+        },
+    )
+    .await?;
+    ctx.send_reply(
+        CmdId::ExploreUseItemCmd,
+        ExploreUseItemReply {
+            uid: Some(outcome.uid),
+        },
+        0,
+        req.up_tag,
+    )
+    .await
+}
+
+pub async fn on_move(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
+    let request = ExploreMoveRequest::decode(&req.data[..])?;
+    let outcome = ctx
+        .player()?
+        .exploration
+        .move_to(
+            ctx.state.db,
+            request.posx.ok_or(AppError::InvalidRequest)?,
+            request.posy.ok_or(AppError::InvalidRequest)?,
+            request.interact_id,
+        )
+        .await?;
+    if !outcome.steps.is_empty() {
+        ctx.notify(
+            CmdId::ExploreStepPushCmd,
+            ExploreStepPush {
+                steps: outcome
+                    .steps
+                    .into_iter()
+                    .map(|step| ExploreStep {
+                        param: Some(
+                            serde_json::json!({
+                                "stepType": 1,
+                                "x": step.x,
+                                "y": step.y,
+                                "direction": step.direction,
+                            })
+                            .to_string(),
+                        ),
+                    })
+                    .collect(),
+            },
+        )
+        .await?;
+    }
+    ctx.send_reply(CmdId::ExploreMoveCmd, ExploreMoveReply {}, 0, req.up_tag)
+        .await
+}
 
 pub async fn on_change_map(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
     let request = ChangeMapRequest::decode(&req.data[..])?;
@@ -147,6 +302,23 @@ pub async fn on_mark_pop_shallow_settle(
         .await
 }
 
+pub async fn on_mark_show_finished(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = MarkShowFinishedRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .weekwalk
+        .mark_show_finished(
+            ctx.state.db,
+            request.layer_id.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.send_reply(CmdId::MarkShowFinishedCmd, reply, 0, req.up_tag)
+        .await
+}
+
 pub async fn on_mark_pop_deep_settle(
     ctx: &mut ConnectionContext,
     req: ClientPacket,
@@ -171,5 +343,64 @@ pub async fn on_weekwalk_ver2_get_info(
         .weekwalk_v2_info(ctx.state.db)
         .await?;
     ctx.send_reply(CmdId::WeekwalkVer2GetInfoCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_weekwalk_ver2_mark_show_finished(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = WeekwalkVer2MarkShowFinishedRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .exploration
+        .mark_weekwalk_v2_finished_shown(
+            ctx.state.db,
+            request.layer_id.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.send_reply(CmdId::WeekwalkVer2MarkShowFinishedCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_weekwalk_ver2_change_hero_group_select(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = WeekwalkVer2ChangeHeroGroupSelectRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .exploration
+        .change_weekwalk_v2_group(
+            ctx.state.db,
+            request.layer_id.ok_or(AppError::InvalidRequest)?,
+            request.battle_id.ok_or(AppError::InvalidRequest)?,
+            request.select.ok_or(AppError::InvalidRequest)?,
+        )
+        .await?;
+    ctx.send_reply(
+        CmdId::WeekwalkVer2ChangeHeroGroupSelectCmd,
+        reply,
+        0,
+        req.up_tag,
+    )
+    .await
+}
+
+pub async fn on_weekwalk_ver2_choose_skill(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let request = WeekwalkVer2ChooseSkillRequest::decode(&req.data[..])?;
+    let reply = ctx
+        .player()?
+        .exploration
+        .choose_weekwalk_v2_skill(
+            ctx.state.db,
+            request.no.ok_or(AppError::InvalidRequest)?,
+            request.skill_ids,
+        )
+        .await?;
+    ctx.send_reply(CmdId::WeekwalkVer2ChooseSkillCmd, reply, 0, req.up_tag)
         .await
 }

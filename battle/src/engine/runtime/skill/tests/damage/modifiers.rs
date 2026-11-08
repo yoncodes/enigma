@@ -894,6 +894,113 @@ fn linked_attack_attributes_keep_temporary_critical_damage_source_owned() {
     );
 }
 
+fn hedone_fix_attr_damage(skill_id: i32, target_buff: Option<i32>) -> (i32, i32) {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3145),
+                    ex_skill_level: Some(2),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(31050144),
+                        from_uid: Some(20),
+                        count: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                buffs: target_buff
+                    .map(|buff_id| BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(buff_id),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    })
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    catalog.insert_damage_rate(skill_id, 5_000);
+    let invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id,
+    }
+    .into();
+    let mut execution = SkillExecution::new(TargetContext::default());
+    execution.configured_targets = Some(vec![-1]);
+    for activation in plan::LinkedDamagePlan::activations(&invocation, &managers, &execution) {
+        execution.activate_additional_damage(activation.additional);
+    }
+    let damage = plan::damage_ops(
+        &invocation,
+        &managers,
+        &pool,
+        &catalog,
+        skill_id,
+        &mut RoundDeterminism::default(),
+        &mut execution,
+    );
+    let [HpCommand::Damage(main)] = damage.damage.as_slice() else {
+        panic!("expected one main damage command")
+    };
+    let [HpCommand::Damage(linked)] = damage.additional_damage.as_slice() else {
+        panic!("expected one linked damage command")
+    };
+    (main.amount, linked.amount)
+}
+
+#[test]
+fn hedone_fix_attr_reaches_main_and_linked_conduit_damage() {
+    const CONDUIT_SKILL: i32 = 31450113;
+    const ORDINARY_SKILL: i32 = 999_999_013;
+    let conduit = hedone_fix_attr_damage(CONDUIT_SKILL, None);
+    let conduit_scar = hedone_fix_attr_damage(CONDUIT_SKILL, Some(31560122));
+    let ordinary = hedone_fix_attr_damage(ORDINARY_SKILL, None);
+    let ordinary_scar = hedone_fix_attr_damage(ORDINARY_SKILL, Some(31560122));
+
+    assert_eq!(conduit, (5_000, 300));
+    assert_eq!(conduit_scar, (5_400, 324));
+    assert_eq!(ordinary, (5_000, 300));
+    assert_eq!(ordinary_scar, ordinary);
+}
+
 #[test]
 fn linked_damage_plan_resolves_committed_credited_source_state() {
     crate::test_support::init_config();

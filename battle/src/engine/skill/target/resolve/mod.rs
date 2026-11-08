@@ -683,7 +683,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         210 => TargetRule::LowestHpPercentageEnemy,
         207 => TargetRule::HighestAttackEnemy,
         208 => TargetRule::HighestHpEnemy,
-        216 => TargetRule::SecondaryEnemies,
+        216 | 252 => TargetRule::SecondaryEnemies,
         235 => TargetRule::EnemyMostShell,
         244 => TargetRule::EnemyMostQueuedAttacks,
         222..=225 => TargetRule::EnemyPosition(code - 221),

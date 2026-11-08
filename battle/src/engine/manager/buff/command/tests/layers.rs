@@ -623,3 +623,60 @@ fn rejected_stacked_grant_advances_capped_siblings_in_the_same_transaction() {
     let next = manager.add(&HpManager::default(), -1, -1, 101, 0).unwrap();
     assert_eq!(next.buff.uid, Some(100_013));
 }
+
+#[test]
+fn timed_independent_stacks_trim_older_layers_at_the_shared_cap() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(100),
+                    buff_id: Some(437325),
+                    from_uid: Some(10),
+                    duration: Some(2),
+                    layer: Some(16),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let grant = |amount| {
+        BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: 10,
+            target_uid: 10,
+            buff_id: 437325,
+            amount: Some(amount),
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })
+    };
+
+    let added = manager.execute(&HpManager::default(), grant(2)).unwrap();
+    assert_eq!(added.change.refreshed[0].before.layer, Some(16));
+    assert_eq!(added.change.refreshed[0].after.layer, Some(14));
+    assert_eq!(added.change.added.unwrap().buff.layer, Some(2));
+
+    let refreshed = manager.execute(&HpManager::default(), grant(3)).unwrap();
+    assert_eq!(refreshed.change.refreshed[0].before.layer, Some(14));
+    assert_eq!(refreshed.change.refreshed[0].after.layer, Some(11));
+    assert_eq!(refreshed.change.refreshed[1].before.layer, Some(2));
+    assert_eq!(refreshed.change.refreshed[1].after.layer, Some(5));
+
+    let depleted = manager.execute(&HpManager::default(), grant(11)).unwrap();
+    assert_eq!(depleted.change.removed[0].buff.uid, Some(100));
+    assert_eq!(depleted.change.removed[0].buff.layer, Some(11));
+    assert_eq!(depleted.change.refreshed[0].after.layer, Some(16));
+}

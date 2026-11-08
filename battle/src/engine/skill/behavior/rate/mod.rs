@@ -941,6 +941,13 @@ pub(crate) fn incoming_target_attack_modifiers(
         );
     }
     let mut modifiers = SkillModifiers::default();
+    modifiers.attack_attributes.extend(
+        crate::engine::skill::buff_act::hedone_fix_attr::incoming_attributes(
+            managers,
+            target_uid,
+            managers.conduit.owns_skill(source_uid, active_skill_id),
+        ),
+    );
     for passive_skill in passive_skills {
         if context.target_observed_extra_action {
             let attributes = managers

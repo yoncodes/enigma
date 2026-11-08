@@ -3,6 +3,16 @@ use anyhow::Result;
 use sonettobuf;
 use sqlx::SqlitePool;
 
+mod state;
+
+#[cfg(test)]
+mod tests;
+
+pub use state::{
+    WeekwalkV2BattleSeed, WeekwalkV2LayerSeed, WeekwalkV2Seed, ensure_weekwalk_v2_state,
+    mark_layer_finished_shown, replace_snapshot_skills, set_battle_group, unlocked_layer_ids,
+};
+
 pub async fn get_weekwalk_v2_info(
     pool: &SqlitePool,
     user_id: i64,
@@ -71,7 +81,7 @@ async fn get_layer_infos(
             show_finished: Some(layer.show_finished),
             battle_infos,
             element_infos: element_infos.into_iter().map(Into::into).collect(),
-            params: Some(layer.params),
+            params: (!layer.params.is_empty()).then_some(layer.params),
         });
     }
 
@@ -142,7 +152,7 @@ async fn get_layer_battles(
             hero_group_select: Some(hero_group_select),
             element_id: Some(element_id),
             cup_infos: cup_infos.into_iter().map(Into::into).collect(),
-            params: Some(params),
+            params: (!params.is_empty()).then_some(params),
         });
     }
 
@@ -157,7 +167,8 @@ async fn get_layer_elements(
     let elements: Vec<(i32, bool, i32, bool)> = sqlx::query_as(
         "SELECT element_id, finish, index_num, visible
          FROM user_weekwalk_v2_elements
-         WHERE user_id = ? AND layer_id = ?",
+         WHERE user_id = ? AND layer_id = ?
+         ORDER BY index_num",
     )
     .bind(user_id)
     .bind(layer_id)
@@ -197,7 +208,8 @@ async fn get_prev_settle_info(
 
     // Get layer infos
     let layer_infos: Vec<(i32, i32)> = sqlx::query_as(
-        "SELECT layer_id, platinum_cup_num FROM user_weekwalk_v2_prev_settle_layers WHERE user_id = ?"
+        "SELECT layer_id, platinum_cup_num FROM user_weekwalk_v2_prev_settle_layers
+         WHERE user_id = ? ORDER BY layer_id",
     )
     .bind(user_id)
     .fetch_all(pool)

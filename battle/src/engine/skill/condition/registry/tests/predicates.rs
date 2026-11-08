@@ -747,6 +747,26 @@ fn damaging_skill_post_hit_gate_keeps_its_exact_lane() {
 }
 
 #[test]
+fn ally_damaging_skill_keeps_the_completed_action_lane() {
+    assert_eq!(
+        parse(501212, "UseHurtSkill", &[]),
+        Some(ParsedConditionKind::UseHurtSkill)
+    );
+    let definition = find_key(501212, "UseHurtSkill").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        }
+    );
+    assert_eq!(
+        definition.reaction_frame_target,
+        ReactionFrameTarget::CausingFrame
+    );
+}
+
+#[test]
 fn ally_incantation_rank_uses_the_exact_ally_action_lane() {
     assert_eq!(
         find_key(620212, "CurrSkillLevel").map(|definition| definition.role),

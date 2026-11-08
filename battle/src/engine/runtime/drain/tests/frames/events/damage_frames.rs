@@ -242,6 +242,7 @@ fn one_skill_event_groups_all_of_its_subscribed_rules() {
     };
     let queued = queued_reactions(
         &TargetPool::default(),
+        &SkillEffectCatalog::default(),
         dispatcher::DispatchBatch {
             skills: vec![
                 (subscriber(0, DefinitionKey::new(208, "None")), op()),
@@ -295,6 +296,7 @@ fn event_sibling_rules_share_one_skill_frame() {
     };
     let queued = queued_reactions(
         &TargetPool::default(),
+        &SkillEffectCatalog::default(),
         dispatcher::DispatchBatch {
             skills: vec![(subscriber(0), op()), (subscriber(1), op())],
             ..Default::default()

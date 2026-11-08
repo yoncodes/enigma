@@ -26,8 +26,6 @@ pub struct RoundState {
     pub is_finish: bool,
     pub cur_round: i32,
     pub power: i32,
-    pub before_cards2: Vec<CardInfo>,
-    pub team_a_cards2: Vec<CardInfo>,
     pub hero_sp_attributes: Vec<FightHeroSpAttributeInfo>,
     pub last_change_hero_uid: Option<i64>,
     pub(crate) extra_rounds: usize,
@@ -106,6 +104,7 @@ pub fn next_round_shell(
     card_snapshots: RoundCardSnapshotPolicy,
     current_hand: &[CardInfo],
     current_team_cards: &[CardInfo],
+    phase_two_cards: Option<(&[CardInfo], &[CardInfo])>,
     ai_queue: &[CardInfo],
 ) -> FightRound {
     let mut round = continuation_round_shell(fight, state, ai_queue);
@@ -119,13 +118,13 @@ pub fn next_round_shell(
     } else {
         Vec::new()
     };
-    round.before_cards2 = state
-        .before_cards2
+    let (before_cards2, team_a_cards2) = phase_two_cards.unwrap_or((&[], &[]));
+    round.before_cards2 = before_cards2
         .iter()
         .filter(|card| !card.temp_card.unwrap_or_default())
-        .cloned()
+        .map(round_field_card)
         .collect();
-    round.team_a_cards2.clone_from(&state.team_a_cards2);
+    round.team_a_cards2 = round_field_cards(team_a_cards2);
     round
 }
 
@@ -153,7 +152,7 @@ pub fn continuation_round_shell(
     }
 }
 
-pub(crate) fn round_field_cards(cards: &[CardInfo]) -> Vec<CardInfo> {
+pub(super) fn round_field_cards(cards: &[CardInfo]) -> Vec<CardInfo> {
     cards.iter().map(round_field_card).collect()
 }
 
@@ -217,11 +216,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let state = RoundState {
-            before_cards2: cards.clone(),
-            team_a_cards2: cards.clone(),
-            ..Default::default()
-        };
+        let state = RoundState::default();
 
         let round = next_round_shell(
             &Fight::default(),
@@ -229,6 +224,7 @@ mod tests {
             RoundCardSnapshotPolicy::All,
             &cards,
             &cards,
+            Some((&cards, &cards)),
             &[],
         );
         let skills = |cards: &[CardInfo]| {
@@ -242,7 +238,6 @@ mod tests {
         assert_eq!(skills(&round.before_cards2), vec![1]);
         assert_eq!(round.team_a_cards1, round_field_cards(&cards));
         assert_eq!(round.team_a_cards2, cards);
-        assert_eq!(state.before_cards2, cards);
     }
 
     #[test]
@@ -253,8 +248,6 @@ mod tests {
         }];
         let state = RoundState {
             is_finish: true,
-            before_cards2: cards.clone(),
-            team_a_cards2: cards.clone(),
             ..Default::default()
         };
 
@@ -264,26 +257,19 @@ mod tests {
             RoundCardSnapshotPolicy::CurrentOnly,
             &cards,
             &cards,
+            Some((&cards, &cards)),
             &[],
         );
 
         assert!(round.before_cards1.is_empty());
         assert!(round.team_a_cards1.is_empty());
-        assert_eq!(round.before_cards2, cards);
-        assert_eq!(round.team_a_cards2, cards);
+        assert_eq!(round.before_cards2, round_field_cards(&cards));
+        assert_eq!(round.team_a_cards2, round_field_cards(&cards));
     }
 
     #[test]
     fn continuation_round_omits_phase_snapshots() {
-        let cards = vec![CardInfo {
-            skill_id: Some(1),
-            ..Default::default()
-        }];
-        let state = RoundState {
-            before_cards2: cards.clone(),
-            team_a_cards2: cards,
-            ..Default::default()
-        };
+        let state = RoundState::default();
 
         let round = continuation_round_shell(&Fight::default(), &state, &[]);
 
@@ -301,8 +287,6 @@ mod tests {
         }];
         let state = RoundState {
             is_finish: true,
-            before_cards2: cards.clone(),
-            team_a_cards2: cards.clone(),
             ..Default::default()
         };
 
@@ -312,12 +296,13 @@ mod tests {
             RoundCardSnapshotPolicy::All,
             &cards,
             &cards,
+            Some((&cards, &cards)),
             &[],
         );
 
         assert_eq!(round.before_cards1, round_field_cards(&cards));
         assert_eq!(round.team_a_cards1, round_field_cards(&cards));
-        assert_eq!(round.before_cards2, cards);
-        assert_eq!(round.team_a_cards2, cards);
+        assert_eq!(round.before_cards2, round_field_cards(&cards));
+        assert_eq!(round.team_a_cards2, round_field_cards(&cards));
     }
 }

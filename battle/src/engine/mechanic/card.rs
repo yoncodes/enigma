@@ -14,6 +14,23 @@ use crate::engine::{
 pub struct CardMechanic;
 
 impl CardMechanic {
+    pub(crate) fn uses_action_point(
+        &self,
+        card: &CardInfo,
+        owner_uid: i64,
+        skill_id: i32,
+        managers: &BattleManagers,
+        catalog: &crate::engine::skill::effect::catalog::SkillEffectCatalog,
+    ) -> bool {
+        (!card.temp_card.unwrap_or_default() || self.is_device_card(managers, card))
+            && crate::engine::manager::card::consumes_action_point(card)
+            && crate::engine::skill::buff_act::action_point::skill_uses_action_point(
+                &managers.buff.active_features(&managers.hp),
+                owner_uid,
+                catalog.is_big_skill(skill_id),
+            )
+    }
+
     pub fn boss_ultimate_power(
         &self,
         managers: &BattleManagers,
@@ -175,12 +192,12 @@ impl CardMechanic {
             && pool
                 .entity(card.uid.unwrap_or_default())
                 .is_none_or(|entity| {
-                    !self.is_ultimate(managers, card, entity)
-                        || !self.ultimate_ignores_limit(
-                            managers,
-                            entity.uid,
-                            card.skill_id.unwrap_or_default(),
-                        )
+                    !self.skill_ignores_limit(
+                        managers,
+                        entity.uid,
+                        card.skill_id.unwrap_or_default(),
+                        self.is_ultimate(managers, card, entity),
+                    )
                 })
     }
 
@@ -220,6 +237,16 @@ impl CardMechanic {
         owner_uid: i64,
         skill_id: i32,
     ) -> bool {
+        self.skill_ignores_limit(managers, owner_uid, skill_id, true)
+    }
+
+    fn skill_ignores_limit(
+        &self,
+        managers: &BattleManagers,
+        owner_uid: i64,
+        skill_id: i32,
+        is_ultimate: bool,
+    ) -> bool {
         managers
             .buff
             .active_features(&managers.hp)
@@ -228,7 +255,7 @@ impl CardMechanic {
                 feature.owner_uid == owner_uid
                     && ((is_kind(feature, BuffActKind::CardNotCalSize)
                         && feature.values.contains(&skill_id))
-                        || is_kind(feature, BuffActKind::EntityExSkillNotCalSize))
+                        || (is_ultimate && is_kind(feature, BuffActKind::EntityExSkillNotCalSize)))
             })
     }
 
@@ -341,10 +368,55 @@ mod tests {
             ..Default::default()
         }];
         let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
         let mechanic = CardMechanic;
 
         assert!(mechanic.ultimate_ignores_limit(&managers, 10, 31390131));
         assert!(!mechanic.ultimate_ignores_limit(&managers, 11, 31340131));
+        assert!(mechanic.counts_toward_hand_limit(
+            &CardInfo {
+                uid: Some(10),
+                skill_id: Some(1),
+                ..Default::default()
+            },
+            &managers,
+            &pool,
+        ));
+    }
+
+    #[test]
+    fn card_not_cal_size_excludes_its_configured_non_ultimate() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3156),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(31560140),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+
+        assert!(!CardMechanic.counts_toward_hand_limit(
+            &CardInfo {
+                uid: Some(10),
+                skill_id: Some(31560181),
+                ..Default::default()
+            },
+            &managers,
+            &pool,
+        ));
     }
 
     #[test]

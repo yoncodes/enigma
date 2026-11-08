@@ -20,8 +20,8 @@ pub fn emit_table_store(
     let group_field =
         detect_group_field(field_types).or_else(|| repeated_id.then(|| id_field.clone()).flatten());
 
-    // Act128 reward ids repeat per activity, so a global id index would be lossy.
-    let has_id_index = id_field.is_some() && table_name != "activity128_rewards" && !repeated_id;
+    let scoped_ids = matches!(table_name, "activity128_rewards" | "activity243_const");
+    let has_id_index = id_field.is_some() && !scoped_ids && !repeated_id;
     let has_group_index =
         group_field.is_some() && !has_vec_group_type(field_types, group_field.as_ref());
 
@@ -211,36 +211,5 @@ pub fn emit_table_store(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::excel_confgen::schema_infer::analyze_field_types;
-    use serde_json::json;
-
-    #[test]
-    fn act128_rewards_do_not_expose_a_lossy_global_id_lookup() {
-        let records = vec![
-            json!({"activityId": 1, "id": 1}),
-            json!({"activityId": 2, "id": 1}),
-        ];
-        let output = emit_table_store(
-            "activity128_rewards",
-            &analyze_field_types(&records),
-            &records,
-        );
-
-        assert!(!output.contains("by_id"));
-        assert!(!output.contains("pub fn get("));
-    }
-
-    #[test]
-    fn weekwalk_dialog_indexes_every_row_in_an_id_group() {
-        let records = vec![
-            json!({"id": 101, "stepId": 1}),
-            json!({"id": 101, "stepId": 2}),
-        ];
-        let output = emit_table_store("weekwalk_dialog", &analyze_field_types(&records), &records);
-
-        assert!(!output.contains("pub fn get("));
-        assert!(output.contains("pub fn by_group(&self, group_id: i32)"));
-    }
-}
+#[path = "emit_table/tests.rs"]
+mod tests;

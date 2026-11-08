@@ -496,6 +496,20 @@ fn append_buff_act_setup_stage(
                 crate::engine::skill::buff_act::registry::SetupFrameScope::RootMechanicFrame => {
                     push_root(&mut frames, FrameOwner::SetupMechanic, trigger.clone())
                 }
+                crate::engine::skill::buff_act::registry::SetupFrameScope::SideSubscriberFrame => {
+                    push_child(
+                        &mut frames,
+                        &side_path,
+                        FrameOwner::BuffAct {
+                            owner_uid: feature.owner_uid,
+                            source_uid: feature.source_uid,
+                            buff_uid: feature.buff_uid,
+                            buff_id: feature.buff_id,
+                            key: subscriber.key,
+                        },
+                        trigger.clone(),
+                    )
+                }
                 crate::engine::skill::buff_act::registry::SetupFrameScope::MechanicFrame => {
                     push_child(
                         &mut frames,

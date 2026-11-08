@@ -127,6 +127,7 @@ fn queued_reactions_preserve_dispatch_pass_order() {
     );
     let queued = queued_reactions(
         &TargetPool::default(),
+        &SkillEffectCatalog::default(),
         dispatcher::DispatchBatch {
             skills: vec![reaction(
                 -1,

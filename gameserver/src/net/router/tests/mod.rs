@@ -6,26 +6,30 @@ use crate::{
 use config::configs;
 use prost::Message;
 use sonettobuf::{
-    Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act220EpisodeRecord,
-    Act233BpScoreUpdatePush, Act236GetAutoGainRewardReply, Act236GetAutoGainRewardRequest,
-    Act236Info, Act239BonusReply, Act239BonusRequest, ArcadeAttrChangePush, ArcadeAttrContainer,
-    ArcadeAttrValue, ArcadeBook, ArcadeBookInfo, ArcadeExtendInfo, ArcadeGainRewardReply,
-    ArcadeGainRewardRequest, ArcadeGetInSideInfoReply, ArcadeGetInSideInfoRequest,
-    ArcadeGetOutSideInfoReply, ArcadeGetOutSideInfoRequest, ArcadeInSideInfo, ArcadeInSideProp,
-    ArcadePlayer, ArcadeSaveGameReply, ArcadeSaveGameRequest, ArcadeSettleGameReply,
-    ArcadeSettleGameRequest, ArcadeTalentUpgradeReply, ArcadeTalentUpgradeRequest,
-    CurrencyChangePush, FinishTaskReply, FinishTaskRequest, GainInviteRewardReply,
+    Act128GetMilestoneBonusReply, Act128GetMilestoneBonusRequest, Act186LikePush,
+    Act220EpisodeRecord, Act233BpScoreUpdatePush, Act236GetAutoGainRewardReply,
+    Act236GetAutoGainRewardRequest, Act236Info, Act239BonusReply, Act239BonusRequest,
+    ArcadeAttrChangePush, ArcadeAttrContainer, ArcadeAttrValue, ArcadeBook, ArcadeBookInfo,
+    ArcadeExtendInfo, ArcadeGainRewardReply, ArcadeGainRewardRequest, ArcadeGetInSideInfoReply,
+    ArcadeGetInSideInfoRequest, ArcadeGetOutSideInfoReply, ArcadeGetOutSideInfoRequest,
+    ArcadeInSideInfo, ArcadeInSideProp, ArcadePlayer, ArcadeSaveGameReply, ArcadeSaveGameRequest,
+    ArcadeSettleGameReply, ArcadeSettleGameRequest, ArcadeTalentUpgradeReply,
+    ArcadeTalentUpgradeRequest, CurrencyChangePush, FinishAllAct186TaskReply,
+    FinishAllAct186TaskRequest, FinishTaskReply, FinishTaskRequest, GainInviteRewardReply,
     GainInviteRewardRequest, GetAct220InfoReply, GetAct220InfoRequest, GetAct233BpBonusReply,
     GetAct233BpBonusRequest, GetAct233BpInfoReply, GetAct233BpInfoRequest, GetAct236InfoReply,
     GetAct236InfoRequest, GetAct239InfoReply, GetAct239InfoRequest, GetHeroInvitationInfoReply,
     GetHeroInvitationInfoRequest, GetInvestigateReply, GetInvestigateRequest,
-    GetRouge2OutsideInfoReply, GetRouge2OutsideInfoRequest, ItemChangePush, MarkPopDeepSettleReply,
-    MarkPopDeepSettleRequest, MarkPopShallowSettleReply, MarkPopShallowSettleRequest,
-    MaterialChangePush, NewOrderRequest, PutClueReply, PutClueRequest, Rouge2AlchemyInfo,
-    Rouge2AlchemyMaterialInfo, Rouge2BossBattleInfo, Rouge2CareerLevelInfo, Rouge2OutsideInfo,
-    Rouge2RewardInfo, Rouge2TotalRecordInfo, TeachingGetBonusReply, TeachingGetBonusRequest,
-    TeachingGetInfoReply, TeachingGetInfoRequest, UpdateRedDotPush, UpdateTaskPush,
+    GetPartyOutSideInfoReply, GetPartyOutSideInfoRequest, GetRouge2OutsideInfoReply,
+    GetRouge2OutsideInfoRequest, ItemChangePush, MarkPopDeepSettleReply, MarkPopDeepSettleRequest,
+    MarkPopShallowSettleReply, MarkPopShallowSettleRequest, MaterialChangePush, NewOrderRequest,
+    PutClueReply, PutClueRequest, Rouge2AlchemyInfo, Rouge2BossBattleInfo, Rouge2CareerLevelInfo,
+    Rouge2OutsideInfo, Rouge2RewardInfo, Rouge2TotalRecordInfo, TeachingGetBonusReply,
+    TeachingGetBonusRequest, TeachingGetInfoReply, TeachingGetInfoRequest, TriggerPartyResultReply,
+    TriggerPartyResultRequest, UpdateRedDotPush, UpdateTaskPush,
 };
+use sonettobuf::{Act220EpisodePush, Act220FinishEpisodeReply, Act220FinishEpisodeRequest};
+use sonettobuf::{Get107GoodsInfoReply, Get107GoodsInfoRequest};
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 
@@ -54,9 +58,12 @@ async fn complete_teaching(pool: &SqlitePool, player_id: i64, teaching_id: i32) 
 mod activity_events;
 mod activity_pass;
 mod activity_rewards;
+mod activity_store;
 mod arcade;
 mod exploration;
+mod milestone;
 mod progression;
+mod rouge;
 mod social;
 mod story;
 mod teaching;

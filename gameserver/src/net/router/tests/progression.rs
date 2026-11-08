@@ -111,9 +111,20 @@ async fn act220_info_command_reaches_handler_and_decodes_captured_initial_episod
     let _ = config::init(data_dir.to_str().unwrap());
     let activity_id = 13710;
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 5619;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'act220-info', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
     let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
     let (outbound, mut packets) = mpsc::channel(1);
     let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
 
     let mut data = Vec::new();
     GetAct220InfoRequest {
@@ -155,6 +166,171 @@ async fn act220_info_command_reaches_handler_and_decodes_captured_initial_episod
         }
     );
     assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn act220_finish_episode_matches_captured_progression_sequence() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 5620;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'act220-finish', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    database::db::game::player_infos::create_player_info(&pool, player_id, 0)
+        .await
+        .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(32);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(
+        player_id,
+        PlayerState::new(player_id, ::common::time::ServerTime::now_ms()),
+    ));
+    let mut data = Vec::new();
+    Act220FinishEpisodeRequest {
+        activity_id: Some(13904),
+        episode_id: Some(1390401),
+        progress: Some(String::new()),
+    }
+    .encode(&mut data)
+    .unwrap();
+
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::Act220FinishEpisodeCmd as i16,
+            up_tag: 61,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Act220 successor episode was not pushed");
+    };
+    assert_eq!(cmd_id, CmdId::Act220EpisodePushCmd);
+    assert_eq!(
+        Act220EpisodePush::decode(&*body).unwrap(),
+        Act220EpisodePush {
+            activity_id: Some(13904),
+            episodes: vec![Act220EpisodeRecord {
+                episode_id: Some(1390402),
+                is_finished: Some(false),
+                unlock_branch_ids: Vec::new(),
+                progress: Some(String::new()),
+            }],
+        }
+    );
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Act220 task update was not pushed");
+    };
+    assert_eq!(cmd_id, CmdId::UpdateTaskPushCmd);
+    let task_update = UpdateTaskPush::decode(&*body).unwrap();
+    assert_eq!(task_update.task_info.len(), 1);
+    let task = &task_update.task_info[0];
+    assert_eq!(task.id, 690601);
+    assert_eq!(task.progress, 1);
+    assert!(task.has_finished);
+    assert_eq!(task.r#type, Some(71));
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Act220 task red dot was not pushed");
+    };
+    assert_eq!(cmd_id, CmdId::UpdateRedDotPushCmd);
+    let red_dot = UpdateRedDotPush::decode(&*body).unwrap();
+    assert_eq!(red_dot.red_dot_infos.len(), 1);
+    let group = &red_dot.red_dot_infos[0];
+    assert_eq!(group.define_id, 3215);
+    assert_eq!(group.replace_all, Some(true));
+    assert_eq!(group.infos.len(), 1);
+    assert_eq!(group.infos[0].id, 13904);
+    assert_eq!(group.infos[0].value, 1);
+    assert_eq!(group.infos[0].time, Some(0));
+
+    let CommandPacket::Reply {
+        cmd_id,
+        body,
+        result_code: 0,
+        up_tag: 61,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("Act220 finish reply did not reach the client");
+    };
+    assert_eq!(cmd_id, CmdId::Act220FinishEpisodeCmd);
+    assert_eq!(
+        Act220FinishEpisodeReply::decode(&*body).unwrap(),
+        Act220FinishEpisodeReply {
+            activity_id: Some(13904),
+            episode_id: Some(1390401),
+            progress: Some(String::new()),
+        }
+    );
+    assert!(packets.try_recv().is_err());
+
+    let mut data = Vec::new();
+    FinishTaskRequest { id: 690601 }.encode(&mut data).unwrap();
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 2,
+            cmd_id: CmdId::FinishTaskCmd as i16,
+            up_tag: 62,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let mut claim_result = None;
+    let mut cleared_red_dot = false;
+    while let Ok(packet) = packets.try_recv() {
+        match packet {
+            CommandPacket::Reply {
+                cmd_id: CmdId::FinishTaskCmd,
+                result_code,
+                up_tag,
+                ..
+            } => {
+                assert_eq!(up_tag, 62);
+                claim_result = Some(result_code);
+            }
+            CommandPacket::Push {
+                cmd_id: CmdId::UpdateRedDotPushCmd,
+                body,
+                ..
+            } => {
+                let red_dot = UpdateRedDotPush::decode(&*body).unwrap();
+                cleared_red_dot = red_dot.red_dot_infos.iter().any(|group| {
+                    group.define_id == 3215
+                        && group.replace_all == Some(true)
+                        && group.infos.len() == 1
+                        && group.infos[0].id == 13904
+                        && group.infos[0].value == 0
+                        && group.infos[0].time == Some(0)
+                });
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(claim_result, Some(0));
+    assert!(cleared_red_dot);
 }
 
 #[tokio::test]
@@ -222,15 +398,6 @@ async fn rouge2_outside_info_command_decodes_captured_initial_boss_state() {
         })
         .collect::<Vec<_>>();
     expected_rewards.sort_by_key(|row| row.id);
-    let mut expected_materials = configs::get()
-        .rouge2_material
-        .iter()
-        .map(|row| Rouge2AlchemyMaterialInfo {
-            id: Some(row.id),
-            num: Some(0),
-        })
-        .collect::<Vec<_>>();
-    expected_materials.sort_by_key(|row| row.id);
     assert_eq!(
         reply,
         GetRouge2OutsideInfoReply {
@@ -252,7 +419,7 @@ async fn rouge2_outside_info_command_decodes_captured_initial_boss_state() {
                 reward_point: Some(0),
                 alchemy_info: Some(Rouge2AlchemyInfo {
                     cur_alchemy_info: None,
-                    alchemy_material_info: expected_materials,
+                    alchemy_material_info: Vec::new(),
                 }),
                 review: Vec::new(),
                 boss_battle_info: Some(Rouge2BossBattleInfo {

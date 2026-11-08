@@ -39,6 +39,7 @@ pub mod investigate;
 pub mod items;
 pub mod mail;
 pub mod manufacture;
+pub mod milestones;
 pub mod necrologist_story;
 pub mod odyssey;
 pub mod open_infos;

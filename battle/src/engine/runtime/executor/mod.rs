@@ -22,6 +22,8 @@ use crate::engine::{
         buff_precast::{BuffPrecastChanges, BuffPrecastError},
         field_transfer::{FieldTransferChanges, FieldTransferError},
         focus_all_entity_buff::{FocusAllEntityBuffChanges, FocusAllEntityBuffError},
+        hedone_device_power::HedoneDevicePowerError,
+        hedone_starting_charge::{HedoneStartingChargeChanges, HedoneStartingChargeError},
         magic_circle_level::{MagicCircleLevelChanges, MagicCircleLevelError},
         monster_change::{MonsterChangeChanges, MonsterChangeError},
         shell::{ShellChanges, ShellError},
@@ -78,6 +80,7 @@ pub(crate) enum RuleOutcome {
     MonsterChange(Box<MonsterChangeChanges>),
     Card(Box<CardChanges>),
     BuffPrecast(Box<BuffPrecastChanges>),
+    HedoneStartingCharge(Box<HedoneStartingChargeChanges>),
     Conduit(ConduitChange),
     Contract(ContractChange),
     Field(FieldChange),
@@ -353,6 +356,11 @@ impl RuleOutcome {
                 BattleChange::Buff(Box::new(changes.buff.clone())),
                 BattleChange::Card(Box::new(changes.card.clone())),
             ],
+            Self::HedoneStartingCharge(changes) => vec![
+                BattleChange::Card(Box::new(changes.card.clone())),
+                BattleChange::Buff(Box::new(changes.buff.clone())),
+                BattleChange::BuffActInfoMarker(changes.marker.clone()),
+            ],
             Self::Conduit(change) => vec![BattleChange::Conduit(change.clone())],
             Self::Contract(change) => vec![BattleChange::Contract(change.clone())],
             Self::Field(change) => vec![BattleChange::Field(*change)],
@@ -431,10 +439,15 @@ pub(crate) enum RuleExecutionError {
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaError),
     Card(CardCommandError),
     BuffPrecast(BuffPrecastError),
+    HedoneDevicePower(HedoneDevicePowerError),
+    HedoneStartingCharge(HedoneStartingChargeError),
     Conduit(ConduitError),
     Contract(ContractError),
     Field(FieldCommandError),
     FightProgress(FightProgressError),
+    HedoneCounter(crate::engine::manager::hedone_counter::HedoneCounterError),
+    HedoneCounterClear(crate::engine::manager::hedone_counter::HedoneCounterClearError),
+    HedoneDamage(crate::engine::manager::hedone_counter::HedoneDamageError),
     FieldTransfer(FieldTransferError),
     MagicCircleLevel(MagicCircleLevelError),
     FocusAllEntityBuff(FocusAllEntityBuffError),
@@ -512,6 +525,18 @@ impl From<BuffPrecastError> for RuleExecutionError {
     }
 }
 
+impl From<HedoneDevicePowerError> for RuleExecutionError {
+    fn from(value: HedoneDevicePowerError) -> Self {
+        Self::HedoneDevicePower(value)
+    }
+}
+
+impl From<HedoneStartingChargeError> for RuleExecutionError {
+    fn from(value: HedoneStartingChargeError) -> Self {
+        Self::HedoneStartingCharge(value)
+    }
+}
+
 impl From<ConduitError> for RuleExecutionError {
     fn from(value: ConduitError) -> Self {
         Self::Conduit(value)
@@ -533,6 +558,24 @@ impl From<FieldCommandError> for RuleExecutionError {
 impl From<FightProgressError> for RuleExecutionError {
     fn from(value: FightProgressError) -> Self {
         Self::FightProgress(value)
+    }
+}
+
+impl From<crate::engine::manager::hedone_counter::HedoneCounterError> for RuleExecutionError {
+    fn from(value: crate::engine::manager::hedone_counter::HedoneCounterError) -> Self {
+        Self::HedoneCounter(value)
+    }
+}
+
+impl From<crate::engine::manager::hedone_counter::HedoneCounterClearError> for RuleExecutionError {
+    fn from(value: crate::engine::manager::hedone_counter::HedoneCounterClearError) -> Self {
+        Self::HedoneCounterClear(value)
+    }
+}
+
+impl From<crate::engine::manager::hedone_counter::HedoneDamageError> for RuleExecutionError {
+    fn from(value: crate::engine::manager::hedone_counter::HedoneDamageError) -> Self {
+        Self::HedoneDamage(value)
     }
 }
 
@@ -697,6 +740,25 @@ pub(crate) fn execute_rule_op_with(
         RuleOp::NuoDiKaHit(hit) => Ok(RuleOutcome::NuoDiKaHit(hit)),
         RuleOp::Command(BattleCommand::Injury(command)) => {
             Ok(RuleOutcome::Injury(managers.injury.execute(command)))
+        }
+        RuleOp::Command(BattleCommand::HedoneCounter(command)) => {
+            managers.hedone_counter.execute(command)?;
+            Ok(RuleOutcome::StateChanged)
+        }
+        RuleOp::Command(BattleCommand::HedoneCounterClear(command)) => {
+            crate::engine::manager::hedone_counter::clear(managers, command)?;
+            Ok(RuleOutcome::StateChanged)
+        }
+        RuleOp::Command(BattleCommand::HedoneDamage(command)) => {
+            let Some(execution) =
+                crate::engine::manager::hedone_counter::damage(managers, command)?
+            else {
+                return Ok(RuleOutcome::StateChanged);
+            };
+            for event in execution.changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::Hp(Box::new(execution)))
         }
         RuleOp::Command(BattleCommand::Revive(command)) => {
             let changes = crate::engine::manager::revive::execute(managers, command)?;
@@ -911,6 +973,26 @@ pub(crate) fn execute_rule_op_with(
                 events.push(event);
             }
             Ok(RuleOutcome::BuffPrecast(Box::new(changes)))
+        }
+        RuleOp::Command(BattleCommand::HedoneDevicePower(command)) => {
+            let change = crate::engine::mechanic::hedone_device_power::execute(managers, command)?;
+            for event in change.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::Conduit(change))
+        }
+        RuleOp::Command(BattleCommand::HedoneStartingCharge(command)) => {
+            let changes =
+                crate::engine::mechanic::hedone_starting_charge::execute(managers, command)?;
+            for event in changes
+                .card
+                .events()
+                .into_iter()
+                .chain(changes.buff.events())
+            {
+                events.push(event);
+            }
+            Ok(RuleOutcome::HedoneStartingCharge(Box::new(changes)))
         }
         RuleOp::Command(BattleCommand::Conduit(command)) => {
             let change = managers.conduit.execute(command)?;

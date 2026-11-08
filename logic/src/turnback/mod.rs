@@ -1,11 +1,12 @@
 mod claims;
 mod info;
+mod return_rewards;
 
 use crate::{error::AppError, reward::RewardedReply};
 use sonettobuf::{
-    AcceptAllTurnbackBonusPointReply, BuyDoubleBonusReply, GetTurnbackDailyBonusReply,
-    GetTurnbackInfoReply, TurnbackBonusPointReply, TurnbackFirstShowReply, TurnbackOnceBonusReply,
-    TurnbackSignInReply,
+    AcceptAllTurnbackBonusPointReply, AcceptAllTurnbackReturnRewardReply, BuyDoubleBonusReply,
+    GetTurnbackDailyBonusReply, GetTurnbackInfoReply, TurnbackBonusPointReply,
+    TurnbackFirstShowReply, TurnbackOnceBonusReply, TurnbackReturnRewardReply, TurnbackSignInReply,
 };
 use sqlx::SqlitePool;
 
@@ -87,6 +88,25 @@ impl TurnbackManager {
         claims::accept_all_turnback_bonus_point(db, self.player_id, turnback_id, tables).await
     }
 
+    pub async fn claim_return_reward(
+        &self,
+        db: &SqlitePool,
+        turnback_id: i32,
+        reward_id: i32,
+        tables: &config::GameDB,
+    ) -> Result<RewardedReply<TurnbackReturnRewardReply>, AppError> {
+        return_rewards::claim_one(db, self.player_id, turnback_id, reward_id, tables).await
+    }
+
+    pub async fn claim_all_return_rewards(
+        &self,
+        db: &SqlitePool,
+        turnback_id: i32,
+        tables: &config::GameDB,
+    ) -> Result<RewardedReply<AcceptAllTurnbackReturnRewardReply>, AppError> {
+        return_rewards::claim_all(db, self.player_id, turnback_id, tables).await
+    }
+
     pub async fn buy_double_bonus(
         &self,
         db: &SqlitePool,
@@ -94,6 +114,14 @@ impl TurnbackManager {
     ) -> Result<RewardedReply<BuyDoubleBonusReply>, AppError> {
         claims::buy_double_bonus(db, self.player_id, turnback_id).await
     }
+}
+
+pub(crate) async fn validate_task_claims(
+    db: &SqlitePool,
+    player_id: i64,
+    task_ids: &[i32],
+) -> Result<(), AppError> {
+    return_rewards::validate_tasks(db, player_id, task_ids, config::configs::get()).await
 }
 
 #[cfg(test)]

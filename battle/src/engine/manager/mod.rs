@@ -14,6 +14,7 @@ pub mod field;
 pub mod fight_progress;
 pub mod fight_task;
 pub mod gauge;
+pub mod hedone_counter;
 pub mod hp;
 pub mod indicator;
 pub mod injury;
@@ -75,6 +76,7 @@ pub struct BattleManagers {
     pub ex_point: ExPointManager,
     pub eureka: EurekaManager,
     pub gauge: gauge::GaugeManager,
+    pub hedone_counter: hedone_counter::HedoneCounterManager,
     pub nuo_di_ka: crate::engine::mechanic::nuo_di_ka::NuoDiKa,
     pub field: field::FieldManager,
     pub fight_progress: fight_progress::FightProgressManager,
@@ -396,6 +398,18 @@ impl BattleManagers {
                 )
         {
             plan.initialize_added_act_info_without_markers(act_info);
+        }
+        if let Some((source_uid, target_uid, buff_id, removed_buff_uids)) =
+            plan.after_add_attribute_route()
+            && let Some(act_info) = crate::engine::skill::buff_act::each_change_attr_one_way_after_add::definition_snapshot(
+                self,
+                buff_id,
+                source_uid,
+                target_uid,
+                &removed_buff_uids,
+            )
+        {
+            plan.initialize_added_and_fanout_act_info_without_markers(act_info);
         }
         if let Some((source_uid, target_uid, buff_id)) = plan.each_change_attr_route() {
             let values = crate::engine::skill::buff_act::each_change_attr::definition_snapshot(

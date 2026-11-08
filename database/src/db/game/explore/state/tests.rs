@@ -1,5 +1,5 @@
 use crate::{
-    db::game::explore::state::{insert, last_map, load, select},
+    db::game::explore::state::{insert, last_map, load, select, update},
     models::game::explore::state::{InteractState, MapState},
 };
 use anyhow::Result;
@@ -36,6 +36,8 @@ async fn snapshots_preserve_progress_and_selection_preserves_bag() -> Result<()>
         }],
         area_ids: vec![2, 9],
         move_nodes: "8,-3|8,-2".into(),
+        items: vec![],
+        use_item_uid: 0,
     };
     assert_eq!(load(&mut conn, 1, progressed.map_id).await?, None);
     assert!(insert(&mut conn, 1, &progressed).await?);
@@ -43,6 +45,11 @@ async fn snapshots_preserve_progress_and_selection_preserves_bag() -> Result<()>
         load(&mut conn, 1, progressed.map_id).await?,
         Some(progressed.clone())
     );
+    let mut moved = progressed.clone();
+    moved.posx = 9;
+    assert!(update(&mut conn, 1, &moved).await?);
+    assert_eq!(load(&mut conn, 1, moved.map_id).await?, Some(moved.clone()));
+    assert!(!update(&mut conn, 2, &progressed).await?);
 
     let initial = MapState {
         map_id: progressed.map_id,
@@ -53,12 +60,11 @@ async fn snapshots_preserve_progress_and_selection_preserves_bag() -> Result<()>
         interacts: vec![],
         area_ids: vec![],
         move_nodes: String::new(),
+        items: vec![],
+        use_item_uid: 0,
     };
     assert!(!insert(&mut conn, 1, &initial).await?);
-    assert_eq!(
-        load(&mut conn, 1, progressed.map_id).await?,
-        Some(progressed.clone())
-    );
+    assert_eq!(load(&mut conn, 1, progressed.map_id).await?, Some(moved));
 
     assert_eq!(last_map(&mut conn, 1).await?, None);
     select(&mut conn, 1, progressed.map_id).await?;
@@ -78,5 +84,15 @@ async fn snapshots_preserve_progress_and_selection_preserves_bag() -> Result<()>
         .execute(&mut *conn)
         .await?;
     assert!(load(&mut conn, 1, progressed.map_id).await.is_err());
+    Ok(())
+}
+
+#[test]
+fn legacy_snapshot_defaults_item_state() -> Result<()> {
+    let state: MapState = serde_json::from_str(
+        r#"{"map_id":101,"posx":1,"posy":6,"dir":180,"challenge_count":0,"interacts":[],"area_ids":[1],"move_nodes":"1#6"}"#,
+    )?;
+    assert!(state.items.is_empty());
+    assert_eq!(state.use_item_uid, 0);
     Ok(())
 }

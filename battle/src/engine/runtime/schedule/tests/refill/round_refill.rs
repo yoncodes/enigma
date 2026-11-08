@@ -1,6 +1,205 @@
 use super::*;
 
 #[test]
+fn post_action_refill_replaces_only_action_point_hand_plays() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let card = |skill_id| CardInfo {
+        uid: Some(10),
+        skill_id: Some(skill_id),
+        ..Default::default()
+    };
+    let mut free = card(200);
+    free.extra_infos.push(sonettobuf::CardExtraInfo {
+        key: Some(8),
+        values: vec!["Free".to_owned()],
+    });
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![
+                card(100),
+                free,
+                card(101),
+                card(102),
+                card(103),
+                card(104),
+                card(105),
+                card(106),
+            ],
+            draw_pile: vec![card(300)],
+            deck_num: 1,
+        }))
+        .unwrap();
+    for _ in 0..2 {
+        managers
+            .execute_card(CardCommand::Play(CardPlay {
+                origin: CARD_PLAY_ORIGIN,
+                hand_index: 0,
+                target_uid: None,
+                chosen_skill_id: None,
+                choice: None,
+                recorded_skill: None,
+            }))
+            .unwrap();
+    }
+    managers.card.record_action_point_use(1, true);
+    assert_eq!(post_action_replacement_count(&managers), 1);
+    let target = post_action_target_hand_len(&managers, &pool, 5);
+    assert_eq!(target, 7);
+
+    run_post_action_refill(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        target,
+        1,
+    )
+    .unwrap();
+
+    assert_eq!(managers.card.hand().len(), 7);
+    assert_eq!(managers.card.refilled().len(), 1);
+}
+
+#[test]
+fn post_action_refill_does_not_replace_temporary_action_cards() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut temporary = CardInfo {
+        uid: Some(10),
+        skill_id: Some(200),
+        temp_card: Some(true),
+        ..Default::default()
+    };
+    temporary.card_type = Some(6);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![
+                CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(100),
+                    ..Default::default()
+                },
+                temporary,
+            ],
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        }))
+        .unwrap();
+    for _ in 0..2 {
+        managers
+            .execute_card(CardCommand::Play(CardPlay {
+                origin: CARD_PLAY_ORIGIN,
+                hand_index: 0,
+                target_uid: None,
+                chosen_skill_id: None,
+                choice: None,
+                recorded_skill: None,
+            }))
+            .unwrap();
+    }
+    managers.card.record_action_point_use(1, true);
+    managers.card.record_action_point_use(2, true);
+
+    assert_eq!(post_action_replacement_count(&managers), 1);
+}
+
+#[test]
+fn post_action_refill_keeps_the_recorded_ultimate_waiver() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3128),
+                current_hp: Some(100),
+                ex_point: Some(5),
+                ex_skill: Some(31280131),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(31280116),
+                    from_uid: Some(10),
+                    count: Some(1),
+                    layer: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![CardInfo {
+                uid: Some(10),
+                skill_id: Some(31280131),
+                ..Default::default()
+            }],
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        }))
+        .unwrap();
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31280131], []);
+
+    run_player_action_queue(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [CardPlay {
+            origin: CARD_PLAY_ORIGIN,
+            hand_index: 0,
+            target_uid: Some(-1),
+            chosen_skill_id: None,
+            choice: None,
+            recorded_skill: None,
+        }],
+        1,
+        crate::engine::manager::emitter::UID,
+    )
+    .unwrap();
+
+    assert!(managers.buff.snapshot(10, 20).is_none());
+    assert!(!managers.card.played()[0].uses_action_point);
+    assert_eq!(post_action_replacement_count(&managers), 0);
+}
+
+#[test]
 fn ai_queue_refresh_awards_composition_moxie_from_configured_card_ranks() {
     init_config();
     let fight = Fight {

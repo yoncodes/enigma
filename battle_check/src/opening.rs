@@ -18,7 +18,7 @@ fn run(db: &'static config::GameDB, episode_id: i32) -> Result<()> {
         .episode
         .get(episode_id)
         .with_context(|| format!("episode {episode_id} is missing"))?;
-    let configured = db.teaching_card.get(episode_id);
+    let configured = battle::tooling::configured_opening_cards(db, episode_id);
     let built = battle::dungeon::build_fight(
         BattleCatalog::new(db),
         &battle::dungeon::BattleRoster::default(),
@@ -34,9 +34,9 @@ fn run(db: &'static config::GameDB, episode_id: i32) -> Result<()> {
     let push = runtime.card_info_push();
 
     match configured {
-        Some(row) => {
+        Some(opening_cards) => {
             println!("opening.mode=configured");
-            println!("opening.config={}", row.opening_cards);
+            println!("opening.config={opening_cards}");
         }
         None => {
             println!("opening.mode=random-sample seed={}", episode.battle_id);

@@ -851,6 +851,23 @@ pub async fn reset_daily_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<
     Ok(reset_ids)
 }
 
+pub async fn reset_turnback_return_daily_tasks(
+    pool: &SqlitePool,
+    user_id: i64,
+    turnback_id: i32,
+    tables: &config::GameDB,
+) -> sqlx::Result<Vec<i32>> {
+    let ids = tables
+        .turnback_task
+        .iter()
+        .filter(|task| {
+            task.turnback_id == turnback_id && task.is_online != 0 && task.turnback_task_type == 1
+        })
+        .map(|task| task.id)
+        .collect();
+    reset_task_ids(pool, user_id, vec![(TaskType::Turnback.id(), ids)]).await
+}
+
 pub async fn reset_weekly_tasks(pool: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<i32>> {
     let weekly_ids = config::configs::get()
         .task_weekly
@@ -1202,6 +1219,24 @@ pub async fn claimable_expiry(
             .map(|task| task.expiry_time)
             .max(),
     )
+}
+
+pub async fn has_claimable_activity(
+    pool: &SqlitePool,
+    user_id: i64,
+    task_type: TaskType,
+    activity_id: i32,
+) -> sqlx::Result<bool> {
+    Ok(!claimable_tasks(
+        pool,
+        user_id,
+        task_type.id(),
+        None,
+        Some(activity_id),
+        Vec::new(),
+    )
+    .await?
+    .is_empty())
 }
 
 fn login_task_targets(bp_id: Option<i32>) -> Vec<LoginTaskTarget> {

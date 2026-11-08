@@ -221,6 +221,7 @@ pub enum BuffActKind {
     EzioBigSkill,
     EachChangeAttr,
     EachChangeAttrOneWay,
+    EachChangeAttrOneWayAfterAdd,
     ExPointAddByHit,
     ExPointAdd,
     ExPointDel,
@@ -239,6 +240,9 @@ pub enum BuffActKind {
     FixElectricUpgrade,
     FixedHurt,
     FoundationCounter,
+    HedoneFixAttr,
+    HedoneHurtCounter,
+    HedoneCard,
     FoundationShield,
     FixTempAttrByBuffLayer,
     MustCritAndFixTempAttr,
@@ -373,6 +377,7 @@ pub enum RuntimeFrameSource {
 pub enum SetupFrameScope {
     #[default]
     SubscriberFrame,
+    SideSubscriberFrame,
     MechanicFrame,
     RootMechanicFrame,
     IndependentStep,
@@ -435,6 +440,7 @@ pub struct BuffActRuntimeDefinition {
 #[derive(Debug, Clone, Copy)]
 pub struct BuffActSetupDefinition {
     pub routes: &'static [(SetupStage, i32)],
+    pub side_subscriber_steps: &'static [(SetupStage, i32)],
     pub mechanic_steps: &'static [(SetupStage, i32)],
     pub root_mechanic_steps: &'static [(SetupStage, i32)],
     pub independent_steps: &'static [(SetupStage, i32, i32)],
@@ -474,6 +480,7 @@ pub enum BuffActInitialStateRule {
     StringCounter,
     GrantValue,
     LostHpToFakeHp,
+    HedoneEnergy,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -518,6 +525,13 @@ impl BuffActDefinition {
     }
 
     pub fn setup_frame(&self, stage: SetupStage, priority: i32) -> (SetupFrameScope, i32) {
+        if self
+            .setup
+            .side_subscriber_steps
+            .contains(&(stage, priority))
+        {
+            return (SetupFrameScope::SideSubscriberFrame, 0);
+        }
         if self.setup.root_mechanic_steps.contains(&(stage, priority)) {
             return (SetupFrameScope::RootMechanicFrame, 0);
         }
@@ -567,6 +581,7 @@ macro_rules! buff_act_definitions {
             $(, transactions: [$($transaction_events:expr),*])?
             $(, transaction_wire_markers: [$($transaction_wire_marker_events:expr),*])?
             $(, setup: [$($stage:ident($priority:expr)),*])?
+            $(, side_subscriber_setup: [$($side_subscriber_stage:ident($side_subscriber_priority:expr)),*])?
             $(, mechanic_setup: [$($mechanic_stage:ident($mechanic_priority:expr)),*])?
             $(, root_mechanic_setup: [$($root_mechanic_stage:ident($root_mechanic_priority:expr)),*])?
             $(, independent_setup: [$($independent_stage:ident($independent_priority:expr, $setup_order:expr)),*])?
@@ -627,6 +642,7 @@ macro_rules! buff_act_definitions {
                 },
                 setup: BuffActSetupDefinition {
                     routes: buff_act_definitions!(@setup [$($($stage($priority)),*)?]),
+                    side_subscriber_steps: &[$($((SetupStage::$side_subscriber_stage, $side_subscriber_priority)),*)?],
                     mechanic_steps: &[$($((SetupStage::$mechanic_stage, $mechanic_priority)),*)?],
                     root_mechanic_steps: &[$($((SetupStage::$root_mechanic_stage, $root_mechanic_priority)),*)?],
                     independent_steps: &[$($((SetupStage::$independent_stage, $independent_priority, $setup_order)),*)?],
@@ -1185,6 +1201,11 @@ buff_act_definitions! {
         transaction: super::each_change_attr_one_way::transaction_rule_ops,
         supports: super::each_change_attr_one_way::supports,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1131, "EachChangeAttrOneWay"), &[EffectType::None as i32]).with_one_way_attr_max_hp());
+    (1162, "EachChangeAttrOneWayAfterAdd") => EachChangeAttrOneWayAfterAdd,
+        stat_read: OnGrant,
+        supports: super::each_change_attr_one_way_after_add::supports,
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1162, "EachChangeAttrOneWayAfterAdd"), &[EffectType::None as i32]));
     (836, "ContractCastChannel") => ContractCastChannel,
         transactions: [EventKind::BuffAdded],
         publication: BeforePublish, frame: CausingFrame,
@@ -1410,6 +1431,31 @@ buff_act_definitions! {
             DefinitionKey::new(1147, "FoundationCounter"),
             &[],
         ).without_initial_state_marker());
+    (1158, "HedoneHurtCounter") => HedoneHurtCounter, effect_time_subscription: false,
+        events: [EventKind::TargetAttacked, EventKind::RoundEndAfterFinalSettlement],
+        setup: [EnterBattleStatic(0)],
+        side_subscriber_setup: [EnterBattleStatic(0)],
+        fallible_scoped_runtime: super::hedone_hurt_counter::scoped_rule_ops,
+        setup_handler: |context| super::hedone_hurt_counter::setup_rule_ops(context.managers, &context.subscriber.feature, context.subscriber.stage),
+        supports: super::hedone_hurt_counter::supports,
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(
+            DefinitionKey::new(1158, "HedoneHurtCounter"),
+            &[EffectType::None as i32],
+        ));
+    (1159, "HedoneCard") => HedoneCard,
+        fallible_scoped_runtime: super::hedone_card::scoped_rule_ops,
+        supports: super::hedone_card::supports,
+        references: references_for_feature,
+        state_consumer: true,
+        initial_state: HedoneEnergy,
+        wire: (super::wire::BuffActWireDefinition::add(
+            DefinitionKey::new(1159, "HedoneCard"),
+            &[EffectType::None as i32],
+        ));
+    (1160, "HedoneFixAttr") => HedoneFixAttr, effect_time_subscription: false,
+        supports: super::hedone_fix_attr::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1160, "HedoneFixAttr"), &[]));
     (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,
         effect_time_subscription: false,
         supports: super::add_attr_by_other_buff_layer::supports, state_consumer: true,
@@ -1670,6 +1716,12 @@ fn references_for_feature(
     match feature.kind {
         Some(BuffActKind::GuardBreakReward) => {
             add_buff(&mut references, feature.args.first().copied());
+        }
+        Some(BuffActKind::HedoneCard) => {
+            add_skill(&mut references, feature.args.first().copied());
+            if feature.args.get(3) == Some(&1) {
+                add_buff(&mut references, feature.args.get(2).copied());
+            }
         }
         Some(BuffActKind::SovereignCardUnlock) => {
             add_skill(&mut references, feature.args.first().copied());

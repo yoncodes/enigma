@@ -1027,6 +1027,28 @@ fn hopscotch_kill_count_uses_the_captured_after_hit_route() {
 #[test]
 fn hand_skill_presence_keeps_exact_card_identity_and_round_timing() {
     assert_eq!(
+        parse(
+            708203,
+            "HandCardHasSkillId",
+            &["31560181".into(), "1".into(), "1".into()],
+        ),
+        Some(ParsedConditionKind::HandSkillPresence(vec![31560181]))
+    );
+    let hedone = find_key(708203, "HandCardHasSkillId").unwrap();
+    assert_eq!(hedone.role, ConditionRole::Predicate);
+    assert_eq!(hedone.read_timing, ConditionReadTiming::ActionStart);
+    for args in [
+        vec![],
+        vec!["31560181".into(), "1".into()],
+        vec!["31560181".into(), "2".into(), "1".into()],
+        vec!["31560181".into(), "1".into(), "2".into()],
+        vec!["invalid".into(), "1".into(), "1".into()],
+        vec!["0".into(), "1".into(), "1".into()],
+        vec!["-1".into(), "1".into(), "1".into()],
+    ] {
+        assert_eq!(parse(708203, "HandCardHasSkillId", &args), None);
+    }
+    assert_eq!(
         parse(710301, "PerHandCardHasSkillId", &["118353040".into()],),
         Some(ParsedConditionKind::HandSkillPresence(vec![118353040]))
     );

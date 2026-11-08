@@ -118,6 +118,7 @@ pub struct BehaviorDefinition {
     pub target_emission_mode: TargetEmissionMode,
     pub output_owner: OutputOwner,
     pub output_owner_for: fn(&ParsedBehavior, &RuleOp, usize) -> Option<OutputOwner>,
+    pub reaction_frame_scope: Option<crate::engine::skill::condition::registry::ReactionFrameScope>,
     pub death_settlement: DeathSettlement,
     pub references: fn(&ParsedBehavior) -> RuleReferences,
     pub card_play_role: CardPlayRole,
@@ -227,6 +228,7 @@ pub const fn definition<H: BehaviorHandler>(
         target_emission_mode: TargetEmissionMode::Each,
         output_owner: OutputOwner::Skill,
         output_owner_for: H::output_owner,
+        reaction_frame_scope: None,
         death_settlement: DeathSettlement::ActionBoundary,
         references: H::references,
         card_play_role: CardPlayRole::Action,
@@ -368,7 +370,7 @@ pub const fn setup_parent_destination_definition<H: BehaviorHandler>(
     }
 }
 
-pub const fn setup_or_final_settlement_parent_destination_definition<H: BehaviorHandler>(
+pub const fn trigger_owned_destination_definition<H: BehaviorHandler>(
     opcode: i32,
     type_name: &'static str,
     kind: BehaviorKind,
@@ -377,6 +379,9 @@ pub const fn setup_or_final_settlement_parent_destination_definition<H: Behavior
     BehaviorDefinition {
         destination: true,
         output_owner: OutputOwner::SetupOrFinalSettlementParent,
+        reaction_frame_scope: Some(
+            crate::engine::skill::condition::registry::ReactionFrameScope::Causing,
+        ),
         ..definition::<H>(opcode, type_name, kind, phase)
     }
 }
@@ -605,8 +610,8 @@ macro_rules! behavior_definitions {
     (@definition setup_parent_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::setup_parent_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
     };
-    (@definition setup_or_final_settlement_parent_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
-        $crate::engine::skill::behavior::registry::setup_or_final_settlement_parent_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
+    (@definition trigger_owned_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
+        $crate::engine::skill::behavior::registry::trigger_owned_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
     };
     (@definition causing_event_destination, $handler:ty, $opcode:expr, $type_name:literal, $kind:ident, $phase:ident) => {
         $crate::engine::skill::behavior::registry::causing_event_destination_definition::<$handler>($opcode, $type_name, $crate::engine::skill::behavior::classify::BehaviorKind::$kind, $crate::engine::skill::behavior::registry::BehaviorPhase::$phase)
@@ -673,7 +678,7 @@ behavior_definitions! {
     [60298] "AddMeiLeiErCharge" => super::resource::Handler, AddBuffOwnedCharge, Immediate, destination, super::resource::supports_buff_owned_charge;
     [60305] "ConsumeBuffMeiLeiEr" => super::resource::Handler, ConsumeBuffIntoChargeAndRewards, Immediate, destination, super::resource::supports_consume_buff_into_charge_and_rewards;
     [60291] "AddDevicePower" => super::resource::Handler, AddConduitPower, Immediate, destination, super::resource::supports_conduit_power;
-    [60292] "AddDeviceExPoint" => super::resource::Handler, AddConduitExPoint, Immediate, setup_or_final_settlement_parent_destination, super::resource::supports_ex_point_gain;
+    [60292] "AddDeviceExPoint" => super::resource::Handler, AddConduitExPoint, Immediate, trigger_owned_destination, super::resource::supports_ex_point_gain;
     [60293] "SetDeviceSkillIndex" => super::resource::Handler, SetConduitSkillGroup, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(19210, "HasBuffId"), event: EventKind::SkillAction, phase: Some(SkillPhase::AfterHit) }), super::resource::supports_conduit_skill_group;
     [60294] "StopDeviceSkill" => super::resource::Handler, StopConduitSkill, Immediate, destination, arguments::none;
     [60308] "ConsumeBuffResetDevice" => super::resource::Handler, ConsumeBuffResetDevice, Immediate, ally_action_owner_destination, super::resource::supports_consume_buff_reset_device;
@@ -861,6 +866,10 @@ behavior_definitions! {
     [30018] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
     [60288] "LostLife" => crate::engine::damage::handler::Handler, LostLife, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
     [60310] "LostLife" => crate::engine::damage::handler::Handler, ToughnessOverflowDamage, Immediate, destination, crate::engine::damage::handler::supports_lost_life;
+    [60331] "ClearHedoneCounter" => super::hedone::ClearHandler, ClearHedoneCounter, Immediate, destination;
+    [60332] "HedoneHurt" => super::hedone::Handler, HedoneHurt, AfterDamage, destination;
+    [60333] "HedoneAddCard" => super::hedone_card::Handler, HedoneAddCard, Immediate, destination;
+    [60334] "HedoneAddDevicePower" => super::hedone_device_power::Handler, HedoneAddDevicePower, Immediate, destination;
     [60212] "LostAllLifeByAttr" => crate::engine::damage::handler::Handler, LostAllLifeByAttr, Immediate, destination, crate::engine::damage::handler::supports_lost_all_life_by_attr;
     [60216] "DamageRealLostLife" => crate::engine::damage::handler::Handler, DamageRealLostLife, Immediate, destination, crate::engine::damage::handler::supports_damage_real_lost_life;
     [60038] "OriginDamageFromInjuryBankBuff" => super::injury_bank::Handler, OriginDamageFromInjuryBankBuff, AfterDamage, destination;

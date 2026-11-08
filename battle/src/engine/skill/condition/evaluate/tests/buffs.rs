@@ -147,7 +147,7 @@ fn repeated_absence_conditions_require_every_buff_to_be_absent() {
 }
 
 #[test]
-fn master_halo_requires_active_state_not_an_owned_passive_definition() {
+fn master_halo_requires_an_owned_master_instance() {
     init_config();
     let fight_with = |buffs| Fight {
         attacker: Some(FightTeam {
@@ -163,7 +163,7 @@ fn master_halo_requires_active_state_not_an_owned_passive_definition() {
         ..Default::default()
     };
     let condition = ParsedCondition {
-        opcode: 701201,
+        opcode: 701212,
         type_name: "HasMasterHalo".into(),
         kind: ParsedConditionKind::MasterHalo,
         raw_args: Vec::new(),
@@ -181,8 +181,18 @@ fn master_halo_requires_active_state_not_an_owned_passive_definition() {
     };
 
     assert!(!matches(&fight_with(Vec::new())));
+    assert!(!matches(&fight_with(vec![BuffInfo {
+        buff_id: Some(31450141),
+        ..Default::default()
+    }])));
+    assert!(!matches(&fight_with(vec![BuffInfo {
+        buff_id: Some(31560152),
+        r#type: Some(2),
+        ..Default::default()
+    }])));
     assert!(matches(&fight_with(vec![BuffInfo {
-        buff_id: Some(30860161),
+        buff_id: Some(31560152),
+        r#type: Some(1),
         ..Default::default()
     }])));
 }

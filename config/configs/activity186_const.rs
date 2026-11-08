@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Activity186Const {
+    #[serde(rename = "activityId")]
+    pub activity_id: i32,
     pub id: i32,
     pub value: String,
     pub value2: String,

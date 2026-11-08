@@ -177,6 +177,42 @@ impl RewardSet {
         }
     }
 
+    pub fn checked_scale(&mut self, multiplier: i32) -> Result<(), AppError> {
+        let mut scaled = self.clone();
+        scaled.player_exp = scaled
+            .player_exp
+            .checked_mul(multiplier)
+            .ok_or(AppError::InvalidRequest)?;
+        for rewards in [
+            &mut scaled.currencies,
+            &mut scaled.block_packages,
+            &mut scaled.heroes,
+            &mut scaled.skins,
+            &mut scaled.player_cloths,
+            &mut scaled.player_cloth_exp,
+            &mut scaled.equips,
+            &mut scaled.power_items,
+            &mut scaled.room_buildings,
+            &mut scaled.special_blocks,
+            &mut scaled.antiques,
+            &mut scaled.insight_items,
+            &mut scaled.bp_scores,
+        ] {
+            for (_, count) in rewards {
+                *count = count
+                    .checked_mul(multiplier)
+                    .ok_or(AppError::InvalidRequest)?;
+            }
+        }
+        for (_, count) in &mut scaled.items {
+            *count = count
+                .checked_mul(multiplier)
+                .ok_or(AppError::InvalidRequest)?;
+        }
+        *self = scaled;
+        Ok(())
+    }
+
     pub fn material_changes(&self) -> Vec<(u32, u32, i32)> {
         let mut changes = Vec::new();
         if self.player_exp != 0 {
@@ -323,6 +359,14 @@ pub struct SkinGain {
     pub first_gain: bool,
 }
 
+#[derive(Clone)]
+pub struct HeroGain {
+    pub hero_id: i32,
+    pub is_first: bool,
+    pub duplicate_count: i32,
+    pub initial_voice_ids: Vec<i32>,
+}
+
 pub struct BpScoreGain {
     pub bp_id: i32,
     pub score: i32,
@@ -379,6 +423,7 @@ pub struct AppliedRewards {
     pub item_ids: Vec<u32>,
     pub currency_ids: Vec<(i32, i32)>,
     pub hero_ids: Vec<i32>,
+    pub hero_gains: Vec<HeroGain>,
     pub skin_gains: Vec<SkinGain>,
     pub cloth_updates: Vec<PlayerCloth>,
     pub equip_uids: Vec<i64>,
@@ -397,6 +442,7 @@ impl AppliedRewards {
         self.item_ids.extend(other.item_ids);
         self.currency_ids.extend(other.currency_ids);
         self.hero_ids.extend(other.hero_ids);
+        self.hero_gains.extend(other.hero_gains);
         self.skin_gains.extend(other.skin_gains);
         self.cloth_updates.extend(other.cloth_updates);
         self.equip_uids.extend(other.equip_uids);

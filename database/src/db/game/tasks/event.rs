@@ -11,6 +11,10 @@ use super::{
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskEvent {
+    Act220 {
+        activity_id: i32,
+        episode_id: i32,
+    },
     Act222ArcadeSettle {
         activity_id: i32,
     },
@@ -50,6 +54,9 @@ pub enum TaskEvent {
         action: ProductionLineAction,
         count: i32,
     },
+    Rouge2Alchemy {
+        count: i32,
+    },
     StoreGoodsBought {
         store_id: i32,
     },
@@ -80,12 +87,15 @@ impl TaskEvent {
 
     fn count(self) -> i32 {
         match self {
-            Self::Act222ArcadeSettle { .. } | Self::Act205FinishGame { .. } => 1,
+            Self::Act220 { .. }
+            | Self::Act222ArcadeSettle { .. }
+            | Self::Act205FinishGame { .. } => 1,
             Self::CurrencyDec { amount, .. } => amount.max(1),
             Self::Summon { count, .. } => count.max(1),
             Self::DoneCount { count, .. }
             | Self::DungeonPass { count, .. }
             | Self::ProductionLine { count, .. }
+            | Self::Rouge2Alchemy { count }
             | Self::TowerMopUp { count } => count.max(1),
             Self::EpisodeFinish { .. }
             | Self::HeroLevelReach { .. }
@@ -97,6 +107,13 @@ impl TaskEvent {
 
     fn matches(self, listener_type: &str, listener_param: &str) -> bool {
         match self {
+            Self::Act220 {
+                activity_id,
+                episode_id,
+            } => {
+                listener_type == "Act220"
+                    && matches_pair_param(listener_param, episode_id, activity_id)
+            }
             Self::Act222ArcadeSettle { activity_id } => {
                 listener_type == "Act222ArcadeSettle"
                     && listener_param.parse::<i32>() == Ok(activity_id)
@@ -151,6 +168,7 @@ impl TaskEvent {
                         .parse::<i32>()
                         .is_ok_and(|param| param == action as i32)
             }
+            Self::Rouge2Alchemy { .. } => listener_type == "Rouge2Alchemy",
             Self::StoreGoodsBought { store_id } => {
                 listener_type == "BuyStoreGoods" && listener_param.parse::<i32>() == Ok(store_id)
             }
@@ -162,6 +180,11 @@ impl TaskEvent {
             }
             Self::TowerMopUp { .. } => listener_type == "TowerMopUpTime",
         }
+    }
+
+    pub fn progress(self, listener_type: &str, listener_param: &str) -> Option<i32> {
+        self.matches(listener_type, listener_param)
+            .then(|| self.count())
     }
 
     pub(crate) fn achievement_increment(
@@ -201,6 +224,7 @@ impl TaskEvent {
             {
                 Some(1)
             }
+            Self::Rouge2Alchemy { count } if listener_type == "Rouge2Alchemy" => Some(count.max(1)),
             _ => None,
         }
     }
@@ -229,6 +253,7 @@ pub async fn sync_event_tasks_in_transaction(
     ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::ActBp).await?;
     ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::VersionActivity).await?;
     ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::Activity125).await?;
+    ensure_tasks_for_type_in_transaction(tx, user_id, TaskType::Activity220).await?;
     let mut updated = if matches!(event, TaskEvent::HeroStoryPlotFinish { .. }) {
         super::reconcile_necrologist_story_tasks_in_transaction(tx, user_id).await?
     } else {
@@ -408,6 +433,15 @@ fn event_task_targets(event: TaskEvent, bp_id: Option<i32>) -> Vec<TaskTarget> {
                     && event.matches(&task.listener_type, &task.listener_param)
             })
             .map(|task| TaskTarget::new(TaskType::VersionActivity, task.id, task.max_progress)),
+    );
+    targets.extend(
+        tables
+            .activity220_task
+            .iter()
+            .filter(|task| {
+                task.is_online != 0 && event.matches(&task.listener_type, &task.listener_param)
+            })
+            .map(|task| TaskTarget::new(TaskType::Activity220, task.id, task.max_progress)),
     );
     targets.extend(
         tables

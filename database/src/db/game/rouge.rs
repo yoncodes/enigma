@@ -1,14 +1,43 @@
 use crate::models::game::rouge::{
-    Rouge2CareerLevel, Rouge2MaterialState, Rouge2RewardState, Rouge2State,
+    Rouge2AttrState, Rouge2CareerLevel, Rouge2MaterialState, Rouge2RewardState, Rouge2State,
 };
+use crate::{db::game::tasks::TaskEvent, models::game::achievements::Achievement};
 use anyhow::Result;
-use sqlx::SqlitePool;
+use sqlx::{Sqlite, SqlitePool, Transaction};
 
 pub struct Rouge2OutsideState {
     pub state: Rouge2State,
+    pub attrs: Vec<Rouge2AttrState>,
     pub career_levels: Vec<Rouge2CareerLevel>,
     pub rewards: Vec<Rouge2RewardState>,
     pub materials: Vec<Rouge2MaterialState>,
+}
+
+pub struct DifficultyUpdate<'a> {
+    pub difficulty: i32,
+    pub attrs: &'a [(i32, i32)],
+}
+
+pub struct AlchemyUpdate<'a> {
+    pub expected_state: i32,
+    pub formula: i32,
+    pub main_effect: i32,
+    pub sub_effects: &'a str,
+    pub genius_point_gain: i32,
+    pub costs: &'a [(i32, i32)],
+}
+
+pub struct AlchemyApply {
+    pub genius_point: i32,
+    pub materials: Vec<Rouge2MaterialState>,
+    pub achievements: Vec<Achievement>,
+}
+
+pub struct GeniusActivation<'a> {
+    pub expected_state: i32,
+    pub expected_ids: &'a str,
+    pub genius_ids: &'a str,
+    pub point_cost: i32,
 }
 
 #[derive(Clone, Copy)]
@@ -71,24 +100,13 @@ pub async fn get_or_create_rouge2_outside(
         .await?;
     }
 
-    for material in tables.rouge2_material.iter() {
-        sqlx::query(
-            "INSERT INTO user_rouge2_materials (user_id, material_id, updated_at)
-             VALUES (?, ?, ?)
-             ON CONFLICT DO NOTHING",
-        )
-        .bind(user_id)
-        .bind(material.id)
-        .bind(now)
-        .execute(pool)
-        .await?;
-    }
-
     let state = sqlx::query_as::<_, Rouge2State>(
         "SELECT user_id, state, difficulty, coin, end_id, game_num,
                 genius_point, genius_ids, reward_point, max_difficulty,
                 pass_layer_ids, pass_event_ids, pass_end_ids, pass_entrust_ids,
-                pass_collections, last_game_time, hotfix_str, updated_at
+                pass_collections, last_game_time, hotfix_str,
+                alchemy_formula, alchemy_main_effect, alchemy_sub_effects,
+                system_team_id, updated_at
          FROM user_rouge2_state
          WHERE user_id = ?",
     )
@@ -106,6 +124,16 @@ pub async fn get_or_create_rouge2_outside(
     .fetch_all(pool)
     .await?;
 
+    let attrs = sqlx::query_as::<_, Rouge2AttrState>(
+        "SELECT user_id, attr_id, final_val, updated_at
+         FROM user_rouge2_attrs
+         WHERE user_id = ?
+         ORDER BY rowid",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
     let rewards = sqlx::query_as::<_, Rouge2RewardState>(
         "SELECT user_id, reward_id, buy_count, updated_at
          FROM user_rouge2_rewards
@@ -117,10 +145,10 @@ pub async fn get_or_create_rouge2_outside(
     .await?;
 
     let materials = sqlx::query_as::<_, Rouge2MaterialState>(
-        "SELECT user_id, material_id, num, updated_at
+        "SELECT user_id, material_id, num, is_seen, updated_at
          FROM user_rouge2_materials
-         WHERE user_id = ?
-         ORDER BY material_id",
+         WHERE user_id = ? AND is_seen = 1
+         ORDER BY rowid",
     )
     .bind(user_id)
     .fetch_all(pool)
@@ -128,10 +156,220 @@ pub async fn get_or_create_rouge2_outside(
 
     Ok(Rouge2OutsideState {
         state,
+        attrs,
         career_levels,
         rewards,
         materials,
     })
+}
+
+pub async fn apply_difficulty(
+    pool: &SqlitePool,
+    user_id: i64,
+    update: DifficultyUpdate<'_>,
+) -> Result<bool> {
+    let now = common::time::ServerTime::now_ms();
+    let mut tx = pool.begin().await?;
+    let changed = sqlx::query(
+        "UPDATE user_rouge2_state
+         SET state = 1, difficulty = ?, coin = 0, end_id = 0,
+             game_num = game_num + 1, updated_at = ?
+         WHERE user_id = ? AND state = 0",
+    )
+    .bind(update.difficulty)
+    .bind(now)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    if changed.rows_affected() != 1 {
+        return Ok(false);
+    }
+
+    sqlx::query("DELETE FROM user_rouge2_attrs WHERE user_id = ?")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    for &(attr_id, final_val) in update.attrs {
+        sqlx::query(
+            "INSERT INTO user_rouge2_attrs
+             (user_id, attr_id, final_val, updated_at)
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(user_id)
+        .bind(attr_id)
+        .bind(final_val)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+    Ok(true)
+}
+
+pub async fn apply_alchemy(
+    pool: &SqlitePool,
+    user_id: i64,
+    update: AlchemyUpdate<'_>,
+) -> Result<Option<AlchemyApply>> {
+    let now = common::time::ServerTime::now_ms();
+    let mut tx = pool.begin().await?;
+
+    for &(material_id, amount) in update.costs {
+        let changed = sqlx::query(
+            "UPDATE user_rouge2_materials
+             SET num = num - ?, is_seen = 1, updated_at = ?
+             WHERE user_id = ? AND material_id = ? AND num >= ?",
+        )
+        .bind(amount)
+        .bind(now)
+        .bind(user_id)
+        .bind(material_id)
+        .bind(amount)
+        .execute(&mut *tx)
+        .await?;
+        if changed.rows_affected() != 1 {
+            return Ok(None);
+        }
+    }
+
+    let genius_point = sqlx::query_scalar::<_, i32>(
+        "UPDATE user_rouge2_state
+         SET alchemy_formula = ?, alchemy_main_effect = ?, alchemy_sub_effects = ?,
+             genius_point = genius_point + ?, updated_at = ?
+         WHERE user_id = ? AND state = ? AND alchemy_formula = 0
+         RETURNING genius_point",
+    )
+    .bind(update.formula)
+    .bind(update.main_effect)
+    .bind(update.sub_effects)
+    .bind(update.genius_point_gain)
+    .bind(now)
+    .bind(user_id)
+    .bind(update.expected_state)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(genius_point) = genius_point else {
+        return Ok(None);
+    };
+
+    let achievements = super::achievements::sync_event_in_transaction(
+        &mut tx,
+        user_id,
+        TaskEvent::Rouge2Alchemy { count: 1 },
+    )
+    .await?;
+    let materials = sqlx::query_as::<_, Rouge2MaterialState>(
+        "SELECT user_id, material_id, num, is_seen, updated_at
+         FROM user_rouge2_materials
+         WHERE user_id = ? AND is_seen = 1
+         ORDER BY rowid",
+    )
+    .bind(user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(Some(AlchemyApply {
+        genius_point,
+        materials,
+        achievements,
+    }))
+}
+
+pub async fn activate_genius(
+    pool: &SqlitePool,
+    user_id: i64,
+    activation: GeniusActivation<'_>,
+) -> Result<Option<i32>> {
+    let now = common::time::ServerTime::now_ms();
+    Ok(sqlx::query_scalar(
+        "UPDATE user_rouge2_state
+         SET genius_point = genius_point - ?, genius_ids = ?, updated_at = ?
+         WHERE user_id = ? AND state = ? AND genius_ids = ? AND genius_point >= ?
+         RETURNING genius_point",
+    )
+    .bind(activation.point_cost)
+    .bind(activation.genius_ids)
+    .bind(now)
+    .bind(user_id)
+    .bind(activation.expected_state)
+    .bind(activation.expected_ids)
+    .bind(activation.point_cost)
+    .fetch_optional(pool)
+    .await?)
+}
+
+pub async fn set_system_id(
+    pool: &SqlitePool,
+    user_id: i64,
+    system_id: i32,
+    expected_state: i32,
+) -> Result<Option<i32>> {
+    Ok(sqlx::query_scalar(
+        "UPDATE user_rouge2_state
+         SET system_team_id = ?, updated_at = ?
+         WHERE user_id = ? AND state = ?
+         RETURNING system_team_id",
+    )
+    .bind(system_id)
+    .bind(common::time::ServerTime::now_ms())
+    .bind(user_id)
+    .bind(expected_state)
+    .fetch_optional(pool)
+    .await?)
+}
+
+pub async fn ensure_reward_buy_count(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    reward_id: i32,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT OR IGNORE INTO user_rouge2_rewards
+         (user_id, reward_id, buy_count, updated_at) VALUES (?, ?, 0, ?)",
+    )
+    .bind(user_id)
+    .bind(reward_id)
+    .bind(common::time::ServerTime::now_ms())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+pub async fn reward_buy_counts(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+) -> Result<Vec<(i32, i32)>> {
+    Ok(
+        sqlx::query_as("SELECT reward_id, buy_count FROM user_rouge2_rewards WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_all(&mut **tx)
+            .await?,
+    )
+}
+
+pub async fn add_reward_buy_count(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    reward_id: i32,
+    expected_count: i32,
+    amount: i32,
+) -> Result<Option<i32>> {
+    let now = common::time::ServerTime::now_ms();
+    Ok(sqlx::query_scalar(
+        "UPDATE user_rouge2_rewards
+         SET buy_count = buy_count + ?, updated_at = ?
+         WHERE user_id = ? AND reward_id = ? AND buy_count = ?
+         RETURNING buy_count",
+    )
+    .bind(amount)
+    .bind(now)
+    .bind(user_id)
+    .bind(reward_id)
+    .bind(expected_count)
+    .fetch_optional(&mut **tx)
+    .await?)
 }
 
 pub async fn get_or_create_unlock_ids(
@@ -176,3 +414,6 @@ pub async fn get_or_create_unlock_ids(
     .fetch_all(pool)
     .await?)
 }
+
+#[cfg(test)]
+mod tests;

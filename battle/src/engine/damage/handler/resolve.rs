@@ -951,9 +951,11 @@ fn direct_damage_trace(
 
     let source_base_regular = attributes.get(source.uid, AttrId::DmgBonus);
     let source_buff_regular = attribute_delta(source, AttrId::DmgBonus);
+    let source_fixed_regular = buffs.fixed_attribute_delta(source.uid, AttrId::DmgBonus);
     let source_attack_regular = attack_attribute_delta(AttrId::DmgBonus);
     let source_regular = source_base_regular
         + source_buff_regular
+        + source_fixed_regular
         + source_attack_regular
         + attack_local_attribute(AttrId::DmgBonus);
     let attack_attr = |attr_id| {
@@ -1220,7 +1222,7 @@ fn direct_damage_trace(
                 .collect::<Vec<_>>()
             });
         eprintln!(
-            "damage formula={formula:?} skill={skill_id} source={} target={} source_hp={}/{} target_hp={}/{} shield={} attack={final_atk}({base_attack}*{attack_rate}/1000+{flat_attack}) emitter_ally_inputs={emitter_ally_inputs:?} source_buffs={source_buffs:?} target_buffs={target_buffs:?} penetration={penetration} regular={source_regular}({source_base_regular}+{source_buff_regular}+{source_attack_regular}+{})+action({action_bonus}, {})-{target_regular}({target_base_regular}+{target_buff_regular}) local_bonus={local_damage_bonus:?} ultimate_might={}+{}+{} extra={} rebound={} reuse={} hp_pct={} atk_pct={} crit={source_crit}+{technique_crit}+{buff_crit}-({target_base_crit}+{target_buff_crit}) trace={damage_trace:?}",
+            "damage formula={formula:?} skill={skill_id} source={} target={} source_hp={}/{} target_hp={}/{} shield={} attack={final_atk}({base_attack}*{attack_rate}/1000+{flat_attack}) emitter_ally_inputs={emitter_ally_inputs:?} source_buffs={source_buffs:?} target_buffs={target_buffs:?} penetration={penetration} regular={source_regular}({source_base_regular}+{source_buff_regular}+{source_fixed_regular}+{source_attack_regular}+{})+action({action_bonus}, {})-{target_regular}({target_base_regular}+{target_buff_regular}) local_bonus={local_damage_bonus:?} ultimate_might={}+{}+{} extra={} rebound={} reuse={} hp_pct={} atk_pct={} crit={source_crit}+{technique_crit}+{buff_crit}-({target_base_crit}+{target_buff_crit}) trace={damage_trace:?}",
             source.uid,
             target.uid,
             hp.current(source.uid),

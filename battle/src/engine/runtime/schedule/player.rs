@@ -64,6 +64,35 @@ pub fn run_action_phase_start(
     drain::run_command_group(managers, pool, catalog, determinism, context, ops)
 }
 
+pub fn run_action_phase_end(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    team: i32,
+) -> Result<DrainResult, DrainError> {
+    let origin = CommandOrigin {
+        domain: RuleDomain::Lifecycle,
+        key: DefinitionKey::new(0, "ActionPhaseEnd"),
+    };
+    let mut phase = begin_round_phase(RoundPhase::ActionPhaseEnd { team });
+    append_round_phase(
+        &mut phase,
+        drain::run(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            [RuleOp::Command(BattleCommand::Card(
+                CardCommand::CompleteActionPhase { origin },
+            ))],
+        )?,
+    );
+    Ok(phase)
+}
+
 fn free_skill_consumed_remaining_buff(action: &DrainResult, source_uid: i64) -> bool {
     let mut amounts = HashMap::new();
     let mut record = |changes: &crate::engine::manager::buff::BuffChanges| {
@@ -621,6 +650,7 @@ fn run_player_card_ops(
                 .get(*from_index)
                 .and_then(|card| card.uid)
                 .filter(|uid| managers.entity.team_type(*uid) == Some(team))
+                .filter(|uid| managers.ex_point.gains_card_move_ex_point(*uid))
                 .and_then(|owner_uid| {
                     let delta = 1_i32.saturating_add(managers.buff.buff_act_scalar(
                         owner_uid,
@@ -1231,6 +1261,24 @@ pub(super) fn run_active_action(
             required: ultimate_cost,
             current: current_resource,
         });
+    }
+    if let Some(card) = managers
+        .card
+        .played()
+        .iter()
+        .find(|played| played.card_index == skill.card_index)
+        .map(|played| played.card.clone())
+    {
+        let uses_action_point = crate::engine::mechanic::card::CardMechanic.uses_action_point(
+            &card,
+            source_uid,
+            skill.plan.skill_id,
+            managers,
+            catalog,
+        );
+        managers
+            .card
+            .record_action_point_use(skill.card_index, uses_action_point);
     }
     let resource_delta =
         card_play_resource_delta(managers, source_uid, grants_ex_point, is_ultimate);

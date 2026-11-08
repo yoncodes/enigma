@@ -1,0 +1,2 @@
+ALTER TABLE user_activity229_stages
+ADD COLUMN skill_id INTEGER NOT NULL DEFAULT 0;

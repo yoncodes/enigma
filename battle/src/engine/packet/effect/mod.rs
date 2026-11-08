@@ -70,10 +70,18 @@ impl EffectPacket {
     }
 
     pub fn card_remove(indices: &[usize]) -> ActEffect {
+        Self::card_remove_with_type(indices, 0)
+    }
+
+    pub fn hedone_card_remove(indices: &[usize]) -> ActEffect {
+        Self::card_remove_with_type(indices, 2)
+    }
+
+    fn card_remove_with_type(indices: &[usize], remove_type: i32) -> ActEffect {
         ActEffect {
             target_id: Some(0),
             effect_type: Some(EffectType::Cardremove as i32),
-            effect_num: Some(0),
+            effect_num: Some(remove_type),
             config_effect: Some(0),
             buff_act_id: Some(0),
             reserve_id: Some(0),

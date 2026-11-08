@@ -40,6 +40,7 @@ pub struct PlayedCard {
     pub card_index: i32,
     pub hand_index: Option<usize>,
     pub skill_id: i32,
+    pub uses_action_point: bool,
     pub rank_change_pending: bool,
     pub rewritten: bool,
     pub target_uid: Option<i64>,

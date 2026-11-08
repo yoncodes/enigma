@@ -304,18 +304,6 @@ impl BattleCatalog {
             .collect()
     }
 
-    pub(crate) fn buff_has_master_halo(self, buff_id: i32) -> bool {
-        self.buff_feature_rows(buff_id).into_iter().any(|feature| {
-            matches!(
-                feature
-                    .split('#')
-                    .next()
-                    .and_then(|value| value.parse().ok()),
-                Some(771 | 772 | 822)
-            )
-        })
-    }
-
     pub(crate) fn buff_pool(self, buff_id: i32) -> Option<Vec<i32>> {
         self.game_data.skill_buff.get(buff_id).map(|row| {
             row.features
@@ -811,7 +799,10 @@ impl BattleCatalog {
             .get(battle_id)?
             .win_condition
             .split('#');
-        if parts.next().and_then(|value| value.parse::<i32>().ok()) != Some(3) {
+        if !matches!(
+            parts.next().and_then(|value| value.parse::<i32>().ok()),
+            Some(3 | 9)
+        ) {
             return None;
         }
         parts.next().and_then(|value| value.parse::<i32>().ok())
@@ -1299,6 +1290,12 @@ pub(crate) fn configured_teaching_cards(
     game_data: &config::GameDB,
     episode_id: i32,
 ) -> Option<ConfiguredTeachingCards> {
+    if let Some(row) = common::tutorial_card(episode_id) {
+        return Some(ConfiguredTeachingCards {
+            opening_cards: row.opening_cards.clone(),
+            refill_cards: row.refill_cards.clone(),
+        });
+    }
     let row = game_data.teaching_card.get(episode_id)?;
     Some(ConfiguredTeachingCards {
         opening_cards: row.opening_cards.clone(),

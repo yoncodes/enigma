@@ -3,6 +3,15 @@ use super::*;
 use crate::engine::skill::buff_act::registry::BuffActKind;
 
 pub(super) fn fixed_attribute_value(active: &ActiveBuff, attr_id: AttrId) -> Option<i32> {
+    fixed_attribute_value_for(active, BuffActKind::EachChangeAttrOneWay, 1, attr_id)
+}
+
+fn fixed_attribute_value_for(
+    active: &ActiveBuff,
+    kind: BuffActKind,
+    attr_index: usize,
+    attr_id: AttrId,
+) -> Option<i32> {
     let act_id = active
         .definition
         .as_ref()?
@@ -10,8 +19,8 @@ pub(super) fn fixed_attribute_value(active: &ActiveBuff, attr_id: AttrId) -> Opt
         .iter()
         .find_map(|feature| {
             (feature.arguments_supported
-                && feature.kind == Some(BuffActKind::EachChangeAttrOneWay)
-                && feature.values.get(1).copied() == Some(attr_id.id()))
+                && feature.kind == Some(kind)
+                && feature.values.get(attr_index).copied() == Some(attr_id.id()))
             .then(|| feature.values.first().copied())
             .flatten()
         })?;
@@ -39,6 +48,15 @@ pub struct SpecialCountOutput {
 }
 
 impl BuffManager {
+    pub(crate) fn has_force_field(&self, owner_uid: i64) -> bool {
+        self.buffs
+            .iter()
+            .filter(|active| active.effective && active.owner_uid == owner_uid)
+            .filter(|active| !super::is_layer_halo_slave(&active.buff))
+            .filter_map(|active| active.buff.buff_id)
+            .any(|buff_id| crate::engine::buff::halo::has_layer_master(self.catalog(), buff_id))
+    }
+
     pub fn buff_act_state(&self, owner_uid: i64, kind: BuffActKind) -> Option<(i32, &str)> {
         self.buffs
             .iter()
@@ -889,6 +907,19 @@ impl BuffManager {
             })
             .filter_map(|active| self.fixed_attribute_value(active.buff.uid?, attr_id))
             .fold(0, i32::saturating_add);
+        let after_add = self
+            .buffs
+            .iter()
+            .filter(|active| active.effective && active.owner_uid == uid)
+            .filter_map(|active| {
+                fixed_attribute_value_for(
+                    active,
+                    BuffActKind::EachChangeAttrOneWayAfterAdd,
+                    2,
+                    attr_id,
+                )
+            })
+            .fold(0, i32::saturating_add);
         let each_change = self
             .buffs
             .iter()
@@ -912,13 +943,42 @@ impl BuffManager {
                     })
             })
             .fold(0, i32::saturating_add);
-        one_way.saturating_add(each_change)
+        one_way
+            .saturating_add(after_add)
+            .saturating_add(each_change)
     }
 
     pub fn configured_attribute_deltas(buff_id: i32) -> Vec<(AttrId, i32)> {
         BuffDefinition::get(buff_id)
             .map(|definition| definition.attribute_deltas().to_vec())
             .unwrap_or_default()
+    }
+
+    pub(crate) fn configured_attribute_delta_for_uids(
+        &self,
+        owner_uid: i64,
+        attr_id: AttrId,
+        buff_uids: &[i64],
+    ) -> i32 {
+        self.buffs
+            .iter()
+            .filter(|active| {
+                active.effective
+                    && active.owner_uid == owner_uid
+                    && active.buff.uid.is_some_and(|uid| buff_uids.contains(&uid))
+            })
+            .filter_map(|active| {
+                let amount = attribute_amount(&active.buff);
+                active.definition.as_ref().map(|definition| {
+                    definition
+                        .attribute_deltas()
+                        .iter()
+                        .filter_map(|(actual, value)| (*actual == attr_id).then_some(*value))
+                        .fold(0, i32::saturating_add)
+                        .saturating_mul(amount)
+                })
+            })
+            .fold(0, i32::saturating_add)
     }
 
     pub fn configured_accepts_explicit_grant_amount(buff_id: i32) -> bool {

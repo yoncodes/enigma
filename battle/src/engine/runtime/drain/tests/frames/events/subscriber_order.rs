@@ -9,6 +9,7 @@ fn independent_reaction_does_not_inherit_the_causing_frame() {
 
     let queued = queued_reactions(
         &TargetPool::default(),
+        &SkillEffectCatalog::default(),
         dispatcher::DispatchBatch {
             skills: vec![(
                 SkillSubscriber {
@@ -60,6 +61,7 @@ fn queued_reaction_rejects_an_unregistered_exact_condition() {
 
     let result = queued_reactions(
         &TargetPool::default(),
+        &SkillEffectCatalog::default(),
         dispatcher::DispatchBatch {
             skills: vec![(
                 SkillSubscriber {
