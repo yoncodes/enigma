@@ -32,13 +32,16 @@ async fn bulk_unlocks_follow_config_and_owned_heroes() {
         .unwrap();
     let heroes = UserHeroModel::new(51, (*state.db).clone());
     heroes.create_hero(skin.character_id).await.unwrap();
+    if skin.character_id != 3012 {
+        heroes.create_hero(3012).await.unwrap();
+    }
     let equipped_before = heroes
         .get_hero(skin.character_id)
         .await
         .unwrap()
         .record
         .skin;
-    garments(state, 51, &["unlock", "all"]).await.unwrap();
+    let response = garments(state, 51, &["unlock", "all"]).await.unwrap();
 
     let achievement_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM user_achievements WHERE user_id = 51 AND has_finish = 1",
@@ -67,6 +70,7 @@ async fn bulk_unlocks_follow_config_and_owned_heroes() {
         assert!(quantity > 0);
     }
     assert!(heroes.has_skin(skin.id).await.unwrap());
+    assert!(heroes.has_skin(301202).await.unwrap());
     assert_eq!(
         heroes
             .get_hero(skin.character_id)
@@ -75,6 +79,10 @@ async fn bulk_unlocks_follow_config_and_owned_heroes() {
             .record
             .skin,
         equipped_before
+    );
+    assert_eq!(
+        response.data.unwrap()["changedSkinIds"],
+        serde_json::json!([])
     );
 }
 

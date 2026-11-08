@@ -117,9 +117,9 @@ pub(super) async fn garments(
         ));
     }
     let unlocked = heroes.unlock_skins_without_equipping(&skins).await?;
+    let unlocked_count = unlocked.len();
 
     let mut data = GrantData::empty(player_id);
-    data.changed_skin_ids = unlocked.clone();
     data.changed_hero_ids = unlocked
         .iter()
         .filter_map(|skin_id| state.tables.skin.get(*skin_id))
@@ -128,7 +128,7 @@ pub(super) async fn garments(
     data.deduplicate();
     send_snapshot_pushes(state, &data).await?;
     Ok(GmResponse::ok_data(
-        format!("unlocked {} garments", data.changed_skin_ids.len()),
+        format!("unlocked {unlocked_count} garments"),
         data,
     ))
 }

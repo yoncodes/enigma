@@ -1439,11 +1439,7 @@ fn entries_for_kind(
 }
 
 fn is_premium_hero_skin(tables: &config::GameDB, skin: &config::skin::Skin) -> bool {
-    let Some(character) = tables.character.get(skin.character_id) else {
-        return false;
-    };
-
-    skin.character_id == character.id && !matches!(skin.id % 100, 1 | 2)
+    tables.character.get(skin.character_id).is_some() && skin.skin_level > 0
 }
 
 fn catalog_entry(
@@ -1644,6 +1640,14 @@ mod tests {
         }));
         assert!(all.iter().any(|entry| entry.id == first_skin_id));
         assert!(!unowned.iter().any(|entry| entry.id == first_skin_id));
+        assert!(!is_premium_hero_skin(
+            tables,
+            tables.skin.get(301201).unwrap()
+        ));
+        assert!(is_premium_hero_skin(
+            tables,
+            tables.skin.get(301202).unwrap()
+        ));
     }
 
     #[tokio::test]
