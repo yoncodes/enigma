@@ -872,6 +872,7 @@ condition_definitions! {
     [1010004] "ProgressValue" => resource::progress_band, predicate(&[]);
     [790203] "UnnamedCardAnchor" => card::anchor_later, predicate(&[]);
     [790210] "UnnamedCardAnchor" => card::anchor_earlier, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
+    [708203] "HandCardHasSkillId" => card::hand_skill_presence_one, reads_action_start(predicate(&[]));
     [710301] "PerHandCardHasSkillId" => card::hand_skill_presence, event_trigger(EventKind::SmallRoundEnd, None);
     [622304] "RoundUseSkillLevel" => card::round_used_minimum_rank, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));
     [745304] "ExPointMax" => resource::ex_point_full, reaction_targets_owner(event_trigger(EventKind::RoundEndAfterSettlement, None));

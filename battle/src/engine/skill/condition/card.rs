@@ -28,6 +28,17 @@ pub fn hand_skill_presence(_: i32, _: &str, args: &[String]) -> Option<ParsedCon
     )?))
 }
 
+pub fn hand_skill_presence_one(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [skill_id, minimum, mode] = args else {
+        return None;
+    };
+    if minimum != "1" || mode != "1" {
+        return None;
+    }
+    let skill_id = skill_id.parse().ok()?;
+    (skill_id > 0).then_some(ParsedConditionKind::HandSkillPresence(vec![skill_id]))
+}
+
 pub fn round_used_minimum_rank(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let values = parse_i32_args(args)?;
     let [minimum_rank, threshold] = values.as_slice() else {
