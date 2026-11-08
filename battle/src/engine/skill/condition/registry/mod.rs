@@ -795,6 +795,7 @@ condition_definitions! {
     [537104] "HasTypeIdBuffTotalCountMoreThan" => buff::positive_buff_type_at_least, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [537201] "HasTypeIdBuffTotalCountMoreThan" => buff::positive_buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [537203] "HasTypeIdBuffTotalCountMoreThan" => buff::positive_buff_type_at_least, predicate(&[]);
+    [537208] "HasTypeIdBuffTotalCountMoreThan" => buff::positive_buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [536208] "TypeIdBuffCountLessThan" => buff::buff_type_at_most, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [536201] "TypeIdBuffCountLessThan" => buff::buff_type_at_most, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [536210] "TypeIdBuffCountLessThan" => buff::buff_type_at_most, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));

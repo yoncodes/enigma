@@ -1089,6 +1089,25 @@ fn buff_type_totals_keep_their_exact_routes() {
     );
     assert_eq!(
         parse(
+            537208,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["109390005".into(), "5".into()],
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![109390005],
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 5,
+        })
+    );
+    assert_eq!(
+        find_key(537208, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterDamage),
+        })
+    );
+    assert_eq!(
+        parse(
             537103,
             "HasTypeIdBuffTotalCountMoreThan",
             &["31210125".into(), "10".into()],
