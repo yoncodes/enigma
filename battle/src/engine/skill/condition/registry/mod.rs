@@ -838,7 +838,7 @@ condition_definitions! {
     [501208] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [501209] "UseHurtSkill" => active_skill::hurt_skill, attacked_skills(once_per_action(event_target_observes(event_trigger(EventKind::TargetAttacked, None))));
     [501210] "UseHurtSkill" => active_skill::hurt_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
-    [501212] "UseHurtSkill" => active_skill::hurt_skill, predicate(&[]);
+    [501212] "UseHurtSkill" => active_skill::hurt_skill, reaction_targets_causing_frame(event_trigger(EventKind::AllyAction, None));
     [507201] "UseSkillId" => active_skill::skill_id, event_trigger(EventKind::SkillAction, None);
     [615201] "CanUseSkill" => active_skill::can_use_skill, predicate(&[]);
     [578] "TeamInjuryCountRound" => injury::round_count, predicate(&[EventKind::SkillAction]);
