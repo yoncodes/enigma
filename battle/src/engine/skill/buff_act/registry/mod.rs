@@ -476,6 +476,7 @@ pub enum BuffActInitialStateRule {
     StringCounter,
     GrantValue,
     LostHpToFakeHp,
+    HedoneEnergy,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1423,6 +1424,7 @@ buff_act_definitions! {
         supports: super::hedone_card::supports,
         references: references_for_feature,
         state_consumer: true,
+        initial_state: HedoneEnergy,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1159, "HedoneCard"), &[]));
     (1029, "AddAttrByOtherBuffLayer") => AddAttrByOtherBuffLayer,
         effect_time_subscription: false,

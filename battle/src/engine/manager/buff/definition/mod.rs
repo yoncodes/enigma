@@ -565,6 +565,12 @@ impl BuffDefinition {
                     BuffActInitialStateRule::StringCounter => (Vec::new(), "0".to_owned(), 0),
                     BuffActInitialStateRule::GrantValue => return None,
                     BuffActInitialStateRule::LostHpToFakeHp => return None,
+                    BuffActInitialStateRule::HedoneEnergy => {
+                        let config = crate::engine::skill::buff_act::hedone_card::parse(
+                            feature.values.get(1..)?,
+                        )?;
+                        (vec![0, config.storage_limit, 0], String::new(), 0)
+                    }
                 };
                 Some(super::BuffActInfoMarkerResult {
                     target_uid,
