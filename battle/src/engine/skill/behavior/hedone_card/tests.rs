@@ -111,6 +111,11 @@ fn exact_two_argument_form_grants_the_carrier_then_adds_the_locked_card() {
     let card = card.clone();
     assert_eq!(card.uid, Some(-4));
     assert_eq!(card.skill_id, Some(31560181));
+    assert_eq!(card.card_type, Some(0));
+    assert_eq!(card.status, Some(0));
+    assert_eq!(card.target_uid, Some(0));
+    assert_eq!(card.area_red_or_blue, Some(0));
+    assert_eq!(card.heat_id, Some(0));
     assert_eq!(card.hero_id, Some(3156));
     assert!([5, 8].into_iter().all(|key| {
         card.extra_infos

@@ -32,26 +32,20 @@ impl CardManager {
             return Err(CardCommandError::InvalidCommand);
         }
         let index = self.hand().len();
-        let card = self.add_to_hand_for(
-            command.owner_uid,
-            CardInfo {
-                uid: Some(command.owner_uid),
-                skill_id: Some(command.skill_id),
-                hero_id: Some(command.hero_id),
-                temp_card: Some(false),
-                extra_infos: [
-                    super::permissions::NOT_USE,
-                    super::permissions::NOT_USE_ACTION_POINT,
-                ]
-                .into_iter()
-                .map(|key| CardExtraInfo {
-                    key: Some(key),
-                    values: vec![TAG.to_owned()],
-                })
-                .collect(),
-                ..Default::default()
-            },
-        );
+        let mut card =
+            super::pool::card_for_owner(command.owner_uid, command.hero_id, command.skill_id)
+                .ok_or(CardCommandError::InvalidCommand)?;
+        card.extra_infos = [
+            super::permissions::NOT_USE,
+            super::permissions::NOT_USE_ACTION_POINT,
+        ]
+        .into_iter()
+        .map(|key| CardExtraInfo {
+            key: Some(key),
+            values: vec![TAG.to_owned()],
+        })
+        .collect();
+        let card = self.add_to_hand_for(command.owner_uid, card);
         Ok(CardChange::HedoneAdd {
             card,
             index,
