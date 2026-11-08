@@ -546,8 +546,11 @@ impl LinkedDamagePlan {
             .iter()
             .copied()
             .filter(|(attr, _)| {
-                *attr != crate::engine::entity::attr::AttrId::CriticalDmg
-                    || credited_source_uid == action_source_uid
+                !matches!(
+                    attr,
+                    crate::engine::entity::attr::AttrId::CriticalRate
+                        | crate::engine::entity::attr::AttrId::CriticalDmg
+                ) || credited_source_uid == action_source_uid
             })
             .chain(shared.iter().copied())
             .filter(|(attr, _)| {
@@ -730,6 +733,7 @@ pub(super) fn damage_ops(
     let source_damage_type = crate::engine::skill::buff_act::emitter_damage_type::source_type(
         source_uid, pool, managers,
     );
+    let is_big_skill = catalog.is_big_skill(skill_id);
     let mut damage_commands = Vec::new();
     let mut additional_damage_commands = Vec::new();
     let mut avoided = Vec::new();
@@ -833,19 +837,14 @@ pub(super) fn damage_ops(
                 target_count_damage_bonus,
             ));
         }
-        let incoming_reduction =
-            crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
+        attack_attributes.extend(
+            crate::engine::skill::buff_act::incoming_target_attack_attributes(
                 managers,
                 target_uid,
                 source_damage_type,
-                crate::engine::entity::attr::AttrId::DmgTakenReduction,
-            );
-        if incoming_reduction != 0 {
-            attack_attributes.push((
-                crate::engine::entity::attr::AttrId::DmgTakenReduction,
-                incoming_reduction,
-            ));
-        }
+                is_big_skill,
+            ),
+        );
         // Linked damage keeps the triggering attack's shared damage lane.
         // Inherent Assassination belongs to its attacker, while a target
         // trigger converts the whole incoming attack, including linked hits.
@@ -901,15 +900,13 @@ pub(super) fn damage_ops(
         let (converted, critical_multiplier_remainder) =
             split_excess_crit_conversion(excess_crit, crit_conversion_rate);
         if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Damage) {
-            let crit_chance = damage::crit_chance(source_uid, target_uid, pool, managers)
-                + target_modifiers
-                    .attack_attributes
-                    .iter()
-                    .filter_map(|(attr_id, delta)| {
-                        (*attr_id == crate::engine::entity::attr::AttrId::CriticalRate)
-                            .then_some(*delta)
-                    })
-                    .sum::<i32>();
+            let crit_chance = damage::crit_chance_with_attack_attributes(
+                source_uid,
+                target_uid,
+                pool,
+                managers,
+                &attack_attributes,
+            );
             eprintln!(
                 "crit chance skill={skill_id} source={source_uid} target={target_uid} chance={crit_chance} excess={excess_crit} conversion_rate={crit_conversion_rate} converted={converted} conversion_remainder={critical_multiplier_remainder}"
             );
@@ -966,6 +963,7 @@ pub(super) fn damage_ops(
                         pool,
                         execution,
                         extra_action,
+                        &attack_attributes,
                     ),
                 )
             });
@@ -1035,7 +1033,13 @@ pub(super) fn damage_ops(
                     source_uid,
                     additional.credited_source_uid,
                     target_uid,
-                    damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
+                    damage::crit_chance_with_attack_attributes(
+                        additional.credited_source_uid,
+                        target_uid,
+                        pool,
+                        managers,
+                        &attack_plan.attack_attributes,
+                    ),
                 );
                 let proportional_main = if additional_is_crit == is_crit {
                     resolved_main_damage
@@ -1069,13 +1073,6 @@ pub(super) fn damage_ops(
                     )
                 })
             } else {
-                let additional_is_crit = determinism.roll_additional_crit(
-                    skill_id,
-                    source_uid,
-                    additional.credited_source_uid,
-                    target_uid,
-                    damage::crit_chance(additional.credited_source_uid, target_uid, pool, managers),
-                );
                 let mut additional_attributes = LinkedDamagePlan::attack_attributes(
                     &linked_attack_attributes,
                     &shared_linked_attack_attributes,
@@ -1088,19 +1085,27 @@ pub(super) fn damage_ops(
                         pool,
                         managers,
                     );
-                let incoming_reduction =
-                    crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
+                additional_attributes.extend(
+                    crate::engine::skill::buff_act::incoming_target_attack_attributes(
                         managers,
                         target_uid,
                         additional_damage_type,
-                        crate::engine::entity::attr::AttrId::DmgTakenReduction,
-                    );
-                if incoming_reduction != 0 {
-                    additional_attributes.push((
-                        crate::engine::entity::attr::AttrId::DmgTakenReduction,
-                        incoming_reduction,
-                    ));
-                }
+                        is_big_skill,
+                    ),
+                );
+                let additional_is_crit = determinism.roll_additional_crit(
+                    skill_id,
+                    source_uid,
+                    additional.credited_source_uid,
+                    target_uid,
+                    damage::crit_chance_with_attack_attributes(
+                        additional.credited_source_uid,
+                        target_uid,
+                        pool,
+                        managers,
+                        &additional_attributes,
+                    ),
+                );
                 if assassination.triggered_by_target {
                     let linked_assassination =
                         crate::engine::skill::buff_act::assassination::target_modifier(
@@ -1317,9 +1322,22 @@ pub(super) fn plan_crits(
         rend.as_ref(),
     );
     let extra_action = performs_extra_action(invocation, execution);
+    let source_damage_type = crate::engine::skill::buff_act::emitter_damage_type::source_type(
+        source_uid, pool, managers,
+    );
+    let is_big_skill = catalog.is_big_skill(skill_id);
     let planned = targets
         .into_iter()
         .map(|target_uid| {
+            let mut attack_attributes = execution.modifiers.attack_attributes.clone();
+            attack_attributes.extend(
+                crate::engine::skill::buff_act::incoming_target_attack_attributes(
+                    managers,
+                    target_uid,
+                    source_damage_type,
+                    is_big_skill,
+                ),
+            );
             let is_crit = determinism.roll_hidden_crit(
                 skill_id,
                 source_uid,
@@ -1331,6 +1349,7 @@ pub(super) fn plan_crits(
                     pool,
                     execution,
                     extra_action,
+                    &attack_attributes,
                 ),
             );
             (target_uid, is_crit)
@@ -1359,6 +1378,7 @@ fn planned_crit_chance(
     pool: &TargetPool,
     execution: &SkillExecution,
     extra_action: bool,
+    attack_attributes: &[(crate::engine::entity::attr::AttrId, i32)],
 ) -> i32 {
     if execution.modifiers.force_critical
         || crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::active_forces_critical(
@@ -1369,12 +1389,11 @@ fn planned_crit_chance(
     {
         return 1000;
     }
-    damage::crit_chance(source_uid, target_uid, pool, managers)
-        + execution
-            .modifiers
-            .attack_attributes
-            .iter()
-            .filter(|(attr, _)| *attr == crate::engine::entity::attr::AttrId::CriticalRate)
-            .map(|(_, delta)| *delta)
-            .sum::<i32>()
+    damage::crit_chance_with_attack_attributes(
+        source_uid,
+        target_uid,
+        pool,
+        managers,
+        attack_attributes,
+    )
 }

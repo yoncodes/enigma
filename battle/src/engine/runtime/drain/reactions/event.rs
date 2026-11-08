@@ -386,6 +386,8 @@ fn dispatch_event_batch_inner(
                         managers,
                         *target_uid,
                         &damage_types,
+                        current_skill
+                            .is_some_and(|(_, skill_id, _)| catalog.is_big_skill(skill_id)),
                     )
                 {
                     reactions.after_publish.push(queued_buff_act_feature_op(

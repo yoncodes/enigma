@@ -573,6 +573,7 @@ pub fn be_attacked_consumption_rule_ops(
     managers: &BattleManagers,
     target_uid: i64,
     damage_types: &[crate::engine::skill::target::EntityDamageType],
+    is_big_skill: bool,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
     managers
         .buff
@@ -580,7 +581,11 @@ pub fn be_attacked_consumption_rule_ops(
         .into_iter()
         .filter(|feature| feature.owner_uid == target_uid)
         .filter(|feature| {
-            attr_only_cal_damage_attack::applies_to_any_incoming_damage(feature, damage_types)
+            attr_only_cal_damage_attack::applies_to_any_incoming_damage(
+                feature,
+                damage_types,
+                is_big_skill,
+            )
         })
         .filter_map(|feature| {
             attr_only_cal_damage_attack::consume_rule_op(managers, &feature).map(|op| (feature, op))
@@ -1005,6 +1010,7 @@ pub fn incoming_target_attack_attribute_delta(
     managers: &BattleManagers,
     target_uid: i64,
     damage_type: crate::engine::skill::target::EntityDamageType,
+    is_big_skill: bool,
     attr_id: AttrId,
 ) -> i32 {
     managers
@@ -1014,8 +1020,34 @@ pub fn incoming_target_attack_attribute_delta(
         .filter(|feature| feature.owner_uid == target_uid)
         .map(|feature| {
             attr_only_cal_damage_attack::incoming_attribute_delta(&feature, damage_type, attr_id)
+                + attr_only_cal_damage_attack::basic_attacked_attribute_delta(
+                    &feature,
+                    attr_id,
+                    is_big_skill,
+                )
         })
         .sum()
+}
+
+pub fn incoming_target_attack_attributes(
+    managers: &BattleManagers,
+    target_uid: i64,
+    damage_type: crate::engine::skill::target::EntityDamageType,
+    is_big_skill: bool,
+) -> Vec<(AttrId, i32)> {
+    [AttrId::CriticalResistRate, AttrId::DmgTakenReduction]
+        .into_iter()
+        .filter_map(|attr_id| {
+            let delta = incoming_target_attack_attribute_delta(
+                managers,
+                target_uid,
+                damage_type,
+                is_big_skill,
+                attr_id,
+            );
+            (delta != 0).then_some((attr_id, delta))
+        })
+        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]

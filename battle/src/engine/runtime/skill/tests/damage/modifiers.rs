@@ -874,23 +874,33 @@ fn target_owned_riposte_damage_bonus_applies_to_main_and_linked_damage() {
 fn linked_attack_attributes_keep_temporary_critical_damage_source_owned() {
     let local = vec![
         (AttrId::DmgBonus, 200),
+        (AttrId::CriticalRate, 1_000),
         (AttrId::CriticalDmg, 500),
         (AttrId::IncantationMight, 300),
         (AttrId::UltimateIncantationMightMultiplier, 1_000),
     ];
-    let shared = vec![(AttrId::CriticalDmg, -700)];
+    let shared = vec![
+        (AttrId::CriticalResistRate, 300),
+        (AttrId::CriticalDmg, -700),
+    ];
 
     assert_eq!(
         plan::LinkedDamagePlan::attack_attributes(&local, &shared, 10, 10),
         vec![
             (AttrId::DmgBonus, 200),
+            (AttrId::CriticalRate, 1_000),
             (AttrId::CriticalDmg, 500),
+            (AttrId::CriticalResistRate, 300),
             (AttrId::CriticalDmg, -700)
         ]
     );
     assert_eq!(
         plan::LinkedDamagePlan::attack_attributes(&local, &shared, 10, 11),
-        vec![(AttrId::DmgBonus, 200), (AttrId::CriticalDmg, -700)]
+        vec![
+            (AttrId::DmgBonus, 200),
+            (AttrId::CriticalResistRate, 300),
+            (AttrId::CriticalDmg, -700)
+        ]
     );
 }
 
@@ -1061,7 +1071,7 @@ fn linked_damage_plan_resolves_committed_credited_source_state() {
     managers.attribute.override_ex(
         11,
         &HeroExAttribute {
-            cri: Some(1_500),
+            cri: Some(0),
             cri_dmg: Some(1_500),
             ..Default::default()
         },
@@ -1081,6 +1091,10 @@ fn linked_damage_plan_resolves_committed_credited_source_state() {
         .modifiers
         .attack_attributes
         .push((AttrId::CriticalDmg, 500));
+    execution
+        .modifiers
+        .attack_attributes
+        .push((AttrId::CriticalRate, 1_000));
     for activation in plan::LinkedDamagePlan::activations(&invocation, &managers, &execution) {
         execution.activate_additional_damage(activation.additional);
     }
@@ -1097,7 +1111,6 @@ fn linked_damage_plan_resolves_committed_credited_source_state() {
 
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_hidden_crits(SKILL_ID, 10, [false]);
-    determinism.enqueue_additional_crits(SKILL_ID, 10, -1, [true]);
     let damage = plan::damage_ops(
         &invocation,
         &managers,
@@ -1112,5 +1125,6 @@ fn linked_damage_plan_resolves_committed_credited_source_state() {
     };
 
     assert_eq!(linked.source_uid, 11);
-    assert_eq!(linked.amount, 493);
+    assert!(!linked.hurt.is_crit);
+    assert_eq!(linked.amount, 300);
 }

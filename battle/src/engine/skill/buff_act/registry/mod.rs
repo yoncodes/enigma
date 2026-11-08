@@ -119,6 +119,7 @@ pub enum BuffActKind {
     AddToTarget,
     AttackNumSplitEmitterNum,
     Attr,
+    AttrOnlyCalDamageBasicAttacked,
     AttrAndLayerAttr,
     AttrByDamageType,
     AttrByHeroId,
@@ -752,6 +753,11 @@ buff_act_definitions! {
         ],
         frame: CausingFrame,
         transaction: super::attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(100, "Attr"), &[EffectType::Attr as i32]).with_attr_max_hp());
+    (111, "Attr") => AttrOnlyCalDamageBasicAttacked,
+        effect_time_subscription: false,
+        supports: super::attr_only_cal_damage_attack::supports_basic_attacked,
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(111, "Attr"), &[EffectType::Attr as i32]));
     (10021, "Rouge2AttrToRole") => Rouge2AttrToRole,
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,

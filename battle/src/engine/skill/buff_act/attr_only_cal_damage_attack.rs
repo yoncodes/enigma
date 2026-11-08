@@ -33,6 +33,13 @@ pub fn supports_be_attacked(args: &[i32]) -> bool {
     )
 }
 
+pub fn supports_basic_attacked(args: &[i32]) -> bool {
+    matches!(args, [raw_attr, value]
+        if matches!(AttrId::from_raw(*raw_attr),
+            Some(AttrId::CriticalResistRate | AttrId::DmgTakenReduction))
+            && *value != 0)
+}
+
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId) -> i32 {
     match feature.values.as_slice() {
         [113, raw_attr_id, value, ..] if *raw_attr_id == attr_id as i32 => *value,
@@ -79,8 +86,12 @@ pub fn applies_to_incoming_damage(
 pub fn applies_to_any_incoming_damage(
     feature: &ActiveBuffFeature,
     damage_types: &[EntityDamageType],
+    is_big_skill: bool,
 ) -> bool {
     match super::feature_kind(feature) {
+        Some(super::registry::BuffActKind::AttrOnlyCalDamageBasicAttacked) => {
+            !is_big_skill && !damage_types.is_empty()
+        }
         Some(super::registry::BuffActKind::AttrOnlyCalDamageBeAttacked) => true,
         Some(super::registry::BuffActKind::AttrOnlyCalDamageBeAttackedType) => damage_types
             .iter()
@@ -110,6 +121,20 @@ pub fn incoming_attribute_delta(
     }
 }
 
+pub fn basic_attacked_attribute_delta(
+    feature: &ActiveBuffFeature,
+    attr_id: AttrId,
+    is_big_skill: bool,
+) -> i32 {
+    if is_big_skill
+        || super::feature_kind(feature)
+            != Some(super::registry::BuffActKind::AttrOnlyCalDamageBasicAttacked)
+    {
+        return 0;
+    }
+    attribute_delta(feature, attr_id)
+}
+
 pub fn applies_to_skill(feature: &ActiveBuffFeature, is_big_skill: bool) -> bool {
     match feature.values.as_slice() {
         [_, raw_attr_id, ..] if *raw_attr_id == AttrId::UltimateMight as i32 => is_big_skill,
@@ -124,7 +149,10 @@ pub fn consume_rule_op(managers: &BattleManagers, feature: &ActiveBuffFeature) -
 }
 
 fn consume_command(managers: &BattleManagers, feature: &ActiveBuffFeature) -> Option<BuffCommand> {
-    if !consumes_after_attack(feature) {
+    let consumes_effect_count = super::feature_kind(feature)
+        == Some(super::registry::BuffActKind::AttrOnlyCalDamageBasicAttacked)
+        && managers.catalog().buff_has_effect_count(feature.buff_id);
+    if !consumes_effect_count && !consumes_after_attack(feature) {
         return None;
     }
     managers
@@ -354,6 +382,7 @@ mod tests {
                 &managers,
                 -1,
                 EntityDamageType::Mental,
+                false,
                 AttrId::DmgTakenReduction,
             ),
             250
@@ -362,6 +391,7 @@ mod tests {
             &managers,
             -1,
             &[EntityDamageType::Mental],
+            false,
         );
         let [(_, op)] = ops.as_slice() else {
             panic!("expected one target-local consumption");
@@ -402,6 +432,7 @@ mod tests {
                 &managers,
                 -1,
                 EntityDamageType::Mental,
+                false,
                 AttrId::DmgTakenReduction,
             ),
             -250
@@ -411,6 +442,7 @@ mod tests {
                 &managers,
                 -1,
                 EntityDamageType::Reality,
+                false,
                 AttrId::DmgTakenReduction,
             ),
             0
@@ -420,6 +452,7 @@ mod tests {
                 &managers,
                 -1,
                 &[EntityDamageType::Mental],
+                false,
             )
             .len(),
             1
@@ -429,6 +462,7 @@ mod tests {
                 &managers,
                 -1,
                 &[EntityDamageType::Reality],
+                false,
             )
             .is_empty()
         );
@@ -437,6 +471,7 @@ mod tests {
                 &managers,
                 -1,
                 &[EntityDamageType::Reality, EntityDamageType::Mental],
+                false,
             )
             .len(),
             1

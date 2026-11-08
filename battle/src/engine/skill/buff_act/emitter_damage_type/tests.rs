@@ -170,13 +170,17 @@ fn converted_type_drives_defense_dodge_mitigation_consumption_and_critical_attri
             &converted,
             -2,
             converted_type,
+            false,
             AttrId::DmgTakenReduction,
         ),
         300
     );
-    assert!(super::super::be_attacked_consumption_rule_ops(&base, -2, &[base_type]).is_empty());
+    assert!(
+        super::super::be_attacked_consumption_rule_ops(&base, -2, &[base_type], false).is_empty()
+    );
     assert_eq!(
-        super::super::be_attacked_consumption_rule_ops(&converted, -2, &[converted_type]).len(),
+        super::super::be_attacked_consumption_rule_ops(&converted, -2, &[converted_type], false,)
+            .len(),
         1
     );
     assert_eq!(
