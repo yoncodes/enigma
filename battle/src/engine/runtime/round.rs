@@ -269,6 +269,7 @@ impl BattleRuntime {
             )
             .map_err(|error| format!("{error:?}"))?
         };
+        let post_conduit_hand = round_field_cards(self.managers.card.hand());
         let card_energy_clear = schedule::run_pending_card_energy_clear(
             &mut self.managers,
             &pool,
@@ -350,7 +351,7 @@ impl BattleRuntime {
             < hand_size;
         let phase_two_refill_deferred = needs_refill && !runs_phase_two;
         if needs_refill && runs_phase_two {
-            self.round_state.before_cards2 = round_field_cards(self.managers.card.hand());
+            self.round_state.before_cards2 = post_conduit_hand;
         }
         if runs_phase_two {
             let refill_settlement = schedule::run_post_action_refill_settlement(
