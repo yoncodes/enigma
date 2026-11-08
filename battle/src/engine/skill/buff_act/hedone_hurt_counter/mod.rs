@@ -98,25 +98,24 @@ fn rule_ops(
                     HurtDamageFromType::Skill | HurtDamageFromType::SkillEffect
                 ) =>
         {
-            let amount = scale_permille(hit.resolved_damage, *base).saturating_add(
-                managers
-                    .buff
-                    .has_buff_id(hit.target_uid, *scar_buff_id)
-                    .then(|| scale_permille(hit.resolved_damage, *extra))
-                    .unwrap_or_default(),
-            );
-            Ok((amount > 0)
-                .then(|| {
-                    vec![RuleOp::Command(BattleCommand::HedoneCounter(
-                        HedoneCounterCommand::Record(HedoneCounterRecord {
-                            origin,
-                            buff_uid: subscriber.buff_uid,
-                            visible,
-                            amount,
-                        }),
-                    ))]
-                })
-                .unwrap_or_default())
+            let scar_amount = if managers.buff.has_buff_id(hit.target_uid, *scar_buff_id) {
+                scale_permille(hit.resolved_damage, *extra)
+            } else {
+                0
+            };
+            let amount = scale_permille(hit.resolved_damage, *base).saturating_add(scar_amount);
+            if amount > 0 {
+                Ok(vec![RuleOp::Command(BattleCommand::HedoneCounter(
+                    HedoneCounterCommand::Record(HedoneCounterRecord {
+                        origin,
+                        buff_uid: subscriber.buff_uid,
+                        visible,
+                        amount,
+                    }),
+                ))])
+            } else {
+                Ok(Vec::new())
+            }
         }
         BattleEvent::Kind(EventKind::RoundEndAfterFinalSettlement) => {
             let settle = HedoneCounterSettle {
