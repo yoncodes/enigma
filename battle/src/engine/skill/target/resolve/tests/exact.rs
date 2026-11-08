@@ -378,6 +378,10 @@ fn resolves_runtime_secondary_and_deterministic_random_targets() {
         vec![-10, -12]
     );
     assert_eq!(
+        resolve_code_with_context(252, 10, &pool, &mut determinism, context),
+        vec![-10, -12]
+    );
+    assert_eq!(
         resolve_code_with_context(
             216,
             10,
