@@ -502,6 +502,12 @@ pub fn master_halo(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditi
         .then_some(ParsedConditionKind::MasterHalo)
 }
 
+pub fn hedone_master_halo(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    raw_args
+        .is_empty()
+        .then_some(ParsedConditionKind::HedoneMasterHalo)
+}
+
 pub fn buff_present(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     buff_presence(raw_args, BuffConditionMode::Present)
 }

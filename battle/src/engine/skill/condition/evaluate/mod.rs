@@ -1378,6 +1378,9 @@ fn condition_kind_matches(
         ParsedConditionKind::MasterHalo => condition_targets
             .iter()
             .any(|uid| has_master_halo(*uid, managers)),
+        ParsedConditionKind::HedoneMasterHalo => condition_targets
+            .iter()
+            .any(|uid| has_master_halo(*uid, managers)),
         ParsedConditionKind::NoActionRound => !context.owner_played_card,
         ParsedConditionKind::Unsupported(_) => false,
     }

@@ -396,6 +396,7 @@ pub enum ParsedConditionKind {
         act_id: i32,
     },
     MasterHalo,
+    HedoneMasterHalo,
     NoActionRound,
     Unsupported(String),
 }
