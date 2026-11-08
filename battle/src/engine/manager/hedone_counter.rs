@@ -41,6 +41,26 @@ pub struct HedoneDamageCommand {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HedoneCounterClearCommand {
+    pub origin: CommandOrigin,
+    pub source_uid: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HedoneCounterClearError {
+    MissingCarrier,
+    MultipleCarriers,
+    InvalidCarrier,
+    Counter(HedoneCounterError),
+}
+
+impl From<HedoneCounterError> for HedoneCounterClearError {
+    fn from(value: HedoneCounterError) -> Self {
+        Self::Counter(value)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HedoneDamageError {
     MissingCarrier,
     MultipleCarriers,
@@ -120,7 +140,7 @@ impl HedoneCounterManager {
                     .settle(settle.retained_rounds);
             }
             HedoneCounterCommand::Clear { buff_uid, .. } => {
-                self.counters.remove(&buff_uid);
+                self.counters.insert(buff_uid, CounterState::default());
             }
         }
         Ok(())
@@ -151,25 +171,61 @@ static EMPTY: CounterState = CounterState {
     current: 0,
 };
 
-pub(crate) fn damage(
-    managers: &mut BattleManagers,
-    command: HedoneDamageCommand,
-) -> Result<Option<HpExecution>, HedoneDamageError> {
+enum HedoneCarrierError {
+    Missing,
+    Multiple,
+}
+
+fn carrier(
+    managers: &BattleManagers,
+    source_uid: i64,
+) -> Result<crate::engine::manager::buff::ActiveBuffFeature, HedoneCarrierError> {
     let mut carriers = managers
         .buff
         .active_features(&managers.hp)
         .into_iter()
         .filter(|feature| {
-            feature.owner_uid == command.source_uid
+            feature.owner_uid == source_uid
                 && crate::engine::skill::buff_act::is_kind(
                     feature,
                     crate::engine::skill::buff_act::registry::BuffActKind::HedoneHurtCounter,
                 )
         });
-    let carrier = carriers.next().ok_or(HedoneDamageError::MissingCarrier)?;
+    let carrier = carriers.next().ok_or(HedoneCarrierError::Missing)?;
     if carriers.next().is_some() {
-        return Err(HedoneDamageError::MultipleCarriers);
+        return Err(HedoneCarrierError::Multiple);
     }
+    Ok(carrier)
+}
+
+pub(crate) fn clear(
+    managers: &mut BattleManagers,
+    command: HedoneCounterClearCommand,
+) -> Result<(), HedoneCounterClearError> {
+    let carrier = carrier(managers, command.source_uid).map_err(|error| match error {
+        HedoneCarrierError::Missing => HedoneCounterClearError::MissingCarrier,
+        HedoneCarrierError::Multiple => HedoneCounterClearError::MultipleCarriers,
+    })?;
+    carrier
+        .act_id()
+        .ok_or(HedoneCounterClearError::InvalidCarrier)?;
+    managers
+        .hedone_counter
+        .execute(HedoneCounterCommand::Clear {
+            origin: command.origin,
+            buff_uid: carrier.buff_uid,
+        })?;
+    Ok(())
+}
+
+pub(crate) fn damage(
+    managers: &mut BattleManagers,
+    command: HedoneDamageCommand,
+) -> Result<Option<HpExecution>, HedoneDamageError> {
+    let carrier = carrier(managers, command.source_uid).map_err(|error| match error {
+        HedoneCarrierError::Missing => HedoneDamageError::MissingCarrier,
+        HedoneCarrierError::Multiple => HedoneDamageError::MultipleCarriers,
+    })?;
     let act_id = carrier.act_id().ok_or(HedoneDamageError::InvalidCarrier)?;
     let visible = managers.buff.act_value(carrier.buff_uid, act_id);
     let recorded = managers.hedone_counter.value(carrier.buff_uid, visible)?;

@@ -1,5 +1,5 @@
 use crate::engine::{
-    manager::hedone_counter::HedoneDamageCommand,
+    manager::hedone_counter::{HedoneCounterClearCommand, HedoneDamageCommand},
     skill::{
         behavior::{BehaviorOpContext, registry::BehaviorHandler},
         effect::ParsedBehavior,
@@ -8,6 +8,24 @@ use crate::engine::{
 };
 
 pub(super) struct Handler;
+pub(super) struct ClearHandler;
+
+impl BehaviorHandler for ClearHandler {
+    const VALIDATES_ARGUMENTS: bool = true;
+
+    fn supports(behavior: &ParsedBehavior) -> bool {
+        behavior.args.is_empty()
+    }
+
+    fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+        Some(vec![RuleOp::Command(BattleCommand::HedoneCounterClear(
+            HedoneCounterClearCommand {
+                origin: super::command_origin(behavior)?,
+                source_uid: context.source_uid,
+            },
+        ))])
+    }
+}
 
 impl BehaviorHandler for Handler {
     const VALIDATES_ARGUMENTS: bool = true;

@@ -213,6 +213,42 @@ fn stored_damage_rejects_multiple_carriers() {
 }
 
 #[test]
+fn clear_removes_the_source_counter_history() {
+    crate::test_support::init_config();
+    let mut managers = BattleManagers::seeded(&fight_with_carriers(&[1070], 1_000_000));
+    managers
+        .hedone_counter
+        .execute(HedoneCounterCommand::Record(HedoneCounterRecord {
+            origin: origin(),
+            buff_uid: 1070,
+            visible: 0,
+            amount: 306_698,
+        }))
+        .unwrap();
+
+    clear(
+        &mut managers,
+        HedoneCounterClearCommand {
+            origin: origin(),
+            source_uid: -4,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(managers.hedone_counter.value(1070, 0), Ok(0));
+    managers
+        .hedone_counter
+        .execute(HedoneCounterCommand::Record(HedoneCounterRecord {
+            origin: origin(),
+            buff_uid: 1070,
+            visible: 306_698,
+            amount: 10,
+        }))
+        .unwrap();
+    assert_eq!(managers.hedone_counter.value(1070, 306_698), Ok(10));
+}
+
+#[test]
 fn stored_damage_projects_the_committed_origin_damage() {
     crate::test_support::init_config();
     let mut managers = BattleManagers::seeded(&fight_with_carriers(&[1070], 100_000));

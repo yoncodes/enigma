@@ -74,3 +74,47 @@ fn requires_one_positive_rate() {
         )));
     }
 }
+
+#[test]
+fn emits_the_exact_counter_clear_command() {
+    let managers = BattleManagers::default();
+    let pool = TargetPool::default();
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = SkillModifiers::default();
+    let mut target = TargetContext::default();
+    let behavior = ParsedBehavior::from_spec(
+        BehaviorSpec::new(60331, "ClearHedoneCounter"),
+        Vec::new(),
+        Vec::new(),
+    );
+    let ops = ClearHandler::emit_ops(
+        BehaviorOpContext {
+            source_uid: -4,
+            source_team: 1,
+            target_uid: -5,
+            active_skill_id: 31560133,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Command(BattleCommand::HedoneCounterClear(
+            HedoneCounterClearCommand { source_uid: -4, .. }
+        ))]
+    ));
+    assert!(ClearHandler::supports(&behavior));
+    assert!(!ClearHandler::supports(&ParsedBehavior::new(
+        60331,
+        "ClearHedoneCounter",
+        vec![1]
+    )));
+}
