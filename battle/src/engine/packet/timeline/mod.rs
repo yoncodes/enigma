@@ -869,7 +869,10 @@ fn project_change(
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,
-                CardChangeKind::Setup | CardChangeKind::AiSkillPrepared
+                CardChangeKind::Setup
+                    | CardChangeKind::AiSkillPrepared
+                    | CardChangeKind::ActionPhaseCompleted
+                    | CardChangeKind::PostActionRefillStarted
             ) =>
         {
             Vec::new()

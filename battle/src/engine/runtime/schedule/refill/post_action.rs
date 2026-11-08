@@ -52,7 +52,7 @@ pub fn run_post_action_refill(
         context,
         target_hand_len,
         team_type,
-        RefillStage::AfterActions,
+        CardRefillStage::AfterActions,
         Vec::new(),
     )
 }

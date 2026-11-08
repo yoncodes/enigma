@@ -239,6 +239,13 @@ fn enabled_impromptu_gauge_without_tag_keeps_the_generic_card_clear() {
         .unwrap();
 
     assert_eq!(runtime.managers.card.hand()[0].energy, Some(0));
+    assert!(
+        round
+            .before_cards2
+            .iter()
+            .chain(&round.team_a_cards2)
+            .all(|card| card.energy == Some(0))
+    );
     assert_eq!(
         round
             .fight_step

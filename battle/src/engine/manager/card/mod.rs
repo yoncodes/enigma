@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+mod action_phase;
 pub mod ai;
 pub mod change;
 mod command;
@@ -10,6 +11,7 @@ pub mod enchant;
 pub mod energy;
 mod hedone_card;
 pub mod op;
+mod opening;
 mod permissions;
 pub(crate) use permissions::consumes_action_point;
 pub mod pool;
@@ -31,10 +33,10 @@ pub use command::{
     CardInvalidateAiOwner, CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary,
     CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary, CardPlay, CardQueueUse,
     CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks,
-    CardRefillOne, CardRefreshAiQueue, CardRemoveOwner, CardReplaceOwnerSkills, CardSetAiQueue,
-    CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUnlockHedone, CardUseUniversal,
-    HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard, SovereignBoostChange,
-    TemporaryCardKind,
+    CardRefillOne, CardRefillStage, CardRefreshAiQueue, CardRemoveOwner, CardReplaceOwnerSkills,
+    CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUnlockHedone,
+    CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard,
+    SovereignBoostChange, TemporaryCardKind,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;
@@ -65,7 +67,8 @@ pub struct CardManager {
     played: Vec<PlayedCard>,
     committed_hand: Vec<CardInfo>,
     refilled: Vec<CardInfo>,
-    opening_deal_additions: Vec<CardInfo>,
+    action_phase: action_phase::ActionPhaseCards,
+    opening_deal: opening::OpeningDeal,
     rank_up: HashMap<(i64, i32), i32>,
     queued_use_cards: Vec<QueuedUseCard>,
     cast_channels: HashMap<i64, CastChannelState>,
@@ -151,7 +154,8 @@ impl CardManager {
             played: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
-            opening_deal_additions: Vec::new(),
+            action_phase: action_phase::ActionPhaseCards::default(),
+            opening_deal: opening::OpeningDeal::default(),
             rank_up: HashMap::new(),
             queued_use_cards: Vec::new(),
             cast_channels: HashMap::new(),
@@ -177,7 +181,8 @@ impl CardManager {
             played: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
-            opening_deal_additions: Vec::new(),
+            action_phase: action_phase::ActionPhaseCards::default(),
+            opening_deal: opening::OpeningDeal::default(),
             rank_up: HashMap::new(),
             queued_use_cards: Vec::new(),
             cast_channels: HashMap::new(),
@@ -383,7 +388,8 @@ impl CardManager {
         self.played.clear();
         self.committed_hand.clear();
         self.refilled.clear();
-        self.opening_deal_additions.clear();
+        self.clear_action_phase();
+        self.clear_opening_deal();
         self.queued_use_cards.clear();
         self.cast_channels.clear();
         self.played_history.clear();
@@ -404,6 +410,8 @@ impl CardManager {
         self.played.clear();
         self.committed_hand.clear();
         self.refilled.clear();
+        self.clear_action_phase();
+        self.clear_opening_deal();
         self.queued_use_cards.clear();
         for card_id in std::mem::take(&mut self.pending_temporary) {
             if !self.expiring_temporary.contains(&card_id) {
@@ -583,16 +591,13 @@ impl CardManager {
         }
     }
 
+    pub(crate) fn record_phase_refill(&mut self, stage: CardRefillStage, card: CardInfo) {
+        self.action_phase.record_refill(stage, &card);
+        self.record_refill(card);
+    }
+
     pub(crate) fn record_refill(&mut self, card: CardInfo) {
         self.refilled.push(card);
-    }
-
-    pub fn opening_deal_additions(&self) -> &[CardInfo] {
-        &self.opening_deal_additions
-    }
-
-    pub(crate) fn record_opening_deal_additions(&mut self, cards: Vec<CardInfo>) {
-        self.opening_deal_additions.extend(cards);
     }
 
     pub fn rank_up_played(&mut self, card_index: i32, levels: i32, rewritten: bool) -> Option<i32> {

@@ -347,6 +347,48 @@ fn opening_card_push_includes_post_deal_additions_without_changing_the_round_sna
 }
 
 #[test]
+fn configured_enter_fight_card_reaches_the_opening_deal() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(2170),
+                position: Some(1),
+                team_type: Some(1),
+                current_hp: Some(100),
+                passive_skill: vec![2170080],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(fight);
+
+    let round = runtime.start_round().unwrap();
+    let push = runtime.card_info_push();
+
+    assert!(
+        round
+            .team_a_cards1
+            .iter()
+            .all(|card| card.skill_id != Some(2171002))
+    );
+    assert!(
+        push.deal_card_group
+            .iter()
+            .any(|card| card.skill_id == Some(2171002))
+    );
+    assert!(
+        push.card_group
+            .iter()
+            .any(|card| card.skill_id == Some(2171002))
+    );
+}
+
+#[test]
 fn version_six_opening_keeps_the_legacy_deal_snapshot_after_composition() {
     crate::test_support::init_config();
     let fight = Fight {

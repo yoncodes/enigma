@@ -64,6 +64,35 @@ pub fn run_action_phase_start(
     drain::run_command_group(managers, pool, catalog, determinism, context, ops)
 }
 
+pub fn run_action_phase_end(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    team: i32,
+) -> Result<DrainResult, DrainError> {
+    let origin = CommandOrigin {
+        domain: RuleDomain::Lifecycle,
+        key: DefinitionKey::new(0, "ActionPhaseEnd"),
+    };
+    let mut phase = begin_round_phase(RoundPhase::ActionPhaseEnd { team });
+    append_round_phase(
+        &mut phase,
+        drain::run(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            [RuleOp::Command(BattleCommand::Card(
+                CardCommand::CompleteActionPhase { origin },
+            ))],
+        )?,
+    );
+    Ok(phase)
+}
+
 fn free_skill_consumed_remaining_buff(action: &DrainResult, source_uid: i64) -> bool {
     let mut amounts = HashMap::new();
     let mut record = |changes: &crate::engine::manager::buff::BuffChanges| {

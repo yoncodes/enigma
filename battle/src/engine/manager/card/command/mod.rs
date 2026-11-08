@@ -220,8 +220,16 @@ pub struct CardOpeningDraw {
 pub struct CardRefillOne {
     pub origin: CommandOrigin,
     pub card: CardInfo,
+    pub stage: CardRefillStage,
     pub consume_draw_pile: bool,
     pub consume_deck: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardRefillStage {
+    Opening,
+    AfterActions,
+    RoundStart,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -502,6 +510,12 @@ pub enum CardCommand {
         emitter_uid: i64,
         include_device_action: bool,
     },
+    CompleteActionPhase {
+        origin: CommandOrigin,
+    },
+    BeginPostActionRefill {
+        origin: CommandOrigin,
+    },
     ResolvePlayedRanks {
         origin: CommandOrigin,
     },
@@ -574,6 +588,8 @@ pub enum CardChangeKind {
     HandRankChanged,
     DeckTopRanksChanged,
     ActionQueueCommitted,
+    ActionPhaseCompleted,
+    PostActionRefillStarted,
     PlayedRanksResolved,
     CastChannelRecorded,
     CastChannelResolved,
@@ -1228,7 +1244,7 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             manager.add_to_hand(refill.card.clone());
-            manager.record_refill(refill.card.clone());
+            manager.record_phase_refill(refill.stage, refill.card.clone());
             let owners = manager.compose_adjacent();
             if refill.consume_deck {
                 manager.set_deck_num(manager.deck_num().saturating_sub(1));
@@ -1618,6 +1634,28 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
+        CardCommand::CompleteActionPhase { origin } => {
+            manager.complete_action_phase();
+            (
+                Some(origin),
+                CardChangeKind::ActionPhaseCompleted,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::BeginPostActionRefill { origin } => {
+            manager.begin_post_action_refill();
+            (
+                Some(origin),
+                CardChangeKind::PostActionRefillStarted,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
         CardCommand::ResolvePlayedRanks { origin } => {
             rank_results.extend(
                 manager
@@ -1704,6 +1742,7 @@ pub(super) fn execute(
     if kind == CardChangeKind::ActionQueueCommitted {
         after.extend_from_slice(manager.team_cards());
     }
+    manager.record_opening_deal_change(kind, &before, &after, added.as_ref(), &drawn);
     Ok(CardChanges {
         origin,
         kind,
