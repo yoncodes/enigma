@@ -150,6 +150,25 @@ fn summoned_count_keeps_its_round_start_condition_lane() {
 }
 
 #[test]
+fn teammate_count_keeps_its_exact_round_start_condition_lane() {
+    assert_eq!(
+        parse(73102, "TeammateAliveNum", &["4".into()]),
+        Some(ParsedConditionKind::EntityCount {
+            scope: super::super::super::parse::EntityCountScope::AliveOtherTeammates,
+            compare: ConditionCompare::Equal,
+            count: 4,
+        })
+    );
+    assert_eq!(
+        find_key(73102, "TeammateAliveNum").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 102,
+        })
+    );
+}
+
+#[test]
 fn teammate_count_keeps_its_late_round_start_lane() {
     for count in 0..=3 {
         assert_eq!(

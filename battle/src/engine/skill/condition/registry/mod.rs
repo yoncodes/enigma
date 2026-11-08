@@ -847,6 +847,7 @@ condition_definitions! {
     [630212] "TeammateInjuryCountNotReset" => injury::persistent_teammate_count, event_trigger(EventKind::AllyAction, None);
     [618012] "TeammateAliveOrDyingNumNoSp" => entity_count::teammates_without_special, predicate(&[EventKind::EntityDied]);
     [616012] "TeammateAliveNumNoSp" => entity_count::teammates_without_special, predicate(&[EventKind::EntityDied]);
+    [73102] "TeammateAliveNum" => entity_count::teammates_equal, setup_route(SetupStage::RoundStartCondition, 102, &[]);
     [73104] "TeammateAliveNum" => entity_count::teammates_up_to_three, setup_route(SetupStage::RoundStartLate, 0, &[EventKind::EntityDied]);
     [73301] "TeammateAliveNum" => entity_count::teammates_equal, event_trigger(EventKind::RoundEnd, None);
     [73203] "TeammateAliveNum" => entity_count::teammates_equal, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
