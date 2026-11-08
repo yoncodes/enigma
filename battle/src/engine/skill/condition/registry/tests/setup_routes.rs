@@ -711,7 +711,7 @@ fn received_hit_skill_rank_is_an_exact_target_attacked_filter() {
 }
 
 #[test]
-fn round_start_buff_type_threshold_keeps_its_exact_late_lane() {
+fn round_start_buff_type_thresholds_keep_their_exact_late_lanes() {
     assert_eq!(
         parse(
             535104,
@@ -726,6 +726,25 @@ fn round_start_buff_type_threshold_keeps_its_exact_late_lane() {
     );
     assert_eq!(
         find_key(535104, "TypeIdBuffCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartLate,
+            priority: 0,
+        })
+    );
+    assert_eq!(
+        parse(
+            537104,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["109390001".into(), "6".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![109_390_001],
+            compare: crate::engine::skill::condition::parse::ConditionCompare::GreaterThanOrEqual,
+            threshold: 6,
+        })
+    );
+    assert_eq!(
+        find_key(537104, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
         Some(ConditionRole::Setup {
             stage: SetupStage::RoundStartLate,
             priority: 0,
